@@ -1,0 +1,14 @@
+USE sam;
+DESC account;
+DESC account_user;
+DESC allocation;
+DESC allocation_type;
+DESC contract;
+DESC email_address;
+DESC panel;
+DESC project;
+DESC project_code;
+DESC project_directory;
+DESC project_organization;
+DESC users;
+DESC facility; SELECT * FROM facility LIMIT 10;
