@@ -54,7 +54,7 @@ WHERE
     p.active = 1
     AND a.deleted = 0
     AND a.end_date IS NOT NULL
-    AND a.end_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 60 DAY)
+    AND a.end_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 32 DAY)
     AND a.allocation_id = (
         SELECT MAX(a2.allocation_id)
         FROM allocation AS a2
