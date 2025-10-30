@@ -310,6 +310,88 @@ def get_project_members(session: Session, projcode: str) -> List[User]:
         .all()
 
 
+def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
+    """
+    Get all users associated with a project with their contact information.
+    Includes lead, admin (if different from lead), and all active members.
+
+    Args:
+        session: SQLAlchemy session
+        projcode: Project code
+
+    Returns:
+        List of dicts with keys: username, full_name, email, role
+        Roles: 'Lead', 'Admin', 'Member'
+    """
+    project = session.query(Project)\
+        .options(
+            joinedload(Project.lead).joinedload(User.email_addresses),
+            joinedload(Project.admin).joinedload(User.email_addresses)
+        )\
+        .filter(Project.projcode == projcode)\
+        .first()
+
+    if not project:
+        return []
+
+    users_dict = {}  # Use dict to avoid duplicates, keyed by user_id
+
+    # Add project lead
+    lead = project.lead
+    users_dict[lead.user_id] = {
+        'username': lead.username,
+        'full_name': lead.full_name,
+        'email': lead.primary_email,
+        'role': 'Lead'
+    }
+
+    # Add project admin if exists and different from lead
+    if project.admin and project.project_admin_user_id != project.project_lead_user_id:
+        admin = project.admin
+        users_dict[admin.user_id] = {
+            'username': admin.username,
+            'full_name': admin.full_name,
+            'email': admin.primary_email,
+            'role': 'Admin'
+        }
+
+    # Add all project members with active access
+    members = session.query(User)\
+        .options(selectinload(User.email_addresses))\
+        .join(AccountUser, User.user_id == AccountUser.user_id)\
+        .join(Account, AccountUser.account_id == Account.account_id)\
+        .join(Project, Account.project_id == Project.project_id)\
+        .filter(
+            Project.projcode == projcode,
+            or_(
+                AccountUser.end_date.is_(None),
+                AccountUser.end_date >= datetime.now()
+            ),
+            User.active == True
+        )\
+        .distinct()\
+        .all()
+
+    # Add members (don't overwrite lead/admin roles)
+    for member in members:
+        if member.user_id not in users_dict:
+            users_dict[member.user_id] = {
+                'username': member.username,
+                'full_name': member.full_name,
+                'email': member.primary_email,
+                'role': 'Member'
+            }
+
+    # Convert to list and sort by role priority then username
+    role_priority = {'Lead': 0, 'Admin': 1, 'Member': 2}
+    users_list = sorted(
+        users_dict.values(),
+        key=lambda x: (role_priority[x['role']], x['username'])
+    )
+
+    return users_list
+
+
 def search_projects_by_title(session: Session, search_term: str) -> List[Project]:
     """Search projects by title."""
     return session.query(Project)\
@@ -494,8 +576,8 @@ def get_expiring_projects_summary(
 
     Returns:
         List of dicts with keys: project, title, allocation_type, end_date,
-        allocation_amount, lead_name, lead_email, directory_name, user_count,
-        days_remaining
+        allocation_amount, lead_name, lead_email, admin_name, admin_email,
+        directory_name, user_count, days_remaining
     """
     max_alloc_subquery = _get_max_allocation_subquery()
 
@@ -517,9 +599,11 @@ def get_expiring_projects_summary(
         .group_by(Account.project_id)\
         .subquery()
 
-    # Define lead user alias
+    # Define lead and admin user aliases
     LeadUser = User.__table__.alias('lead_user')
     LeadEmail = EmailAddress.__table__.alias('lead_email')
+    AdminUser = User.__table__.alias('admin_user')
+    AdminEmail = EmailAddress.__table__.alias('admin_email')
 
     # Main query
     query = session.query(
@@ -531,6 +615,11 @@ def get_expiring_projects_summary(
         LeadUser.c.first_name.label('lead_first_name'),
         LeadUser.c.last_name.label('lead_last_name'),
         LeadEmail.c.email_address.label('lead_email'),
+        AdminUser.c.first_name.label('admin_first_name'),
+        AdminUser.c.last_name.label('admin_last_name'),
+        AdminEmail.c.email_address.label('admin_email'),
+        Project.project_lead_user_id.label('lead_user_id'),
+        Project.project_admin_user_id.label('admin_user_id'),
         func.max(ProjectDirectory.directory_name).label('directory_name'),
         func.coalesce(user_count_subquery.c.user_count, 0).label('user_count')
     ).select_from(Project)\
@@ -543,6 +632,11 @@ def get_expiring_projects_summary(
         .outerjoin(LeadEmail, and_(
             LeadEmail.c.user_id == LeadUser.c.user_id,
             LeadEmail.c.is_primary == True
+        ))\
+        .outerjoin(AdminUser, Project.project_admin_user_id == AdminUser.c.user_id)\
+        .outerjoin(AdminEmail, and_(
+            AdminEmail.c.user_id == AdminUser.c.user_id,
+            AdminEmail.c.is_primary == True
         ))\
         .outerjoin(ProjectDirectory, Project.project_id == ProjectDirectory.project_id)\
         .outerjoin(user_count_subquery, Project.project_id == user_count_subquery.c.project_id)
@@ -570,6 +664,11 @@ def get_expiring_projects_summary(
         LeadUser.c.first_name,
         LeadUser.c.last_name,
         LeadEmail.c.email_address,
+        AdminUser.c.first_name,
+        AdminUser.c.last_name,
+        AdminEmail.c.email_address,
+        Project.project_lead_user_id,
+        Project.project_admin_user_id,
         user_count_subquery.c.user_count
     )
 
@@ -580,6 +679,14 @@ def get_expiring_projects_summary(
     results = []
     for row in query.all():
         lead_full_name = f"{row.lead_first_name} {row.lead_last_name}".strip()
+
+        # Only include admin if exists and is different from lead
+        admin_name = None
+        admin_email = None
+        if row.admin_user_id and row.admin_user_id != row.lead_user_id:
+            admin_name = f"{row.admin_first_name} {row.admin_last_name}".strip()
+            admin_email = row.admin_email
+
         if row.end_date:
             end_date_val = row.end_date.date() if isinstance(row.end_date, datetime) else row.end_date
             days_remaining = (end_date_val - datetime.now().date()).days
@@ -594,6 +701,8 @@ def get_expiring_projects_summary(
             'allocation_amount': float(row.allocation_amount) if row.allocation_amount else 0,
             'lead_name': lead_full_name,
             'lead_email': row.lead_email,
+            'admin_name': admin_name,
+            'admin_email': admin_email,
             'directory_name': row.directory_name,
             'user_count': int(row.user_count),
             'days_remaining': days_remaining
@@ -1009,6 +1118,12 @@ def example_usage():
             for item in access[:10]:
                 print(f"  {item['projcode']}: {item['role']}")
 
+        # Test get_users_on_project
+        print("\n--- Users on Project UCUB0001 ---")
+        project_users = get_users_on_project(session, 'UCUB0001')
+        for user_info in project_users:
+            print(f"  {user_info['role']:8} {user_info['username']:12} {user_info['full_name']:30} <{user_info['email']}>")
+
 
 def example_expiration_report():
     """
@@ -1040,10 +1155,15 @@ def example_expiration_report():
             print(f"Title: {proj['title']}")
             print(f"Type: {proj['allocation_type']}")
             print(f"Lead: {proj['lead_name']} <{proj['lead_email']}>")
+            if proj['admin_name']:
+                print(f"Admin: {proj['admin_name']} <{proj['admin_email']}>")
             print(f"Allocation: {proj['allocation_amount']:,.2f}")
             print(f"Expires: {proj['end_date']} ({proj['days_remaining']} days)")
-            print(f"Directory: {proj['directory_name']}")
+            if proj['directory_name']: print(f"Directory: {proj['directory_name']}")
             print(f"Active Users: {proj['user_count']}")
+            project_users = get_users_on_project(session, proj['project'])
+            for user_info in project_users:
+                print(f"  {user_info['role']:8} {user_info['username']:12} {user_info['full_name']:30} <{user_info['email']}>")
 
         # Get detailed user list for email notifications
         print("\n\n" + "=" * 80)
