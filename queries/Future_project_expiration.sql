@@ -1,10 +1,11 @@
 -- Query returns a list of projects set to end on a specified date.
--- The list includes project type, user details, and project lead.
+-- The list includes project type, user details, project lead, and project directory.
 
 WITH ProjectDetails AS (
     -- Calculates the latest end date and gathers primary project info.
     SELECT
         p.projcode AS project,
+        p.project_id,
         MAX(al.end_date) AS latest_end_date,
         p.project_lead_user_id,
         ac.account_id,
@@ -39,7 +40,8 @@ SELECT DISTINCT
     u.first_name,
     u.last_name,
     ea.email_address,
-    l.last_name AS lead_last_name
+    l.last_name AS lead_last_name,
+    pdir.directory_name
 FROM
     ProjectDetails pd
 INNER JOIN
@@ -50,8 +52,10 @@ INNER JOIN
     email_address ea ON ea.user_id = u.user_id AND ea.is_primary = TRUE
 LEFT JOIN
     users l ON l.user_id = pd.project_lead_user_id
+LEFT JOIN
+    project_directory pdir ON pdir.project_id = pd.project_id
 WHERE
-	-- Only include projects within given date range.
+-- Only include projects within given date range.
     CAST(pd.latest_end_date AS DATE) BETWEEN '2025-11-01' AND '2025-11-30'
     -- Only include users active users.
     AND (au.end_date IS NULL OR CAST(au.end_date AS DATE) >= CURDATE())

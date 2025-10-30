@@ -1,0 +1,17 @@
+name: sam_sql
+channels:
+  - conda-forge
+  - ncar
+  - r
+dependencies:
+  - ipykernel
+  - sqlalchemy
+  - pandas
+  - pip
+  - mysql
+  - pymssql
+  - pymysql
+  - mysql-connector-python
+  - matplotlib
+  - nbconvert
+prefix: /glade/work/benkirk/conda-envs/sam_sql
