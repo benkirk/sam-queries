@@ -1,14 +1,13 @@
 """
-SQLAlchemy ORM models for SAM - Refactored for maintainability.
+SQLAlchemy ORM models for SAM - Complete Corrected Version.
 
 Key improvements:
-- Patterns for common patterns (timestamps, soft deletes, active flags)
-- Explicit indexes for performance
+- All models match SQL schema exactly
+- Complete bidirectional relationships
+- Proper indexes for performance
 - Consistent naming conventions
 - Better type hints and documentation
-- Separation of concerns
 - Proper __eq__ and __hash__ methods for reliable set/dict operations
-  - All entity classes implement __eq__ and __hash__ based on their primary key ID.
 """
 
 from datetime import datetime
@@ -26,10 +25,10 @@ Base = declarative_base()
 
 
 # ============================================================================
-# Patterns - Common patterns extracted
+# Mixins - Common patterns extracted
 # ============================================================================
 
-class TimestampPattern:
+class TimestampMixin:
     """Provides creation and modification timestamps."""
 
     @declared_attr
@@ -41,7 +40,7 @@ class TimestampPattern:
         return Column(TIMESTAMP)
 
 
-class SoftDeletePattern:
+class SoftDeleteMixin:
     """Provides soft delete capability."""
 
     @declared_attr
@@ -58,7 +57,7 @@ class SoftDeletePattern:
         return bool(self.deleted)
 
 
-class ActiveFlagPattern:
+class ActiveFlagMixin:
     """Provides active status flag."""
 
     @declared_attr
@@ -71,7 +70,7 @@ class ActiveFlagPattern:
         return bool(self.active)
 
 
-class DateRangePattern:
+class DateRangeMixin:
     """Provides start_date and end_date for temporal relationships."""
 
     @declared_attr
@@ -111,30 +110,89 @@ class DateRangePattern:
 
 
 # ============================================================================
+# Geographic/Location
+# ============================================================================
+
+class Country(Base, TimestampMixin, SoftDeleteMixin):
+    """Countries for address information."""
+    __tablename__ = 'country'
+
+    ext_country_id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(2), nullable=False)
+    name = Column(String(50), nullable=False)
+
+    state_provs = relationship('StateProv', back_populates='country')
+
+    def __repr__(self):
+        return f"<Country(code='{self.code}', name='{self.name}')>"
+
+
+class StateProv(Base, TimestampMixin, SoftDeleteMixin):
+    """U.S. states and international provinces."""
+    __tablename__ = 'state_prov'
+
+    ext_state_prov_id = Column(Integer, primary_key=True, autoincrement=True)
+    ext_country_id = Column(Integer, ForeignKey('country.ext_country_id'), nullable=False)
+    name = Column(String(100), nullable=False)
+    code = Column(String(15))
+
+    country = relationship('Country', back_populates='state_provs')
+    institutions = relationship('Institution', back_populates='state_prov')
+
+    def __repr__(self):
+        return f"<StateProv(code='{self.code}', name='{self.name}')>"
+
+
+# ============================================================================
 # User Management
 # ============================================================================
 
-class User(Base, TimestampPattern):
+class LoginType(Base):
+    """Types of login accounts."""
+    __tablename__ = 'login_type'
+
+    login_type_id = Column(Integer, primary_key=True)
+    type = Column(String(30), nullable=False)
+
+    users = relationship('User', back_populates='login_type')
+
+    def __repr__(self):
+        return f"<LoginType(type='{self.type}')>"
+
+
+class AcademicStatus(Base, TimestampMixin, SoftDeleteMixin, ActiveFlagMixin):
+    """Academic status types (Faculty, Student, etc.)."""
+    __tablename__ = 'academic_status'
+
+    academic_status_id = Column(Integer, primary_key=True, autoincrement=True)
+    academic_status_code = Column(String(2), nullable=False)
+    description = Column(String(100), nullable=False)
+
+    users = relationship('User', back_populates='academic_status')
+
+    def __repr__(self):
+        return f"<AcademicStatus(code='{self.academic_status_code}', desc='{self.description}')>"
+
+
+class User(Base, TimestampMixin):
     """Represents a user in the system."""
     __tablename__ = 'users'
 
-    # Explicit indexes for common queries
     __table_args__ = (
         Index('ix_users_username', 'username'),
         Index('ix_users_upid', 'upid'),
         Index('ix_users_active_locked', 'active', 'locked'),
+        Index('ix_users_primary_gid', 'primary_gid'),
     )
 
     def __eq__(self, other):
         """Two users are equal if they have the same user_id."""
         if not isinstance(other, User):
             return False
-        # Both must have IDs and they must match
         return self.user_id is not None and self.user_id == other.user_id
 
     def __hash__(self):
         """Hash based on user_id for set/dict operations."""
-        # Use id() for transient instances, user_id for persistent ones
         return hash(self.user_id) if self.user_id is not None else hash(id(self))
 
     user_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -172,16 +230,27 @@ class User(Base, TimestampPattern):
 
     # Relationships
     academic_status = relationship('AcademicStatus', back_populates='users')
+    login_type = relationship('LoginType', back_populates='users')
+    primary_group = relationship('AdhocGroup', foreign_keys=[primary_gid])
+    
     email_addresses = relationship('EmailAddress', back_populates='user',
                                    lazy='selectin', order_by='EmailAddress.is_primary.desc()')
+    phones = relationship('Phone', back_populates='user')
+    aliases = relationship('UserAlias', back_populates='user', uselist=False)
+    
     institutions = relationship('UserInstitution', back_populates='user')
     organizations = relationship('UserOrganization', back_populates='user')
     accounts = relationship('AccountUser', back_populates='user', lazy='selectin')
+    
     led_projects = relationship('Project', foreign_keys='Project.project_lead_user_id',
                                 back_populates='lead')
     admin_projects = relationship('Project', foreign_keys='Project.project_admin_user_id',
                                  back_populates='admin')
-    primary_group = relationship('AdhocGroup', foreign_keys=[primary_gid])
+    
+    default_projects = relationship('DefaultProject', back_populates='user')
+    resource_homes = relationship('UserResourceHome', back_populates='user')
+    resource_shells = relationship('UserResourceShell', back_populates='user')
+    role_assignments = relationship('RoleUser', back_populates='user')
 
     # Association proxy for projects
     _projects_w_dups = association_proxy('accounts', 'account.project')
@@ -218,17 +287,14 @@ class User(Base, TimestampPattern):
         Return the user's primary email address.
         Falls back to first active email if no primary is set.
         """
-        # Try to find primary email
         for email in self.email_addresses:
             if email.is_primary:
                 return email.email_address
 
-        # Fallback: return first active email
         for email in self.email_addresses:
             if email.active or email.active is None:
                 return email.email_address
 
-        # Last resort: return any email
         if self.email_addresses:
             return self.email_addresses[0].email_address
 
@@ -270,11 +336,12 @@ class User(Base, TimestampPattern):
         return f"<User(id={self.user_id}, username='{self.username}', name='{self.full_name}')>"
 
 
-class UserAlias(Base, TimestampPattern):
+class UserAlias(Base, TimestampMixin):
     """Stores external identifiers for users."""
     __tablename__ = 'user_alias'
 
     __table_args__ = (
+        Index('ix_user_alias_username', 'username'),
         Index('ix_user_alias_orcid', 'orcid_id'),
         Index('ix_user_alias_access_global', 'access_global_id'),
     )
@@ -282,14 +349,17 @@ class UserAlias(Base, TimestampPattern):
     user_alias_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False, unique=True)
     username = Column(String(35), nullable=False, unique=True)
-    orcid_id = Column(String(20), index=True)
-    access_global_id = Column(String(31), index=True)
+    orcid_id = Column(String(20))
+    access_global_id = Column(String(31))
     modified_time = Column(TIMESTAMP(3), server_default=text('CURRENT_TIMESTAMP(3)'))
 
-    user = relationship('User')
+    user = relationship('User', back_populates='aliases')
+
+    def __repr__(self):
+        return f"<UserAlias(username='{self.username}', orcid='{self.orcid_id}')>"
 
 
-class EmailAddress(Base, TimestampPattern):
+class EmailAddress(Base, TimestampMixin):
     """Email addresses for users."""
     __tablename__ = 'email_address'
 
@@ -318,115 +388,101 @@ class EmailAddress(Base, TimestampPattern):
 
     user = relationship('User', back_populates='email_addresses')
 
-
-class AcademicStatus(Base, TimestampPattern, SoftDeletePattern, ActiveFlagPattern):
-    """Academic status types (Faculty, Student, etc.)."""
-    __tablename__ = 'academic_status'
-
-    academic_status_id = Column(Integer, primary_key=True, autoincrement=True)
-    academic_status_code = Column(String(2), nullable=False)
-    description = Column(String(100), nullable=False)
-
-    users = relationship('User', back_populates='academic_status')
+    def __repr__(self):
+        return f"<EmailAddress(email='{self.email_address}', primary={self.is_primary})>"
 
 
-class UserInstitution(Base, TimestampPattern, DateRangePattern):
-    """Maps users to institutions."""
-    __tablename__ = 'user_institution'
+class PhoneType(Base, TimestampMixin):
+    """Types of phone numbers."""
+    __tablename__ = 'phone_type'
+
+    ext_phone_type_id = Column(Integer, primary_key=True, autoincrement=True)
+    phone_type = Column(String(25), nullable=False)
+
+    phones = relationship('Phone', back_populates='phone_type')
+
+    def __repr__(self):
+        return f"<PhoneType(type='{self.phone_type}')>"
+
+
+class Phone(Base, TimestampMixin):
+    """Phone numbers for users."""
+    __tablename__ = 'phone'
 
     __table_args__ = (
-        Index('ix_user_institution_user', 'user_id'),
-        Index('ix_user_institution_dates', 'start_date', 'end_date'),
+        Index('ix_phone_user', 'user_id'),
     )
 
-    user_institution_id = Column(Integer, primary_key=True, autoincrement=True)
+    ext_phone_id = Column(Integer, primary_key=True, autoincrement=True)
+    ext_phone_type_id = Column(Integer, ForeignKey('phone_type.ext_phone_type_id'),
+                               nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    institution_id = Column(Integer, ForeignKey('institution.institution_id'), nullable=False)
+    phone_number = Column(String(50), nullable=False)
 
-    user = relationship('User', back_populates='institutions')
-    institution = relationship('Institution', back_populates='users')
+    phone_type = relationship('PhoneType', back_populates='phones')
+    user = relationship('User', back_populates='phones')
+
+    def __repr__(self):
+        return f"<Phone(number='{self.phone_number}', type='{self.phone_type.phone_type if self.phone_type else None}')>"
 
 
-class UserOrganization(Base, TimestampPattern, DateRangePattern):
-    """Maps users to organizations."""
-    __tablename__ = 'user_organization'
+class UserResourceHome(Base, TimestampMixin):
+    """Home directories for users on resources."""
+    __tablename__ = 'user_resource_home'
 
     __table_args__ = (
-        Index('ix_user_organization_user', 'user_id'),
-        Index('ix_user_organization_dates', 'start_date', 'end_date'),
+        Index('ix_user_resource_home_user', 'user_id'),
+        Index('ix_user_resource_home_resource', 'resource_id'),
     )
 
-    user_organization_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_resource_home_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    organization_id = Column(Integer, ForeignKey('organization.organization_id'), nullable=False)
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    home_directory = Column(String(1024), nullable=False)
 
-    user = relationship('User', back_populates='organizations')
-    organization = relationship('Organization', back_populates='users')
+    user = relationship('User', back_populates='resource_homes')
+    resource = relationship('Resource', back_populates='user_homes')
+
+    def __repr__(self):
+        return f"<UserResourceHome(user_id={self.user_id}, dir='{self.home_directory}')>"
 
 
-# ============================================================================
-# Group Management
-# ============================================================================
-
-class AdhocGroup(Base, ActiveFlagPattern):
-    """Unix groups for organizing users."""
-    __tablename__ = 'adhoc_group'
+class UserResourceShell(Base, TimestampMixin):
+    """Shell preferences for users on resources."""
+    __tablename__ = 'user_resource_shell'
 
     __table_args__ = (
-        Index('ix_adhoc_group_gid', 'unix_gid'),
+        Index('ix_user_resource_shell_user', 'user_id'),
+        Index('ix_user_resource_shell_shell', 'resource_shell_id'),
     )
 
-    def __eq__(self, other):
-        """Two groups are equal if they have the same group_id."""
-        if not isinstance(other, AdhocGroup):
-            return False
-        return self.group_id is not None and self.group_id == other.group_id
+    user_resource_shell_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    resource_shell_id = Column(Integer, ForeignKey('resource_shell.resource_shell_id'),
+                              nullable=False)
 
-    def __hash__(self):
-        """Hash based on group_id for set/dict operations."""
-        return hash(self.group_id) if self.group_id is not None else hash(id(self))
-
-    group_id = Column(Integer, primary_key=True, autoincrement=True)
-    group_name = Column(String(30), nullable=False, unique=True)
-    unix_gid = Column(Integer, nullable=False, unique=True)
-    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
-    pdb_modified_time = Column(TIMESTAMP)
-    idms_sync_token = Column(String(64))
-
-    tags = relationship('AdhocGroupTag', back_populates='group')
-    system_accounts = relationship('AdhocSystemAccountEntry', back_populates='group')
-
-
-class AdhocGroupTag(Base):
-    """Tags for categorizing adhoc groups."""
-    __tablename__ = 'adhoc_group_tag'
-
-    adhoc_group_tag_id = Column(Integer, primary_key=True, autoincrement=True)
-    group_id = Column(Integer, ForeignKey('adhoc_group.group_id'), nullable=False)
-    tag = Column(String(40), nullable=False)
-    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
-
-    group = relationship('AdhocGroup', back_populates='tags')
-
-
-class AdhocSystemAccountEntry(Base):
-    """System account entries for adhoc groups."""
-    __tablename__ = 'adhoc_system_account_entry'
-
-    entry_id = Column(Integer, primary_key=True, autoincrement=True)
-    group_id = Column(Integer, ForeignKey('adhoc_group.group_id'), nullable=False)
-    access_branch_name = Column(String(40), nullable=False)
-    username = Column(String(12), nullable=False)
-    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
-
-    group = relationship('AdhocGroup', back_populates='system_accounts')
+    user = relationship('User', back_populates='resource_shells')
+    resource_shell = relationship('ResourceShell', back_populates='user_shells')
 
 
 # ============================================================================
-# Supporting Tables
+# Institution Management
 # ============================================================================
 
-class Institution(Base, TimestampPattern):
+class InstitutionType(Base, TimestampMixin, ActiveFlagMixin):
+    """Types of institutions (University, Government, etc.)."""
+    __tablename__ = 'institution_type'
+
+    institution_type_id = Column(Integer, primary_key=True, autoincrement=True)
+    type = Column(String(45), nullable=False)
+
+    institutions = relationship('Institution', back_populates='institution_type')
+
+    def __repr__(self):
+        return f"<InstitutionType(type='{self.type}')>"
+
+
+class Institution(Base, TimestampMixin):
     """Educational and research institutions."""
     __tablename__ = 'institution'
 
@@ -450,21 +506,48 @@ class Institution(Base, TimestampPattern):
     city = Column(String(30))
     zip = Column(String(15))
     code = Column(String(3))
+    idms_sync_token = Column(String(64))
 
     state_prov_id = Column(Integer, ForeignKey('state_prov.ext_state_prov_id'))
     institution_type_id = Column(Integer, ForeignKey('institution_type.institution_type_id'))
 
-    idms_sync_token = Column(String(64))
-
+    state_prov = relationship('StateProv', back_populates='institutions')
+    institution_type = relationship('InstitutionType', back_populates='institutions')
     users = relationship('UserInstitution', back_populates='institution')
 
+    def __repr__(self):
+        return f"<Institution(name='{self.name}', acronym='{self.acronym}')>"
 
-class Organization(Base, TimestampPattern, ActiveFlagPattern):
+
+class UserInstitution(Base, TimestampMixin, DateRangeMixin):
+    """Maps users to institutions."""
+    __tablename__ = 'user_institution'
+
+    __table_args__ = (
+        Index('ix_user_institution_user', 'user_id'),
+        Index('ix_user_institution_institution', 'institution_id'),
+        Index('ix_user_institution_dates', 'start_date', 'end_date'),
+    )
+
+    user_institution_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    institution_id = Column(Integer, ForeignKey('institution.institution_id'), nullable=False)
+
+    user = relationship('User', back_populates='institutions')
+    institution = relationship('Institution', back_populates='users')
+
+
+# ============================================================================
+# Organization Management
+# ============================================================================
+
+class Organization(Base, TimestampMixin, ActiveFlagMixin):
     """Organizational units (departments, labs, etc.)."""
     __tablename__ = 'organization'
 
     __table_args__ = (
         Index('ix_organization_tree', 'tree_left', 'tree_right'),
+        Index('ix_organization_parent', 'parent_org_id'),
     )
 
     def __eq__(self, other):
@@ -497,32 +580,103 @@ class Organization(Base, TimestampPattern, ActiveFlagPattern):
     projects = relationship('ProjectOrganization', back_populates='organization')
     parent = relationship('Organization', remote_side=[organization_id])
 
-
-class AreaOfInterestGroup(Base, TimestampPattern, ActiveFlagPattern):
-    """Groupings for research areas."""
-    __tablename__ = 'area_of_interest_group'
-
-    area_of_interest_group_id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False, unique=True)
-
-    areas = relationship('AreaOfInterest', back_populates='group')
+    def __repr__(self):
+        return f"<Organization(name='{self.name}', acronym='{self.acronym}')>"
 
 
-class AreaOfInterest(Base, TimestampPattern, ActiveFlagPattern):
-    """Research areas for projects."""
-    __tablename__ = 'area_of_interest'
+class UserOrganization(Base, TimestampMixin, DateRangeMixin):
+    """Maps users to organizations."""
+    __tablename__ = 'user_organization'
 
-    area_of_interest_id = Column(Integer, primary_key=True, autoincrement=True)
-    area_of_interest = Column(String(255), nullable=False, unique=True)
-    area_of_interest_group_id = Column(Integer,
-                                       ForeignKey('area_of_interest_group.area_of_interest_group_id'),
-                                       nullable=False)
+    __table_args__ = (
+        Index('ix_user_organization_user', 'user_id'),
+        Index('ix_user_organization_org', 'organization_id'),
+        Index('ix_user_organization_dates', 'start_date', 'end_date'),
+    )
 
-    group = relationship('AreaOfInterestGroup', back_populates='areas')
-    projects = relationship('Project', back_populates='area_of_interest')
+    user_organization_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    organization_id = Column(Integer, ForeignKey('organization.organization_id'), nullable=False)
+
+    user = relationship('User', back_populates='organizations')
+    organization = relationship('Organization', back_populates='users')
 
 
-class ResourceType(Base, TimestampPattern, ActiveFlagPattern):
+# ============================================================================
+# Group Management
+# ============================================================================
+
+class AdhocGroup(Base, ActiveFlagMixin):
+    """Unix groups for organizing users."""
+    __tablename__ = 'adhoc_group'
+
+    __table_args__ = (
+        Index('ix_adhoc_group_gid', 'unix_gid'),
+        Index('ix_adhoc_group_name', 'group_name'),
+    )
+
+    def __eq__(self, other):
+        """Two groups are equal if they have the same group_id."""
+        if not isinstance(other, AdhocGroup):
+            return False
+        return self.group_id is not None and self.group_id == other.group_id
+
+    def __hash__(self):
+        """Hash based on group_id for set/dict operations."""
+        return hash(self.group_id) if self.group_id is not None else hash(id(self))
+
+    group_id = Column(Integer, primary_key=True, autoincrement=True)
+    group_name = Column(String(30), nullable=False, unique=True)
+    unix_gid = Column(Integer, nullable=False, unique=True)
+    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    pdb_modified_time = Column(TIMESTAMP)
+    idms_sync_token = Column(String(64))
+
+    tags = relationship('AdhocGroupTag', back_populates='group')
+    system_accounts = relationship('AdhocSystemAccountEntry', back_populates='group')
+
+    def __repr__(self):
+        return f"<AdhocGroup(name='{self.group_name}', gid={self.unix_gid})>"
+
+
+class AdhocGroupTag(Base):
+    """Tags for categorizing adhoc groups."""
+    __tablename__ = 'adhoc_group_tag'
+
+    __table_args__ = (
+        Index('ix_adhoc_group_tag_group', 'group_id'),
+    )
+
+    adhoc_group_tag_id = Column(Integer, primary_key=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey('adhoc_group.group_id'), nullable=False)
+    tag = Column(String(40), nullable=False)
+    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+
+    group = relationship('AdhocGroup', back_populates='tags')
+
+
+class AdhocSystemAccountEntry(Base):
+    """System account entries for adhoc groups."""
+    __tablename__ = 'adhoc_system_account_entry'
+
+    __table_args__ = (
+        Index('ix_adhoc_system_account_group', 'group_id'),
+    )
+
+    entry_id = Column(Integer, primary_key=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey('adhoc_group.group_id'), nullable=False)
+    access_branch_name = Column(String(40), nullable=False)
+    username = Column(String(12), nullable=False)
+    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+
+    group = relationship('AdhocGroup', back_populates='system_accounts')
+
+
+# ============================================================================
+# Resource Management
+# ============================================================================
+
+class ResourceType(Base, TimestampMixin, ActiveFlagMixin):
     """Types of resources (HPC, DISK, ARCHIVE, etc.)."""
     __tablename__ = 'resource_type'
 
@@ -533,10 +687,18 @@ class ResourceType(Base, TimestampPattern, ActiveFlagPattern):
 
     resources = relationship('Resource', back_populates='resource_type')
 
+    def __repr__(self):
+        return f"<ResourceType(type='{self.resource_type}')>"
 
-class Resource(Base, TimestampPattern):
+
+class Resource(Base, TimestampMixin):
     """Computing resources (HPC systems, storage, etc.)."""
     __tablename__ = 'resources'
+
+    __table_args__ = (
+        Index('ix_resources_type', 'resource_type_id'),
+        Index('ix_resources_name', 'resource_name'),
+    )
 
     def __eq__(self, other):
         """Two resources are equal if they have the same resource_id."""
@@ -568,10 +730,18 @@ class Resource(Base, TimestampPattern):
     default_first_threshold = Column(Integer)
     default_second_threshold = Column(Integer)
     default_home_dir_base = Column(String(255))
-    default_resource_shell_id = Column(Integer)
+    default_resource_shell_id = Column(Integer, ForeignKey('resource_shell.resource_shell_id'))
 
     accounts = relationship('Account', back_populates='resource')
     resource_type = relationship('ResourceType', back_populates='resources')
+    machines = relationship('Machine', back_populates='resource')
+    queues = relationship('Queue', back_populates='resource')
+    shells = relationship('ResourceShell', back_populates='resource',
+                         foreign_keys='ResourceShell.resource_id')
+    default_shell = relationship('ResourceShell', foreign_keys=[default_resource_shell_id])
+    user_homes = relationship('UserResourceHome', back_populates='resource')
+    default_projects = relationship('DefaultProject', back_populates='resource')
+    facility_resources = relationship('FacilityResource', back_populates='resource')
 
     def is_commissioned_at(self, check_date: Optional[datetime] = None) -> bool:
         """Check if resource is commissioned at a given date."""
@@ -600,8 +770,122 @@ class Resource(Base, TimestampPattern):
             or_(cls.decommission_date.is_(None), cls.decommission_date > now)
         )
 
+    def __repr__(self):
+        return f"<Resource(name='{self.resource_name}', type='{self.resource_type.resource_type if self.resource_type else None}')>"
 
-class Facility(Base, TimestampPattern, ActiveFlagPattern):
+
+class ResourceShell(Base, TimestampMixin):
+    """Available shells on resources."""
+    __tablename__ = 'resource_shell'
+
+    __table_args__ = (
+        Index('ix_resource_shell_resource', 'resource_id'),
+    )
+
+    resource_shell_id = Column(Integer, primary_key=True, autoincrement=True)
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    shell_name = Column(String(25), nullable=False)
+    path = Column(String(1024), nullable=False)
+
+    resource = relationship('Resource', back_populates='shells',
+                           foreign_keys=[resource_id])
+    user_shells = relationship('UserResourceShell', back_populates='resource_shell')
+
+    def __repr__(self):
+        return f"<ResourceShell(name='{self.shell_name}', path='{self.path}')>"
+
+
+class Machine(Base, TimestampMixin):
+    """Computing machines/systems."""
+    __tablename__ = 'machine'
+
+    __table_args__ = (
+        Index('ix_machine_resource', 'resource_id'),
+    )
+
+    machine_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False)
+    description = Column(String(255))
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    cpus_per_node = Column(Integer)
+
+    commission_date = Column(DateTime)
+    decommission_date = Column(DateTime)
+
+    resource = relationship('Resource', back_populates='machines')
+    machine_factors = relationship('MachineFactor', back_populates='machine')
+
+    def __repr__(self):
+        return f"<Machine(name='{self.name}', cpus_per_node={self.cpus_per_node})>"
+
+
+class MachineFactor(Base, TimestampMixin):
+    """Charging factors for machines over time."""
+    __tablename__ = 'machine_factor'
+
+    __table_args__ = (
+        Index('ix_machine_factor_machine', 'machine_id'),
+        Index('ix_machine_factor_dates', 'start_date', 'end_date'),
+    )
+
+    machine_factor_id = Column(Integer, primary_key=True, autoincrement=True)
+    machine_id = Column(Integer, ForeignKey('machine.machine_id'), nullable=False)
+    factor_value = Column(Float(15, 2), nullable=False)
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime)
+
+    machine = relationship('Machine', back_populates='machine_factors')
+
+
+class Queue(Base, TimestampMixin):
+    """Job queues on resources."""
+    __tablename__ = 'queue'
+
+    __table_args__ = (
+        Index('ix_queue_resource', 'resource_id'),
+        Index('ix_queue_name', 'queue_name'),
+    )
+
+    queue_id = Column(Integer, primary_key=True, autoincrement=True)
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    queue_name = Column(String(50), nullable=False)
+    description = Column(String(255), nullable=False)
+    wall_clock_hours_limit = Column(Float(5, 2))
+    cos_id = Column(Integer)
+
+    start_date = Column(DateTime)
+    end_date = Column(DateTime)
+
+    resource = relationship('Resource', back_populates='queues')
+    queue_factors = relationship('QueueFactor', back_populates='queue')
+
+    def __repr__(self):
+        return f"<Queue(name='{self.queue_name}', resource='{self.resource.resource_name if self.resource else None}')>"
+
+
+class QueueFactor(Base, TimestampMixin):
+    """Charging factors for queues over time."""
+    __tablename__ = 'queue_factor'
+
+    __table_args__ = (
+        Index('ix_queue_factor_queue', 'queue_id'),
+        Index('ix_queue_factor_dates', 'start_date', 'end_date'),
+    )
+
+    queue_factor_id = Column(Integer, primary_key=True, autoincrement=True)
+    queue_id = Column(Integer, ForeignKey('queue.queue_id'), nullable=False)
+    factor_value = Column(Float, nullable=False)
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime)
+
+    queue = relationship('Queue', back_populates='queue_factors')
+
+
+# ============================================================================
+# Facility Management
+# ============================================================================
+
+class Facility(Base, TimestampMixin, ActiveFlagMixin):
     """Facility classifications (NCAR, UNIV, etc.)."""
     __tablename__ = 'facility'
 
@@ -612,11 +896,39 @@ class Facility(Base, TimestampPattern, ActiveFlagPattern):
     fair_share_percentage = Column(Float)
 
     panels = relationship('Panel', back_populates='facility')
+    facility_resources = relationship('FacilityResource', back_populates='facility')
+
+    def __repr__(self):
+        return f"<Facility(name='{self.facility_name}', code='{self.code}')>"
 
 
-class Panel(Base, TimestampPattern, ActiveFlagPattern):
+class FacilityResource(Base):
+    """Maps facilities to resources with fair share percentages."""
+    __tablename__ = 'facility_resource'
+
+    __table_args__ = (
+        Index('ix_facility_resource_facility', 'facility_id'),
+        Index('ix_facility_resource_resource', 'resource_id'),
+    )
+
+    facility_resource_id = Column(Integer, primary_key=True, autoincrement=True)
+    facility_id = Column(Integer, ForeignKey('facility.facility_id'), nullable=False)
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    fair_share_percentage = Column(Float)
+    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    modified_time = Column(TIMESTAMP)
+
+    facility = relationship('Facility', back_populates='facility_resources')
+    resource = relationship('Resource', back_populates='facility_resources')
+
+
+class Panel(Base, TimestampMixin, ActiveFlagMixin):
     """Allocation review panels."""
     __tablename__ = 'panel'
+
+    __table_args__ = (
+        Index('ix_panel_facility', 'facility_id'),
+    )
 
     panel_id = Column(Integer, primary_key=True, autoincrement=True)
     panel_name = Column(String(30), nullable=False, unique=True)
@@ -625,13 +937,70 @@ class Panel(Base, TimestampPattern, ActiveFlagPattern):
 
     facility = relationship('Facility', back_populates='panels')
     allocation_types = relationship('AllocationType', back_populates='panel')
+    panel_sessions = relationship('PanelSession', back_populates='panel')
+
+    def __repr__(self):
+        return f"<Panel(name='{self.panel_name}')>"
+
+
+class PanelSession(Base, TimestampMixin):
+    """Panel meeting sessions."""
+    __tablename__ = 'panel_session'
+
+    __table_args__ = (
+        Index('ix_panel_session_panel', 'panel_id'),
+    )
+
+    panel_session_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False, unique=True)
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime)
+    panel_meeting_date = Column(DateTime)
+    description = Column(String(255))
+    panel_id = Column(Integer, ForeignKey('panel.panel_id'), nullable=False)
+
+    panel = relationship('Panel', back_populates='panel_sessions')
+
+
+# ============================================================================
+# Project Area of Interest
+# ============================================================================
+
+class AreaOfInterestGroup(Base, TimestampMixin, ActiveFlagMixin):
+    """Groupings for research areas."""
+    __tablename__ = 'area_of_interest_group'
+
+    area_of_interest_group_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False, unique=True)
+
+    areas = relationship('AreaOfInterest', back_populates='group')
+
+    def __repr__(self):
+        return f"<AreaOfInterestGroup(name='{self.name}')>"
+
+
+class AreaOfInterest(Base, TimestampMixin, ActiveFlagMixin):
+    """Research areas for projects."""
+    __tablename__ = 'area_of_interest'
+
+    area_of_interest_id = Column(Integer, primary_key=True, autoincrement=True)
+    area_of_interest = Column(String(255), nullable=False, unique=True)
+    area_of_interest_group_id = Column(Integer,
+                                       ForeignKey('area_of_interest_group.area_of_interest_group_id'),
+                                       nullable=False)
+
+    group = relationship('AreaOfInterestGroup', back_populates='areas')
+    projects = relationship('Project', back_populates='area_of_interest')
+
+    def __repr__(self):
+        return f"<AreaOfInterest(name='{self.area_of_interest}')>"
 
 
 # ============================================================================
 # Account and Allocation Management
 # ============================================================================
 
-class Account(Base, SoftDeletePattern):
+class Account(Base, SoftDeleteMixin):
     """Billing accounts linking projects to resources."""
     __tablename__ = 'account'
 
@@ -670,8 +1039,11 @@ class Account(Base, SoftDeletePattern):
     allocations = relationship('Allocation', back_populates='account')
     users = relationship('AccountUser', back_populates='account', lazy='selectin')
 
+    def __repr__(self):
+        return f"<Account(id={self.account_id}, project='{self.project.projcode if self.project else None}', resource='{self.resource.resource_name if self.resource else None}')>"
 
-class AccountUser(Base, TimestampPattern, DateRangePattern):
+
+class AccountUser(Base, TimestampMixin, DateRangeMixin):
     """Maps users to accounts with date ranges."""
     __tablename__ = 'account_user'
 
@@ -711,12 +1083,34 @@ class AccountUser(Base, TimestampPattern, DateRangePattern):
         return cls.is_currently_active
 
 
-class Allocation(Base, TimestampPattern, SoftDeletePattern):
+class AllocationType(Base, TimestampMixin, ActiveFlagMixin):
+    """Types of allocations (CHAP, ASD-UNIV, etc.)."""
+    __tablename__ = 'allocation_type'
+
+    __table_args__ = (
+        Index('ix_allocation_type_panel', 'panel_id'),
+    )
+
+    allocation_type_id = Column(Integer, primary_key=True, autoincrement=True)
+    allocation_type = Column(String(20), nullable=False)
+    default_allocation_amount = Column(Float(15, 2))
+    fair_share_percentage = Column(Float)
+    panel_id = Column(Integer, ForeignKey('panel.panel_id'))
+
+    panel = relationship('Panel', back_populates='allocation_types')
+    projects = relationship('Project', back_populates='allocation_type')
+
+    def __repr__(self):
+        return f"<AllocationType(type='{self.allocation_type}')>"
+
+
+class Allocation(Base, TimestampMixin, SoftDeleteMixin):
     """Resource allocations for accounts."""
     __tablename__ = 'allocation'
 
     __table_args__ = (
         Index('ix_allocation_account', 'account_id'),
+        Index('ix_allocation_parent', 'parent_allocation_id'),
         Index('ix_allocation_dates', 'start_date', 'end_date'),
         Index('ix_allocation_active', 'deleted', 'start_date', 'end_date'),
     )
@@ -779,6 +1173,9 @@ class Allocation(Base, TimestampPattern, SoftDeletePattern):
             or_(cls.end_date.is_(None), cls.end_date >= now)
         )
 
+    def __repr__(self):
+        return f"<Allocation(id={self.allocation_id}, amount={self.amount}, active={self.is_active_at()})>"
+
 
 class AllocationTransaction(Base):
     """Transaction history for allocations."""
@@ -787,6 +1184,7 @@ class AllocationTransaction(Base):
     __table_args__ = (
         Index('ix_allocation_transaction_allocation', 'allocation_id'),
         Index('ix_allocation_transaction_user', 'user_id'),
+        Index('ix_allocation_transaction_related', 'related_transaction_id'),
     )
 
     allocation_transaction_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -815,33 +1213,44 @@ class AllocationTransaction(Base):
                                       remote_side=[allocation_transaction_id])
 
 
-class AllocationType(Base, TimestampPattern, ActiveFlagPattern):
-    """Types of allocations (CHAP, ASD-UNIV, etc.)."""
-    __tablename__ = 'allocation_type'
-
-    allocation_type_id = Column(Integer, primary_key=True, autoincrement=True)
-    allocation_type = Column(String(20), nullable=False)
-    default_allocation_amount = Column(Float(15, 2))
-    fair_share_percentage = Column(Float)
-    panel_id = Column(Integer, ForeignKey('panel.panel_id'))
-
-    panel = relationship('Panel', back_populates='allocation_types')
-    projects = relationship('Project', back_populates='allocation_type')
-
-
 # ============================================================================
 # Project Management
 # ============================================================================
 
-class Project(Base, TimestampPattern, ActiveFlagPattern):
+class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin):
+    """Mnemonic codes for project naming."""
+    __tablename__ = 'mnemonic_code'
+
+    mnemonic_code_id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(3), nullable=False, unique=True)
+    description = Column(String(200), nullable=False, unique=True)
+
+    def __repr__(self):
+        return f"<MnemonicCode(code='{self.code}', desc='{self.description}')>"
+
+
+class ProjectNumber(Base):
+    """Sequential project numbers."""
+    __tablename__ = 'project_number'
+
+    project_number_id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey('project.project_id'),
+                       nullable=False, unique=True)
+
+    project = relationship('Project', back_populates='project_number')
+
+
+class Project(Base, TimestampMixin, ActiveFlagMixin):
     """Research projects."""
     __tablename__ = 'project'
 
     __table_args__ = (
         Index('ix_project_projcode', 'projcode'),
         Index('ix_project_lead', 'project_lead_user_id'),
+        Index('ix_project_admin', 'project_admin_user_id'),
         Index('ix_project_active', 'active'),
         Index('ix_project_tree', 'tree_left', 'tree_right'),
+        Index('ix_project_parent', 'parent_id'),
     )
 
     def __eq__(self, other):
@@ -855,7 +1264,7 @@ class Project(Base, TimestampPattern, ActiveFlagPattern):
         return hash(self.project_id) if self.project_id is not None else hash(id(self))
 
     project_id = Column(Integer, primary_key=True, autoincrement=True)
-    projcode = Column(String(30), nullable=False, unique=True)
+    projcode = Column(String(30), nullable=False, unique=True, default='')
     title = Column(String(255), nullable=False)
     abstract = Column(Text)
 
@@ -897,6 +1306,8 @@ class Project(Base, TimestampPattern, ActiveFlagPattern):
     organizations = relationship('ProjectOrganization', back_populates='project')
     contracts = relationship('ProjectContract', back_populates='project')
     parent = relationship('Project', remote_side=[project_id], foreign_keys=[parent_id])
+    project_number = relationship('ProjectNumber', back_populates='project', uselist=False)
+    default_projects = relationship('DefaultProject', back_populates='project')
 
     # Active account users (filtered join)
     account_users = relationship(
@@ -993,9 +1404,13 @@ class Project(Base, TimestampPattern, ActiveFlagPattern):
         return f"<Project(id={self.project_id}, projcode='{self.projcode}', title='{self.title[:50]}...')>"
 
 
-class ProjectDirectory(Base, TimestampPattern, DateRangePattern):
+class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
     """File system directories associated with projects."""
     __tablename__ = 'project_directory'
+
+    __table_args__ = (
+        Index('ix_project_directory_project', 'project_id'),
+    )
 
     project_directory_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
@@ -1004,13 +1419,14 @@ class ProjectDirectory(Base, TimestampPattern, DateRangePattern):
     project = relationship('Project', back_populates='directories')
 
 
-class ProjectOrganization(Base, TimestampPattern, DateRangePattern):
+class ProjectOrganization(Base, TimestampMixin, DateRangeMixin):
     """Maps projects to organizations."""
     __tablename__ = 'project_organization'
 
     __table_args__ = (
         Index('ix_project_organization_project', 'project_id'),
         Index('ix_project_organization_org', 'organization_id'),
+        Index('ix_project_organization_dates', 'start_date', 'end_date'),
     )
 
     project_organization_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -1022,26 +1438,67 @@ class ProjectOrganization(Base, TimestampPattern, DateRangePattern):
     organization = relationship('Organization', back_populates='projects')
 
 
-class ProjectContract(Base):
-    """Links projects to funding contracts."""
-    __tablename__ = 'project_contract'
+class DefaultProject(Base, TimestampMixin):
+    """Default projects for users on resources."""
+    __tablename__ = 'default_project'
 
-    project_contract_id = Column(Integer, primary_key=True, autoincrement=True)
+    __table_args__ = (
+        Index('ix_default_project_user', 'user_id'),
+        Index('ix_default_project_resource', 'resource_id'),
+        Index('ix_default_project_project', 'project_id'),
+    )
+
+    default_project_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
-    contract_id = Column(Integer, ForeignKey('contract.contract_id'), nullable=False)
-    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
 
-    project = relationship('Project', back_populates='contracts')
-    contract = relationship('Contract', back_populates='projects')
+    user = relationship('User', back_populates='default_projects')
+    project = relationship('Project', back_populates='default_projects')
+    resource = relationship('Resource', back_populates='default_projects')
 
 
 # ============================================================================
-# Contract / LoginType / Misc
+# Contract Management
 # ============================================================================
 
-class Contract(Base, TimestampPattern):
-    """Funding contracts (NSF awards, etc.)."""
+class ContractSource(Base, TimestampMixin, ActiveFlagMixin):
+    """Sources of funding contracts."""
+    __tablename__ = 'contract_source'
+
+    contract_source_id = Column(Integer, primary_key=True, autoincrement=True)
+    contract_source = Column(String(50), nullable=False, unique=True)
+
+    contracts = relationship('Contract', back_populates='contract_source')
+
+    def __repr__(self):
+        return f"<ContractSource(source='{self.contract_source}')>"
+
+
+class NSFProgram(Base, TimestampMixin, ActiveFlagMixin):
+    """NSF program classifications."""
+    __tablename__ = 'nsf_program'
+
+    nsf_program_id = Column(Integer, primary_key=True, autoincrement=True)
+    nsf_program_name = Column(String(255), nullable=False, unique=True)
+
+    contracts = relationship('Contract', back_populates='nsf_program')
+
+    def __repr__(self):
+        return f"<NSFProgram(name='{self.nsf_program_name}')>"
+
+
+class Contract(Base, TimestampMixin):
+    """Funding contracts."""
     __tablename__ = 'contract'
+
+    __table_args__ = (
+        Index('ix_contract_source', 'contract_source_id'),
+        Index('ix_contract_pi', 'principal_investigator_user_id'),
+        Index('ix_contract_monitor', 'contract_monitor_user_id'),
+        Index('ix_contract_nsf_program', 'nsf_program_id'),
+    )
 
     contract_id = Column(Integer, primary_key=True, autoincrement=True)
     contract_source_id = Column(Integer, ForeignKey('contract_source.contract_source_id'),
@@ -1058,6 +1515,12 @@ class Contract(Base, TimestampPattern):
     contract_monitor_user_id = Column(Integer, ForeignKey('users.user_id'))
     nsf_program_id = Column(Integer, ForeignKey('nsf_program.nsf_program_id'))
 
+    contract_source = relationship('ContractSource', back_populates='contracts')
+    nsf_program = relationship('NSFProgram', back_populates='contracts')
+    principal_investigator = relationship('User',
+                                         foreign_keys=[principal_investigator_user_id])
+    contract_monitor = relationship('User',
+                                   foreign_keys=[contract_monitor_user_id])
     projects = relationship('ProjectContract', back_populates='contract')
 
     def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
@@ -1073,170 +1536,555 @@ class Contract(Base, TimestampPattern):
 
         return True
 
-
-class LoginType(Base):
-    """Types of login accounts."""
-    __tablename__ = 'login_type'
-
-    login_type_id = Column(Integer, primary_key=True)
-    type = Column(String(30), nullable=False)
+    def __repr__(self):
+        return f"<Contract(number='{self.contract_number}', title='{self.title[:50]}...')>"
 
 
-# ============================================================================
-# Query Helper Functions
-# ============================================================================
+class ProjectContract(Base):
+    """Links projects to funding contracts."""
+    __tablename__ = 'project_contract'
 
-class QueryHelpers:
-    """
-    Helper methods for common queries across the SAM database.
-    These can be used as class methods or imported as utility functions.
-    """
+    __table_args__ = (
+        Index('ix_project_contract_project', 'project_id'),
+        Index('ix_project_contract_contract', 'contract_id'),
+    )
 
-    @staticmethod
-    def get_active_users_for_project(session, project_id: int) -> List[User]:
-        """
-        Get all active users for a project using an efficient query.
+    project_contract_id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
+    contract_id = Column(Integer, ForeignKey('contract.contract_id'), nullable=False)
+    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
 
-        Args:
-            session: SQLAlchemy session
-            project_id: ID of the project
-
-        Returns:
-            List of active User objects
-        """
-        from sqlalchemy.orm import joinedload
-
-        return session.query(User).join(
-            AccountUser, User.user_id == AccountUser.user_id
-        ).join(
-            Account, AccountUser.account_id == Account.account_id
-        ).filter(
-            Account.project_id == project_id,
-            or_(AccountUser.end_date.is_(None),
-                AccountUser.end_date >= func.now())
-        ).options(
-            joinedload(User.email_addresses)
-        ).distinct().all()
-
-    @staticmethod
-    def get_projects_for_user(session, user_id: int,
-                             active_only: bool = True) -> List[Project]:
-        """
-        Get all projects for a user using an efficient query.
-
-        Args:
-            session: SQLAlchemy session
-            user_id: ID of the user
-            active_only: Only return active projects
-
-        Returns:
-            List of Project objects
-        """
-        from sqlalchemy.orm import joinedload
-
-        query = session.query(Project).join(
-            Account, Project.project_id == Account.project_id
-        ).join(
-            AccountUser, Account.account_id == AccountUser.account_id
-        ).filter(
-            AccountUser.user_id == user_id,
-            or_(AccountUser.end_date.is_(None),
-                AccountUser.end_date >= func.now())
-        ).options(
-            joinedload(Project.lead),
-            joinedload(Project.area_of_interest)
-        )
-
-        if active_only:
-            query = query.filter(Project.active == True)
-
-        return query.distinct().all()
-
-    @staticmethod
-    def get_allocation_usage_summary(session, project_id: int) -> Dict[str, Dict]:
-        """
-        Get allocation summary for all resources on a project.
-
-        Args:
-            session: SQLAlchemy session
-            project_id: ID of the project
-
-        Returns:
-            Dict mapping resource names to allocation info
-        """
-        allocations = session.query(
-            Resource.resource_name,
-            Allocation.amount,
-            Allocation.start_date,
-            Allocation.end_date,
-            Allocation.allocation_id
-        ).join(
-            Account, Allocation.account_id == Account.account_id
-        ).join(
-            Resource, Account.resource_id == Resource.resource_id
-        ).filter(
-            Account.project_id == project_id,
-            Allocation.deleted == False,
-            or_(Allocation.end_date.is_(None),
-                Allocation.end_date >= func.now())
-        ).all()
-
-        result = {}
-        for row in allocations:
-            resource_name = row.resource_name
-            if resource_name not in result or row.allocation_id > result[resource_name]['allocation_id']:
-                result[resource_name] = {
-                    'allocation_id': row.allocation_id,
-                    'amount': row.amount,
-                    'start_date': row.start_date,
-                    'end_date': row.end_date
-                }
-
-        return result
+    project = relationship('Project', back_populates='contracts')
+    contract = relationship('Contract', back_populates='projects')
 
 
 # ============================================================================
-# Validation and Business Logic Helpers
+# Role/Permission Management
 # ============================================================================
 
-class ValidationHelpers:
-    """Helper methods for common validation logic."""
+class Role(Base):
+    """Security roles in the system."""
+    __tablename__ = 'role'
 
-    @staticmethod
-    def validate_user_can_access_project(user: User, project: Project) -> tuple[bool, str]:
-        """
-        Validate if a user has access to a project.
+    role_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    description = Column(String(255))
 
-        Returns:
-            (is_valid, error_message) tuple
-        """
-        if not user.is_accessible:
-            return False, f"User {user.username} is locked or inactive"
+    users = relationship('RoleUser', back_populates='role')
 
-        if not project.active:
-            return False, f"Project {project.projcode} is inactive"
+    def __repr__(self):
+        return f"<Role(name='{self.name}')>"
 
-        if not project.has_user(user):
-            return False, f"User {user.username} is not a member of project {project.projcode}"
 
-        return True, ""
+class RoleUser(Base):
+    """Maps users to roles."""
+    __tablename__ = 'role_user'
 
-    @staticmethod
-    def validate_allocation_dates(start_date: datetime,
-                                  end_date: Optional[datetime]) -> tuple[bool, str]:
-        """
-        Validate allocation date ranges.
+    __table_args__ = (
+        Index('ix_role_user_role', 'role_id'),
+        Index('ix_role_user_user', 'user_id'),
+    )
 
-        Returns:
-            (is_valid, error_message) tuple
-        """
-        if end_date and start_date >= end_date:
-            return False, "Start date must be before end date"
+    role_user_id = Column(Integer, primary_key=True, autoincrement=True)
+    role_id = Column(Integer, ForeignKey('role.role_id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
 
-        if start_date > datetime.utcnow():
-            return False, "Start date cannot be in the future"
+    role = relationship('Role', back_populates='users')
+    user = relationship('User', back_populates='role_assignments')
 
-        return True, ""
+
+# ============================================================================
+# Activity and Charge Tables (HPC)
+# ============================================================================
+
+class HPCCos(Base, TimestampMixin):
+    """HPC Class of Service definitions."""
+    __tablename__ = 'hpc_cos'
+
+    hpc_cos_id = Column(Integer, primary_key=True)
+    description = Column(String(50))
+    modified_time = Column(TIMESTAMP, nullable=False, 
+                          server_default=text('CURRENT_TIMESTAMP'),
+                          onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<HPCCos(id={self.hpc_cos_id}, desc='{self.description}')>"
+
+
+class HPCActivity(Base):
+    """HPC job activity records."""
+    __tablename__ = 'hpc_activity'
+
+    __table_args__ = (
+        Index('ix_hpc_activity_job', 'job_id'),
+        Index('ix_hpc_activity_date', 'activity_date'),
+        Index('ix_hpc_activity_cos', 'hpc_cos_id'),
+    )
+
+    hpc_activity_id = Column(Integer, primary_key=True, autoincrement=True)
+    unix_uid = Column(Integer)
+    username = Column(String(35), nullable=False)
+    projcode = Column(String(30), nullable=False)
+    job_id = Column(String(35), nullable=False)
+    job_name = Column(String(255))
+    queue_name = Column(String(100), nullable=False)
+    machine = Column(String(100), nullable=False)
+    
+    start_time = Column(Integer, nullable=False)
+    end_time = Column(Integer, nullable=False)
+    submit_time = Column(Integer, nullable=False)
+    
+    unix_user_time = Column(Float)
+    unix_system_time = Column(Float)
+    queue_wait_time = Column(Integer)
+    
+    num_nodes_used = Column(Integer)
+    num_cores_used = Column(Integer)
+    hpc_cos_id = Column(Integer, ForeignKey('hpc_cos.hpc_cos_id'))
+    
+    exit_status = Column(String(20))
+    from_host = Column(String(256))
+    interactive = Column(Integer)
+    reservation_id = Column(String(255))
+    
+    processing_status = Column(Boolean)
+    error_comment = Column(Text)
+    
+    activity_date = Column(DateTime)
+    load_date = Column(DateTime, nullable=False)
+    modified_time = Column(TIMESTAMP)
+    
+    external_charge = Column(Float(15, 8))
+    job_idx = Column(Integer, nullable=False)
+
+    hpc_cos = relationship('HPCCos')
+
+
+class HPCCharge(Base):
+    """HPC charges derived from activity."""
+    __tablename__ = 'hpc_charge'
+
+    __table_args__ = (
+        Index('ix_hpc_charge_account', 'account_id'),
+        Index('ix_hpc_charge_user', 'user_id'),
+        Index('ix_hpc_charge_activity', 'hpc_activity_id', unique=True),
+        Index('ix_hpc_charge_date', 'charge_date'),
+        Index('ix_hpc_charge_activity_date', 'activity_date'),
+    )
+
+    hpc_charge_id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
+    hpc_activity_id = Column(Integer, ForeignKey('hpc_activity.hpc_activity_id'), 
+                             nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    charge_date = Column(DateTime, nullable=False)
+    activity_date = Column(DateTime)
+    charge = Column(Float(22, 8))
+    core_hours = Column(Float(22, 8))
+
+    account = relationship('Account')
+    activity = relationship('HPCActivity')
+    user = relationship('User')
+
+
+class HPCChargeSummary(Base):
+    """Daily summary of HPC charges."""
+    __tablename__ = 'hpc_charge_summary'
+
+    __table_args__ = (
+        Index('ix_hpc_charge_summary_date', 'activity_date'),
+        Index('ix_hpc_charge_summary_user', 'user_id'),
+        Index('ix_hpc_charge_summary_account', 'account_id'),
+        Index('ix_hpc_charge_summary_machine', 'machine'),
+        Index('ix_hpc_charge_summary_queue', 'queue_name'),
+    )
+
+    hpc_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
+    activity_date = Column(DateTime, nullable=False)
+    
+    act_username = Column(String(35))
+    unix_uid = Column(Integer)
+    act_unix_uid = Column(Integer)
+    projcode = Column(String(30))
+    username = Column(String(35))
+    act_projcode = Column(String(30))
+    facility_name = Column(String(30))
+    
+    machine = Column(String(100), nullable=False)
+    queue_name = Column(String(100), nullable=False)
+    
+    user_id = Column(Integer, ForeignKey('users.user_id'))
+    account_id = Column(Integer, ForeignKey('account.account_id'))
+    
+    num_jobs = Column(Integer)
+    core_hours = Column(Float(22, 8))
+    charges = Column(Float(22, 8))
+
+    user = relationship('User')
+    account = relationship('Account')
+
+
+class HPCChargeSummaryStatus(Base):
+    """Tracks which charge summaries are current."""
+    __tablename__ = 'hpc_charge_summary_status'
+
+    activity_date = Column(DateTime, primary_key=True)
+    current = Column(Boolean)
+
+
+# ============================================================================
+# Disk Activity and Charges
+# ============================================================================
+
+class DiskCos(Base, TimestampMixin):
+    """Disk Class of Service definitions."""
+    __tablename__ = 'disk_cos'
+
+    disk_cos_id = Column(Integer, primary_key=True)
+    description = Column(String(255), nullable=False)
+
+
+class DiskActivity(Base, TimestampMixin):
+    """Disk usage activity records."""
+    __tablename__ = 'disk_activity'
+
+    __table_args__ = (
+        Index('ix_disk_activity_directory', 'directory_name'),
+        Index('ix_disk_activity_cos', 'disk_cos_id'),
+    )
+
+    disk_activity_id = Column(Integer, primary_key=True, autoincrement=True)
+    directory_name = Column(String(255), nullable=False)
+    username = Column(String(35), nullable=False)
+    projcode = Column(String(30))
+    activity_date = Column(DateTime, nullable=False)
+    reporting_interval = Column(Integer, nullable=False)
+    
+    file_size_total = Column(BigInteger, nullable=False)
+    bytes = Column(BigInteger, nullable=False)
+    number_of_files = Column(Integer)
+    
+    load_date = Column(DateTime, nullable=False)
+    disk_cos_id = Column(Integer, ForeignKey('disk_cos.disk_cos_id'), nullable=False)
+    
+    error_comment = Column(Text)
+    processing_status = Column(Boolean)
+    resource_name = Column(String(40))
+
+    disk_cos = relationship('DiskCos')
+
+
+class DiskCharge(Base):
+    """Disk charges derived from activity."""
+    __tablename__ = 'disk_charge'
+
+    __table_args__ = (
+        Index('ix_disk_charge_account', 'account_id'),
+        Index('ix_disk_charge_user', 'user_id'),
+        Index('ix_disk_charge_activity', 'disk_activity_id', unique=True),
+        Index('ix_disk_charge_date', 'charge_date'),
+    )
+
+    disk_charge_id = Column(Integer, primary_key=True, autoincrement=True)
+    disk_activity_id = Column(Integer, ForeignKey('disk_activity.disk_activity_id'),
+                              nullable=False, unique=True)
+    account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
+    charge_date = Column(DateTime, nullable=False)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    charge = Column(Float(22, 8))
+    terabyte_year = Column(Float(22, 8))
+    activity_date = Column(DateTime)
+
+    account = relationship('Account')
+    activity = relationship('DiskActivity')
+    user = relationship('User')
+
+
+class DiskChargeSummary(Base):
+    """Daily summary of disk charges."""
+    __tablename__ = 'disk_charge_summary'
+
+    __table_args__ = (
+        Index('ix_disk_charge_summary_date', 'activity_date'),
+        Index('ix_disk_charge_summary_user', 'user_id'),
+        Index('ix_disk_charge_summary_account', 'account_id'),
+    )
+
+    disk_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
+    activity_date = Column(DateTime, nullable=False)
+    
+    act_username = Column(String(35))
+    unix_uid = Column(Integer)
+    act_unix_uid = Column(Integer)
+    projcode = Column(String(30))
+    username = Column(String(35))
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    act_projcode = Column(String(30))
+    facility_name = Column(String(30))
+    account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
+    
+    number_of_files = Column(Integer)
+    bytes = Column(BigInteger)
+    terabyte_years = Column(Float(22, 8))
+    charges = Column(Float(22, 8))
+
+    user = relationship('User')
+    account = relationship('Account')
+
+
+class DiskChargeSummaryStatus(Base):
+    """Tracks which disk charge summaries are current."""
+    __tablename__ = 'disk_charge_summary_status'
+
+    activity_date = Column(DateTime, primary_key=True)
+    current = Column(Boolean)
+
+
+# ============================================================================
+# Archive Activity and Charges
+# ============================================================================
+
+class ArchiveCos(Base, TimestampMixin):
+    """Archive Class of Service definitions."""
+    __tablename__ = 'archive_cos'
+
+    archive_cos_id = Column(Integer, primary_key=True)
+    number_of_copies = Column(Integer, nullable=False)
+    description = Column(String(255), nullable=False)
+
+
+class ArchiveActivity(Base, TimestampMixin):
+    """Archive (HPSS) activity records."""
+    __tablename__ = 'archive_activity'
+
+    __table_args__ = (
+        Index('ix_archive_activity_type', 'type_act'),
+        Index('ix_archive_activity_cos', 'archive_cos_id'),
+    )
+
+    archive_activity_id = Column(Integer, primary_key=True, autoincrement=True)
+    archive_resource = Column(String(5), nullable=False)
+    type_act = Column(String(1), nullable=False)
+    reporting_interval = Column(Integer)
+    activity_date = Column(DateTime, nullable=False)
+    
+    number_of_files = Column(Integer, nullable=False)
+    bytes = Column(BigInteger, nullable=False)
+    
+    dns = Column(String(100))
+    unix_uid = Column(Integer, nullable=False)
+    username = Column(String(30))
+    projcode = Column(String(30), nullable=False)
+    
+    load_date = Column(DateTime, nullable=False)
+    processing_status = Column(Boolean)
+    error_comment = Column(Text)
+    
+    archive_cos_id = Column(Integer, ForeignKey('archive_cos.archive_cos_id'))
+
+    archive_cos = relationship('ArchiveCos')
+
+
+class ArchiveCharge(Base):
+    """Archive charges derived from activity."""
+    __tablename__ = 'archive_charge'
+
+    __table_args__ = (
+        Index('ix_archive_charge_account', 'account_id'),
+        Index('ix_archive_charge_user', 'user_id'),
+        Index('ix_archive_charge_activity', 'archive_activity_id', unique=True),
+        Index('ix_archive_charge_date', 'charge_date'),
+    )
+
+    archive_charge_id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
+    charge_date = Column(DateTime, nullable=False)
+    archive_activity_id = Column(Integer, ForeignKey('archive_activity.archive_activity_id'),
+                                 nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    charge = Column(Float(22, 8))
+    terabyte_year = Column(Float(22, 8))
+    activity_date = Column(DateTime)
+
+    account = relationship('Account')
+    activity = relationship('ArchiveActivity')
+    user = relationship('User')
+
+
+class ArchiveChargeSummary(Base):
+    """Daily summary of archive charges."""
+    __tablename__ = 'archive_charge_summary'
+
+    __table_args__ = (
+        Index('ix_archive_charge_summary_date', 'activity_date'),
+        Index('ix_archive_charge_summary_user', 'user_id'),
+        Index('ix_archive_charge_summary_account', 'account_id'),
+    )
+
+    archive_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
+    activity_date = Column(DateTime, nullable=False)
+    
+    act_username = Column(String(35))
+    unix_uid = Column(Integer)
+    act_unix_uid = Column(Integer)
+    projcode = Column(String(30))
+    username = Column(String(35))
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    act_projcode = Column(String(30))
+    facility_name = Column(String(30))
+    account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
+    
+    number_of_files = Column(Integer)
+    bytes = Column(BigInteger)
+    terabyte_years = Column(Float(22, 8))
+    charges = Column(Float(22, 8))
+
+    user = relationship('User')
+    account = relationship('Account')
+
+
+class ArchiveChargeSummaryStatus(Base):
+    """Tracks which archive charge summaries are current."""
+    __tablename__ = 'archive_charge_summary_status'
+
+    activity_date = Column(DateTime, primary_key=True)
+    current = Column(Boolean)
+
+
+# ============================================================================
+# Charge Adjustments
+# ============================================================================
+
+class ChargeAdjustmentType(Base, TimestampMixin):
+    """Types of charge adjustments (Credit, Debit, Refund)."""
+    __tablename__ = 'charge_adjustment_type'
+
+    charge_adjustment_type_id = Column(Integer, primary_key=True, autoincrement=True)
+    type = Column(String(20), nullable=False)
+
+    adjustments = relationship('ChargeAdjustment', back_populates='adjustment_type')
+
+    def __repr__(self):
+        return f"<ChargeAdjustmentType(type='{self.type}')>"
+
+
+class ChargeAdjustment(Base):
+    """Manual adjustments to account charges."""
+    __tablename__ = 'charge_adjustment'
+
+    __table_args__ = (
+        Index('ix_charge_adjustment_account', 'account_id'),
+        Index('ix_charge_adjustment_type', 'charge_adjustment_type_id'),
+        Index('ix_charge_adjustment_adjusted_by', 'adjusted_by_id'),
+    )
+
+    charge_adjustment_id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
+    charge_adjustment_type_id = Column(Integer, 
+                                       ForeignKey('charge_adjustment_type.charge_adjustment_type_id'),
+                                       nullable=False)
+    amount = Column(Float, nullable=False)
+    comment = Column(Text)
+    adjustment_date = Column(DateTime, nullable=False)
+    adjusted_by_id = Column(Integer, ForeignKey('users.user_id'))
+
+    account = relationship('Account')
+    adjustment_type = relationship('ChargeAdjustmentType', back_populates='adjustments')
+    adjusted_by = relationship('User')
+
+
+# ============================================================================
+# Access Control
+# ============================================================================
+
+class AccessBranch(Base):
+    """Access branches for resource access control."""
+    __tablename__ = 'access_branch'
+
+    access_branch_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(40), nullable=False, unique=True)
+
+    resources = relationship('AccessBranchResource', back_populates='access_branch')
+
+    def __repr__(self):
+        return f"<AccessBranch(name='{self.name}')>"
+
+
+class AccessBranchResource(Base):
+    """Maps access branches to resources."""
+    __tablename__ = 'access_branch_resource'
+
+    __table_args__ = (
+        Index('ix_access_branch_resource_branch', 'access_branch_id'),
+        Index('ix_access_branch_resource_resource', 'resource_id'),
+    )
+
+    access_branch_id = Column(Integer, ForeignKey('access_branch.access_branch_id'),
+                              primary_key=True)
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), primary_key=True)
+
+    access_branch = relationship('AccessBranch', back_populates='resources')
+    resource = relationship('Resource')
+
+
+# ============================================================================
+# Utility/Operational Tables
+# ============================================================================
+
+class Synchronizer(Base):
+    """Tracks last run times for synchronization jobs."""
+    __tablename__ = 'synchronizer'
+
+    synchronizer_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    last_run = Column(TIMESTAMP)
+
+    def __repr__(self):
+        return f"<Synchronizer(name='{self.name}', last_run={self.last_run})>"
+
+
+class ManualTask(Base):
+    """Manual intervention tasks."""
+    __tablename__ = 'manual_task'
+
+    __table_args__ = (
+        Index('ix_manual_task_client', 'client'),
+    )
+
+    manual_task_id = Column(Integer, primary_key=True, autoincrement=True)
+    client = Column(String(32), nullable=False)
+    transaction_context = Column(String(256))
+    transaction_id = Column(String(64), nullable=False)
+    job_key = Column(String(32), nullable=False)
+    job_alias = Column(String(128))
+    client_job_id = Column(String(32), nullable=False)
+    name = Column(String(32), nullable=False)
+    state = Column(String(16), nullable=False)
+    mode = Column(String(64))
+    assignee = Column(String(32))
+    timestamp = Column(BigInteger, nullable=False)
+    data = Column(Text, nullable=False)
+    delete_on_clear = Column(Boolean, nullable=False, default=False)
+
+    products = relationship('Product', back_populates='manual_task')
+
+
+class Product(Base):
+    """Products from manual tasks."""
+    __tablename__ = 'product'
+
+    __table_args__ = (
+        Index('ix_product_manual_task', 'manual_task_id'),
+    )
+
+    product_id = Column(Integer, primary_key=True, autoincrement=True)
+    manual_task_id = Column(Integer, ForeignKey('manual_task.manual_task_id'), 
+                           nullable=False)
+    name = Column(String(31), nullable=False)
+    value = Column(String(16384))
+    timestamp = Column(BigInteger, nullable=False)
+
+    manual_task = relationship('ManualTask', back_populates='products')
 
 
 # ============================================================================
