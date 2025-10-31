@@ -772,6 +772,24 @@ def get_expiring_projects_summary(
     if not project_ids:
         return []
 
+    # Create a subquery to get max allocation_id per project AND resource
+    Account2 = Account.__table__.alias('ac2')
+    Allocation2 = Allocation.__table__.alias('a2')
+
+    max_alloc_per_resource_subquery = select(func.max(Allocation2.c.allocation_id))\
+        .select_from(
+            Allocation2.join(Account2, Allocation2.c.account_id == Account2.c.account_id)
+        )\
+        .where(
+            and_(
+                Account2.c.project_id == Account.project_id,
+                Account2.c.resource_id == Account.resource_id,  # Also match by resource!
+                Allocation2.c.deleted == False
+            )
+        )\
+        .correlate(Account)\
+        .scalar_subquery()
+
     # Now get ALL resources for these projects (not just expiring ones)
     all_resources_query = session.query(
         Project.project_id,
@@ -788,7 +806,7 @@ def get_expiring_projects_summary(
             Project.project_id.in_(project_ids),
             Account.deleted == False,
             Allocation.deleted == False,
-            Allocation.allocation_id == _get_max_allocation_subquery()  # Latest allocation per resource
+            Allocation.allocation_id == max_alloc_per_resource_subquery  # Latest allocation per resource
         )\
         .order_by(Project.project_id, Resource.resource_name)\
         .all()
@@ -1369,7 +1387,7 @@ def example_expiration_report():
         from itertools import groupby
         detailed_sorted = sorted(detailed, key=lambda x: x['project'])
 
-        for project_code, users in groupby(detailed_sorted[:7], key=lambda x: x['project']):
+        for project_code, users in groupby(detailed_sorted, key=lambda x: x['project']):
             users_list = list(users)
             print(f"\n{project_code} ({len(users_list)} users):")
             for user in users_list:
