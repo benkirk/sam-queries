@@ -519,363 +519,6 @@ def get_projects_expiring_soon(
     return sorted(results, key=lambda x: x[3])
 
 
-def get_expiring_projects_with_users(
-    session: Session,
-    start_date: datetime,
-    end_date: datetime,
-    facility_names: List[str] = None
-) -> List[Dict]:
-    """
-    Get detailed information about projects expiring in a date range,
-    including all active users associated with each project.
-
-    Args:
-        session: SQLAlchemy session
-        start_date: Start of date range for expiring allocations
-        end_date: End of date range for expiring allocations
-        facility_names: Optional list of facility names to filter (e.g., ['UNIV', 'WNA'])
-
-    Returns:
-        List of dicts with keys: project, allocation_type, end_date, username,
-        first_name, last_name, email_address, lead_last_name, directory_name,
-        user_access_end
-    """
-    max_alloc_subquery = _get_max_allocation_subquery()
-
-    # Build the base query
-    query = session.query(
-        Project.projcode.label('project'),
-        AllocationType.allocation_type.label('allocation_type'),
-        Allocation.end_date.label('end_date'),
-        User.username.label('username'),
-        User.first_name.label('first_name'),
-        User.last_name.label('last_name'),
-        EmailAddress.email_address.label('email_address'),
-        func.max(ProjectDirectory.directory_name).label('directory_name'),
-        AccountUser.end_date.label('user_access_end')
-    ).select_from(Project)\
-        .join(Account, Project.project_id == Account.project_id)\
-        .join(Allocation, Account.account_id == Allocation.account_id)\
-        .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
-        .join(Panel, AllocationType.panel_id == Panel.panel_id)\
-        .join(Facility, Panel.facility_id == Facility.facility_id)\
-        .join(AccountUser, Account.account_id == AccountUser.account_id)\
-        .join(User, AccountUser.user_id == User.user_id)\
-        .join(EmailAddress, and_(
-            EmailAddress.user_id == User.user_id,
-            EmailAddress.is_primary == True
-        ))\
-        .outerjoin(ProjectDirectory, Project.project_id == ProjectDirectory.project_id)
-
-    # Apply filters
-    query = query.filter(
-        Account.deleted == False,
-        Allocation.deleted == False,
-        Project.active == True,
-        Allocation.allocation_id == max_alloc_subquery,
-        Allocation.end_date.between(start_date, end_date),
-        or_(
-            AccountUser.end_date.is_(None),
-            AccountUser.end_date >= func.current_date()
-        ),
-        User.active == True
-    )
-
-    if facility_names:
-        query = query.filter(Facility.facility_name.in_(facility_names))
-
-    # Group by
-    query = query.group_by(
-        Project.projcode,
-        AllocationType.allocation_type,
-        Allocation.end_date,
-        User.username,
-        User.first_name,
-        User.last_name,
-        EmailAddress.email_address,
-        AccountUser.end_date
-    )
-
-    # Order results
-    query = query.order_by(
-        Project.projcode,
-        AllocationType.allocation_type,
-        Allocation.end_date.desc()
-    )
-
-    results = query.all()
-
-    # Get project leads in a separate query for efficiency
-    project_codes = list(set(r.project for r in results))
-    lead_query = session.query(
-        Project.projcode,
-        User.last_name.label('lead_last_name')
-    ).join(User, Project.project_lead_user_id == User.user_id)\
-        .filter(Project.projcode.in_(project_codes))
-
-    leads_dict = {proj_code: lead_name for proj_code, lead_name in lead_query.all()}
-
-    # Format results
-    return [
-        {
-            'project': row.project,
-            'allocation_type': row.allocation_type,
-            'end_date': row.end_date.date() if row.end_date else None,
-            'username': row.username,
-            'first_name': row.first_name,
-            'last_name': row.last_name,
-            'email_address': row.email_address,
-            'lead_last_name': leads_dict.get(row.project),
-            'directory_name': row.directory_name,
-            'user_access_end': row.user_access_end.date() if row.user_access_end else None
-        }
-        for row in results
-    ]
-
-
-def get_expiring_projects_summary(
-    session: Session,
-    start_date: datetime,
-    end_date: datetime,
-    facility_names: List[str] = None,
-    resource_name: str = None
-) -> List[Dict]:
-    """
-    Get a summary of expiring projects grouped by project code.
-    Shows all resources for each project, with expiring ones highlighted.
-
-    Args:
-        session: SQLAlchemy session
-        start_date: Start of date range for expiring allocations
-        end_date: End of date range for expiring allocations
-        facility_names: Optional list of facility names to filter
-        resource_name: Optional resource name to filter (e.g., 'Derecho', 'GLADE')
-
-    Returns:
-        List of dicts with keys: project, title, allocation_type, lead_name,
-        lead_email, admin_name, admin_email, directory_name, user_count,
-        resources (list of dicts with resource_name, resource_type,
-        allocation_amount, end_date, days_remaining, is_expiring)
-    """
-    max_alloc_subquery = _get_max_allocation_subquery(resource_name)
-
-    # Subquery for user count per project
-    user_count_subquery = select(
-        Account.project_id,
-        func.count(func.distinct(AccountUser.user_id)).label('user_count')
-    ).select_from(Account)\
-        .join(AccountUser, Account.account_id == AccountUser.account_id)\
-        .join(User, AccountUser.user_id == User.user_id)\
-        .where(
-            Account.deleted == False,
-            or_(
-                AccountUser.end_date.is_(None),
-                AccountUser.end_date >= func.current_date()
-            ),
-            User.active == True
-        )\
-        .group_by(Account.project_id)\
-        .subquery()
-
-    # Define lead and admin user aliases
-    LeadUser = User.__table__.alias('lead_user')
-    LeadEmail = EmailAddress.__table__.alias('lead_email')
-    AdminUser = User.__table__.alias('admin_user')
-    AdminEmail = EmailAddress.__table__.alias('admin_email')
-
-    # Main query - get projects with expiring allocations
-    query = session.query(
-        Project.project_id,
-        Project.projcode.label('project'),
-        Project.title.label('title'),
-        AllocationType.allocation_type.label('allocation_type'),
-        Resource.resource_name.label('resource_name'),
-        ResourceType.resource_type.label('resource_type'),
-        Allocation.end_date.label('end_date'),
-        Allocation.amount.label('allocation_amount'),
-        LeadUser.c.first_name.label('lead_first_name'),
-        LeadUser.c.last_name.label('lead_last_name'),
-        LeadEmail.c.email_address.label('lead_email'),
-        AdminUser.c.first_name.label('admin_first_name'),
-        AdminUser.c.last_name.label('admin_last_name'),
-        AdminEmail.c.email_address.label('admin_email'),
-        Project.project_lead_user_id.label('lead_user_id'),
-        Project.project_admin_user_id.label('admin_user_id'),
-        func.max(ProjectDirectory.directory_name).label('directory_name'),
-        func.coalesce(user_count_subquery.c.user_count, 0).label('user_count')
-    ).select_from(Project)\
-        .join(Account, Project.project_id == Account.project_id)\
-        .join(Allocation, Account.account_id == Allocation.account_id)\
-        .join(Resource, Account.resource_id == Resource.resource_id)\
-        .join(ResourceType, Resource.resource_type_id == ResourceType.resource_type_id)\
-        .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
-        .join(Panel, AllocationType.panel_id == Panel.panel_id)\
-        .join(Facility, Panel.facility_id == Facility.facility_id)\
-        .join(LeadUser, Project.project_lead_user_id == LeadUser.c.user_id)\
-        .outerjoin(LeadEmail, and_(
-            LeadEmail.c.user_id == LeadUser.c.user_id,
-            LeadEmail.c.is_primary == True
-        ))\
-        .outerjoin(AdminUser, Project.project_admin_user_id == AdminUser.c.user_id)\
-        .outerjoin(AdminEmail, and_(
-            AdminEmail.c.user_id == AdminUser.c.user_id,
-            AdminEmail.c.is_primary == True
-        ))\
-        .outerjoin(ProjectDirectory, Project.project_id == ProjectDirectory.project_id)\
-        .outerjoin(user_count_subquery, Project.project_id == user_count_subquery.c.project_id)
-
-    # Apply filters
-    query = query.filter(
-        Account.deleted == False,
-        Allocation.deleted == False,
-        Project.active == True,
-        Allocation.allocation_id == max_alloc_subquery,
-        Allocation.end_date.between(start_date, end_date)
-    )
-
-    if facility_names:
-        query = query.filter(Facility.facility_name.in_(facility_names))
-
-    if resource_name:
-        query = query.filter(Resource.resource_name == resource_name)
-
-    # Group by
-    query = query.group_by(
-        Project.project_id,
-        Project.projcode,
-        Project.title,
-        AllocationType.allocation_type,
-        Resource.resource_name,
-        ResourceType.resource_type,
-        Allocation.end_date,
-        Allocation.amount,
-        LeadUser.c.first_name,
-        LeadUser.c.last_name,
-        LeadEmail.c.email_address,
-        AdminUser.c.first_name,
-        AdminUser.c.last_name,
-        AdminEmail.c.email_address,
-        Project.project_lead_user_id,
-        Project.project_admin_user_id,
-        user_count_subquery.c.user_count
-    )
-
-    # Order by project, then resource
-    query = query.order_by(Project.projcode, Resource.resource_name)
-
-    # Execute query to get expiring allocations
-    expiring_rows = query.all()
-
-    # Get unique project IDs from expiring allocations
-    project_ids = list(set(row.project_id for row in expiring_rows))
-
-    if not project_ids:
-        return []
-
-    # Create a subquery to get max allocation_id per project AND resource
-    Account2 = Account.__table__.alias('ac2')
-    Allocation2 = Allocation.__table__.alias('a2')
-
-    max_alloc_per_resource_subquery = select(func.max(Allocation2.c.allocation_id))\
-        .select_from(
-            Allocation2.join(Account2, Allocation2.c.account_id == Account2.c.account_id)
-        )\
-        .where(
-            and_(
-                Account2.c.project_id == Account.project_id,
-                Account2.c.resource_id == Account.resource_id,  # Also match by resource!
-                Allocation2.c.deleted == False
-            )
-        )\
-        .correlate(Account)\
-        .scalar_subquery()
-
-    # Now get ALL resources for these projects (not just expiring ones)
-    all_resources_query = session.query(
-        Project.project_id,
-        Resource.resource_name,
-        ResourceType.resource_type,
-        Allocation.amount,
-        Allocation.end_date
-    ).select_from(Project)\
-        .join(Account, Project.project_id == Account.project_id)\
-        .join(Allocation, Account.account_id == Allocation.account_id)\
-        .join(Resource, Account.resource_id == Resource.resource_id)\
-        .join(ResourceType, Resource.resource_type_id == ResourceType.resource_type_id)\
-        .filter(
-            Project.project_id.in_(project_ids),
-            Account.deleted == False,
-            Allocation.deleted == False,
-            Allocation.allocation_id == max_alloc_per_resource_subquery  # Latest allocation per resource
-        )\
-        .order_by(Project.project_id, Resource.resource_name)\
-        .all()
-
-    # Group resources by project_id
-    resources_by_project = {}
-    for row in all_resources_query:
-        if row.project_id not in resources_by_project:
-            resources_by_project[row.project_id] = []
-
-        # Determine if this allocation is expiring
-        is_expiring = False
-        days_remaining = None
-        if row.end_date:
-            end_date_val = row.end_date.date() if isinstance(row.end_date, datetime) else row.end_date
-            days_remaining = (end_date_val - datetime.now().date()).days
-            is_expiring = start_date.date() <= end_date_val <= end_date.date()
-
-        resources_by_project[row.project_id].append({
-            'resource_name': row.resource_name,
-            'resource_type': row.resource_type,
-            'allocation_amount': float(row.amount) if row.amount else 0,
-            'end_date': row.end_date,
-            'days_remaining': days_remaining,
-            'is_expiring': is_expiring
-        })
-
-    # Build final results - one row per project
-    results = []
-    seen_projects = set()
-
-    for row in expiring_rows:
-        if row.project_id in seen_projects:
-            continue
-        seen_projects.add(row.project_id)
-
-        lead_full_name = f"{row.lead_first_name} {row.lead_last_name}".strip()
-
-        # Only include admin if exists and is different from lead
-        admin_name = None
-        admin_email = None
-        if row.admin_user_id and row.admin_user_id != row.lead_user_id:
-            admin_name = f"{row.admin_first_name} {row.admin_last_name}".strip()
-            admin_email = row.admin_email
-
-        results.append({
-            'project': row.project,
-            'title': row.title,
-            'allocation_type': row.allocation_type,
-            'lead_name': lead_full_name,
-            'lead_email': row.lead_email,
-            'admin_name': admin_name,
-            'admin_email': admin_email,
-            'directory_name': row.directory_name,
-            'user_count': int(row.user_count),
-            'resources': resources_by_project.get(row.project_id, [])
-        })
-
-    # Sort by earliest expiring resource
-    def get_earliest_expiring_days(proj_dict):
-        expiring_resources = [r for r in proj_dict['resources'] if r['is_expiring']]
-        if expiring_resources:
-            return min(r['days_remaining'] for r in expiring_resources if r['days_remaining'] is not None)
-        return float('inf')
-
-    results.sort(key=get_earliest_expiring_days)
-
-    return results
-
 
 # ============================================================================
 # Allocation Queries
@@ -1216,6 +859,7 @@ def example_usage():
         user = find_user_by_username(session, 'benkirk')
         if user:
             print(f"Found user: {user.full_name}")
+            print(f"Primary GID: {user.primary_gid}")
             print(f"Primary email: {user.primary_email}")
             print(f"All emails: {', '.join(user.all_emails)}")
 
@@ -1225,6 +869,11 @@ def example_usage():
                 primary_marker = " (PRIMARY)" if email_info['is_primary'] else ""
                 active_marker = "" if email_info['active'] else " (INACTIVE)"
                 print(f"  - {email_info['email']}{primary_marker}{active_marker}")
+
+            # Find projects
+            for p in user.all_projects:
+                label = "" if p.active else "** INACTIVE **"
+                print(p,label)
 
         # Find users with multiple emails
         multi_email_users = get_users_with_multiple_emails(session, min_emails=2)
@@ -1242,7 +891,7 @@ def example_usage():
             print(f"  {user.username}: {', '.join(user.all_emails)}")
 
         # Get project details
-        project = get_project_with_full_details(session, 'UCUB0001')
+        project = get_project_with_full_details(session, 'SCSG0001')
         if project:
             print(f"\n--- Project Details ---")
             print(f"Project: {project.projcode}")
@@ -1255,11 +904,16 @@ def example_usage():
             for resource_name, alloc in allocs_by_resource.items():
                 print(f"  {resource_name}: {alloc.amount:,.2f} (expires {alloc.end_date})")
 
-            # Also show using current_allocation (any resource)
-            alloc = project.current_allocation
-            if alloc:
-                print(f"\nMost recent allocation (any resource): {alloc.amount}")
-                print(f"Expires: {alloc.end_date}")
+            # Show allocations for specific resource
+            print(f"\nSpecific Allocation by resource:")
+            resource_name = "Derecho"
+            alloc = project.get_allocation_by_resource(resource_name)
+            print(f"  {resource_name}: {alloc.amount:,.2f} (expires {alloc.end_date})")
+
+            # Show users on project
+            usernames = [u.username for u in project.users]
+            print(f"Users ({len(usernames)}):");
+            for u in usernames: print(u);
 
         # Show available resources
         print("\n--- Available Resources ---")
@@ -1282,27 +936,6 @@ def example_usage():
         for proj, alloc, res_name, days in expiring_derecho[:5]:
             print(f"  {proj.projcode}: {days} days remaining (expires {alloc.end_date.date()})")
 
-        # Get expiring projects with detailed user information
-        print("\n--- Expiring Projects Summary (60 days) ---")
-        start = datetime.now()
-        end = datetime.now() + timedelta(days=60)
-        summary = get_expiring_projects_summary(session, start, end, facility_names=['UNIV', 'WNA'])
-        print(f"Found {len(summary)} expiring projects (UNIV/WNA only)")
-        for proj in summary[:5]:
-            print(f"\n{proj['project']}: {proj['title'][:50]}...")
-            print(f"  Type: {proj['allocation_type']}")
-            print(f"  Lead: {proj['lead_name']} ({proj['lead_email']})")
-            if proj['admin_name']:
-                print(f"  Admin: {proj['admin_name']} ({proj['admin_email']})")
-            print(f"  Users: {proj['user_count']}")
-            print(f"  Directory: {proj['directory_name']}")
-            print(f"  Resources:")
-            for res in proj['resources']:
-                status = "*** EXPIRING ***" if res['is_expiring'] else ""
-                days_str = f"({res['days_remaining']} days)" if res['days_remaining'] is not None else ""
-                print(f"    {res['resource_name']:15} ({res['resource_type']:10}): "
-                      f"{res['allocation_amount']:>12,.2f} expires {res['end_date']} {days_str} {status}")
-
         # Statistics
         print("\n--- User Statistics ---")
         stats = get_user_statistics(session)
@@ -1322,83 +955,18 @@ def example_usage():
             print(f"\n--- Project Access for {user.username} ---")
             access = get_user_project_access(session, user.username)
             print(f"Total projects: {len(access)}")
-            for item in access[:10]:
+            s=set()
+            for item in access:
                 print(f"  {item['projcode']}: {item['role']}")
+                s.add(item['projcode'])
+            print(len(user.projects), len(s))
 
         # Test get_users_on_project
-        print("\n--- Users on Project UCUB0001 ---")
-        project_users = get_users_on_project(session, 'UCUB0001')
+        print("\n--- Users on Project SCSG0001 ---")
+        project_users = get_users_on_project(session, 'SCSG0001')
         for user_info in project_users:
             print(f"  {user_info['role']:8} {user_info['username']:12} {user_info['full_name']:30} <{user_info['email']}>")
 
 
-def example_expiration_report():
-    """
-    Generate a detailed expiration report.
-    This example shows how to use the expiration queries together.
-    """
-    engine, SessionLocal = create_sam_engine()
-
-    with get_session(SessionLocal) as session:
-        # Set date range (e.g., November 2025)
-        start = datetime(2025, 10, 1)
-        end = datetime(2025, 12, 1)
-        facilities = ['UNIV', 'WNA']
-
-        print("=" * 80)
-        print("PROJECT EXPIRATION REPORT")
-        print(f"Date Range: {start.date()} to {end.date()}")
-        print(f"Facilities: {', '.join(facilities)}")
-        print("=" * 80)
-
-        # Get summary
-        summary = get_expiring_projects_summary(session, start, end, facilities)
-
-        print(f"\n{len(summary)} projects expiring in this period\n")
-
-        for proj in summary:
-            print(f"\n{'='*60}")
-            print(f"Project: {proj['project']}")
-            print(f"Title: {proj['title']}")
-            print(f"Type: {proj['allocation_type']}")
-            print(f"Lead: {proj['lead_name']} <{proj['lead_email']}>")
-            if proj['admin_name']:
-                print(f"Admin: {proj['admin_name']} <{proj['admin_email']}>")
-            print(f"Directory: {proj['directory_name']}")
-            print(f"Active Users: {proj['user_count']}")
-            project_users = get_users_on_project(session, proj['project'])
-            for user_info in project_users:
-                print(f"  {user_info['role']:8} {user_info['username']:12} {user_info['full_name']:30} <{user_info['email']}>")
-            print(f"Resources:")
-            for res in proj['resources']:
-                status = "*** EXPIRING ***" if res['is_expiring'] else ""
-                days_str = f"({res['days_remaining']} days)" if res['days_remaining'] is not None else ""
-                print(f"  {res['resource_name']:15} ({res['resource_type']:10}): "
-                      f"{res['allocation_amount']:>12,.2f} expires {res['end_date']} {days_str} {status}")
-
-        # Get detailed user list for email notifications
-        print("\n\n" + "=" * 80)
-        print("DETAILED USER LIST")
-        print("=" * 80)
-
-        detailed = get_expiring_projects_with_users(session, start, end, facilities)
-
-        # Group by project
-        from itertools import groupby
-        detailed_sorted = sorted(detailed, key=lambda x: x['project'])
-
-        for project_code, users in groupby(detailed_sorted, key=lambda x: x['project']):
-            users_list = list(users)
-            print(f"\n{project_code} ({len(users_list)} users):")
-            for user in users_list:
-                access_note = f" (access until {user['user_access_end']})" if user['user_access_end'] else ""
-                print(f"  - {user['username']}: {user['first_name']} {user['last_name']} <{user['email_address']}>{access_note}")
-
-
 if __name__ == '__main__':
-    print("Running basic examples...\n")
     example_usage()
-
-    print("\n\n" + "=" * 80)
-    print("Running expiration report...\n")
-    example_expiration_report()
