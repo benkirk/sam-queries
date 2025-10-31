@@ -286,24 +286,28 @@ def get_users_without_primary_email(session: Session) -> List[User]:
     Useful for data cleanup.
     """
     # Find users with emails but none marked as primary
-    users_with_emails = session.query(User.user_id)\
-        .join(User.email_addresses)\
-        .group_by(User.user_id)\
-        .subquery()
+    from sqlalchemy import exists, select
 
-    users_with_primary = session.query(User.user_id)\
-        .join(User.email_addresses)\
-        .filter(EmailAddress.is_primary == True)\
-        .group_by(User.user_id)\
-        .subquery()
+    has_email = exists(
+        select(1).select_from(EmailAddress)
+        .where(EmailAddress.user_id == User.user_id)
+    )
+
+    has_primary = exists(
+        select(1).select_from(EmailAddress)
+        .where(
+            EmailAddress.user_id == User.user_id,
+            EmailAddress.is_primary == True
+        )
+    )
 
     return session.query(User)\
-        .filter(
-            User.user_id.in_(users_with_emails),
-            ~User.user_id.in_(users_with_primary),
-            User.active == True
-        )\
-        .all()
+                  .filter(
+                      User.active == True,
+                      has_email,
+                      ~has_primary
+                  )\
+                  .all()
 
 
 # ============================================================================
