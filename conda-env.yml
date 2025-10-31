@@ -1,0 +1,20 @@
+name: sam_sql
+channels:
+  - conda-forge
+dependencies:
+  - conda-tree
+  - ipykernel
+  - matplotlib
+  - mysql
+  - mysql-connector-python
+  - nbconvert
+  - pandas
+  - pip
+  - pymssql
+  - pymysql
+  - pytest
+  - sqlalchemy
+  - sqlite
+  - pip:
+      - dotenv
+      - pipdeptree

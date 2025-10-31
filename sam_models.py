@@ -7,6 +7,8 @@ Key improvements:
 - Consistent naming conventions
 - Better type hints and documentation
 - Separation of concerns
+- Proper __eq__ and __hash__ methods for reliable set/dict operations
+  - All entity classes implement __eq__ and __hash__ based on their primary key ID.
 """
 
 from datetime import datetime
@@ -17,6 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship, declarative_base, declared_attr
 from sqlalchemy.ext.associationproxy import association_proxy
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
 
 Base = declarative_base()
@@ -92,10 +95,19 @@ class DateRangePattern:
 
         return True
 
-    @property
+    @hybrid_property
     def is_currently_active(self) -> bool:
-        """Check if this record is currently active."""
+        """Check if this record is currently active (Python side)."""
         return self.is_active_at()
+
+    @is_currently_active.expression
+    def is_currently_active(cls):
+        """Check if this record is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            cls.start_date <= now,
+            or_(cls.end_date.is_(None), cls.end_date >= now)
+        )
 
 
 # ============================================================================
@@ -112,6 +124,18 @@ class User(Base, TimestampPattern):
         Index('ix_users_upid', 'upid'),
         Index('ix_users_active_locked', 'active', 'locked'),
     )
+
+    def __eq__(self, other):
+        """Two users are equal if they have the same user_id."""
+        if not isinstance(other, User):
+            return False
+        # Both must have IDs and they must match
+        return self.user_id is not None and self.user_id == other.user_id
+
+    def __hash__(self):
+        """Hash based on user_id for set/dict operations."""
+        # Use id() for transient instances, user_id for persistent ones
+        return hash(self.user_id) if self.user_id is not None else hash(id(self))
 
     user_id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(35), nullable=False, unique=True)
@@ -232,12 +256,18 @@ class User(Base, TimestampPattern):
             for email in self.email_addresses
         ]
 
+    @hybrid_property
     def is_accessible(self) -> bool:
-        """Check if user can access the system (active and not locked)."""
+        """Check if user can access the system (Python side)."""
         return self.active and not self.locked
 
+    @is_accessible.expression
+    def is_accessible(cls):
+        """Check if user can access the system (SQL side)."""
+        return and_(cls.active == True, cls.locked == False)
+
     def __repr__(self):
-        return f"<User(username='{self.username}', name='{self.full_name}')>"
+        return f"<User(id={self.user_id}, username='{self.username}', name='{self.full_name}')>"
 
 
 class UserAlias(Base, TimestampPattern):
@@ -267,6 +297,18 @@ class EmailAddress(Base, TimestampPattern):
         Index('ix_email_address_user', 'user_id'),
         Index('ix_email_address_email', 'email_address'),
     )
+
+    def __eq__(self, other):
+        """Two email addresses are equal if they have the same email_address_id."""
+        if not isinstance(other, EmailAddress):
+            return False
+        return (self.email_address_id is not None and
+                self.email_address_id == other.email_address_id)
+
+    def __hash__(self):
+        """Hash based on email_address_id for set/dict operations."""
+        return (hash(self.email_address_id) if self.email_address_id is not None
+                else hash(id(self)))
 
     email_address_id = Column(Integer, primary_key=True, autoincrement=True)
     email_address = Column(String(255), nullable=False)
@@ -334,6 +376,16 @@ class AdhocGroup(Base, ActiveFlagPattern):
         Index('ix_adhoc_group_gid', 'unix_gid'),
     )
 
+    def __eq__(self, other):
+        """Two groups are equal if they have the same group_id."""
+        if not isinstance(other, AdhocGroup):
+            return False
+        return self.group_id is not None and self.group_id == other.group_id
+
+    def __hash__(self):
+        """Hash based on group_id for set/dict operations."""
+        return hash(self.group_id) if self.group_id is not None else hash(id(self))
+
     group_id = Column(Integer, primary_key=True, autoincrement=True)
     group_name = Column(String(30), nullable=False, unique=True)
     unix_gid = Column(Integer, nullable=False, unique=True)
@@ -378,6 +430,18 @@ class Institution(Base, TimestampPattern):
     """Educational and research institutions."""
     __tablename__ = 'institution'
 
+    def __eq__(self, other):
+        """Two institutions are equal if they have the same institution_id."""
+        if not isinstance(other, Institution):
+            return False
+        return (self.institution_id is not None and
+                self.institution_id == other.institution_id)
+
+    def __hash__(self):
+        """Hash based on institution_id for set/dict operations."""
+        return (hash(self.institution_id) if self.institution_id is not None
+                else hash(id(self)))
+
     institution_id = Column(Integer, primary_key=True)
     name = Column(String(80), nullable=False)
     acronym = Column(String(40), nullable=False)
@@ -402,6 +466,18 @@ class Organization(Base, TimestampPattern, ActiveFlagPattern):
     __table_args__ = (
         Index('ix_organization_tree', 'tree_left', 'tree_right'),
     )
+
+    def __eq__(self, other):
+        """Two organizations are equal if they have the same organization_id."""
+        if not isinstance(other, Organization):
+            return False
+        return (self.organization_id is not None and
+                self.organization_id == other.organization_id)
+
+    def __hash__(self):
+        """Hash based on organization_id for set/dict operations."""
+        return (hash(self.organization_id) if self.organization_id is not None
+                else hash(id(self)))
 
     organization_id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -462,6 +538,16 @@ class Resource(Base, TimestampPattern):
     """Computing resources (HPC systems, storage, etc.)."""
     __tablename__ = 'resources'
 
+    def __eq__(self, other):
+        """Two resources are equal if they have the same resource_id."""
+        if not isinstance(other, Resource):
+            return False
+        return self.resource_id is not None and self.resource_id == other.resource_id
+
+    def __hash__(self):
+        """Hash based on resource_id for set/dict operations."""
+        return hash(self.resource_id) if self.resource_id is not None else hash(id(self))
+
     resource_id = Column(Integer, primary_key=True, autoincrement=True)
     resource_name = Column(String(40), nullable=False, unique=True)
     resource_type_id = Column(Integer, ForeignKey('resource_type.resource_type_id'),
@@ -487,7 +573,7 @@ class Resource(Base, TimestampPattern):
     accounts = relationship('Account', back_populates='resource')
     resource_type = relationship('ResourceType', back_populates='resources')
 
-    def is_commissioned(self, check_date: Optional[datetime] = None) -> bool:
+    def is_commissioned_at(self, check_date: Optional[datetime] = None) -> bool:
         """Check if resource is commissioned at a given date."""
         if check_date is None:
             check_date = datetime.utcnow()
@@ -499,6 +585,20 @@ class Resource(Base, TimestampPattern):
             return False
 
         return True
+
+    @hybrid_property
+    def is_commissioned(self) -> bool:
+        """Check if resource is currently commissioned (Python side)."""
+        return self.is_commissioned_at()
+
+    @is_commissioned.expression
+    def is_commissioned(cls):
+        """Check if resource is currently commissioned (SQL side)."""
+        now = func.now()
+        return and_(
+            or_(cls.commission_date.is_(None), cls.commission_date <= now),
+            or_(cls.decommission_date.is_(None), cls.decommission_date > now)
+        )
 
 
 class Facility(Base, TimestampPattern, ActiveFlagPattern):
@@ -541,6 +641,16 @@ class Account(Base, SoftDeletePattern):
         Index('ix_account_deleted', 'deleted'),
     )
 
+    def __eq__(self, other):
+        """Two accounts are equal if they have the same account_id."""
+        if not isinstance(other, Account):
+            return False
+        return self.account_id is not None and self.account_id == other.account_id
+
+    def __hash__(self):
+        """Hash based on account_id for set/dict operations."""
+        return hash(self.account_id) if self.account_id is not None else hash(id(self))
+
     account_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'))
     resource_id = Column(Integer, ForeignKey('resources.resource_id'))
@@ -571,12 +681,34 @@ class AccountUser(Base, TimestampPattern, DateRangePattern):
         Index('ix_account_user_dates', 'start_date', 'end_date'),
     )
 
+    def __eq__(self, other):
+        """Two account_users are equal if they have the same account_user_id."""
+        if not isinstance(other, AccountUser):
+            return False
+        return (self.account_user_id is not None and
+                self.account_user_id == other.account_user_id)
+
+    def __hash__(self):
+        """Hash based on account_user_id for set/dict operations."""
+        return (hash(self.account_user_id) if self.account_user_id is not None
+                else hash(id(self)))
+
     account_user_id = Column(Integer, primary_key=True, autoincrement=True)
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
 
     account = relationship('Account', back_populates='users', lazy='selectin')
     user = relationship('User', back_populates='accounts', lazy='selectin')
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if this account-user mapping is currently active (Python side)."""
+        return self.is_currently_active
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if this account-user mapping is currently active (SQL side)."""
+        return cls.is_currently_active
 
 
 class Allocation(Base, TimestampPattern, SoftDeletePattern):
@@ -588,6 +720,18 @@ class Allocation(Base, TimestampPattern, SoftDeletePattern):
         Index('ix_allocation_dates', 'start_date', 'end_date'),
         Index('ix_allocation_active', 'deleted', 'start_date', 'end_date'),
     )
+
+    def __eq__(self, other):
+        """Two allocations are equal if they have the same allocation_id."""
+        if not isinstance(other, Allocation):
+            return False
+        return (self.allocation_id is not None and
+                self.allocation_id == other.allocation_id)
+
+    def __hash__(self):
+        """Hash based on allocation_id for set/dict operations."""
+        return (hash(self.allocation_id) if self.allocation_id is not None
+                else hash(id(self)))
 
     allocation_id = Column(Integer, primary_key=True, autoincrement=True)
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
@@ -620,10 +764,20 @@ class Allocation(Base, TimestampPattern, SoftDeletePattern):
 
         return True
 
-    @property
+    @hybrid_property
     def is_active(self) -> bool:
-        """Check if allocation is currently active."""
+        """Check if allocation is currently active (Python side)."""
         return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if allocation is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            cls.deleted == False,
+            cls.start_date <= now,
+            or_(cls.end_date.is_(None), cls.end_date >= now)
+        )
 
 
 class AllocationTransaction(Base):
@@ -689,6 +843,16 @@ class Project(Base, TimestampPattern, ActiveFlagPattern):
         Index('ix_project_active', 'active'),
         Index('ix_project_tree', 'tree_left', 'tree_right'),
     )
+
+    def __eq__(self, other):
+        """Two projects are equal if they have the same project_id."""
+        if not isinstance(other, Project):
+            return False
+        return self.project_id is not None and self.project_id == other.project_id
+
+    def __hash__(self):
+        """Hash based on project_id for set/dict operations."""
+        return hash(self.project_id) if self.project_id is not None else hash(id(self))
 
     project_id = Column(Integer, primary_key=True, autoincrement=True)
     projcode = Column(String(30), nullable=False, unique=True)
@@ -798,8 +962,35 @@ class Project(Base, TimestampPattern, ActiveFlagPattern):
         """Check if a user is active on this project."""
         return user in self.users
 
+    @hybrid_property
+    def has_active_allocations(self) -> bool:
+        """Check if project has any active allocations (Python side)."""
+        now = datetime.utcnow()
+        for account in self.accounts:
+            for alloc in account.allocations:
+                if alloc.is_active_at(now):
+                    return True
+        return False
+
+    @has_active_allocations.expression
+    def has_active_allocations(cls):
+        """Check if project has any active allocations (SQL side)."""
+        from sqlalchemy import exists, select
+        now = func.now()
+        return exists(
+            select(1)
+            .select_from(Account)
+            .join(Allocation)
+            .where(
+                Account.project_id == cls.project_id,
+                Allocation.deleted == False,
+                Allocation.start_date <= now,
+                or_(Allocation.end_date.is_(None), Allocation.end_date >= now)
+            )
+        )
+
     def __repr__(self):
-        return f"<Project(projcode='{self.projcode}', title='{self.title[:50]}...')>"
+        return f"<Project(id={self.project_id}, projcode='{self.projcode}', title='{self.title[:50]}...')>"
 
 
 class ProjectDirectory(Base, TimestampPattern, DateRangePattern):
@@ -1019,7 +1210,7 @@ class ValidationHelpers:
         Returns:
             (is_valid, error_message) tuple
         """
-        if not user.is_accessible():
+        if not user.is_accessible:
             return False, f"User {user.username} is locked or inactive"
 
         if not project.active:
