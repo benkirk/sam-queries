@@ -87,7 +87,6 @@ with get_session(SessionLocal) as session:
 # In[ ]:
 
 
-from sam_models_jobs import *
 from sam_models_jobs_queries import *
 
 projcode='SCSG0001'
@@ -96,6 +95,15 @@ end_date = datetime(2024, 12, 31)
 resource='Casper'
 
 with get_session(SessionLocal) as session:
+
+    top_users = get_user_usage_on_project(        
+                    session, projcode,
+                    start_date,
+                    end_date,
+                    limit=5)
+    for user in top_users:
+        print(f"{user['username']:12}: {user['charges']:.2f}")
+
     usage = get_project_usage_summary(session,
                                       projcode,
                                       start_date,
