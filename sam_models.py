@@ -14,7 +14,8 @@ from datetime import datetime
 from typing import List, Optional, Dict, Set
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Boolean,
-    ForeignKey, Text, BigInteger, TIMESTAMP, text, and_, or_, Index
+    ForeignKey, ForeignKeyConstraint,
+    Text, BigInteger, TIMESTAMP, text, and_, or_, Index
 )
 from sqlalchemy.orm import relationship, declarative_base, declared_attr
 from sqlalchemy.ext.associationproxy import association_proxy
@@ -251,6 +252,28 @@ class User(Base, TimestampMixin):
     resource_homes = relationship('UserResourceHome', back_populates='user')
     resource_shells = relationship('UserResourceShell', back_populates='user')
     role_assignments = relationship('RoleUser', back_populates='user')
+    administered_resources = relationship('Resource',
+                                         foreign_keys='Resource.prim_sys_admin_user_id',
+                                         back_populates='prim_sys_admin')
+    pi_contracts = relationship('Contract',
+                               foreign_keys='Contract.principal_investigator_user_id',
+                               back_populates='principal_investigator')
+    monitored_contracts = relationship('Contract',
+                                      foreign_keys='Contract.contract_monitor_user_id',
+                                      back_populates='contract_monitor')
+    allocation_transactions = relationship('AllocationTransaction',
+                                          foreign_keys='AllocationTransaction.user_id',
+                                          back_populates='user')
+    charge_adjustments_made = relationship('ChargeAdjustment',
+                                          foreign_keys='ChargeAdjustment.adjusted_by_id',
+                                          back_populates='adjusted_by')
+    hpc_charges = relationship('HPCCharge', back_populates='user')
+    disk_charges = relationship('DiskCharge', back_populates='user')
+    archive_charges = relationship('ArchiveCharge', back_populates='user')
+    hpc_charge_summaries = relationship('HPCChargeSummary', back_populates='user')
+    disk_charge_summaries = relationship('DiskChargeSummary', back_populates='user')
+    archive_charge_summaries = relationship('ArchiveChargeSummary', back_populates='user')
+    comp_charge_summaries = relationship('CompChargeSummary', back_populates='user')
 
     # Association proxy for projects
     _projects_w_dups = association_proxy('accounts', 'account.project')
@@ -580,6 +603,9 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin):
     users = relationship('UserOrganization', back_populates='organization')
     projects = relationship('ProjectOrganization', back_populates='organization')
     parent = relationship('Organization', remote_side=[organization_id])
+    primary_responsible_resources = relationship('Resource',
+                                                 foreign_keys='Resource.prim_responsible_org_id',
+                                                 back_populates='prim_responsible_org')
 
     def __repr__(self):
         return f"<Organization(name='{self.name}', acronym='{self.acronym}')>"
@@ -743,6 +769,14 @@ class Resource(Base, TimestampMixin):
     user_homes = relationship('UserResourceHome', back_populates='resource')
     default_projects = relationship('DefaultProject', back_populates='resource')
     facility_resources = relationship('FacilityResource', back_populates='resource')
+    access_branch_resources = relationship('AccessBranchResource', back_populates='resource')
+    prim_sys_admin = relationship('User',
+                                  foreign_keys=[prim_sys_admin_user_id],
+                                  back_populates='administered_resources')
+
+    prim_responsible_org = relationship('Organization',
+                                       foreign_keys=[prim_responsible_org_id],
+                                       back_populates='primary_responsible_resources')
 
     def is_commissioned_at(self, check_date: Optional[datetime] = None) -> bool:
         """Check if resource is commissioned at a given date."""
@@ -816,6 +850,10 @@ class Machine(Base, TimestampMixin):
     resource = relationship('Resource', back_populates='machines')
     machine_factors = relationship('MachineFactor', back_populates='machine')
 
+    comp_charge_summaries = relationship('CompChargeSummary',
+                                        foreign_keys='CompChargeSummary.machine_id',
+                                        back_populates='machine_ref')
+
     def __repr__(self):
         return f"<Machine(name='{self.name}', cpus_per_node={self.cpus_per_node})>"
 
@@ -860,6 +898,9 @@ class Queue(Base, TimestampMixin):
     resource = relationship('Resource', back_populates='queues')
     queue_factors = relationship('QueueFactor', back_populates='queue')
 
+    comp_charge_summaries = relationship('CompChargeSummary',
+                                        foreign_keys='CompChargeSummary.queue_id',
+                                        back_populates='queue_ref')
     def __repr__(self):
         return f"<Queue(name='{self.queue_name}', resource='{self.resource.resource_name if self.resource else None}')>"
 
@@ -1039,6 +1080,16 @@ class Account(Base, SoftDeleteMixin):
     resource = relationship('Resource', back_populates='accounts')
     allocations = relationship('Allocation', back_populates='account')
     users = relationship('AccountUser', back_populates='account', lazy='selectin')
+    hpc_charges = relationship('HPCCharge', back_populates='account')
+    disk_charges = relationship('DiskCharge', back_populates='account')
+    archive_charges = relationship('ArchiveCharge', back_populates='account')
+
+    hpc_charge_summaries = relationship('HPCChargeSummary', back_populates='account')
+    disk_charge_summaries = relationship('DiskChargeSummary', back_populates='account')
+    archive_charge_summaries = relationship('ArchiveChargeSummary', back_populates='account')
+    comp_charge_summaries = relationship('CompChargeSummary', back_populates='account')
+
+    charge_adjustments = relationship('ChargeAdjustment', back_populates='account')
 
     def __repr__(self):
         return f"<Account(id={self.account_id}, project='{self.project.projcode if self.project else None}', resource='{self.resource.resource_name if self.resource else None}')>"
@@ -1209,7 +1260,7 @@ class AllocationTransaction(Base):
 
     # Relationships
     allocation = relationship('Allocation', back_populates='transactions')
-    user = relationship('User')
+    user = relationship('User', back_populates='allocation_transactions')
     related_transaction = relationship('AllocationTransaction',
                                       remote_side=[allocation_transaction_id])
 
@@ -1519,9 +1570,11 @@ class Contract(Base, TimestampMixin):
     contract_source = relationship('ContractSource', back_populates='contracts')
     nsf_program = relationship('NSFProgram', back_populates='contracts')
     principal_investigator = relationship('User',
-                                         foreign_keys=[principal_investigator_user_id])
+                                         foreign_keys=[principal_investigator_user_id],
+                                         back_populates='pi_contracts')
     contract_monitor = relationship('User',
-                                   foreign_keys=[contract_monitor_user_id])
+                                   foreign_keys=[contract_monitor_user_id],
+                                   back_populates='monitored_contracts')
     projects = relationship('ProjectContract', back_populates='contract')
 
     def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
@@ -1665,20 +1718,13 @@ class CompJob(Base):
     activity_date = Column(DateTime, nullable=False)
     load_date = Column(DateTime, nullable=False)
 
-    # Relationships
+    # Relationships - FIXED: Proper back_populates
     activities = relationship(
         'CompActivity',
-        primaryjoin='and_('
-                    'CompJob.era_part_key == CompActivity.era_part_key, '
-                    'CompJob.job_id == CompActivity.job_id, '
-                    'CompJob.job_idx == CompActivity.job_idx, '
-                    'CompJob.machine == CompActivity.machine, '
-                    'CompJob.submit_time == CompActivity.submit_time)',
-        foreign_keys='[CompActivity.era_part_key, CompActivity.job_id, '
-                    'CompActivity.job_idx, CompActivity.machine, CompActivity.submit_time]',
         back_populates='job',
         lazy='selectin',
-        viewonly=True
+        # Note: No cascade here since activities may exist independently
+        # in some data processing scenarios
     )
 
     @property
@@ -1725,6 +1771,13 @@ class CompActivity(Base):
     __tablename__ = 'comp_activity'
 
     __table_args__ = (
+        # FIXED: Add explicit ForeignKeyConstraint for composite FK
+        ForeignKeyConstraint(
+            ['era_part_key', 'job_id', 'job_idx', 'machine', 'submit_time'],
+            ['comp_job.era_part_key', 'comp_job.job_id', 'comp_job.job_idx',
+             'comp_job.machine', 'comp_job.submit_time'],
+            name='fk_comp_activity_job'
+        ),
         Index('ix_comp_activity_era_acct_job', 'era_part_key', 'acct_part_key',
               'job_id', 'job_idx'),
         Index('ix_comp_activity_activity_date', 'activity_date'),
@@ -1794,20 +1847,12 @@ class CompActivity(Base):
     processing_status = Column(Boolean)
     error_comment = Column(Text)
 
-    # Relationships
+    # Relationships - FIXED: Simplified using foreign_keys list instead of string
     job = relationship(
         'CompJob',
-        primaryjoin='and_('
-                    'CompActivity.era_part_key == CompJob.era_part_key, '
-                    'CompActivity.job_id == CompJob.job_id, '
-                    'CompActivity.job_idx == CompJob.job_idx, '
-                    'CompActivity.machine == CompJob.machine, '
-                    'CompActivity.submit_time == CompJob.submit_time)',
-        foreign_keys='[CompActivity.era_part_key, CompActivity.job_id, '
-                    'CompActivity.job_idx, CompActivity.machine, CompActivity.submit_time]',
+        foreign_keys=[era_part_key, job_id, job_idx, machine, submit_time],
         back_populates='activities',
         lazy='joined',
-        viewonly=True,
         uselist=False
     )
 
@@ -2091,7 +2136,7 @@ class CompChargeSummary(Base):
     sweep = Column(Integer)  # Sweep/batch number
 
     # Relationships
-    user = relationship('User')
+    user = relationship('User', back_populates='comp_charge_summaries')
     account = relationship('Account')
     machine_ref = relationship('Machine', foreign_keys=[machine_id])
     queue_ref = relationship('Queue', foreign_keys=[queue_id])
@@ -2285,8 +2330,7 @@ class HPCCharge(Base):
 
     account = relationship('Account')
     activity = relationship('HPCActivity')
-    user = relationship('User')
-
+    user = relationship('User', back_populates='hpc_charges')
 
 class HPCChargeSummary(Base):
     """Daily summary of HPC charges."""
@@ -2321,7 +2365,7 @@ class HPCChargeSummary(Base):
     core_hours = Column(Float(22, 8))
     charges = Column(Float(22, 8))
 
-    user = relationship('User')
+    user = relationship('User', back_populates='hpc_charge_summaries')
     account = relationship('Account')
 
 
@@ -2399,8 +2443,7 @@ class DiskCharge(Base):
 
     account = relationship('Account')
     activity = relationship('DiskActivity')
-    user = relationship('User')
-
+    user = relationship('User', back_populates='disk_charges')
 
 class DiskChargeSummary(Base):
     """Daily summary of disk charges."""
@@ -2430,6 +2473,7 @@ class DiskChargeSummary(Base):
     terabyte_years = Column(Float(22, 8))
     charges = Column(Float(22, 8))
 
+    user = relationship('User', back_populates='disk_charge_summaries')
     user = relationship('User')
     account = relationship('Account')
 
@@ -2511,8 +2555,7 @@ class ArchiveCharge(Base):
 
     account = relationship('Account')
     activity = relationship('ArchiveActivity')
-    user = relationship('User')
-
+    user = relationship('User', back_populates='archive_charges')
 
 class ArchiveChargeSummary(Base):
     """Daily summary of archive charges."""
@@ -2542,7 +2585,7 @@ class ArchiveChargeSummary(Base):
     terabyte_years = Column(Float(22, 8))
     charges = Column(Float(22, 8))
 
-    user = relationship('User')
+    user = relationship('User', back_populates='archive_charge_summaries')
     account = relationship('Account')
 
 
@@ -2593,7 +2636,7 @@ class ChargeAdjustment(Base):
 
     account = relationship('Account')
     adjustment_type = relationship('ChargeAdjustmentType', back_populates='adjustments')
-    adjusted_by = relationship('User')
+    adjusted_by = relationship('User', back_populates='charge_adjustments_made')
 
 
 # ============================================================================
@@ -2627,8 +2670,7 @@ class AccessBranchResource(Base):
     resource_id = Column(Integer, ForeignKey('resources.resource_id'), primary_key=True)
 
     access_branch = relationship('AccessBranch', back_populates='resources')
-    resource = relationship('Resource')
-
+    resource = relationship('Resource', back_populates='access_branch_resources')
 
 # ============================================================================
 # Utility/Operational Tables
