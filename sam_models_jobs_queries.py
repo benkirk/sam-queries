@@ -1,45 +1,8 @@
-from sam_models_jobs import *
+from sam_models import *
 
 # ============================================================================
 # Query Helper Functions
 # ============================================================================
-
-def get_job_with_activities(session, job_id: str, machine: str,
-                            job_idx: int = -1,
-                            era_part_key: int = 99) -> Optional[CompJob]:
-    """
-    Retrieve a job with all its activities.
-
-    Args:
-        session: SQLAlchemy session
-        job_id: Job identifier
-        machine: Machine name
-        job_idx: Job index (default -1)
-        era_part_key: Era partition key (default 99)
-
-    Returns:
-        CompJob instance with activities loaded, or None if not found
-
-    Example:
-        >>> job = get_job_with_activities(session, '12345', 'Derecho')
-        >>> if job:
-        ...     for activity in job.activities:
-        ...         print(f"Util {activity.util_idx}: {activity.core_hours} hours")
-    """
-    from sqlalchemy.orm import joinedload
-
-    # Need to find the submit_time first to complete the composite key
-    job = session.query(CompJob).options(
-        joinedload(CompJob.activities)
-    ).filter(
-        CompJob.job_id == job_id,
-        CompJob.machine == machine,
-        CompJob.job_idx == job_idx,
-        CompJob.era_part_key == era_part_key
-    ).first()
-
-    return job
-
 
 def get_user_charge_summary(session, user_id: int,
                             start_date: datetime,
