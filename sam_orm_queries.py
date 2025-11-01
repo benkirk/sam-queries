@@ -385,7 +385,7 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
         projcode: Project code
 
     Returns:
-        List of dicts with keys: username, full_name, email, role
+        List of dicts with keys: username, display_name, email, role
         Roles: 'Lead', 'Admin', 'Member'
     """
     project = session.query(Project)\
@@ -405,7 +405,7 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
     lead = project.lead
     users_dict[lead.user_id] = {
         'username': lead.username,
-        'full_name': lead.full_name,
+        'display_name': lead.display_name,
         'email': lead.primary_email,
         'role': 'Lead'
     }
@@ -415,7 +415,7 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
         admin = project.admin
         users_dict[admin.user_id] = {
             'username': admin.username,
-            'full_name': admin.full_name,
+            'display_name': admin.display_name,
             'email': admin.primary_email,
             'role': 'Admin'
         }
@@ -442,7 +442,7 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
         if member.user_id not in users_dict:
             users_dict[member.user_id] = {
                 'username': member.username,
-                'full_name': member.full_name,
+                'display_name': member.display_name,
                 'email': member.primary_email,
                 'role': 'Member'
             }
@@ -969,7 +969,7 @@ def example_usage():
         print("\n--- Users on Project SCSG0001 ---")
         project_users = get_users_on_project(session, 'SCSG0001')
         for user_info in project_users:
-            print(f"  {user_info['role']:8} {user_info['username']:12} {user_info['full_name']:30} <{user_info['email']}>")
+            print(f"  {user_info['role']:8} {user_info['username']:12} {user_info['display_name']:20} <{user_info['email']}>")
 
 
 if __name__ == '__main__':

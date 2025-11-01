@@ -279,7 +279,8 @@ class User(Base, TimestampMixin):
     @property
     def display_name(self) -> str:
         """Return the user's display name (nickname or full name)."""
-        return self.nickname or self.full_name
+        parts = [self.nickname or self.first_name, self.last_name]
+        return ' '.join(p for p in parts if p)
 
     @property
     def primary_email(self) -> Optional[str]:
