@@ -232,21 +232,21 @@ class User(Base, TimestampMixin):
     academic_status = relationship('AcademicStatus', back_populates='users')
     login_type = relationship('LoginType', back_populates='users')
     primary_group = relationship('AdhocGroup', foreign_keys=[primary_gid])
-    
+
     email_addresses = relationship('EmailAddress', back_populates='user',
                                    lazy='selectin', order_by='EmailAddress.is_primary.desc()')
     phones = relationship('Phone', back_populates='user')
     aliases = relationship('UserAlias', back_populates='user', uselist=False)
-    
+
     institutions = relationship('UserInstitution', back_populates='user')
     organizations = relationship('UserOrganization', back_populates='user')
     accounts = relationship('AccountUser', back_populates='user', lazy='selectin')
-    
+
     led_projects = relationship('Project', foreign_keys='Project.project_lead_user_id',
                                 back_populates='lead')
     admin_projects = relationship('Project', foreign_keys='Project.project_admin_user_id',
                                  back_populates='admin')
-    
+
     default_projects = relationship('DefaultProject', back_populates='user')
     resource_homes = relationship('UserResourceHome', back_populates='user')
     resource_shells = relationship('UserResourceShell', back_populates='user')
@@ -1603,9 +1603,11 @@ class HPCCos(Base, TimestampMixin):
 
     hpc_cos_id = Column(Integer, primary_key=True)
     description = Column(String(50))
-    modified_time = Column(TIMESTAMP, nullable=False, 
+    modified_time = Column(TIMESTAMP, nullable=False,
                           server_default=text('CURRENT_TIMESTAMP'),
                           onupdate=datetime.utcnow)
+
+    activities = relationship('HPCActivity', back_populates='hpc_cos')
 
     def __repr__(self):
         return f"<HPCCos(id={self.hpc_cos_id}, desc='{self.description}')>"
@@ -1629,31 +1631,31 @@ class HPCActivity(Base):
     job_name = Column(String(255))
     queue_name = Column(String(100), nullable=False)
     machine = Column(String(100), nullable=False)
-    
+
     start_time = Column(Integer, nullable=False)
     end_time = Column(Integer, nullable=False)
     submit_time = Column(Integer, nullable=False)
-    
+
     unix_user_time = Column(Float)
     unix_system_time = Column(Float)
     queue_wait_time = Column(Integer)
-    
+
     num_nodes_used = Column(Integer)
     num_cores_used = Column(Integer)
     hpc_cos_id = Column(Integer, ForeignKey('hpc_cos.hpc_cos_id'))
-    
+
     exit_status = Column(String(20))
     from_host = Column(String(256))
     interactive = Column(Integer)
     reservation_id = Column(String(255))
-    
+
     processing_status = Column(Boolean)
     error_comment = Column(Text)
-    
+
     activity_date = Column(DateTime)
     load_date = Column(DateTime, nullable=False)
     modified_time = Column(TIMESTAMP)
-    
+
     external_charge = Column(Float(15, 8))
     job_idx = Column(Integer, nullable=False)
 
@@ -1674,7 +1676,7 @@ class HPCCharge(Base):
 
     hpc_charge_id = Column(Integer, primary_key=True, autoincrement=True)
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
-    hpc_activity_id = Column(Integer, ForeignKey('hpc_activity.hpc_activity_id'), 
+    hpc_activity_id = Column(Integer, ForeignKey('hpc_activity.hpc_activity_id'),
                              nullable=False, unique=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
@@ -1701,7 +1703,7 @@ class HPCChargeSummary(Base):
 
     hpc_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
     activity_date = Column(DateTime, nullable=False)
-    
+
     act_username = Column(String(35))
     unix_uid = Column(Integer)
     act_unix_uid = Column(Integer)
@@ -1709,13 +1711,13 @@ class HPCChargeSummary(Base):
     username = Column(String(35))
     act_projcode = Column(String(30))
     facility_name = Column(String(30))
-    
+
     machine = Column(String(100), nullable=False)
     queue_name = Column(String(100), nullable=False)
-    
+
     user_id = Column(Integer, ForeignKey('users.user_id'))
     account_id = Column(Integer, ForeignKey('account.account_id'))
-    
+
     num_jobs = Column(Integer)
     core_hours = Column(Float(22, 8))
     charges = Column(Float(22, 8))
@@ -1743,6 +1745,7 @@ class DiskCos(Base, TimestampMixin):
     disk_cos_id = Column(Integer, primary_key=True)
     description = Column(String(255), nullable=False)
 
+    activities = relationship('DiskActivity', back_populates='disk_cos')
 
 class DiskActivity(Base, TimestampMixin):
     """Disk usage activity records."""
@@ -1759,14 +1762,14 @@ class DiskActivity(Base, TimestampMixin):
     projcode = Column(String(30))
     activity_date = Column(DateTime, nullable=False)
     reporting_interval = Column(Integer, nullable=False)
-    
+
     file_size_total = Column(BigInteger, nullable=False)
     bytes = Column(BigInteger, nullable=False)
     number_of_files = Column(Integer)
-    
+
     load_date = Column(DateTime, nullable=False)
     disk_cos_id = Column(Integer, ForeignKey('disk_cos.disk_cos_id'), nullable=False)
-    
+
     error_comment = Column(Text)
     processing_status = Column(Boolean)
     resource_name = Column(String(40))
@@ -1812,7 +1815,7 @@ class DiskChargeSummary(Base):
 
     disk_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
     activity_date = Column(DateTime, nullable=False)
-    
+
     act_username = Column(String(35))
     unix_uid = Column(Integer)
     act_unix_uid = Column(Integer)
@@ -1822,7 +1825,7 @@ class DiskChargeSummary(Base):
     act_projcode = Column(String(30))
     facility_name = Column(String(30))
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
-    
+
     number_of_files = Column(Integer)
     bytes = Column(BigInteger)
     terabyte_years = Column(Float(22, 8))
@@ -1852,6 +1855,7 @@ class ArchiveCos(Base, TimestampMixin):
     number_of_copies = Column(Integer, nullable=False)
     description = Column(String(255), nullable=False)
 
+    activities = relationship('ArchiveActivity', back_populates='archive_cos')
 
 class ArchiveActivity(Base, TimestampMixin):
     """Archive (HPSS) activity records."""
@@ -1867,19 +1871,19 @@ class ArchiveActivity(Base, TimestampMixin):
     type_act = Column(String(1), nullable=False)
     reporting_interval = Column(Integer)
     activity_date = Column(DateTime, nullable=False)
-    
+
     number_of_files = Column(Integer, nullable=False)
     bytes = Column(BigInteger, nullable=False)
-    
+
     dns = Column(String(100))
     unix_uid = Column(Integer, nullable=False)
     username = Column(String(30))
     projcode = Column(String(30), nullable=False)
-    
+
     load_date = Column(DateTime, nullable=False)
     processing_status = Column(Boolean)
     error_comment = Column(Text)
-    
+
     archive_cos_id = Column(Integer, ForeignKey('archive_cos.archive_cos_id'))
 
     archive_cos = relationship('ArchiveCos')
@@ -1923,7 +1927,7 @@ class ArchiveChargeSummary(Base):
 
     archive_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
     activity_date = Column(DateTime, nullable=False)
-    
+
     act_username = Column(String(35))
     unix_uid = Column(Integer)
     act_unix_uid = Column(Integer)
@@ -1933,7 +1937,7 @@ class ArchiveChargeSummary(Base):
     act_projcode = Column(String(30))
     facility_name = Column(String(30))
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
-    
+
     number_of_files = Column(Integer)
     bytes = Column(BigInteger)
     terabyte_years = Column(Float(22, 8))
@@ -1980,7 +1984,7 @@ class ChargeAdjustment(Base):
 
     charge_adjustment_id = Column(Integer, primary_key=True, autoincrement=True)
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
-    charge_adjustment_type_id = Column(Integer, 
+    charge_adjustment_type_id = Column(Integer,
                                        ForeignKey('charge_adjustment_type.charge_adjustment_type_id'),
                                        nullable=False)
     amount = Column(Float, nullable=False)
@@ -2078,7 +2082,7 @@ class Product(Base):
     )
 
     product_id = Column(Integer, primary_key=True, autoincrement=True)
-    manual_task_id = Column(Integer, ForeignKey('manual_task.manual_task_id'), 
+    manual_task_id = Column(Integer, ForeignKey('manual_task.manual_task_id'),
                            nullable=False)
     name = Column(String(31), nullable=False)
     value = Column(String(16384))
