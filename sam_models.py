@@ -602,7 +602,12 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin):
 
     users = relationship('UserOrganization', back_populates='organization')
     projects = relationship('ProjectOrganization', back_populates='organization')
-    parent = relationship('Organization', remote_side=[organization_id])
+    children = relationship('Organization',
+                            remote_side=[parent_org_id],
+                            back_populates='parent')
+    parent = relationship('Organization',
+                          remote_side=[organization_id],
+                          back_populates='children')
     primary_responsible_resources = relationship('Resource',
                                                  foreign_keys='Resource.prim_responsible_org_id',
                                                  back_populates='prim_responsible_org')
@@ -1192,7 +1197,8 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
     # Relationships
     account = relationship('Account', back_populates='allocations')
     transactions = relationship('AllocationTransaction', back_populates='allocation')
-    parent = relationship('Allocation', remote_side=[allocation_id])
+    children = relationship('Allocation', remote_side=[parent_allocation_id], back_populates='parent')
+    parent = relationship('Allocation', remote_side=[allocation_id], back_populates='children')
 
     def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
         """Check if allocation is active at a given date."""
@@ -1261,8 +1267,12 @@ class AllocationTransaction(Base):
     # Relationships
     allocation = relationship('Allocation', back_populates='transactions')
     user = relationship('User', back_populates='allocation_transactions')
+    related_transactions = relationship('AllocationTransaction',
+                                   remote_side=[related_transaction_id],
+                                   back_populates='related_transaction')
     related_transaction = relationship('AllocationTransaction',
-                                      remote_side=[allocation_transaction_id])
+                                       remote_side=[allocation_transaction_id],
+                                       back_populates='related_transactions')
 
 
 # ============================================================================
@@ -1357,7 +1367,8 @@ class Project(Base, TimestampMixin, ActiveFlagMixin):
     directories = relationship('ProjectDirectory', back_populates='project')
     organizations = relationship('ProjectOrganization', back_populates='project')
     contracts = relationship('ProjectContract', back_populates='project')
-    parent = relationship('Project', remote_side=[project_id], foreign_keys=[parent_id])
+    children = relationship('Project', remote_side=[parent_id], foreign_keys=[parent_id], back_populates='parent')
+    parent = relationship('Project', remote_side=[project_id], foreign_keys=[parent_id], back_populates='children')
     project_number = relationship('ProjectNumber', back_populates='project', uselist=False)
     default_projects = relationship('DefaultProject', back_populates='project')
 
@@ -2137,9 +2148,10 @@ class CompChargeSummary(Base):
 
     # Relationships
     user = relationship('User', back_populates='comp_charge_summaries')
-    account = relationship('Account')
-    machine_ref = relationship('Machine', foreign_keys=[machine_id])
-    queue_ref = relationship('Queue', foreign_keys=[queue_id])
+    account = relationship('Account', back_populates='comp_charge_summaries')
+    machine_ref = relationship('Machine', foreign_keys=[machine_id], back_populates='comp_charge_summaries')
+    queue_ref = relationship('Queue', foreign_keys=[queue_id], back_populates='comp_charge_summaries')
+
 
     # Status tracking
     status_records = relationship(
@@ -2303,7 +2315,8 @@ class HPCActivity(Base):
     external_charge = Column(Float(15, 8))
     job_idx = Column(Integer, nullable=False)
 
-    hpc_cos = relationship('HPCCos')
+    hpc_cos = relationship('HPCCos', back_populates='activities')
+    charges = relationship('HPCCharge', back_populates='activity')
 
 
 class HPCCharge(Base):
@@ -2328,8 +2341,8 @@ class HPCCharge(Base):
     charge = Column(Float(22, 8))
     core_hours = Column(Float(22, 8))
 
-    account = relationship('Account')
-    activity = relationship('HPCActivity')
+    account = relationship('Account', back_populates='hpc_charges')
+    activity = relationship('HPCActivity', back_populates='charges')
     user = relationship('User', back_populates='hpc_charges')
 
 class HPCChargeSummary(Base):
@@ -2366,7 +2379,7 @@ class HPCChargeSummary(Base):
     charges = Column(Float(22, 8))
 
     user = relationship('User', back_populates='hpc_charge_summaries')
-    account = relationship('Account')
+    account = relationship('Account', back_populates='hpc_charge_summaries')
 
 
 class HPCChargeSummaryStatus(Base):
@@ -2417,7 +2430,8 @@ class DiskActivity(Base, TimestampMixin):
     processing_status = Column(Boolean)
     resource_name = Column(String(40))
 
-    disk_cos = relationship('DiskCos')
+    disk_cos = relationship('DiskCos', back_populates='activities')
+    charges = relationship('DiskCharge', back_populates='activity')
 
 
 class DiskCharge(Base):
@@ -2441,8 +2455,8 @@ class DiskCharge(Base):
     terabyte_year = Column(Float(22, 8))
     activity_date = Column(DateTime)
 
-    account = relationship('Account')
-    activity = relationship('DiskActivity')
+    account = relationship('Account', back_populates='disk_charges')
+    activity = relationship('DiskActivity', back_populates='charges')
     user = relationship('User', back_populates='disk_charges')
 
 class DiskChargeSummary(Base):
@@ -2474,8 +2488,7 @@ class DiskChargeSummary(Base):
     charges = Column(Float(22, 8))
 
     user = relationship('User', back_populates='disk_charge_summaries')
-    user = relationship('User')
-    account = relationship('Account')
+    account = relationship('Account', back_populates='disk_charge_summaries')
 
 
 class DiskChargeSummaryStatus(Base):
@@ -2529,8 +2542,8 @@ class ArchiveActivity(Base, TimestampMixin):
 
     archive_cos_id = Column(Integer, ForeignKey('archive_cos.archive_cos_id'))
 
-    archive_cos = relationship('ArchiveCos')
-
+    archive_cos = relationship('ArchiveCos', back_populates='activities')
+    charges = relationship('ArchiveCharge', back_populates='activity')
 
 class ArchiveCharge(Base):
     """Archive charges derived from activity."""
@@ -2553,8 +2566,8 @@ class ArchiveCharge(Base):
     terabyte_year = Column(Float(22, 8))
     activity_date = Column(DateTime)
 
-    account = relationship('Account')
-    activity = relationship('ArchiveActivity')
+    account = relationship('Account', back_populates='archive_charges')
+    activity = relationship('ArchiveActivity', back_populates='charges')
     user = relationship('User', back_populates='archive_charges')
 
 class ArchiveChargeSummary(Base):
@@ -2586,7 +2599,7 @@ class ArchiveChargeSummary(Base):
     charges = Column(Float(22, 8))
 
     user = relationship('User', back_populates='archive_charge_summaries')
-    account = relationship('Account')
+    account = relationship('Account', back_populates='archive_charge_summaries')
 
 
 class ArchiveChargeSummaryStatus(Base):
@@ -2634,7 +2647,7 @@ class ChargeAdjustment(Base):
     adjustment_date = Column(DateTime, nullable=False)
     adjusted_by_id = Column(Integer, ForeignKey('users.user_id'))
 
-    account = relationship('Account')
+    account = relationship('Account', back_populates='charge_adjustments')
     adjustment_type = relationship('ChargeAdjustmentType', back_populates='adjustments')
     adjusted_by = relationship('User', back_populates='charge_adjustments_made')
 
