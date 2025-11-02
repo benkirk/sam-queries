@@ -38,7 +38,7 @@ class TimestampMixin:
 
     @declared_attr
     def modified_time(cls):
-        return Column(TIMESTAMP)
+        return Column(TIMESTAMP, onupdate=datetime.utcnow)
 
 
 class SoftDeleteMixin:
@@ -830,6 +830,17 @@ class Machine(Base, TimestampMixin):
     def __repr__(self):
         return f"<Machine(name='{self.name}', cpus_per_node={self.cpus_per_node})>"
 
+    def __eq__(self, other):
+        """Two machines are equal if they have the same machine_id."""
+        if not isinstance(other, Machine):
+            return False
+        return self.machine_id is not None and self.machine_id == other.machine_id
+
+    def __hash__(self):
+        """Hash based on machine_id for set/dict operations."""
+        return hash(self.machine_id) if self.machine_id is not None else hash(id(self))
+
+
 
 class MachineFactor(Base, TimestampMixin):
     """Charging factors for machines over time."""
@@ -876,6 +887,17 @@ class Queue(Base, TimestampMixin):
     def __repr__(self):
         return f"<Queue(name='{self.queue_name}', resource='{self.resource.resource_name if self.resource else None}')>"
 
+    def __eq__(self, other):
+        """Two queues are equal if they have the same queue_id."""
+        if not isinstance(other, Queue):
+            return False
+        return self.queue_id is not None and self.queue_id == other.queue_id
+
+    def __hash__(self):
+        """Hash based on queue_id for set/dict operations."""
+        return hash(self.queue_id) if self.queue_id is not None else hash(id(self))
+
+
 
 class QueueFactor(Base, TimestampMixin):
     """Charging factors for queues over time."""
@@ -914,6 +936,16 @@ class Facility(Base, TimestampMixin, ActiveFlagMixin):
 
     def __repr__(self):
         return f"<Facility(name='{self.facility_name}', code='{self.code}')>"
+
+    def __eq__(self, other):
+        """Two facilities are equal if they have the same facility_id."""
+        if not isinstance(other, Facility):
+            return False
+        return self.facility_id is not None and self.facility_id == other.facility_id
+
+    def __hash__(self):
+        """Hash based on facility_id for set/dict operations."""
+        return hash(self.facility_id) if self.facility_id is not None else hash(id(self))
 
 
 class FacilityResource(Base):
@@ -955,6 +987,16 @@ class Panel(Base, TimestampMixin, ActiveFlagMixin):
 
     def __repr__(self):
         return f"<Panel(name='{self.panel_name}')>"
+
+    def __eq__(self, other):
+        """Two panels are equal if they have the same panel_id."""
+        if not isinstance(other, Panel):
+            return False
+        return self.panel_id is not None and self.panel_id == other.panel_id
+
+    def __hash__(self):
+        """Hash based on panel_id for set/dict operations."""
+        return hash(self.panel_id) if self.panel_id is not None else hash(id(self))
 
 
 class PanelSession(Base, TimestampMixin):
@@ -1197,6 +1239,18 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
     def __repr__(self):
         return f"<Allocation(id={self.allocation_id}, amount={self.amount}, active={self.is_active_at()})>"
 
+    def __eq__(self, other):
+        """Two allocations are equal if they have the same allocation_id."""
+        if not isinstance(other, Allocation):
+            return False
+        return (self.allocation_id is not None and
+                self.allocation_id == other.allocation_id)
+
+    def __hash__(self):
+        """Hash based on allocation_id for set/dict operations."""
+        return (hash(self.allocation_id) if self.allocation_id is not None
+                else hash(id(self)))
+
 
 class AllocationTransaction(Base):
     """Transaction history for allocations."""
@@ -1327,24 +1381,39 @@ class Project(Base, TimestampMixin, ActiveFlagMixin):
     parent = relationship('Project', remote_side=[project_id], foreign_keys=[parent_id], back_populates='children')
     project_number = relationship('ProjectNumber', back_populates='project', uselist=False)
 
-    # Active account users (filtered join)
-    account_users = relationship(
-        'AccountUser',
-        secondary='account',
-        primaryjoin=(project_id == Account.project_id),
-        secondaryjoin=and_(
-            Account.account_id == AccountUser.account_id,
-            or_(AccountUser.end_date.is_(None), AccountUser.end_date >= func.now())
-        ),
-        viewonly=True,
-        lazy='selectin',
-        collection_class=set,
-    )
+    # # Active account users (filtered join)
+    # account_users = relationship(
+    #     'AccountUser',
+    #     secondary='account',
+    #     primaryjoin=(project_id == Account.project_id),
+    #     secondaryjoin=and_(
+    #         Account.account_id == AccountUser.account_id,
+    #         or_(AccountUser.end_date.is_(None), AccountUser.end_date >= func.now())
+    #     ),
+    #     viewonly=True,
+    #     lazy='selectin',
+    #     collection_class=set,
+    # )
+
+    # @property
+    # def users(self) -> List['User']:
+    #     """Return a deduplicated list of active users on this project."""
+    #     return list({au.user for au in self.account_users if au.user is not None})
+    @property
+    def active_account_users(self) -> List['AccountUser']:
+        """Get currently active account users."""
+        now = datetime.utcnow()
+        return [
+            au for account in self.accounts
+            for au in account.users
+            if au.end_date is None or au.end_date >= now
+        ]
 
     @property
     def users(self) -> List['User']:
-        """Return a deduplicated list of active users on this project."""
-        return list({au.user for au in self.account_users if au.user is not None})
+        """Return deduplicated list of active users."""
+        return list({au.user for au in self.active_account_users if au.user})
+
 
     def get_all_allocations_by_resource(self) -> Dict[str, Optional['Allocation']]:
         """
@@ -1554,6 +1623,16 @@ class Contract(Base, TimestampMixin):
     def __repr__(self):
         return f"<Contract(number='{self.contract_number}', title='{self.title[:50]}...')>"
 
+    def __eq__(self, other):
+        """Two contracts are equal if they have the same contract_id."""
+        if not isinstance(other, Contract):
+            return False
+        return self.contract_id is not None and self.contract_id == other.contract_id
+
+    def __hash__(self):
+        """Hash based on contract_id for set/dict operations."""
+        return hash(self.contract_id) if self.contract_id is not None else hash(id(self))
+
 
 class ProjectContract(Base):
     """Links projects to funding contracts."""
@@ -1589,6 +1668,16 @@ class Role(Base):
 
     def __repr__(self):
         return f"<Role(name='{self.name}')>"
+
+    def __eq__(self, other):
+        """Two roles are equal if they have the same role_id."""
+        if not isinstance(other, Role):
+            return False
+        return self.role_id is not None and self.role_id == other.role_id
+
+    def __hash__(self):
+        """Hash based on role_id for set/dict operations."""
+        return hash(self.role_id) if self.role_id is not None else hash(id(self))
 
 
 class RoleUser(Base):
@@ -1801,13 +1890,7 @@ class CompActivity(Base):
     error_comment = Column(Text)
 
     # Relationships - FIXED: Simplified using foreign_keys list instead of string
-    job = relationship(
-        'CompJob',
-        foreign_keys=[era_part_key, job_id, job_idx, machine, submit_time],
-        back_populates='activities',
-        lazy='joined',
-        uselist=False
-    )
+    job = relationship('CompJob', back_populates='activities')
 
     @property
     def cpu_time_seconds(self) -> Optional[float]:
@@ -2257,6 +2340,18 @@ class HPCActivity(Base):
     hpc_cos = relationship('HPCCos', back_populates='activities')
     charges = relationship('HPCCharge', back_populates='activity')
 
+    def __eq__(self, other):
+        """Two activities are equal if they have the same hpc_activity_id."""
+        if not isinstance(other, HPCActivity):
+            return False
+        return (self.hpc_activity_id is not None and
+                self.hpc_activity_id == other.hpc_activity_id)
+
+    def __hash__(self):
+        """Hash based on hpc_activity_id for set/dict operations."""
+        return (hash(self.hpc_activity_id) if self.hpc_activity_id is not None
+                else hash(id(self)))
+
 
 class HPCCharge(Base):
     """HPC charges derived from activity."""
@@ -2417,6 +2512,18 @@ class DavActivity(Base, TimestampMixin):
     def __repr__(self):
         return f"<DavActivity(job_id='{self.job_id}', machine='{self.machine}')>"
 
+    def __eq__(self, other):
+        """Two activities are equal if they have the same dav_activity_id."""
+        if not isinstance(other, DavActivity):
+            return False
+        return (self.dav_activity_id is not None and
+                self.dav_activity_id == other.dav_activity_id)
+
+    def __hash__(self):
+        """Hash based on dav_activity_id for set/dict operations."""
+        return (hash(self.dav_activity_id) if self.dav_activity_id is not None
+                else hash(id(self)))
+
 
 class DavCharge(Base):
     """DAV charges derived from activity."""
@@ -2546,6 +2653,18 @@ class DiskActivity(Base, TimestampMixin):
 
     disk_cos = relationship('DiskCos', back_populates='activities')
     charges = relationship('DiskCharge', back_populates='activity')
+
+    def __eq__(self, other):
+        """Two activities are equal if they have the same disk_activity_id."""
+        if not isinstance(other, DiskActivity):
+            return False
+        return (self.disk_activity_id is not None and
+                self.disk_activity_id == other.disk_activity_id)
+
+    def __hash__(self):
+        """Hash based on disk_activity_id for set/dict operations."""
+        return (hash(self.disk_activity_id) if self.disk_activity_id is not None
+                else hash(id(self)))
 
 
 class DiskCharge(Base):
@@ -2716,6 +2835,19 @@ class ArchiveActivity(Base, TimestampMixin):
 
     archive_cos = relationship('ArchiveCos', back_populates='activities')
     charges = relationship('ArchiveCharge', back_populates='activity')
+
+    def __eq__(self, other):
+        """Two activities are equal if they have the same archive_activity_id."""
+        if not isinstance(other, ArchiveActivity):
+            return False
+        return (self.archive_activity_id is not None and
+                self.archive_activity_id == other.archive_activity_id)
+
+    def __hash__(self):
+        """Hash based on archive_activity_id for set/dict operations."""
+        return (hash(self.archive_activity_id) if self.archive_activity_id is not None
+                else hash(id(self)))
+
 
 class ArchiveCharge(Base):
     """Archive charges derived from activity."""
