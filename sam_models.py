@@ -210,70 +210,52 @@ class User(Base, TimestampMixin):
     nickname = Column(String(50))
     name_suffix = Column(String(40))
 
-    # Status flags
     active = Column(Boolean, nullable=False, default=True)
     charging_exempt = Column(Boolean, nullable=False, default=False)
     deleted = Column(Boolean)
 
-    # Foreign keys
     academic_status_id = Column(Integer, ForeignKey('academic_status.academic_status_id'))
     login_type_id = Column(Integer, ForeignKey('login_type.login_type_id'))
     primary_gid = Column(Integer, ForeignKey('adhoc_group.group_id'))
     contact_person_upid = Column(Integer)
 
-    # Additional timestamps
     pdb_modified_time = Column(TIMESTAMP)
     access_status_change_time = Column(TIMESTAMP)
 
-    # Tokens
     token_type = Column(String(30))
     idms_sync_token = Column(String(64))
 
-    # Relationships
     academic_status = relationship('AcademicStatus', back_populates='users')
-    login_type = relationship('LoginType', back_populates='users')
-    primary_group = relationship('AdhocGroup', foreign_keys=[primary_gid])
-
-    email_addresses = relationship('EmailAddress', back_populates='user',
-                                   lazy='selectin', order_by='EmailAddress.is_primary.desc()')
-    phones = relationship('Phone', back_populates='user')
-    aliases = relationship('UserAlias', back_populates='user', uselist=False)
-
-    institutions = relationship('UserInstitution', back_populates='user')
-    organizations = relationship('UserOrganization', back_populates='user')
     accounts = relationship('AccountUser', back_populates='user', lazy='selectin')
-
-    led_projects = relationship('Project', foreign_keys='Project.project_lead_user_id',
-                                back_populates='lead')
-    admin_projects = relationship('Project', foreign_keys='Project.project_admin_user_id',
-                                 back_populates='admin')
-
+    admin_projects = relationship('Project', foreign_keys='Project.project_admin_user_id', back_populates='admin')
+    administered_resources = relationship('Resource', foreign_keys='Resource.prim_sys_admin_user_id', back_populates='prim_sys_admin')
+    aliases = relationship('UserAlias', back_populates='user', uselist=False)
+    allocation_transactions = relationship('AllocationTransaction', foreign_keys='AllocationTransaction.user_id', back_populates='user')
+    archive_charge_summaries = relationship('ArchiveChargeSummary', back_populates='user')
+    archive_charges = relationship('ArchiveCharge', back_populates='user')
+    charge_adjustments_made = relationship('ChargeAdjustment', foreign_keys='ChargeAdjustment.adjusted_by_id', back_populates='adjusted_by')
+    comp_charge_summaries = relationship('CompChargeSummary', back_populates='user')
+    dav_charge_summaries = relationship('DavChargeSummary', back_populates='user')
+    dav_charges = relationship('DavCharge', back_populates='user')
     default_projects = relationship('DefaultProject', back_populates='user')
+    disk_charge_summaries = relationship('DiskChargeSummary', back_populates='user')
+    disk_charges = relationship('DiskCharge', back_populates='user')
+    email_addresses = relationship('EmailAddress', back_populates='user', lazy='selectin', order_by='EmailAddress.is_primary.desc()')
+    hpc_charge_summaries = relationship('HPCChargeSummary', back_populates='user')
+    hpc_charges = relationship('HPCCharge', back_populates='user')
+    institutions = relationship('UserInstitution', back_populates='user')
+    led_projects = relationship('Project', foreign_keys='Project.project_lead_user_id', back_populates='lead')
+    login_type = relationship('LoginType', back_populates='users')
+    monitored_contracts = relationship('Contract', foreign_keys='Contract.contract_monitor_user_id', back_populates='contract_monitor')
+    organizations = relationship('UserOrganization', back_populates='user')
+    phones = relationship('Phone', back_populates='user')
+    pi_contracts = relationship('Contract', foreign_keys='Contract.principal_investigator_user_id', back_populates='principal_investigator')
+    primary_group = relationship('AdhocGroup', foreign_keys=[primary_gid])
     resource_homes = relationship('UserResourceHome', back_populates='user')
     resource_shells = relationship('UserResourceShell', back_populates='user')
     role_assignments = relationship('RoleUser', back_populates='user')
-    administered_resources = relationship('Resource',
-                                         foreign_keys='Resource.prim_sys_admin_user_id',
-                                         back_populates='prim_sys_admin')
-    pi_contracts = relationship('Contract',
-                               foreign_keys='Contract.principal_investigator_user_id',
-                               back_populates='principal_investigator')
-    monitored_contracts = relationship('Contract',
-                                      foreign_keys='Contract.contract_monitor_user_id',
-                                      back_populates='contract_monitor')
-    allocation_transactions = relationship('AllocationTransaction',
-                                          foreign_keys='AllocationTransaction.user_id',
-                                          back_populates='user')
-    charge_adjustments_made = relationship('ChargeAdjustment',
-                                          foreign_keys='ChargeAdjustment.adjusted_by_id',
-                                          back_populates='adjusted_by')
-    hpc_charges = relationship('HPCCharge', back_populates='user')
-    disk_charges = relationship('DiskCharge', back_populates='user')
-    archive_charges = relationship('ArchiveCharge', back_populates='user')
-    hpc_charge_summaries = relationship('HPCChargeSummary', back_populates='user')
-    disk_charge_summaries = relationship('DiskChargeSummary', back_populates='user')
-    archive_charge_summaries = relationship('ArchiveChargeSummary', back_populates='user')
-    comp_charge_summaries = relationship('CompChargeSummary', back_populates='user')
+    wallclock_exemptions = relationship('WallclockExemption', back_populates='user')
+    xras_user = relationship('XrasUser', back_populates='local_user', uselist=False)
 
     # Association proxy for projects
     _projects_w_dups = association_proxy('accounts', 'account.project')
@@ -532,11 +514,10 @@ class Institution(Base, TimestampMixin):
     code = Column(String(3))
     idms_sync_token = Column(String(64))
 
-    state_prov_id = Column(Integer, ForeignKey('state_prov.ext_state_prov_id'))
-    institution_type_id = Column(Integer, ForeignKey('institution_type.institution_type_id'))
-
-    state_prov = relationship('StateProv', back_populates='institutions')
     institution_type = relationship('InstitutionType', back_populates='institutions')
+    institution_type_id = Column(Integer, ForeignKey('institution_type.institution_type_id'))
+    state_prov = relationship('StateProv', back_populates='institutions')
+    state_prov_id = Column(Integer, ForeignKey('state_prov.ext_state_prov_id'))
     users = relationship('UserInstitution', back_populates='institution')
 
     def __repr__(self):
@@ -600,17 +581,11 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin):
 
     idms_sync_token = Column(String(64))
 
-    users = relationship('UserOrganization', back_populates='organization')
+    children = relationship('Organization', remote_side=[parent_org_id], back_populates='parent')
+    parent = relationship('Organization', remote_side=[organization_id], back_populates='children')
+    primary_responsible_resources = relationship('Resource', foreign_keys='Resource.prim_responsible_org_id', back_populates='prim_responsible_org')
     projects = relationship('ProjectOrganization', back_populates='organization')
-    children = relationship('Organization',
-                            remote_side=[parent_org_id],
-                            back_populates='parent')
-    parent = relationship('Organization',
-                          remote_side=[organization_id],
-                          back_populates='children')
-    primary_responsible_resources = relationship('Resource',
-                                                 foreign_keys='Resource.prim_responsible_org_id',
-                                                 back_populates='prim_responsible_org')
+    users = relationship('UserOrganization', back_populates='organization')
 
     def __repr__(self):
         return f"<Organization(name='{self.name}', acronym='{self.acronym}')>"
@@ -764,24 +739,21 @@ class Resource(Base, TimestampMixin):
     default_home_dir_base = Column(String(255))
     default_resource_shell_id = Column(Integer, ForeignKey('resource_shell.resource_shell_id'))
 
-    accounts = relationship('Account', back_populates='resource')
-    resource_type = relationship('ResourceType', back_populates='resources')
-    machines = relationship('Machine', back_populates='resource')
-    queues = relationship('Queue', back_populates='resource')
-    shells = relationship('ResourceShell', back_populates='resource',
-                         foreign_keys='ResourceShell.resource_id')
-    default_shell = relationship('ResourceShell', foreign_keys=[default_resource_shell_id])
-    user_homes = relationship('UserResourceHome', back_populates='resource')
-    default_projects = relationship('DefaultProject', back_populates='resource')
-    facility_resources = relationship('FacilityResource', back_populates='resource')
     access_branch_resources = relationship('AccessBranchResource', back_populates='resource')
-    prim_sys_admin = relationship('User',
-                                  foreign_keys=[prim_sys_admin_user_id],
-                                  back_populates='administered_resources')
-
-    prim_responsible_org = relationship('Organization',
-                                       foreign_keys=[prim_responsible_org_id],
-                                       back_populates='primary_responsible_resources')
+    accounts = relationship('Account', back_populates='resource')
+    default_projects = relationship('DefaultProject', back_populates='resource')
+    default_shell = relationship('ResourceShell', foreign_keys=[default_resource_shell_id])
+    facility_resources = relationship('FacilityResource', back_populates='resource')
+    machines = relationship('Machine', back_populates='resource')
+    prim_responsible_org = relationship('Organization', foreign_keys=[prim_responsible_org_id], back_populates='primary_responsible_resources')
+    prim_sys_admin = relationship('User', foreign_keys=[prim_sys_admin_user_id], back_populates='administered_resources')
+    queues = relationship('Queue', back_populates='resource')
+    resource_type = relationship('ResourceType', back_populates='resources')
+    root_directories = relationship('DiskResourceRootDirectory', back_populates='resource')
+    shells = relationship('ResourceShell', back_populates='resource', foreign_keys='ResourceShell.resource_id')
+    user_homes = relationship('UserResourceHome', back_populates='resource')
+    xras_hpc_amounts = relationship('XrasHpcAllocationAmount', back_populates='resource')
+    xras_resource_keys = relationship('XrasResourceRepositoryKeyResource', back_populates='resource')
 
     def is_commissioned_at(self, check_date: Optional[datetime] = None) -> bool:
         """Check if resource is commissioned at a given date."""
@@ -827,8 +799,7 @@ class ResourceShell(Base, TimestampMixin):
     shell_name = Column(String(25), nullable=False)
     path = Column(String(1024), nullable=False)
 
-    resource = relationship('Resource', back_populates='shells',
-                           foreign_keys=[resource_id])
+    resource = relationship('Resource', back_populates='shells', foreign_keys=[resource_id])
     user_shells = relationship('UserResourceShell', back_populates='resource_shell')
 
     def __repr__(self):
@@ -852,12 +823,9 @@ class Machine(Base, TimestampMixin):
     commission_date = Column(DateTime)
     decommission_date = Column(DateTime)
 
-    resource = relationship('Resource', back_populates='machines')
+    comp_charge_summaries = relationship('CompChargeSummary', foreign_keys='CompChargeSummary.machine_id', back_populates='machine_ref')
     machine_factors = relationship('MachineFactor', back_populates='machine')
-
-    comp_charge_summaries = relationship('CompChargeSummary',
-                                        foreign_keys='CompChargeSummary.machine_id',
-                                        back_populates='machine_ref')
+    resource = relationship('Resource', back_populates='machines')
 
     def __repr__(self):
         return f"<Machine(name='{self.name}', cpus_per_node={self.cpus_per_node})>"
@@ -902,10 +870,9 @@ class Queue(Base, TimestampMixin):
 
     resource = relationship('Resource', back_populates='queues')
     queue_factors = relationship('QueueFactor', back_populates='queue')
+    wallclock_exemptions = relationship('WallclockExemption', back_populates='queue')
+    comp_charge_summaries = relationship('CompChargeSummary', foreign_keys='CompChargeSummary.queue_id', back_populates='queue_ref')
 
-    comp_charge_summaries = relationship('CompChargeSummary',
-                                        foreign_keys='CompChargeSummary.queue_id',
-                                        back_populates='queue_ref')
     def __repr__(self):
         return f"<Queue(name='{self.queue_name}', resource='{self.resource.resource_name if self.resource else None}')>"
 
@@ -1032,10 +999,7 @@ class AreaOfInterest(Base, TimestampMixin, ActiveFlagMixin):
 
     area_of_interest_id = Column(Integer, primary_key=True, autoincrement=True)
     area_of_interest = Column(String(255), nullable=False, unique=True)
-    area_of_interest_group_id = Column(Integer,
-                                       ForeignKey('area_of_interest_group.area_of_interest_group_id'),
-                                       nullable=False)
-
+    area_of_interest_group_id = Column(Integer, ForeignKey('area_of_interest_group.area_of_interest_group_id'), nullable=False)
     group = relationship('AreaOfInterestGroup', back_populates='areas')
     projects = relationship('Project', back_populates='area_of_interest')
 
@@ -1080,21 +1044,20 @@ class Account(Base, SoftDeleteMixin):
     creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     modified_time = Column(TIMESTAMP)
 
-    # Relationships
+    allocations = relationship('Allocation', back_populates='account')
+    archive_charge_summaries = relationship('ArchiveChargeSummary', back_populates='account')
+    archive_charges = relationship('ArchiveCharge', back_populates='account')
+    charge_adjustments = relationship('ChargeAdjustment', back_populates='account')
+    comp_charge_summaries = relationship('CompChargeSummary', back_populates='account')
+    dav_charge_summaries = relationship('DavChargeSummary', back_populates='account')
+    dav_charges = relationship('DavCharge', back_populates='account')
+    disk_charge_summaries = relationship('DiskChargeSummary', back_populates='account')
+    disk_charges = relationship('DiskCharge', back_populates='account')
+    hpc_charge_summaries = relationship('HPCChargeSummary', back_populates='account')
+    hpc_charges = relationship('HPCCharge', back_populates='account')
     project = relationship('Project', back_populates='accounts')
     resource = relationship('Resource', back_populates='accounts')
-    allocations = relationship('Allocation', back_populates='account')
     users = relationship('AccountUser', back_populates='account', lazy='selectin')
-    hpc_charges = relationship('HPCCharge', back_populates='account')
-    disk_charges = relationship('DiskCharge', back_populates='account')
-    archive_charges = relationship('ArchiveCharge', back_populates='account')
-
-    hpc_charge_summaries = relationship('HPCChargeSummary', back_populates='account')
-    disk_charge_summaries = relationship('DiskChargeSummary', back_populates='account')
-    archive_charge_summaries = relationship('ArchiveChargeSummary', back_populates='account')
-    comp_charge_summaries = relationship('CompChargeSummary', back_populates='account')
-
-    charge_adjustments = relationship('ChargeAdjustment', back_populates='account')
 
     def __repr__(self):
         return f"<Account(id={self.account_id}, project='{self.project.projcode if self.project else None}', resource='{self.resource.resource_name if self.resource else None}')>"
@@ -1194,11 +1157,11 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
 
-    # Relationships
     account = relationship('Account', back_populates='allocations')
-    transactions = relationship('AllocationTransaction', back_populates='allocation')
     children = relationship('Allocation', remote_side=[parent_allocation_id], back_populates='parent')
     parent = relationship('Allocation', remote_side=[allocation_id], back_populates='children')
+    transactions = relationship('AllocationTransaction', back_populates='allocation')
+    xras_allocation = relationship('XrasAllocation', back_populates='local_allocation', uselist=False)
 
     def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
         """Check if allocation is active at a given date."""
@@ -1264,15 +1227,10 @@ class AllocationTransaction(Base):
 
     creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
 
-    # Relationships
     allocation = relationship('Allocation', back_populates='transactions')
+    related_transaction = relationship('AllocationTransaction', remote_side=[allocation_transaction_id], back_populates='related_transactions')
+    related_transactions = relationship('AllocationTransaction', remote_side=[related_transaction_id], back_populates='related_transaction')
     user = relationship('User', back_populates='allocation_transactions')
-    related_transactions = relationship('AllocationTransaction',
-                                   remote_side=[related_transaction_id],
-                                   back_populates='related_transaction')
-    related_transaction = relationship('AllocationTransaction',
-                                       remote_side=[allocation_transaction_id],
-                                       back_populates='related_transactions')
 
 
 # ============================================================================
@@ -1356,21 +1314,18 @@ class Project(Base, TimestampMixin, ActiveFlagMixin):
     membership_change_time = Column(TIMESTAMP)
     inactivate_time = Column(DateTime)
 
-    # Relationships
-    lead = relationship('User', foreign_keys=[project_lead_user_id],
-                       back_populates='led_projects')
-    admin = relationship('User', foreign_keys=[project_admin_user_id],
-                        back_populates='admin_projects')
-    area_of_interest = relationship('AreaOfInterest', back_populates='projects')
-    allocation_type = relationship('AllocationType', back_populates='projects')
     accounts = relationship('Account', back_populates='project', lazy='selectin')
-    directories = relationship('ProjectDirectory', back_populates='project')
-    organizations = relationship('ProjectOrganization', back_populates='project')
-    contracts = relationship('ProjectContract', back_populates='project')
+    admin = relationship('User', foreign_keys=[project_admin_user_id], back_populates='admin_projects')
+    allocation_type = relationship('AllocationType', back_populates='projects')
+    area_of_interest = relationship('AreaOfInterest', back_populates='projects')
     children = relationship('Project', remote_side=[parent_id], foreign_keys=[parent_id], back_populates='parent')
+    contracts = relationship('ProjectContract', back_populates='project')
+    default_projects = relationship('DefaultProject', back_populates='project')
+    directories = relationship('ProjectDirectory', back_populates='project')
+    lead = relationship('User', foreign_keys=[project_lead_user_id], back_populates='led_projects')
+    organizations = relationship('ProjectOrganization', back_populates='project')
     parent = relationship('Project', remote_side=[project_id], foreign_keys=[parent_id], back_populates='children')
     project_number = relationship('ProjectNumber', back_populates='project', uselist=False)
-    default_projects = relationship('DefaultProject', back_populates='project')
 
     # Active account users (filtered join)
     account_users = relationship(
@@ -1475,11 +1430,10 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
         Index('ix_project_directory_project', 'project_id'),
     )
 
+    directory_name = Column(String(255), nullable=False)
+    project = relationship('Project', back_populates='directories')
     project_directory_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
-    directory_name = Column(String(255), nullable=False)
-
-    project = relationship('Project', back_populates='directories')
 
 
 class ProjectOrganization(Base, TimestampMixin, DateRangeMixin):
@@ -1578,14 +1532,10 @@ class Contract(Base, TimestampMixin):
     contract_monitor_user_id = Column(Integer, ForeignKey('users.user_id'))
     nsf_program_id = Column(Integer, ForeignKey('nsf_program.nsf_program_id'))
 
+    contract_monitor = relationship('User', foreign_keys=[contract_monitor_user_id], back_populates='monitored_contracts')
     contract_source = relationship('ContractSource', back_populates='contracts')
     nsf_program = relationship('NSFProgram', back_populates='contracts')
-    principal_investigator = relationship('User',
-                                         foreign_keys=[principal_investigator_user_id],
-                                         back_populates='pi_contracts')
-    contract_monitor = relationship('User',
-                                   foreign_keys=[contract_monitor_user_id],
-                                   back_populates='monitored_contracts')
+    principal_investigator = relationship('User', foreign_keys=[principal_investigator_user_id], back_populates='pi_contracts')
     projects = relationship('ProjectContract', back_populates='contract')
 
     def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
@@ -1729,14 +1679,7 @@ class CompJob(Base):
     activity_date = Column(DateTime, nullable=False)
     load_date = Column(DateTime, nullable=False)
 
-    # Relationships - FIXED: Proper back_populates
-    activities = relationship(
-        'CompActivity',
-        back_populates='job',
-        lazy='selectin',
-        # Note: No cascade here since activities may exist independently
-        # in some data processing scenarios
-    )
+    activities = relationship('CompActivity', back_populates='job', lazy='selectin')
 
     @property
     def wall_time_seconds(self) -> int:
@@ -1782,7 +1725,6 @@ class CompActivity(Base):
     __tablename__ = 'comp_activity'
 
     __table_args__ = (
-        # FIXED: Add explicit ForeignKeyConstraint for composite FK
         ForeignKeyConstraint(
             ['era_part_key', 'job_id', 'job_idx', 'machine', 'submit_time'],
             ['comp_job.era_part_key', 'comp_job.job_id', 'comp_job.job_idx',
@@ -2146,12 +2088,10 @@ class CompChargeSummary(Base):
     error_comment = Column(Text)
     sweep = Column(Integer)  # Sweep/batch number
 
-    # Relationships
     user = relationship('User', back_populates='comp_charge_summaries')
     account = relationship('Account', back_populates='comp_charge_summaries')
     machine_ref = relationship('Machine', foreign_keys=[machine_id], back_populates='comp_charge_summaries')
     queue_ref = relationship('Queue', foreign_keys=[queue_id], back_populates='comp_charge_summaries')
-
 
     # Status tracking
     status_records = relationship(
@@ -2234,7 +2174,6 @@ class CompChargeSummaryStatus(Base):
                      server_default=text('CURRENT_TIMESTAMP'),
                      onupdate=datetime.utcnow)
 
-    # Relationships
     charge_summary = relationship('CompChargeSummary', back_populates='status_records')
 
     @property
@@ -2391,6 +2330,181 @@ class HPCChargeSummaryStatus(Base):
 
 
 # ============================================================================
+# DAV (Data Analysis & Visualization) Activity and Charges
+# ============================================================================
+
+class DavCos(Base, TimestampMixin):
+    """DAV Class of Service definitions."""
+    __tablename__ = 'dav_cos'
+
+    dav_cos_id = Column(Integer, primary_key=True)
+    description = Column(String(50))
+    modified_time = Column(TIMESTAMP, nullable=False,
+                          server_default=text('CURRENT_TIMESTAMP'),
+                          onupdate=datetime.utcnow)
+
+    activities = relationship('DavActivity', back_populates='dav_cos')
+
+    def __repr__(self):
+        return f"<DavCos(id={self.dav_cos_id}, desc='{self.description}')>"
+
+
+class DavActivity(Base, TimestampMixin):
+    """DAV job activity records (Geyser, Caldera, etc.)."""
+    __tablename__ = 'dav_activity'
+
+    __table_args__ = (
+        Index('ix_dav_activity_job', 'job_id'),
+        Index('ix_dav_activity_cos', 'dav_cos_id'),
+        Index('ix_dav_activity_queue', 'queue_name'),
+    )
+
+    dav_activity_id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # User and project
+    unix_uid = Column(Integer, nullable=False)
+    username = Column(String(35), nullable=False)
+    projcode = Column(String(30), nullable=False)
+
+    # Job identification
+    job_id = Column(String(35), nullable=False)
+    job_name = Column(String(255), nullable=False)
+    job_idx = Column(Integer)
+    queue_name = Column(String(100), nullable=False, primary_key=True)  # Part of PK in schema
+    machine = Column(String(100), nullable=False)
+
+    # Timing
+    start_time = Column(Integer, nullable=False)
+    end_time = Column(Integer, nullable=False)
+    submit_time = Column(Integer, nullable=False)
+
+    # Resource utilization
+    unix_user_time = Column(Float)
+    unix_system_time = Column(Float)
+    queue_wait_time = Column(Integer)
+    num_nodes_used = Column(Integer)
+    num_cores_used = Column(Integer)
+
+    # Job characteristics
+    dav_cos_id = Column(Integer, ForeignKey('dav_cos.dav_cos_id'))
+    exit_status = Column(String(20))
+    from_host = Column(String(256))
+    interactive = Column(Integer)
+    reservation_id = Column(String(255))
+
+    # Processing
+    processing_status = Column(Boolean)
+    error_comment = Column(Text)
+
+    # Dates and charging
+    activity_date = Column(DateTime)
+    load_date = Column(DateTime, nullable=False)
+    external_charge = Column(Float(15, 8))
+
+    dav_cos = relationship('DavCos', back_populates='activities')
+    charges = relationship('DavCharge', back_populates='activity')
+
+    @property
+    def wall_time_seconds(self) -> int:
+        """Calculate wall clock time in seconds."""
+        return self.end_time - self.start_time if self.end_time and self.start_time else 0
+
+    @property
+    def wall_time_hours(self) -> float:
+        """Calculate wall clock time in hours."""
+        return self.wall_time_seconds / 3600.0
+
+    def __repr__(self):
+        return f"<DavActivity(job_id='{self.job_id}', machine='{self.machine}')>"
+
+
+class DavCharge(Base):
+    """DAV charges derived from activity."""
+    __tablename__ = 'dav_charge'
+
+    __table_args__ = (
+        Index('ix_dav_charge_account', 'account_id'),
+        Index('ix_dav_charge_user', 'user_id'),
+        Index('ix_dav_charge_activity', 'dav_activity_id', unique=True),
+        Index('ix_dav_charge_date', 'charge_date'),
+        Index('ix_dav_charge_activity_date', 'activity_date'),
+    )
+
+    dav_charge_id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
+    dav_activity_id = Column(Integer, ForeignKey('dav_activity.dav_activity_id'),
+                             nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    charge_date = Column(DateTime, nullable=False)
+    activity_date = Column(DateTime)
+    charge = Column(Float(22, 8))
+    core_hours = Column(Float(22, 8))
+
+    account = relationship('Account', back_populates='dav_charges')
+    activity = relationship('DavActivity', back_populates='charges')
+    user = relationship('User', back_populates='dav_charges')
+
+    def __repr__(self):
+        return f"<DavCharge(id={self.dav_charge_id}, charge={self.charge})>"
+
+
+class DavChargeSummary(Base):
+    """Daily summary of DAV charges."""
+    __tablename__ = 'dav_charge_summary'
+
+    __table_args__ = (
+        Index('ix_dav_charge_summary_date', 'activity_date'),
+        Index('ix_dav_charge_summary_user', 'user_id'),
+        Index('ix_dav_charge_summary_account', 'account_id'),
+        Index('ix_dav_charge_summary_machine', 'machine'),
+        Index('ix_dav_charge_summary_queue', 'queue_name'),
+    )
+
+    dav_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
+    activity_date = Column(DateTime, nullable=False)
+
+    # User identification (actual and recorded)
+    act_username = Column(String(35))
+    unix_uid = Column(Integer)
+    act_unix_uid = Column(Integer)
+    projcode = Column(String(30))
+    username = Column(String(35))
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+
+    # Project identification
+    act_projcode = Column(String(30))
+    facility_name = Column(String(30))
+    account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
+
+    # Resource identification
+    machine = Column(String(100), nullable=False)
+    queue_name = Column(String(100), nullable=False)
+
+    # Aggregated metrics
+    num_jobs = Column(Integer)
+    core_hours = Column(Float(22, 8))
+    charges = Column(Float(22, 8))
+
+    user = relationship('User', back_populates='dav_charge_summaries')
+    account = relationship('Account', back_populates='dav_charge_summaries')
+
+    def __repr__(self):
+        return (f"<DavChargeSummary(date={self.activity_date.date() if self.activity_date else None}, "
+                f"jobs={self.num_jobs}, charges={self.charges})>")
+
+
+class DavChargeSummaryStatus(Base):
+    """Tracks which DAV charge summaries are current."""
+    __tablename__ = 'dav_charge_summary_status'
+
+    activity_date = Column(DateTime, primary_key=True)
+    current = Column(Boolean)
+
+    def __repr__(self):
+        return f"<DavChargeSummaryStatus(date={self.activity_date}, current={self.current})>"
+
+
+# ============================================================================
 # Disk Activity and Charges
 # ============================================================================
 
@@ -2497,6 +2611,64 @@ class DiskChargeSummaryStatus(Base):
 
     activity_date = Column(DateTime, primary_key=True)
     current = Column(Boolean)
+
+
+# ============================================================================
+# Dataset Activity
+# ============================================================================
+
+class DatasetActivity(Base, TimestampMixin):
+    """Dataset usage tracking for project directories."""
+    __tablename__ = 'dataset_activity'
+
+    __table_args__ = (
+        Index('ix_dataset_activity_date', 'activity_date'),
+        Index('ix_dataset_activity_directory', 'project_directory'),
+    )
+
+    activity_id = Column(Integer, primary_key=True, autoincrement=True)
+    activity_date = Column(DateTime, nullable=False)
+
+    # Directory and dataset information
+    project_directory = Column(String(255), nullable=False)
+    dataset = Column(String(255), nullable=False)
+
+    # Usage metrics
+    reporting_interval = Column(Integer, nullable=False)
+    bytes = Column(BigInteger, nullable=False)
+    number_of_files = Column(Integer, nullable=False)
+
+    def __repr__(self):
+        return (f"<DatasetActivity(directory='{self.project_directory}', "
+                f"dataset='{self.dataset}', bytes={self.bytes})>")
+
+
+# ============================================================================
+# Disk Resource Root Directory
+# ============================================================================
+
+class DiskResourceRootDirectory(Base):
+    """Root directories for disk resources with charging exemption flags."""
+    __tablename__ = 'disk_resource_root_directory'
+
+    __table_args__ = (
+        Index('ix_disk_resource_root_resource', 'resource_id'),
+    )
+
+    root_directory_id = Column(Integer, primary_key=True, autoincrement=True)
+    root_directory = Column(String(64), nullable=False, unique=True)
+    charging_exempt = Column(Boolean, nullable=False, default=False)
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    creation_time = Column(TIMESTAMP, nullable=False,
+                          server_default=text('CURRENT_TIMESTAMP'),
+                          onupdate=datetime.utcnow)
+    modified_time = Column(TIMESTAMP)
+
+    resource = relationship('Resource', back_populates='root_directories')
+
+    def __repr__(self):
+        return (f"<DiskResourceRootDirectory(path='{self.root_directory}', "
+                f"exempt={self.charging_exempt})>")
 
 
 # ============================================================================
@@ -2743,6 +2915,215 @@ class Product(Base):
     timestamp = Column(BigInteger, nullable=False)
 
     manual_task = relationship('ManualTask', back_populates='products')
+
+
+    # ============================================================================
+# Wallclock Exemption
+# ============================================================================
+
+class WallclockExemption(Base, TimestampMixin):
+    """Exemptions from wallclock time limits for specific users on queues."""
+    __tablename__ = 'wallclock_exemption'
+
+    __table_args__ = (
+        Index('ix_wallclock_exemption_user', 'user_id'),
+        Index('ix_wallclock_exemption_queue', 'queue_id'),
+        Index('ix_wallclock_exemption_dates', 'start_date', 'end_date'),
+    )
+
+    wallclock_exemption_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    queue_id = Column(Integer, ForeignKey('queue.queue_id'), nullable=False)
+    time_limit_hours = Column(Float(5, 2), nullable=False)
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime, nullable=False)
+    comment = Column(Text)
+
+    user = relationship('User', back_populates='wallclock_exemptions')
+    queue = relationship('Queue', back_populates='wallclock_exemptions')
+
+    def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
+        """Check if exemption is active at a given date."""
+        if check_date is None:
+            check_date = datetime.utcnow()
+
+        return self.start_date <= check_date <= self.end_date
+
+    @hybrid_property
+    def is_currently_active(self) -> bool:
+        """Check if exemption is currently active (Python side)."""
+        return self.is_active_at()
+
+    @is_currently_active.expression
+    def is_currently_active(cls):
+        """Check if exemption is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            cls.start_date <= now,
+            cls.end_date >= now
+        )
+
+    def __repr__(self):
+        return (f"<WallclockExemption(user_id={self.user_id}, queue_id={self.queue_id}, "
+                f"hours={self.time_limit_hours})>")
+
+
+# ============================================================================
+# XRAS (XSEDE Resource Allocation System) Integration
+# ============================================================================
+
+class XrasRole(Base):
+    """XRAS system roles."""
+    __tablename__ = 'xras_role'
+
+    # Note: Schema structure needs verification - these are placeholder based on naming
+    xras_role_id = Column(Integer, primary_key=True, autoincrement=True)
+    role_name = Column(String(50), nullable=False)
+    description = Column(String(255))
+
+    users = relationship('XrasUser', back_populates='role')
+
+    def __repr__(self):
+        return f"<XrasRole(name='{self.role_name}')>"
+
+
+class XrasUser(Base):
+    """XRAS user mappings."""
+    __tablename__ = 'xras_user'
+
+    __table_args__ = (
+        Index('ix_xras_user_local', 'local_user_id'),
+    )
+
+    xras_user_id = Column(Integer, primary_key=True, autoincrement=True)
+    xras_username = Column(String(50), nullable=False, unique=True)
+    local_user_id = Column(Integer, ForeignKey('users.user_id'))
+    xras_role_id = Column(Integer, ForeignKey('xras_role.xras_role_id'))
+    active = Column(Boolean, nullable=False, default=True)
+    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    modified_time = Column(TIMESTAMP)
+
+    local_user = relationship('User', back_populates='xras_user')
+    role = relationship('XrasRole', back_populates='users')
+    requests = relationship('XrasRequest', back_populates='user')
+
+    def __repr__(self):
+        return f"<XrasUser(username='{self.xras_username}')>"
+
+
+class XrasAction(Base):
+    """XRAS action types."""
+    __tablename__ = 'xras_action'
+
+    xras_action_id = Column(Integer, primary_key=True, autoincrement=True)
+    action_name = Column(String(50), nullable=False, unique=True)
+    description = Column(String(255))
+
+    requests = relationship('XrasRequest', back_populates='action')
+
+    def __repr__(self):
+        return f"<XrasAction(name='{self.action_name}')>"
+
+
+class XrasRequest(Base):
+    """XRAS allocation requests."""
+    __tablename__ = 'xras_request'
+
+    __table_args__ = (
+        Index('ix_xras_request_user', 'xras_user_id'),
+        Index('ix_xras_request_action', 'xras_action_id'),
+        Index('ix_xras_request_status', 'status'),
+    )
+
+    xras_request_id = Column(Integer, primary_key=True, autoincrement=True)
+    xras_user_id = Column(Integer, ForeignKey('xras_user.xras_user_id'), nullable=False)
+    xras_action_id = Column(Integer, ForeignKey('xras_action.xras_action_id'), nullable=False)
+
+    request_number = Column(String(50), unique=True)
+    status = Column(String(20), nullable=False)
+
+    request_date = Column(DateTime, nullable=False)
+    approval_date = Column(DateTime)
+
+    request_data = Column(Text)  # JSON data
+
+    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    modified_time = Column(TIMESTAMP)
+
+    user = relationship('XrasUser', back_populates='requests')
+    action = relationship('XrasAction', back_populates='requests')
+    allocations = relationship('XrasAllocation', back_populates='request')
+
+    def __repr__(self):
+        return f"<XrasRequest(number='{self.request_number}', status='{self.status}')>"
+
+
+class XrasAllocation(Base):
+    """XRAS allocations."""
+    __tablename__ = 'xras_allocation'
+
+    __table_args__ = (
+        Index('ix_xras_allocation_request', 'xras_request_id'),
+        Index('ix_xras_allocation_local', 'local_allocation_id'),
+    )
+
+    xras_allocation_id = Column(Integer, primary_key=True, autoincrement=True)
+    xras_request_id = Column(Integer, ForeignKey('xras_request.xras_request_id'),
+                             nullable=False)
+    local_allocation_id = Column(Integer, ForeignKey('allocation.allocation_id'))
+
+    xras_allocation_number = Column(String(50), unique=True)
+    amount = Column(Float(15, 2), nullable=False)
+
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime)
+
+    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    modified_time = Column(TIMESTAMP)
+
+    request = relationship('XrasRequest', back_populates='allocations')
+    local_allocation = relationship('Allocation', back_populates='xras_allocation')
+    hpc_amounts = relationship('XrasHpcAllocationAmount', back_populates='xras_allocation')
+
+    def __repr__(self):
+        return f"<XrasAllocation(number='{self.xras_allocation_number}', amount={self.amount})>"
+
+
+class XrasHpcAllocationAmount(Base):
+    """XRAS HPC allocation amounts by resource."""
+    __tablename__ = 'xras_hpc_allocation_amount'
+
+    __table_args__ = (
+        Index('ix_xras_hpc_allocation', 'xras_allocation_id'),
+    )
+
+    xras_hpc_allocation_amount_id = Column(Integer, primary_key=True, autoincrement=True)
+    xras_allocation_id = Column(Integer, ForeignKey('xras_allocation.xras_allocation_id'),
+                                nullable=False)
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    amount = Column(Float(15, 2), nullable=False)
+
+    xras_allocation = relationship('XrasAllocation', back_populates='hpc_amounts')
+    resource = relationship('Resource', back_populates='xras_hpc_amounts')
+
+    def __repr__(self):
+        return f"<XrasHpcAllocationAmount(allocation_id={self.xras_allocation_id}, amount={self.amount})>"
+
+
+class XrasResourceRepositoryKeyResource(Base):
+    """Maps XRAS resource repository keys to local resources."""
+    __tablename__ = 'xras_resource_repository_key_resource'
+
+    xras_resource_key_id = Column(Integer, primary_key=True, autoincrement=True)
+    xras_resource_key = Column(String(100), nullable=False, unique=True)
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    active = Column(Boolean, nullable=False, default=True)
+    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    resource = relationship('Resource', back_populates='xras_resource_keys')
+
+    def __repr__(self):
+        return f"<XrasResourceRepositoryKeyResource(key='{self.xras_resource_key}')>"
 
 
 # ============================================================================
