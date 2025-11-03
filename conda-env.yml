@@ -4,6 +4,7 @@ channels:
 dependencies:
   - conda-tree
   - ipykernel
+  - jupyterlab
   - matplotlib
   - mysql
   - mysql-connector-python

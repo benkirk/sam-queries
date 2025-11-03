@@ -15,20 +15,19 @@ from typing import List, Optional, Dict, Set
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Boolean, Numeric,
     ForeignKey, ForeignKeyConstraint, PrimaryKeyConstraint,
-    Text, BigInteger, TIMESTAMP, text, and_, or_, Index
+    Text, BigInteger, TIMESTAMP, text, and_, or_, Index, exists, select
 )
-from sqlalchemy.orm import relationship, declarative_base, declared_attr
+from sqlalchemy.orm import relationship, declarative_base, declared_attr, Session
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
+from sqlalchemy.orm import Session
 
 Base = declarative_base()
-
 
 # ============================================================================
 # Mixins - Common patterns extracted
 # ============================================================================
-
 class TimestampMixin:
     """Provides creation and modification timestamps."""
 
@@ -108,6 +107,14 @@ class DateRangeMixin:
             cls.start_date <= now,
             or_(cls.end_date.is_(None), cls.end_date >= now)
         )
+
+class SessionMixin:
+    @property
+    def session(self) -> Session:
+        s = Session.object_session(self)
+        #if not s:
+        #    return []
+        return s
 
 
 # ============================================================================
@@ -755,8 +762,30 @@ class Resource(Base, TimestampMixin):
     xras_hpc_amounts = relationship('XrasHpcAllocationAmount', back_populates='resource')
     xras_resource_keys = relationship('XrasResourceRepositoryKeyResource', back_populates='resource')
 
+    @classmethod
+    def get_by_name(cls, session, resource_name: str) -> Optional['Resource']:
+        """
+        Get a resource by its name.
+
+        Args:
+            session: SQLAlchemy session
+            resource_name: Name of the resource (e.g., 'Derecho', 'GLADE', 'Campaign')
+
+        Returns:
+            Resource object if found, None otherwise
+        """
+        return session.query(cls).filter(cls.resource_name == resource_name).first()
+
     def is_commissioned_at(self, check_date: Optional[datetime] = None) -> bool:
-        """Check if resource is commissioned at a given date."""
+        """
+        Check if resource is commissioned at a given date.
+
+        Args:
+            check_date: Date to check (defaults to current datetime)
+
+        Returns:
+            True if resource is commissioned at the given date
+        """
         if check_date is None:
             check_date = datetime.utcnow()
 
@@ -770,12 +799,66 @@ class Resource(Base, TimestampMixin):
 
     @hybrid_property
     def is_commissioned(self) -> bool:
-        """Check if resource is currently commissioned (Python side)."""
+        """
+        Check if resource is currently commissioned (Python side).
+
+        Returns:
+            True if resource is commissioned and not decommissioned
+        """
         return self.is_commissioned_at()
 
     @is_commissioned.expression
     def is_commissioned(cls):
         """Check if resource is currently commissioned (SQL side)."""
+        now = func.now()
+        return and_(
+            or_(cls.commission_date.is_(None), cls.commission_date <= now),
+            or_(cls.decommission_date.is_(None), cls.decommission_date > now)
+        )
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """
+        Check if resource is currently active (Python side).
+
+        A resource is considered active if:
+        - It has been commissioned (commission_date is None or in the past)
+        - It has not been decommissioned (decommission_date is None or in the future)
+
+        Returns:
+            True if resource is active, False otherwise
+
+        Example:
+            >>> resource = Resource.get_by_name(session, 'Derecho')
+            >>> if resource.is_active:
+            ...     print(f"{resource.resource_name} is currently active")
+            ... else:
+            ...     print(f"{resource.resource_name} is decommissioned")
+        """
+        now = datetime.utcnow()
+
+        # Check if commissioned
+        if self.commission_date and self.commission_date > now:
+            return False
+
+        # Check if decommissioned
+        if self.decommission_date and self.decommission_date <= now:
+            return False
+
+        return True
+
+    @is_active.expression
+    def is_active(cls):
+        """
+        Check if resource is currently active (SQL side).
+
+        This expression version allows filtering in SQL queries:
+
+        Example:
+            >>> active_resources = session.query(Resource).filter(
+            ...     Resource.is_active
+            ... ).all()
+        """
         now = func.now()
         return and_(
             or_(cls.commission_date.is_(None), cls.commission_date <= now),
@@ -1314,7 +1397,7 @@ class ProjectNumber(Base):
     project = relationship('Project', back_populates='project_number')
 
 
-class Project(Base, TimestampMixin, ActiveFlagMixin):
+class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Research projects."""
     __tablename__ = 'project'
 
@@ -1473,7 +1556,6 @@ class Project(Base, TimestampMixin, ActiveFlagMixin):
     @has_active_allocations.expression
     def has_active_allocations(cls):
         """Check if project has any active allocations (SQL side)."""
-        from sqlalchemy import exists, select
         now = func.now()
         return exists(
             select(1)
@@ -1486,6 +1568,325 @@ class Project(Base, TimestampMixin, ActiveFlagMixin):
                 or_(Allocation.end_date.is_(None), Allocation.end_date >= now)
             )
         )
+
+    # Tree Navigation Methods (Nested Set Model)
+    def get_ancestors(self, include_self: bool = False) -> List['Project']:
+        """
+        Get all ancestor projects using nested set model.
+
+        Args:
+            include_self: Whether to include this project in results
+
+        Returns:
+            List of ancestor projects, ordered from root to immediate parent
+
+        Example:
+            >>> project.get_ancestors()
+            [<Project(root)>, <Project(parent)>]
+        """
+        if not self.tree_left or not self.tree_right:
+            return []
+
+        query = self.session.query(Project).filter(
+            and_(
+                Project.tree_root == self.tree_root,
+                Project.tree_left < self.tree_left,
+                Project.tree_right > self.tree_right
+            )
+        ).order_by(Project.tree_left)
+
+        if include_self:
+            ancestors = query.all()
+            ancestors.append(self)
+            return ancestors
+
+        return query.all()
+
+    def get_descendants(self, include_self: bool = False,
+                       max_depth: Optional[int] = None) -> List['Project']:
+        """
+        Get all descendant projects using nested set model.
+
+        Args:
+            include_self: Whether to include this project in results
+            max_depth: Maximum depth to traverse (None for unlimited)
+
+        Returns:
+            List of descendant projects, ordered by tree_left (depth-first)
+
+        Example:
+            >>> project.get_descendants()
+            [<Project(child1)>, <Project(grandchild1)>, <Project(child2)>]
+        """
+        if not self.tree_left or not self.tree_right:
+            return []
+
+        query = self.session.query(Project).filter(
+            and_(
+                Project.tree_root == self.tree_root,
+                Project.tree_left > self.tree_left,
+                Project.tree_right < self.tree_right
+            )
+        ).order_by(Project.tree_left)
+
+        descendants = query.all()
+
+        if max_depth is not None:
+            # Calculate depth for each descendant
+            my_depth = self.get_depth()
+            descendants = [
+                d for d in descendants
+                if d.get_depth() - my_depth <= max_depth
+            ]
+
+        if include_self:
+            return [self] + descendants
+
+        return descendants
+
+    def get_children(self) -> List['Project']:
+        """
+        Get immediate children (one level down) using parent_id.
+
+        This is more efficient than using nested set for direct children.
+
+        Returns:
+            List of direct child projects
+
+        Example:
+            >>> project.get_children()
+            [<Project(child1)>, <Project(child2)>]
+        """
+        return self.session.query(Project).filter(
+            Project.parent_id == self.project_id
+        ).all()
+
+    def get_siblings(self, include_self: bool = False) -> List['Project']:
+        """
+        Get sibling projects (same parent).
+
+        Args:
+            include_self: Whether to include this project in results
+
+        Returns:
+            List of sibling projects
+
+        Example:
+            >>> project.get_siblings()
+            [<Project(sibling1)>, <Project(sibling2)>]
+        """
+        if not self.parent_id:
+            return []  # Root nodes have no siblings
+
+        query = self.session.query(Project).filter(
+            Project.parent_id == self.parent_id
+        )
+
+        if not include_self:
+            query = query.filter(Project.project_id != self.project_id)
+
+        return query.all()
+
+    def get_root(self) -> Optional['Project']:
+        """
+        Get the root project of this tree.
+
+        Returns:
+            Root project or None if not part of a tree
+
+        Example:
+            >>> project.get_root()
+            <Project(root_project)>
+        """
+        if not self.tree_root:
+            return None
+
+        if self.tree_root == self.project_id:
+            return self  # This is the root
+
+        return self.session.query(Project).filter(
+            Project.project_id == self.tree_root
+        ).first()
+
+    def get_depth(self) -> int:
+        """
+        Calculate the depth of this project in the tree.
+
+        Root nodes have depth 0, their children have depth 1, etc.
+        Uses the nested set property that depth = count of ancestors.
+
+        Returns:
+            Depth level (0 for root)
+
+        Example:
+            >>> root.get_depth()
+            0
+            >>> child.get_depth()
+            1
+        """
+        if not self.tree_left or not self.tree_right:
+            return 0
+
+        return len(self.get_ancestors())
+
+    def get_level(self) -> int:
+        """
+        Alias for get_depth() - returns tree level (0-based).
+
+        Returns:
+            Tree level (0 for root)
+        """
+        return self.get_depth()
+
+    def is_root(self) -> bool:
+        """
+        Check if this project is a root node.
+
+        Returns:
+            True if this is a root project
+        """
+        return self.parent_id is None or self.tree_root == self.project_id
+
+    def is_leaf(self) -> bool:
+        """
+        Check if this project is a leaf node (has no children).
+
+        Uses nested set property: leaf nodes have right = left + 1
+
+        Returns:
+            True if this project has no children
+        """
+        if not self.tree_left or not self.tree_right:
+            return True
+
+        return self.tree_right == self.tree_left + 1
+
+    def is_ancestor_of(self, other: 'Project') -> bool:
+        """
+        Check if this project is an ancestor of another project.
+
+        Args:
+            other: Project to check
+
+        Returns:
+            True if this project is an ancestor of other
+
+        Example:
+            >>> parent.is_ancestor_of(child)
+            True
+        """
+        if not all([self.tree_left, self.tree_right,
+                   other.tree_left, other.tree_right]):
+            return False
+
+        if self.tree_root != other.tree_root:
+            return False
+
+        return (self.tree_left < other.tree_left and
+                self.tree_right > other.tree_right)
+
+    def is_descendant_of(self, other: 'Project') -> bool:
+        """
+        Check if this project is a descendant of another project.
+
+        Args:
+            other: Project to check
+
+        Returns:
+            True if this project is a descendant of other
+        """
+        return other.is_ancestor_of(self)
+
+    def get_subtree_size(self) -> int:
+        """
+        Get the number of descendants (not including self).
+
+        Uses nested set property: size = (right - left - 1) / 2
+
+        Returns:
+            Number of descendant nodes
+        """
+        if not self.tree_left or not self.tree_right:
+            return 0
+
+        return (self.tree_right - self.tree_left - 1) // 2
+
+    def get_path(self, separator: str = ' > ') -> str:
+        """
+        Get the full path from root to this project.
+
+        Args:
+            separator: String to join path components
+
+        Returns:
+            Path string like "Root > Parent > Child"
+
+        Example:
+            >>> project.get_path()
+            'RootProject > ParentProject > CurrentProject'
+        """
+        ancestors = self.get_ancestors(include_self=True)
+        return separator.join(p.projcode for p in ancestors)
+
+    def get_breadcrumb_path(self) -> List[Dict[str, any]]:
+        """
+        Get breadcrumb-style path information.
+
+        Returns:
+            List of dicts with project info for each level
+
+        Example:
+            >>> project.get_breadcrumb_path()
+            [
+                {'project_id': 1, 'projcode': 'ROOT', 'title': 'Root'},
+                {'project_id': 2, 'projcode': 'CHILD', 'title': 'Child'}
+            ]
+        """
+        ancestors = self.get_ancestors(include_self=True)
+        return [
+            {
+                'project_id': p.project_id,
+                'projcode': p.projcode,
+                'title': p.title,
+                'active': p.active
+            }
+            for p in ancestors
+        ]
+
+    @hybrid_property
+    def has_children(self) -> bool:
+        """Check if project has children (Python side)."""
+        return not self.is_leaf()
+
+    @has_children.expression
+    def has_children(cls):
+        """Check if project has children (SQL side)."""
+        return cls.tree_right > cls.tree_left + 1
+
+    def print_tree(self, indent: str = '  ', _level: int = 0) -> str:
+        """
+        Generate a text representation of the subtree.
+
+        Args:
+            indent: String to use for indentation
+            _level: Internal parameter for recursion depth
+
+        Returns:
+            Formatted tree string
+
+        Example:
+            >>> print(project.print_tree())
+            PROJ001: Root Project
+              PROJ002: Child 1
+                PROJ003: Grandchild
+              PROJ004: Child 2
+        """
+        lines = [f"{indent * _level}{self.projcode}: {self.title}"]
+
+        for child in self.get_children():
+            lines.append(child.print_tree(indent, _level + 1))
+
+        return '\n'.join(lines)
 
     def __repr__(self):
         return f"<Project(id={self.project_id}, projcode='{self.projcode}', title='{self.title[:50]}...')>"
