@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Set
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Boolean, Numeric,
-    ForeignKey, ForeignKeyConstraint,
+    ForeignKey, ForeignKeyConstraint, PrimaryKeyConstraint,
     Text, BigInteger, TIMESTAMP, text, and_, or_, Index
 )
 from sqlalchemy.orm import relationship, declarative_base, declared_attr
@@ -34,14 +34,11 @@ class TimestampMixin:
 
     @declared_attr
     def creation_time(cls):
-        return Column(DateTime, nullable=False,
-                      server_default=text('CURRENT_TIMESTAMP'))
+        return Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
 
     @declared_attr
     def modified_time(cls):
-        return Column(TIMESTAMP,
-                      server_default=text('CURRENT_TIMESTAMP'),
-                      onupdate=text('CURRENT_TIMESTAMP'))
+        return Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
 
 class SoftDeleteMixin:
@@ -638,7 +635,7 @@ class AdhocGroup(Base, ActiveFlagMixin):
     group_id = Column(Integer, primary_key=True, autoincrement=True)
     group_name = Column(String(30), nullable=False, unique=True)
     unix_gid = Column(Integer, nullable=False, unique=True)
-    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    creation_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
     pdb_modified_time = Column(TIMESTAMP)
     idms_sync_token = Column(String(64))
 
@@ -660,7 +657,7 @@ class AdhocGroupTag(Base):
     adhoc_group_tag_id = Column(Integer, primary_key=True, autoincrement=True)
     group_id = Column(Integer, ForeignKey('adhoc_group.group_id'), nullable=False)
     tag = Column(String(40), nullable=False)
-    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    creation_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
 
     group = relationship('AdhocGroup', back_populates='tags')
 
@@ -677,7 +674,7 @@ class AdhocSystemAccountEntry(Base):
     group_id = Column(Integer, ForeignKey('adhoc_group.group_id'), nullable=False)
     access_branch_name = Column(String(40), nullable=False)
     username = Column(String(12), nullable=False)
-    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    creation_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
 
     group = relationship('AdhocGroup', back_populates='system_accounts')
 
@@ -876,7 +873,7 @@ class Queue(Base, TimestampMixin):
     resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
     queue_name = Column(String(50), nullable=False)
     description = Column(String(255), nullable=False)
-    wall_clock_hours_limit = Column(Float(5, 2))
+    wall_clock_hours_limit = Column(Numeric(5, 2))
     cos_id = Column(Integer)
 
     start_date = Column(DateTime)
@@ -964,8 +961,8 @@ class FacilityResource(Base):
     facility_id = Column(Integer, ForeignKey('facility.facility_id'), nullable=False)
     resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
     fair_share_percentage = Column(Float)
-    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
-    modified_time = Column(TIMESTAMP)
+    creation_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     facility = relationship('Facility', back_populates='facility_resources')
     resource = relationship('Resource', back_populates='facility_resources')
@@ -1086,8 +1083,8 @@ class Account(Base, SoftDeleteMixin):
     cutoff_threshold = Column(Integer, nullable=False, default=100)
 
     # Timestamps
-    creation_time = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
-    modified_time = Column(TIMESTAMP)
+    creation_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     allocations = relationship('Allocation', back_populates='account')
     archive_charge_summaries = relationship('ArchiveChargeSummary', back_populates='account')
@@ -1282,7 +1279,7 @@ class AllocationTransaction(Base):
     transaction_comment = Column(Text)
     propagated = Column(Boolean, nullable=False, default=False)
 
-    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    creation_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
 
     allocation = relationship('Allocation', back_populates='transactions')
     related_transaction = relationship('AllocationTransaction', remote_side=[allocation_transaction_id], back_populates='related_transactions')
@@ -1541,7 +1538,7 @@ class DefaultProject(Base, TimestampMixin):
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
     resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
-    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     user = relationship('User', back_populates='default_projects')
     project = relationship('Project', back_populates='default_projects')
@@ -1649,7 +1646,7 @@ class ProjectContract(Base):
     project_contract_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
     contract_id = Column(Integer, ForeignKey('contract.contract_id'), nullable=False)
-    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    creation_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
 
     project = relationship('Project', back_populates='contracts')
     contract = relationship('Contract', back_populates='projects')
@@ -1718,8 +1715,9 @@ class CompJob(Base):
     __tablename__ = 'comp_job'
 
     __table_args__ = (
-        # PrimaryKeyConstraint('era_part_key', 'job_id',
-        #                      'job_idx', 'machine', 'submit_time'),
+        PrimaryKeyConstraint('era_part_key', 'job_id', 'job_idx',
+                             'machine', 'submit_time',
+                             name='pk_comp_job'),
         Index('ix_comp_job_era_job', 'era_part_key', 'job_id', 'job_idx'),
         Index('ix_comp_job_activity_date', 'activity_date'),
         Index('ix_comp_job_machine', 'machine'),
@@ -1745,11 +1743,11 @@ class CompJob(Base):
                     self.machine, self.submit_time))
 
     # Composite primary key
-    era_part_key = Column(Integer, primary_key=True, default=99)
-    job_id = Column(String(35), primary_key=True)
-    job_idx = Column(Integer, primary_key=True)
-    machine = Column(String(100), primary_key=True)
-    submit_time = Column(Integer, primary_key=True)
+    era_part_key = Column(Integer, nullable=False, default=99)
+    job_id = Column(String(35), nullable=False)
+    job_idx = Column(Integer, nullable=False)
+    machine = Column(String(100), nullable=False)
+    submit_time = Column(Integer, nullable=False)
 
     # Job identification
     queue = Column(String(100), nullable=False)
@@ -1767,13 +1765,13 @@ class CompJob(Base):
     cos = Column(Integer)
     exit_status = Column(String(20))
     interactive = Column(Integer)
-    log_data = Column(Text)  # JSON-formatted PBS/Slurm logs
+    log_data = Column(Text)
 
     # Timestamps
     activity_date = Column(DateTime, nullable=False)
     load_date = Column(DateTime, nullable=False)
 
-    activities = relationship('CompActivity', back_populates='job', lazy='selectin')
+    activities = relationship('CompActivity', back_populates='job')
 
     @property
     def wall_time_seconds(self) -> int:
@@ -1819,8 +1817,9 @@ class CompActivity(Base):
     __tablename__ = 'comp_activity'
 
     __table_args__ = (
-        # PrimaryKeyConstraint('era_part_key', 'acct_part_key', 'job_id',
-        #                      'job_idx', 'util_idx', 'machine', 'submit_time'),
+        PrimaryKeyConstraint('era_part_key', 'acct_part_key', 'job_id',
+                             'job_idx', 'util_idx', 'machine', 'submit_time',
+                             name='pk_comp_activity'),
         ForeignKeyConstraint(
             ['era_part_key', 'job_id', 'job_idx', 'machine', 'submit_time'],
             ['comp_job.era_part_key', 'comp_job.job_id', 'comp_job.job_idx',
@@ -1830,6 +1829,8 @@ class CompActivity(Base):
         Index('ix_comp_activity_era_acct_job', 'era_part_key', 'acct_part_key',
               'job_id', 'job_idx'),
         Index('ix_comp_activity_activity_date', 'activity_date'),
+        Index('ix_comp_activity_charge_date', 'charge_date'),
+        Index('ix_comp_activity_processing', 'processing_status'),
         Index('ix_comp_activity_charge_summary', 'charge_summary_id'),
         Index('ix_comp_activity_machine', 'machine'),
         # Index for the join with comp_job
@@ -1857,13 +1858,13 @@ class CompActivity(Base):
                     self.job_idx, self.util_idx, self.machine, self.submit_time))
 
     # Composite primary key (includes partitioning keys)
-    era_part_key = Column(Integer, primary_key=True, default=99)
-    acct_part_key = Column(Integer, primary_key=True, default=0)
-    job_id = Column(String(35), primary_key=True)
-    job_idx = Column(Integer, primary_key=True)
-    util_idx = Column(Integer, primary_key=True)  # Utilization calculation index
-    machine = Column(String(100), primary_key=True)
-    submit_time = Column(Integer, primary_key=True)
+    era_part_key = Column(Integer, nullable=False, default=99)
+    acct_part_key = Column(Integer, nullable=False, default=0)
+    job_id = Column(String(35), nullable=False)
+    job_idx = Column(Integer, nullable=False)
+    util_idx = Column(Integer, nullable=False)
+    machine = Column(String(100), nullable=False)
+    submit_time = Column(Integer, nullable=False)
 
     # Job timing (denormalized from comp_job)
     start_time = Column(Integer, nullable=False)
@@ -1896,8 +1897,12 @@ class CompActivity(Base):
     processing_status = Column(Boolean)
     error_comment = Column(Text)
 
-    # Relationships - FIXED: Simplified using foreign_keys list instead of string
-    job = relationship('CompJob', back_populates='activities')
+    # Relationship using composite foreign key
+    job = relationship(
+        'CompJob',
+        foreign_keys=[era_part_key, job_id, job_idx, machine, submit_time],
+        back_populates='activities'
+    )
 
     @property
     def cpu_time_seconds(self) -> Optional[float]:
@@ -2288,9 +2293,7 @@ class HPCCos(Base, TimestampMixin):
 
     hpc_cos_id = Column(Integer, primary_key=True)
     description = Column(String(50))
-    modified_time = Column(TIMESTAMP, nullable=False,
-                          server_default=text('CURRENT_TIMESTAMP'),
-                          onupdate=datetime.utcnow)
+    modified_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     activities = relationship('HPCActivity', back_populates='hpc_cos')
 
@@ -2339,9 +2342,9 @@ class HPCActivity(Base):
 
     activity_date = Column(DateTime)
     load_date = Column(DateTime, nullable=False)
-    modified_time = Column(TIMESTAMP)
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
-    external_charge = Column(Float(15, 8))
+    external_charge = Column(Numeric(15, 8))
     job_idx = Column(Integer, nullable=False)
 
     hpc_cos = relationship('HPCCos', back_populates='activities')
@@ -2441,9 +2444,7 @@ class DavCos(Base, TimestampMixin):
 
     dav_cos_id = Column(Integer, primary_key=True)
     description = Column(String(50))
-    modified_time = Column(TIMESTAMP, nullable=False,
-                          server_default=text('CURRENT_TIMESTAMP'),
-                          onupdate=datetime.utcnow)
+    modified_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     activities = relationship('DavActivity', back_populates='dav_cos')
 
@@ -2501,7 +2502,7 @@ class DavActivity(Base, TimestampMixin):
     # Dates and charging
     activity_date = Column(DateTime)
     load_date = Column(DateTime, nullable=False)
-    external_charge = Column(Float(15, 8))
+    external_charge = Column(Numeric(15, 8))
 
     dav_cos = relationship('DavCos', back_populates='activities')
     charges = relationship('DavCharge', back_populates='activity')
@@ -2788,7 +2789,7 @@ class DiskResourceRootDirectory(Base):
     creation_time = Column(TIMESTAMP, nullable=False,
                           server_default=text('CURRENT_TIMESTAMP'),
                           onupdate=datetime.utcnow)
-    modified_time = Column(TIMESTAMP)
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     resource = relationship('Resource', back_populates='root_directories')
 
@@ -3073,7 +3074,7 @@ class WallclockExemption(Base, TimestampMixin):
     wallclock_exemption_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     queue_id = Column(Integer, ForeignKey('queue.queue_id'), nullable=False)
-    time_limit_hours = Column(Float(5, 2), nullable=False)
+    time_limit_hours = Column(Numeric(5, 2), nullable=False)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=False)
     comment = Column(Text)
@@ -3085,7 +3086,6 @@ class WallclockExemption(Base, TimestampMixin):
         """Check if exemption is active at a given date."""
         if check_date is None:
             check_date = datetime.utcnow()
-
         return self.start_date <= check_date <= self.end_date
 
     @hybrid_property
@@ -3139,8 +3139,8 @@ class XrasUser(Base):
     local_user_id = Column(Integer, ForeignKey('users.user_id'))
     xras_role_id = Column(Integer, ForeignKey('xras_role.xras_role_id'))
     active = Column(Boolean, nullable=False, default=True)
-    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
-    modified_time = Column(TIMESTAMP)
+    creation_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     local_user = relationship('User', back_populates='xras_user')
     role = relationship('XrasRole', back_populates='users')
@@ -3186,8 +3186,8 @@ class XrasRequest(Base):
 
     request_data = Column(Text)  # JSON data
 
-    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
-    modified_time = Column(TIMESTAMP)
+    creation_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     user = relationship('XrasUser', back_populates='requests')
     action = relationship('XrasAction', back_populates='requests')
@@ -3217,8 +3217,8 @@ class XrasAllocation(Base):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
 
-    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
-    modified_time = Column(TIMESTAMP)
+    creation_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     request = relationship('XrasRequest', back_populates='allocations')
     local_allocation = relationship('Allocation', back_populates='xras_allocation')
@@ -3257,7 +3257,7 @@ class XrasResourceRepositoryKeyResource(Base):
     xras_resource_key = Column(String(100), nullable=False, unique=True)
     resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
     active = Column(Boolean, nullable=False, default=True)
-    creation_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    creation_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
 
     resource = relationship('Resource', back_populates='xras_resource_keys')
 
