@@ -13,7 +13,7 @@ Key improvements:
 from datetime import datetime
 from typing import List, Optional, Dict, Set
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, Boolean,
+    Column, Integer, String, Float, DateTime, Boolean, Numeric,
     ForeignKey, ForeignKeyConstraint,
     Text, BigInteger, TIMESTAMP, text, and_, or_, Index
 )
@@ -34,11 +34,14 @@ class TimestampMixin:
 
     @declared_attr
     def creation_time(cls):
-        return Column(DateTime, nullable=False, default=datetime.utcnow)
+        return Column(DateTime, nullable=False,
+                      server_default=text('CURRENT_TIMESTAMP'))
 
     @declared_attr
     def modified_time(cls):
-        return Column(TIMESTAMP, onupdate=datetime.utcnow)
+        return Column(TIMESTAMP,
+                      server_default=text('CURRENT_TIMESTAMP'),
+                      onupdate=text('CURRENT_TIMESTAMP'))
 
 
 class SoftDeleteMixin:
@@ -853,7 +856,7 @@ class MachineFactor(Base, TimestampMixin):
 
     machine_factor_id = Column(Integer, primary_key=True, autoincrement=True)
     machine_id = Column(Integer, ForeignKey('machine.machine_id'), nullable=False)
-    factor_value = Column(Float(15, 2), nullable=False)
+    factor_value = Column(Numeric(15, 2), nullable=False)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
 
@@ -1155,7 +1158,7 @@ class AllocationType(Base, TimestampMixin, ActiveFlagMixin):
 
     allocation_type_id = Column(Integer, primary_key=True, autoincrement=True)
     allocation_type = Column(String(20), nullable=False)
-    default_allocation_amount = Column(Float(15, 2))
+    default_allocation_amount = Column(Numeric(15, 2))
     fair_share_percentage = Column(Float)
     panel_id = Column(Integer, ForeignKey('panel.panel_id'))
 
@@ -1193,7 +1196,7 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     parent_allocation_id = Column(Integer, ForeignKey('allocation.allocation_id'))
 
-    amount = Column(Float(15, 2), nullable=False)
+    amount = Column(Numeric(15, 2), nullable=False)
     description = Column(String(255))
 
     start_date = Column(DateTime, nullable=False)
@@ -1269,8 +1272,8 @@ class AllocationTransaction(Base):
                                    ForeignKey('allocation_transaction.allocation_transaction_id'))
 
     transaction_type = Column(String(50), nullable=False)
-    requested_amount = Column(Float(15, 2))
-    transaction_amount = Column(Float(15, 2))
+    requested_amount = Column(Numeric(15, 2))
+    transaction_amount = Column(Numeric(15, 2))
 
     alloc_start_date = Column(DateTime)
     alloc_end_date = Column(DateTime)
@@ -1715,6 +1718,8 @@ class CompJob(Base):
     __tablename__ = 'comp_job'
 
     __table_args__ = (
+        # PrimaryKeyConstraint('era_part_key', 'job_id',
+        #                      'job_idx', 'machine', 'submit_time'),
         Index('ix_comp_job_era_job', 'era_part_key', 'job_id', 'job_idx'),
         Index('ix_comp_job_activity_date', 'activity_date'),
         Index('ix_comp_job_machine', 'machine'),
@@ -1814,6 +1819,8 @@ class CompActivity(Base):
     __tablename__ = 'comp_activity'
 
     __table_args__ = (
+        # PrimaryKeyConstraint('era_part_key', 'acct_part_key', 'job_id',
+        #                      'job_idx', 'util_idx', 'machine', 'submit_time'),
         ForeignKeyConstraint(
             ['era_part_key', 'job_id', 'job_idx', 'machine', 'submit_time'],
             ['comp_job.era_part_key', 'comp_job.job_id', 'comp_job.job_idx',
@@ -1880,9 +1887,9 @@ class CompActivity(Base):
     chargeable_processors = Column(Integer)
 
     # Charging
-    core_hours = Column(Float(22, 8))
-    charge = Column(Float(22, 8))
-    external_charge = Column(Float(22, 8))  # For external/special charges
+    core_hours = Column(Numeric(22, 8))
+    charge = Column(Numeric(22, 8))
+    external_charge = Column(Numeric(22, 8))  # For external/special charges
     charge_date = Column(DateTime)
 
     # Processing status
@@ -2036,9 +2043,9 @@ class CompActivityCharge(Base):
     load_date = Column(DateTime, nullable=False)
 
     # Charging information
-    core_hours = Column(Float(22, 8))
-    charge = Column(Float(22, 8))
-    external_charge = Column(Float(22, 8))
+    core_hours = Column(Numeric(22, 8))
+    charge = Column(Numeric(22, 8))
+    external_charge = Column(Numeric(22, 8))
     charge_date = Column(DateTime)
 
     # Calculated properties
@@ -2164,12 +2171,12 @@ class CompChargeSummary(Base):
 
     # Aggregated metrics
     num_jobs = Column(Integer)
-    core_hours = Column(Float(22, 8))
-    charges = Column(Float(22, 8))
+    core_hours = Column(Numeric(22, 8))
+    charges = Column(Numeric(22, 8))
 
     # Processing
     error_comment = Column(Text)
-    sweep = Column(Integer)  # Sweep/batch number
+    sweep = Column(Integer, nullable=True)
 
     user = relationship('User', back_populates='comp_charge_summaries')
     account = relationship('Account', back_populates='comp_charge_summaries')
@@ -2372,8 +2379,8 @@ class HPCCharge(Base):
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
     activity_date = Column(DateTime)
-    charge = Column(Float(22, 8))
-    core_hours = Column(Float(22, 8))
+    charge = Column(Numeric(22, 8))
+    core_hours = Column(Numeric(22, 8))
 
     account = relationship('Account', back_populates='hpc_charges')
     activity = relationship('HPCActivity', back_populates='charges')
@@ -2409,8 +2416,8 @@ class HPCChargeSummary(Base):
     account_id = Column(Integer, ForeignKey('account.account_id'))
 
     num_jobs = Column(Integer)
-    core_hours = Column(Float(22, 8))
-    charges = Column(Float(22, 8))
+    core_hours = Column(Numeric(22, 8))
+    charges = Column(Numeric(22, 8))
 
     user = relationship('User', back_populates='hpc_charge_summaries')
     account = relationship('Account', back_populates='hpc_charge_summaries')
@@ -2465,7 +2472,7 @@ class DavActivity(Base, TimestampMixin):
     job_id = Column(String(35), nullable=False)
     job_name = Column(String(255), nullable=False)
     job_idx = Column(Integer)
-    queue_name = Column(String(100), nullable=False, primary_key=True)  # Part of PK in schema
+    queue_name = Column(String(100), nullable=False)
     machine = Column(String(100), nullable=False)
 
     # Timing
@@ -2544,8 +2551,8 @@ class DavCharge(Base):
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
     activity_date = Column(DateTime)
-    charge = Column(Float(22, 8))
-    core_hours = Column(Float(22, 8))
+    charge = Column(Numeric(22, 8))
+    core_hours = Column(Numeric(22, 8))
 
     account = relationship('Account', back_populates='dav_charges')
     activity = relationship('DavActivity', back_populates='charges')
@@ -2589,8 +2596,8 @@ class DavChargeSummary(Base):
 
     # Aggregated metrics
     num_jobs = Column(Integer)
-    core_hours = Column(Float(22, 8))
-    charges = Column(Float(22, 8))
+    core_hours = Column(Numeric(22, 8))
+    charges = Column(Numeric(22, 8))
 
     user = relationship('User', back_populates='dav_charge_summaries')
     account = relationship('Account', back_populates='dav_charge_summaries')
@@ -2684,8 +2691,8 @@ class DiskCharge(Base):
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    charge = Column(Float(22, 8))
-    terabyte_year = Column(Float(22, 8))
+    charge = Column(Numeric(22, 8))
+    terabyte_year = Column(Numeric(22, 8))
     activity_date = Column(DateTime)
 
     account = relationship('Account', back_populates='disk_charges')
@@ -2717,8 +2724,8 @@ class DiskChargeSummary(Base):
 
     number_of_files = Column(Integer)
     bytes = Column(BigInteger)
-    terabyte_years = Column(Float(22, 8))
-    charges = Column(Float(22, 8))
+    terabyte_years = Column(Numeric(22, 8))
+    charges = Column(Numeric(22, 8))
 
     user = relationship('User', back_populates='disk_charge_summaries')
     account = relationship('Account', back_populates='disk_charge_summaries')
@@ -2866,8 +2873,8 @@ class ArchiveCharge(Base):
     archive_activity_id = Column(Integer, ForeignKey('archive_activity.archive_activity_id'),
                                  nullable=False, unique=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    charge = Column(Float(22, 8))
-    terabyte_year = Column(Float(22, 8))
+    charge = Column(Numeric(22, 8))
+    terabyte_year = Column(Numeric(22, 8))
     activity_date = Column(DateTime)
 
     account = relationship('Account', back_populates='archive_charges')
@@ -2899,8 +2906,8 @@ class ArchiveChargeSummary(Base):
 
     number_of_files = Column(Integer)
     bytes = Column(BigInteger)
-    terabyte_years = Column(Float(22, 8))
-    charges = Column(Float(22, 8))
+    terabyte_years = Column(Numeric(22, 8))
+    charges = Column(Numeric(22, 8))
 
     user = relationship('User', back_populates='archive_charge_summaries')
     account = relationship('Account', back_populates='archive_charge_summaries')
@@ -3205,7 +3212,7 @@ class XrasAllocation(Base):
     local_allocation_id = Column(Integer, ForeignKey('allocation.allocation_id'))
 
     xras_allocation_number = Column(String(50), unique=True)
-    amount = Column(Float(15, 2), nullable=False)
+    amount = Column(Numeric(15, 2), nullable=False)
 
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
@@ -3233,7 +3240,7 @@ class XrasHpcAllocationAmount(Base):
     xras_allocation_id = Column(Integer, ForeignKey('xras_allocation.xras_allocation_id'),
                                 nullable=False)
     resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
-    amount = Column(Float(15, 2), nullable=False)
+    amount = Column(Numeric(15, 2), nullable=False)
 
     xras_allocation = relationship('XrasAllocation', back_populates='hpc_amounts')
     resource = relationship('Resource', back_populates='xras_hpc_amounts')

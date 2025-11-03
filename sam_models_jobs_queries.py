@@ -97,8 +97,8 @@ def get_project_usage_summary(session, projcode: str,
         'total_jobs': total_jobs,
         'total_core_hours': total_core_hours,
         'total_charges': total_charges,
-        'average_charge_per_job': (total_charges / total_jobs) if total_jobs > 0 else 0.0,
-        'average_core_hours_per_job': (total_core_hours / total_jobs) if total_jobs > 0 else 0.0
+        'average_charge_per_job': (float(total_charges) / float(total_jobs)) if total_jobs > 0 else 0.0,
+        'average_core_hours_per_job': (float(total_core_hours) / float(total_jobs) ) if total_jobs > 0 else 0.0
     }
 
 
