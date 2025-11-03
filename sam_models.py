@@ -203,6 +203,7 @@ class User(Base, TimestampMixin):
         """Hash based on user_id for set/dict operations."""
         return hash(self.user_id) if self.user_id is not None else hash(id(self))
 
+    # [All existing column definitions remain the same...]
     user_id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(35), nullable=False, unique=True)
     locked = Column(Boolean, nullable=False, default=False)
@@ -232,6 +233,7 @@ class User(Base, TimestampMixin):
     token_type = Column(String(30))
     idms_sync_token = Column(String(64))
 
+    # [All existing relationships remain the same...]
     academic_status = relationship('AcademicStatus', back_populates='users')
     accounts = relationship('AccountUser', back_populates='user', lazy='selectin')
     admin_projects = relationship('Project', foreign_keys='Project.project_admin_user_id', back_populates='admin')
@@ -264,8 +266,305 @@ class User(Base, TimestampMixin):
     wallclock_exemptions = relationship('WallclockExemption', back_populates='user')
     xras_user = relationship('XrasUser', back_populates='local_user', uselist=False)
 
-    # Association proxy for projects
     _projects_w_dups = association_proxy('accounts', 'account.project')
+
+    # ============================================================================
+    # Class Methods - User Lookup
+    # ============================================================================
+
+    @classmethod
+    def get_by_username(cls, session, username: str) -> Optional['User']:
+        """
+        Get a user by exact username match.
+
+        Args:
+            session: SQLAlchemy session
+            username: Exact username to search for
+
+        Returns:
+            User object if found, None otherwise
+
+        Example:
+            >>> user = User.get_by_username(session, 'jsmith')
+            >>> if user:
+            ...     print(f"Found: {user.full_name}")
+        """
+        return session.query(cls).filter(cls.username == username).first()
+
+    @classmethod
+    def get_by_upid(cls, session, upid: int) -> Optional['User']:
+        """
+        Get a user by their UPID (Universal Person ID).
+
+        Args:
+            session: SQLAlchemy session
+            upid: Universal Person ID
+
+        Returns:
+            User object if found, None otherwise
+
+        Example:
+            >>> user = User.get_by_upid(session, 12345)
+        """
+        return session.query(cls).filter(cls.upid == upid).first()
+
+    @classmethod
+    def get_by_email(cls, session, email: str) -> Optional['User']:
+        """
+        Get a user by email address.
+
+        Args:
+            session: SQLAlchemy session
+            email: Email address to search for
+
+        Returns:
+            User object if found, None otherwise
+
+        Example:
+            >>> user = User.get_by_email(session, 'john.smith@example.com')
+        """
+        from sqlalchemy.orm import joinedload
+
+        user = session.query(cls).join(cls.email_addresses).filter(
+            EmailAddress.email_address == email
+        ).options(joinedload(cls.email_addresses)).first()
+
+        return user
+
+    @classmethod
+    def search_by_username(cls, session, pattern: str,
+                          active_only: bool = True,
+                          limit: int = 50) -> List['User']:
+        """
+        Search for users by username pattern (case-insensitive).
+
+        Args:
+            session: SQLAlchemy session
+            pattern: Search pattern (supports SQL LIKE wildcards % and _)
+            active_only: If True, only return active, unlocked users
+            limit: Maximum number of results to return
+
+        Returns:
+            List of matching User objects
+
+        Examples:
+            >>> # Find all users starting with 'smith'
+            >>> users = User.search_by_username(session, 'smith%')
+
+            >>> # Find all users containing 'john'
+            >>> users = User.search_by_username(session, '%john%')
+
+            >>> # Find users with 5-character usernames starting with 'a'
+            >>> users = User.search_by_username(session, 'a____')
+
+            >>> # Include inactive users
+            >>> users = User.search_by_username(session, 'test%', active_only=False)
+        """
+        query = session.query(cls).filter(cls.username.ilike(pattern))
+
+        if active_only:
+            query = query.filter(cls.active == True, cls.locked == False)
+
+        return query.order_by(cls.username).limit(limit).all()
+
+    @classmethod
+    def search_by_name(cls, session, pattern: str,
+                      search_first: bool = True,
+                      search_last: bool = True,
+                      search_nickname: bool = False,
+                      active_only: bool = True,
+                      limit: int = 50) -> List['User']:
+        """
+        Search for users by name pattern (case-insensitive).
+
+        Args:
+            session: SQLAlchemy session
+            pattern: Search pattern (supports SQL LIKE wildcards % and _)
+            search_first: Include first_name in search
+            search_last: Include last_name in search
+            search_nickname: Include nickname in search
+            active_only: If True, only return active, unlocked users
+            limit: Maximum number of results to return
+
+        Returns:
+            List of matching User objects
+
+        Examples:
+            >>> # Find users with last name containing 'smith'
+            >>> users = User.search_by_name(session, '%smith%',
+            ...                            search_first=False, search_last=True)
+
+            >>> # Find users with first name starting with 'john'
+            >>> users = User.search_by_name(session, 'john%',
+            ...                            search_first=True, search_last=False)
+
+            >>> # Search across all name fields
+            >>> users = User.search_by_name(session, '%alex%',
+            ...                            search_nickname=True)
+        """
+        conditions = []
+
+        if search_first:
+            conditions.append(cls.first_name.ilike(pattern))
+        if search_last:
+            conditions.append(cls.last_name.ilike(pattern))
+        if search_nickname:
+            conditions.append(cls.nickname.ilike(pattern))
+
+        if not conditions:
+            return []
+
+        query = session.query(cls).filter(or_(*conditions))
+
+        if active_only:
+            query = query.filter(cls.active == True, cls.locked == False)
+
+        return query.order_by(cls.last_name, cls.first_name).limit(limit).all()
+
+    @classmethod
+    def search_by_email(cls, session, pattern: str,
+                       active_only: bool = True,
+                       limit: int = 50) -> List['User']:
+        """
+        Search for users by email pattern (case-insensitive).
+
+        Args:
+            session: SQLAlchemy session
+            pattern: Email pattern (supports SQL LIKE wildcards % and _)
+            active_only: If True, only return active, unlocked users
+            limit: Maximum number of results to return
+
+        Returns:
+            List of matching User objects
+
+        Examples:
+            >>> # Find all users with @ucar.edu emails
+            >>> users = User.search_by_email(session, '%@ucar.edu')
+
+            >>> # Find users with gmail addresses
+            >>> users = User.search_by_email(session, '%@gmail.com')
+        """
+        from sqlalchemy.orm import joinedload
+
+        query = session.query(cls).join(cls.email_addresses).filter(
+            EmailAddress.email_address.ilike(pattern)
+        ).options(joinedload(cls.email_addresses))
+
+        if active_only:
+            query = query.filter(cls.active == True, cls.locked == False)
+
+        # Distinct to avoid duplicates if user has multiple matching emails
+        return query.distinct().order_by(cls.username).limit(limit).all()
+
+    @classmethod
+    def search_users(cls, session,
+                    search_term: str,
+                    search_username: bool = True,
+                    search_name: bool = True,
+                    search_email: bool = True,
+                    active_only: bool = True,
+                    limit: int = 50) -> List['User']:
+        """
+        Universal search across username, name, and email fields.
+
+        This is a convenience method that searches across multiple fields
+        simultaneously. Perfect for user search boxes or autocomplete.
+
+        Args:
+            session: SQLAlchemy session
+            search_term: Search term (will be wrapped with % for partial match)
+            search_username: Include username in search
+            search_name: Include first_name and last_name in search
+            search_email: Include email addresses in search
+            active_only: If True, only return active, unlocked users
+            limit: Maximum number of results to return
+
+        Returns:
+            List of matching User objects, ordered by relevance
+
+        Examples:
+            >>> # General search - finds users matching 'john' in any field
+            >>> users = User.search_users(session, 'john')
+
+            >>> # Search only usernames and emails
+            >>> users = User.search_users(session, 'smith',
+            ...                          search_name=False)
+
+            >>> # Find all matching users including inactive
+            >>> users = User.search_users(session, 'test',
+            ...                          active_only=False)
+        """
+        from sqlalchemy.orm import joinedload
+
+        # Wrap search term with wildcards for partial matching
+        pattern = f'%{search_term}%'
+
+        conditions = []
+
+        # Username search
+        if search_username:
+            conditions.append(cls.username.ilike(pattern))
+
+        # Name search
+        if search_name:
+            conditions.append(cls.first_name.ilike(pattern))
+            conditions.append(cls.last_name.ilike(pattern))
+            conditions.append(cls.nickname.ilike(pattern))
+
+        # Build base query
+        if conditions:
+            query = session.query(cls).filter(or_(*conditions))
+        else:
+            query = session.query(cls).filter(False)  # Empty result
+
+        # Email search (requires join)
+        if search_email:
+            email_query = session.query(cls).join(cls.email_addresses).filter(
+                EmailAddress.email_address.ilike(pattern)
+            )
+
+            if active_only:
+                email_query = email_query.filter(cls.active == True, cls.locked == False)
+
+            # Union with main query
+            if conditions:
+                query = query.union(email_query)
+            else:
+                query = email_query
+
+        # Apply active filter
+        if active_only and conditions:
+            query = query.filter(cls.active == True, cls.locked == False)
+
+        # Load email addresses for display
+        query = query.options(joinedload(cls.email_addresses))
+
+        return query.distinct().order_by(cls.username).limit(limit).all()
+
+    @classmethod
+    def get_active_users(cls, session, limit: Optional[int] = None) -> List['User']:
+        """
+        Get all active, unlocked users.
+
+        Args:
+            session: SQLAlchemy session
+            limit: Optional maximum number of results
+
+        Returns:
+            List of active User objects
+
+        Example:
+            >>> active_users = User.get_active_users(session, limit=100)
+        """
+        query = session.query(cls).filter(
+            cls.active == True,
+            cls.locked == False
+        ).order_by(cls.username)
+
+        if limit:
+            query = query.limit(limit)
+
+        return query.all()
 
     @property
     def all_projects(self) -> List['Project']:
@@ -281,6 +580,21 @@ class User(Base, TimestampMixin):
     def projects(self) -> List['Project']:
         """Return active projects (default)."""
         return self.active_projects
+
+    @property
+    def active_account_users(self) -> List['AccountUser']:
+        """Get currently active account users."""
+        now = datetime.utcnow()
+        return [
+            au for account in self.accounts
+            for au in account.users
+            if au.end_date is None or au.end_date >= now
+        ]
+
+    @property
+    def users(self) -> List['User']:
+        """Return deduplicated list of active users."""
+        return list({au.user for au in self.active_account_users if au.user})
 
     @property
     def full_name(self) -> str:
@@ -1463,6 +1777,33 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     organizations = relationship('ProjectOrganization', back_populates='project')
     parent = relationship('Project', remote_side=[project_id], foreign_keys=[parent_id], back_populates='children')
     project_number = relationship('ProjectNumber', back_populates='project', uselist=False)
+
+    @classmethod
+    def get_active_projects(cls, session, limit: Optional[int] = None) -> List['Project']:
+        """
+        Get all active, unlocked projects.
+
+        Args:
+            session: SQLAlchemy session
+            limit: Optional maximum number of results
+
+        Returns:
+            List of active Project objects
+
+        Example:
+            >>> active_projects = Project.get_active_projects(session, limit=100)
+        """
+        query = session.query(cls).filter(
+            cls.active == True,
+            #cls.locked == False
+        ).order_by(cls.projcode)
+
+        if limit:
+            query = query.limit(limit)
+
+        return query.all()
+
+
 
     # # Active account users (filtered join)
     # account_users = relationship(

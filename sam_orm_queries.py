@@ -99,10 +99,7 @@ def _get_max_allocation_subquery(resource_name: str = None):
             Allocation2.join(Account2, Allocation2.c.account_id == Account2.c.account_id)
         )\
         .where(
-            and_(
-                Account2.c.project_id == Account.project_id,
-                Allocation2.c.deleted == False
-            )
+            Account2.c.project_id == Account.project_id
         )
 
     # Add resource filter if specified
@@ -522,6 +519,146 @@ def get_projects_expiring_soon(
 
     return sorted(results, key=lambda x: x[3])
 
+
+def get_projects_with_expired_allocations(
+    session: Session,
+    min_days_expired: int = 90,
+    max_days_expired: int = None,
+    facility_names: List[str] = None,
+    resource_name: str = None,
+    include_inactive_projects: bool = False
+) -> List[Tuple[Project, Allocation, str, int]]:
+    """
+    Get projects with allocations that expired within a specified date range.
+    Only considers the most recent allocation per project (per resource if specified).
+
+    Date range logic:
+    - min_days_expired: Allocation must have expired at least this many days ago
+    - max_days_expired: Allocation must have expired no more than this many days ago
+    - If max_days_expired is None, no upper bound (equivalent to epoch/beginning of time)
+
+    Useful for finding:
+    - Projects that should be deactivated/cleaned up
+    - Stale accounts that need attention
+    - Projects whose allocations expired long ago but are still marked active
+    - Projects in specific "aging" buckets (e.g., expired 30-60 days ago)
+
+    Args:
+        session: SQLAlchemy session
+        min_days_expired: Minimum number of days since expiration (default 90)
+        max_days_expired: Maximum number of days since expiration (default None = no limit)
+        facility_names: Optional list of facility names to filter
+        resource_name: Optional resource name to filter (e.g., 'Derecho', 'GLADE')
+        include_inactive_projects: If True, include projects already marked inactive
+
+    Returns:
+        List of (Project, Allocation, resource_name, days_since_expiration) tuples,
+        sorted by days_since_expiration (most expired first)
+
+    Examples:
+        # Projects expired 90+ days ago (original behavior)
+        expired = get_projects_with_expired_allocations(session, min_days_expired=90)
+
+        # Projects expired 30-60 days ago (warning window)
+        warning_zone = get_projects_with_expired_allocations(
+            session,
+            min_days_expired=30,
+            max_days_expired=60
+        )
+
+        # Projects expired 60-90 days ago (grace period ending)
+        grace_ending = get_projects_with_expired_allocations(
+            session,
+            min_days_expired=60,
+            max_days_expired=90,
+            facility_names=['CISL']
+        )
+
+        # Projects expired 180+ days ago on Derecho (critical cleanup)
+        critical = get_projects_with_expired_allocations(
+            session,
+            min_days_expired=180,
+            resource_name='Derecho'
+        )
+
+        # All expired projects (expired 0+ days ago)
+        all_expired = get_projects_with_expired_allocations(
+            session,
+            min_days_expired=0
+        )
+
+        # Projects expired exactly in last 30 days
+        recently_expired = get_projects_with_expired_allocations(
+            session,
+            min_days_expired=0,
+            max_days_expired=30
+        )
+    """
+    from datetime import datetime, timedelta
+    from sqlalchemy import and_, func
+
+    now = datetime.now()
+
+    # Calculate the date range boundaries
+    # min_cutoff: allocation.end_date must be BEFORE this (older than min_days_expired)
+    min_cutoff_date = now - timedelta(days=min_days_expired)
+
+    # max_cutoff: allocation.end_date must be AFTER this (newer than max_days_expired)
+    # If max_days_expired is None, set to epoch (no upper bound)
+    if max_days_expired is not None:
+        max_cutoff_date = now - timedelta(days=max_days_expired)
+    else:
+        # Use epoch as "beginning of time" - effectively no upper bound
+        max_cutoff_date = datetime(1970, 1, 1)
+
+    max_alloc_subquery = _get_max_allocation_subquery(resource_name)
+
+    # Main query
+    query = (
+        session.query(Project, Allocation, Resource.resource_name)
+        .join(Account, Project.project_id == Account.project_id)
+        .join(Allocation, Account.account_id == Allocation.account_id)
+        .join(Resource, Account.resource_id == Resource.resource_id)
+        .filter(
+            # Project status filter
+            Project.active == True if not include_inactive_projects else True,
+            # Allocation must have an end date
+            Allocation.end_date.isnot(None),
+            # Date range: expired MORE than min_days_expired days ago
+            Allocation.end_date < min_cutoff_date,
+            # Date range: expired LESS than max_days_expired days ago (or no limit)
+            Allocation.end_date >= max_cutoff_date,
+            # Only the most recent allocation for this account
+            Allocation.allocation_id == max_alloc_subquery
+        )
+    )
+
+    # Optional: Filter by facility
+    if facility_names:
+        query = (
+            query
+            .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)
+            .join(Panel, AllocationType.panel_id == Panel.panel_id)
+            .join(Facility, Panel.facility_id == Facility.facility_id)
+            .filter(Facility.facility_name.in_(facility_names))
+        )
+
+    # Optional: Filter by resource
+    if resource_name:
+        query = query.filter(Resource.resource_name == resource_name)
+
+    # Execute query and calculate days since expiration
+    results = []
+    for project, allocation, res_name in query.all():
+        # FIXME: somehow we are matching a small number of projects with a future resource expiration
+        # in the query above.  Not sure how. but trim those here.
+        allocs_by_resource = project.get_all_allocations_by_resource()
+        if allocs_by_resource: continue
+        days_since_expiration = (now - allocation.end_date).days
+        results.append((project, allocation, res_name, days_since_expiration))
+
+    # Sort by most expired first (largest days_since_expiration)
+    return sorted(results, key=lambda x: x[3], reverse=True)
 
 
 # ============================================================================
