@@ -199,7 +199,7 @@ class User(Base, TimestampMixin):
     user_id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(35), nullable=False, unique=True)
     locked = Column(Boolean, nullable=False, default=False)
-    upid = Column(Integer, unique=True)
+    upid = Column(Integer, unique=True, nullable=True)
     unix_uid = Column(Integer, nullable=False)
 
     # Personal information
