@@ -12,7 +12,6 @@ from sqlalchemy.orm import relationship, declarative_base, declared_attr, Sessio
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
-from sqlalchemy.orm import Session
 
 
 #-------------------------------------------------------------------------bm-
