@@ -3,11 +3,13 @@ SHELL := /bin/bash
 top_dir := $(shell git rev-parse --show-toplevel)
 config_env := ml conda || true
 
+
 clean:
-	git clean -xdf --exclude ".env"
+	rm *~
 
 clobber:
-	$(MAKE) clean
+	git clean -xdf --exclude ".env" --exclude "conda-env/" --exclude "python/tmp_classes/"
+
 
 %.py : %.ipynb Makefile
 	jupyter nbconvert --clear-output $<

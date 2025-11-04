@@ -1,2 +1,8 @@
-.env
+*~
+__pycache__/
+.ipynb_checkpoints/
+conda-env/
+python/tmp_classes/
 
+# auth config:
+.env

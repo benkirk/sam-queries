@@ -5,75 +5,57 @@ This module demonstrates common patterns for querying and managing users,
 projects, allocations, and related entities.
 """
 
+from sam import *
+
+from sam.accounting.accounts import *
+from sam.accounting.adjustments import *
+from sam.accounting.allocations import *
+from sam.activity.archive import *
+from sam.activity.computational import *
+from sam.activity.dataset import *
+from sam.activity.dav import *
+from sam.activity.disk import *
+from sam.activity.hpc import *
+from sam.core.groups import *
+from sam.core.organizations import *
+from sam.core.users import *
+from sam.projects.areas import *
+from sam.projects.contracts import *
+from sam.projects.projects import *
+from sam.resources.facilities import *
+from sam.resources.machines import *
+from sam.resources.resources import *
+from sam.security.access import *
+from sam.security.roles import *
+from sam.summaries.archive_summaries import *
+from sam.summaries.comp_summaries import *
+from sam.summaries.dav_summaries import *
+from sam.summaries.disk_summaries import *
+from sam.summaries.hpc_summaries import *
+
+
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Tuple
-from sqlalchemy import create_engine, and_, or_, func, desc, select
-from sqlalchemy.orm import sessionmaker, Session, joinedload, selectinload
-from contextlib import contextmanager
 
-# Import ORM models (assuming they're in sam_models.py)
-from sam_models import (
-    Base, User, UserAlias, EmailAddress, AcademicStatus,
-    Project, ProjectDirectory, Account, AccountUser,
-    Allocation, AllocationTransaction, AllocationType,
-    AdhocGroup, Institution, Organization, Facility, Panel,
-    Resource, ResourceType, UserInstitution
-)
+from sqlalchemy import and_, or_, func, desc, select
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 
-# ============================================================================
-# Database Connection Setup
-# ============================================================================
+#
+#
+# from sqlalchemy import create_engine, and_, or_, func, desc, select
+# from sqlalchemy.orm import sessionmaker, Session, joinedload, selectinload
+# from contextlib import contextmanager
+#
+# # Import ORM models (assuming they're in sam_models.py)
+# from sam_models import (
+#     Base, User, UserAlias, EmailAddress, AcademicStatus,
+#     Project, ProjectDirectory, Account, AccountUser,
+#     Allocation, AllocationTransaction, AllocationType,
+#     AdhocGroup, Institution, Organization, Facility, Panel,
+#     Resource, ResourceType, UserInstitution
+# )
 
-def create_sam_engine(connection_string: str = None):
-    """
-    Create database engine and session factory.
-
-    If connection_string is not provided, will load credentials from environment variables:
-        SAM_DB_USERNAME
-        SAM_DB_PASSWORD
-        SAM_DB_SERVER
-
-    Example connection_string:
-        'mysql+pymysql://username:password@localhost/sam'
-    """
-    if connection_string is None:
-        from dotenv import load_dotenv
-        import os
-
-        load_dotenv()  # Loads .env into environment variables
-        username = os.environ['SAM_DB_USERNAME']
-        password = os.environ['SAM_DB_PASSWORD']
-        server = os.environ['SAM_DB_SERVER']
-        database = 'sam'
-
-        print(f'{username}:$SAM_DB_PASSWORD@{server}/{database}')
-
-        # Create connection string
-        connection_string = f'mysql+mysqlconnector://{username}:{password}@{server}/{database}'
-
-    engine = create_engine(
-        connection_string,
-        echo=False,  # Set to True for SQL debugging
-        pool_pre_ping=True,
-        pool_recycle=3600
-    )
-    SessionLocal = sessionmaker(bind=engine)
-    return engine, SessionLocal
-
-
-@contextmanager
-def get_session(SessionLocal):
-    """Context manager for database sessions."""
-    session = SessionLocal()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
 
 
 # ============================================================================
@@ -549,10 +531,6 @@ def get_projects_by_allocation_end_date(
         sorted by end_date (soonest first). days_from_now is positive for future
         dates, negative for past dates, None for NULL end_dates.
     """
-    from sam_models import (
-        Project, Account, Allocation, Resource,
-        AllocationType, Panel, Facility
-    )
 
     now = datetime.now()
 
@@ -885,7 +863,6 @@ def get_group_by_name(session: Session, group_name: str) -> Optional[AdhocGroup]
 
 def get_groups_by_tag(session: Session, tag: str) -> List[AdhocGroup]:
     """Find all groups with a specific tag."""
-    from sam_models import AdhocGroupTag
     return session.query(AdhocGroup)\
         .join(AdhocGroupTag)\
         .filter(AdhocGroupTag.tag == tag)\
@@ -970,6 +947,324 @@ def get_institution_project_count(session: Session) -> List[Dict]:
 
 
 # ============================================================================
+# Usage Query Helper Functions
+# ============================================================================
+def get_user_charge_summary(session, user_id: int,
+                            start_date: datetime,
+                            end_date: datetime,
+                            resource: Optional[str] = None) -> List[CompChargeSummary]:
+    """
+    Get charge summary for a user within a date range.
+
+    Args:
+        session: SQLAlchemy session
+        user_id: User ID
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        resource: Optional resource filter (e.g., 'Derecho')
+
+    Returns:
+        List of CompChargeSummary records ordered by date
+
+    Example:
+        >>> summaries = get_user_charge_summary(
+        ...     session, 12345,
+        ...     datetime(2024, 1, 1),
+        ...     datetime(2024, 12, 31)
+        ... )
+        >>> total = sum(s.charges for s in summaries)
+    """
+    query = session.query(CompChargeSummary).filter(
+        CompChargeSummary.user_id == user_id,
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date
+    )
+
+    if resource:
+        query = query.filter(CompChargeSummary.resource == resource)
+
+    return query.order_by(CompChargeSummary.activity_date).all()
+
+
+def get_project_usage_summary(session, projcode: str,
+                              start_date: datetime,
+                              end_date: datetime,
+                              resource: Optional[str] = None) -> Dict[str, float]:
+    """
+    Get aggregated usage summary for a project.
+
+    Args:
+        session: SQLAlchemy session
+        projcode: Project code (e.g., 'UCUB0001')
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        resource: Optional resource filter (e.g., 'Derecho')
+
+    Returns:
+        Dictionary with keys:
+        - total_jobs: Number of jobs
+        - total_core_hours: Total core hours consumed
+        - total_charges: Total charges incurred
+        - average_charge_per_job: Average charge per job
+        - average_core_hours_per_job: Average core hours per job
+
+    Example:
+        >>> summary = get_project_usage_summary(
+        ...     session, 'UCUB0001',
+        ...     datetime(2024, 1, 1),
+        ...     datetime(2024, 12, 31),
+        ...     resource='Derecho'
+        ... )
+        >>> print(f"Project used {summary['total_core_hours']:.2f} core hours")
+    """
+    from sqlalchemy import func as sql_func
+
+    query = session.query(
+        sql_func.sum(CompChargeSummary.num_jobs).label('total_jobs'),
+        sql_func.sum(CompChargeSummary.core_hours).label('total_core_hours'),
+        sql_func.sum(CompChargeSummary.charges).label('total_charges')
+    ).filter(
+        CompChargeSummary.projcode == projcode,
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date
+    )
+
+    if resource:
+        query = query.filter(CompChargeSummary.resource == resource)
+
+    result = query.first()
+
+    total_jobs = result.total_jobs or 0
+    total_core_hours = result.total_core_hours or 0.0
+    total_charges = result.total_charges or 0.0
+
+    return {
+        'total_jobs': total_jobs,
+        'total_core_hours': total_core_hours,
+        'total_charges': total_charges,
+        'average_charge_per_job': (float(total_charges) / float(total_jobs)) if total_jobs > 0 else 0.0,
+        'average_core_hours_per_job': (float(total_core_hours) / float(total_jobs) ) if total_jobs > 0 else 0.0
+    }
+
+
+def get_daily_usage_trend(session, projcode: str,
+                         start_date: datetime,
+                         end_date: datetime,
+                         resource: Optional[str] = None) -> List[Dict[str, any]]:
+    """
+    Get daily usage trend for a project.
+
+    Args:
+        session: SQLAlchemy session
+        projcode: Project code
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        resource: Optional resource filter
+
+    Returns:
+        List of dicts with keys: date, jobs, core_hours, charges
+        Ordered by date ascending
+
+    Example:
+        >>> trend = get_daily_usage_trend(
+        ...     session, 'UCUB0001',
+        ...     datetime(2024, 1, 1),
+        ...     datetime(2024, 1, 31)
+        ... )
+        >>> for day in trend:
+        ...     print(f"{day['date']}: {day['charges']} charges")
+    """
+    from sqlalchemy import func as sql_func
+
+    query = session.query(
+        sql_func.date(CompChargeSummary.activity_date).label('date'),
+        sql_func.sum(CompChargeSummary.num_jobs).label('jobs'),
+        sql_func.sum(CompChargeSummary.core_hours).label('core_hours'),
+        sql_func.sum(CompChargeSummary.charges).label('charges')
+    ).filter(
+        CompChargeSummary.projcode == projcode,
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date
+    )
+
+    if resource:
+        query = query.filter(CompChargeSummary.resource == resource)
+
+    query = query.group_by(
+        sql_func.date(CompChargeSummary.activity_date)
+    ).order_by(
+        sql_func.date(CompChargeSummary.activity_date)
+    )
+
+    results = query.all()
+
+    return [
+        {
+            'date': row.date,
+            'jobs': row.jobs or 0,
+            'core_hours': float(row.core_hours or 0.0),
+            'charges': float(row.charges or 0.0)
+        }
+        for row in results
+    ]
+
+
+def get_recent_jobs_for_project(session, projcode: str,
+                               limit: int = 100,
+                               resource: Optional[str] = None) -> List[CompActivityCharge]:
+    """
+    Get recent jobs for a project using the charge view.
+
+    Args:
+        session: SQLAlchemy session
+        projcode: Project code
+        limit: Maximum number of jobs to return (default 100)
+        resource: Optional machine filter (e.g., 'Derecho')
+
+    Returns:
+        List of CompActivityCharge view records ordered by submit time (descending)
+
+    Example:
+        >>> jobs = get_recent_jobs_for_project(session, 'UCUB0001', limit=50)
+        >>> for job in jobs:
+        ...     print(f"{job.job_id}: {job.core_hours} hours, {job.charge} charged")
+    """
+    query = session.query(CompActivityCharge).filter(
+        CompActivityCharge.projcode == projcode
+    )
+
+    if resource:
+        query = query.filter(CompActivityCharge.machine == resource)
+
+    return query.order_by(
+        CompActivityCharge.submit_time.desc()
+    ).limit(limit).all()
+
+
+def get_queue_usage_breakdown(session, projcode: str,
+                              start_date: datetime,
+                              end_date: datetime,
+                              machine: Optional[str] = None) -> List[Dict[str, any]]:
+    """
+    Get usage breakdown by queue for a project.
+
+    Args:
+        session: SQLAlchemy session
+        projcode: Project code
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        machine: Optional machine filter
+
+    Returns:
+        List of dicts with keys: queue, machine, jobs, core_hours, charges
+        Ordered by charges descending
+
+    Example:
+        >>> breakdown = get_queue_usage_breakdown(
+        ...     session, 'UCUB0001',
+        ...     datetime(2024, 1, 1),
+        ...     datetime(2024, 12, 31),
+        ...     machine='Derecho'
+        ... )
+        >>> for queue in breakdown:
+        ...     print(f"{queue['queue']}: {queue['jobs']} jobs")
+    """
+    from sqlalchemy import func as sql_func
+
+    query = session.query(
+        CompChargeSummary.queue,
+        CompChargeSummary.machine,
+        sql_func.sum(CompChargeSummary.num_jobs).label('jobs'),
+        sql_func.sum(CompChargeSummary.core_hours).label('core_hours'),
+        sql_func.sum(CompChargeSummary.charges).label('charges')
+    ).filter(
+        CompChargeSummary.projcode == projcode,
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date
+    )
+
+    if machine:
+        query = query.filter(CompChargeSummary.machine == machine)
+
+    results = query.group_by(
+        CompChargeSummary.queue,
+        CompChargeSummary.machine
+    ).order_by(
+        sql_func.sum(CompChargeSummary.charges).desc()
+    ).all()
+
+    return [
+        {
+            'queue': row.queue,
+            'machine': row.machine,
+            'jobs': row.jobs or 0,
+            'core_hours': float(row.core_hours or 0.0),
+            'charges': float(row.charges or 0.0)
+        }
+        for row in results
+    ]
+
+
+def get_user_usage_on_project(session, projcode: str,
+                              start_date: datetime,
+                              end_date: datetime,
+                              limit: int = 10) -> List[Dict[str, any]]:
+    """
+    Get top users by usage on a project.
+
+    Args:
+        session: SQLAlchemy session
+        projcode: Project code
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        limit: Maximum number of users to return (default 10)
+
+    Returns:
+        List of dicts with keys: username, user_id, jobs, core_hours, charges
+        Ordered by charges descending
+
+    Example:
+        >>> top_users = get_user_usage_on_project(
+        ...     session, 'UCUB0001',
+        ...     datetime(2024, 1, 1),
+        ...     datetime(2024, 12, 31),
+        ...     limit=5
+        ... )
+        >>> for user in top_users:
+        ...     print(f"{user['username']}: {user['charges']:.2f}")
+    """
+    from sqlalchemy import func as sql_func
+
+    results = session.query(
+        CompChargeSummary.username,
+        CompChargeSummary.user_id,
+        sql_func.sum(CompChargeSummary.num_jobs).label('jobs'),
+        sql_func.sum(CompChargeSummary.core_hours).label('core_hours'),
+        sql_func.sum(CompChargeSummary.charges).label('charges')
+    ).filter(
+        CompChargeSummary.projcode == projcode,
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date
+    ).group_by(
+        CompChargeSummary.username,
+        CompChargeSummary.user_id
+    ).order_by(
+        sql_func.sum(CompChargeSummary.charges).desc()
+    ).limit(limit).all()
+
+    return [
+        {
+            'username': row.username,
+            'user_id': row.user_id,
+            'jobs': row.jobs or 0,
+            'core_hours': float(row.core_hours or 0.0),
+            'charges': float(row.charges or 0.0)
+        }
+        for row in results
+    ]
+
+
+# ============================================================================
 # Complex Queries
 # ============================================================================
 
@@ -1028,131 +1323,3 @@ def get_user_project_access(session: Session, username: str) -> List[Dict]:
         })
 
     return access_list
-
-
-# ============================================================================
-# Example Usage
-# ============================================================================
-
-def example_usage():
-    """Demonstrate usage of the query functions."""
-
-    # Setup - will load from .env file
-    engine, SessionLocal = create_sam_engine()
-
-    with get_session(SessionLocal) as session:
-        # Find a user
-        user = find_user_by_username(session, 'benkirk')
-        if user:
-            print(f"Found user: {user.full_name}")
-            print(f"Primary GID: {user.primary_gid}")
-            print(f"Primary email: {user.primary_email}")
-            print(f"All emails: {', '.join(user.all_emails)}")
-
-            # Get detailed email info
-            print("\nDetailed email information:")
-            for email_info in user.get_emails_detailed():
-                primary_marker = " (PRIMARY)" if email_info['is_primary'] else ""
-                active_marker = "" if email_info['active'] else " (INACTIVE)"
-                print(f"  - {email_info['email']}{primary_marker}{active_marker}")
-
-            # Find projects
-            for p in user.all_projects:
-                label = "" if p.active else "** INACTIVE **"
-                print(p,label)
-
-        # Find users with multiple emails
-        multi_email_users = get_users_with_multiple_emails(session, min_emails=2)
-        print(f"\n--- Users with multiple emails ---: {len(multi_email_users)}")
-        for user, count in multi_email_users[:5]:
-            print(f"{user.username} ({user.full_name}): {count} emails")
-            for email in user.all_emails:
-                print(f"  - {email}")
-
-        # Find users without primary email set
-        print("\n--- Users without primary email ---")
-        no_primary = get_users_without_primary_email(session)
-        print(f"Found {len(no_primary)} active users without a primary email")
-        for user in no_primary[:5]:
-            print(f"  {user.username}: {', '.join(user.all_emails)}")
-
-        # Get project details
-        project = get_project_with_full_details(session, 'SCSG0001')
-        if project:
-            print(f"\n--- Project Details ---")
-            print(f"Project: {project.projcode}")
-            print(f"Title: {project.title}")
-            print(f"Lead: {project.lead.full_name}")
-
-            # Show allocations by resource
-            print(f"\nAllocations by resource:")
-            allocs_by_resource = project.get_all_allocations_by_resource()
-            for resource_name, alloc in allocs_by_resource.items():
-                print(f"  {resource_name}: {alloc.amount:,.2f} (expires {alloc.end_date})")
-
-            # Show allocations for specific resource
-            print(f"\nSpecific Allocation by resource:")
-            resource_name = "Derecho"
-            alloc = project.get_allocation_by_resource(resource_name)
-            print(f"  {resource_name}: {alloc.amount:,.2f} (expires {alloc.end_date})")
-
-            # Show users on project
-            usernames = [u.username for u in project.users]
-            print(f"Users ({len(usernames)}):");
-            for u in usernames: print(u);
-
-        # Show available resources
-        print("\n--- Available Resources ---")
-        resources = get_available_resources(session)
-        for res in resources:
-            status = "ACTIVE" if res['active'] else "DECOMMISSIONED"
-            print(f"  {res['resource_name']:20} ({res['resource_type']:10}) {status}")
-
-        # Get expiring projects (simple) - all resources
-        print("\n--- Projects Expiring Soon (30 days, all resources) ---")
-        expiring = get_projects_expiring_soon(session, days=30)
-        print(f"Found {len(expiring)} allocations expiring")
-        for proj, alloc, res_name, days in expiring[:5]:
-            print(f"  {proj.projcode} ({res_name}): {days} days remaining")
-
-        # Get expiring projects for specific resource
-        print("\n--- Derecho Allocations Expiring Soon (30 days) ---")
-        expiring_derecho = get_projects_expiring_soon(session, days=30, resource_name='Derecho')
-        print(f"Found {len(expiring_derecho)} Derecho allocations expiring")
-        for proj, alloc, res_name, days in expiring_derecho[:5]:
-            print(f"  {proj.projcode}: {days} days remaining (expires {alloc.end_date.date()})")
-
-        # Statistics
-        print("\n--- User Statistics ---")
-        stats = get_user_statistics(session)
-        for key, value in stats.items():
-            print(f"  {key}: {value}")
-
-        print("\n--- Project Statistics ---")
-        proj_stats = get_project_statistics(session)
-        print(f"  Total: {proj_stats['total_projects']}")
-        print(f"  Active: {proj_stats['active_projects']}")
-        print(f"  By Facility:")
-        for facility, count in proj_stats['by_facility'].items():
-            print(f"    {facility}: {count}")
-
-        # Get user's project access
-        if user:
-            print(f"\n--- Project Access for {user.username} ---")
-            access = get_user_project_access(session, user.username)
-            print(f"Total projects: {len(access)}")
-            s=set()
-            for item in access:
-                print(f"  {item['projcode']}: {item['role']}")
-                s.add(item['projcode'])
-            print(len(user.projects), len(s))
-
-        # Test get_users_on_project
-        print("\n--- Users on Project SCSG0001 ---")
-        project_users = get_users_on_project(session, 'SCSG0001')
-        for user_info in project_users:
-            print(f"  {user_info['role']:8} {user_info['username']:12} {user_info['display_name']:20} <{user_info['email']}>")
-
-
-if __name__ == '__main__':
-    example_usage()

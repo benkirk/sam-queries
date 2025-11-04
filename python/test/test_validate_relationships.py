@@ -1,5 +1,17 @@
-from sqlalchemy import inspect
-from sam_models import *
+import sys
+import os
+
+# Get the absolute path to the directory containing your modules
+module_path = os.path.abspath('.')
+print(module_path)
+
+# Insert the path at the beginning of sys.path
+sys.path.insert(0, module_path)
+
+import sam
+from sam.base import Base
+
+
 
 def validate_relationships(Base):
     """Validate all relationships have proper back_populates."""
@@ -8,6 +20,7 @@ def validate_relationships(Base):
     for mapper in Base.registry.mappers:
         cls = mapper.class_
         for rel in mapper.relationships:
+            print(f"Checking: {cls} / {rel}")
             if rel.back_populates is None and rel.backref is None:
                 # Check if it's intentionally viewonly
                 if not rel.viewonly:
@@ -23,7 +36,6 @@ def validate_relationships(Base):
                         f"{cls.__name__}.{rel.key} back_populates='{rel.back_populates}' "
                         f"but {target_mapper.class_.__name__}.{rel.back_populates} doesn't exist"
                     )
-
     return issues
 
 # Run validation
