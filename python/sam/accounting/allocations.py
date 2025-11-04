@@ -79,19 +79,6 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
     def __repr__(self):
         return f"<Allocation(id={self.allocation_id}, amount={self.amount}, active={self.is_active_at()})>"
 
-    def __eq__(self, other):
-        """Two allocations are equal if they have the same allocation_id."""
-        if not isinstance(other, Allocation):
-            return False
-        return (self.allocation_id is not None and
-                self.allocation_id == other.allocation_id)
-
-    def __hash__(self):
-        """Hash based on allocation_id for set/dict operations."""
-        return (hash(self.allocation_id) if self.allocation_id is not None
-                else hash(id(self)))
-
-
 #----------------------------------------------------------------------------
 class AllocationTransaction(Base):
     """Transaction history for allocations."""
