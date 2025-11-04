@@ -98,8 +98,6 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         return query.all()
 
-
-
     # # Active account users (filtered join)
     # account_users = relationship(
     #     'AccountUser',
@@ -118,6 +116,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     # def users(self) -> List['User']:
     #     """Return a deduplicated list of active users on this project."""
     #     return list({au.user for au in self.account_users if au.user is not None})
+
     @property
     def active_account_users(self) -> List['AccountUser']:
         """Get currently active account users."""
@@ -133,6 +132,13 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         """Return deduplicated list of active users."""
         return list({au.user for au in self.active_account_users if au.user})
 
+    @property
+    def roster(self) -> List['User']:
+        """Return the project lead, admin, and any users."""
+        s = set(self.users)
+        s.add(self.lead)
+        if self.admin: s.add(self.admin)
+        return list(s)
 
     def get_all_allocations_by_resource(self) -> Dict[str, Optional['Allocation']]:
         """
