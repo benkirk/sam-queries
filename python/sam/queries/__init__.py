@@ -19,7 +19,6 @@ from sam.activity.hpc import *
 from sam.core.groups import *
 from sam.core.organizations import *
 from sam.core.users import *
-#from sam.integration.xras import *
 from sam.projects.areas import *
 from sam.projects.contracts import *
 from sam.projects.projects import *
