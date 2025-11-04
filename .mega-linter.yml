@@ -1,0 +1,38 @@
+# Configuration file for MegaLinter
+#
+# See all available variables at https://megalinter.io/latest/config-file/ and in
+# linters documentation
+
+# all, none, or list of linter keys
+APPLY_FIXES: all
+
+# If you use ENABLE variable, all other languages/formats/tooling-formats will
+# be disabled by default
+# ENABLE:
+
+# If you use ENABLE_LINTERS variable, all other linters will be disabled by
+# default
+# ENABLE_LINTERS:
+
+DISABLE_LINTERS:
+  - DOCKERFILE_HADOLINT
+  - REPOSITORY_CHECKOV
+  - REPOSITORY_DEVSKIM
+
+# DISABLE:
+# - COPYPASTE # Uncomment to disable checks of excessive copy-pastes
+# - SPELL # Uncomment to disable checks of spelling mistakes
+
+SHOW_ELAPSED_TIME: true
+
+# Uncomment if you want MegaLinter to detect errors but not block CI to pass
+DISABLE_ERRORS: true
+
+# linter-specific customizations
+BASH_FILTER_REGEX_EXCLUDE: "(Dockerfile)"
+BASH_SHFMT_ARGUMENTS: "--binary-next-line --case-indent --func-next-line --space-redirects --indent 4"
+JSON_PRETTIER_FILTER_REGEX_EXCLUDE: '(\.cspell\.json)'
+MARKDOWN_FILTER_REGEX_EXCLUDE: '(license\.md|docs/licenses)'
+REPOSITORY_KICS_ARGUMENTS: --exclude-severities medium,low,info,trace
+REPOSITORY_TRIVY_CONFIG_FILE: .trivy.yaml
+SPELL_FILTER_REGEX_EXCLUDE: (\.json|\.github|\.mega-linter\.yml)

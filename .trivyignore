@@ -1,0 +1,17 @@
+# AVD-DS-0001 (MEDIUM): Specify a tag in the 'FROM' statement
+AVD-DS-0001
+
+# AVD-DS-0002 (HIGH): Specify at least 1 USER command in Dockerfile with non-root user as argument
+AVD-DS-0002
+
+# AVD-DS-0013 (MEDIUM): RUN should not be used to change directory
+AVD-DS-0013
+
+# AVD-DS-0017 (HIGH): The instruction 'RUN <package-manager> update' should always be followed by '<package-manager> install' in the same RUN statement.
+AVD-DS-0017
+
+# AVD-DS-0015 (HIGH): 'yum clean all' is missed:
+AVD-DS-0015
+
+# AVD-DS-0020 (HIGH): 'zypper clean' is missed:
+AVD-DS-0020
