@@ -81,6 +81,10 @@ with get_session(SessionLocal) as session:
     # Get expiring projects (simple) - all resources
     print("\n--- Projects Expiring Soon (30 days, all resources) ---")
     expiring = get_projects_expiring_soon(session, days=30)
+    expiring = get_projects_by_allocation_end_date(session, 
+                                                   start_date=datetime.now(),
+                                                   end_date=datetime.now() + timedelta(days=30),                                                   
+                                                   facility_names=['UNIV', 'WNA'])
     #expiring = list(set(expiring))
     print(f"Found {len(expiring)} allocations expiring")
     for proj, alloc, res_name, days in expiring:
@@ -161,14 +165,16 @@ with get_session(SessionLocal) as session:
 # In[ ]:
 
 
-from sam_orm_queries import get_projects_with_expired_allocations
+from sam_orm_queries import get_projects_with_expired_allocations, get_projects_by_allocation_end_date
+from datetime import datetime, timedelta
 with get_session(SessionLocal) as session:
     # Get expiring projects (simple) - all resources
     print("\n--- Projects Post-Expiry (90 days after, all resources) ---")
-    expiring = get_projects_with_expired_allocations(session, 
-                                                     min_days_expired=90,
-                                                     max_days_expired=12000,
-                                                     facility_names=['UNIV', 'WNA'],)
+    expiring = get_projects_by_allocation_end_date(session, 
+                                                   start_date=datetime.now() - timedelta(days=150),
+                                                   end_date=datetime.now() - timedelta(days=90),                                                   
+                                                   facility_names=['UNIV', 'WNA'])
+
     #expiring = list(set(expiring))
     print(f"Found {len(expiring)} recently expired allocations")
     #print(expiring)
