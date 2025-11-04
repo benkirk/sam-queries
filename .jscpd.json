@@ -1,0 +1,17 @@
+{
+  "threshold": 0.2,
+  "reporters": ["html", "markdown"],
+  "noSymlinks": true,
+  "ignore": [
+    "**/node_modules/**",
+    "**/parallel_stl_sort.cxx/**",
+    "**/.git/**",
+    "**/.rbenv/**",
+    "**/.venv/**",
+    "**/*cache*/**",
+    "**/.github/**",
+    "**/.idea/**",
+    "**/report/**",
+    "**/*.svg"
+  ]
+}
