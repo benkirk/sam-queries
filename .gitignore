@@ -6,3 +6,6 @@ python/tmp_classes/
 
 # auth config:
 .env
+
+# skip linting reports in CI
+megalinter-reports/
