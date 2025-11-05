@@ -125,7 +125,7 @@ class SamSearchCLI:
             print(f"✅ Found {len(users)} user(s):\n")
 
             for i, user in enumerate(users, 1):
-                print(f"{i}. {user.username} ({user.full_name})")
+                print(f"{i}. {user.username} ({user.display_name})")
                 if verbose:
                     print(f"   ID: {user.user_id}")
                     print(f"   Email: {user.primary_email or 'N/A'}")
@@ -149,11 +149,11 @@ class SamSearchCLI:
         print("="*80)
         print("USER INFORMATION")
         print("="*80)
-        print(f"Username:     {user.username}")
-        print(f"Full Name:    {user.full_name}")
-        print(f"User ID:      {user.user_id}")
-        print(f"UPID:         {user.upid or 'N/A'}")
-        print(f"Unix UID:     {user.unix_uid}")
+        print(f"Username: {user.username}")
+        print(f"Name:     {user.display_name}")
+        print(f"User ID:  {user.user_id}")
+        print(f"UPID:     {user.upid or 'N/A'}")
+        print(f"Unix UID: {user.unix_uid}")
 
         # Email addresses
         if user.email_addresses:
@@ -231,7 +231,7 @@ class SamSearchCLI:
                             print(f"       Valid until: {alloc.end_date.date()}")
 
                 # Show lead
-                print(f"   Lead: {project.lead.full_name}")
+                print(f"   Lead: {project.lead.display_name}")
 
                 # Show user count
                 num_users = project.get_user_count()
@@ -316,7 +316,7 @@ class SamSearchCLI:
 
                 if verbose:
                     print(f"   ID: {project.project_id}")
-                    print(f"   Lead: {project.lead.full_name if project.lead else 'N/A'}")
+                    print(f"   Lead: {project.lead.display_name if project.lead else 'N/A'}")
                     print(f"   Users: {project.get_user_count()}")
 
                 print()
@@ -344,11 +344,12 @@ class SamSearchCLI:
 
         # Leadership
         if project.lead:
-            print(f"\nProject Lead: {project.lead.full_name} ({project.lead.username})")
-            print(f"Lead Email:   {project.lead.primary_email or 'N/A'}")
+            print(f"\nProject Lead:  {project.lead.display_name} ({project.lead.username})")
+            print(f"Lead Email:    {project.lead.primary_email or 'N/A'}")
 
-        if project.admin:
-            print(f"Project Admin: {project.admin.full_name} ({project.admin.username})")
+        if project.admin and project.admin != project.lead:
+            print(f"Project Admin: {project.admin.display_name} ({project.admin.username})")
+            print(f"Admin Email:   {project.admin.primary_email or 'N/A'}")
 
         # Status
         print(f"\nStatus:       {'✅ Active' if project.active else '❌ Inactive'}")
@@ -357,17 +358,21 @@ class SamSearchCLI:
         if project.area_of_interest:
             print(f"Research Area: {project.area_of_interest.area_of_interest}")
 
-        # Allocations by resource
+        # Allocations & Usage by resource
+        usage = project.get_detailed_allocation_usage()
         allocations = project.get_all_allocations_by_resource()
-        if allocations:
+        if usage:
             print(f"\nAllocations:")
             for resource_name, alloc in allocations.items():
+                resource_usage = usage[resource_name]
                 status = "✅" if alloc.is_active else "❌"
-                print(f"  {status} {resource_name}:")
-                print(f"     Amount: {alloc.amount:,.2f}")
-                print(f"     Start:  {alloc.start_date.date()}")
+                print(f"  {status} {resource_name} ({resource_usage['resource_type']}):")
+                print(f"     Allocation: {alloc.amount:,.0f}")
+                print(f"     Remaining:  {resource_usage['remaining']:,.0f}")
+                print(f"     Used:       {resource_usage['used']:,.0f} / ({resource_usage['percent_used']:,.0f}%)")
+                print(f"     Start:      {alloc.start_date.date()}")
                 if alloc.end_date:
-                    print(f"     End:    {alloc.end_date.date()}")
+                    print(f"     End:        {alloc.end_date.date()}")
 
         # User count
         num_users = project.get_user_count()
@@ -423,7 +428,7 @@ class SamSearchCLI:
         print(f"Active users for {project.projcode}:\n")
 
         for i, user in enumerate(sorted(users, key=lambda u: u.username), 1):
-            print(f"{i}. {user.username} - {user.full_name}")
+            print(f"{i}. {user.username} - {user.display_name}")
 
             if verbose:
                 print(f"   Email: {user.primary_email or 'N/A'}")

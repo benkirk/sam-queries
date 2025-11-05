@@ -3,6 +3,16 @@
 from ..base import *
 #-------------------------------------------------------------------------eh-
 
+from ..accounting.accounts import *
+from ..accounting.adjustments import *
+from ..resources.resources import *
+from ..summaries.archive_summaries import *
+from ..summaries.comp_summaries import *
+from ..summaries.dav_summaries import *
+from ..summaries.disk_summaries import *
+from ..summaries.hpc_summaries import *
+
+from sqlalchemy.orm import joinedload
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
@@ -212,6 +222,14 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         if self.admin: s.add(self.admin)
         return list(s)
 
+    def get_user_count(self) -> int:
+        """Return the number of active users on this project."""
+        return len(self.users)
+
+    def has_user(self, user: 'User') -> bool:
+        """Check if a user is active on this project."""
+        return user in self.users
+
     def get_all_allocations_by_resource(self) -> Dict[str, Optional['Allocation']]:
         """
         Get the most recent active allocation for each resource.
@@ -249,14 +267,6 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         allocations_by_resource = self.get_all_allocations_by_resource()
         return allocations_by_resource.get(resource_name)
 
-    def get_user_count(self) -> int:
-        """Return the number of active users on this project."""
-        return len(self.users)
-
-    def has_user(self, user: 'User') -> bool:
-        """Check if a user is active on this project."""
-        return user in self.users
-
     @hybrid_property
     def has_active_allocations(self) -> bool:
         """Check if project has any active allocations (Python side)."""
@@ -282,6 +292,231 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                 or_(Allocation.end_date.is_(None), Allocation.end_date >= now)
             )
         )
+
+    def get_detailed_allocation_usage(self,
+                                      resource_name: Optional[str] = None,
+                                      include_adjustments: bool = True) -> Dict[str, Dict[str, any]]:
+        """
+        Calculate allocation usage and remaining balance across all resource types.
+
+        Args:
+            resource_name: Optional filter for specific resource (e.g., 'Derecho', 'GLADE')
+            include_adjustments: Whether to include manual charge adjustments
+
+        Returns:
+            Dict mapping resource_name to usage details:
+            {
+                'Derecho': {
+                    'allocation_id': 123,
+                    'account_id': 456,
+                    'resource_type': 'HPC',
+                    'allocated': 1000000.0,
+                    'used': 450000.0,
+                    'remaining': 550000.0,
+                    'percent_used': 45.0,
+                    'charges_by_type': {'comp': 450000.0},
+                    'adjustments': -1000.0,  # if include_adjustments=True
+                    'total_jobs': 1234,
+                    'total_core_hours': 450000.0,
+                    'start_date': datetime(...),
+                    'end_date': datetime(...) or None,
+                    'days_remaining': 180 or None,
+                },
+                ...
+            }
+
+        Example:
+            >>> project = session.query(Project).filter_by(projcode='UCSU0001').first()
+            >>> usage = project.get_detailed_allocation_usage()
+            >>> print(f"Derecho: {usage['Derecho']['percent_used']:.1f}% used")
+            >>>
+            >>> # Get just one resource
+            >>> derecho = project.get_detailed_allocation_usage(resource_name='Derecho')
+        """
+        now = datetime.utcnow()
+        results = {}
+
+        # Get accounts with eager loading
+        query = self.session.query(Account).options(joinedload(Account.allocations),
+                                                    joinedload(Account.resource).joinedload(Resource.resource_type),
+                                                    joinedload(Account.charge_adjustments) if include_adjustments else None
+                                                    ).filter(Account.project_id == self.project_id,
+                                                             Account.deleted == False
+                                                             )
+
+        if resource_name:
+            query = query.join(Resource).filter(Resource.resource_name == resource_name)
+
+        for account in query.all():
+            if not account.resource:
+                continue
+
+            resource = account.resource.resource_name
+            resource_type = account.resource.resource_type.resource_type if account.resource.resource_type else 'UNKNOWN'
+
+            # Find active allocation
+            active_alloc = None
+            for alloc in account.allocations:
+                if alloc.is_active_at(now):
+                    active_alloc = alloc
+                    break
+
+            if not active_alloc:
+                continue
+
+            # Determine which charge tables to query based on resource type
+            charges_by_type = self._get_charges_by_resource_type(account.account_id,
+                                                                 resource_type,
+                                                                 active_alloc.start_date,
+                                                                 active_alloc.end_date or now
+                                                                 )
+
+            # Calculate adjustment total
+            adjustments = 0.0
+            if include_adjustments:
+                adjustments = self.session.query(func.coalesce(func.sum(ChargeAdjustment.amount), 0)
+                                                 ).filter(ChargeAdjustment.account_id == account.account_id,
+                                                          ChargeAdjustment.adjustment_date >= active_alloc.start_date,
+                                                          ChargeAdjustment.adjustment_date <= (active_alloc.end_date or now)
+                                                          ).scalar()
+                adjustments = float(adjustments)
+
+            # Calculate totals
+            allocated = float(active_alloc.amount)
+            total_charges = sum(charges_by_type.values())
+            effective_used = total_charges + adjustments
+            remaining = allocated - effective_used
+            percent_used = (effective_used / allocated * 100) if allocated > 0 else 0
+
+            # Calculate time metrics
+            days_elapsed = (now - active_alloc.start_date).days
+            days_remaining = None
+            days_total = None
+            if active_alloc.end_date:
+                days_remaining = max(0, (active_alloc.end_date - now).days)
+                days_total = (active_alloc.end_date - active_alloc.start_date).days
+
+            # Get job statistics (primarily for HPC/DAV)
+            total_jobs, total_core_hours = self._get_job_statistics(account.account_id,
+                                                                resource_type,
+                                                                    active_alloc.start_date,
+                                                                    active_alloc.end_date or now
+                                                                    )
+
+            result = {
+                'allocation_id': active_alloc.allocation_id,
+                'account_id': account.account_id,
+                'resource_type': resource_type,
+                'allocated': allocated,
+                'used': effective_used,
+                'remaining': remaining,
+                'percent_used': percent_used,
+                'charges_by_type': charges_by_type,
+                'start_date': active_alloc.start_date,
+                'end_date': active_alloc.end_date,
+                'days_elapsed': days_elapsed,
+                'days_remaining': days_remaining,
+                'days_total': days_total,
+            }
+
+            if include_adjustments:
+                result['adjustments'] = adjustments
+
+            if total_jobs is not None:
+                result['total_jobs'] = total_jobs
+                result['total_core_hours'] = total_core_hours
+
+            results[resource] = result
+
+        return results
+
+
+    def _get_charges_by_resource_type(self,
+                                      account_id: int,
+                                      resource_type: str,
+                                      start_date: datetime,
+                                      end_date: datetime) -> Dict[str, float]:
+        """
+        Query appropriate charge summary tables based on resource type.
+
+        Returns:
+            Dict of charge type to amount, e.g., {'comp': 1000.0, 'disk': 50.0}
+        """
+        charges = {}
+
+        # HPC resources have computational charges
+        if resource_type == 'HPC':
+            comp = self.session.query(func.coalesce(func.sum(CompChargeSummary.charges), 0)
+                                      ).filter(CompChargeSummary.account_id == account_id,
+                                               CompChargeSummary.activity_date >= start_date,
+                                               CompChargeSummary.activity_date <= end_date
+                                               ).scalar()
+            charges['comp'] = float(comp)
+
+            # HPC might also have DAV charges on same resource
+            dav = self.session.query(func.coalesce(func.sum(DavChargeSummary.charges), 0)
+                                     ).filter(DavChargeSummary.account_id == account_id,
+                                              DavChargeSummary.activity_date >= start_date,
+                                              DavChargeSummary.activity_date <= end_date
+                                              ).scalar()
+            if dav:
+                charges['dav'] = float(dav)
+
+        # Disk resources
+        elif resource_type == 'DISK':
+            disk = self.session.query(func.coalesce(func.sum(DiskChargeSummary.charges), 0)
+                                      ).filter(DiskChargeSummary.account_id == account_id,
+                                               DiskChargeSummary.activity_date >= start_date,
+                                               DiskChargeSummary.activity_date <= end_date
+                                               ).scalar()
+            charges['disk'] = float(disk)
+
+        # Archive resources
+        elif resource_type == 'ARCHIVE':
+            archive = self.session.query(func.coalesce(func.sum(ArchiveChargeSummary.charges), 0)
+                                         ).filter(ArchiveChargeSummary.account_id == account_id,
+                                                  ArchiveChargeSummary.activity_date >= start_date,
+                                                  ArchiveChargeSummary.activity_date <= end_date
+                                                  ).scalar()
+            charges['archive'] = float(archive)
+
+        # DAV-specific resources (Geyser, Caldera, etc.)
+        elif resource_type == 'DAV':
+            dav = self.session.query(func.coalesce(func.sum(DavChargeSummary.charges), 0)
+                                     ).filter(DavChargeSummary.account_id == account_id,
+                                              DavChargeSummary.activity_date >= start_date,
+                                              DavChargeSummary.activity_date <= end_date
+                                              ).scalar()
+            charges['dav'] = float(dav)
+
+        return charges
+
+
+    def _get_job_statistics(self,
+                            account_id: int,
+                            resource_type: str,
+                            start_date: datetime,
+                            end_date: datetime) -> tuple[Optional[int], Optional[float]]:
+        """
+        Get job count and core hours for computational resources.
+
+        Returns:
+            Tuple of (total_jobs, total_core_hours) or (None, None)
+        """
+        if resource_type not in ('HPC', 'DAV'):
+            return None, None
+
+        # Use appropriate summary table
+        SummaryClass = CompChargeSummary if resource_type == 'HPC' else DavChargeSummary
+
+        stats = self.session.query(func.coalesce(func.sum(SummaryClass.num_jobs), 0).label('jobs'),
+                                   func.coalesce(func.sum(SummaryClass.core_hours), 0).label('hours')
+                                   ).filter(SummaryClass.account_id == account_id,
+                                            SummaryClass.activity_date >= start_date,
+                                            SummaryClass.activity_date <= end_date
+                                            ).first()
+
+        return int(stats.jobs), float(stats.hours)
 
     # Tree Navigation Methods (Nested Set Model)
     def get_ancestors(self, include_self: bool = False) -> List['Project']:
