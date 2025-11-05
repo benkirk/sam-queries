@@ -129,6 +129,7 @@ class SamSearchCLI:
                 if verbose:
                     print(f"   ID: {user.user_id}")
                     print(f"   Email: {user.primary_email or 'N/A'}")
+                    #print(f"   Phone: {user.phones}")
                     print(f"   Active: {'✓' if user.is_accessible else '✗'}")
                     print()
 
@@ -338,50 +339,52 @@ class SamSearchCLI:
         print("="*80)
         print("PROJECT INFORMATION")
         print("="*80)
-        print(f"Project Code: {project.projcode}")
-        print(f"Title:        {project.title}")
-        print(f"Project ID:   {project.project_id}")
-
-        # Leadership
+        print(f"Title:  {project.title}")
+        print(f"Code:   {project.projcode}")
+        print(f"GID:    {project.unix_gid}")
+        print(f"Status: {'Active ✅' if project.active else 'Inactive ❌'}")
+        #print(f"Organization: {project.organizations}")
         if project.lead:
-            print(f"\nProject Lead:  {project.lead.display_name} ({project.lead.username})")
-            print(f"Lead Email:    {project.lead.primary_email or 'N/A'}")
-
+            print(f"Lead:   {project.lead.display_name} ({project.lead.username}) <{project.lead.primary_email or 'N/A'}>")
         if project.admin and project.admin != project.lead:
-            print(f"Project Admin: {project.admin.display_name} ({project.admin.username})")
-            print(f"Admin Email:   {project.admin.primary_email or 'N/A'}")
-
-        # Status
-        print(f"\nStatus:       {'✅ Active' if project.active else '❌ Inactive'}")
-
-        # Area of interest
+            print(f"Admin: {project.admin.display_name} ({project.admin.username}) <{project.admin.primary_email or 'N/A'}>")
+        print(f"Type:   {project.allocation_type.allocation_type}")
+        print(f"Panel:  {project.allocation_type.panel.panel_name}")
         if project.area_of_interest:
-            print(f"Research Area: {project.area_of_interest.area_of_interest}")
+            print(f"Area:   {project.area_of_interest.area_of_interest}")
+        if project.contracts:
+            print(f"Contracts:")
+            for pc in project.contracts:
+                print(f"  - {pc.contract.contract_source.contract_source} {pc.contract.contract_number:20} {pc.contract.title}")
+        if project.charging_exempt:
+            print(f"** Charging Exempt **")
 
         # Allocations & Usage by resource
         usage = project.get_detailed_allocation_usage()
         allocations = project.get_all_allocations_by_resource()
         if usage:
-            print(f"\nAllocations:")
+            print(f"Allocations:")
             for resource_name, alloc in allocations.items():
                 resource_usage = usage[resource_name]
-                status = "✅" if alloc.is_active else "❌"
-                print(f"  {status} {resource_name} ({resource_usage['resource_type']}):")
-                print(f"     Allocation: {alloc.amount:,.0f}")
-                print(f"     Remaining:  {resource_usage['remaining']:,.0f}")
+                print(f"  - {resource_name} ({resource_usage['resource_type']}) [{alloc.start_date.date()} - {alloc.end_date.date() if alloc.end_date else 'N/A'}]:")
+                print(f"     Allocation: {alloc.amount:,.0f} ({resource_usage['remaining']:,.0f} Remaining)")
                 print(f"     Used:       {resource_usage['used']:,.0f} / ({resource_usage['percent_used']:,.0f}%)")
-                print(f"     Start:      {alloc.start_date.date()}")
-                if alloc.end_date:
-                    print(f"     End:        {alloc.end_date.date()}")
+
+        # Active project directories
+        if project.directories:
+            print("Directories:")
+            for d in project.directories:
+                if d.is_currently_active:
+                    print(f"  {d.directory_name}")
 
         # User count
         num_users = project.get_user_count()
-        print(f"\nActive Users: {num_users}")
+        print(f"Active Users: {num_users}")
 
         if verbose:
             # Show abstract if available
             if project.abstract:
-                print(f"\nAbstract:")
+                print(f"Abstract:")
                 # Truncate long abstracts
                 abstract = project.abstract
                 if len(abstract) > 500:
@@ -390,21 +393,21 @@ class SamSearchCLI:
 
             # Show organizations
             if project.organizations:
-                print(f"\nOrganizations:")
+                print(f"Organizations:")
                 for po in project.organizations:
                     if po.is_currently_active:
                         org = po.organization
-                        print(f"  • {org.name} ({org.acronym})")
+                        print(f"  - {org.name} ({org.acronym})")
 
             # Show tree information
             if project.parent:
-                print(f"\nParent Project: {project.parent.projcode}")
+                print(f"Parent Project: {project.parent.projcode}")
 
             children = project.get_children()
             if children:
                 print(f"Child Projects: {len(children)}")
                 for child in children[:5]:  # Show first 5
-                    print(f"  • {child.projcode}")
+                    print(f"  - {child.projcode}")
                 if len(children) > 5:
                     print(f"  ... and {len(children) - 5} more")
         else:
@@ -432,6 +435,7 @@ class SamSearchCLI:
 
             if verbose:
                 print(f"   Email: {user.primary_email or 'N/A'}")
+                #print(f"   Phone: {user.phones}")
                 print(f"   UID:   {user.unix_uid}")
 
             print()

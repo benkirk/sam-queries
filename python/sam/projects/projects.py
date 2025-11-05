@@ -249,7 +249,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                 ]
                 if active_allocs:
                     # Get most recent allocation
-                    current = max(active_allocs, key=lambda a: a.allocation_id)
+                    current = max(active_allocs, key=lambda a: a.end_date)
                     allocations_by_resource[resource_name] = current
 
         return allocations_by_resource
@@ -398,7 +398,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
             # Get job statistics (primarily for HPC/DAV)
             total_jobs, total_core_hours = self._get_job_statistics(account.account_id,
-                                                                resource_type,
+                                                                    resource_type,
                                                                     active_alloc.start_date,
                                                                     active_alloc.end_date or now
                                                                     )
@@ -444,14 +444,18 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         """
         charges = {}
 
-        # HPC resources have computational charges
-        if resource_type == 'HPC':
+        # HPC & DAV resources
+        # - may have computational charges,
+        # - may have dav charges.
+        # (Because Casper is a DAV resource but can have computational charges
+        if resource_type == 'HPC' or resource_type == 'DAV':
             comp = self.session.query(func.coalesce(func.sum(CompChargeSummary.charges), 0)
                                       ).filter(CompChargeSummary.account_id == account_id,
                                                CompChargeSummary.activity_date >= start_date,
                                                CompChargeSummary.activity_date <= end_date
                                                ).scalar()
-            charges['comp'] = float(comp)
+            if comp:
+                charges['comp'] = float(comp)
 
             # HPC might also have DAV charges on same resource
             dav = self.session.query(func.coalesce(func.sum(DavChargeSummary.charges), 0)
@@ -479,15 +483,6 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                                                   ArchiveChargeSummary.activity_date <= end_date
                                                   ).scalar()
             charges['archive'] = float(archive)
-
-        # DAV-specific resources (Geyser, Caldera, etc.)
-        elif resource_type == 'DAV':
-            dav = self.session.query(func.coalesce(func.sum(DavChargeSummary.charges), 0)
-                                     ).filter(DavChargeSummary.account_id == account_id,
-                                              DavChargeSummary.activity_date >= start_date,
-                                              DavChargeSummary.activity_date <= end_date
-                                              ).scalar()
-            charges['dav'] = float(dav)
 
         return charges
 
