@@ -34,8 +34,8 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-# Import our ORM models
 from sam import *
+
 
 class SamSearchCLI:
     """Main CLI application class."""
