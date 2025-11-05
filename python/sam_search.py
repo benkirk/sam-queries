@@ -79,7 +79,6 @@ class SamSearchCLI:
                 username
             )
 
-
             if not user:
                 print(f"❌ User not found: {username}")
                 return 1
@@ -259,9 +258,10 @@ class SamSearchCLI:
         """
         try:
             # Query for project
-            project = self.session.query(Project).filter(
-                Project.projcode == projcode.upper()
-            ).first()
+            project = Project.get_by_projcode(
+                self.session,
+                projcode
+            )
 
             if not project:
                 print(f"❌ Project not found: {projcode}")
@@ -296,12 +296,13 @@ class SamSearchCLI:
         """
         try:
             # Search in both projcode and title
-            projects = self.session.query(Project).filter(
-                (Project.projcode.ilike(pattern)) |
-                (Project.title.ilike(pattern))
-            ).filter(
-                Project.active == True
-            ).limit(limit).all()
+            projects = Project.search_by_pattern(
+                self.session,
+                pattern,
+                search_title=True,
+                active_only=False,
+                limit=limit
+            )
 
             if not projects:
                 print(f"❌ No projects found matching: {pattern}")
