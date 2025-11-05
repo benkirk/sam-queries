@@ -221,7 +221,7 @@ Examples:
             return 130
         except Exception as e:
             print(f"❌ Fatal error: {e}", file=sys.stderr)
-            if self.args and self.args.verbose:
+            if self.args.verbose:
                 import traceback
                 traceback.print_exc()
             return 2
