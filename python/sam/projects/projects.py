@@ -1,10 +1,10 @@
-#-------------------------------------------------------------------------bh-
+# -------------------------------------------------------------------------bh-
 # Common Imports:
-from ..base import *
-#-------------------------------------------------------------------------eh-
+from sqlalchemy.orm import joinedload
 
 from ..accounting.accounts import *
 from ..accounting.adjustments import *
+from ..base import *
 from ..resources.resources import *
 from ..summaries.archive_summaries import *
 from ..summaries.comp_summaries import *
@@ -12,21 +12,25 @@ from ..summaries.dav_summaries import *
 from ..summaries.disk_summaries import *
 from ..summaries.hpc_summaries import *
 
-from sqlalchemy.orm import joinedload
+# -------------------------------------------------------------------------eh-
 
-#-------------------------------------------------------------------------bm-
-#----------------------------------------------------------------------------
+
+
+
+# -------------------------------------------------------------------------bm-
+# ----------------------------------------------------------------------------
 class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Research projects."""
-    __tablename__ = 'project'
+
+    __tablename__ = "project"
 
     __table_args__ = (
-        Index('ix_project_projcode', 'projcode'),
-        Index('ix_project_lead', 'project_lead_user_id'),
-        Index('ix_project_admin', 'project_admin_user_id'),
-        Index('ix_project_active', 'active'),
-        Index('ix_project_tree', 'tree_left', 'tree_right'),
-        Index('ix_project_parent', 'parent_id'),
+        Index("ix_project_projcode", "projcode"),
+        Index("ix_project_lead", "project_lead_user_id"),
+        Index("ix_project_admin", "project_admin_user_id"),
+        Index("ix_project_active", "active"),
+        Index("ix_project_tree", "tree_left", "tree_right"),
+        Index("ix_project_parent", "parent_id"),
     )
 
     def __eq__(self, other):
@@ -40,27 +44,30 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         return hash(self.project_id) if self.project_id is not None else hash(id(self))
 
     project_id = Column(Integer, primary_key=True, autoincrement=True)
-    projcode = Column(String(30), nullable=False, unique=True, default='')
+    projcode = Column(String(30), nullable=False, unique=True, default="")
     title = Column(String(255), nullable=False)
     abstract = Column(Text)
 
     # Leadership
-    project_lead_user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    project_admin_user_id = Column(Integer, ForeignKey('users.user_id'))
+    project_lead_user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    project_admin_user_id = Column(Integer, ForeignKey("users.user_id"))
 
     # Status flags
     charging_exempt = Column(Boolean, nullable=False, default=False)
 
     # Foreign keys
-    area_of_interest_id = Column(Integer, ForeignKey('area_of_interest.area_of_interest_id'),
-                                 nullable=False)
-    allocation_type_id = Column(Integer, ForeignKey('allocation_type.allocation_type_id'))
-    parent_id = Column(Integer, ForeignKey('project.project_id'))
+    area_of_interest_id = Column(
+        Integer, ForeignKey("area_of_interest.area_of_interest_id"), nullable=False
+    )
+    allocation_type_id = Column(
+        Integer, ForeignKey("allocation_type.allocation_type_id")
+    )
+    parent_id = Column(Integer, ForeignKey("project.project_id"))
 
     # Tree structure (nested set model)
     tree_left = Column(Integer)
     tree_right = Column(Integer)
-    tree_root = Column(Integer, ForeignKey('project.project_id'))
+    tree_root = Column(Integer, ForeignKey("project.project_id"))
 
     # Unix group
     unix_gid = Column(Integer)
@@ -70,21 +77,39 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     membership_change_time = Column(TIMESTAMP)
     inactivate_time = Column(DateTime)
 
-    accounts = relationship('Account', back_populates='project', lazy='selectin')
-    admin = relationship('User', foreign_keys=[project_admin_user_id], back_populates='admin_projects')
-    allocation_type = relationship('AllocationType', back_populates='projects')
-    area_of_interest = relationship('AreaOfInterest', back_populates='projects')
-    children = relationship('Project', remote_side=[parent_id], foreign_keys=[parent_id], back_populates='parent')
-    contracts = relationship('ProjectContract', back_populates='project')
-    default_projects = relationship('DefaultProject', back_populates='project')
-    directories = relationship('ProjectDirectory', back_populates='project')
-    lead = relationship('User', foreign_keys=[project_lead_user_id], back_populates='led_projects')
-    organizations = relationship('ProjectOrganization', back_populates='project')
-    parent = relationship('Project', remote_side=[project_id], foreign_keys=[parent_id], back_populates='children')
-    project_number = relationship('ProjectNumber', back_populates='project', uselist=False)
+    accounts = relationship("Account", back_populates="project", lazy="selectin")
+    admin = relationship(
+        "User", foreign_keys=[project_admin_user_id], back_populates="admin_projects"
+    )
+    allocation_type = relationship("AllocationType", back_populates="projects")
+    area_of_interest = relationship("AreaOfInterest", back_populates="projects")
+    children = relationship(
+        "Project",
+        remote_side=[parent_id],
+        foreign_keys=[parent_id],
+        back_populates="parent",
+    )
+    contracts = relationship("ProjectContract", back_populates="project")
+    default_projects = relationship("DefaultProject", back_populates="project")
+    directories = relationship("ProjectDirectory", back_populates="project")
+    lead = relationship(
+        "User", foreign_keys=[project_lead_user_id], back_populates="led_projects"
+    )
+    organizations = relationship("ProjectOrganization", back_populates="project")
+    parent = relationship(
+        "Project",
+        remote_side=[project_id],
+        foreign_keys=[parent_id],
+        back_populates="children",
+    )
+    project_number = relationship(
+        "ProjectNumber", back_populates="project", uselist=False
+    )
 
     @classmethod
-    def get_active_projects(cls, session, limit: Optional[int] = None) -> List['Project']:
+    def get_active_projects(
+        cls, session, limit: Optional[int] = None
+    ) -> List["Project"]:
         """
         Get all active, unlocked projects.
 
@@ -98,10 +123,14 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         Example:
             >>> active_projects = Project.get_active_projects(session, limit=100)
         """
-        query = session.query(cls).filter(
-            cls.active == True,
-            #cls.locked == False
-        ).order_by(cls.projcode)
+        query = (
+            session.query(cls)
+            .filter(
+                cls.active == True,
+                # cls.locked == False
+            )
+            .order_by(cls.projcode)
+        )
 
         if limit:
             query = query.limit(limit)
@@ -109,7 +138,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         return query.all()
 
     @classmethod
-    def get_by_projcode(cls, session, projcode: str) -> Optional['Project']:
+    def get_by_projcode(cls, session, projcode: str) -> Optional["Project"]:
         """
         Get a project by its exact project code.
 
@@ -125,15 +154,17 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             >>> if project:
             ...     print(f"Found: {project.title}")
         """
-        return session.query(cls).filter(
-            cls.projcode == projcode.upper()
-        ).first()
+        return session.query(cls).filter(cls.projcode == projcode.upper()).first()
 
     @classmethod
-    def search_by_pattern(cls, session, pattern: str,
-                         search_title: bool = True,
-                         active_only: bool = True,
-                         limit: int = 50) -> List['Project']:
+    def search_by_pattern(
+        cls,
+        session,
+        pattern: str,
+        search_title: bool = True,
+        active_only: bool = True,
+        limit: int = 50,
+    ) -> List["Project"]:
         """
         Search for projects by pattern matching project code or title.
 
@@ -200,37 +231,39 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     #     return list({au.user for au in self.account_users if au.user is not None})
 
     @property
-    def active_account_users(self) -> List['AccountUser']:
+    def active_account_users(self) -> List["AccountUser"]:
         """Get currently active account users."""
         now = datetime.utcnow()
         return [
-            au for account in self.accounts
+            au
+            for account in self.accounts
             for au in account.users
             if au.end_date is None or au.end_date >= now
         ]
 
     @property
-    def users(self) -> List['User']:
+    def users(self) -> List["User"]:
         """Return deduplicated list of active users."""
         return list({au.user for au in self.active_account_users if au.user})
 
     @property
-    def roster(self) -> List['User']:
+    def roster(self) -> List["User"]:
         """Return the project lead, admin, and any users."""
         s = set(self.users)
         s.add(self.lead)
-        if self.admin: s.add(self.admin)
+        if self.admin:
+            s.add(self.admin)
         return list(s)
 
     def get_user_count(self) -> int:
         """Return the number of active users on this project."""
         return len(self.users)
 
-    def has_user(self, user: 'User') -> bool:
+    def has_user(self, user: "User") -> bool:
         """Check if a user is active on this project."""
         return user in self.users
 
-    def get_all_allocations_by_resource(self) -> Dict[str, Optional['Allocation']]:
+    def get_all_allocations_by_resource(self) -> Dict[str, Optional["Allocation"]]:
         """
         Get the most recent active allocation for each resource.
 
@@ -244,8 +277,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             if account.resource:
                 resource_name = account.resource.resource_name
                 active_allocs = [
-                    alloc for alloc in account.allocations
-                    if alloc.is_active_at(now)
+                    alloc for alloc in account.allocations if alloc.is_active_at(now)
                 ]
                 if active_allocs:
                     # Get most recent allocation
@@ -254,7 +286,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         return allocations_by_resource
 
-    def get_allocation_by_resource(self, resource_name: str) -> Optional['Allocation']:
+    def get_allocation_by_resource(self, resource_name: str) -> Optional["Allocation"]:
         """
         Get the most recent active allocation for a specific resource.
 
@@ -289,13 +321,13 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                 Account.project_id == cls.project_id,
                 Allocation.deleted == False,
                 Allocation.start_date <= now,
-                or_(Allocation.end_date.is_(None), Allocation.end_date >= now)
+                or_(Allocation.end_date.is_(None), Allocation.end_date >= now),
             )
         )
 
-    def get_detailed_allocation_usage(self,
-                                      resource_name: Optional[str] = None,
-                                      include_adjustments: bool = True) -> Dict[str, Dict[str, any]]:
+    def get_detailed_allocation_usage(
+        self, resource_name: Optional[str] = None, include_adjustments: bool = True
+    ) -> Dict[str, Dict[str, any]]:
         """
         Calculate allocation usage and remaining balance across all resource types.
 
@@ -337,12 +369,15 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         results = {}
 
         # Get accounts with eager loading
-        query = self.session.query(Account).options(joinedload(Account.allocations),
-                                                    joinedload(Account.resource).joinedload(Resource.resource_type),
-                                                    joinedload(Account.charge_adjustments) if include_adjustments else None
-                                                    ).filter(Account.project_id == self.project_id,
-                                                             Account.deleted == False
-                                                             )
+        query = (
+            self.session.query(Account)
+            .options(
+                joinedload(Account.allocations),
+                joinedload(Account.resource).joinedload(Resource.resource_type),
+                joinedload(Account.charge_adjustments) if include_adjustments else None,
+            )
+            .filter(Account.project_id == self.project_id, Account.deleted == False)
+        )
 
         if resource_name:
             query = query.join(Resource).filter(Resource.resource_name == resource_name)
@@ -352,7 +387,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                 continue
 
             resource = account.resource.resource_name
-            resource_type = account.resource.resource_type.resource_type if account.resource.resource_type else 'UNKNOWN'
+            resource_type = (
+                account.resource.resource_type.resource_type
+                if account.resource.resource_type
+                else "UNKNOWN"
+            )
 
             # Find active allocation
             active_alloc = None
@@ -365,20 +404,28 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                 continue
 
             # Determine which charge tables to query based on resource type
-            charges_by_type = self._get_charges_by_resource_type(account.account_id,
-                                                                 resource_type,
-                                                                 active_alloc.start_date,
-                                                                 active_alloc.end_date or now
-                                                                 )
+            charges_by_type = self._get_charges_by_resource_type(
+                account.account_id,
+                resource_type,
+                active_alloc.start_date,
+                active_alloc.end_date or now,
+            )
 
             # Calculate adjustment total
             adjustments = 0.0
             if include_adjustments:
-                adjustments = self.session.query(func.coalesce(func.sum(ChargeAdjustment.amount), 0)
-                                                 ).filter(ChargeAdjustment.account_id == account.account_id,
-                                                          ChargeAdjustment.adjustment_date >= active_alloc.start_date,
-                                                          ChargeAdjustment.adjustment_date <= (active_alloc.end_date or now)
-                                                          ).scalar()
+                adjustments = (
+                    self.session.query(
+                        func.coalesce(func.sum(ChargeAdjustment.amount), 0)
+                    )
+                    .filter(
+                        ChargeAdjustment.account_id == account.account_id,
+                        ChargeAdjustment.adjustment_date >= active_alloc.start_date,
+                        ChargeAdjustment.adjustment_date
+                        <= (active_alloc.end_date or now),
+                    )
+                    .scalar()
+                )
                 adjustments = float(adjustments)
 
             # Calculate totals
@@ -397,45 +444,47 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                 days_total = (active_alloc.end_date - active_alloc.start_date).days
 
             # Get job statistics (primarily for HPC/DAV)
-            total_jobs, total_core_hours = self._get_job_statistics(account.account_id,
-                                                                    resource_type,
-                                                                    active_alloc.start_date,
-                                                                    active_alloc.end_date or now
-                                                                    )
+            total_jobs, total_core_hours = self._get_job_statistics(
+                account.account_id,
+                resource_type,
+                active_alloc.start_date,
+                active_alloc.end_date or now,
+            )
 
             result = {
-                'allocation_id': active_alloc.allocation_id,
-                'account_id': account.account_id,
-                'resource_type': resource_type,
-                'allocated': allocated,
-                'used': effective_used,
-                'remaining': remaining,
-                'percent_used': percent_used,
-                'charges_by_type': charges_by_type,
-                'start_date': active_alloc.start_date,
-                'end_date': active_alloc.end_date,
-                'days_elapsed': days_elapsed,
-                'days_remaining': days_remaining,
-                'days_total': days_total,
+                "allocation_id": active_alloc.allocation_id,
+                "account_id": account.account_id,
+                "resource_type": resource_type,
+                "allocated": allocated,
+                "used": effective_used,
+                "remaining": remaining,
+                "percent_used": percent_used,
+                "charges_by_type": charges_by_type,
+                "start_date": active_alloc.start_date,
+                "end_date": active_alloc.end_date,
+                "days_elapsed": days_elapsed,
+                "days_remaining": days_remaining,
+                "days_total": days_total,
             }
 
             if include_adjustments:
-                result['adjustments'] = adjustments
+                result["adjustments"] = adjustments
 
             if total_jobs is not None:
-                result['total_jobs'] = total_jobs
-                result['total_core_hours'] = total_core_hours
+                result["total_jobs"] = total_jobs
+                result["total_core_hours"] = total_core_hours
 
             results[resource] = result
 
         return results
 
-
-    def _get_charges_by_resource_type(self,
-                                      account_id: int,
-                                      resource_type: str,
-                                      start_date: datetime,
-                                      end_date: datetime) -> Dict[str, float]:
+    def _get_charges_by_resource_type(
+        self,
+        account_id: int,
+        resource_type: str,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> Dict[str, float]:
         """
         Query appropriate charge summary tables based on resource type.
 
@@ -448,73 +497,102 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         # - may have computational charges,
         # - may have dav charges.
         # (Because Casper is a DAV resource but can have computational charges
-        if resource_type == 'HPC' or resource_type == 'DAV':
-            comp = self.session.query(func.coalesce(func.sum(CompChargeSummary.charges), 0)
-                                      ).filter(CompChargeSummary.account_id == account_id,
-                                               CompChargeSummary.activity_date >= start_date,
-                                               CompChargeSummary.activity_date <= end_date
-                                               ).scalar()
+        if resource_type == "HPC" or resource_type == "DAV":
+            comp = (
+                self.session.query(
+                    func.coalesce(func.sum(CompChargeSummary.charges), 0)
+                )
+                .filter(
+                    CompChargeSummary.account_id == account_id,
+                    CompChargeSummary.activity_date >= start_date,
+                    CompChargeSummary.activity_date <= end_date,
+                )
+                .scalar()
+            )
             if comp:
-                charges['comp'] = float(comp)
+                charges["comp"] = float(comp)
 
             # HPC might also have DAV charges on same resource
-            dav = self.session.query(func.coalesce(func.sum(DavChargeSummary.charges), 0)
-                                     ).filter(DavChargeSummary.account_id == account_id,
-                                              DavChargeSummary.activity_date >= start_date,
-                                              DavChargeSummary.activity_date <= end_date
-                                              ).scalar()
+            dav = (
+                self.session.query(func.coalesce(func.sum(DavChargeSummary.charges), 0))
+                .filter(
+                    DavChargeSummary.account_id == account_id,
+                    DavChargeSummary.activity_date >= start_date,
+                    DavChargeSummary.activity_date <= end_date,
+                )
+                .scalar()
+            )
             if dav:
-                charges['dav'] = float(dav)
+                charges["dav"] = float(dav)
 
         # Disk resources
-        elif resource_type == 'DISK':
-            disk = self.session.query(func.coalesce(func.sum(DiskChargeSummary.charges), 0)
-                                      ).filter(DiskChargeSummary.account_id == account_id,
-                                               DiskChargeSummary.activity_date >= start_date,
-                                               DiskChargeSummary.activity_date <= end_date
-                                               ).scalar()
-            charges['disk'] = float(disk)
+        elif resource_type == "DISK":
+            disk = (
+                self.session.query(
+                    func.coalesce(func.sum(DiskChargeSummary.charges), 0)
+                )
+                .filter(
+                    DiskChargeSummary.account_id == account_id,
+                    DiskChargeSummary.activity_date >= start_date,
+                    DiskChargeSummary.activity_date <= end_date,
+                )
+                .scalar()
+            )
+            charges["disk"] = float(disk)
 
         # Archive resources
-        elif resource_type == 'ARCHIVE':
-            archive = self.session.query(func.coalesce(func.sum(ArchiveChargeSummary.charges), 0)
-                                         ).filter(ArchiveChargeSummary.account_id == account_id,
-                                                  ArchiveChargeSummary.activity_date >= start_date,
-                                                  ArchiveChargeSummary.activity_date <= end_date
-                                                  ).scalar()
-            charges['archive'] = float(archive)
+        elif resource_type == "ARCHIVE":
+            archive = (
+                self.session.query(
+                    func.coalesce(func.sum(ArchiveChargeSummary.charges), 0)
+                )
+                .filter(
+                    ArchiveChargeSummary.account_id == account_id,
+                    ArchiveChargeSummary.activity_date >= start_date,
+                    ArchiveChargeSummary.activity_date <= end_date,
+                )
+                .scalar()
+            )
+            charges["archive"] = float(archive)
 
         return charges
 
-
-    def _get_job_statistics(self,
-                            account_id: int,
-                            resource_type: str,
-                            start_date: datetime,
-                            end_date: datetime) -> tuple[Optional[int], Optional[float]]:
+    def _get_job_statistics(
+        self,
+        account_id: int,
+        resource_type: str,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> tuple[Optional[int], Optional[float]]:
         """
         Get job count and core hours for computational resources.
 
         Returns:
             Tuple of (total_jobs, total_core_hours) or (None, None)
         """
-        if resource_type not in ('HPC', 'DAV'):
+        if resource_type not in ("HPC", "DAV"):
             return None, None
 
         # Use appropriate summary table
-        SummaryClass = CompChargeSummary if resource_type == 'HPC' else DavChargeSummary
+        SummaryClass = CompChargeSummary if resource_type == "HPC" else DavChargeSummary
 
-        stats = self.session.query(func.coalesce(func.sum(SummaryClass.num_jobs), 0).label('jobs'),
-                                   func.coalesce(func.sum(SummaryClass.core_hours), 0).label('hours')
-                                   ).filter(SummaryClass.account_id == account_id,
-                                            SummaryClass.activity_date >= start_date,
-                                            SummaryClass.activity_date <= end_date
-                                            ).first()
+        stats = (
+            self.session.query(
+                func.coalesce(func.sum(SummaryClass.num_jobs), 0).label("jobs"),
+                func.coalesce(func.sum(SummaryClass.core_hours), 0).label("hours"),
+            )
+            .filter(
+                SummaryClass.account_id == account_id,
+                SummaryClass.activity_date >= start_date,
+                SummaryClass.activity_date <= end_date,
+            )
+            .first()
+        )
 
         return int(stats.jobs), float(stats.hours)
 
     # Tree Navigation Methods (Nested Set Model)
-    def get_ancestors(self, include_self: bool = False) -> List['Project']:
+    def get_ancestors(self, include_self: bool = False) -> List["Project"]:
         """
         Get all ancestor projects using nested set model.
 
@@ -531,13 +609,17 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         if not self.tree_left or not self.tree_right:
             return []
 
-        query = self.session.query(Project).filter(
-            and_(
-                Project.tree_root == self.tree_root,
-                Project.tree_left < self.tree_left,
-                Project.tree_right > self.tree_right
+        query = (
+            self.session.query(Project)
+            .filter(
+                and_(
+                    Project.tree_root == self.tree_root,
+                    Project.tree_left < self.tree_left,
+                    Project.tree_right > self.tree_right,
+                )
             )
-        ).order_by(Project.tree_left)
+            .order_by(Project.tree_left)
+        )
 
         if include_self:
             ancestors = query.all()
@@ -546,8 +628,9 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         return query.all()
 
-    def get_descendants(self, include_self: bool = False,
-                       max_depth: Optional[int] = None) -> List['Project']:
+    def get_descendants(
+        self, include_self: bool = False, max_depth: Optional[int] = None
+    ) -> List["Project"]:
         """
         Get all descendant projects using nested set model.
 
@@ -565,13 +648,17 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         if not self.tree_left or not self.tree_right:
             return []
 
-        query = self.session.query(Project).filter(
-            and_(
-                Project.tree_root == self.tree_root,
-                Project.tree_left > self.tree_left,
-                Project.tree_right < self.tree_right
+        query = (
+            self.session.query(Project)
+            .filter(
+                and_(
+                    Project.tree_root == self.tree_root,
+                    Project.tree_left > self.tree_left,
+                    Project.tree_right < self.tree_right,
+                )
             )
-        ).order_by(Project.tree_left)
+            .order_by(Project.tree_left)
+        )
 
         descendants = query.all()
 
@@ -579,8 +666,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             # Calculate depth for each descendant
             my_depth = self.get_depth()
             descendants = [
-                d for d in descendants
-                if d.get_depth() - my_depth <= max_depth
+                d for d in descendants if d.get_depth() - my_depth <= max_depth
             ]
 
         if include_self:
@@ -588,7 +674,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         return descendants
 
-    def get_children(self) -> List['Project']:
+    def get_children(self) -> List["Project"]:
         """
         Get immediate children (one level down) using parent_id.
 
@@ -601,11 +687,13 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             >>> project.get_children()
             [<Project(child1)>, <Project(child2)>]
         """
-        return self.session.query(Project).filter(
-            Project.parent_id == self.project_id
-        ).all()
+        return (
+            self.session.query(Project)
+            .filter(Project.parent_id == self.project_id)
+            .all()
+        )
 
-    def get_siblings(self, include_self: bool = False) -> List['Project']:
+    def get_siblings(self, include_self: bool = False) -> List["Project"]:
         """
         Get sibling projects (same parent).
 
@@ -622,16 +710,14 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         if not self.parent_id:
             return []  # Root nodes have no siblings
 
-        query = self.session.query(Project).filter(
-            Project.parent_id == self.parent_id
-        )
+        query = self.session.query(Project).filter(Project.parent_id == self.parent_id)
 
         if not include_self:
             query = query.filter(Project.project_id != self.project_id)
 
         return query.all()
 
-    def get_root(self) -> Optional['Project']:
+    def get_root(self) -> Optional["Project"]:
         """
         Get the root project of this tree.
 
@@ -648,9 +734,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         if self.tree_root == self.project_id:
             return self  # This is the root
 
-        return self.session.query(Project).filter(
-            Project.project_id == self.tree_root
-        ).first()
+        return (
+            self.session.query(Project)
+            .filter(Project.project_id == self.tree_root)
+            .first()
+        )
 
     def get_depth(self) -> int:
         """
@@ -705,7 +793,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         return self.tree_right == self.tree_left + 1
 
-    def is_ancestor_of(self, other: 'Project') -> bool:
+    def is_ancestor_of(self, other: "Project") -> bool:
         """
         Check if this project is an ancestor of another project.
 
@@ -719,17 +807,17 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             >>> parent.is_ancestor_of(child)
             True
         """
-        if not all([self.tree_left, self.tree_right,
-                   other.tree_left, other.tree_right]):
+        if not all(
+            [self.tree_left, self.tree_right, other.tree_left, other.tree_right]
+        ):
             return False
 
         if self.tree_root != other.tree_root:
             return False
 
-        return (self.tree_left < other.tree_left and
-                self.tree_right > other.tree_right)
+        return self.tree_left < other.tree_left and self.tree_right > other.tree_right
 
-    def is_descendant_of(self, other: 'Project') -> bool:
+    def is_descendant_of(self, other: "Project") -> bool:
         """
         Check if this project is a descendant of another project.
 
@@ -755,7 +843,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         return (self.tree_right - self.tree_left - 1) // 2
 
-    def get_path(self, separator: str = ' > ') -> str:
+    def get_path(self, separator: str = " > ") -> str:
         """
         Get the full path from root to this project.
 
@@ -789,10 +877,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         ancestors = self.get_ancestors(include_self=True)
         return [
             {
-                'project_id': p.project_id,
-                'projcode': p.projcode,
-                'title': p.title,
-                'active': p.active
+                "project_id": p.project_id,
+                "projcode": p.projcode,
+                "title": p.title,
+                "active": p.active,
             }
             for p in ancestors
         ]
@@ -807,7 +895,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         """Check if project has children (SQL side)."""
         return cls.tree_right > cls.tree_left + 1
 
-    def print_tree(self, indent: str = '  ', _level: int = 0) -> str:
+    def print_tree(self, indent: str = "  ", _level: int = 0) -> str:
         """
         Generate a text representation of the subtree.
 
@@ -830,59 +918,65 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         for child in self.get_children():
             lines.append(child.print_tree(indent, _level + 1))
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def __repr__(self):
         return f"<Project(id={self.project_id}, projcode='{self.projcode}', title='{self.title[:50]}...')>"
 
 
-#----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 class ProjectNumber(Base):
     """Sequential project numbers."""
-    __tablename__ = 'project_number'
+
+    __tablename__ = "project_number"
 
     project_number_id = Column(Integer, primary_key=True, autoincrement=True)
-    project_id = Column(Integer, ForeignKey('project.project_id'),
-                       nullable=False, unique=True)
-
-    project = relationship('Project', back_populates='project_number')
-
-
-#----------------------------------------------------------------------------
-class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
-    """File system directories associated with projects."""
-    __tablename__ = 'project_directory'
-
-    __table_args__ = (
-        Index('ix_project_directory_project', 'project_id'),
+    project_id = Column(
+        Integer, ForeignKey("project.project_id"), nullable=False, unique=True
     )
 
+    project = relationship("Project", back_populates="project_number")
+
+
+# ----------------------------------------------------------------------------
+class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
+    """File system directories associated with projects."""
+
+    __tablename__ = "project_directory"
+
+    __table_args__ = (Index("ix_project_directory_project", "project_id"),)
+
     directory_name = Column(String(255), nullable=False)
-    project = relationship('Project', back_populates='directories')
+    project = relationship("Project", back_populates="directories")
     project_directory_id = Column(Integer, primary_key=True, autoincrement=True)
-    project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
+    project_id = Column(Integer, ForeignKey("project.project_id"), nullable=False)
 
 
-#----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 class DefaultProject(Base, TimestampMixin):
     """Default projects for users on resources."""
-    __tablename__ = 'default_project'
+
+    __tablename__ = "default_project"
 
     __table_args__ = (
-        Index('ix_default_project_user', 'user_id'),
-        Index('ix_default_project_resource', 'resource_id'),
-        Index('ix_default_project_project', 'project_id'),
+        Index("ix_default_project_user", "user_id"),
+        Index("ix_default_project_resource", "resource_id"),
+        Index("ix_default_project_project", "project_id"),
     )
 
     default_project_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
-    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
-    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("project.project_id"), nullable=False)
+    resource_id = Column(Integer, ForeignKey("resources.resource_id"), nullable=False)
+    modified_time = Column(
+        TIMESTAMP,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
+    )
 
-    user = relationship('User', back_populates='default_projects')
-    project = relationship('Project', back_populates='default_projects')
-    resource = relationship('Resource', back_populates='default_projects')
+    user = relationship("User", back_populates="default_projects")
+    project = relationship("Project", back_populates="default_projects")
+    resource = relationship("Resource", back_populates="default_projects")
 
 
 # ============================================================================
@@ -890,4 +984,4 @@ class DefaultProject(Base, TimestampMixin):
 # ============================================================================
 
 
-#-------------------------------------------------------------------------em-
+# -------------------------------------------------------------------------em-
