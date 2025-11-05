@@ -29,12 +29,9 @@ Examples:
 
 import argparse
 import sys
-from typing import Optional, List
-from datetime import datetime
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 from sam import *
+from sqlalchemy.orm import Session
 
 
 class SamSearchCLI:
@@ -45,6 +42,7 @@ class SamSearchCLI:
         Initialize the CLI.
         """
         from sam.session import create_sam_engine
+
         self.engine, _ = create_sam_engine()
         self.session = Session(self.engine)
 
@@ -60,8 +58,9 @@ class SamSearchCLI:
     # User Search Commands
     # ========================================================================
 
-    def search_user_exact(self, username: str, list_projects: bool = False,
-                         verbose: bool = False) -> int:
+    def search_user_exact(
+        self, username: str, list_projects: bool = False, verbose: bool = False
+    ) -> int:
         """
         Search for a specific user by exact username.
 
@@ -74,10 +73,7 @@ class SamSearchCLI:
             Exit code (0 for success, 1 for not found, 2 for error)
         """
         try:
-            user = User.get_by_username(
-                self.session,
-                username
-            )
+            user = User.get_by_username(self.session, username)
 
             if not user:
                 print(f"❌ User not found: {username}")
@@ -86,9 +82,9 @@ class SamSearchCLI:
             self._display_user(user, verbose=verbose)
 
             if list_projects:
-                print("\n" + "="*80)
+                print("\n" + "=" * 80)
                 print("PROJECTS")
-                print("="*80)
+                print("=" * 80)
                 self._display_user_projects(user, verbose=verbose)
 
             return 0
@@ -97,8 +93,9 @@ class SamSearchCLI:
             print(f"❌ Error searching for user: {e}", file=sys.stderr)
             return 2
 
-    def search_user_pattern(self, pattern: str, limit: int = 50,
-                           verbose: bool = False) -> int:
+    def search_user_pattern(
+        self, pattern: str, limit: int = 50, verbose: bool = False
+    ) -> int:
         """
         Search for users matching a pattern.
 
@@ -113,9 +110,9 @@ class SamSearchCLI:
         try:
             users = User.search_users(
                 self.session,
-                pattern.replace('%', '').replace('_', ''),  # Clean for search_users
+                pattern.replace("%", "").replace("_", ""),  # Clean for search_users
                 active_only=False,
-                limit=limit
+                limit=limit,
             )
 
             if not users:
@@ -146,9 +143,9 @@ class SamSearchCLI:
             user: User object to display
             verbose: If True, show detailed information
         """
-        print("="*80)
+        print("=" * 80)
         print("USER INFORMATION")
-        print("="*80)
+        print("=" * 80)
         print(f"Username:     {user.username}")
         print(f"Full Name:    {user.full_name}")
         print(f"User ID:      {user.user_id}")
@@ -157,7 +154,7 @@ class SamSearchCLI:
 
         # Email addresses
         if user.email_addresses:
-            print(f"\nEmail(s):")
+            print("\nEmail(s):")
             for email in user.email_addresses:
                 primary_marker = " (PRIMARY)" if email.is_primary else ""
                 active_marker = "" if email.active else " [INACTIVE]"
@@ -175,7 +172,7 @@ class SamSearchCLI:
 
             # Institutions
             if user.institutions:
-                print(f"\nInstitution(s):")
+                print("\nInstitution(s):")
                 for ui in user.institutions:
                     if ui.is_currently_active:
                         inst = ui.institution
@@ -183,7 +180,7 @@ class SamSearchCLI:
 
             # Organizations
             if user.organizations:
-                print(f"\nOrganization(s):")
+                print("\nOrganization(s):")
                 for uo in user.organizations:
                     if uo.is_currently_active:
                         org = uo.organization
@@ -224,7 +221,7 @@ class SamSearchCLI:
                 allocations = project.get_all_allocations_by_resource()
 
                 if allocations:
-                    print(f"   Allocations:")
+                    print("   Allocations:")
                     for resource_name, alloc in allocations.items():
                         print(f"     • {resource_name}: {alloc.amount:,.2f}")
                         if alloc.end_date:
@@ -243,8 +240,9 @@ class SamSearchCLI:
     # Project Search Commands
     # ========================================================================
 
-    def search_project_exact(self, projcode: str, list_users: bool = False,
-                            verbose: bool = False) -> int:
+    def search_project_exact(
+        self, projcode: str, list_users: bool = False, verbose: bool = False
+    ) -> int:
         """
         Search for a specific project by exact project code.
 
@@ -258,10 +256,7 @@ class SamSearchCLI:
         """
         try:
             # Query for project
-            project = Project.get_by_projcode(
-                self.session,
-                projcode
-            )
+            project = Project.get_by_projcode(self.session, projcode)
 
             if not project:
                 print(f"❌ Project not found: {projcode}")
@@ -270,9 +265,9 @@ class SamSearchCLI:
             self._display_project(project, verbose=verbose)
 
             if list_users:
-                print("\n" + "="*80)
+                print("\n" + "=" * 80)
                 print("USERS")
-                print("="*80)
+                print("=" * 80)
                 self._display_project_users(project, verbose=verbose)
 
             return 0
@@ -281,8 +276,9 @@ class SamSearchCLI:
             print(f"❌ Error searching for project: {e}", file=sys.stderr)
             return 2
 
-    def search_project_pattern(self, pattern: str, limit: int = 50,
-                              verbose: bool = False) -> int:
+    def search_project_pattern(
+        self, pattern: str, limit: int = 50, verbose: bool = False
+    ) -> int:
         """
         Search for projects matching a pattern.
 
@@ -297,11 +293,7 @@ class SamSearchCLI:
         try:
             # Search in both projcode and title
             projects = Project.search_by_pattern(
-                self.session,
-                pattern,
-                search_title=True,
-                active_only=False,
-                limit=limit
+                self.session, pattern, search_title=True, active_only=False, limit=limit
             )
 
             if not projects:
@@ -316,7 +308,9 @@ class SamSearchCLI:
 
                 if verbose:
                     print(f"   ID: {project.project_id}")
-                    print(f"   Lead: {project.lead.full_name if project.lead else 'N/A'}")
+                    print(
+                        f"   Lead: {project.lead.full_name if project.lead else 'N/A'}"
+                    )
                     print(f"   Users: {project.get_user_count()}")
 
                 print()
@@ -335,9 +329,9 @@ class SamSearchCLI:
             project: Project object to display
             verbose: If True, show detailed information
         """
-        print("="*80)
+        print("=" * 80)
         print("PROJECT INFORMATION")
-        print("="*80)
+        print("=" * 80)
         print(f"Project Code: {project.projcode}")
         print(f"Title:        {project.title}")
         print(f"Project ID:   {project.project_id}")
@@ -348,7 +342,9 @@ class SamSearchCLI:
             print(f"Lead Email:   {project.lead.primary_email or 'N/A'}")
 
         if project.admin:
-            print(f"Project Admin: {project.admin.full_name} ({project.admin.username})")
+            print(
+                f"Project Admin: {project.admin.full_name} ({project.admin.username})"
+            )
 
         # Status
         print(f"\nStatus:       {'✅ Active' if project.active else '❌ Inactive'}")
@@ -360,7 +356,7 @@ class SamSearchCLI:
         # Allocations by resource
         allocations = project.get_all_allocations_by_resource()
         if allocations:
-            print(f"\nAllocations:")
+            print("\nAllocations:")
             for resource_name, alloc in allocations.items():
                 status = "✅" if alloc.is_active else "❌"
                 print(f"  {status} {resource_name}:")
@@ -376,7 +372,7 @@ class SamSearchCLI:
         if verbose:
             # Show abstract if available
             if project.abstract:
-                print(f"\nAbstract:")
+                print("\nAbstract:")
                 # Truncate long abstracts
                 abstract = project.abstract
                 if len(abstract) > 500:
@@ -385,7 +381,7 @@ class SamSearchCLI:
 
             # Show organizations
             if project.organizations:
-                print(f"\nOrganizations:")
+                print("\nOrganizations:")
                 for po in project.organizations:
                     if po.is_currently_active:
                         org = po.organization
@@ -440,7 +436,7 @@ def create_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser
     """
     parser = argparse.ArgumentParser(
-        description='Search and query the SAM database',
+        description="Search and query the SAM database",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -461,98 +457,84 @@ Examples:
 
   # Search with verbose output
   %(prog)s user jsmith --verbose --list-projects
-        """
+        """,
     )
 
     # Database connection
     parser.add_argument(
-        '--db-url',
-        default='mysql+pymysql://user:pass@localhost/sam',
-        help='Database connection URL (default: from environment or config)'
+        "--db-url",
+        default="mysql+pymysql://user:pass@localhost/sam",
+        help="Database connection URL (default: from environment or config)",
     )
 
     # Create subparsers
-    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
     subparsers.required = True
 
     # ========================================================================
     # User command
     # ========================================================================
     user_parser = subparsers.add_parser(
-        'user',
-        help='Search for users',
-        description='Search for users by username or pattern'
+        "user",
+        help="Search for users",
+        description="Search for users by username or pattern",
     )
 
     # Mutually exclusive group for user search type
     user_search = user_parser.add_mutually_exclusive_group(required=True)
+    user_search.add_argument("username", nargs="?", help="Exact username to search for")
     user_search.add_argument(
-        'username',
-        nargs='?',
-        help='Exact username to search for'
-    )
-    user_search.add_argument(
-        '--search',
-        metavar='PATTERN',
-        help='Search pattern (use %% for wildcard, _ for single char)'
+        "--search",
+        metavar="PATTERN",
+        help="Search pattern (use %% for wildcard, _ for single char)",
     )
 
     # User options
     user_parser.add_argument(
-        '--list-projects',
-        action='store_true',
-        help='List all projects for the user'
+        "--list-projects", action="store_true", help="List all projects for the user"
     )
     user_parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Show detailed information'
+        "--verbose", "-v", action="store_true", help="Show detailed information"
     )
     user_parser.add_argument(
-        '--limit',
+        "--limit",
         type=int,
         default=50,
-        help='Maximum number of results for pattern search (default: 50)'
+        help="Maximum number of results for pattern search (default: 50)",
     )
 
     # ========================================================================
     # Project command
     # ========================================================================
     project_parser = subparsers.add_parser(
-        'project',
-        help='Search for projects',
-        description='Search for projects by project code or pattern'
+        "project",
+        help="Search for projects",
+        description="Search for projects by project code or pattern",
     )
 
     # Mutually exclusive group for project search type
     project_search = project_parser.add_mutually_exclusive_group(required=True)
     project_search.add_argument(
-        'projcode',
-        nargs='?',
-        help='Exact project code to search for'
+        "projcode", nargs="?", help="Exact project code to search for"
     )
     project_search.add_argument(
-        '--search',
-        metavar='PATTERN',
-        help='Search pattern (use %% for wildcard, _ for single char)'
+        "--search",
+        metavar="PATTERN",
+        help="Search pattern (use %% for wildcard, _ for single char)",
     )
 
     # Project options
     project_parser.add_argument(
-        '--list-users',
-        action='store_true',
-        help='List all users on the project'
+        "--list-users", action="store_true", help="List all users on the project"
     )
     project_parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Show detailed information'
+        "--verbose", "-v", action="store_true", help="Show detailed information"
     )
     project_parser.add_argument(
-        '--limit',
+        "--limit",
         type=int,
         default=50,
-        help='Maximum number of results for pattern search (default: 50)'
+        help="Maximum number of results for pattern search (default: 50)",
     )
 
     return parser
@@ -567,36 +549,30 @@ def main():
     try:
         with SamSearchCLI(args.db_url) as cli:
             # Route to appropriate command
-            if args.command == 'user':
+            if args.command == "user":
                 if args.username:
                     # Exact username search
                     exit_code = cli.search_user_exact(
                         args.username,
                         list_projects=args.list_projects,
-                        verbose=args.verbose
+                        verbose=args.verbose,
                     )
                 else:
                     # Pattern search
                     exit_code = cli.search_user_pattern(
-                        args.search,
-                        limit=args.limit,
-                        verbose=args.verbose
+                        args.search, limit=args.limit, verbose=args.verbose
                     )
 
-            elif args.command == 'project':
+            elif args.command == "project":
                 if args.projcode:
                     # Exact project code search
                     exit_code = cli.search_project_exact(
-                        args.projcode,
-                        list_users=args.list_users,
-                        verbose=args.verbose
+                        args.projcode, list_users=args.list_users, verbose=args.verbose
                     )
                 else:
                     # Pattern search
                     exit_code = cli.search_project_pattern(
-                        args.search,
-                        limit=args.limit,
-                        verbose=args.verbose
+                        args.search, limit=args.limit, verbose=args.verbose
                     )
 
             else:
@@ -610,11 +586,12 @@ def main():
         sys.exit(130)
     except Exception as e:
         print(f"❌ Fatal error: {e}", file=sys.stderr)
-        if '--verbose' in sys.argv or '-v' in sys.argv:
+        if "--verbose" in sys.argv or "-v" in sys.argv:
             import traceback
+
             traceback.print_exc()
         sys.exit(2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
