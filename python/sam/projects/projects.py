@@ -98,7 +98,77 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         return query.all()
 
+    @classmethod
+    def get_by_projcode(cls, session, projcode: str) -> Optional['Project']:
+        """
+        Get a project by its exact project code.
 
+        Args:
+            session: SQLAlchemy session
+            projcode: Exact project code to search for (case-insensitive)
+
+        Returns:
+            Project object if found, None otherwise
+
+        Example:
+            >>> project = Project.get_by_projcode(session, 'UCSD0001')
+            >>> if project:
+            ...     print(f"Found: {project.title}")
+        """
+        return session.query(cls).filter(
+            cls.projcode == projcode.upper()
+        ).first()
+
+    @classmethod
+    def search_by_pattern(cls, session, pattern: str,
+                         search_title: bool = True,
+                         active_only: bool = True,
+                         limit: int = 50) -> List['Project']:
+        """
+        Search for projects by pattern matching project code or title.
+
+        Args:
+            session: SQLAlchemy session
+            pattern: Search pattern (supports SQL LIKE wildcards % and _)
+            search_title: If True, also search in project titles
+            active_only: If True, only return active projects
+            limit: Maximum number of results to return
+
+        Returns:
+            List of matching Project objects
+
+        Examples:
+            >>> # Find all UCSD projects
+            >>> projects = Project.search_by_pattern(session, 'UCSD%')
+
+            >>> # Find projects with "climate" in title
+            >>> projects = Project.search_by_pattern(session, '%climate%')
+
+            >>> # Search only project codes (not titles)
+            >>> projects = Project.search_by_pattern(session, 'N%0001',
+            ...                                      search_title=False)
+
+            >>> # Include inactive projects
+            >>> projects = Project.search_by_pattern(session, 'TEST%',
+            ...                                      active_only=False)
+        """
+        # Build base query
+        query = session.query(cls)
+
+        # Build search conditions
+        conditions = [cls.projcode.ilike(pattern)]
+
+        if search_title:
+            conditions.append(cls.title.ilike(pattern))
+
+        query = query.filter(or_(*conditions))
+
+        # Apply active filter
+        if active_only:
+            query = query.filter(cls.active == True)
+
+        # Order by projcode and apply limit
+        return query.order_by(cls.projcode).limit(limit).all()
 
     # # Active account users (filtered join)
     # account_users = relationship(
@@ -118,6 +188,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     # def users(self) -> List['User']:
     #     """Return a deduplicated list of active users on this project."""
     #     return list({au.user for au in self.account_users if au.user is not None})
+
     @property
     def active_account_users(self) -> List['AccountUser']:
         """Get currently active account users."""
@@ -133,6 +204,13 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         """Return deduplicated list of active users."""
         return list({au.user for au in self.active_account_users if au.user})
 
+    @property
+    def roster(self) -> List['User']:
+        """Return the project lead, admin, and any users."""
+        s = set(self.users)
+        s.add(self.lead)
+        if self.admin: s.add(self.admin)
+        return list(s)
 
     def get_all_allocations_by_resource(self) -> Dict[str, Optional['Allocation']]:
         """

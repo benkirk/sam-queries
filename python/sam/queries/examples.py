@@ -76,9 +76,9 @@ def example_usage():
             alloc = project.get_allocation_by_resource(resource_name)
             print(f"  {resource_name}: {alloc.amount:,.2f} (expires {alloc.end_date})")
 
-            # Show users on project
-            usernames = [u.username for u in project.users]
-            print(f"Users ({len(usernames)}):");
+            # Show users on project (including lead/admin)
+            usernames = [u.username for u in project.roster]
+            print(f"Roster ({len(usernames)}):");
             for u in usernames: print(u);
 
         # Show available resources
