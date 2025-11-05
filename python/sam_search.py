@@ -473,7 +473,7 @@ Examples:
         if project.contracts:
             print(f"Contracts:")
             for pc in project.contracts:
-                print(f"  - {pc.contract.contract_source.contract_source} {pc.contract.contract_number:20} {pc.contract.title}")
+                print(f"  - {pc.contract.contract_source.contract_source} {str(pc.contract.contract_number):<20} {pc.contract.title}")
 
         if project.charging_exempt:
             print(f"** Charging Exempt **")
