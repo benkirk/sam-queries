@@ -1,6 +1,6 @@
 #----------------------------------------------------------------------------
 # environment
-CONFDIR="$(cd "$(dirname "$(realpath ${BASH_SOURCE[0]})")" > /dev/null 2>&1 && pwd)"
+CONFDIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" > /dev/null 2>&1 && pwd)"
 #----------------------------------------------------------------------------
 
 #ROOT_DIR=$(git rev-parse --show-toplevel)
