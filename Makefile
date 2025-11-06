@@ -1,14 +1,18 @@
 SHELL := /bin/bash
 
 top_dir := $(shell git rev-parse --show-toplevel)
-config_env := ml conda || true
+config_env := module load conda >/dev/null 2>&1 || true
 
 
 clean:
 	rm *~
 
 clobber:
-	git clean -xdf --exclude ".env" --exclude "conda-env/" --exclude "python/tmp_classes/"
+	git clean -xdf --exclude ".env" --exclude "conda-env/"
+
+distclean:
+	$(MAKE) clobber
+	rm -rf conda-env/
 
 
 %.py : %.ipynb Makefile
@@ -27,3 +31,17 @@ clobber:
 
 solve-%: %.yml
 	$(config_env) && conda env create --file $< --prefix $@ --dry-run
+
+fixperms:
+	for file in .env; do \
+	  setfacl --remove-all $${file} ; \
+	  for group in csgteam csg hdt nusd; do \
+	    getent group $${group} 2>&1 >/dev/null || continue ; \
+	    setfacl -m g:$${group}:r $${file} ; \
+	  done ;\
+	  for user in bdobbins; do \
+	    getent passwd $${user} 2>&1 >/dev/null || continue ; \
+	    setfacl -m u:$${user}:r $${file} ; \
+	  done ;\
+	  getfacl $${file} ;\
+	done

@@ -144,6 +144,9 @@ Examples:
             help='Maximum number of results for pattern search (default: 50)'
         )
 
+        #
+        parser.list_users = False
+
         # ========================================================================
         # Project command
         # ========================================================================
@@ -154,7 +157,7 @@ Examples:
         )
 
         # Mutually exclusive group for project search type
-        project_search = project_parser.add_mutually_exclusive_group(required=True)
+        project_search = project_parser.add_mutually_exclusive_group(required=False)
         project_search.add_argument(
             'projcode',
             nargs='?',
@@ -164,6 +167,19 @@ Examples:
             '--search',
             metavar='PATTERN',
             help='Search pattern (use %% for wildcard, _ for single char)'
+        )
+
+        # Mutually exclusive group for expiration; past or future
+        expiration_action = project_parser.add_mutually_exclusive_group(required=False)
+        expiration_action.add_argument(
+            '--upcoming-expirations', '-f',
+            action='store_true',
+            help='Search for upcoming project expirations.'
+        )
+        expiration_action.add_argument(
+            '--recent-expirations', '-p',
+            action='store_true',
+            help='Search for recently expired projects.'
         )
 
         # Project options
@@ -207,10 +223,15 @@ Examples:
                     return self._search_user_pattern()
 
             elif self.args.command == 'project':
-                if self.args.projcode:
+                if self.args.recent_expirations:
+                    return self._recently_expired_projects()
+                elif self.args.upcoming_expirations:
+                    return self._upcoming_project_expirations()
+                elif self.args.projcode:
                     return self._search_project_exact()
                 else:
                     return self._search_project_pattern()
+
 
             else:
                 print(f"Unknown command: {self.args.command}", file=sys.stderr)
@@ -229,7 +250,6 @@ Examples:
     # ========================================================================
     # User Search Commands
     # ========================================================================
-
     def _search_user_exact(self) -> int:
         """
         Search for a specific user by exact username.
@@ -348,8 +368,7 @@ Examples:
             # Just show counts
             num_projects = len(user.active_projects)
             print(f"\nActive Projects: {num_projects}")
-            print("\n💡 Use --list-projects to see project details")
-            print("💡 Use --verbose for more user information")
+            print("\n (Use --list-projects to see project details, --verbose for more user information.)")
 
     def _display_user_projects(self, user: User):
         """
@@ -376,7 +395,6 @@ Examples:
     # ========================================================================
     # Project Search Commands
     # ========================================================================
-
     def _search_project_exact(self) -> int:
         """
         Search for a specific project by exact project code.
@@ -392,12 +410,6 @@ Examples:
                 return 1
 
             self._display_project(project)
-
-            if self.args.list_users:
-                print("\n" + "="*80)
-                print("USERS")
-                print("="*80)
-                self._display_project_users(project)
 
             return 0
 
@@ -444,7 +456,7 @@ Examples:
             print(f"❌ Error searching for projects: {e}", file=sys.stderr)
             return 2
 
-    def _display_project(self, project: Project):
+    def _display_project(self, project: Project, extra_title_info: str = ""):
         """
         Display project information.
 
@@ -452,7 +464,7 @@ Examples:
             project: Project object to display
         """
         print("="*80)
-        print("PROJECT INFORMATION")
+        print(f"PROJECT INFORMATION - {project.projcode}{extra_title_info}")
         print("="*80)
         print(f"Title:  {project.title}")
         print(f"Code:   {project.projcode}")
@@ -496,9 +508,15 @@ Examples:
                 if d.is_currently_active:
                     print(f"  {d.directory_name}")
 
-        # User count
-        num_users = project.get_user_count()
-        print(f"Active Users: {num_users}")
+        # User count - handle circularity.
+        # When calling this method through the project path, we may want to list users.
+        # however, when calling through the user path, we won't have a list_users attribute.
+        # (if the user list is desired, we can simply rerun querying the project)
+        if hasattr(self.args, 'list_users'):
+            self._display_project_users(project)
+        else:
+            print(f"Active Users: {project.get_user_count()}")
+
 
         if self.args.verbose:
             # Show abstract if available
@@ -530,8 +548,7 @@ Examples:
                 if len(children) > 5:
                     print(f"  ... and {len(children) - 5} more")
         else:
-            print("\n💡 Use --list-users to see user details")
-            print("💡 Use --verbose for more project information")
+            print("\n (Use --list-users to see user details, --verbose for more project information.)")
 
     def _display_project_users(self, project: Project):
         """
@@ -546,7 +563,10 @@ Examples:
             print("No active users found.")
             return
 
-        print(f"Active users for {project.projcode}:\n")
+        count = len(users)
+        plural = "s" if count > 1 else ""
+
+        print(f"{count} Active user{plural} for {project.projcode}:\n")
 
         for i, user in enumerate(sorted(users, key=lambda u: u.username), 1):
             print(f"{i}. {user.username} - {user.display_name}")
@@ -554,10 +574,67 @@ Examples:
             if self.args.verbose:
                 print(f"   Email: {user.primary_email or 'N/A'}")
                 print(f"   UID:   {user.unix_uid}")
+        return
 
-            print()
+    # ========================================================================
+    # Expiration Search Commands
+    # ========================================================================
+    def _upcoming_project_expirations(self):
+        from sam.queries import get_projects_by_allocation_end_date
+        from datetime import timedelta
+        expiring = get_projects_by_allocation_end_date(self.session,
+                                                       start_date=datetime.now(),
+                                                       end_date=datetime.now() + timedelta(days=32),
+                                                       facility_names=['UNIV', 'WNA'])
+
+        print(f"Found {len(expiring)} allocations expiring")
+        for proj, alloc, res_name, days in expiring:
+            if self.args.verbose:
+                self._display_project(proj, f" - {days} days remaining" )
+            else:
+                print(f"  {proj.projcode} - {days} days remaining")
+        if not self.args.verbose:
+            print("\n (Use --verbose for more project information.)")
+        return
+
+    def _recently_expired_projects(self):
+        from sam.queries import get_projects_with_expired_allocations
+        from datetime import timedelta
+        from tqdm import tqdm
+
+        all_users = set()
+        abandoned_users = set()
+        expiring_projects = set()
+        expiring = get_projects_with_expired_allocations(self.session,
+                                                         max_days_expired=90,
+                                                         min_days_expired=365,
+                                                         facility_names=['UNIV', 'WNA'])
+
+        print(f"Found {len(expiring)} recently expired projects:")
+        for proj, alloc, res_name, days in expiring:
+            all_users.update(proj.roster)
+            expiring_projects.add(proj.projcode)
+            if self.args.verbose:
+                self._display_project(proj, f" - {days} since expiration")
+            else:
+                print(f"  {proj.projcode} - {days} days since expiration")
+        if self.args.list_users:
+            for user in tqdm(all_users, desc="Determining abandoned users..."):
+                user_projects = set()
+                for proj in user.active_projects:
+                    user_projects.add(proj.projcode)
+                if user_projects.issubset(expiring_projects): abandoned_users.add(user)
+
+            print(f"Found {len(abandoned_users)} expiring users:")
+            for user in sorted(abandoned_users, key=lambda u: u.username):
+                print(f" {user.username:12} {user.display_name:30} <{user.primary_email}>")
+
+        return
 
 
+# ========================================================================
+# Main Program Follows
+# ========================================================================
 def main():
     """Main entry point for the CLI."""
     try:
