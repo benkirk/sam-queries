@@ -563,7 +563,7 @@ Examples:
             print("No active users found.")
             return
 
-        count= len(users)
+        count = len(users)
         plural = "s" if count > 1 else ""
 
         print(f"{count} Active user{plural} for {project.projcode}:\n")
