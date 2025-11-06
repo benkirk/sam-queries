@@ -1,6 +1,5 @@
 SHELL := /bin/bash
 
-top_dir := $(shell git rev-parse --show-toplevel)
 config_env := module load conda >/dev/null 2>&1 || true
 
 
@@ -35,8 +34,7 @@ solve-%: %.yml
 fixperms:
 	for file in .env; do \
 	  setfacl --remove-all $${file} ; \
-	  for group in csgteam csg hdt nusd; do \
-	    getent group $${group} 2>&1 >/dev/null || continue ; \
+	  for group in csgteam csg hdt nusd hsg; do \
 	    setfacl -m g:$${group}:r $${file} ; \
 	  done ;\
 	  for user in bdobbins; do \

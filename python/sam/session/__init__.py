@@ -23,7 +23,7 @@ def create_sam_engine(connection_string: str = None):
         from dotenv import load_dotenv, find_dotenv
         import os
 
-        load_dotenv(find_dotenv(usecwd=True))
+        load_dotenv(find_dotenv())
 
         username = os.environ['SAM_DB_USERNAME']
         password = os.environ['SAM_DB_PASSWORD']
