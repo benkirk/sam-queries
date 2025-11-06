@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
 top_dir := $(shell git rev-parse --show-toplevel)
-config_env := ml conda || true
+config_env := module load conda >/dev/null 2>&1 || true
 
 
 clean:

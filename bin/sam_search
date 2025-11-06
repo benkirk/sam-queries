@@ -1,0 +1,19 @@
+#!/bin/bash --login
+
+#----------------------------------------------------------------------------
+# wrapper script for python utilites that self-activate relevant evironments.
+#----------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------
+# environment
+SCRIPTDIR="$( cd "$( dirname "$( realpath ${BASH_SOURCE[0]} )" )" >/dev/null 2>&1 && pwd )"
+source ${SCRIPTDIR}/../etc/config_env.sh \
+    || { echo "cannot locate ${SCRIPTDIR}/../libexec/config_env.sh!!"; exit 1; }
+#----------------------------------------------------------------------------
+
+
+
+#----------------------------------------------------------------------------
+python3 \
+    ${ROOT_DIR}/python/sam_search.py \
+    "${@}"
