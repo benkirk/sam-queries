@@ -8,7 +8,11 @@ clean:
 	rm *~
 
 clobber:
-	git clean -xdf --exclude ".env" --exclude "conda-env/" --exclude "python/tmp_classes/"
+	git clean -xdf --exclude ".env" --exclude "conda-env/"
+
+distclean:
+	$(MAKE) clobber
+	rm -rf conda-env/
 
 
 %.py : %.ipynb Makefile
