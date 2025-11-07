@@ -25,6 +25,12 @@ Examples:
 
     # Find a project and list its users
     sam_search project UCSD0001 --list-users
+
+    # Find upcoming project expirations:
+    sam_search project --upcoming-expirations
+
+    # Find recently expired projects, including 'abandoned' users:
+    sam_search project --recent-expirations --list-users
 """
 
 import argparse
