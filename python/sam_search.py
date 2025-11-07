@@ -139,6 +139,12 @@ Examples:
             help='Find \'active\' users with no active projects'
         )
 
+        user_search.add_argument(
+            '--has-active-project',
+            action='store_true',
+            help='Find \'active\' users with at least one active projects'
+        )
+
         # User options
         user_parser.add_argument(
             '--list-projects',
@@ -232,8 +238,10 @@ Examples:
             if self.args.command == 'user':
                 if self.args.username:
                     return self._search_user_exact()
-                if self.args.abandoned:
+                elif self.args.abandoned:
                     return self._abandoned_users()
+                elif self.args.has_active_project:
+                    return self._users_with_active_project()
                 else:
                     return self._search_user_pattern()
 
@@ -409,14 +417,33 @@ Examples:
 
     def _abandoned_users(self):
         active_users = User.get_active_users(self.session)
+        print(f"Examining {len(active_users):,} 'active' users listed in SAM")
         abandoned_users = set()
-        for user in tqdm(active_users, desc="Determining abandoned users..."):
+        for user in tqdm(active_users, desc=" --> determining abandoned users..."):
             if len(user.active_projects) == 0:
                 abandoned_users.add(user)
         if abandoned_users:
-            print(f"Found {len(abandoned_users)} abandoned_users")
+            print(f"Found {len(abandoned_users):,} abandoned_users")
             for user in sorted(abandoned_users, key=lambda u: u.username):
                 print(f" {user.username:12} {user.display_name:30} <{user.primary_email}>")
+        return
+
+    def _users_with_active_project(self):
+        active_users = User.get_active_users(self.session)
+        users_with_projects = set()
+        for user in tqdm(active_users, desc="Determining users with at least one active project..."):
+            if len(user.active_projects) > 0:
+                users_with_projects.add(user)
+        if users_with_projects:
+            print(f"Found {len(users_with_projects)} users with at least one active project.")
+            for user in sorted(users_with_projects, key=lambda u: u.username):
+                if self.args.verbose:
+                    self._display_user(user)
+                    if self.args.list_projects:
+                        self._display_user_projects(user)
+                else:
+                    print(f" {user.username:12} {user.display_name:30} <{user.primary_email}>")
+
         return
 
     # ========================================================================
