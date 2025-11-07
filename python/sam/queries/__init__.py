@@ -41,23 +41,6 @@ from sqlalchemy import and_, or_, func, desc, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 
-#
-#
-# from sqlalchemy import create_engine, and_, or_, func, desc, select
-# from sqlalchemy.orm import sessionmaker, Session, joinedload, selectinload
-# from contextlib import contextmanager
-#
-# # Import ORM models (assuming they're in sam_models.py)
-# from sam_models import (
-#     Base, User, UserAlias, EmailAddress, AcademicStatus,
-#     Project, ProjectDirectory, Account, AccountUser,
-#     Allocation, AllocationTransaction, AllocationType,
-#     AdhocGroup, Institution, Organization, Facility, Panel,
-#     Resource, ResourceType, UserInstitution
-# )
-
-
-
 # ============================================================================
 # Resource Queries
 # ============================================================================
@@ -812,6 +795,54 @@ def get_allocations_by_type(
 
     return query.all()
 
+def get_allocations_by_resource(
+    session: Session,
+    resource_name: str,
+    active_only: bool = True
+) -> List[Tuple[Project, Allocation]]:
+    """
+    Get all allocations for a specific resource.
+
+    Args:
+        session: SQLAlchemy session
+        resource_name: Name of the resource (e.g., 'Derecho', 'GLADE', 'Campaign')
+        active_only: If True, only return currently active allocations
+
+    Returns:
+        List of (Project, Allocation) tuples for the specified resource
+
+    Examples:
+        >>> # Get all active Derecho allocations
+        >>> results = get_allocations_by_resource(session, 'Derecho')
+        >>> for project, allocation in results:
+        ...     print(f"{project.projcode}: {allocation.amount}")
+
+        >>> # Get all GLADE allocations including expired ones
+        >>> results = get_allocations_by_resource(session, 'GLADE', active_only=False)
+    """
+    now = datetime.now()
+
+    # Build the query joining through the account table to reach resource
+    query = session.query(Project, Allocation)\
+        .join(Account, Project.project_id == Account.project_id)\
+        .join(Allocation, Account.account_id == Allocation.account_id)\
+        .join(Resource, Account.resource_id == Resource.resource_id)\
+        .filter(
+            Resource.resource_name == resource_name,
+            Allocation.deleted == False
+        )
+
+    # Optionally filter to only currently active allocations
+    if active_only:
+        query = query.filter(
+            Allocation.start_date <= now,
+            or_(
+                Allocation.end_date.is_(None),
+                Allocation.end_date >= now
+            )
+        )
+
+    return query.all()
 
 def get_allocation_summary_by_facility(
     session: Session,
