@@ -39,6 +39,7 @@ from typing import Optional, List
 from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from tqdm import tqdm
 
 from sam import *
 
@@ -84,10 +85,10 @@ Examples:
   %(prog)s user --search "john%%"
 
   # Find a specific project
-  %(prog)s project UCSD0001
+  %(prog)s project SCSG0001
 
   # Find a project and list its users
-  %(prog)s project UCSD0001 --list-users
+  %(prog)s project SCSG0001 --list-users
 
   # Search with verbose output
   %(prog)s user jsmith --verbose --list-projects
@@ -130,6 +131,12 @@ Examples:
             '--search',
             metavar='PATTERN',
             help='Search pattern (use %% for wildcard, _ for single char)'
+        )
+
+        user_search.add_argument(
+            '--abandoned',
+            action='store_true',
+            help='Find \'active\' users with no active projects'
         )
 
         # User options
@@ -225,6 +232,8 @@ Examples:
             if self.args.command == 'user':
                 if self.args.username:
                     return self._search_user_exact()
+                if self.args.abandoned:
+                    return self._abandoned_users()
                 else:
                     return self._search_user_pattern()
 
@@ -397,6 +406,18 @@ Examples:
             print(f"{i}. {project.projcode}")
             self._display_project(project)
             print()
+
+    def _abandoned_users(self):
+        active_users = User.get_active_users(self.session)
+        abandoned_users = set()
+        for user in tqdm(active_users, desc="Determining abandoned users..."):
+            if len(user.active_projects) == 0:
+                abandoned_users.add(user)
+        if abandoned_users:
+            print(f"Found {len(abandoned_users)} abandoned_users")
+            for user in sorted(abandoned_users, key=lambda u: u.username):
+                print(f" {user.username:12} {user.display_name:30} <{user.primary_email}>")
+        return
 
     # ========================================================================
     # Project Search Commands
@@ -606,7 +627,6 @@ Examples:
     def _recently_expired_projects(self):
         from sam.queries import get_projects_with_expired_allocations
         from datetime import timedelta
-        from tqdm import tqdm
 
         all_users = set()
         abandoned_users = set()
