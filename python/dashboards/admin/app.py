@@ -5,6 +5,7 @@ from flask_bootstrap import Bootstrap
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from wtforms.validators import ValidationError
+
 from sam import *
 from sam.session import create_sam_engine
 from sam.core.users import *
@@ -21,7 +22,17 @@ Session = scoped_session(session_factory)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'
+# The FLASK_ADMIN_SWATCH config option lets you choose different Bootstrap themes (like 'cerulean', 'flatly', 'darkly', etc.).
 app.config['FLASK_ADMIN_SWATCH'] = 'cerulean'  # Bootstrap theme
+app.config['FLASK_ADMIN_FLUID_LAYOUT'] = True  # Use full width
+
+# Or create templates/admin/my_master.html:
+# {% extends 'admin/base.html' %}
+# {% block head_css %}
+#     {{ super() }}
+#     <link href="{{ url_for('static', filename='custom_admin.css') }}" rel="stylesheet">
+# {% endblock %}
+
 
 # Initialize Flask-Bootstrap
 bootstrap = Bootstrap(app)
