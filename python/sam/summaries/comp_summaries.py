@@ -115,7 +115,7 @@ class CompChargeSummary(Base):
 
     def __repr__(self):
         return (f"<CompChargeSummary(id={self.charge_summary_id}, "
-                f"date={self.activity_date.date() if self.activity_date else None}, "
+                f"date={self.activity_date if self.activity_date else None}, "
                 f"jobs={self.num_jobs}, charges={self.charges})>")
 
 
