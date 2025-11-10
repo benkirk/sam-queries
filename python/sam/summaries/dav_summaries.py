@@ -46,6 +46,9 @@ class DavChargeSummary(Base):
     user = relationship('User', back_populates='dav_charge_summaries')
     account = relationship('Account', back_populates='dav_charge_summaries')
 
+    def __str__(self):
+        return f"{self.activity_date if self.activity_date else None}"
+
     def __repr__(self):
         return (f"<DavChargeSummary(date={self.activity_date if self.activity_date else None}, "
                 f"jobs={self.num_jobs}, charges={self.charges})>")
@@ -58,6 +61,9 @@ class DavChargeSummaryStatus(Base):
 
     activity_date = Column(DateTime, primary_key=True)
     current = Column(Boolean)
+
+    def __str__(self):
+        return f"{self.activity_date}"
 
     def __repr__(self):
         return f"<DavChargeSummaryStatus(date={self.activity_date}, current={self.current})>"

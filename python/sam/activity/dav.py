@@ -71,6 +71,9 @@ class DavActivity(Base, TimestampMixin):
         """Calculate wall clock time in hours."""
         return self.wall_time_seconds / 3600.0
 
+    def __str__(self):
+        return f"{self.job_id}"
+
     def __repr__(self):
         return f"<DavActivity(job_id='{self.job_id}', machine='{self.machine}')>"
 
@@ -114,6 +117,9 @@ class DavCharge(Base):
     activity = relationship('DavActivity', back_populates='charges')
     user = relationship('User', back_populates='dav_charges')
 
+    def __str__(self):
+        return f"{self.dav_charge_id}"
+
     def __repr__(self):
         return f"<DavCharge(id={self.dav_charge_id}, charge={self.charge})>"
 
@@ -128,6 +134,9 @@ class DavCos(Base, TimestampMixin):
     modified_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     activities = relationship('DavActivity', back_populates='dav_cos')
+
+    def __str__(self):
+        return f"{self.dav_cos_id} - {self.description}"
 
     def __repr__(self):
         return f"<DavCos(id={self.dav_cos_id}, desc='{self.description}')>"

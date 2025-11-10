@@ -76,6 +76,9 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
             or_(cls.end_date.is_(None), cls.end_date >= now)
         )
 
+    def __str__(self):
+        return f"{self.allocation_id}"
+
     def __repr__(self):
         return f"<Allocation(id={self.allocation_id}, amount={self.amount}, active={self.is_active_at()})>"
 
@@ -137,6 +140,9 @@ class AllocationType(Base, TimestampMixin, ActiveFlagMixin):
 
     panel = relationship('Panel', back_populates='allocation_types')
     projects = relationship('Project', back_populates='allocation_type')
+
+    def __str__(self):
+        return f"{self.allocation_type}"
 
     def __repr__(self):
         return f"<AllocationType(type='{self.allocation_type}')>"

@@ -17,6 +17,9 @@ class XrasRole(Base):
 
     users = relationship('XrasUser', back_populates='role')
 
+    def __str__(self):
+        return f"{self.role_name}"
+
     def __repr__(self):
         return f"<XrasRole(name='{self.role_name}')>"
 
@@ -42,6 +45,9 @@ class XrasUser(Base):
     role = relationship('XrasRole', back_populates='users')
     requests = relationship('XrasRequest', back_populates='user')
 
+    def __str__(self):
+        return f"{self.xras_username}"
+
     def __repr__(self):
         return f"<XrasUser(username='{self.xras_username}')>"
 
@@ -56,6 +62,9 @@ class XrasAction(Base):
     description = Column(String(255))
 
     requests = relationship('XrasRequest', back_populates='action')
+
+    def __str__(self):
+        return f"{self.action_name}"
 
     def __repr__(self):
         return f"<XrasAction(name='{self.action_name}')>"
@@ -91,6 +100,9 @@ class XrasRequest(Base):
     action = relationship('XrasAction', back_populates='requests')
     allocations = relationship('XrasAllocation', back_populates='request')
 
+    def __str__(self):
+        return f"{self.request_number}"
+
     def __repr__(self):
         return f"<XrasRequest(number='{self.request_number}', status='{self.status}')>"
 
@@ -123,6 +135,9 @@ class XrasAllocation(Base):
     local_allocation = relationship('Allocation', back_populates='xras_allocation')
     hpc_amounts = relationship('XrasHpcAllocationAmount', back_populates='xras_allocation')
 
+    def __str__(self):
+        return f"{self.xras_allocation_number}"
+
     def __repr__(self):
         return f"<XrasAllocation(number='{self.xras_allocation_number}', amount={self.amount})>"
 
@@ -145,6 +160,9 @@ class XrasHpcAllocationAmount(Base):
     xras_allocation = relationship('XrasAllocation', back_populates='hpc_amounts')
     resource = relationship('Resource', back_populates='xras_hpc_amounts')
 
+    def __str__(self):
+        return f"{self.xras_allocation_id} / {self.amount}"
+
     def __repr__(self):
         return f"<XrasHpcAllocationAmount(allocation_id={self.xras_allocation_id}, amount={self.amount})>"
 
@@ -161,6 +179,9 @@ class XrasResourceRepositoryKeyResource(Base):
     creation_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
 
     resource = relationship('Resource', back_populates='xras_resource_keys')
+
+    def __str__(self):
+        return f"{self.xras_resource_key}"
 
     def __repr__(self):
         return f"<XrasResourceRepositoryKeyResource(key='{self.xras_resource_key}')>"

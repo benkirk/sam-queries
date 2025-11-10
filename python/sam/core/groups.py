@@ -35,6 +35,9 @@ class AdhocGroup(Base, ActiveFlagMixin):
     tags = relationship('AdhocGroupTag', back_populates='group')
     system_accounts = relationship('AdhocSystemAccountEntry', back_populates='group')
 
+    def __str__(self):
+        return f"{self.group_name}"
+
     def __repr__(self):
         return f"<AdhocGroup(name='{self.group_name}', gid={self.unix_gid})>"
 

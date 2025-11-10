@@ -16,6 +16,9 @@ class Country(Base, TimestampMixin, SoftDeleteMixin):
 
     state_provs = relationship('StateProv', back_populates='country')
 
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+
     def __repr__(self):
         return f"<Country(code='{self.code}', name='{self.name}')>"
 
@@ -32,6 +35,9 @@ class StateProv(Base, TimestampMixin, SoftDeleteMixin):
 
     country = relationship('Country', back_populates='state_provs')
     institutions = relationship('Institution', back_populates='state_prov')
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
 
     def __repr__(self):
         return f"<StateProv(code='{self.code}', name='{self.name}')>"

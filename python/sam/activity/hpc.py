@@ -107,6 +107,9 @@ class HPCCos(Base, TimestampMixin):
 
     activities = relationship('HPCActivity', back_populates='hpc_cos')
 
+    def __str__(self):
+        return f"{self.hpc_cos_id} - {self.description}"
+
     def __repr__(self):
         return f"<HPCCos(id={self.hpc_cos_id}, desc='{self.description}')>"
 

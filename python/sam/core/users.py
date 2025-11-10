@@ -510,6 +510,9 @@ class UserAlias(Base, TimestampMixin):
 
     user = relationship('User', back_populates='aliases')
 
+    def __str__(self):
+        return f"{self.username} - {self.orcid_id}"
+
     def __repr__(self):
         return f"<UserAlias(username='{self.username}', orcid='{self.orcid_id}')>"
 
@@ -544,6 +547,9 @@ class EmailAddress(Base, TimestampMixin):
 
     user = relationship('User', back_populates='email_addresses')
 
+    def __str__(self):
+        return f"{self.email_address}"
+
     def __repr__(self):
         return f"<EmailAddress(email='{self.email_address}', primary={self.is_primary})>"
 
@@ -566,6 +572,9 @@ class Phone(Base, TimestampMixin):
     phone_type = relationship('PhoneType', back_populates='phones')
     user = relationship('User', back_populates='phones')
 
+    def __str__(self):
+        return f"{self.phone_number}"
+
     def __repr__(self):
         return f"<Phone(number='{self.phone_number}', type='{self.phone_type.phone_type if self.phone_type else None}')>"
 
@@ -579,6 +588,9 @@ class PhoneType(Base, TimestampMixin):
     phone_type = Column(String(25), nullable=False)
 
     phones = relationship('Phone', back_populates='phone_type')
+
+    def __str__(self):
+        return f"{self.phone_type}"
 
     def __repr__(self):
         return f"<PhoneType(type='{self.phone_type}')>"
@@ -601,6 +613,9 @@ class UserResourceHome(Base, TimestampMixin):
 
     user = relationship('User', back_populates='resource_homes')
     resource = relationship('Resource', back_populates='user_homes')
+
+    def __str__(self):
+        return f"{self.user_id} - {self.home_directory}"
 
     def __repr__(self):
         return f"<UserResourceHome(user_id={self.user_id}, dir='{self.home_directory}')>"
@@ -640,6 +655,9 @@ class LoginType(Base):
 
     users = relationship('User', back_populates='login_type')
 
+    def __str__(self):
+        return f"{self.type}"
+
     def __repr__(self):
         return f"<LoginType(type='{self.type}')>"
 
@@ -654,6 +672,9 @@ class AcademicStatus(Base, TimestampMixin, SoftDeleteMixin, ActiveFlagMixin):
     description = Column(String(100), nullable=False)
 
     users = relationship('User', back_populates='academic_status')
+
+    def __str__(self):
+        return f"{self.academic_status_code}"
 
     def __repr__(self):
         return f"<AcademicStatus(code='{self.academic_status_code}', desc='{self.description}')>"

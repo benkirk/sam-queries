@@ -185,6 +185,9 @@ class ResourceType(Base, TimestampMixin, ActiveFlagMixin):
 
     resources = relationship('Resource', back_populates='resource_type')
 
+    def __str__(self):
+        return f"{self.resource_type}"
+
     def __repr__(self):
         return f"<ResourceType(type='{self.resource_type}')>"
 
@@ -205,6 +208,9 @@ class ResourceShell(Base, TimestampMixin):
 
     resource = relationship('Resource', back_populates='shells', foreign_keys=[resource_id])
     user_shells = relationship('UserResourceShell', back_populates='resource_shell')
+
+    def __str__(self):
+        return f"{self.shell_name}"
 
     def __repr__(self):
         return f"<ResourceShell(name='{self.shell_name}', path='{self.path}')>"
@@ -229,6 +235,9 @@ class DiskResourceRootDirectory(Base):
     modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     resource = relationship('Resource', back_populates='root_directories')
+
+    def __str__(self):
+        return f"{self.root_directory}"
 
     def __repr__(self):
         return (f"<DiskResourceRootDirectory(path='{self.root_directory}', "

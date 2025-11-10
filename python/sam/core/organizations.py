@@ -47,6 +47,9 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin):
     projects = relationship('ProjectOrganization', back_populates='organization')
     users = relationship('UserOrganization', back_populates='organization')
 
+    def __str__(self):
+        return f"{self.name} ({self.acronym})"
+
     def __repr__(self):
         return f"<Organization(name='{self.name}', acronym='{self.acronym}')>"
 
@@ -125,6 +128,9 @@ class InstitutionType(Base, TimestampMixin, ActiveFlagMixin):
 
     institutions = relationship('Institution', back_populates='institution_type')
 
+    def __str__(self):
+        return f"{self.type}"
+
     def __repr__(self):
         return f"<InstitutionType(type='{self.type}')>"
 
@@ -161,6 +167,9 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin):
     mnemonic_code_id = Column(Integer, primary_key=True, autoincrement=True)
     code = Column(String(3), nullable=False, unique=True)
     description = Column(String(200), nullable=False, unique=True)
+
+    def __str__(self):
+        return f"{self.code} - {self.description}"
 
     def __repr__(self):
         return f"<MnemonicCode(code='{self.code}', desc='{self.description}')>"

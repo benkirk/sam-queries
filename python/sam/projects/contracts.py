@@ -51,6 +51,9 @@ class Contract(Base, TimestampMixin):
 
         return True
 
+    def __str__(self):
+        return f"{self.contract_number}: {self.title[:50]}..."
+
     def __repr__(self):
         return f"<Contract(number='{self.contract_number}', title='{self.title[:50]}...')>"
 
