@@ -832,6 +832,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         return '\n'.join(lines)
 
+    def __str__(self):
+        shorttitle = f"{self.title[:50]}..." if len(self.title) > 50 else self.title
+        return f"{self.projcode} - {shorttitle}"
+
     def __repr__(self):
         return f"<Project(id={self.project_id}, projcode='{self.projcode}', title='{self.title[:50]}...')>"
 

@@ -483,6 +483,9 @@ class User(Base, TimestampMixin):
         """Check if user can access the system (SQL side)."""
         return and_(cls.active == True, cls.locked == False)
 
+    def __str__(self):
+        return f"{self.username} ({self.display_name})"
+
     def __repr__(self):
         return f"<User(id={self.user_id}, username='{self.username}', name='{self.full_name}')>"
 

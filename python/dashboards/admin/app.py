@@ -1,7 +1,7 @@
 from flask import Flask, redirect, url_for
 from flask_admin import Admin, AdminIndexView, expose
 from flask_admin.contrib.sqla import ModelView
-from flask_bootstrap import Bootstrap
+from flask_admin.theme import Bootstrap4Theme
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from wtforms.validators import ValidationError
@@ -10,6 +10,7 @@ from sam import *
 from sam.session import create_sam_engine
 from sam.core.users import *
 from sam.core.organizations import *
+from sam.projects.projects import *
 from sam.summaries.comp_summaries import *
 from sam.summaries.hpc_summaries import *
 from sam.summaries.comp_summaries import *
@@ -23,20 +24,6 @@ Session = scoped_session(session_factory)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'
 # The FLASK_ADMIN_SWATCH config option lets you choose different Bootstrap themes (like 'cerulean', 'flatly', 'darkly', etc.).
-app.config['FLASK_ADMIN_SWATCH'] = 'cerulean'  # Bootstrap theme
-app.config['FLASK_ADMIN_FLUID_LAYOUT'] = True  # Use full width
-
-# Or create templates/admin/my_master.html:
-# {% extends 'admin/base.html' %}
-# {% block head_css %}
-#     {{ super() }}
-#     <link href="{{ url_for('static', filename='custom_admin.css') }}" rel="stylesheet">
-# {% endblock %}
-
-
-# Initialize Flask-Bootstrap
-bootstrap = Bootstrap(app)
-
 
 # Custom index page
 class MyAdminIndexView(AdminIndexView):
@@ -51,16 +38,17 @@ class MyAdminIndexView(AdminIndexView):
             Resource.is_commissioned == True
         ).count()
 
-        return self.render('admin/custom_index.html',
-                         user_count=user_count,
-                         project_count=project_count,
-                         resource_count=resource_count)
+        return self.render('custom_index.html',
+                           user_count=f"{user_count:,}",
+                           project_count=f"{project_count:,}",
+                           resource_count=f"{resource_count:,}")
 
 
 # Initialize Admin
 admin = Admin(
     app,
     name='SAM Admin',
+    theme=Bootstrap4Theme(swatch="flatly",fluid=True),
     index_view=MyAdminIndexView(),
 )
 
@@ -108,6 +96,21 @@ class ProjectAdmin(ModelView):
     column_formatters = {
         'lead_username': lambda v, c, m, p: m.lead.username if m.lead else 'N/A'
     }
+
+# Project Directories
+class ProjectDirectoryAdmin(ModelView):
+    #can_create = False
+    #can_edit = False
+    #can_delete = False
+    #can_export = True
+
+    column_list = ('directory_name', 'project', 'creation_time', 'end_date')
+    column_searchable_list = ('directory_name','project.projcode')
+    form_excluded_columns = ('creation_time', 'modified_time')
+
+    # column_formatters = {
+    #     'project.projcode': lambda v, c, m, p: m.project.projcode if m.project else 'N/A',
+    # }
 
 
 # Account Management
@@ -166,6 +169,8 @@ class ChargeSummaryAdmin(ModelView):
 
     column_default_sort = ('activity_date', True)  # Newest first
     column_filters = ('activity_date', 'projcode', 'facility_name')
+    column_searchable_list = ('username', 'projcode')
+
     page_size = 100
 
 
@@ -199,6 +204,10 @@ admin.add_view(AllocationAdmin(Allocation, Session(),
                                name='Allocations',
                                endpoint='allocations',
                                category='Projects'))
+admin.add_view(ProjectDirectoryAdmin(ProjectDirectory, Session(),
+                                     name='Directories',
+                                     endpoint='project_directory',
+                                     category='Projects'))
 
 # Resources category
 admin.add_view(ResourceAdmin(Resource, Session(),

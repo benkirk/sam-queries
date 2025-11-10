@@ -27,6 +27,9 @@ class Machine(Base, TimestampMixin):
     machine_factors = relationship('MachineFactor', back_populates='machine')
     resource = relationship('Resource', back_populates='machines')
 
+    def __str__(self):
+        return f"{self.name}"
+
     def __repr__(self):
         return f"<Machine(name='{self.name}', cpus_per_node={self.cpus_per_node})>"
 
@@ -84,6 +87,9 @@ class Queue(Base, TimestampMixin):
     queue_factors = relationship('QueueFactor', back_populates='queue')
     wallclock_exemptions = relationship('WallclockExemption', back_populates='queue')
     comp_charge_summaries = relationship('CompChargeSummary', foreign_keys='CompChargeSummary.queue_id', back_populates='queue_ref')
+
+    def __str__(self):
+        return f"{self.queue_name}"
 
     def __repr__(self):
         return f"<Queue(name='{self.queue_name}', resource='{self.resource.resource_name if self.resource else None}')>"

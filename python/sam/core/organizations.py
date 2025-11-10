@@ -108,6 +108,9 @@ class Institution(Base, TimestampMixin):
     state_prov_id = Column(Integer, ForeignKey('state_prov.ext_state_prov_id'))
     users = relationship('UserInstitution', back_populates='institution')
 
+    def __str__(self):
+        return f"{self.name}"
+
     def __repr__(self):
         return f"<Institution(name='{self.name}', acronym='{self.acronym}')>"
 

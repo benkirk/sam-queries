@@ -166,6 +166,9 @@ class Resource(Base, TimestampMixin):
             or_(cls.decommission_date.is_(None), cls.decommission_date > now)
         )
 
+    def __str__(self):
+        return f"{self.resource_name} ({self.resource_type.resource_type if self.resource_type else None})"
+
     def __repr__(self):
         return f"<Resource(name='{self.resource_name}', type='{self.resource_type.resource_type if self.resource_type else None}')>"
 
