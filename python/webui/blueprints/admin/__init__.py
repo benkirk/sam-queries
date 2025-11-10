@@ -100,5 +100,6 @@ def init_admin(app):
                                       category='Reports'))
 
     # Misc
-
+    from .add_default_models import add_default_views
+    add_default_views(app,admin)
     return admin
