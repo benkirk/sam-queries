@@ -52,11 +52,47 @@
             </div>
         </div>
     </div>
-    
+
+    <div class="row" style="margin-top: 30px;">
+        <div class="col-md-6">
+            <div class="panel panel-warning">
+                <div class="panel-heading">
+                    <h3 class="panel-title">Upcoming Expirations</h3>
+                </div>
+                <div class="panel-body text-center">
+                    <h2>{{ upcoming_count }}</h2>
+                    <p class="text-muted">Projects expiring in next 30 days</p>
+                    <a href="{{ url_for('expirations.index', tab='upcoming') }}" class="btn btn-warning">
+                        View Details
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="panel panel-danger">
+                <div class="panel-heading">
+                    <h3 class="panel-title">Recently Expired</h3>
+                </div>
+                <div class="panel-body text-center">
+                    <h2>{{ expired_count }}</h2>
+                    <p class="text-muted">Projects expired in last 90 days</p>
+                    <a href="{{ url_for('expirations.index', tab='expired') }}" class="btn btn-danger">
+                        View Details
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row" style="margin-top: 30px;">
         <div class="col-md-12">
             <h3>Quick Links</h3>
             <div class="list-group">
+                <a href="{{ url_for('expirations.index') }}" class="list-group-item">
+                    <h4 class="list-group-item-heading">Project Expirations</h4>
+                    <p class="list-group-item-text">Monitor upcoming and recently expired project allocations</p>
+                </a>
                 <a href="{{ url_for('comp_charges.index_view') }}" class="list-group-item">
                     <h4 class="list-group-item-heading">Computational Charges</h4>
                     <p class="list-group-item-text">View computational job charges and summaries</p>

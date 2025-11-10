@@ -15,6 +15,7 @@ from .model_views import (
     AccountAdmin, AllocationAdmin, ResourceAdmin,
     ChargeSummaryAdmin
 )
+from .expiration_views import ProjectExpirationView
 
 from sam import *
 from sam.session import create_sam_engine
@@ -97,6 +98,10 @@ def init_admin(app):
     admin.add_view(ChargeSummaryAdmin(HPCChargeSummary, Session(),
                                       name='HPC Charges',
                                       endpoint='hpc_charges',
+                                      category='Reports'))
+    admin.add_view(ProjectExpirationView(
+                                      name='Project Expirations',
+                                      endpoint='expirations',
                                       category='Reports'))
 
     # Misc
