@@ -119,7 +119,7 @@ class Institution(Base, TimestampMixin):
 
 
 #----------------------------------------------------------------------------
-class InstitutionType(Base, TimestampMixin, ActiveFlagMixin):
+class InstitutionType(Base, TimestampMixin):
     """Types of institutions (University, Government, etc.)."""
     __tablename__ = 'institution_type'
 
