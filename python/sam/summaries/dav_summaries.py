@@ -47,7 +47,7 @@ class DavChargeSummary(Base):
     account = relationship('Account', back_populates='dav_charge_summaries')
 
     def __repr__(self):
-        return (f"<DavChargeSummary(date={self.activity_date.date() if self.activity_date else None}, "
+        return (f"<DavChargeSummary(date={self.activity_date if self.activity_date else None}, "
                 f"jobs={self.num_jobs}, charges={self.charges})>")
 
 

@@ -75,6 +75,9 @@ class ContractSource(Base, TimestampMixin, ActiveFlagMixin):
 
     contracts = relationship('Contract', back_populates='contract_source')
 
+    def __str__(self):
+        return f"{self.contract_source}"
+
     def __repr__(self):
         return f"<ContractSource(source='{self.contract_source}')>"
 
@@ -112,6 +115,9 @@ class NSFProgram(Base, TimestampMixin, ActiveFlagMixin):
     nsf_program_name = Column(String(255), nullable=False, unique=True)
 
     contracts = relationship('Contract', back_populates='nsf_program')
+
+    def __str__(self):
+        return f"{self.nsf_program_name}"
 
     def __repr__(self):
         return f"<NSFProgram(name='{self.nsf_program_name}')>"
