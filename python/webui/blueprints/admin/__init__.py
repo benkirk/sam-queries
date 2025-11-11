@@ -37,7 +37,7 @@ def init_admin(app):
     admin = Admin(
         app,
         name='SAM Admin',
-        theme=Bootstrap4Theme(swatch="flatly", fluid=True),
+        theme=Bootstrap4Theme(swatch="lumen", fluid=True),
         index_view=MyAdminIndexView(),
         url='/admin'
     )

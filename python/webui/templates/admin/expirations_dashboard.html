@@ -64,17 +64,7 @@
                                         {% endif %}
                                     </select>
                                 </div>
-
-                                <div class="form-group">
-                                    <label for="custom_days"><strong>Custom Days</strong></label>
-                                    <input type="number" class="form-control" id="custom_days"
-                                           name="custom_days" placeholder="Enter number of days"
-                                           value="{{ filters.custom_days or '' }}">
-                                </div>
-                            </div>
-
-                            <!-- Resource Filter -->
-                            <div class="col-md-4">
+                                <!-- Resource Filter -->
                                 <div class="form-group">
                                     <label for="resource"><strong>Resource (optional)</strong></label>
                                     <input type="text" class="form-control" id="resource"
@@ -286,9 +276,8 @@
                                 <thead>
                                     <tr>
                                         <th>Username</th>
-                                        <th>Display Name</th>
+                                        <th>Name</th>
                                         <th>Email</th>
-                                        <th>Project Count</th>
                                         <th>Projects</th>
                                     </tr>
                                 </thead>
@@ -307,9 +296,6 @@
                                             {% else %}
                                             {{ user.email }}
                                             {% endif %}
-                                        </td>
-                                        <td>
-                                            <span class="badge badge-info">{{ user.project_count }}</span>
                                         </td>
                                         <td>{{ user.projects }}</td>
                                     </tr>

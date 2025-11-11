@@ -11,7 +11,6 @@ dependencies:
   - nbconvert
   - pandas
   - pip
-  - pymssql
   - pymysql
   - pytest
   - sqlalchemy
@@ -20,3 +19,4 @@ dependencies:
   - pip:
       - dotenv
       - pipdeptree
+      - flask-admin[sqlalchemy-with-utils,s3,export]

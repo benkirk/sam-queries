@@ -83,13 +83,11 @@ class ProjectExpirationView(BaseView):
 
         # Get time range preset or custom days
         time_range = request.args.get('time_range', None)
-        custom_days = request.args.get('custom_days', None)
 
         return {
             'facilities': facilities,
             'resource': resource,
             'time_range': time_range,
-            'custom_days': custom_days
         }
 
     def _get_upcoming_expirations(self, session: Session, days: int,
@@ -251,11 +249,6 @@ class ProjectExpirationView(BaseView):
                 days = self.UPCOMING_PRESETS[filters['time_range']]
             elif active_tab == 'expired' and filters['time_range'] in self.EXPIRED_PRESETS:
                 days = self.EXPIRED_PRESETS[filters['time_range']]
-        elif filters['custom_days']:
-            try:
-                days = int(filters['custom_days'])
-            except (ValueError, TypeError):
-                days = 30
 
         # Query based on active tab
         data = []
@@ -315,11 +308,6 @@ class ProjectExpirationView(BaseView):
                 days = self.UPCOMING_PRESETS[filters['time_range']]
             elif export_type == 'expired' and filters['time_range'] in self.EXPIRED_PRESETS:
                 days = self.EXPIRED_PRESETS[filters['time_range']]
-        elif filters['custom_days']:
-            try:
-                days = int(filters['custom_days'])
-            except (ValueError, TypeError):
-                days = 30
 
         # Create CSV in memory
         output = io.StringIO()
@@ -332,7 +320,7 @@ class ProjectExpirationView(BaseView):
             users = self._get_abandoned_users(session, expired_results)
 
             writer = csv.writer(output)
-            writer.writerow(['Username', 'Display Name', 'Email', 'Active Projects'])
+            writer.writerow(['Username', 'Display Name', 'Email', 'Expiring Projects'])
 
             for user in users:
                 project_codes = ', '.join(p.projcode for p in user.active_projects)
@@ -360,8 +348,7 @@ class ProjectExpirationView(BaseView):
 
             writer = csv.writer(output)
             writer.writerow([
-                'Project Code', 'Title', 'Lead Name', 'Lead Username',
-                'Resource', 'End Date', days_label, 'Active'
+                'Project Code', 'Title', 'Lead Name', 'Lead Username', 'End Date', days_label
             ])
 
             for proj, alloc, res_name, days_val in results:
@@ -370,10 +357,8 @@ class ProjectExpirationView(BaseView):
                     proj.title,
                     proj.lead.display_name if proj.lead else 'N/A',
                     proj.lead.username if proj.lead else 'N/A',
-                    res_name,
                     alloc.end_date.strftime('%Y-%m-%d') if alloc.end_date else 'N/A',
-                    days_val,
-                    'Yes' if proj.active else 'No'
+                    days_val
                 ])
 
             filename = f'{export_type}_projects_{datetime.now().strftime("%Y%m%d")}.csv'
