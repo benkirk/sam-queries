@@ -51,8 +51,9 @@ class ProjectExpirationView(BaseView):
         self._default_facilities = ['UNIV', 'WNA']
 
     def _get_session(self) -> Session:
-        """Get SQLAlchemy session from Flask app."""
-        return current_app.Session()
+        """Get SQLAlchemy session from Flask-SQLAlchemy."""
+        from webui.extensions import db
+        return db.session
 
     def _get_all_facilities(self, session: Session) -> List[Tuple[str, str]]:
         """
@@ -276,7 +277,7 @@ class ProjectExpirationView(BaseView):
             abandoned_users_list = self._get_abandoned_users(session, results)
             abandoned_users = self._format_abandoned_users_for_template(abandoned_users_list)
 
-        session.close()
+        # Flask-SQLAlchemy handles session cleanup automatically via teardown_appcontext
 
         return self.render(
             'admin/expirations_dashboard.html',
@@ -363,7 +364,7 @@ class ProjectExpirationView(BaseView):
 
             filename = f'{export_type}_projects_{datetime.now().strftime("%Y%m%d")}.csv'
 
-        session.close()
+        # Flask-SQLAlchemy handles session cleanup automatically via teardown_appcontext
 
         # Create response
         output.seek(0)

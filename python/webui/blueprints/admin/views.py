@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from flask import current_app
 from flask_admin import AdminIndexView, expose
 
 from sam.core.users import User
@@ -10,14 +9,16 @@ from sam.queries import get_projects_by_allocation_end_date, get_projects_with_e
 class MyAdminIndexView(AdminIndexView):
     @expose('/')
     def index(self):
-        Session = current_app.Session
+        # Import db from extensions module to access Flask-SQLAlchemy session
+        from webui.extensions import db
+        session = db.session
 
         # Get some stats
-        user_count = Session.query(User).filter(User.active == True).count()
-        project_count = Session.query(Project).filter(Project.active == True).count()
+        user_count = session.query(User).filter(User.active == True).count()
+        project_count = session.query(Project).filter(Project.active == True).count()
 
         # Get active resource count
-        resource_count = Session.query(Resource).filter(
+        resource_count = session.query(Resource).filter(
             Resource.is_commissioned == True
         ).count()
 
@@ -26,7 +27,7 @@ class MyAdminIndexView(AdminIndexView):
 
         # Upcoming expirations (next 30 days)
         upcoming_expirations = get_projects_by_allocation_end_date(
-            Session,
+            session,
             start_date=datetime.now(),
             end_date=datetime.now() + timedelta(days=30),
             facility_names=default_facilities
@@ -35,7 +36,7 @@ class MyAdminIndexView(AdminIndexView):
 
         # Recently expired (last 90 days)
         expired_projects = get_projects_with_expired_allocations(
-            Session,
+            session,
             max_days_expired=90,
             min_days_expired=365,
             facility_names=default_facilities
