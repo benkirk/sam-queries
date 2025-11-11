@@ -149,10 +149,9 @@
                                         <th>Project Code</th>
                                         <th>Title</th>
                                         <th>Lead</th>
-                                        <th>Resource</th>
+                                        <!-- <th>Resource</th> -->
                                         <th>End Date</th>
                                         <th>Days Remaining</th>
-                                        <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -173,19 +172,12 @@
                                             {{ row.lead_name }}
                                             {% endif %}
                                         </td>
-                                        <td>{{ row.resource_name }}</td>
+                                        <!-- <td>{{ row.resource_name }}</td> -->
                                         <td>{{ row.end_date }}</td>
                                         <td>
                                             <span class="badge {% if row.days <= 7 %}badge-danger{% elif row.days <= 30 %}badge-warning{% else %}badge-info{% endif %}">
                                                 {{ row.days_label }}
                                             </span>
-                                        </td>
-                                        <td>
-                                            {% if row.active %}
-                                            <span class="badge badge-success">Active</span>
-                                            {% else %}
-                                            <span class="badge badge-secondary">Inactive</span>
-                                            {% endif %}
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -224,10 +216,9 @@
                                         <th>Project Code</th>
                                         <th>Title</th>
                                         <th>Lead</th>
-                                        <th>Resource</th>
+                                        <!-- <th>Resource</th> -->
                                         <th>End Date</th>
                                         <th>Days Since Expiration</th>
-                                        <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -248,19 +239,12 @@
                                             {{ row.lead_name }}
                                             {% endif %}
                                         </td>
-                                        <td>{{ row.resource_name }}</td>
+                                        <!-- <td>{{ row.resource_name }}</td> -->
                                         <td>{{ row.end_date }}</td>
                                         <td>
                                             <span class="badge {% if row.days <= 30 %}badge-warning{% else %}badge-danger{% endif %}">
                                                 {{ row.days_label }}
                                             </span>
-                                        </td>
-                                        <td>
-                                            {% if row.active %}
-                                            <span class="badge badge-success">Active</span>
-                                            {% else %}
-                                            <span class="badge badge-secondary">Inactive</span>
-                                            {% endif %}
                                         </td>
                                     </tr>
                                     {% endfor %}
