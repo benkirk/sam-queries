@@ -39,12 +39,6 @@ class ProjectExpirationView(BaseView):
         '60days': 60
     }
 
-    EXPIRED_PRESETS = {
-        '30days': 30,
-        '90days': 90,
-        '180days': 180
-    }
-
     def __init__(self, *args, **kwargs):
         """Initialize the view."""
         super().__init__(*args, **kwargs)
@@ -113,14 +107,15 @@ class ProjectExpirationView(BaseView):
             resource_name=resource
         )
 
-    def _get_expired_projects(self, session: Session, days: int,
+    def _get_expired_projects(self, session: Session,
                               facilities: List[str], resource: Optional[str] = None):
         """
         Query recently expired projects.
 
+        Shows projects expired between 90-365 days ago.
+
         Args:
             session: SQLAlchemy session
-            days: Maximum days since expiration
             facilities: List of facility names to filter
             resource: Optional resource name to filter
 
@@ -243,13 +238,12 @@ class ProjectExpirationView(BaseView):
         # Get available facilities for filter
         all_facilities = self._get_all_facilities(session)
 
-        # Default to 30 days for both views
+        # Process time_range filter only for upcoming tab
+        # Default to 30 days for upcoming expirations
         days = 30
-        if filters['time_range']:
-            if active_tab == 'upcoming' and filters['time_range'] in self.UPCOMING_PRESETS:
+        if active_tab == 'upcoming' and filters['time_range']:
+            if filters['time_range'] in self.UPCOMING_PRESETS:
                 days = self.UPCOMING_PRESETS[filters['time_range']]
-            elif active_tab == 'expired' and filters['time_range'] in self.EXPIRED_PRESETS:
-                days = self.EXPIRED_PRESETS[filters['time_range']]
 
         # Query based on active tab
         data = []
@@ -262,17 +256,16 @@ class ProjectExpirationView(BaseView):
             data = self._format_results_for_template(results, 'upcoming')
 
         elif active_tab == 'expired':
+            # Expired projects use hardcoded 90-365 day window
             results = self._get_expired_projects(
-                session, days, filters['facilities'], filters['resource']
+                session, filters['facilities'], filters['resource']
             )
             data = self._format_results_for_template(results, 'expired')
 
         elif active_tab == 'abandoned':
-            # For abandoned users, we need expired projects
-            # Use 90 days as default
-            expired_days = 90
+            # Abandoned users are based on expired projects (90-365 day window)
             results = self._get_expired_projects(
-                session, expired_days, filters['facilities'], filters['resource']
+                session, filters['facilities'], filters['resource']
             )
             abandoned_users_list = self._get_abandoned_users(session, results)
             abandoned_users = self._format_abandoned_users_for_template(abandoned_users_list)
@@ -287,7 +280,6 @@ class ProjectExpirationView(BaseView):
             filters=filters,
             all_facilities=all_facilities,
             upcoming_presets=self.UPCOMING_PRESETS,
-            expired_presets=self.EXPIRED_PRESETS,
             current_days=days
         )
 
@@ -302,21 +294,20 @@ class ProjectExpirationView(BaseView):
         filters = self._parse_filter_params()
         export_type = request.args.get('export_type', 'upcoming')
 
-        # Determine days based on filters
+        # Process time_range filter only for upcoming exports
+        # Default to 30 days for upcoming expirations
         days = 30
-        if filters['time_range']:
-            if export_type == 'upcoming' and filters['time_range'] in self.UPCOMING_PRESETS:
+        if export_type == 'upcoming' and filters['time_range']:
+            if filters['time_range'] in self.UPCOMING_PRESETS:
                 days = self.UPCOMING_PRESETS[filters['time_range']]
-            elif export_type == 'expired' and filters['time_range'] in self.EXPIRED_PRESETS:
-                days = self.EXPIRED_PRESETS[filters['time_range']]
 
         # Create CSV in memory
         output = io.StringIO()
 
         if export_type == 'abandoned':
-            # Export abandoned users
+            # Export abandoned users (based on expired projects with 90-365 day window)
             expired_results = self._get_expired_projects(
-                session, 90, filters['facilities'], filters['resource']
+                session, filters['facilities'], filters['resource']
             )
             users = self._get_abandoned_users(session, expired_results)
 
@@ -342,8 +333,9 @@ class ProjectExpirationView(BaseView):
                 )
                 days_label = 'Days Remaining'
             else:
+                # Expired exports use hardcoded 90-365 day window
                 results = self._get_expired_projects(
-                    session, days, filters['facilities'], filters['resource']
+                    session, filters['facilities'], filters['resource']
                 )
                 days_label = 'Days Since Expiration'
 
