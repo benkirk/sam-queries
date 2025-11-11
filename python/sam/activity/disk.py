@@ -86,5 +86,7 @@ class DiskCos(Base, TimestampMixin):
 
     activities = relationship('DiskActivity', back_populates='disk_cos')
 
+    def __str__(self):
+        return f"{self.description}"
 
 #-------------------------------------------------------------------------em-

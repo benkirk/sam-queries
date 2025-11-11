@@ -102,6 +102,9 @@ class CompJob(Base):
         """Check if this was an interactive job."""
         return bool(self.interactive)
 
+    def __str__(self):
+        return f"{self.job_id} / {self.machine} / {self.projcode}"
+
     def __repr__(self):
         return (f"<CompJob(job_id='{self.job_id}', idx={self.job_idx}, "
                 f"machine='{self.machine}', projcode='{self.projcode}')>")

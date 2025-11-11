@@ -1,343 +1,357 @@
-# Generated automatically from utils/wrap_classes.py
-
 from flask_admin.contrib.sqla import ModelView
 
+
+class SAMModelView(ModelView):
+    """Core base class to extend Flask Admin's ModelView with
+    consistent defaults for all SAM ORM Models"""
+
+    # Flask Admin exposes edit/delete by default, but suppresses view.
+    # Let's turn that on.
+    can_view_details = True
+
+
+#---------------------------------------------------
+# Full listing -
+# Generated automatically from utils/wrap_classes.py
+#---------------------------------------------------
+
+
 # AcademicStatus Admin View
-class AcademicStatusAdmin(ModelView):
+class AcademicStatusDefaultAdmin(SAMModelView):
     pass
 
 # AccessBranch Admin View
-class AccessBranchAdmin(ModelView):
+class AccessBranchDefaultAdmin(SAMModelView):
     pass
 
 # AccessBranchResource Admin View
-class AccessBranchResourceAdmin(ModelView):
+class AccessBranchResourceDefaultAdmin(SAMModelView):
     pass
 
 # Account Admin View
-class AccountAdmin(ModelView):
+class AccountDefaultAdmin(SAMModelView):
     pass
 
 # AccountUser Admin View
-class AccountUserAdmin(ModelView):
+class AccountUserDefaultAdmin(SAMModelView):
     pass
 
 # AdhocGroup Admin View
-class AdhocGroupAdmin(ModelView):
+class AdhocGroupDefaultAdmin(SAMModelView):
     pass
 
 # AdhocGroupTag Admin View
-class AdhocGroupTagAdmin(ModelView):
+class AdhocGroupTagDefaultAdmin(SAMModelView):
     pass
 
 # AdhocSystemAccountEntry Admin View
-class AdhocSystemAccountEntryAdmin(ModelView):
+class AdhocSystemAccountEntryDefaultAdmin(SAMModelView):
     pass
 
 # Allocation Admin View
-class AllocationAdmin(ModelView):
+class AllocationDefaultAdmin(SAMModelView):
     pass
 
 # AllocationTransaction Admin View
-class AllocationTransactionAdmin(ModelView):
+class AllocationTransactionDefaultAdmin(SAMModelView):
     pass
 
 # AllocationType Admin View
-class AllocationTypeAdmin(ModelView):
+class AllocationTypeDefaultAdmin(SAMModelView):
     pass
 
 # ArchiveActivity Admin View
-class ArchiveActivityAdmin(ModelView):
+class ArchiveActivityDefaultAdmin(SAMModelView):
     pass
 
 # ArchiveCharge Admin View
-class ArchiveChargeAdmin(ModelView):
+class ArchiveChargeDefaultAdmin(SAMModelView):
     pass
 
 # ArchiveChargeSummary Admin View
-class ArchiveChargeSummaryAdmin(ModelView):
+class ArchiveChargeSummaryDefaultAdmin(SAMModelView):
     pass
 
 # ArchiveChargeSummaryStatus Admin View
-class ArchiveChargeSummaryStatusAdmin(ModelView):
+class ArchiveChargeSummaryStatusDefaultAdmin(SAMModelView):
     pass
 
 # ArchiveCos Admin View
-class ArchiveCosAdmin(ModelView):
+class ArchiveCosDefaultAdmin(SAMModelView):
     pass
 
 # AreaOfInterest Admin View
-class AreaOfInterestAdmin(ModelView):
+class AreaOfInterestDefaultAdmin(SAMModelView):
     pass
 
 # AreaOfInterestGroup Admin View
-class AreaOfInterestGroupAdmin(ModelView):
+class AreaOfInterestGroupDefaultAdmin(SAMModelView):
     pass
 
 # ChargeAdjustment Admin View
-class ChargeAdjustmentAdmin(ModelView):
+class ChargeAdjustmentDefaultAdmin(SAMModelView):
     pass
 
 # ChargeAdjustmentType Admin View
-class ChargeAdjustmentTypeAdmin(ModelView):
+class ChargeAdjustmentTypeDefaultAdmin(SAMModelView):
     pass
 
 # CompActivity Admin View
-class CompActivityAdmin(ModelView):
+class CompActivityDefaultAdmin(SAMModelView):
     pass
 
 # CompActivityCharge Admin View
-class CompActivityChargeAdmin(ModelView):
+class CompActivityChargeDefaultAdmin(SAMModelView):
     pass
 
 # CompChargeSummary Admin View
-class CompChargeSummaryAdmin(ModelView):
+class CompChargeSummaryDefaultAdmin(SAMModelView):
     pass
 
 # CompChargeSummaryStatus Admin View
-class CompChargeSummaryStatusAdmin(ModelView):
+class CompChargeSummaryStatusDefaultAdmin(SAMModelView):
     pass
 
 # CompJob Admin View
-class CompJobAdmin(ModelView):
+class CompJobDefaultAdmin(SAMModelView):
     pass
 
 # Contract Admin View
-class ContractAdmin(ModelView):
+class ContractDefaultAdmin(SAMModelView):
     pass
 
 # ContractSource Admin View
-class ContractSourceAdmin(ModelView):
+class ContractSourceDefaultAdmin(SAMModelView):
     pass
 
 # DatasetActivity Admin View
-class DatasetActivityAdmin(ModelView):
+class DatasetActivityDefaultAdmin(SAMModelView):
     pass
 
 # DavActivity Admin View
-class DavActivityAdmin(ModelView):
+class DavActivityDefaultAdmin(SAMModelView):
     pass
 
 # DavCharge Admin View
-class DavChargeAdmin(ModelView):
+class DavChargeDefaultAdmin(SAMModelView):
     pass
 
 # DavChargeSummary Admin View
-class DavChargeSummaryAdmin(ModelView):
+class DavChargeSummaryDefaultAdmin(SAMModelView):
     pass
 
 # DavChargeSummaryStatus Admin View
-class DavChargeSummaryStatusAdmin(ModelView):
+class DavChargeSummaryStatusDefaultAdmin(SAMModelView):
     pass
 
 # DavCos Admin View
-class DavCosAdmin(ModelView):
+class DavCosDefaultAdmin(SAMModelView):
     pass
 
 # DefaultProject Admin View
-class DefaultProjectAdmin(ModelView):
+class DefaultProjectDefaultAdmin(SAMModelView):
     pass
 
 # DiskActivity Admin View
-class DiskActivityAdmin(ModelView):
+class DiskActivityDefaultAdmin(SAMModelView):
     pass
 
 # DiskCharge Admin View
-class DiskChargeAdmin(ModelView):
+class DiskChargeDefaultAdmin(SAMModelView):
     pass
 
 # DiskChargeSummary Admin View
-class DiskChargeSummaryAdmin(ModelView):
+class DiskChargeSummaryDefaultAdmin(SAMModelView):
     pass
 
 # DiskChargeSummaryStatus Admin View
-class DiskChargeSummaryStatusAdmin(ModelView):
+class DiskChargeSummaryStatusDefaultAdmin(SAMModelView):
     pass
 
 # DiskCos Admin View
-class DiskCosAdmin(ModelView):
+class DiskCosDefaultAdmin(SAMModelView):
     pass
 
 # DiskResourceRootDirectory Admin View
-class DiskResourceRootDirectoryAdmin(ModelView):
+class DiskResourceRootDirectoryDefaultAdmin(SAMModelView):
     pass
 
 # EmailAddress Admin View
-class EmailAddressAdmin(ModelView):
+class EmailAddressDefaultAdmin(SAMModelView):
     pass
 
 # Facility Admin View
-class FacilityAdmin(ModelView):
+class FacilityDefaultAdmin(SAMModelView):
     pass
 
 # FacilityResource Admin View
-class FacilityResourceAdmin(ModelView):
+class FacilityResourceDefaultAdmin(SAMModelView):
     pass
 
 # HPCActivity Admin View
-class HPCActivityAdmin(ModelView):
+class HPCActivityDefaultAdmin(SAMModelView):
     pass
 
 # HPCCharge Admin View
-class HPCChargeAdmin(ModelView):
+class HPCChargeDefaultAdmin(SAMModelView):
     pass
 
 # HPCChargeSummary Admin View
-class HPCChargeSummaryAdmin(ModelView):
+class HPCChargeSummaryDefaultAdmin(SAMModelView):
     pass
 
 # HPCChargeSummaryStatus Admin View
-class HPCChargeSummaryStatusAdmin(ModelView):
+class HPCChargeSummaryStatusDefaultAdmin(SAMModelView):
     pass
 
 # HPCCos Admin View
-class HPCCosAdmin(ModelView):
+class HPCCosDefaultAdmin(SAMModelView):
     pass
 
 # Institution Admin View
-class InstitutionAdmin(ModelView):
+class InstitutionDefaultAdmin(SAMModelView):
     pass
 
 # InstitutionType Admin View
-class InstitutionTypeAdmin(ModelView):
+class InstitutionTypeDefaultAdmin(SAMModelView):
     pass
 
 # LoginType Admin View
-class LoginTypeAdmin(ModelView):
+class LoginTypeDefaultAdmin(SAMModelView):
     pass
 
 # Machine Admin View
-class MachineAdmin(ModelView):
+class MachineDefaultAdmin(SAMModelView):
     pass
 
 # MachineFactor Admin View
-class MachineFactorAdmin(ModelView):
+class MachineFactorDefaultAdmin(SAMModelView):
     pass
 
 # MnemonicCode Admin View
-class MnemonicCodeAdmin(ModelView):
+class MnemonicCodeDefaultAdmin(SAMModelView):
     pass
 
 # NSFProgram Admin View
-class NSFProgramAdmin(ModelView):
+class NSFProgramDefaultAdmin(SAMModelView):
     pass
 
 # Organization Admin View
-class OrganizationAdmin(ModelView):
+class OrganizationDefaultAdmin(SAMModelView):
     pass
 
 # Panel Admin View
-class PanelAdmin(ModelView):
+class PanelDefaultAdmin(SAMModelView):
     pass
 
 # PanelSession Admin View
-class PanelSessionAdmin(ModelView):
+class PanelSessionDefaultAdmin(SAMModelView):
     pass
 
 # Phone Admin View
-class PhoneAdmin(ModelView):
+class PhoneDefaultAdmin(SAMModelView):
     pass
 
 # PhoneType Admin View
-class PhoneTypeAdmin(ModelView):
+class PhoneTypeDefaultAdmin(SAMModelView):
     pass
 
 # Project Admin View
-class ProjectAdmin(ModelView):
+class ProjectDefaultAdmin(SAMModelView):
     pass
 
 # ProjectContract Admin View
-class ProjectContractAdmin(ModelView):
+class ProjectContractDefaultAdmin(SAMModelView):
     pass
 
 # ProjectDirectory Admin View
-class ProjectDirectoryAdmin(ModelView):
+class ProjectDirectoryDefaultAdmin(SAMModelView):
     pass
 
 # ProjectNumber Admin View
-class ProjectNumberAdmin(ModelView):
+class ProjectNumberDefaultAdmin(SAMModelView):
     pass
 
 # ProjectOrganization Admin View
-class ProjectOrganizationAdmin(ModelView):
+class ProjectOrganizationDefaultAdmin(SAMModelView):
     pass
 
 # Queue Admin View
-class QueueAdmin(ModelView):
+class QueueDefaultAdmin(SAMModelView):
     pass
 
 # QueueFactor Admin View
-class QueueFactorAdmin(ModelView):
+class QueueFactorDefaultAdmin(SAMModelView):
     pass
 
 # Resource Admin View
-class ResourceAdmin(ModelView):
+class ResourceDefaultAdmin(SAMModelView):
     pass
 
 # ResourceShell Admin View
-class ResourceShellAdmin(ModelView):
+class ResourceShellDefaultAdmin(SAMModelView):
     pass
 
 # ResourceType Admin View
-class ResourceTypeAdmin(ModelView):
+class ResourceTypeDefaultAdmin(SAMModelView):
     pass
 
 # Role Admin View
-class RoleAdmin(ModelView):
+class RoleDefaultAdmin(SAMModelView):
     pass
 
 # RoleUser Admin View
-class RoleUserAdmin(ModelView):
+class RoleUserDefaultAdmin(SAMModelView):
     pass
 
 # User Admin View
-class UserAdmin(ModelView):
+class UserDefaultAdmin(SAMModelView):
     pass
 
 # UserAlias Admin View
-class UserAliasAdmin(ModelView):
+class UserAliasDefaultAdmin(SAMModelView):
     pass
 
 # UserInstitution Admin View
-class UserInstitutionAdmin(ModelView):
+class UserInstitutionDefaultAdmin(SAMModelView):
     pass
 
 # UserOrganization Admin View
-class UserOrganizationAdmin(ModelView):
+class UserOrganizationDefaultAdmin(SAMModelView):
     pass
 
 # UserResourceHome Admin View
-class UserResourceHomeAdmin(ModelView):
+class UserResourceHomeDefaultAdmin(SAMModelView):
     pass
 
 # UserResourceShell Admin View
-class UserResourceShellAdmin(ModelView):
+class UserResourceShellDefaultAdmin(SAMModelView):
     pass
 
 # XrasAction Admin View
-class XrasActionAdmin(ModelView):
+class XrasActionDefaultAdmin(SAMModelView):
     pass
 
 # XrasAllocation Admin View
-class XrasAllocationAdmin(ModelView):
+class XrasAllocationDefaultAdmin(SAMModelView):
     pass
 
 # XrasHpcAllocationAmount Admin View
-class XrasHpcAllocationAmountAdmin(ModelView):
+class XrasHpcAllocationAmountDefaultAdmin(SAMModelView):
     pass
 
 # XrasRequest Admin View
-class XrasRequestAdmin(ModelView):
+class XrasRequestDefaultAdmin(SAMModelView):
     pass
 
 # XrasResourceRepositoryKeyResource Admin View
-class XrasResourceRepositoryKeyResourceAdmin(ModelView):
+class XrasResourceRepositoryKeyResourceDefaultAdmin(SAMModelView):
     pass
 
 # XrasRole Admin View
-class XrasRoleAdmin(ModelView):
+class XrasRoleDefaultAdmin(SAMModelView):
     pass
 
 # XrasUser Admin View
-class XrasUserAdmin(ModelView):
+class XrasUserDefaultAdmin(SAMModelView):
     pass

@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class ArchiveActivity(Base, TimestampMixin):
+class ArchiveActivity(Base):
     """Archive (HPSS) activity records."""
     __tablename__ = 'archive_activity'
 
@@ -89,5 +89,7 @@ class ArchiveCos(Base, TimestampMixin):
 
     activities = relationship('ArchiveActivity', back_populates='archive_cos')
 
+    def __str__(self):
+        return f"{self.description}"
 
 #-------------------------------------------------------------------------em-

@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class DavActivity(Base, TimestampMixin):
+class DavActivity(Base):
     """DAV job activity records (Geyser, Caldera, etc.)."""
     __tablename__ = 'dav_activity'
 

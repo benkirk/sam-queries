@@ -43,7 +43,7 @@ def determine_class_names(source_path):
 
 
 def wrap_python_classes(class_name):
-    class_view_name=f"{class_name}Admin"
+    class_view_name=f"{class_name}DefaultAdmin"
     class_view=f"# {class_name} Admin View\nclass {class_view_name}(ModelView):\n    pass\n"
     print(class_view, file=models)
 

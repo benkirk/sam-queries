@@ -10,11 +10,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from wtforms.validators import ValidationError
 
 from .views import MyAdminIndexView
-from .model_views import (
-    UserAdmin, ProjectAdmin, ProjectDirectoryAdmin,
-    AccountAdmin, AllocationAdmin, ResourceAdmin,
-    ChargeSummaryAdmin
-)
+from .custom_model_views import *
 from .expiration_views import ProjectExpirationView
 
 from sam import *

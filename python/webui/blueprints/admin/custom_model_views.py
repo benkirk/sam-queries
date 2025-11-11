@@ -1,9 +1,9 @@
 from flask_admin.contrib.sqla import ModelView
 from wtforms.validators import ValidationError
-
+from .default_model_views import SAMModelView
 
 # User Management
-class UserAdmin(ModelView):
+class UserAdmin(SAMModelView):
     column_list = ('user_id', 'username', 'full_name', 'primary_email',
                    'active', 'locked')
     column_searchable_list = ('username', 'first_name', 'last_name')
@@ -26,7 +26,7 @@ class UserAdmin(ModelView):
 
 
 # Project Management
-class ProjectAdmin(ModelView):
+class ProjectAdmin(SAMModelView):
     column_list = ('project_id', 'projcode', 'title', 'lead_username',
                    'active', 'charging_exempt')
     column_searchable_list = ('projcode', 'title')
@@ -44,14 +44,14 @@ class ProjectAdmin(ModelView):
 
 
 # Project Directories
-class ProjectDirectoryAdmin(ModelView):
+class ProjectDirectoryAdmin(SAMModelView):
     column_list = ('directory_name', 'project', 'creation_time', 'end_date')
     column_searchable_list = ('directory_name', 'project.projcode')
     form_excluded_columns = ('creation_time', 'modified_time')
 
 
 # Account Management
-class AccountAdmin(ModelView):
+class AccountAdmin(SAMModelView):
     column_list = ('account_id', 'project_projcode', 'resource_name',
                    'deleted', 'creation_time')
     column_searchable_list = ('project.projcode',)
@@ -65,7 +65,7 @@ class AccountAdmin(ModelView):
 
 
 # Allocation Management
-class AllocationAdmin(ModelView):
+class AllocationAdmin(SAMModelView):
     column_list = ('allocation_id', 'account_projcode',
                    'amount', 'start_date', 'end_date', 'deleted')
     column_filters = ('deleted', 'start_date', 'end_date')
@@ -84,7 +84,7 @@ class AllocationAdmin(ModelView):
 
 
 # Resource Management
-class ResourceAdmin(ModelView):
+class ResourceAdmin(SAMModelView):
     column_list = ('resource_id', 'resource_name', 'resource_type_name',
                    'is_commissioned', 'charging_exempt')
     column_searchable_list = ('resource_name', 'description')
@@ -97,7 +97,7 @@ class ResourceAdmin(ModelView):
 
 
 # Read-only reports
-class ChargeSummaryAdmin(ModelView):
+class ChargeSummaryAdmin(SAMModelView):
     can_create = False
     can_edit = False
     can_delete = False
