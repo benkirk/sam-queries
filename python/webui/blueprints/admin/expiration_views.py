@@ -130,8 +130,8 @@ class ProjectExpirationView(BaseView):
         """
         return get_projects_with_expired_allocations(
             session,
-            max_days_expired=days,
-            min_days_expired=0,
+            max_days_expired=90,
+            min_days_expired=365,
             facility_names=facilities if facilities else None,
             resource_name=resource
         )
@@ -158,8 +158,8 @@ class ProjectExpirationView(BaseView):
         # Find users whose active projects are all in the expired set
         abandoned_users = []
         for user in all_users:
-            if not user.active:
-                continue
+            #if not user.active:
+            #    continue
 
             user_active_projcodes = set(p.projcode for p in user.active_projects)
 

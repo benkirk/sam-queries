@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from flask import Flask, redirect, url_for
 from sam.session import create_sam_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
