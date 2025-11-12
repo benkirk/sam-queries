@@ -28,7 +28,7 @@ class XrasUserView(Base):
     This is a database VIEW, not a table.
     """
     __tablename__ = 'xras_user'
-    __table_args__ = {'info': dict(is_view=True), 'extend_existing': True}
+    __table_args__ = {'info': dict(is_view=True)}
 
     # Using username as primary key for ORM purposes (views need PK)
     username = Column(String(35), primary_key=True)
@@ -52,7 +52,7 @@ class XrasRoleView(Base):
     This is a database VIEW, not a table.
     """
     __tablename__ = 'xras_role'
-    __table_args__ = {'info': dict(is_view=True), 'extend_existing': True}
+    __table_args__ = {'info': dict(is_view=True)}
 
     # Composite primary key (views need PK for ORM)
     projectId = Column(String(30), primary_key=True)
@@ -71,7 +71,7 @@ class XrasActionView(Base):
     This is a database VIEW, not a table.
     """
     __tablename__ = 'xras_action'
-    __table_args__ = {'info': dict(is_view=True), 'extend_existing': True}
+    __table_args__ = {'info': dict(is_view=True)}
 
     # Using allocationId as primary key (though it may not be unique in view)
     allocationId = Column(Integer, primary_key=True)
@@ -93,7 +93,7 @@ class XrasAllocationView(Base):
     This is a database VIEW, not a table.
     """
     __tablename__ = 'xras_allocation'
-    __table_args__ = {'info': dict(is_view=True), 'extend_existing': True}
+    __table_args__ = {'info': dict(is_view=True)}
 
     allocationId = Column(Integer, primary_key=True)
     projectId = Column(String(30), nullable=False)
@@ -115,7 +115,7 @@ class XrasHpcAllocationAmountView(Base):
     This is a database VIEW, not a table.
     """
     __tablename__ = 'xras_hpc_allocation_amount'
-    __table_args__ = {'info': dict(is_view=True), 'extend_existing': True}
+    __table_args__ = {'info': dict(is_view=True)}
 
     allocation_id = Column(Integer, primary_key=True)
     allocated = Column(Float(15))  # float(15,2) in DB
@@ -134,7 +134,7 @@ class XrasRequestView(Base):
     This is a database VIEW, not a table.
     """
     __tablename__ = 'xras_request'
-    __table_args__ = {'info': dict(is_view=True), 'extend_existing': True}
+    __table_args__ = {'info': dict(is_view=True)}
 
     # Using projectId as primary key (may not be truly unique)
     projectId = Column(String(30), primary_key=True)
@@ -164,7 +164,7 @@ class CompActivityChargeView(Base):
     so it's not suitable for using job_id as a unique key.
     """
     __tablename__ = 'comp_activity_charge'
-    __table_args__ = {'info': dict(is_view=True), 'extend_existing': True}
+    __table_args__ = {'info': dict(is_view=True)}
 
     # Composite key: job_idx + util_idx should be unique
     job_idx = Column(Integer, primary_key=True)

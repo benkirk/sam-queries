@@ -168,12 +168,10 @@ from .summaries.archive_summaries import (
 )
 
 # 9. Integration and security
-# XRAS table models (for write operations, if any)
-from .integration.xras import (
-    XrasResourceRepositoryKeyResource
-)
+# XRAS table model (actual table, not a view)
+from .integration.xras import XrasResourceRepositoryKeyResource
 
-# XRAS view models (read-only) - These are the correct models to use
+# XRAS view models (read-only database views)
 from .integration.xras_views import (
     XrasUserView,
     XrasRoleView,
@@ -183,17 +181,6 @@ from .integration.xras_views import (
     XrasRequestView,
     CompActivityChargeView
 )
-
-# DEPRECATED: Old XRAS models - commented out due to table name conflicts
-# These models were incorrectly defined. Use the View models above instead.
-# from .integration.xras import (
-#     XrasRole,          # DEPRECATED - use XrasRoleView
-#     XrasUser,          # DEPRECATED - use XrasUserView
-#     XrasAction,        # DEPRECATED - use XrasActionView
-#     XrasRequest,       # DEPRECATED - use XrasRequestView
-#     XrasAllocation,    # DEPRECATED - use XrasAllocationView
-#     XrasHpcAllocationAmount,  # DEPRECATED - use XrasHpcAllocationAmountView
-# )
 
 from .security.roles import Role, RoleUser
 from .security.access import AccessBranch, AccessBranchResource
