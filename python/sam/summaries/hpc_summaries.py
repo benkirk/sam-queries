@@ -19,7 +19,7 @@ class HPCChargeSummary(Base):
     )
 
     hpc_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
-    activity_date = Column(DateTime, nullable=False)
+    activity_date = Column(Date, nullable=False)
 
     act_username = Column(String(35))
     unix_uid = Column(Integer)
@@ -36,8 +36,8 @@ class HPCChargeSummary(Base):
     account_id = Column(Integer, ForeignKey('account.account_id'))
 
     num_jobs = Column(Integer)
-    core_hours = Column(Numeric(22, 8))
-    charges = Column(Numeric(22, 8))
+    core_hours = Column(Float)
+    charges = Column(Float)
 
     user = relationship('User', back_populates='hpc_charge_summaries')
     account = relationship('Account', back_populates='hpc_charge_summaries')
@@ -48,7 +48,7 @@ class HPCChargeSummaryStatus(Base):
     """Tracks which charge summaries are current."""
     __tablename__ = 'hpc_charge_summary_status'
 
-    activity_date = Column(DateTime, primary_key=True)
+    activity_date = Column(Date, primary_key=True)
     current = Column(Boolean)
 
 

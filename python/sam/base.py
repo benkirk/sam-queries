@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Set
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, Boolean, Numeric,
+    Column, Integer, String, Float, DateTime, Date, Boolean, Numeric,
     ForeignKey, ForeignKeyConstraint, PrimaryKeyConstraint,
     Text, BigInteger, TIMESTAMP, text, and_, or_, Index, exists, select
 )

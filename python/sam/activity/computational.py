@@ -196,9 +196,9 @@ class CompActivity(Base):
     chargeable_processors = Column(Integer)
 
     # Charging
-    core_hours = Column(Numeric(22, 8))
-    charge = Column(Numeric(22, 8))
-    external_charge = Column(Numeric(22, 8))  # For external/special charges
+    core_hours = Column(Float)
+    charge = Column(Float)
+    external_charge = Column(Float)  # For external/special charges
     charge_date = Column(DateTime)
 
     # Processing status
@@ -357,9 +357,9 @@ class CompActivityCharge(Base):
     load_date = Column(DateTime, nullable=False)
 
     # Charging information
-    core_hours = Column(Numeric(22, 8))
-    charge = Column(Numeric(22, 8))
-    external_charge = Column(Numeric(22, 8))
+    core_hours = Column(Float)
+    charge = Column(Float)
+    external_charge = Column(Float)
     charge_date = Column(DateTime)
 
     # Calculated properties

@@ -111,9 +111,9 @@ from .accounting.adjustments import (
 # 7. Activity modules
 from .activity.computational import (
     CompJob,
-    CompActivity,
-    CompActivityCharge
+    CompActivity
 )
+# Note: CompActivityCharge view moved to integration.xras_views as CompActivityChargeView
 
 from .activity.hpc import (
     HPCActivity,
@@ -168,15 +168,32 @@ from .summaries.archive_summaries import (
 )
 
 # 9. Integration and security
+# XRAS table models (for write operations, if any)
 from .integration.xras import (
-    XrasRole,
-    XrasUser,
-    XrasAction,
-    XrasRequest,
-    XrasAllocation,
-    XrasHpcAllocationAmount,
     XrasResourceRepositoryKeyResource
 )
+
+# XRAS view models (read-only) - These are the correct models to use
+from .integration.xras_views import (
+    XrasUserView,
+    XrasRoleView,
+    XrasActionView,
+    XrasAllocationView,
+    XrasHpcAllocationAmountView,
+    XrasRequestView,
+    CompActivityChargeView
+)
+
+# DEPRECATED: Old XRAS models - commented out due to table name conflicts
+# These models were incorrectly defined. Use the View models above instead.
+# from .integration.xras import (
+#     XrasRole,          # DEPRECATED - use XrasRoleView
+#     XrasUser,          # DEPRECATED - use XrasUserView
+#     XrasAction,        # DEPRECATED - use XrasActionView
+#     XrasRequest,       # DEPRECATED - use XrasRequestView
+#     XrasAllocation,    # DEPRECATED - use XrasAllocationView
+#     XrasHpcAllocationAmount,  # DEPRECATED - use XrasHpcAllocationAmountView
+# )
 
 from .security.roles import Role, RoleUser
 from .security.access import AccessBranch, AccessBranchResource

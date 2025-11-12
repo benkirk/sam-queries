@@ -19,7 +19,7 @@ class DavChargeSummary(Base):
     )
 
     dav_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
-    activity_date = Column(DateTime, nullable=False)
+    activity_date = Column(Date, nullable=False)
 
     # User identification (actual and recorded)
     act_username = Column(String(35))
@@ -40,8 +40,8 @@ class DavChargeSummary(Base):
 
     # Aggregated metrics
     num_jobs = Column(Integer)
-    core_hours = Column(Numeric(22, 8))
-    charges = Column(Numeric(22, 8))
+    core_hours = Column(Float)
+    charges = Column(Float)
 
     user = relationship('User', back_populates='dav_charge_summaries')
     account = relationship('Account', back_populates='dav_charge_summaries')
@@ -59,7 +59,7 @@ class DavChargeSummaryStatus(Base):
     """Tracks which DAV charge summaries are current."""
     __tablename__ = 'dav_charge_summary_status'
 
-    activity_date = Column(DateTime, primary_key=True)
+    activity_date = Column(Date, primary_key=True)
     current = Column(Boolean)
 
     def __str__(self):

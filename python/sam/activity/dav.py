@@ -110,8 +110,8 @@ class DavCharge(Base):
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
     activity_date = Column(DateTime)
-    charge = Column(Numeric(22, 8))
-    core_hours = Column(Numeric(22, 8))
+    charge = Column(Float)
+    core_hours = Column(Float)
 
     account = relationship('Account', back_populates='dav_charges')
     activity = relationship('DavActivity', back_populates='charges')

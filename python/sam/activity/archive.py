@@ -69,8 +69,8 @@ class ArchiveCharge(Base):
     archive_activity_id = Column(Integer, ForeignKey('archive_activity.archive_activity_id'),
                                  nullable=False, unique=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    charge = Column(Numeric(22, 8))
-    terabyte_year = Column(Numeric(22, 8))
+    charge = Column(Float)
+    terabyte_year = Column(Float)
     activity_date = Column(DateTime)
 
     account = relationship('Account', back_populates='archive_charges')
