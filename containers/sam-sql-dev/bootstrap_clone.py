@@ -210,7 +210,8 @@ def fetch_pk_values(remote_conn, db, table, pk_cols, where_clause=None, order_by
     q = f"SELECT {select} FROM `{db}`.`{table}`"
     parts = []
     if where_clause:
-        parts.append(f"({where_clause})")
+        # Don't wrap in extra parens - caller controls grouping
+        parts.append(f"WHERE {where_clause}")
     if order_by:
         parts.append(f"ORDER BY {order_by} DESC")
     if limit:
@@ -379,13 +380,14 @@ def sample_and_dump_table(cfg, remote_conn, table, size_mb, pk_map, fk_map, samp
         # Build where_clause for selecting primary keys from remote first
         # If we have pk_cols single-column, we will fetch IDs via SELECT and then dump with IN (...)
         # Build a where clause that restricts by FK restrictions (ANDed) if present.
-        restriction_clause = " AND ".join(fk_restrictions) if fk_restrictions else ""
-        order_clause = f"ORDER BY `{order_col}` DESC" if order_col else ""
-        limit_clause = f"LIMIT {limit}"
-
-        select_where = restriction_clause
-        if select_where:
-            select_where = f"({select_where})"
+        # Group multiple FK restrictions with AND
+        if fk_restrictions:
+            if len(fk_restrictions) > 1:
+                select_where = "(" + " AND ".join(fk_restrictions) + ")"
+            else:
+                select_where = fk_restrictions[0]
+        else:
+            select_where = None
 
         # fetch pk values from remote according to restrictions and ordering
         ids = fetch_pk_values(remote_conn, cfg["remote"]["database"], table, pk_cols,

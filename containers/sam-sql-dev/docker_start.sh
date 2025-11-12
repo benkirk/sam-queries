@@ -16,3 +16,5 @@ echo "⏳ Waiting for MySQL to initialize..."
 sleep 20
 
 echo "✅ Local MySQL container ready."
+
+# mysql -u root -h 127.0.0.1 -proot sam
