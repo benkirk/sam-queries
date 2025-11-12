@@ -88,7 +88,7 @@ class User(Base, TimestampMixin):
     resource_shells = relationship('UserResourceShell', back_populates='user')
     role_assignments = relationship('RoleUser', back_populates='user')
     wallclock_exemptions = relationship('WallclockExemption', back_populates='user')
-    xras_user = relationship('XrasUser', back_populates='local_user', uselist=False)
+    # xras_user = relationship('XrasUser', back_populates='local_user', uselist=False)  # DEPRECATED - XRAS views don't support relationships
 
     _projects_w_dups = association_proxy('accounts', 'account.project')
 

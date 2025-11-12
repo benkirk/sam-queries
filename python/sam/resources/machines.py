@@ -56,7 +56,7 @@ class MachineFactor(Base, TimestampMixin):
 
     machine_factor_id = Column(Integer, primary_key=True, autoincrement=True)
     machine_id = Column(Integer, ForeignKey('machine.machine_id'), nullable=False)
-    factor_value = Column(Numeric(15, 2), nullable=False)
+    factor_value = Column(Float, nullable=False)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
 
@@ -77,7 +77,7 @@ class Queue(Base, TimestampMixin):
     resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
     queue_name = Column(String(50), nullable=False)
     description = Column(String(255), nullable=False)
-    wall_clock_hours_limit = Column(Numeric(5, 2))
+    wall_clock_hours_limit = Column(Float)
     cos_id = Column(Integer)
 
     start_date = Column(DateTime)

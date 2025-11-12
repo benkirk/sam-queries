@@ -45,7 +45,7 @@ class CompChargeSummary(Base):
                 else hash(id(self)))
 
     charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
-    activity_date = Column(DateTime, nullable=False)
+    activity_date = Column(Date, nullable=False)
 
     # User identification (actual and recorded)
     act_username = Column(String(35))
@@ -70,8 +70,8 @@ class CompChargeSummary(Base):
 
     # Aggregated metrics
     num_jobs = Column(Integer)
-    core_hours = Column(Numeric(22, 8))
-    charges = Column(Numeric(22, 8))
+    core_hours = Column(Float)
+    charges = Column(Float)
 
     # Processing
     error_comment = Column(Text)

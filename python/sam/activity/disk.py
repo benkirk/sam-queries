@@ -67,8 +67,8 @@ class DiskCharge(Base):
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    charge = Column(Numeric(22, 8))
-    terabyte_year = Column(Numeric(22, 8))
+    charge = Column(Float)
+    terabyte_year = Column(Float)
     activity_date = Column(DateTime)
 
     account = relationship('Account', back_populates='disk_charges')

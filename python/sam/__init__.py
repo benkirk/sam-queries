@@ -112,7 +112,7 @@ from .accounting.adjustments import (
 from .activity.computational import (
     CompJob,
     CompActivity,
-    CompActivityCharge
+    CompActivityChargeView
 )
 
 from .activity.hpc import (
@@ -168,14 +168,17 @@ from .summaries.archive_summaries import (
 )
 
 # 9. Integration and security
-from .integration.xras import (
-    XrasRole,
-    XrasUser,
-    XrasAction,
-    XrasRequest,
-    XrasAllocation,
-    XrasHpcAllocationAmount,
-    XrasResourceRepositoryKeyResource
+# XRAS table model (actual table, not a view)
+from .integration.xras import XrasResourceRepositoryKeyResource
+
+# XRAS view models (read-only database views)
+from .integration.xras_views import (
+    XrasUserView,
+    XrasRoleView,
+    XrasActionView,
+    XrasAllocationView,
+    XrasHpcAllocationAmountView,
+    XrasRequestView
 )
 
 from .security.roles import Role, RoleUser

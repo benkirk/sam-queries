@@ -32,7 +32,7 @@ from sam.summaries.comp_summaries import *
 from sam.summaries.dav_summaries import *
 from sam.summaries.disk_summaries import *
 from sam.summaries.hpc_summaries import *
-
+from sam.integration.xras_views import *
 
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Tuple
@@ -1142,7 +1142,7 @@ def get_daily_usage_trend(session, projcode: str,
 
 def get_recent_jobs_for_project(session, projcode: str,
                                limit: int = 100,
-                               resource: Optional[str] = None) -> List[CompActivityCharge]:
+                               resource: Optional[str] = None) -> List[CompActivityChargeView]:
     """
     Get recent jobs for a project using the charge view.
 
@@ -1153,22 +1153,22 @@ def get_recent_jobs_for_project(session, projcode: str,
         resource: Optional machine filter (e.g., 'Derecho')
 
     Returns:
-        List of CompActivityCharge view records ordered by submit time (descending)
+        List of CompActivityChargeView view records ordered by submit time (descending)
 
     Example:
         >>> jobs = get_recent_jobs_for_project(session, 'UCUB0001', limit=50)
         >>> for job in jobs:
         ...     print(f"{job.job_id}: {job.core_hours} hours, {job.charge} charged")
     """
-    query = session.query(CompActivityCharge).filter(
-        CompActivityCharge.projcode == projcode
+    query = session.query(CompActivityChargeView).filter(
+        CompActivityChargeView.projcode == projcode
     )
 
     if resource:
-        query = query.filter(CompActivityCharge.machine == resource)
+        query = query.filter(CompActivityChargeView.machine == resource)
 
     return query.order_by(
-        CompActivityCharge.submit_time.desc()
+        CompActivityChargeView.submit_time.desc()
     ).limit(limit).all()
 
 

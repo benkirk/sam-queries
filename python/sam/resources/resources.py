@@ -60,7 +60,7 @@ class Resource(Base, TimestampMixin):
     root_directories = relationship('DiskResourceRootDirectory', back_populates='resource')
     shells = relationship('ResourceShell', back_populates='resource', foreign_keys='ResourceShell.resource_id')
     user_homes = relationship('UserResourceHome', back_populates='resource')
-    xras_hpc_amounts = relationship('XrasHpcAllocationAmount', back_populates='resource')
+    # xras_hpc_amounts = relationship('XrasHpcAllocationAmount', back_populates='resource')  # REMOVED - XrasHpcAllocationAmountView is read-only
     xras_resource_keys = relationship('XrasResourceRepositoryKeyResource', back_populates='resource')
 
     @classmethod

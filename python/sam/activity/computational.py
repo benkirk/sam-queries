@@ -196,9 +196,9 @@ class CompActivity(Base):
     chargeable_processors = Column(Integer)
 
     # Charging
-    core_hours = Column(Numeric(22, 8))
-    charge = Column(Numeric(22, 8))
-    external_charge = Column(Numeric(22, 8))  # For external/special charges
+    core_hours = Column(Float)
+    charge = Column(Float)
+    external_charge = Column(Float)  # For external/special charges
     charge_date = Column(DateTime)
 
     # Processing status
@@ -277,148 +277,69 @@ class CompActivity(Base):
 
 
 #----------------------------------------------------------------------------
-class CompActivityCharge(Base):
+# ============================================================================
+# Computational Activity Charge View
+# ============================================================================
+
+class CompActivityChargeView(Base):
     """
-    Computational activity charge view.
+    Computational Activity Charge View - Read-only
 
-    This is a database VIEW that joins comp_job and comp_activity tables
-    to provide a denormalized view of job information with charging details.
-    This is read-only and typically used for reporting and analysis.
+    Denormalized view combining computational activity and charge information
+    for reporting purposes. This is a database VIEW, not a table.
 
-    Important: This represents a database view, not a table. It cannot be
-    directly inserted/updated. Use CompJob and CompActivity for modifications.
-
-    The view combines:
-    - Job metadata from comp_job
-    - Charging details from comp_activity
-    - Calculated fields like queue_wait_time
+    Note: This view may have duplicate job_ids if charges were adjusted,
+    so it's not suitable for using job_id as a unique key.
     """
     __tablename__ = 'comp_activity_charge'
+    __table_args__ = {'info': dict(is_view=True)}
 
-    # Mark as a view (read-only)
-    __table_args__ = (
-        {'info': {'is_view': True}},
-    )
+    # Composite key: job_idx + util_idx should be unique
+    job_idx = Column(Integer, primary_key=True)
+    util_idx = Column(Integer, primary_key=True)
 
-    def __eq__(self, other):
-        """Two view records are equal if they reference the same activity."""
-        if not isinstance(other, CompActivityCharge):
-            return False
-        return (
-            self.job_id == other.job_id and
-            self.job_idx == other.job_idx and
-            self.util_idx == other.util_idx and
-            self.submit_time == other.submit_time and
-            self.projcode == other.projcode
-        )
-
-    def __hash__(self):
-        """Hash based on identifying fields for set/dict operations."""
-        return hash((self.job_id, self.job_idx, self.util_idx,
-                    self.submit_time, self.projcode))
-
-    # User and project information
+    # User and project info
     unix_uid = Column(Integer)
     username = Column(String(35))
-    projcode = Column(String(30), nullable=False, primary_key=True)
+    projcode = Column(String(30), nullable=False)
 
     # Job identification
-    job_id = Column(String(35), nullable=False, primary_key=True)
+    job_id = Column(String(35), nullable=False)
     job_name = Column(String(255))
-    job_idx = Column(Integer, nullable=False, primary_key=True)
-    util_idx = Column(Integer, nullable=False, primary_key=True)
 
-    # Resource information
+    # Resource info
     queue_name = Column(String(100), nullable=False)
     machine = Column(String(100), nullable=False)
-    num_nodes_used = Column(Integer)
-    num_cores_used = Column(Integer)
-    cos = Column(Integer)
 
-    # Timing information
-    submit_time = Column(Integer, nullable=False, primary_key=True)
+    # Timing (epoch timestamps)
     start_time = Column(Integer, nullable=False)
     end_time = Column(Integer, nullable=False)
-    wall_time = Column(Float)
-    unix_user_time = Column(Float)
-    unix_system_time = Column(Float)
-    queue_wait_time = Column(BigInteger, nullable=False, default=0)
+    submit_time = Column(Integer, nullable=False)
 
-    # Job status
+    # Resource usage
+    unix_user_time = Column(Float)  # double in DB
+    unix_system_time = Column(Float)  # double in DB
+    queue_wait_time = Column(Integer, nullable=False)
+    num_nodes_used = Column(Integer)
+    num_cores_used = Column(Integer)
+    wall_time = Column(Float)  # double in DB
+
+    # Job metadata
+    cos = Column(Integer)  # Class of service
     exit_status = Column(String(20))
-    interactive = Column(Integer)
-
-    # Processing
-    processing_status = Column(Boolean)
+    interactive = Column(Integer)  # boolean as int
+    processing_status = Column(Integer)  # bit(1) as int
     error_comment = Column(Text)
 
     # Dates
     activity_date = Column(DateTime, nullable=False)
     load_date = Column(DateTime, nullable=False)
-
-    # Charging information
-    core_hours = Column(Numeric(22, 8))
-    charge = Column(Numeric(22, 8))
-    external_charge = Column(Numeric(22, 8))
     charge_date = Column(DateTime)
 
-    # Calculated properties
-    @property
-    def actual_wall_time(self) -> int:
-        """Calculate actual wall time from timestamps."""
-        return self.end_time - self.start_time if self.end_time and self.start_time else 0
-
-    @property
-    def actual_queue_wait(self) -> int:
-        """Calculate actual queue wait time from timestamps."""
-        return self.start_time - self.submit_time if self.start_time and self.submit_time else 0
-
-    @property
-    def wall_time_hours(self) -> float:
-        """Calculate wall time in hours."""
-        return (self.wall_time / 3600) if self.wall_time else 0.0
-
-    @property
-    def charge_efficiency(self) -> Optional[float]:
-        """
-        Calculate what percentage of requested resources were actually charged.
-
-        Returns:
-            (core_hours / (wall_time * cores)) * 100 if data available
-        """
-        if not all([self.wall_time, self.num_cores_used, self.core_hours]):
-            return None
-
-        theoretical_max = (self.wall_time / 3600) * self.num_cores_used  # Convert to hours
-        if theoretical_max == 0:
-            return None
-
-        return (self.core_hours / theoretical_max) * 100
-
-    @property
-    def effective_charge(self) -> float:
-        """
-        Get the effective charge amount.
-
-        Returns external_charge if set, otherwise regular charge.
-        """
-        if self.external_charge is not None:
-            return self.external_charge
-        return self.charge if self.charge is not None else 0.0
-
-    @property
-    def is_successful(self) -> bool:
-        """Check if job completed successfully."""
-        return self.exit_status == '0' if self.exit_status else False
-
-    @property
-    def is_interactive_job(self) -> bool:
-        """Check if this was an interactive job."""
-        return bool(self.interactive)
+    # Charges
+    external_charge = Column(Float(22))  # float(22,8) in DB
+    core_hours = Column(Float(22))  # float(22,8) in DB
+    charge = Column(Float(22))  # float(22,8) in DB
 
     def __repr__(self):
-        return (f"<CompActivityCharge(job_id='{self.job_id}', projcode='{self.projcode}', "
-                f"core_hours={self.core_hours}, charge={self.charge})>")
-
-
-#-------------------------------------------------------------------------em-
+        return f"<CompActivityChargeView(job='{self.job_id}', user='{self.username}', project='{self.projcode}', charge={self.charge})>"

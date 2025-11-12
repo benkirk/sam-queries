@@ -86,7 +86,7 @@ class WallclockExemption(Base, TimestampMixin):
     wallclock_exemption_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     queue_id = Column(Integer, ForeignKey('queue.queue_id'), nullable=False)
-    time_limit_hours = Column(Numeric(5, 2), nullable=False)
+    time_limit_hours = Column(Float, nullable=False)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=False)
     comment = Column(Text)
