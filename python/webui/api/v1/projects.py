@@ -99,7 +99,7 @@ def get_project(projcode):
         'project_id': project.project_id,
         'projcode': project.projcode,
         'title': project.title,
-        'description': project.description,
+        'abstract': project.abstract,
         'lead': {
             'username': project.lead.username,
             'name': project.lead.full_name,
@@ -136,29 +136,34 @@ def get_project_members(projcode):
         return jsonify({'error': 'Project not found'}), 404
 
     # Get all users on project
-    lead_user, admin_user, members = get_users_on_project(db.session, projcode)
+    users = get_users_on_project(db.session, projcode)
+
+    # Separate users by role
+    lead = next((u for u in users if u['role'] == 'Lead'), None)
+    admin = next((u for u in users if u['role'] == 'Admin'), None)
+    members = [u for u in users if u['role'] == 'Member']
 
     return jsonify({
         'projcode': projcode,
         'lead': {
-            'username': lead_user.username,
-            'name': lead_user.full_name,
-            'email': lead_user.primary_email
-        } if lead_user else None,
+            'username': lead['username'],
+            'name': lead['display_name'],
+            'email': lead['email']
+        } if lead else None,
         'admin': {
-            'username': admin_user.username,
-            'name': admin_user.full_name,
-            'email': admin_user.primary_email
-        } if admin_user else None,
+            'username': admin['username'],
+            'name': admin['display_name'],
+            'email': admin['email']
+        } if admin else None,
         'members': [
             {
-                'username': m.username,
-                'name': m.full_name,
-                'email': m.primary_email
+                'username': m['username'],
+                'name': m['display_name'],
+                'email': m['email']
             }
             for m in members
         ],
-        'total_members': len(members)
+        'total_members': len(users)
     })
 
 
@@ -187,11 +192,10 @@ def get_project_allocations(projcode):
     allocations = get_project_allocations(db.session, projcode, resource_name)
 
     allocations_data = []
-    for account, alloc, resource in allocations:
+    for alloc, res_name in allocations:
         allocations_data.append({
             'allocation_id': alloc.allocation_id,
-            'resource_name': resource.resource_name,
-            'resource_type': resource.resource_type.resource_type if resource.resource_type else None,
+            'resource_name': res_name,
             'amount': float(alloc.amount) if alloc.amount else None,
             'start_date': alloc.start_date.isoformat() if alloc.start_date else None,
             'end_date': alloc.end_date.isoformat() if alloc.end_date else None,
@@ -233,12 +237,15 @@ def get_expiring_projects():
         expiring = get_projects_expiring_soon(db.session, days=days)
 
     expiring_data = []
-    for project in expiring:
+    for project, alloc, res_name, days_remaining in expiring:
         expiring_data.append({
             'projcode': project.projcode,
             'title': project.title,
             'lead_username': project.lead.username if project.lead else None,
             'active': project.active,
+            'resource_name': res_name,
+            'days_remaining': days_remaining,
+            'allocation_end_date': alloc.end_date.isoformat() if alloc.end_date else None,
         })
 
     return jsonify({

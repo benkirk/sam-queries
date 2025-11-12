@@ -102,16 +102,16 @@ def get_user(username):
             'institution_name': ui.institution.institution_name,
             'is_primary': ui.is_primary
         }
-        for ui in user.user_institutions
+        for ui in user.institutions
     ]
 
     # Get user's organizations
     organizations = [
         {
-            'organization_acronym': uo.organization.organization_acronym,
-            'organization_name': uo.organization.organization_name
+            'organization_acronym': uo.organization.acronym,
+            'organization_name': uo.organization.name
         }
-        for uo in user.user_organizations
+        for uo in user.organizations
     ]
 
     # Get user's roles

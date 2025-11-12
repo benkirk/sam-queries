@@ -9,6 +9,8 @@ from webui.blueprints.auth_bp import bp as auth_bp
 from webui.auth.models import AuthUser
 from webui.utils.rbac import rbac_context_processor
 from sam.core.users import User
+from webui.api.v1.projects import bp as api_projects_bp
+from webui.api.v1.users import bp as api_users_bp
 
 
 def create_app():
@@ -75,6 +77,10 @@ def create_app():
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
+
+    # Register API blueprints
+    app.register_blueprint(api_projects_bp, url_prefix='/api/v1/projects')
+    app.register_blueprint(api_users_bp, url_prefix='/api/v1/users')
 
     # Initialize Flask-Admin
     init_admin(app)
