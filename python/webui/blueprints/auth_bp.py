@@ -1,0 +1,71 @@
+"""
+Authentication blueprint for login/logout functionality.
+"""
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask_login import login_user, logout_user, login_required, current_user
+from webui.auth.models import AuthUser
+from webui.auth.providers import get_auth_provider
+from webui.extensions import db
+
+bp = Blueprint('auth', __name__, url_prefix='/auth')
+
+
+@bp.route('/login', methods=['GET', 'POST'])
+def login():
+    """
+    Login page and handler.
+
+    GET: Display login form
+    POST: Authenticate user and create session
+    """
+    # Redirect if already logged in
+    if current_user.is_authenticated:
+        return redirect(url_for('admin.index'))
+
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+
+        # Get configured auth provider
+        # TODO: Get provider type from config
+        provider = get_auth_provider('stub', db_session=db.session)
+
+        # Authenticate
+        sam_user = provider.authenticate(username, password)
+
+        if sam_user:
+            # Wrap SAM user for Flask-Login
+            auth_user = AuthUser(sam_user)
+
+            # Create session
+            remember = request.form.get('remember', False)
+            login_user(auth_user, remember=remember)
+
+            # Redirect to next page or dashboard
+            next_page = request.args.get('next')
+            if next_page:
+                return redirect(next_page)
+            return redirect(url_for('admin.index'))
+        else:
+            flash('Invalid username or password', 'error')
+
+    return render_template('auth/login.html')
+
+
+@bp.route('/logout')
+@login_required
+def logout():
+    """Logout current user."""
+    logout_user()
+    flash('You have been logged out', 'info')
+    return redirect(url_for('auth.login'))
+
+
+@bp.route('/profile')
+@login_required
+def profile():
+    """
+    User profile page showing current user's info and roles.
+    """
+    return render_template('auth/profile.html', user=current_user)
