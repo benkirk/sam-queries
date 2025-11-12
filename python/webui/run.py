@@ -28,7 +28,7 @@ def create_app():
         'benkirk': ['admin'],
         'mtrahan': ['facility_manager'],
         'rory': ['project_lead'],
-        'andersb': ['user'],
+        'andersnb': ['user'],
     }
 
     # Flask-SQLAlchemy configuration

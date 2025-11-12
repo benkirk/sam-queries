@@ -39,6 +39,19 @@ class SAMModelView(ModelView):
         # If authenticated but not authorized, show 403
         return redirect(url_for('admin.index'))
 
+    def _check_permission(self, permission_name):
+        """Helper to check specific permission."""
+        from webui.utils.rbac import has_permission, Permission
+        perm = getattr(Permission, permission_name, None)
+        return perm and has_permission(current_user, perm)
+
+    def _is_acccessible(self, PERMISSION_TYPE):
+        """Check if user has PERMISSION_TYPE permission."""
+        if not current_user.is_authenticated:
+            return False
+        from webui.utils.rbac import has_permission
+        return has_permission(current_user, PERMISSION_TYPE)
+
 
 #---------------------------------------------------
 # Full listing -

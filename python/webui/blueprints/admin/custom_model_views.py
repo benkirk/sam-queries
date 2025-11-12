@@ -37,16 +37,7 @@ class UserAdmin(SAMModelView):
 
     def is_accessible(self):
         """Check if user has VIEW_USERS permission."""
-        if not current_user.is_authenticated:
-            return False
-        from webui.utils.rbac import has_permission, Permission
-        return has_permission(current_user, Permission.VIEW_USERS)
-
-    def _check_permission(self, permission_name):
-        """Helper to check specific permission."""
-        from webui.utils.rbac import has_permission, Permission
-        perm = getattr(Permission, permission_name, None)
-        return perm and has_permission(current_user, perm)
+        return self._is_acccessible(Permission.VIEW_USERS)
 
     # Control edit/create/delete via properties
     @property
