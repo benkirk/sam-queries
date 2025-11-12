@@ -133,7 +133,7 @@ class TestSchemaAlignment:
         models = []
         for mapper in all_mappers:
             # Skip models that are views
-            if mapper.mapped_table.info.get('is_view', False):
+            if mapper.persist_selectable.info.get('is_view', False):
                 continue
             models.append(mapper)
         return models
@@ -143,7 +143,7 @@ class TestSchemaAlignment:
         missing_tables = []
 
         for mapper in table_models:
-            table_name = mapper.mapped_table.name
+            table_name = mapper.persist_selectable.name
             table_type = get_table_type(session, table_name)
 
             if table_type is None:
@@ -161,8 +161,8 @@ class TestSchemaAlignment:
         mismatches = []
 
         for mapper in table_models:
-            table_name = mapper.mapped_table.name
-            orm_columns = {col.name for col in mapper.mapped_table.columns}
+            table_name = mapper.persist_selectable.name
+            orm_columns = {col.name for col in mapper.persist_selectable.columns}
 
             # Get database columns
             db_columns_info = get_db_columns(session, table_name)
@@ -191,8 +191,8 @@ class TestSchemaAlignment:
         warnings = []
 
         for mapper in table_models:
-            table_name = mapper.mapped_table.name
-            orm_columns = {col.name for col in mapper.mapped_table.columns}
+            table_name = mapper.persist_selectable.name
+            orm_columns = {col.name for col in mapper.persist_selectable.columns}
 
             # Get database columns
             db_columns_info = get_db_columns(session, table_name)
@@ -224,10 +224,10 @@ class TestSchemaAlignment:
         mismatches = []
 
         for mapper in table_models:
-            table_name = mapper.mapped_table.name
+            table_name = mapper.persist_selectable.name
             db_columns = get_db_columns(session, table_name)
 
-            for col in mapper.mapped_table.columns:
+            for col in mapper.persist_selectable.columns:
                 if col.name not in db_columns:
                     continue  # Skip - caught by previous test
 
@@ -281,10 +281,10 @@ class TestSchemaAlignment:
         mismatches = []
 
         for mapper in table_models:
-            table_name = mapper.mapped_table.name
+            table_name = mapper.persist_selectable.name
 
             # Get ORM primary keys
-            orm_pks = {col.name for col in mapper.mapped_table.primary_key.columns}
+            orm_pks = {col.name for col in mapper.persist_selectable.primary_key.columns}
 
             # Get database primary keys
             db_columns = get_db_columns(session, table_name)
@@ -311,10 +311,10 @@ class TestSchemaAlignment:
         warnings = []
 
         for mapper in table_models:
-            table_name = mapper.mapped_table.name
+            table_name = mapper.persist_selectable.name
 
             # Get ORM foreign keys
-            for fk in mapper.mapped_table.foreign_keys:
+            for fk in mapper.persist_selectable.foreign_keys:
                 fk_column = fk.parent.name
 
                 # Query database to check if FK constraint exists
@@ -355,7 +355,7 @@ class TestModelCoverage:
         This is informational - some tables intentionally don't have models.
         """
         # Get all ORM table names
-        orm_tables = {mapper.mapped_table.name for mapper in Base.registry.mappers}
+        orm_tables = {mapper.persist_selectable.name for mapper in Base.registry.mappers}
 
         # Get all database tables (exclude views)
         result = session.execute(text("""
@@ -408,10 +408,10 @@ class TestModelCoverage:
         missing_tables = []
 
         for mapper in Base.registry.mappers:
-            table_name = mapper.mapped_table.name
+            table_name = mapper.persist_selectable.name
 
             # Skip views
-            if mapper.mapped_table.info.get('is_view', False):
+            if mapper.persist_selectable.info.get('is_view', False):
                 continue
 
             # Check if table exists
@@ -471,7 +471,7 @@ class TestCriticalSchemas:
         duplicates = []
 
         for mapper in Base.registry.mappers:
-            table_name = mapper.mapped_table.name
+            table_name = mapper.persist_selectable.name
             model_name = mapper.class_.__name__
 
             if table_name in table_names:
