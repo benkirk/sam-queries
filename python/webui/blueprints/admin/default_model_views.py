@@ -1,6 +1,7 @@
 from flask_admin.contrib.sqla import ModelView
 from flask_login import current_user
 from flask import redirect, url_for, request
+from webui.utils.rbac import has_permission, Permission
 
 
 class SAMModelView(ModelView):
@@ -41,7 +42,6 @@ class SAMModelView(ModelView):
 
     def _check_permission(self, permission_name):
         """Helper to check specific permission."""
-        from webui.utils.rbac import has_permission, Permission
         perm = getattr(Permission, permission_name, None)
         return perm and has_permission(current_user, perm)
 
@@ -49,7 +49,6 @@ class SAMModelView(ModelView):
         """Check if user has PERMISSION_TYPE permission."""
         if not current_user.is_authenticated:
             return False
-        from webui.utils.rbac import has_permission
         return has_permission(current_user, PERMISSION_TYPE)
 
 

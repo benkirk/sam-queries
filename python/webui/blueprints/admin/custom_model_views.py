@@ -1,6 +1,8 @@
 from flask_admin.contrib.sqla import ModelView
 from flask_login import current_user
 from wtforms.validators import ValidationError
+from webui.utils.rbac import Permission
+
 from .default_model_views import SAMModelView
 
 # User Management
