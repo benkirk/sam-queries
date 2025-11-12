@@ -18,7 +18,7 @@
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            max-width: 400px;
+            max-width: 450px;
             width: 100%;
         }
         .login-header {
@@ -51,6 +51,48 @@
             padding: 12px;
             border-radius: 5px;
             margin-bottom: 20px;
+            font-size: 13px;
+        }
+        .quick-login-section {
+            margin-top: 25px;
+            padding-top: 25px;
+            border-top: 1px solid #dee2e6;
+        }
+        .quick-login-section h5 {
+            color: #666;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .user-btn {
+            width: 100%;
+            margin-bottom: 8px;
+            text-align: left;
+            padding: 10px 15px;
+            border: 1px solid #dee2e6;
+            background: #f8f9fa;
+            color: #333;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .user-btn:hover {
+            background: #e9ecef;
+            border-color: #667eea;
+            color: #667eea;
+        }
+        .user-btn .role-badge {
+            float: right;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            background: #667eea;
+            color: white;
+        }
+        .divider {
+            text-align: center;
+            margin: 20px 0;
+            color: #999;
             font-size: 13px;
         }
     </style>
@@ -118,6 +160,24 @@
                 Login
             </button>
         </form>
+
+        {% if test_users %}
+        <div class="divider">OR</div>
+
+        <div class="quick-login-section">
+            <h5>Quick Login (Test Users)</h5>
+            {% for username, roles in test_users.items() %}
+            <form method="POST" action="{{ url_for('auth.login') }}" style="margin: 0;">
+                <input type="hidden" name="username" value="{{ username }}">
+                <input type="hidden" name="password" value="test">
+                <button type="submit" class="btn user-btn">
+                    <strong>{{ username }}</strong>
+                    <span class="role-badge">{{ roles|join(', ') }}</span>
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+        {% endif %}
 
         <div class="text-center mt-3">
             <small class="text-muted">

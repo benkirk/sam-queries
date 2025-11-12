@@ -16,7 +16,7 @@ def login():
     """
     Login page and handler.
 
-    GET: Display login form
+    GET: Display login form with available test users
     POST: Authenticate user and create session
     """
     # Redirect if already logged in
@@ -51,15 +51,20 @@ def login():
         else:
             flash('Invalid username or password', 'error')
 
-    return render_template('auth/login.html')
+    # Get available test users from DEV_ROLE_MAPPING for quick switching
+    dev_role_mapping = current_app.config.get('DEV_ROLE_MAPPING', {})
+    test_users = {username: roles for username, roles in dev_role_mapping.items()}
+
+    return render_template('auth/login.html', test_users=test_users)
 
 
 @bp.route('/logout')
 @login_required
 def logout():
-    """Logout current user."""
+    """Logout current user and redirect to login (for user switching)."""
+    username = current_user.username
     logout_user()
-    flash('You have been logged out', 'info')
+    flash(f'Logged out {username}. Select a different user below to switch.', 'info')
     return redirect(url_for('auth.login'))
 
 

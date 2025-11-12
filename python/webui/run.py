@@ -25,13 +25,10 @@ def create_app():
     # Bypasses role/role_user tables during development
     # Comment out or set to {} when role tables are ready
     app.config['DEV_ROLE_MAPPING'] = {
-        'admin_username': ['benkirk'],
-        'manager_username': ['mtrahan'],
-        'lead_username': ['rory'],
-        'regular_username': ['andersb'],
-
-        # Default: give first user admin access (adjust as needed)
-        # 'your_username_here': ['admin'],
+        'benkirk': ['admin'],
+        'mtrahan': ['facility_manager'],
+        'rory': ['project_lead'],
+        'andersb': ['user'],
     }
 
     # Flask-SQLAlchemy configuration
