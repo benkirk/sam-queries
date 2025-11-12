@@ -49,8 +49,8 @@ def load_config(path=CONFIG_FILE):
     s.setdefault("max_refill_multiplier", 8)   # max 8x refill attempts
     a = cfg["remote"]
     a.setdefault("user", os.environ['SAM_DB_USERNAME'])
-    a.setdefault("password",os.environ['TEST_SAM_DB_PASSWORD'])
-    a.setdefault("host",os.environ['TEST_SAM_DB_SERVER'])
+    a.setdefault("password",os.environ['SAM_DB_PASSWORD'])
+    a.setdefault("host",os.environ['SAM_DB_SERVER'])
 
     print(cfg)
 
