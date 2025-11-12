@@ -8,6 +8,8 @@ import re
 
 models = open("default_models.py", "w")
 instantiate = open("instantiate_default_models.py", "w")
+schema = open("schema.py", "w")
+
 all_classes = set()
 
 def camel_to_snake(name: str) -> str:
@@ -25,6 +27,7 @@ def determine_class_names(source_path):
 
     with open(source_path, 'r', encoding='utf-8') as f:
         code = f.read()
+        print(code)
 
     # Match top-level class definitions only (not indented ones)
     # Captures: 'class ClassName(...):' or 'class ClassName:'
@@ -48,8 +51,19 @@ def wrap_python_classes(class_name):
     print(class_view, file=models)
 
     implementor=f"     admin.add_view({class_view_name}({class_name}, Session(), name='{class_name}', endpoint='default_views/{camel_to_snake(class_name)}', category='Everything'))"
-
     print(implementor, file=instantiate)
+
+    class_schema=f"""# {class_name} marshmallow schema
+class {class_name}Schema(SQLAlchemySchema):
+    class Meta:
+        model = {class_name}
+        #load_instance = True  # Optional: deserialize to model instances
+        include_relationships = True
+        #include_fk = True
+"""
+    print(class_schema, file=schema)
+
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
