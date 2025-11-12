@@ -150,74 +150,6 @@ class XrasRequestView(Base):
 
 
 # ============================================================================
-# Computational Activity Charge View
-# ============================================================================
-
-class CompActivityChargeView(Base):
-    """
-    Computational Activity Charge View - Read-only
-
-    Denormalized view combining computational activity and charge information
-    for reporting purposes. This is a database VIEW, not a table.
-
-    Note: This view may have duplicate job_ids if charges were adjusted,
-    so it's not suitable for using job_id as a unique key.
-    """
-    __tablename__ = 'comp_activity_charge'
-    __table_args__ = {'info': dict(is_view=True)}
-
-    # Composite key: job_idx + util_idx should be unique
-    job_idx = Column(Integer, primary_key=True)
-    util_idx = Column(Integer, primary_key=True)
-
-    # User and project info
-    unix_uid = Column(Integer)
-    username = Column(String(35))
-    projcode = Column(String(30), nullable=False)
-
-    # Job identification
-    job_id = Column(String(35), nullable=False)
-    job_name = Column(String(255))
-
-    # Resource info
-    queue_name = Column(String(100), nullable=False)
-    machine = Column(String(100), nullable=False)
-
-    # Timing (epoch timestamps)
-    start_time = Column(Integer, nullable=False)
-    end_time = Column(Integer, nullable=False)
-    submit_time = Column(Integer, nullable=False)
-
-    # Resource usage
-    unix_user_time = Column(Float)  # double in DB
-    unix_system_time = Column(Float)  # double in DB
-    queue_wait_time = Column(Integer, nullable=False)
-    num_nodes_used = Column(Integer)
-    num_cores_used = Column(Integer)
-    wall_time = Column(Float)  # double in DB
-
-    # Job metadata
-    cos = Column(Integer)  # Class of service
-    exit_status = Column(String(20))
-    interactive = Column(Integer)  # boolean as int
-    processing_status = Column(Integer)  # bit(1) as int
-    error_comment = Column(Text)
-
-    # Dates
-    activity_date = Column(DateTime, nullable=False)
-    load_date = Column(DateTime, nullable=False)
-    charge_date = Column(DateTime)
-
-    # Charges
-    external_charge = Column(Float(22))  # float(22,8) in DB
-    core_hours = Column(Float(22))  # float(22,8) in DB
-    charge = Column(Float(22))  # float(22,8) in DB
-
-    def __repr__(self):
-        return f"<CompActivityChargeView(job='{self.job_id}', user='{self.username}', project='{self.projcode}', charge={self.charge})>"
-
-
-# ============================================================================
 # Export all view classes
 # ============================================================================
 
@@ -228,5 +160,4 @@ __all__ = [
     'XrasAllocationView',
     'XrasHpcAllocationAmountView',
     'XrasRequestView',
-    'CompActivityChargeView',
 ]

@@ -142,8 +142,8 @@ class ChargeAdjustmentTypeDefaultAdmin(SAMModelView):
 class CompActivityDefaultAdmin(SAMModelView):
     pass
 
-# CompActivityCharge Admin View
-class CompActivityChargeDefaultAdmin(SAMModelView):
+# CompActivityChargeView Admin View
+class CompActivityChargeViewDefaultAdmin(SAMModelView):
     pass
 
 # CompChargeSummary Admin View

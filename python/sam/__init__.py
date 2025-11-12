@@ -111,9 +111,9 @@ from .accounting.adjustments import (
 # 7. Activity modules
 from .activity.computational import (
     CompJob,
-    CompActivity
+    CompActivity,
+    CompActivityChargeView
 )
-# Note: CompActivityCharge view moved to integration.xras_views as CompActivityChargeView
 
 from .activity.hpc import (
     HPCActivity,
@@ -178,8 +178,7 @@ from .integration.xras_views import (
     XrasActionView,
     XrasAllocationView,
     XrasHpcAllocationAmountView,
-    XrasRequestView,
-    CompActivityChargeView
+    XrasRequestView
 )
 
 from .security.roles import Role, RoleUser

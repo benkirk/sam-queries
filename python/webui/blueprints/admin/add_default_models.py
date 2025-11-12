@@ -24,6 +24,7 @@ from sam.summaries.comp_summaries import *
 from sam.summaries.dav_summaries import *
 from sam.summaries.disk_summaries import *
 from sam.summaries.hpc_summaries import *
+from sam.integration.xras_views import *
 
 from .default_model_views import *
 
@@ -55,7 +56,7 @@ def add_default_views(app,admin):
     admin.add_view(ChargeAdjustmentDefaultAdmin(ChargeAdjustment, db.session, name='ChargeAdjustment', endpoint='everything/charge_adjustment', category='Everything'))
     admin.add_view(ChargeAdjustmentTypeDefaultAdmin(ChargeAdjustmentType, db.session, name='ChargeAdjustmentType', endpoint='everything/charge_adjustment_type', category='Everything'))
     admin.add_view(CompActivityDefaultAdmin(CompActivity, db.session, name='CompActivity', endpoint='everything/comp_activity', category='Everything'))
-    admin.add_view(CompActivityChargeDefaultAdmin(CompActivityCharge, db.session, name='CompActivityCharge', endpoint='everything/comp_activity_charge', category='Everything'))
+    admin.add_view(CompActivityChargeViewDefaultAdmin(CompActivityChargeView, db.session, name='CompActivityChargeView', endpoint='everything/comp_activity_charge', category='Everything'))
     admin.add_view(CompChargeSummaryDefaultAdmin(CompChargeSummary, db.session, name='CompChargeSummary', endpoint='everything/comp_charge_summary', category='Everything'))
     admin.add_view(CompChargeSummaryStatusDefaultAdmin(CompChargeSummaryStatus, db.session, name='CompChargeSummaryStatus', endpoint='everything/comp_charge_summary_status', category='Everything'))
     admin.add_view(CompJobDefaultAdmin(CompJob, db.session, name='CompJob', endpoint='everything/comp_job', category='Everything'))

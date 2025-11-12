@@ -14,10 +14,12 @@ from sam.integration.xras_views import (
     XrasActionView,
     XrasAllocationView,
     XrasHpcAllocationAmountView,
-    XrasRequestView,
-    CompActivityChargeView
+    XrasRequestView
 )
 
+from sam.activity.computational import (
+    CompActivityChargeView
+)
 
 class TestXrasViews:
     """Test XRAS integration views."""
