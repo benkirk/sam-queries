@@ -19,6 +19,76 @@ from datetime import datetime, timedelta
 bp = Blueprint('api_projects', __name__)
 
 
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def _parse_project_filter_params():
+    """
+    Parse common filter parameters for project queries.
+
+    Returns:
+        dict with parsed filter parameters:
+            - facility_names: List of facility names (or None for all)
+            - resource_name: Optional resource name filter
+            - days: Number of days (context-dependent)
+    """
+    # Parse facility names (can be comma-separated or multiple params)
+    facility_names = request.args.getlist('facility_names')
+    if not facility_names:
+        # Check for single 'facility' param for backwards compatibility
+        facility = request.args.get('facility', '').strip()
+        if facility:
+            facility_names = [facility]
+        else:
+            facility_names = None
+
+    # Parse resource name
+    resource_name = request.args.get('resource', '').strip()
+    resource_name = resource_name if resource_name else None
+
+    # Parse days parameter (meaning depends on endpoint context)
+    days = request.args.get('days', type=int)
+
+    return {
+        'facility_names': facility_names,
+        'resource_name': resource_name,
+        'days': days
+    }
+
+
+def _format_project_allocation_tuple(project, alloc, res_name, days_value, days_label_key):
+    """
+    Format a (Project, Allocation, resource_name, days) tuple for JSON response.
+
+    Args:
+        project: Project object
+        alloc: Allocation object
+        res_name: Resource name string
+        days_value: Number of days (remaining or since expiration)
+        days_label_key: JSON key for days value ('days_remaining' or 'days_since_expiration')
+
+    Returns:
+        dict with formatted project allocation data
+    """
+    return {
+        'projcode': project.projcode,
+        'title': project.title,
+        'lead_username': project.lead.username if project.lead else None,
+        'lead_name': project.lead.full_name if project.lead else None,
+        'admin_username': project.admin.username if project.admin else None,
+        'active': project.active,
+        'resource_name': res_name,
+        days_label_key: days_value,
+        'allocation_end_date': alloc.end_date.isoformat() if alloc.end_date else None,
+        'allocation_start_date': alloc.start_date.isoformat() if alloc.start_date else None,
+    }
+
+
+# ============================================================================
+# Routes
+# ============================================================================
+
 @bp.route('/', methods=['GET'])
 @login_required
 @require_permission(Permission.VIEW_PROJECTS)
@@ -219,39 +289,95 @@ def get_expiring_projects():
 
     Query parameters:
         days (int): Days in future to check (default: 30)
-        facility (str): Filter by facility name
+        facility_names (list): Filter by facility names (can specify multiple)
+        facility (str): Single facility filter (backwards compatibility)
+        resource (str): Filter by resource name
 
     Returns:
-        JSON with expiring projects
+        JSON with expiring projects including days_remaining and allocation dates
     """
-    days = request.args.get('days', 30, type=int)
-    facility = request.args.get('facility', '')
-
     from sam.queries import get_projects_expiring_soon
 
-    if facility:
-        expiring = get_projects_expiring_soon(db.session, days=days)
-        # Filter by facility if needed
-        # (get_projects_expiring_soon doesn't have facility param yet)
-    else:
-        expiring = get_projects_expiring_soon(db.session, days=days)
+    # Parse filter parameters using common helper
+    filters = _parse_project_filter_params()
+    days = filters['days'] if filters['days'] is not None else 30
 
-    expiring_data = []
-    for project, alloc, res_name, days_remaining in expiring:
-        expiring_data.append({
-            'projcode': project.projcode,
-            'title': project.title,
-            'lead_username': project.lead.username if project.lead else None,
-            'active': project.active,
-            'resource_name': res_name,
-            'days_remaining': days_remaining,
-            'allocation_end_date': alloc.end_date.isoformat() if alloc.end_date else None,
-        })
+    # Query for expiring projects
+    expiring = get_projects_expiring_soon(
+        db.session,
+        days=days,
+        facility_names=filters['facility_names'],
+        resource_name=filters['resource_name']
+    )
+
+    # Format results using common helper
+    expiring_data = [
+        _format_project_allocation_tuple(project, alloc, res_name, days_value, 'days_remaining')
+        for project, alloc, res_name, days_value in expiring
+    ]
 
     return jsonify({
         'expiring_projects': expiring_data,
         'days': days,
+        'facility_names': filters['facility_names'],
+        'resource_name': filters['resource_name'],
         'total': len(expiring_data)
+    })
+
+
+@bp.route('/recently_expired', methods=['GET'])
+@login_required
+@require_permission(Permission.VIEW_ALLOCATIONS)
+def get_recently_expired_projects():
+    """
+    GET /api/v1/projects/recently_expired - Get projects with recently expired allocations.
+
+    Query parameters:
+        min_days (int): Minimum days since expiration (default: 90)
+        max_days (int): Maximum days since expiration (default: 365)
+        facility_names (list): Filter by facility names (can specify multiple)
+        facility (str): Single facility filter (backwards compatibility)
+        resource (str): Filter by resource name
+
+    Returns:
+        JSON with expired projects including days_since_expiration and allocation dates
+
+    Example:
+        GET /api/v1/projects/recently_expired?min_days=90&max_days=180&facility_names=UNIV
+        Returns projects with allocations that expired 90-180 days ago for UNIV facility
+    """
+    from sam.queries import get_projects_with_expired_allocations
+
+    # Parse filter parameters using common helper
+    filters = _parse_project_filter_params()
+
+    # Parse min/max days for expired range
+    min_days = request.args.get('min_days', 90, type=int)
+    max_days = request.args.get('max_days', 365, type=int)
+
+    # Query for recently expired projects
+    expired = get_projects_with_expired_allocations(
+        session=db.session,
+        min_days_expired=min_days,
+        max_days_expired=max_days,
+        facility_names=filters['facility_names'],
+        resource_name=filters['resource_name'],
+        include_inactive_projects=False
+    )
+
+    # Format results using common helper
+    expired_data = [
+        _format_project_allocation_tuple(project, alloc, res_name, days_value, 'days_since_expiration')
+        for project, alloc, res_name, days_value in expired
+    ]
+
+    return jsonify({
+        'expired_projects': expired_data,
+        'min_days': min_days,
+        'max_days': max_days,
+        'facility_names': filters['facility_names'],
+        'resource_name': filters['resource_name'],
+        'total': len(expired_data)
     })
 
 

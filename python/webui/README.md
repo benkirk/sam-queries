@@ -9,7 +9,7 @@ Flask-based web administration interface for the Service Allocation Management (
 - **Role-Based Access Control (RBAC)**: Fine-grained permissions based on user roles
 - **Dashboard**: Statistics and monitoring for projects, users, and allocations
 - **Expiration Monitoring**: Track upcoming and expired project allocations
-- **REST API**: Programmatic access to SAM data (in progress)
+- **REST API**: Comprehensive JSON API for users, projects, allocations, and expirations
 - **Bootstrap 4 UI**: Modern, responsive interface
 
 ## Quick Start
@@ -108,10 +108,12 @@ python/webui/
 │       └── ...
 ├── utils/                      # Utilities
 │   └── rbac.py                 # RBAC permissions and decorators
-├── api/                        # REST API (in progress)
+├── api/                        # REST API v1
 │   └── v1/
-│       ├── users.py            # User API endpoints
-│       └── projects.py         # Project API endpoints
+│       ├── __init__.py         # API package initialization
+│       ├── users.py            # User endpoints (list, details, projects)
+│       └── projects.py         # Project endpoints (list, details, members,
+│                               #   allocations, expiring, recently_expired)
 └── templates/                  # Jinja2 templates
     ├── auth/
     │   ├── login.html
@@ -209,41 +211,186 @@ Features:
 
 Access: `http://localhost:5050/admin/expirations/`
 
-## REST API (In Progress)
+## REST API
+
+All API endpoints require authentication (session cookie) and appropriate RBAC permissions. Responses are in JSON format.
+
+### Authentication
+
+Login to obtain a session cookie:
+
+```bash
+curl -c cookies.txt -X POST http://localhost:5050/auth/login \
+  -d "username=your_username&password=your_password"
+
+# Use the session cookie in subsequent requests
+curl -b cookies.txt http://localhost:5050/api/v1/users/
+```
 
 ### User Endpoints
 
+**List Users**
 ```bash
-# List users
-GET /api/v1/users?page=1&per_page=50&search=smith
+GET /api/v1/users?page=1&per_page=50&search=smith&active=true
+```
+- **Query Parameters:**
+  - `page` (int): Page number (default: 1)
+  - `per_page` (int): Items per page (default: 50, max: 100)
+  - `search` (str): Search term for username/name
+  - `active` (bool): Filter by active status (true/false)
+  - `locked` (bool): Filter by locked status (true/false)
+- **Permission:** `VIEW_USERS`
+- **Response:** `{ users: [...], page: 1, per_page: 50, total: 42 }`
 
-# Get user details
+**Get User Details**
+```bash
 GET /api/v1/users/johndoe
+```
+- **Permission:** `VIEW_USERS`
+- **Response:** User object with institutions, organizations, roles, timestamps
 
-# Get user's projects
+**Get User's Projects**
+```bash
 GET /api/v1/users/johndoe/projects
 ```
+- **Permission:** `VIEW_PROJECTS`
+- **Response:** Lists projects where user is lead, admin, or member
 
 ### Project Endpoints
 
+**List Projects**
 ```bash
-# List projects
-GET /api/v1/projects?page=1&per_page=50
+GET /api/v1/projects?page=1&per_page=50&search=climate&active=true
+```
+- **Query Parameters:**
+  - `page` (int): Page number (default: 1)
+  - `per_page` (int): Items per page (default: 50, max: 100)
+  - `search` (str): Search term for projcode/title
+  - `active` (bool): Filter by active status
+  - `facility` (str): Filter by facility name
+- **Permission:** `VIEW_PROJECTS`
+- **Response:** `{ projects: [...], page: 1, per_page: 50, total: 156 }`
 
-# Get project details
+**Get Project Details**
+```bash
 GET /api/v1/projects/ABC123
+```
+- **Permission:** `VIEW_PROJECTS`
+- **Response:** Project object with abstract, lead, admin, timestamps
 
-# Get project members
+**Get Project Members**
+```bash
 GET /api/v1/projects/ABC123/members
+```
+- **Permission:** `VIEW_PROJECT_MEMBERS`
+- **Response:** Project lead, admin, and all active members
 
-# Get project allocations
-GET /api/v1/projects/ABC123/allocations
+**Get Project Allocations**
+```bash
+GET /api/v1/projects/ABC123/allocations?resource=Casper
+```
+- **Query Parameters:**
+  - `resource` (str): Filter by resource name
+- **Permission:** `VIEW_ALLOCATIONS`
+- **Response:** All allocations for the project with resource details
 
-# Get expiring projects
-GET /api/v1/projects/expiring?days=30
+**Get Expiring Projects**
+```bash
+# Default: 30 days, all facilities
+GET /api/v1/projects/expiring
+
+# Custom parameters
+GET /api/v1/projects/expiring?days=90&facility_names=UNIV&resource=Casper
+
+# Backwards compatible single facility
+GET /api/v1/projects/expiring?days=60&facility=UNIV
+```
+- **Query Parameters:**
+  - `days` (int): Days in future to check (default: 30)
+  - `facility_names` (list): Filter by facility names (can specify multiple)
+  - `facility` (str): Single facility filter (backwards compatible)
+  - `resource` (str): Filter by resource name
+- **Permission:** `VIEW_ALLOCATIONS`
+- **Response:**
+  ```json
+  {
+    "expiring_projects": [
+      {
+        "projcode": "ABC123",
+        "title": "Project Title",
+        "lead_username": "jdoe",
+        "lead_name": "John Doe",
+        "admin_username": "asmith",
+        "active": true,
+        "resource_name": "Casper",
+        "days_remaining": 25,
+        "allocation_end_date": "2025-12-06T23:59:59",
+        "allocation_start_date": "2024-06-05T00:00:00"
+      }
+    ],
+    "days": 30,
+    "facility_names": ["UNIV"],
+    "resource_name": "Casper",
+    "total": 150
+  }
+  ```
+
+**Get Recently Expired Projects**
+```bash
+# Default: 90-365 days ago, all facilities
+GET /api/v1/projects/recently_expired
+
+# Custom date range
+GET /api/v1/projects/recently_expired?min_days=90&max_days=180
+
+# With filters
+GET /api/v1/projects/recently_expired?min_days=0&max_days=30&facility_names=UNIV&resource=Casper
+```
+- **Query Parameters:**
+  - `min_days` (int): Minimum days since expiration (default: 90)
+  - `max_days` (int): Maximum days since expiration (default: 365)
+  - `facility_names` (list): Filter by facility names
+  - `facility` (str): Single facility filter (backwards compatible)
+  - `resource` (str): Filter by resource name
+- **Permission:** `VIEW_ALLOCATIONS`
+- **Response:** Similar to expiring, but with `days_since_expiration` instead of `days_remaining`
+
+### Response Formats
+
+All endpoints return JSON with consistent error handling:
+
+**Success:**
+```json
+{
+  "data": [...],
+  "total": 42,
+  ...additional metadata...
+}
 ```
 
-All API endpoints require authentication and appropriate permissions.
+**Not Found:**
+```json
+{
+  "error": "Project not found"
+}
+```
+Status: 404
+
+**Unauthorized:**
+```json
+{
+  "error": "Unauthorized - authentication required"
+}
+```
+Status: 401
+
+**Forbidden:**
+```json
+{
+  "error": "Forbidden - insufficient permissions"
+}
+```
+Status: 403
 
 ## Development
 
@@ -363,13 +510,30 @@ curl -X POST http://localhost:5050/auth/login \
 ### Test API Endpoints
 
 ```bash
-# Get users (requires authentication)
-curl -H "Cookie: session=..." \
-  http://localhost:5050/api/v1/users
+# Login and save session cookie
+curl -c cookies.txt -X POST http://localhost:5050/auth/login \
+  -d "username=your_username&password=test"
+
+# List users with pagination
+curl -b cookies.txt http://localhost:5050/api/v1/users?page=1&per_page=20
+
+# Get specific user details
+curl -b cookies.txt http://localhost:5050/api/v1/users/johndoe
+
+# List projects
+curl -b cookies.txt http://localhost:5050/api/v1/projects?search=climate
 
 # Get project details
-curl -H "Cookie: session=..." \
-  http://localhost:5050/api/v1/projects/ABC123
+curl -b cookies.txt http://localhost:5050/api/v1/projects/ABC123
+
+# Get project members
+curl -b cookies.txt http://localhost:5050/api/v1/projects/ABC123/members
+
+# Get expiring projects (next 90 days for UNIV facility)
+curl -b cookies.txt "http://localhost:5050/api/v1/projects/expiring?days=90&facility_names=UNIV"
+
+# Get recently expired projects (90-180 days ago, filtered by resource)
+curl -b cookies.txt "http://localhost:5050/api/v1/projects/recently_expired?min_days=90&max_days=180&resource=Casper"
 ```
 
 ## Troubleshooting
