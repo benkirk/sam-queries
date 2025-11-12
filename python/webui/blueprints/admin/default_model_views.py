@@ -1,13 +1,56 @@
 from flask_admin.contrib.sqla import ModelView
+from flask_login import current_user
+from flask import redirect, url_for, request
 
 
 class SAMModelView(ModelView):
-    """Core base class to extend Flask Admin's ModelView with
-    consistent defaults for all SAM ORM Models"""
+    """
+    Core base class to extend Flask Admin's ModelView with
+    consistent defaults and authentication for all SAM ORM Models.
+
+    All views require login by default. Override is_accessible()
+    for role-based access control.
+    """
 
     # Flask Admin exposes edit/delete by default, but suppresses view.
     # Let's turn that on.
     can_view_details = True
+
+    def is_accessible(self):
+        """
+        Determine if current user can access this view.
+
+        Default: Requires authentication.
+        Override this method in subclasses to add role/permission checks.
+
+        Example:
+            def is_accessible(self):
+                if not current_user.is_authenticated:
+                    return False
+                from webui.utils.rbac import has_permission, Permission
+                return has_permission(current_user, Permission.VIEW_USERS)
+        """
+        return current_user.is_authenticated
+
+    def inaccessible_callback(self, name, **kwargs):
+        """Redirect to login page if not accessible."""
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        # If authenticated but not authorized, show 403
+        return redirect(url_for('admin.index'))
+
+    def _check_permission(self, permission_name):
+        """Helper to check specific permission."""
+        from webui.utils.rbac import has_permission, Permission
+        perm = getattr(Permission, permission_name, None)
+        return perm and has_permission(current_user, perm)
+
+    def _is_acccessible(self, PERMISSION_TYPE):
+        """Check if user has PERMISSION_TYPE permission."""
+        if not current_user.is_authenticated:
+            return False
+        from webui.utils.rbac import has_permission
+        return has_permission(current_user, PERMISSION_TYPE)
 
 
 #---------------------------------------------------

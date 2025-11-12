@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAM Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            max-width: 450px;
+            width: 100%;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .login-header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .login-header p {
+            color: #666;
+            font-size: 14px;
+        }
+        .btn-login {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 12px;
+            font-size: 16px;
+        }
+        .btn-login:hover {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        }
+        .alert-dev {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 12px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+        .quick-login-section {
+            margin-top: 25px;
+            padding-top: 25px;
+            border-top: 1px solid #dee2e6;
+        }
+        .quick-login-section h5 {
+            color: #666;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .user-btn {
+            width: 100%;
+            margin-bottom: 8px;
+            text-align: left;
+            padding: 10px 15px;
+            border: 1px solid #dee2e6;
+            background: #f8f9fa;
+            color: #333;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .user-btn:hover {
+            background: #e9ecef;
+            border-color: #667eea;
+            color: #667eea;
+        }
+        .user-btn .role-badge {
+            float: right;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            background: #667eea;
+            color: white;
+        }
+        .divider {
+            text-align: center;
+            margin: 20px 0;
+            color: #999;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1>SAM Administration</h1>
+            <p>Service Allocation Management</p>
+        </div>
+
+        <!-- Development mode warning -->
+        <div class="alert-dev">
+            <strong>Development Mode:</strong> Using stub authentication.
+            Any password will work for existing users.
+        </div>
+
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('auth.login') }}">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text"
+                       class="form-control"
+                       id="username"
+                       name="username"
+                       placeholder="Enter your username"
+                       required
+                       autofocus>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password"
+                       class="form-control"
+                       id="password"
+                       name="password"
+                       placeholder="Enter your password"
+                       required>
+            </div>
+
+            <div class="form-group form-check">
+                <input type="checkbox"
+                       class="form-check-input"
+                       id="remember"
+                       name="remember">
+                <label class="form-check-label" for="remember">
+                    Remember me
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-login">
+                Login
+            </button>
+        </form>
+
+        {% if test_users %}
+        <div class="divider">OR</div>
+
+        <div class="quick-login-section">
+            <h5>Quick Login (Test Users)</h5>
+            {% for username, roles in test_users.items() %}
+            <form method="POST" action="{{ url_for('auth.login') }}" style="margin: 0;">
+                <input type="hidden" name="username" value="{{ username }}">
+                <input type="hidden" name="password" value="test">
+                <button type="submit" class="btn user-btn">
+                    <strong>{{ username }}</strong>
+                    <span class="role-badge">{{ roles|join(', ') }}</span>
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="text-center mt-3">
+            <small class="text-muted">
+                SAM Web UI &copy; 2024
+            </small>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

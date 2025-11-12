@@ -1,9 +1,20 @@
 from flask_admin.contrib.sqla import ModelView
+from flask_login import current_user
 from wtforms.validators import ValidationError
 from .default_model_views import SAMModelView
 
 # User Management
 class UserAdmin(SAMModelView):
+    """
+    User administration view with RBAC.
+
+    Permissions required:
+    - VIEW_USERS: View and search users
+    - EDIT_USERS: Edit user details
+    - CREATE_USERS: Create new users
+    - DELETE_USERS: Delete users
+    """
+
     column_list = ('user_id', 'username', 'full_name', 'primary_email',
                    'active', 'locked')
     column_searchable_list = ('username', 'first_name', 'last_name')
@@ -23,6 +34,23 @@ class UserAdmin(SAMModelView):
     column_details_list = ('user_id', 'username', 'full_name', 'primary_email',
                           'active', 'locked', 'charging_exempt', 'upid',
                           'unix_uid', 'creation_time')
+
+    def is_accessible(self):
+        """Check if user has VIEW_USERS permission."""
+        return self._is_acccessible(Permission.VIEW_USERS)
+
+    # Control edit/create/delete via properties
+    @property
+    def can_edit(self):
+        return self._check_permission('EDIT_USERS')
+
+    @property
+    def can_create(self):
+        return self._check_permission('CREATE_USERS')
+
+    @property
+    def can_delete(self):
+        return self._check_permission('DELETE_USERS')
 
 
 # Project Management

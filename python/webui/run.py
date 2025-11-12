@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 from flask import Flask, redirect, url_for
+from flask_login import LoginManager, current_user
 import sam.session
 
 from webui.extensions import db
 from webui.blueprints.admin import admin_bp, init_admin
+from webui.blueprints.auth_bp import bp as auth_bp
+from webui.auth.models import AuthUser
+from webui.utils.rbac import rbac_context_processor
+from sam.core.users import User
 
 
 def create_app():
@@ -11,6 +16,20 @@ def create_app():
 
     # Flask configuration
     app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'
+
+    # Authentication provider configuration
+    app.config['AUTH_PROVIDER'] = 'stub'  # Options: 'stub', 'ldap', 'saml'
+
+    # Development role mapping (for read-only database)
+    # Maps username -> list of roles
+    # Bypasses role/role_user tables during development
+    # Comment out or set to {} when role tables are ready
+    app.config['DEV_ROLE_MAPPING'] = {
+        'benkirk': ['admin'],
+        'mtrahan': ['facility_manager'],
+        'rory': ['project_lead'],
+        'andersnb': ['user'],
+    }
 
     # Flask-SQLAlchemy configuration
     app.config['SQLALCHEMY_DATABASE_URI'] = sam.session.connection_string
@@ -31,12 +50,30 @@ def create_app():
     # Make db.session available as app.Session for compatibility
     app.Session = lambda: db.session
 
+    # Initialize Flask-Login
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'auth.login'
+    login_manager.login_message = 'Please log in to access this page.'
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        """Load user by ID for Flask-Login."""
+        sam_user = db.session.query(User).filter_by(user_id=int(user_id)).first()
+        if sam_user:
+            return AuthUser(sam_user, dev_role_mapping=app.config.get('DEV_ROLE_MAPPING'))
+        return None
+
+    # Register context processor for RBAC in templates
+    app.context_processor(rbac_context_processor)
+
     # Register teardown handler for automatic session cleanup
     @app.teardown_appcontext
     def shutdown_session(exception=None):
         db.session.remove()
 
     # Register blueprints
+    app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
 
     # Initialize Flask-Admin
@@ -45,7 +82,9 @@ def create_app():
     # Home page redirect
     @app.route('/')
     def index():
-        return redirect(url_for('admin.index'))
+        if current_user.is_authenticated:
+            return redirect(url_for('admin.index'))
+        return redirect(url_for('auth.login'))
 
     return app
 

@@ -1,0 +1,43 @@
+# SAM Web UI Requirements
+# Install with: pip install -r requirements.txt
+
+# Core Flask
+Flask>=3.0.0
+Werkzeug>=3.0.0
+
+# Flask Extensions
+Flask-Login>=0.6.3          # Session management
+Flask-SQLAlchemy>=3.1.1     # SQLAlchemy integration
+Flask-Admin>=1.6.1          # Admin interface
+Flask-WTF>=1.2.1            # Form handling & CSRF protection
+WTForms>=3.1.0              # Form validation
+
+# Optional but recommended for API
+Flask-CORS>=4.0.0           # CORS support for API endpoints
+Flask-Limiter>=3.5.0        # Rate limiting for API
+Flask-Caching>=2.1.0        # Caching expensive queries
+marshmallow>=3.20.0         # Object serialization
+marshmallow-sqlalchemy>=0.29.0  # SQLAlchemy schema integration
+
+# Database
+SQLAlchemy>=2.0.0           # Already in main requirements
+mysql-connector-python      # Already in main requirements
+PyMySQL                     # Already in main requirements
+
+# Utilities
+python-dotenv>=1.0.0        # Already in main requirements
+tqdm                        # Already in main requirements (for progress bars)
+
+# Production server (optional)
+gunicorn>=21.2.0           # WSGI server for production
+gevent>=23.9.1             # Async worker class for gunicorn
+
+# Security
+cryptography>=41.0.0       # For secure sessions and future auth
+
+# Future LDAP authentication (uncomment when needed)
+# python-ldap>=3.4.3
+# ldap3>=2.9.1
+
+# Future SAML authentication (uncomment when needed)
+# python3-saml>=1.15.0
