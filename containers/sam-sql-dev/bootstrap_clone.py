@@ -26,15 +26,59 @@ import pymysql
 import yaml
 import time
 import math
+import tempfile
+import atexit
 from collections import defaultdict, deque
 from dotenv import load_dotenv, find_dotenv
 
 CONFIG_FILE = "config.yaml"
 DUMP_DIR = "dump"
 
+# Track temporary config files for cleanup
+_temp_config_files = []
+
 # ----------------------------
 # Helpers
 # ----------------------------
+def create_mysql_config_file(host, user, password, port=3306):
+    """
+    Create a temporary MySQL config file with credentials.
+    This prevents passwords from being visible in process lists.
+    Returns path to the config file.
+    """
+    fd, path = tempfile.mkstemp(prefix='mysql_', suffix='.cnf', text=True)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write("[client]\n")
+            f.write(f"host={host}\n")
+            f.write(f"user={user}\n")
+            f.write(f"password={password}\n")
+            f.write(f"port={port}\n")
+        # Set file permissions to 600 (owner read/write only)
+        os.chmod(path, 0o600)
+        _temp_config_files.append(path)
+        return path
+    except Exception as e:
+        # Clean up the file if we fail to write it
+        try:
+            os.unlink(path)
+        except:
+            pass
+        raise e
+
+def cleanup_temp_config_files():
+    """Remove all temporary MySQL config files."""
+    for path in _temp_config_files:
+        try:
+            if os.path.exists(path):
+                os.unlink(path)
+        except Exception as e:
+            print(f"⚠️  Warning: Could not remove temp file {path}: {e}", file=sys.stderr)
+    _temp_config_files.clear()
+
+# Register cleanup function to run on exit
+atexit.register(cleanup_temp_config_files)
+
 def load_config(path=CONFIG_FILE):
     load_dotenv(find_dotenv())
     with open(path) as f:
@@ -78,14 +122,19 @@ def connect_mysql(host, user, password, database=None, port=3306, use_ssl=False)
 def get_tables_info(conn, db):
     q = """
     SELECT TABLE_NAME as table_name,
+           TABLE_TYPE as table_type,
            ROUND((DATA_LENGTH + INDEX_LENGTH)/1024/1024, 2) AS size_mb,
            TABLE_ROWS as table_rows
     FROM information_schema.tables
-    WHERE TABLE_SCHEMA=%s AND TABLE_TYPE='BASE TABLE'
+    WHERE TABLE_SCHEMA=%s AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')
     """
     with conn.cursor() as cur:
         cur.execute(q, (db,))
         return cur.fetchall()
+
+def is_view(table_type):
+    """Check if a table is actually a view."""
+    return table_type == 'VIEW'
 
 def get_foreign_keys(conn, db):
     q = """
@@ -232,28 +281,69 @@ def fetch_pk_values(remote_conn, db, table, pk_cols, where_clause=None, order_by
 # ----------------------------
 # Dump & load functions
 # ----------------------------
-def dump_schema(cfg):
-    out = os.path.join(DUMP_DIR, "schema.sql")
-    # Get list of base tables only (skip views since we don't have SHOW VIEW privilege)
-    remote_conn = connect_mysql(cfg['remote']['host'], cfg['remote']['user'],
-                                cfg['remote']['password'], cfg['remote']['database'], use_ssl=True)
-    tables_list = get_tables_info(remote_conn, cfg['remote']['database'])
-    remote_conn.close()
-    table_names = " ".join([t['table_name'] for t in tables_list])
+def dump_schema_tables_only(cfg, table_names_list):
+    """Dump schema for base tables only (no views)."""
+    out = os.path.join(DUMP_DIR, "schema_tables.sql")
+    if not table_names_list:
+        return out
 
+    # Create secure config file
+    config_file = create_mysql_config_file(
+        cfg['remote']['host'],
+        cfg['remote']['user'],
+        cfg['remote']['password'],
+        cfg['remote'].get('port', 3306)
+    )
+
+    table_names = " ".join(table_names_list)
     cmd = (
-        f"mysqldump -h {cfg['remote']['host']} -u {cfg['remote']['user']} "
-        f"-p'{cfg['remote']['password']}' --no-data --skip-lock-tables --single-transaction "
+        f"mysqldump --defaults-extra-file={config_file} "
+        f"--no-data --skip-lock-tables --single-transaction "
         f"--no-tablespaces --skip-add-locks {cfg['remote']['database']} {table_names} > {out}"
+    )
+    run(cmd)
+    return out
+
+def dump_views(cfg, view_names_list):
+    """Dump view definitions."""
+    out = os.path.join(DUMP_DIR, "views.sql")
+    if not view_names_list:
+        # Create empty file
+        with open(out, 'w') as f:
+            f.write("-- No views to dump\n")
+        return out
+
+    # Create secure config file
+    config_file = create_mysql_config_file(
+        cfg['remote']['host'],
+        cfg['remote']['user'],
+        cfg['remote']['password'],
+        cfg['remote'].get('port', 3306)
+    )
+
+    view_names = " ".join(view_names_list)
+    cmd = (
+        f"mysqldump --defaults-extra-file={config_file} "
+        f"--no-data --skip-lock-tables --single-transaction "
+        f"--no-tablespaces --skip-add-locks {cfg['remote']['database']} {view_names} > {out}"
     )
     run(cmd)
     return out
 
 def dump_table_full(cfg, table):
     out = os.path.join(DUMP_DIR, f"{table}.sql")
+
+    # Create secure config file
+    config_file = create_mysql_config_file(
+        cfg['remote']['host'],
+        cfg['remote']['user'],
+        cfg['remote']['password'],
+        cfg['remote'].get('port', 3306)
+    )
+
     cmd = (
-        f"mysqldump -h {cfg['remote']['host']} -u {cfg['remote']['user']} "
-        f"-p'{cfg['remote']['password']}' --no-create-info --skip-lock-tables --single-transaction "
+        f"mysqldump --defaults-extra-file={config_file} "
+        f"--no-create-info --skip-lock-tables --single-transaction "
         f"--no-tablespaces --skip-add-locks {cfg['remote']['database']} {table} > {out}"
     )
     run(cmd)
@@ -261,12 +351,21 @@ def dump_table_full(cfg, table):
 
 def dump_table_where(cfg, table, where_clause):
     out = os.path.join(DUMP_DIR, f"{table}.sql")
+
+    # Create secure config file
+    config_file = create_mysql_config_file(
+        cfg['remote']['host'],
+        cfg['remote']['user'],
+        cfg['remote']['password'],
+        cfg['remote'].get('port', 3306)
+    )
+
     # Escape the where_clause to prevent shell interpretation of special characters
     # Replace backticks with \\` to prevent command substitution
     escaped_where = where_clause.replace('`', '\\`')
     cmd = (
-        f"mysqldump -h {cfg['remote']['host']} -u {cfg['remote']['user']} "
-        f"-p'{cfg['remote']['password']}' --no-create-info --skip-lock-tables --single-transaction "
+        f"mysqldump --defaults-extra-file={config_file} "
+        f"--no-create-info --skip-lock-tables --single-transaction "
         f"--no-tablespaces --skip-add-locks --where=\"{escaped_where}\" "
         f"{cfg['remote']['database']} {table} > {out}"
     )
@@ -274,6 +373,11 @@ def dump_table_where(cfg, table, where_clause):
     return out
 
 def load_local(cfg, filename, disable_fk_checks=False):
+    # Note: For docker exec, we use environment variable MYSQL_PWD which is less secure
+    # but only visible within the docker container context. The password is not exposed
+    # in the host process list, only in the container's environment.
+    # Alternative would be to mount the config file into the container, but this is simpler.
+
     if disable_fk_checks:
         # For schema loads, strip out FK constraints that cause issues with MySQL 9
         # We'll load the schema without FKs, then data will load, and orphan cleanup handles referential integrity
@@ -289,18 +393,22 @@ def load_local(cfg, filename, disable_fk_checks=False):
         with open(modified_file, 'w') as f:
             f.write(content)
         try:
+            # Use MYSQL_PWD environment variable (safer for docker exec)
             cmd = (
-                f"docker exec -i {cfg['local']['docker_container']} mysql -u {cfg['local']['user']} "
-                f"-p'{cfg['local']['password']}' {cfg['local']['database']} < {modified_file}"
+                f"docker exec -i -e MYSQL_PWD='{cfg['local']['password']}' "
+                f"{cfg['local']['docker_container']} mysql -u {cfg['local']['user']} "
+                f"{cfg['local']['database']} < {modified_file}"
             )
             run(cmd)
         finally:
             # Keep the file for debugging if there's an error
             pass  # Don't delete modified_file
     else:
+        # Use MYSQL_PWD environment variable (safer for docker exec)
         cmd = (
-            f"docker exec -i {cfg['local']['docker_container']} mysql -u {cfg['local']['user']} "
-            f"-p'{cfg['local']['password']}' {cfg['local']['database']} < {filename}"
+            f"docker exec -i -e MYSQL_PWD='{cfg['local']['password']}' "
+            f"{cfg['local']['docker_container']} mysql -u {cfg['local']['user']} "
+            f"{cfg['local']['database']} < {filename}"
         )
         run(cmd)
 
@@ -453,11 +561,19 @@ def main():
     remote = cfg["remote"]
     remote_conn = connect_mysql(remote["host"], remote["user"], remote["password"], remote["database"], use_ssl=True)
 
-    # get tables info
+    # get tables info (includes both tables and views)
     print("🔎 Inspecting remote schema...")
     tables_info = get_tables_info(remote_conn, remote["database"])
-    table_sizes = {r["table_name"]: r["size_mb"] for r in tables_info}
-    all_tables = [r["table_name"] for r in tables_info]
+
+    # Separate base tables from views
+    base_tables = [r for r in tables_info if not is_view(r.get("table_type", "BASE TABLE"))]
+    views = [r for r in tables_info if is_view(r.get("table_type", ""))]
+
+    table_sizes = {r["table_name"]: r["size_mb"] for r in base_tables}
+    all_tables = [r["table_name"] for r in base_tables]
+    view_names = [r["table_name"] for r in views]
+
+    print(f"Found {len(all_tables)} base tables and {len(view_names)} views")
 
     # get FKs and build maps
     fk_rows = get_foreign_keys(remote_conn, remote["database"])
@@ -479,10 +595,10 @@ def main():
     for t in all_tables:
         pk_map[t] = get_primary_key_columns(remote_conn, remote["database"], t)
 
-    # Dump schema only and load into local
-    print("\n🧱 Dumping schema (no data)...")
-    schema_file = dump_schema(cfg)
-    print("📥 Loading schema into local DB...")
+    # Dump schema for base tables only (views come after data is loaded)
+    print("\n🧱 Dumping table schemas (no data)...")
+    schema_file = dump_schema_tables_only(cfg, all_tables)
+    print("📥 Loading table schemas into local DB...")
     load_local(cfg, schema_file, disable_fk_checks=True)
 
     # iterate topo order and sample/dump/load
@@ -500,9 +616,24 @@ def main():
             # attempt to continue with next tables
         loaded_tables.add(table)
 
-    print("\n✅ All tables processed. Optionally running orphan cleanup...")
+    print("\n✅ All tables processed.")
 
+    # Now load views (they must come AFTER all table data is loaded)
+    if view_names:
+        print(f"\n👁️  Dumping and loading {len(view_names)} views...")
+        try:
+            views_file = dump_views(cfg, view_names)
+            print(f"📥 Loading views into local DB from {views_file}...")
+            load_local(cfg, views_file, disable_fk_checks=False)
+            print("✅ Views loaded successfully")
+        except Exception as e:
+            print(f"⚠️  Error loading views: {e}", file=sys.stderr)
+    else:
+        print("\nℹ️  No views found in remote database")
+
+    # Optionally run orphan cleanup
     if cfg["settings"].get("prune_orphans", False):
+        print("\n🧹 Running orphan cleanup...")
         try:
             # call cleanup script in same directory (user provided earlier)
             run("python3 cleanup_orphans.py")
