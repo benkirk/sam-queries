@@ -419,4 +419,4 @@ For questions or issues:
 
 ## License
 
-Copyright (c) 2024 SAM Project
+Copyright (c) 2025 SAM Project

@@ -20,3 +20,9 @@ dependencies:
       - dotenv
       - pipdeptree
       - flask-admin[sqlalchemy-with-utils,s3,export]
+      - flask-login
+      - flask-caching
+      - flask-limiter
+      - flask-cors
+      - marshmallow
+      - marshmallow-sqlalchemy

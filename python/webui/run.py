@@ -25,12 +25,10 @@ def create_app():
     # Bypasses role/role_user tables during development
     # Comment out or set to {} when role tables are ready
     app.config['DEV_ROLE_MAPPING'] = {
-        # Add your test users here with their roles
-        # Examples:
-        # 'admin_username': ['admin'],
-        # 'manager_username': ['facility_manager'],
-        # 'lead_username': ['project_lead'],
-        # 'regular_username': ['user'],
+        'admin_username': ['benkirk'],
+        'manager_username': ['mtrahan'],
+        'lead_username': ['rory'],
+        'regular_username': ['andersb'],
 
         # Default: give first user admin access (adjust as needed)
         # 'your_username_here': ['admin'],
