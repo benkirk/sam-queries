@@ -49,7 +49,7 @@ class HPCActivity(Base):
     load_date = Column(DateTime, nullable=False)
     modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
-    external_charge = Column(Numeric(15, 8))
+    external_charge = Column(Float)
     job_idx = Column(Integer, nullable=False)
 
     hpc_cos = relationship('HPCCos', back_populates='activities')
@@ -88,8 +88,8 @@ class HPCCharge(Base):
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
     activity_date = Column(DateTime)
-    charge = Column(Numeric(22, 8))
-    core_hours = Column(Numeric(22, 8))
+    charge = Column(Float)
+    core_hours = Column(Float)
 
     account = relationship('Account', back_populates='hpc_charges')
     activity = relationship('HPCActivity', back_populates='charges')
@@ -106,6 +106,9 @@ class HPCCos(Base, TimestampMixin):
     modified_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     activities = relationship('HPCActivity', back_populates='hpc_cos')
+
+    def __str__(self):
+        return f"{self.hpc_cos_id} - {self.description}"
 
     def __repr__(self):
         return f"<HPCCos(id={self.hpc_cos_id}, desc='{self.description}')>"

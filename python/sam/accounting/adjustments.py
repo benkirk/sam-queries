@@ -46,6 +46,9 @@ class ChargeAdjustmentType(Base, TimestampMixin):
 
     adjustments = relationship('ChargeAdjustment', back_populates='adjustment_type')
 
+    def __str__(self):
+        return f"{self.type}"
+
     def __repr__(self):
         return f"<ChargeAdjustmentType(type='{self.type}')>"
 

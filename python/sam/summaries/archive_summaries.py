@@ -17,7 +17,7 @@ class ArchiveChargeSummary(Base):
     )
 
     archive_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
-    activity_date = Column(DateTime, nullable=False)
+    activity_date = Column(Date, nullable=False)
 
     act_username = Column(String(35))
     unix_uid = Column(Integer)
@@ -31,8 +31,8 @@ class ArchiveChargeSummary(Base):
 
     number_of_files = Column(Integer)
     bytes = Column(BigInteger)
-    terabyte_years = Column(Numeric(22, 8))
-    charges = Column(Numeric(22, 8))
+    terabyte_years = Column(Float)
+    charges = Column(Float)
 
     user = relationship('User', back_populates='archive_charge_summaries')
     account = relationship('Account', back_populates='archive_charge_summaries')
@@ -43,7 +43,7 @@ class ArchiveChargeSummaryStatus(Base):
     """Tracks which archive charge summaries are current."""
     __tablename__ = 'archive_charge_summary_status'
 
-    activity_date = Column(DateTime, primary_key=True)
+    activity_date = Column(Date, primary_key=True)
     current = Column(Boolean)
 
 

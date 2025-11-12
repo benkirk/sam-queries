@@ -16,6 +16,9 @@ class AreaOfInterest(Base, TimestampMixin, ActiveFlagMixin):
     group = relationship('AreaOfInterestGroup', back_populates='areas')
     projects = relationship('Project', back_populates='area_of_interest')
 
+    def __str__(self):
+        return f"{self.area_of_interest}"
+
     def __repr__(self):
         return f"<AreaOfInterest(name='{self.area_of_interest}')>"
 
@@ -34,6 +37,9 @@ class AreaOfInterestGroup(Base, TimestampMixin, ActiveFlagMixin):
     name = Column(String(100), nullable=False, unique=True)
 
     areas = relationship('AreaOfInterest', back_populates='group')
+
+    def __str__(self):
+        return f"{self.name}"
 
     def __repr__(self):
         return f"<AreaOfInterestGroup(name='{self.name}')>"

@@ -19,6 +19,9 @@ class Facility(Base, TimestampMixin, ActiveFlagMixin):
     panels = relationship('Panel', back_populates='facility')
     facility_resources = relationship('FacilityResource', back_populates='facility')
 
+    def __str__(self):
+        return f"{self.facility_name} - {self.code}"
+
     def __repr__(self):
         return f"<Facility(name='{self.facility_name}', code='{self.code}')>"
 
@@ -71,6 +74,9 @@ class Panel(Base, TimestampMixin, ActiveFlagMixin):
     facility = relationship('Facility', back_populates='panels')
     allocation_types = relationship('AllocationType', back_populates='panel')
     panel_sessions = relationship('PanelSession', back_populates='panel')
+
+    def __str__(self):
+        return f"{self.panel_name}"
 
     def __repr__(self):
         return f"<Panel(name='{self.panel_name}')>"

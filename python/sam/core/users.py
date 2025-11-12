@@ -88,7 +88,7 @@ class User(Base, TimestampMixin):
     resource_shells = relationship('UserResourceShell', back_populates='user')
     role_assignments = relationship('RoleUser', back_populates='user')
     wallclock_exemptions = relationship('WallclockExemption', back_populates='user')
-    xras_user = relationship('XrasUser', back_populates='local_user', uselist=False)
+    # xras_user = relationship('XrasUser', back_populates='local_user', uselist=False)  # DEPRECATED - XRAS views don't support relationships
 
     _projects_w_dups = association_proxy('accounts', 'account.project')
 
@@ -483,6 +483,9 @@ class User(Base, TimestampMixin):
         """Check if user can access the system (SQL side)."""
         return and_(cls.active == True, cls.locked == False)
 
+    def __str__(self):
+        return f"{self.username} ({self.display_name})"
+
     def __repr__(self):
         return f"<User(id={self.user_id}, username='{self.username}', name='{self.full_name}')>"
 
@@ -506,6 +509,9 @@ class UserAlias(Base, TimestampMixin):
     modified_time = Column(TIMESTAMP(3), server_default=text('CURRENT_TIMESTAMP(3)'))
 
     user = relationship('User', back_populates='aliases')
+
+    def __str__(self):
+        return f"{self.username} - {self.orcid_id}"
 
     def __repr__(self):
         return f"<UserAlias(username='{self.username}', orcid='{self.orcid_id}')>"
@@ -541,6 +547,9 @@ class EmailAddress(Base, TimestampMixin):
 
     user = relationship('User', back_populates='email_addresses')
 
+    def __str__(self):
+        return f"{self.email_address}"
+
     def __repr__(self):
         return f"<EmailAddress(email='{self.email_address}', primary={self.is_primary})>"
 
@@ -563,6 +572,9 @@ class Phone(Base, TimestampMixin):
     phone_type = relationship('PhoneType', back_populates='phones')
     user = relationship('User', back_populates='phones')
 
+    def __str__(self):
+        return f"{self.phone_number}"
+
     def __repr__(self):
         return f"<Phone(number='{self.phone_number}', type='{self.phone_type.phone_type if self.phone_type else None}')>"
 
@@ -576,6 +588,9 @@ class PhoneType(Base, TimestampMixin):
     phone_type = Column(String(25), nullable=False)
 
     phones = relationship('Phone', back_populates='phone_type')
+
+    def __str__(self):
+        return f"{self.phone_type}"
 
     def __repr__(self):
         return f"<PhoneType(type='{self.phone_type}')>"
@@ -598,6 +613,9 @@ class UserResourceHome(Base, TimestampMixin):
 
     user = relationship('User', back_populates='resource_homes')
     resource = relationship('Resource', back_populates='user_homes')
+
+    def __str__(self):
+        return f"{self.user_id} - {self.home_directory}"
 
     def __repr__(self):
         return f"<UserResourceHome(user_id={self.user_id}, dir='{self.home_directory}')>"
@@ -637,6 +655,9 @@ class LoginType(Base):
 
     users = relationship('User', back_populates='login_type')
 
+    def __str__(self):
+        return f"{self.type}"
+
     def __repr__(self):
         return f"<LoginType(type='{self.type}')>"
 
@@ -651,6 +672,9 @@ class AcademicStatus(Base, TimestampMixin, SoftDeleteMixin, ActiveFlagMixin):
     description = Column(String(100), nullable=False)
 
     users = relationship('User', back_populates='academic_status')
+
+    def __str__(self):
+        return f"{self.academic_status_code}"
 
     def __repr__(self):
         return f"<AcademicStatus(code='{self.academic_status_code}', desc='{self.description}')>"

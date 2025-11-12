@@ -60,7 +60,7 @@ class Resource(Base, TimestampMixin):
     root_directories = relationship('DiskResourceRootDirectory', back_populates='resource')
     shells = relationship('ResourceShell', back_populates='resource', foreign_keys='ResourceShell.resource_id')
     user_homes = relationship('UserResourceHome', back_populates='resource')
-    xras_hpc_amounts = relationship('XrasHpcAllocationAmount', back_populates='resource')
+    # xras_hpc_amounts = relationship('XrasHpcAllocationAmount', back_populates='resource')  # REMOVED - XrasHpcAllocationAmountView is read-only
     xras_resource_keys = relationship('XrasResourceRepositoryKeyResource', back_populates='resource')
 
     @classmethod
@@ -166,6 +166,9 @@ class Resource(Base, TimestampMixin):
             or_(cls.decommission_date.is_(None), cls.decommission_date > now)
         )
 
+    def __str__(self):
+        return f"{self.resource_name} ({self.resource_type.resource_type if self.resource_type else None})"
+
     def __repr__(self):
         return f"<Resource(name='{self.resource_name}', type='{self.resource_type.resource_type if self.resource_type else None}')>"
 
@@ -181,6 +184,9 @@ class ResourceType(Base, TimestampMixin, ActiveFlagMixin):
     grace_period_days = Column(Integer)
 
     resources = relationship('Resource', back_populates='resource_type')
+
+    def __str__(self):
+        return f"{self.resource_type}"
 
     def __repr__(self):
         return f"<ResourceType(type='{self.resource_type}')>"
@@ -202,6 +208,9 @@ class ResourceShell(Base, TimestampMixin):
 
     resource = relationship('Resource', back_populates='shells', foreign_keys=[resource_id])
     user_shells = relationship('UserResourceShell', back_populates='resource_shell')
+
+    def __str__(self):
+        return f"{self.shell_name}"
 
     def __repr__(self):
         return f"<ResourceShell(name='{self.shell_name}', path='{self.path}')>"
@@ -226,6 +235,9 @@ class DiskResourceRootDirectory(Base):
     modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     resource = relationship('Resource', back_populates='root_directories')
+
+    def __str__(self):
+        return f"{self.root_directory}"
 
     def __repr__(self):
         return (f"<DiskResourceRootDirectory(path='{self.root_directory}', "

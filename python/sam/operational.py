@@ -14,6 +14,9 @@ class Synchronizer(Base):
     name = Column(String(100), nullable=False)
     last_run = Column(TIMESTAMP)
 
+    def __str__(self):
+        return f"{self.name}"
+
     def __repr__(self):
         return f"<Synchronizer(name='{self.name}', last_run={self.last_run})>"
 
@@ -83,7 +86,7 @@ class WallclockExemption(Base, TimestampMixin):
     wallclock_exemption_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     queue_id = Column(Integer, ForeignKey('queue.queue_id'), nullable=False)
-    time_limit_hours = Column(Numeric(5, 2), nullable=False)
+    time_limit_hours = Column(Float, nullable=False)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=False)
     comment = Column(Text)
@@ -110,6 +113,9 @@ class WallclockExemption(Base, TimestampMixin):
             cls.start_date <= now,
             cls.end_date >= now
         )
+
+    def __str__(self):
+        return f"{self.user_id} / {self.queue_id} / {self.time_limit_hours}"
 
     def __repr__(self):
         return (f"<WallclockExemption(user_id={self.user_id}, queue_id={self.queue_id}, "

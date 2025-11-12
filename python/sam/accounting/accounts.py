@@ -54,6 +54,9 @@ class Account(Base, SoftDeleteMixin):
     resource = relationship('Resource', back_populates='accounts')
     users = relationship('AccountUser', back_populates='account', lazy='selectin')
 
+    def __str__(self):
+        return f"{self.project.projcode if self.project else None} - {self.resource.resource_name if self.resource else None}"
+
     def __repr__(self):
         return f"<Account(id={self.account_id}, project='{self.project.projcode if self.project else None}', resource='{self.resource.resource_name if self.resource else None}')>"
 

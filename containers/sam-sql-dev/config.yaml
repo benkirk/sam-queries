@@ -1,0 +1,36 @@
+# config.yaml
+# Configuration for bootstrap_clone.py
+
+remote:
+  #host: your.remote.db.server
+  port: 3306
+  #user: readonly_user
+  #password: your_password
+  database: sam
+
+local:
+  host: localhost
+  port: 3306
+  user: root
+  password: root
+  database: sam
+  docker_container: local-sam-mysql    # must match the running docker MySQL container name
+
+settings:
+  # --- Sampling behavior ---
+  size_threshold_mb: 50            # tables smaller than this (MB) are copied fully
+  row_limit: 10000                 # initial sample size for large tables
+  max_refill_multiplier: 8         # will retry with up to 8x row_limit if empty
+
+  # --- Column preference for ordering ---
+  prefer_column: created_at        # preferred ordering column for sampling recent rows
+
+  # --- Post-processing ---
+  prune_orphans: true              # whether to run cleanup_orphans.py automatically
+
+  # --- Performance tweaks ---
+  # Set to true to temporarily disable foreign key checks during loads (faster, riskier)
+  disable_fk_checks: false         # (currently informational, not used by script)
+
+  # --- Optional: logging / debug ---
+  verbose: true                    # print detailed progress (default: true)

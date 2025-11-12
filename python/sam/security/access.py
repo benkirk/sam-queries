@@ -15,6 +15,9 @@ class AccessBranch(Base):
 
     resources = relationship('AccessBranchResource', back_populates='access_branch')
 
+    def __str__(self):
+        return f"{self.name}"
+
     def __repr__(self):
         return f"<AccessBranch(name='{self.name}')>"
 

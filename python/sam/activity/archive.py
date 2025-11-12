@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class ArchiveActivity(Base, TimestampMixin):
+class ArchiveActivity(Base):
     """Archive (HPSS) activity records."""
     __tablename__ = 'archive_activity'
 
@@ -69,8 +69,8 @@ class ArchiveCharge(Base):
     archive_activity_id = Column(Integer, ForeignKey('archive_activity.archive_activity_id'),
                                  nullable=False, unique=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    charge = Column(Numeric(22, 8))
-    terabyte_year = Column(Numeric(22, 8))
+    charge = Column(Float)
+    terabyte_year = Column(Float)
     activity_date = Column(DateTime)
 
     account = relationship('Account', back_populates='archive_charges')
@@ -89,5 +89,7 @@ class ArchiveCos(Base, TimestampMixin):
 
     activities = relationship('ArchiveActivity', back_populates='archive_cos')
 
+    def __str__(self):
+        return f"{self.description}"
 
 #-------------------------------------------------------------------------em-

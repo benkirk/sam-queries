@@ -33,7 +33,7 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     parent_allocation_id = Column(Integer, ForeignKey('allocation.allocation_id'))
 
-    amount = Column(Numeric(15, 2), nullable=False)
+    amount = Column(Float, nullable=False)
     description = Column(String(255))
 
     start_date = Column(DateTime, nullable=False)
@@ -43,7 +43,7 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
     children = relationship('Allocation', remote_side=[parent_allocation_id], back_populates='parent')
     parent = relationship('Allocation', remote_side=[allocation_id], back_populates='children')
     transactions = relationship('AllocationTransaction', back_populates='allocation')
-    xras_allocation = relationship('XrasAllocation', back_populates='local_allocation', uselist=False)
+    # xras_allocation = relationship('XrasAllocation', back_populates='local_allocation', uselist=False)  # DEPRECATED - XRAS views don't support relationships
 
     def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
         """Check if allocation is active at a given date."""
@@ -76,6 +76,9 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
             or_(cls.end_date.is_(None), cls.end_date >= now)
         )
 
+    def __str__(self):
+        return f"{self.allocation_id}"
+
     def __repr__(self):
         return f"<Allocation(id={self.allocation_id}, amount={self.amount}, active={self.is_active_at()})>"
 
@@ -97,8 +100,8 @@ class AllocationTransaction(Base):
                                    ForeignKey('allocation_transaction.allocation_transaction_id'))
 
     transaction_type = Column(String(50), nullable=False)
-    requested_amount = Column(Numeric(15, 2))
-    transaction_amount = Column(Numeric(15, 2))
+    requested_amount = Column(Float)
+    transaction_amount = Column(Float)
 
     alloc_start_date = Column(DateTime)
     alloc_end_date = Column(DateTime)
@@ -131,12 +134,15 @@ class AllocationType(Base, TimestampMixin, ActiveFlagMixin):
 
     allocation_type_id = Column(Integer, primary_key=True, autoincrement=True)
     allocation_type = Column(String(20), nullable=False)
-    default_allocation_amount = Column(Numeric(15, 2))
+    default_allocation_amount = Column(Float)
     fair_share_percentage = Column(Float)
     panel_id = Column(Integer, ForeignKey('panel.panel_id'))
 
     panel = relationship('Panel', back_populates='allocation_types')
     projects = relationship('Project', back_populates='allocation_type')
+
+    def __str__(self):
+        return f"{self.allocation_type}"
 
     def __repr__(self):
         return f"<AllocationType(type='{self.allocation_type}')>"

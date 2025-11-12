@@ -43,3 +43,10 @@ fixperms:
 	  done ;\
 	  getfacl $${file} ;\
 	done
+
+# this rule invokes emacs on each source file to remove trailing whitespace.
+trim-whitepace:
+	for file in $$(git ls-files); do \
+          echo $$file ; \
+          echo emacs -batch $$file --eval '(delete-trailing-whitespace)' -f save-buffer 2>/dev/null ; \
+        done

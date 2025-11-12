@@ -19,7 +19,7 @@ class DavChargeSummary(Base):
     )
 
     dav_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
-    activity_date = Column(DateTime, nullable=False)
+    activity_date = Column(Date, nullable=False)
 
     # User identification (actual and recorded)
     act_username = Column(String(35))
@@ -40,14 +40,17 @@ class DavChargeSummary(Base):
 
     # Aggregated metrics
     num_jobs = Column(Integer)
-    core_hours = Column(Numeric(22, 8))
-    charges = Column(Numeric(22, 8))
+    core_hours = Column(Float)
+    charges = Column(Float)
 
     user = relationship('User', back_populates='dav_charge_summaries')
     account = relationship('Account', back_populates='dav_charge_summaries')
 
+    def __str__(self):
+        return f"{self.activity_date if self.activity_date else None}"
+
     def __repr__(self):
-        return (f"<DavChargeSummary(date={self.activity_date.date() if self.activity_date else None}, "
+        return (f"<DavChargeSummary(date={self.activity_date if self.activity_date else None}, "
                 f"jobs={self.num_jobs}, charges={self.charges})>")
 
 
@@ -56,8 +59,11 @@ class DavChargeSummaryStatus(Base):
     """Tracks which DAV charge summaries are current."""
     __tablename__ = 'dav_charge_summary_status'
 
-    activity_date = Column(DateTime, primary_key=True)
+    activity_date = Column(Date, primary_key=True)
     current = Column(Boolean)
+
+    def __str__(self):
+        return f"{self.activity_date}"
 
     def __repr__(self):
         return f"<DavChargeSummaryStatus(date={self.activity_date}, current={self.current})>"

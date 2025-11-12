@@ -27,6 +27,9 @@ class Machine(Base, TimestampMixin):
     machine_factors = relationship('MachineFactor', back_populates='machine')
     resource = relationship('Resource', back_populates='machines')
 
+    def __str__(self):
+        return f"{self.name}"
+
     def __repr__(self):
         return f"<Machine(name='{self.name}', cpus_per_node={self.cpus_per_node})>"
 
@@ -53,7 +56,7 @@ class MachineFactor(Base, TimestampMixin):
 
     machine_factor_id = Column(Integer, primary_key=True, autoincrement=True)
     machine_id = Column(Integer, ForeignKey('machine.machine_id'), nullable=False)
-    factor_value = Column(Numeric(15, 2), nullable=False)
+    factor_value = Column(Float, nullable=False)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
 
@@ -74,7 +77,7 @@ class Queue(Base, TimestampMixin):
     resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
     queue_name = Column(String(50), nullable=False)
     description = Column(String(255), nullable=False)
-    wall_clock_hours_limit = Column(Numeric(5, 2))
+    wall_clock_hours_limit = Column(Float)
     cos_id = Column(Integer)
 
     start_date = Column(DateTime)
@@ -84,6 +87,9 @@ class Queue(Base, TimestampMixin):
     queue_factors = relationship('QueueFactor', back_populates='queue')
     wallclock_exemptions = relationship('WallclockExemption', back_populates='queue')
     comp_charge_summaries = relationship('CompChargeSummary', foreign_keys='CompChargeSummary.queue_id', back_populates='queue_ref')
+
+    def __str__(self):
+        return f"{self.queue_name}"
 
     def __repr__(self):
         return f"<Queue(name='{self.queue_name}', resource='{self.resource.resource_name if self.resource else None}')>"

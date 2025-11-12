@@ -27,6 +27,9 @@ class DatasetActivity(Base, TimestampMixin):
     bytes = Column(BigInteger, nullable=False)
     number_of_files = Column(Integer, nullable=False)
 
+    def __str__(self):
+        return f"{self.project_directory} - {self.dataset}"
+
     def __repr__(self):
         return (f"<DatasetActivity(directory='{self.project_directory}', "
                 f"dataset='{self.dataset}', bytes={self.bytes})>")
