@@ -2,7 +2,7 @@
 Authentication blueprint for login/logout functionality.
 """
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from webui.auth.models import AuthUser
 from webui.auth.providers import get_auth_provider
@@ -35,8 +35,9 @@ def login():
         sam_user = provider.authenticate(username, password)
 
         if sam_user:
-            # Wrap SAM user for Flask-Login
-            auth_user = AuthUser(sam_user)
+            # Wrap SAM user for Flask-Login with dev role mapping
+            dev_role_mapping = current_app.config.get('DEV_ROLE_MAPPING', {})
+            auth_user = AuthUser(sam_user, dev_role_mapping=dev_role_mapping)
 
             # Create session
             remember = request.form.get('remember', False)

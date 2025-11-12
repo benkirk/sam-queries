@@ -14,16 +14,23 @@ class AuthUser(UserMixin):
 
     Wraps a SAM User object to provide Flask-Login required methods.
     This allows us to use SAM's existing User model without modification.
+
+    Supports both database-backed roles (via role_user table) and
+    hard-coded development roles (via dev_role_mapping config).
     """
 
-    def __init__(self, sam_user: User):
+    def __init__(self, sam_user: User, dev_role_mapping: dict = None):
         """
         Initialize with a SAM User object.
 
         Args:
             sam_user: SAM User ORM object
+            dev_role_mapping: Optional dict mapping username -> list of roles
+                             For development with read-only database.
+                             Example: {'admin_user': ['admin'], 'test_user': ['user']}
         """
         self.sam_user = sam_user
+        self.dev_role_mapping = dev_role_mapping or {}
         self._roles = None
 
     def get_id(self):
@@ -68,9 +75,26 @@ class AuthUser(UserMixin):
 
     @property
     def roles(self):
-        """Get user's role names as a set."""
+        """
+        Get user's role names as a set.
+
+        Priority:
+        1. Hard-coded dev_role_mapping (for read-only database)
+        2. Database role_assignments (for production)
+        3. Empty set (no roles)
+        """
         if self._roles is None:
-            self._roles = {ra.role.name for ra in self.sam_user.role_assignments}
+            # First, check hard-coded dev role mapping
+            if self.username in self.dev_role_mapping:
+                self._roles = set(self.dev_role_mapping[self.username])
+            else:
+                # Fall back to database roles (future implementation)
+                # Uncomment when role/role_user tables are ready:
+                # self._roles = {ra.role.name for ra in self.sam_user.role_assignments}
+
+                # For now, return empty set if not in dev mapping
+                self._roles = set()
+
         return self._roles
 
     def has_role(self, role_name: str) -> bool:

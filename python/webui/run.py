@@ -20,6 +20,22 @@ def create_app():
     # Authentication provider configuration
     app.config['AUTH_PROVIDER'] = 'stub'  # Options: 'stub', 'ldap', 'saml'
 
+    # Development role mapping (for read-only database)
+    # Maps username -> list of roles
+    # Bypasses role/role_user tables during development
+    # Comment out or set to {} when role tables are ready
+    app.config['DEV_ROLE_MAPPING'] = {
+        # Add your test users here with their roles
+        # Examples:
+        # 'admin_username': ['admin'],
+        # 'manager_username': ['facility_manager'],
+        # 'lead_username': ['project_lead'],
+        # 'regular_username': ['user'],
+
+        # Default: give first user admin access (adjust as needed)
+        # 'your_username_here': ['admin'],
+    }
+
     # Flask-SQLAlchemy configuration
     app.config['SQLALCHEMY_DATABASE_URI'] = sam.session.connection_string
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -50,7 +66,7 @@ def create_app():
         """Load user by ID for Flask-Login."""
         sam_user = db.session.query(User).filter_by(user_id=int(user_id)).first()
         if sam_user:
-            return AuthUser(sam_user)
+            return AuthUser(sam_user, dev_role_mapping=app.config.get('DEV_ROLE_MAPPING'))
         return None
 
     # Register context processor for RBAC in templates

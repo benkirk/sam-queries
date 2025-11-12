@@ -32,9 +32,27 @@ SAM_DB_USERNAME=your-username
 SAM_DB_PASSWORD=your-password
 ```
 
-### 3. Set Up Test Roles (Development)
+### 3. Configure Development Roles
 
-Create test roles and assign them to users:
+**For Read-Only Database (Development):**
+
+Edit `python/webui/run.py` and add your username to the `DEV_ROLE_MAPPING`:
+
+```python
+app.config['DEV_ROLE_MAPPING'] = {
+    'your_username': ['admin'],          # Full access
+    # 'other_user': ['facility_manager'], # Limited access
+    # 'test_user': ['user'],              # Read-only
+}
+```
+
+Available roles: `admin`, `facility_manager`, `project_lead`, `user`, `analyst`
+
+See `config_example.py` for detailed role/permission mappings.
+
+**For Production Database (Future):**
+
+When you have write access, create roles in the database:
 
 ```sql
 -- Create test roles
@@ -44,12 +62,14 @@ INSERT INTO role (name, description) VALUES
   ('project_lead', 'Project Lead'),
   ('user', 'Regular User');
 
--- Assign admin role to your test user
+-- Assign admin role to your user
 INSERT INTO role_user (role_id, user_id)
 SELECT r.role_id, u.user_id
 FROM role r, users u
-WHERE r.name = 'admin' AND u.username = 'your_test_username';
+WHERE r.name = 'admin' AND u.username = 'your_username';
 ```
+
+Then uncomment the database role code in `auth/models.py` (line 93) and remove `DEV_ROLE_MAPPING`.
 
 ### 4. Run Development Server
 
