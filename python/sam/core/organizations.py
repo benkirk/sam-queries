@@ -168,6 +168,8 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin):
     code = Column(String(3), nullable=False, unique=True)
     description = Column(String(200), nullable=False, unique=True)
 
+    project_codes = relationship('ProjectCode', back_populates='mnemonic_code')
+
     def __str__(self):
         return f"{self.code} - {self.description}"
 

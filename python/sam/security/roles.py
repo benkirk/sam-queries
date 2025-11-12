@@ -15,6 +15,7 @@ class Role(Base):
     description = Column(String(255))
 
     users = relationship('RoleUser', back_populates='role')
+    api_credentials = relationship('RoleApiCredentials', back_populates='role')
 
     def __str__(self):
         return f"{self.name}"
@@ -51,10 +52,64 @@ class RoleUser(Base):
     user = relationship('User', back_populates='role_assignments')
 
 
+#----------------------------------------------------------------------------
+class ApiCredentials(Base):
+    """
+    API credentials for system authentication.
 
-# ============================================================================
-# Computational Activity and Charges
-# ============================================================================
+    Stores username/password combinations for API access.
+    API credentials can be assigned to roles via RoleApiCredentials.
+    """
+    __tablename__ = 'api_credentials'
+
+    __table_args__ = (
+        Index('ix_api_credentials_username', 'username', unique=True),
+    )
+
+    api_credentials_id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(11), nullable=False, unique=True)
+    password = Column(String(64), nullable=False)  # Hashed password (bcrypt)
+    enabled = Column(Boolean)
+
+    # Relationships
+    role_assignments = relationship('RoleApiCredentials', back_populates='api_credentials')
+
+    @property
+    def is_enabled(self) -> bool:
+        """Check if API credentials are enabled."""
+        return bool(self.enabled)
+
+    def __str__(self):
+        return f"{self.username}"
+
+    def __repr__(self):
+        return f"<ApiCredentials(username='{self.username}', enabled={self.enabled})>"
+
+
+#----------------------------------------------------------------------------
+class RoleApiCredentials(Base):
+    """
+    Maps API credentials to roles.
+
+    Defines which API credentials have which roles/permissions.
+    """
+    __tablename__ = 'role_api_credentials'
+
+    __table_args__ = (
+        Index('ix_role_api_credentials_role', 'role_id'),
+        Index('ix_role_api_credentials_api', 'api_credentials_id'),
+    )
+
+    role_api_credentials_id = Column(Integer, primary_key=True, autoincrement=True)
+    role_id = Column(Integer, ForeignKey('role.role_id'), nullable=False)
+    api_credentials_id = Column(Integer, ForeignKey('api_credentials.api_credentials_id'), nullable=False)
+
+    # Relationships
+    role = relationship('Role', back_populates='api_credentials')
+    api_credentials = relationship('ApiCredentials', back_populates='role_assignments')
+
+    def __repr__(self):
+        return f"<RoleApiCredentials(role_id={self.role_id}, api_credentials_id={self.api_credentials_id})>"
 
 
 #-------------------------------------------------------------------------em-

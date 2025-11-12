@@ -56,6 +56,7 @@ class DavActivity(Base):
     # Dates and charging
     activity_date = Column(DateTime)
     load_date = Column(DateTime, nullable=False)
+    modified_time = Column(TIMESTAMP)
     external_charge = Column(Numeric(15, 8))
 
     dav_cos = relationship('DavCos', back_populates='activities')

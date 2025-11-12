@@ -18,6 +18,7 @@ class Facility(Base, TimestampMixin, ActiveFlagMixin):
 
     panels = relationship('Panel', back_populates='facility')
     facility_resources = relationship('FacilityResource', back_populates='facility')
+    project_codes = relationship('ProjectCode', back_populates='facility')
 
     def __str__(self):
         return f"{self.facility_name} - {self.code}"
@@ -110,6 +111,37 @@ class PanelSession(Base, TimestampMixin):
     panel_id = Column(Integer, ForeignKey('panel.panel_id'), nullable=False)
 
     panel = relationship('Panel', back_populates='panel_sessions')
+
+
+#----------------------------------------------------------------------------
+class ProjectCode(Base):
+    """
+    Project code generation rules.
+
+    Defines how project codes are generated for each facility and mnemonic code.
+    The 'digits' field specifies how many digits the numeric portion should have.
+
+    Example: Facility NCAR + Mnemonic Code UCAS + digits 4 -> UCAS0001, UCAS0002, etc.
+    """
+    __tablename__ = 'project_code'
+
+    __table_args__ = (
+        PrimaryKeyConstraint('facility_id', 'mnemonic_code_id', name='pk_project_code'),
+    )
+
+    facility_id = Column(Integer, ForeignKey('facility.facility_id'), nullable=False)
+    mnemonic_code_id = Column(Integer, ForeignKey('mnemonic_code.mnemonic_code_id'), nullable=False)
+    digits = Column(Integer, nullable=False)
+
+    # Relationships
+    facility = relationship('Facility', back_populates='project_codes')
+    mnemonic_code = relationship('MnemonicCode', back_populates='project_codes')
+
+    def __str__(self):
+        return f"{self.facility_id}/{self.mnemonic_code_id} ({self.digits} digits)"
+
+    def __repr__(self):
+        return f"<ProjectCode(facility_id={self.facility_id}, mnemonic_code_id={self.mnemonic_code_id}, digits={self.digits})>"
 
 
 # ============================================================================

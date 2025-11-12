@@ -6,7 +6,7 @@ This is a read-only test suite that doesn't modify the database.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 import sam
 from sam import (
@@ -181,7 +181,7 @@ class TestComplexQueries:
 
     def test_active_allocation_query(self, session):
         """Test querying active allocations."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         active_allocs = (
             session.query(Allocation)
             .filter(

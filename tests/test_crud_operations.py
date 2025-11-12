@@ -6,7 +6,7 @@ All tests use transactions that rollback to avoid polluting the database.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from sam import (
     User, Project, Account, Allocation, Resource, Organization,
@@ -84,7 +84,7 @@ class TestCreateOperations:
             pytest.skip("No accounts in database")
 
         # Create new allocation
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         new_allocation = Allocation(
             account_id=account.account_id,
             amount=10000.00,
@@ -118,7 +118,7 @@ class TestCreateOperations:
             pytest.skip("Need account and user in database")
 
         # Create new account-user relationship
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         new_account_user = AccountUser(
             account_id=account.account_id,
             user_id=user.user_id,
@@ -156,7 +156,7 @@ class TestCreateOperations:
             adjusted_by_id=user.user_id,
             charge_adjustment_type_id=adj_type.charge_adjustment_type_id,
             amount=-100.00,  # Credit
-            adjustment_date=datetime.utcnow(),
+            adjustment_date=datetime.now(UTC),
             comment='Test adjustment'
         )
 
@@ -222,7 +222,7 @@ class TestUpdateOperations:
 
         original_start = allocation.start_date
         original_end = allocation.end_date
-        new_start = datetime.utcnow()
+        new_start = datetime.now(UTC)
         new_end = new_start + timedelta(days=180)
 
         # Update dates
@@ -267,7 +267,7 @@ class TestUpdateOperations:
             pytest.skip("No active account_user records found")
 
         original_end_date = account_user.end_date
-        new_end_date = datetime.utcnow()
+        new_end_date = datetime.now(UTC)
 
         # Set end date (deactivate)
         account_user.end_date = new_end_date
@@ -295,7 +295,7 @@ class TestDeleteOperations:
 
         # Soft delete
         allocation.deleted = True
-        allocation.deletion_time = datetime.utcnow()
+        allocation.deletion_time = datetime.now(UTC)
         session.flush()
 
         # Verify soft delete
@@ -449,7 +449,7 @@ class TestComplexCRUD:
             pytest.skip("No allocations in database")
 
         # Create child allocation
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         child_allocation = Allocation(
             account_id=parent_allocation.account_id,
             parent_allocation_id=parent_allocation.allocation_id,

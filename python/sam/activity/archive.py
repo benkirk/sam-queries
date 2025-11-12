@@ -32,6 +32,7 @@ class ArchiveActivity(Base):
     load_date = Column(DateTime, nullable=False)
     processing_status = Column(Boolean)
     error_comment = Column(Text)
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     archive_cos_id = Column(Integer, ForeignKey('archive_cos.archive_cos_id'))
 
