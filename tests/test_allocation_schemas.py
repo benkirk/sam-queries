@@ -5,7 +5,7 @@ Tests the complex schemas with usage calculations that match sam_search.py outpu
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from sam.projects.projects import Project
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
