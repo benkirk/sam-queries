@@ -33,7 +33,7 @@ Starting from a clean checkout:
    # test instance
    TEST_SAM_DB_USERNAME=.....
    TEST_SAM_DB_SERVER=test-sam-sql.ucar.edu
-   TEST_SAM_DB_PASSWORD=.....
+   TEST_SAM_DB_PASSWORD='.....'
    #SAM_DB_USERNAME=${TEST_SAM_DB_USERNAME}
    #SAM_DB_SERVER=${TEST_SAM_DB_SERVER}
    #SAM_DB_PASSWORD=${TEST_SAM_DB_PASSWORD}
@@ -42,13 +42,16 @@ Starting from a clean checkout:
    # # prod instance
    PROD_SAM_DB_USERNAME=.....
    PROD_SAM_DB_SERVER=sam-sql.ucar.edu
-   PROD_SAM_DB_PASSWORD=.....
+   PROD_SAM_DB_PASSWORD='.....'
    #SAM_DB_USERNAME=${PROD_SAM_DB_USERNAME}
    #SAM_DB_SERVER=${PROD_SAM_DB_SERVER}
    #SAM_DB_PASSWORD=${PROD_SAM_DB_PASSWORD}
    ```
 
-   **Note**: The `.env` file is gitignored and should never be committed.
+   **Important Notes**:
+   - The `.env` file is gitignored and should never be committed
+   - **Password quoting is critical**: If your password contains special characters (`$`, `!`, `\`, etc.), wrap it in single quotes to prevent shell expansion
+   - Example: `PROD_SAM_DB_PASSWORD='my$ecure!pa$$word'`
 
 3. **Set up local development database** (one-time setup, for CRUD operations)
 
@@ -56,10 +59,13 @@ Starting from a clean checkout:
    ```bash
    cd containers/sam-sql-dev
    ./docker_start.sh
-   ./bootstrap_clone.py
+   source ../../.env && ./bootstrap_clone.py
    ```
 
-   ⚠️ **Important**: The local database is **not anonymized** and may contain PII. Never push this data to public repositories.
+   ⚠️ **Important Notes**:
+   - The local database is **not anonymized** and may contain PII. Never push this data to public repositories.
+   - **Bootstrap time**: Expect 10-20 minutes for the initial database clone to complete. The script samples data from large tables and maintains foreign key relationships.
+   - **Success indicator**: When complete, you'll see: `🎉 Done. Local clone is ready. Connect to local db as configured.`
 
 4. **Verify environment**
    ```bash
