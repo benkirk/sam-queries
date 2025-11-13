@@ -254,25 +254,25 @@ All API endpoints require authentication. Example queries:
 
 ```bash
 # Get user details
-curl http://127.0.0.1:5050/api/v1/users/<username>
+http://127.0.0.1:5050/api/v1/users/<username>
 
 # Get user's projects
-curl http://127.0.0.1:5050/api/v1/users/<username>/projects
+http://127.0.0.1:5050/api/v1/users/<username>/projects
 
 # Get project details
-curl http://127.0.0.1:5050/api/v1/projects/<projcode>
+http://127.0.0.1:5050/api/v1/projects/<projcode>
 
 # Get project members
-curl http://127.0.0.1:5050/api/v1/projects/<projcode>/members
+http://127.0.0.1:5050/api/v1/projects/<projcode>/members
 
 # Get project allocations with current usage
-curl http://127.0.0.1:5050/api/v1/projects/<projcode>/allocations
+http://127.0.0.1:5050/api/v1/projects/<projcode>/allocations
 
 # Get account balance
-curl http://127.0.0.1:5050/api/v1/accounts/<account_id>/balance
+http://127.0.0.1:5050/api/v1/accounts/<account_id>/balance
 
 # List projects expiring soon
-curl http://127.0.0.1:5050/api/v1/projects/expiring
+http://127.0.0.1:5050/api/v1/projects/expiring
 ```
 
 All responses are JSON formatted using Marshmallow-SQLAlchemy schemas.
