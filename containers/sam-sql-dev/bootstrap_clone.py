@@ -19,23 +19,24 @@ Requires:
   Docker running local MySQL container with name in config.yaml
 """
 
+import atexit
 import os
-import sys
 import subprocess
+import sys
+import tempfile
+import time
+from collections import defaultdict, deque
+
 import pymysql
 import yaml
-import time
-import math
-import tempfile
-import atexit
-from collections import defaultdict, deque
-from dotenv import load_dotenv, find_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 CONFIG_FILE = "config.yaml"
 DUMP_DIR = "dump"
 
 # Track temporary config files for cleanup
 _temp_config_files = []
+
 
 # ----------------------------
 # Helpers
@@ -46,9 +47,9 @@ def create_mysql_config_file(host, user, password, port=3306):
     This prevents passwords from being visible in process lists.
     Returns path to the config file.
     """
-    fd, path = tempfile.mkstemp(prefix='mysql_', suffix='.cnf', text=True)
+    fd, path = tempfile.mkstemp(prefix="mysql_", suffix=".cnf", text=True)
     try:
-        with os.fdopen(fd, 'w') as f:
+        with os.fdopen(fd, "w") as f:
             f.write("[client]\n")
             f.write(f"host={host}\n")
             f.write(f"user={user}\n")
@@ -66,6 +67,7 @@ def create_mysql_config_file(host, user, password, port=3306):
             pass
         raise e
 
+
 def cleanup_temp_config_files():
     """Remove all temporary MySQL config files."""
     for path in _temp_config_files:
@@ -73,11 +75,15 @@ def cleanup_temp_config_files():
             if os.path.exists(path):
                 os.unlink(path)
         except Exception as e:
-            print(f"⚠️  Warning: Could not remove temp file {path}: {e}", file=sys.stderr)
+            print(
+                f"⚠️  Warning: Could not remove temp file {path}: {e}", file=sys.stderr
+            )
     _temp_config_files.clear()
+
 
 # Register cleanup function to run on exit
 atexit.register(cleanup_temp_config_files)
+
 
 def load_config(path=CONFIG_FILE):
     load_dotenv(find_dotenv())
@@ -90,32 +96,52 @@ def load_config(path=CONFIG_FILE):
     s.setdefault("row_limit", 10000)
     s.setdefault("prefer_column", "created_at")
     s.setdefault("prune_orphans", True)
-    s.setdefault("max_refill_multiplier", 8)   # max 8x refill attempts
+    s.setdefault("max_refill_multiplier", 8)  # max 8x refill attempts
     a = cfg["remote"]
-    a.setdefault("user", os.environ['PROD_SAM_DB_USERNAME'])
-    a.setdefault("password",os.environ['PROD_SAM_DB_PASSWORD'])
-    a.setdefault("host",os.environ['PROD_SAM_DB_SERVER'])
+    a.setdefault("user", os.environ["PROD_SAM_DB_USERNAME"])
+    a.setdefault("password", os.environ["PROD_SAM_DB_PASSWORD"])
+    a.setdefault("host", os.environ["PROD_SAM_DB_SERVER"])
 
     return cfg
+
 
 def run(cmd, capture=False):
     print("→", cmd)
     if capture:
-        res = subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        res = subprocess.run(
+            cmd,
+            shell=True,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
         return res.stdout
     else:
         subprocess.run(cmd, shell=True, check=True)
 
+
 def ensure_dir(d):
     os.makedirs(d, exist_ok=True)
+
 
 # ----------------------------
 # MySQL introspection utilities
 # ----------------------------
 def connect_mysql(host, user, password, database=None, port=3306, use_ssl=False):
-    ssl_config = {'ssl_verify_cert': False, 'ssl_verify_identity': False} if use_ssl else None
-    return pymysql.connect(host=host, user=user, password=password, database=database, port=port,
-                          ssl=ssl_config, cursorclass=pymysql.cursors.DictCursor)
+    ssl_config = (
+        {"ssl_verify_cert": False, "ssl_verify_identity": False} if use_ssl else None
+    )
+    return pymysql.connect(
+        host=host,
+        user=user,
+        password=password,
+        database=database,
+        port=port,
+        ssl=ssl_config,
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+
 
 def get_tables_info(conn, db):
     q = """
@@ -130,9 +156,11 @@ def get_tables_info(conn, db):
         cur.execute(q, (db,))
         return cur.fetchall()
 
+
 def is_view(table_type):
     """Check if a table is actually a view."""
-    return table_type == 'VIEW'
+    return table_type == "VIEW"
+
 
 def get_foreign_keys(conn, db):
     q = """
@@ -148,6 +176,7 @@ def get_foreign_keys(conn, db):
         cur.execute(q, (db,))
         return cur.fetchall()
 
+
 def get_primary_key_columns(conn, db, table):
     q = """
     SELECT COLUMN_NAME as column_name
@@ -160,17 +189,19 @@ def get_primary_key_columns(conn, db, table):
         rows = cur.fetchall()
         return [r["column_name"] for r in rows]
 
+
 def show_columns(conn, table):
     with conn.cursor() as cur:
         cur.execute(f"SHOW COLUMNS FROM `{table}`")
         rows = cur.fetchall()
         return [r["Field"] for r in rows]
 
+
 # ----------------------------
 # Topological sort (parents before children)
 # ----------------------------
 def build_dependency_graph(fk_rows):
-    parents = defaultdict(set)   # parent -> set(children)
+    parents = defaultdict(set)  # parent -> set(children)
     children_of = defaultdict(set)  # child -> set(parents)
     for r in fk_rows:
         p = r["parent_table"]
@@ -178,6 +209,7 @@ def build_dependency_graph(fk_rows):
         parents[p].add(c)
         children_of[c].add(p)
     return parents, children_of
+
 
 def topo_sort_all_tables(all_tables, children_of):
     # Kahn's algorithm
@@ -199,11 +231,12 @@ def topo_sort_all_tables(all_tables, children_of):
     # Instead of the above half-implemented approach, implement a proper topo using parent->children mapping:
     return None  # placeholder — we'll use the other implementation below
 
+
 def topological_sort(parents_map, children_of, all_tables):
     # parents_map: parent -> set(children)
     # children_of: child -> set(parents)
     in_deg = {t: len(children_of.get(t, set())) for t in all_tables}
-    q = deque([t for t in all_tables if in_deg.get(t,0) == 0])
+    q = deque([t for t in all_tables if in_deg.get(t, 0) == 0])
     res = []
     while q:
         n = q.popleft()
@@ -213,15 +246,19 @@ def topological_sort(parents_map, children_of, all_tables):
             if in_deg[child] == 0:
                 q.append(child)
     # if cycles remain (in_deg > 0), append them at end (breaking cycles arbitrarily)
-    remaining = [t for t,deg in in_deg.items() if deg>0]
+    remaining = [t for t, deg in in_deg.items() if deg > 0]
     if remaining:
-        print("⚠️  Cycles or remaining tables detected; appending them after resolved ones:", remaining)
+        print(
+            "⚠️  Cycles or remaining tables detected; appending them after resolved ones:",
+            remaining,
+        )
         res.extend(remaining)
     # ensure all tables present
     for t in all_tables:
         if t not in res:
             res.append(t)
     return res
+
 
 # ----------------------------
 # Sampling helpers
@@ -238,6 +275,7 @@ def detect_order_column(conn, table, prefer):
         return cols[0]
     return None
 
+
 def quote_sql_value(val):
     # naive quoting for IN lists; PyMySQL connection could escape but we need literal string here for --where
     if val is None:
@@ -248,7 +286,10 @@ def quote_sql_value(val):
     s = str(val).replace("\\", "\\\\").replace("'", "''")
     return f"'{s}'"
 
-def fetch_pk_values(remote_conn, db, table, pk_cols, where_clause=None, order_by=None, limit=None):
+
+def fetch_pk_values(
+    remote_conn, db, table, pk_cols, where_clause=None, order_by=None, limit=None
+):
     # returns list of tuples (for composite pk) or scalars (single pk)
     # build select
     if not pk_cols:
@@ -276,6 +317,7 @@ def fetch_pk_values(remote_conn, db, table, pk_cols, where_clause=None, order_by
                 results.append(tuple(r[c] for c in pk_cols))
         return results
 
+
 # ----------------------------
 # Dump & load functions
 # ----------------------------
@@ -287,10 +329,10 @@ def dump_schema_tables_only(cfg, table_names_list):
 
     # Create secure config file
     config_file = create_mysql_config_file(
-        cfg['remote']['host'],
-        cfg['remote']['user'],
-        cfg['remote']['password'],
-        cfg['remote'].get('port', 3306)
+        cfg["remote"]["host"],
+        cfg["remote"]["user"],
+        cfg["remote"]["password"],
+        cfg["remote"].get("port", 3306),
     )
 
     table_names = " ".join(table_names_list)
@@ -302,21 +344,22 @@ def dump_schema_tables_only(cfg, table_names_list):
     run(cmd)
     return out
 
+
 def dump_views(cfg, view_names_list):
     """Dump view definitions."""
     out = os.path.join(DUMP_DIR, "views.sql")
     if not view_names_list:
         # Create empty file
-        with open(out, 'w') as f:
+        with open(out, "w") as f:
             f.write("-- No views to dump\n")
         return out
 
     # Create secure config file
     config_file = create_mysql_config_file(
-        cfg['remote']['host'],
-        cfg['remote']['user'],
-        cfg['remote']['password'],
-        cfg['remote'].get('port', 3306)
+        cfg["remote"]["host"],
+        cfg["remote"]["user"],
+        cfg["remote"]["password"],
+        cfg["remote"].get("port", 3306),
     )
 
     view_names = " ".join(view_names_list)
@@ -328,15 +371,16 @@ def dump_views(cfg, view_names_list):
     run(cmd)
     return out
 
+
 def dump_table_full(cfg, table):
     out = os.path.join(DUMP_DIR, f"{table}.sql")
 
     # Create secure config file
     config_file = create_mysql_config_file(
-        cfg['remote']['host'],
-        cfg['remote']['user'],
-        cfg['remote']['password'],
-        cfg['remote'].get('port', 3306)
+        cfg["remote"]["host"],
+        cfg["remote"]["user"],
+        cfg["remote"]["password"],
+        cfg["remote"].get("port", 3306),
     )
 
     cmd = (
@@ -347,28 +391,30 @@ def dump_table_full(cfg, table):
     run(cmd)
     return out
 
+
 def dump_table_where(cfg, table, where_clause):
     out = os.path.join(DUMP_DIR, f"{table}.sql")
 
     # Create secure config file
     config_file = create_mysql_config_file(
-        cfg['remote']['host'],
-        cfg['remote']['user'],
-        cfg['remote']['password'],
-        cfg['remote'].get('port', 3306)
+        cfg["remote"]["host"],
+        cfg["remote"]["user"],
+        cfg["remote"]["password"],
+        cfg["remote"].get("port", 3306),
     )
 
     # Escape the where_clause to prevent shell interpretation of special characters
     # Replace backticks with \\` to prevent command substitution
-    escaped_where = where_clause.replace('`', '\\`')
+    escaped_where = where_clause.replace("`", "\\`")
     cmd = (
         f"mysqldump --defaults-extra-file={config_file} "
         f"--no-create-info --skip-lock-tables --single-transaction "
-        f"--no-tablespaces --skip-add-locks --where=\"{escaped_where}\" "
+        f'--no-tablespaces --skip-add-locks --where="{escaped_where}" '
         f"{cfg['remote']['database']} {table} > {out}"
     )
     run(cmd)
     return out
+
 
 def load_local(cfg, filename, disable_fk_checks=False):
     # Note: For docker exec, we use environment variable MYSQL_PWD which is less secure
@@ -380,15 +426,21 @@ def load_local(cfg, filename, disable_fk_checks=False):
         # For schema loads, strip out FK constraints that cause issues with MySQL 9
         # We'll load the schema without FKs, then data will load, and orphan cleanup handles referential integrity
         import re
-        with open(filename, 'r') as f:
+
+        with open(filename, "r") as f:
             content = f.read()
 
         # Remove CONSTRAINT ... FOREIGN KEY lines
         # Pattern matches: CONSTRAINT `name` FOREIGN KEY (...) REFERENCES ...,
-        content = re.sub(r',?\s*CONSTRAINT\s+`[^`]+`\s+FOREIGN\s+KEY\s+\([^)]+\)\s+REFERENCES\s+`[^`]+`\s+\([^)]+\)(?:\s+ON\s+(?:DELETE|UPDATE)\s+(?:CASCADE|SET NULL|NO ACTION|RESTRICT))*', '', content, flags=re.IGNORECASE)
+        content = re.sub(
+            r",?\s*CONSTRAINT\s+`[^`]+`\s+FOREIGN\s+KEY\s+\([^)]+\)\s+REFERENCES\s+`[^`]+`\s+\([^)]+\)(?:\s+ON\s+(?:DELETE|UPDATE)\s+(?:CASCADE|SET NULL|NO ACTION|RESTRICT))*",
+            "",
+            content,
+            flags=re.IGNORECASE,
+        )
 
-        modified_file = filename.replace('.sql', '_no_fk.sql')
-        with open(modified_file, 'w') as f:
+        modified_file = filename.replace(".sql", "_no_fk.sql")
+        with open(modified_file, "w") as f:
             f.write(content)
         try:
             # Use MYSQL_PWD environment variable (safer for docker exec)
@@ -410,10 +462,13 @@ def load_local(cfg, filename, disable_fk_checks=False):
         )
         run(cmd)
 
+
 # ----------------------------
 # Core sampling logic
 # ----------------------------
-def sample_and_dump_table(cfg, remote_conn, table, size_mb, pk_map, fk_map, sampled_ids_store, loaded_tables):
+def sample_and_dump_table(
+    cfg, remote_conn, table, size_mb, pk_map, fk_map, sampled_ids_store, loaded_tables
+):
     """
     pk_map: table -> list(primary key columns)
     fk_map: child_table -> list of dicts {child_col, parent_table, parent_col}
@@ -451,7 +506,9 @@ def sample_and_dump_table(cfg, remote_conn, table, size_mb, pk_map, fk_map, samp
                 # form quoted list
                 if isinstance(parent_ids[0], tuple):
                     # parent pk composite - can't make IN for single column; skip restriction for composite parents
-                    print(f"  ⚠️  parent {parent} has composite PK; skipping fk restriction for {table}.{child_col}")
+                    print(
+                        f"  ⚠️  parent {parent} has composite PK; skipping fk restriction for {table}.{child_col}"
+                    )
                     continue
                 # quote values
                 quoted = ",".join(quote_sql_value(v) for v in parent_ids)
@@ -466,7 +523,9 @@ def sample_and_dump_table(cfg, remote_conn, table, size_mb, pk_map, fk_map, samp
         fname = dump_table_full(cfg, table)
         # capture primary keys of what we loaded (query remote for pk values)
         if pk_cols:
-            ids = fetch_pk_values(remote_conn, cfg["remote"]["database"], table, pk_cols)
+            ids = fetch_pk_values(
+                remote_conn, cfg["remote"]["database"], table, pk_cols
+            )
             sampled_ids_store[table] = ids
             print(f"  recorded {len(ids)} PK values for {table}")
         else:
@@ -496,8 +555,15 @@ def sample_and_dump_table(cfg, remote_conn, table, size_mb, pk_map, fk_map, samp
             select_where = None
 
         # fetch pk values from remote according to restrictions and ordering
-        ids = fetch_pk_values(remote_conn, cfg["remote"]["database"], table, pk_cols,
-                              where_clause=select_where, order_by=order_col, limit=limit)
+        ids = fetch_pk_values(
+            remote_conn,
+            cfg["remote"]["database"],
+            table,
+            pk_cols,
+            where_clause=select_where,
+            order_by=order_col,
+            limit=limit,
+        )
 
         if ids:
             # we got some rows -> create a dump using IN (...) if possible to avoid repeated ordering issues
@@ -521,12 +587,16 @@ def sample_and_dump_table(cfg, remote_conn, table, size_mb, pk_map, fk_map, samp
                 where_clause = f"({pk_names}) IN ({tuples_str})"
                 fname = dump_table_where(cfg, table, where_clause)
                 sampled_ids_store[table] = ids
-                print(f"  dumped {len(ids)} rows for {table} using composite PK IN clause")
+                print(
+                    f"  dumped {len(ids)} rows for {table} using composite PK IN clause"
+                )
                 return fname
         else:
             # no rows found under current restrictions -> refill behavior
             if multiplier >= max_multiplier:
-                print(f"  ⚠️  No rows found for {table} with FK restrictions after {multiplier}x tries.")
+                print(
+                    f"  ⚠️  No rows found for {table} with FK restrictions after {multiplier}x tries."
+                )
                 if not tried_without_restriction:
                     print("  Attempting sampling WITHOUT FK restrictions as fallback.")
                     # try sampling without fk restrictions
@@ -544,8 +614,11 @@ def sample_and_dump_table(cfg, remote_conn, table, size_mb, pk_map, fk_map, samp
             else:
                 multiplier *= 2
                 limit = base_row_limit * multiplier
-                print(f"  empty sample, increasing limit -> {limit} (multiplier {multiplier})")
+                print(
+                    f"  empty sample, increasing limit -> {limit} (multiplier {multiplier})"
+                )
                 time.sleep(0.1)  # small pause then retry
+
 
 # ----------------------------
 # Main orchestration
@@ -557,14 +630,22 @@ def main():
     # Connect remote
     print("🔌 Connecting to remote DB...")
     remote = cfg["remote"]
-    remote_conn = connect_mysql(remote["host"], remote["user"], remote["password"], remote["database"], use_ssl=True)
+    remote_conn = connect_mysql(
+        remote["host"],
+        remote["user"],
+        remote["password"],
+        remote["database"],
+        use_ssl=True,
+    )
 
     # get tables info (includes both tables and views)
     print("🔎 Inspecting remote schema...")
     tables_info = get_tables_info(remote_conn, remote["database"])
 
     # Separate base tables from views
-    base_tables = [r for r in tables_info if not is_view(r.get("table_type", "BASE TABLE"))]
+    base_tables = [
+        r for r in tables_info if not is_view(r.get("table_type", "BASE TABLE"))
+    ]
     views = [r for r in tables_info if is_view(r.get("table_type", ""))]
 
     table_sizes = {r["table_name"]: r["size_mb"] for r in base_tables}
@@ -577,11 +658,13 @@ def main():
     fk_rows = get_foreign_keys(remote_conn, remote["database"])
     fk_map = defaultdict(list)  # child_table -> list of fk dicts
     for r in fk_rows:
-        fk_map[r["child_table"]].append({
-            "child_col": r["child_col"],
-            "parent_table": r["parent_table"],
-            "parent_col": r["parent_col"]
-        })
+        fk_map[r["child_table"]].append(
+            {
+                "child_col": r["child_col"],
+                "parent_table": r["parent_table"],
+                "parent_col": r["parent_col"],
+            }
+        )
 
     parents_map, children_of = build_dependency_graph(fk_rows)
     topo = topological_sort(parents_map, children_of, all_tables)
@@ -605,7 +688,16 @@ def main():
     for table in topo:
         size_mb = table_sizes.get(table, 0)
         try:
-            fname = sample_and_dump_table(cfg, remote_conn, table, size_mb, pk_map, fk_map, sampled_ids_store, loaded_tables)
+            fname = sample_and_dump_table(
+                cfg,
+                remote_conn,
+                table,
+                size_mb,
+                pk_map,
+                fk_map,
+                sampled_ids_store,
+                loaded_tables,
+            )
             # load to local even if dump may be empty
             print(f"📥 Loading {table} into local DB from {fname} ...")
             load_local(cfg, fname)
@@ -639,6 +731,7 @@ def main():
             print("⚠️  cleanup_orphans.py failed:", e)
 
     print("\n🎉 Done. Local clone is ready. Connect to local db as configured.")
+
 
 if __name__ == "__main__":
     main()

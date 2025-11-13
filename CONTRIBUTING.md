@@ -519,7 +519,7 @@ class Account(Base):
 ### Environment Issues
 
 **"conda: command not found"**
-- Install miniconda: https://docs.conda.io/en/latest/miniconda.html
+- Install miniconda: <https://docs.conda.io/en/latest/miniconda.html>
 - Or use system package manager: `brew install miniconda` (macOS)
 
 **"make: command not found"**
