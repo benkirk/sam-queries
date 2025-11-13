@@ -53,6 +53,7 @@ class Account(Base, SoftDeleteMixin):
     project = relationship('Project', back_populates='accounts')
     resource = relationship('Resource', back_populates='accounts')
     users = relationship('AccountUser', back_populates='account', lazy='selectin')
+    responsible_parties = relationship('ResponsibleParty', back_populates='account')
 
     def __str__(self):
         return f"{self.project.projcode if self.project else None} - {self.resource.resource_name if self.resource else None}"
@@ -100,6 +101,37 @@ class AccountUser(Base, TimestampMixin, DateRangeMixin):
     def is_active(cls):
         """Check if this account-user mapping is currently active (SQL side)."""
         return cls.is_currently_active
+
+
+#----------------------------------------------------------------------------
+class ResponsibleParty(Base, TimestampMixin):
+    """
+    Tracks responsible parties for accounts.
+
+    Defines who is responsible for an account (e.g., PI, admin, billing contact).
+    The responsible_party_type field indicates the type of responsibility.
+    """
+    __tablename__ = 'responsible_party'
+
+    __table_args__ = (
+        Index('ix_responsible_party_account', 'account_id'),
+        Index('ix_responsible_party_user', 'user_id'),
+    )
+
+    responsible_party_id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    responsible_party_type = Column(String(20), nullable=False)
+
+    # Relationships
+    account = relationship('Account', back_populates='responsible_parties')
+    user = relationship('User', back_populates='responsible_accounts')
+
+    def __str__(self):
+        return f"{self.responsible_party_type}: User {self.user_id} for Account {self.account_id}"
+
+    def __repr__(self):
+        return f"<ResponsibleParty(id={self.responsible_party_id}, type='{self.responsible_party_type}', user_id={self.user_id}, account_id={self.account_id})>"
 
 
 #-------------------------------------------------------------------------em-

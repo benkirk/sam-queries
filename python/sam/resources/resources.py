@@ -184,6 +184,8 @@ class ResourceType(Base, TimestampMixin, ActiveFlagMixin):
     grace_period_days = Column(Integer)
 
     resources = relationship('Resource', back_populates='resource_type')
+    factors = relationship('Factor', back_populates='resource_type')
+    formulas = relationship('Formula', back_populates='resource_type')
 
     def __str__(self):
         return f"{self.resource_type}"

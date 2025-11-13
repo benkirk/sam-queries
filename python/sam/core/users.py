@@ -86,6 +86,7 @@ class User(Base, TimestampMixin):
     primary_group = relationship('AdhocGroup', foreign_keys=[primary_gid])
     resource_homes = relationship('UserResourceHome', back_populates='user')
     resource_shells = relationship('UserResourceShell', back_populates='user')
+    responsible_accounts = relationship('ResponsibleParty', back_populates='user')
     role_assignments = relationship('RoleUser', back_populates='user')
     wallclock_exemptions = relationship('WallclockExemption', back_populates='user')
     # xras_user = relationship('XrasUser', back_populates='local_user', uselist=False)  # DEPRECATED - XRAS views don't support relationships

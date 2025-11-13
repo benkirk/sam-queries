@@ -73,7 +73,13 @@ from .resources.facilities import (
     Facility,
     FacilityResource,
     Panel,
-    PanelSession
+    PanelSession,
+    ProjectCode
+)
+
+from .resources.charging import (
+    Factor,
+    Formula
 )
 
 # 5. Projects
@@ -86,7 +92,8 @@ from .projects.projects import (
 
 from .projects.areas import (
     AreaOfInterest,
-    AreaOfInterestGroup
+    AreaOfInterestGroup,
+    FosAoi
 )
 
 from .projects.contracts import (
@@ -97,7 +104,7 @@ from .projects.contracts import (
 )
 
 # 6. Accounting
-from .accounting.accounts import Account, AccountUser
+from .accounting.accounts import Account, AccountUser, ResponsibleParty
 from .accounting.allocations import (
     Allocation,
     AllocationTransaction,
@@ -181,7 +188,7 @@ from .integration.xras_views import (
     XrasRequestView
 )
 
-from .security.roles import Role, RoleUser
+from .security.roles import Role, RoleUser, ApiCredentials, RoleApiCredentials
 from .security.access import AccessBranch, AccessBranchResource
 
 # 10. Operational

@@ -11,12 +11,13 @@ class DavActivity(Base):
     __tablename__ = 'dav_activity'
 
     __table_args__ = (
+        PrimaryKeyConstraint('dav_activity_id', 'queue_name', name='pk_dav_activity'),
         Index('ix_dav_activity_job', 'job_id'),
         Index('ix_dav_activity_cos', 'dav_cos_id'),
         Index('ix_dav_activity_queue', 'queue_name'),
     )
 
-    dav_activity_id = Column(Integer, primary_key=True, autoincrement=True)
+    dav_activity_id = Column(Integer, autoincrement=True)
 
     # User and project
     unix_uid = Column(Integer, nullable=False)
@@ -56,6 +57,7 @@ class DavActivity(Base):
     # Dates and charging
     activity_date = Column(DateTime)
     load_date = Column(DateTime, nullable=False)
+    modified_time = Column(TIMESTAMP)
     external_charge = Column(Numeric(15, 8))
 
     dav_cos = relationship('DavCos', back_populates='activities')
