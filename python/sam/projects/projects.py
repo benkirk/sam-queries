@@ -202,7 +202,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     @property
     def active_account_users(self) -> List['AccountUser']:
         """Get currently active account users."""
-        now = datetime.utcnow()
+        now = datetime.now()
         return [
             au for account in self.accounts
             for au in account.users
@@ -238,7 +238,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             Dict mapping resource_name to Allocation object
         """
         allocations_by_resource = {}
-        now = datetime.utcnow()
+        now = datetime.now()
 
         for account in self.accounts:
             if account.resource:
@@ -270,7 +270,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     @hybrid_property
     def has_active_allocations(self) -> bool:
         """Check if project has any active allocations (Python side)."""
-        now = datetime.utcnow()
+        now = datetime.now()
         for account in self.accounts:
             for alloc in account.allocations:
                 if alloc.is_active_at(now):
@@ -333,7 +333,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             >>> # Get just one resource
             >>> derecho = project.get_detailed_allocation_usage(resource_name='Derecho')
         """
-        now = datetime.utcnow()
+        now = datetime.now()
         results = {}
 
         # Get accounts with eager loading

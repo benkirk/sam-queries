@@ -13,6 +13,7 @@ from flask import Blueprint, jsonify, request, abort
 from flask_login import login_required, current_user
 from webui.utils.rbac import require_permission, Permission
 from webui.extensions import db
+from webui.schemas import UserSchema, UserListSchema, UserSummarySchema
 
 bp = Blueprint('api_users', __name__)
 
@@ -57,19 +58,8 @@ def list_users():
 
         users = query.limit(per_page).offset((page - 1) * per_page).all()
 
-    # Serialize users
-    users_data = []
-    for user in users:
-        users_data.append({
-            'user_id': user.user_id,
-            'username': user.username,
-            'full_name': user.full_name,
-            'display_name': user.display_name,
-            'email': user.primary_email,
-            'active': user.active,
-            'locked': user.locked,
-            'charging_exempt': user.charging_exempt,
-        })
+    # Serialize users using UserListSchema
+    users_data = UserListSchema(many=True).dump(users)
 
     return jsonify({
         'users': users_data,
@@ -96,45 +86,8 @@ def get_user(username):
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
-    # Get user's institutions
-    institutions = [
-        {
-            'institution_name': ui.institution.institution_name,
-            'is_primary': ui.is_primary
-        }
-        for ui in user.institutions
-    ]
-
-    # Get user's organizations
-    organizations = [
-        {
-            'organization_acronym': uo.organization.acronym,
-            'organization_name': uo.organization.name
-        }
-        for uo in user.organizations
-    ]
-
-    # Get user's roles
-    roles = [ra.role.name for ra in user.role_assignments]
-
-    return jsonify({
-        'user_id': user.user_id,
-        'username': user.username,
-        'first_name': user.first_name,
-        'middle_name': user.middle_name,
-        'last_name': user.last_name,
-        'full_name': user.full_name,
-        'display_name': user.display_name,
-        'email': user.primary_email,
-        'active': user.active,
-        'locked': user.locked,
-        'charging_exempt': user.charging_exempt,
-        'institutions': institutions,
-        'organizations': organizations,
-        'roles': roles,
-        'creation_time': user.creation_time.isoformat() if user.creation_time else None,
-        'modified_time': user.modified_time.isoformat() if user.modified_time else None,
-    })
+    # Serialize user using UserSchema
+    return jsonify(UserSchema().dump(user))
 
 
 @bp.route('/<username>/projects', methods=['GET'])

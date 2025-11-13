@@ -14,6 +14,10 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required
 from webui.utils.rbac import require_permission, Permission
 from webui.extensions import db
+from webui.schemas import (
+    ProjectSchema, ProjectListSchema, ProjectSummarySchema,
+    AllocationWithUsageSchema
+)
 from datetime import datetime, timedelta
 
 bp = Blueprint('api_projects', __name__)
@@ -126,19 +130,8 @@ def list_projects():
             query = query.filter(Project.active == active)
         projects = query.limit(per_page).offset((page - 1) * per_page).all()
 
-    # Serialize projects
-    projects_data = []
-    for project in projects:
-        projects_data.append({
-            'project_id': project.project_id,
-            'projcode': project.projcode,
-            'title': project.title,
-            'lead_username': project.lead.username if project.lead else None,
-            'admin_username': project.admin.username if project.admin else None,
-            'active': project.active,
-            'charging_exempt': project.charging_exempt,
-            'area_of_interest': project.area_of_interest.area_of_interest if project.area_of_interest else None,
-        })
+    # Serialize projects using ProjectListSchema
+    projects_data = ProjectListSchema(many=True).dump(projects)
 
     return jsonify({
         'projects': projects_data,
@@ -165,27 +158,8 @@ def get_project(projcode):
     if not project:
         return jsonify({'error': 'Project not found'}), 404
 
-    return jsonify({
-        'project_id': project.project_id,
-        'projcode': project.projcode,
-        'title': project.title,
-        'abstract': project.abstract,
-        'lead': {
-            'username': project.lead.username,
-            'name': project.lead.full_name,
-            'email': project.lead.primary_email
-        } if project.lead else None,
-        'admin': {
-            'username': project.admin.username,
-            'name': project.admin.full_name,
-            'email': project.admin.primary_email
-        } if project.admin else None,
-        'active': project.active,
-        'charging_exempt': project.charging_exempt,
-        'area_of_interest': project.area_of_interest.area_of_interest if project.area_of_interest else None,
-        'creation_time': project.creation_time.isoformat() if project.creation_time else None,
-        'modified_time': project.modified_time.isoformat() if project.modified_time else None,
-    })
+    # Serialize project using ProjectSchema
+    return jsonify(ProjectSchema().dump(project))
 
 
 @bp.route('/<projcode>/members', methods=['GET'])
@@ -242,15 +216,19 @@ def get_project_members(projcode):
 @require_permission(Permission.VIEW_ALLOCATIONS)
 def get_project_allocations(projcode):
     """
-    GET /api/v1/projects/<projcode>/allocations - Get project allocations.
+    GET /api/v1/projects/<projcode>/allocations - Get project allocations with usage.
+
+    **ENHANCED**: Now includes usage data (used, remaining, percent_used) like sam_search.py output.
 
     Query parameters:
         resource (str): Filter by resource name
+        include_adjustments (bool): Include manual adjustments (default: true)
 
     Returns:
-        JSON with allocations for the project
+        JSON with allocations including usage details for the project
     """
-    from sam.queries import find_project_by_code, get_project_allocations
+    from sam.queries import find_project_by_code
+    from sam.accounting.accounts import Account
 
     project = find_project_by_code(db.session, projcode)
 
@@ -258,20 +236,34 @@ def get_project_allocations(projcode):
         return jsonify({'error': 'Project not found'}), 404
 
     resource_name = request.args.get('resource')
+    include_adjustments = request.args.get('include_adjustments', 'true').lower() == 'true'
 
-    allocations = get_project_allocations(db.session, projcode, resource_name)
+    # Get accounts with allocations
+    query = db.session.query(Account).filter(
+        Account.project_id == project.project_id,
+        Account.deleted == False
+    )
+
+    if resource_name:
+        from sam.resources.resources import Resource
+        query = query.join(Resource).filter(Resource.resource_name == resource_name)
 
     allocations_data = []
-    for alloc, res_name in allocations:
-        allocations_data.append({
-            'allocation_id': alloc.allocation_id,
-            'resource_name': res_name,
-            'amount': float(alloc.amount) if alloc.amount else None,
-            'start_date': alloc.start_date.isoformat() if alloc.start_date else None,
-            'end_date': alloc.end_date.isoformat() if alloc.end_date else None,
-            'is_active': alloc.is_active,
-            'deleted': alloc.deleted,
-        })
+    now = datetime.now()
+
+    for account in query.all():
+        # Find active allocation
+        for alloc in account.allocations:
+            if alloc.is_active_at(now) and not alloc.deleted:
+                # Serialize with AllocationWithUsageSchema for full usage details
+                schema = AllocationWithUsageSchema()
+                schema.context = {
+                    'account': account,
+                    'session': db.session,
+                    'include_adjustments': include_adjustments
+                }
+                alloc_data = schema.dump(alloc)
+                allocations_data.append(alloc_data)
 
     return jsonify({
         'projcode': projcode,

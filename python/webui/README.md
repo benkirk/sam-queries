@@ -112,8 +112,16 @@ python/webui/
 │   └── v1/
 │       ├── __init__.py         # API package initialization
 │       ├── users.py            # User endpoints (list, details, projects)
-│       └── projects.py         # Project endpoints (list, details, members,
-│                               #   allocations, expiring, recently_expired)
+│       ├── projects.py         # Project endpoints (list, details, members,
+│       │                       #   allocations, expiring, recently_expired)
+│       └── charges.py          # Charge/balance endpoints
+├── schemas/                    # Marshmallow-SQLAlchemy schemas
+│   ├── __init__.py             # Base schema + exports
+│   ├── user.py                 # User schemas (3 tiers)
+│   ├── project.py              # Project schemas (3 tiers)
+│   ├── resource.py             # Resource schemas
+│   ├── allocation.py           # Allocation/balance schemas ⭐ KEY
+│   └── charges.py              # Charge summary schemas
 └── templates/                  # Jinja2 templates
     ├── auth/
     │   ├── login.html
@@ -121,6 +129,69 @@ python/webui/
     └── admin/
         └── ...
 ```
+
+## API Serialization with Marshmallow
+
+The REST API uses **marshmallow-sqlalchemy** for declarative serialization, providing:
+- Type-safe JSON serialization
+- Automatic datetime formatting
+- Nested relationship handling
+- Calculated fields (e.g., allocation balances)
+
+### Schema Organization
+
+Schemas follow a **three-tier strategy** for optimal performance:
+
+1. **Full Schemas** - All fields + relationships (e.g., `UserSchema`)
+2. **List Schemas** - Lightweight for collections (e.g., `UserListSchema`)
+3. **Summary Schemas** - Minimal for references (e.g., `UserSummarySchema`)
+
+### Quick Example
+
+```python
+from webui.schemas import UserSchema, ProjectListSchema
+
+# Serialize single object
+user_data = UserSchema().dump(user)
+
+# Serialize collection
+projects_data = ProjectListSchema(many=True).dump(projects)
+```
+
+### Key Schemas
+
+**AllocationWithUsageSchema** ⭐ - Calculates real-time allocation balances:
+- `used`: Total charges from summary tables
+- `remaining`: allocated - used
+- `percent_used`: usage percentage
+- `charges_by_type`: Breakdown by comp/dav/disk/archive
+- `adjustments`: Manual charge adjustments
+
+**Example API Response:**
+```json
+{
+  "allocation_id": 12345,
+  "allocated": 1000000.0,
+  "used": 456789.12,
+  "remaining": 543210.88,
+  "percent_used": 45.68,
+  "start_date": "2024-01-01T00:00:00",
+  "end_date": "2024-12-31T23:59:59",
+  "charges_by_type": {
+    "comp": 345678.90,
+    "dav": 111110.22,
+    "disk": 0.0,
+    "archive": 0.0
+  },
+  "adjustments": [],
+  "resource": {
+    "resource_id": 42,
+    "name": "Derecho"
+  }
+}
+```
+
+For detailed schema documentation, see [CLAUDE.md](../../CLAUDE.md#marshmallow-sqlalchemy-schemas).
 
 ## Authentication & Authorization
 
@@ -213,7 +284,7 @@ Access: `http://localhost:5050/admin/expirations/`
 
 ## REST API
 
-All API endpoints require authentication (session cookie) and appropriate RBAC permissions. Responses are in JSON format.
+All API endpoints require authentication (session cookie) and appropriate RBAC permissions. Responses are in JSON format serialized using [Marshmallow schemas](#api-serialization-with-marshmallow).
 
 ### Authentication
 

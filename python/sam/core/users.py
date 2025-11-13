@@ -409,7 +409,7 @@ class User(Base, TimestampMixin):
     @property
     def active_account_users(self) -> List['AccountUser']:
         """Get currently active account users."""
-        now = datetime.utcnow()
+        now = datetime.now()
         return [
             au for account in self.accounts
             for au in account.users
