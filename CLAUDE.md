@@ -55,13 +55,29 @@ sam-queries/
 
 ### Core Models
 - **User** (`users`): System users with UPID, unix_uid
+  - Properties: `primary_email`, `all_emails`, `full_name`, `display_name`, `active_projects`, `all_projects`
+  - Class methods: `get_by_username(session, username)`
+  - Relationships: `email_addresses`, `projects`, `accounts`
+
 - **Organization** (`organization`): NCAR labs/sections
 - **Institution** (`institution`): Universities, research orgs
+
 - **Project** (`project`): Research projects with projcode, unix_gid
+  - Properties: `active`, `lead`, `admin`
+  - Instance methods: `get_detailed_allocation_usage(resource_name=None, include_adjustments=True)` - Returns dict of usage by resource
+  - Class methods: `get_by_projcode(session, projcode)`
+  - Relationships: `accounts`, `allocations`, `users`
 
 ### Accounting
 - **Account** (`account`): Billing accounts
+  - Links projects to resources
+  - Relationships: `project`, `resource`, `allocations`, `users`
+
 - **Allocation** (`allocation`): Resource allocations (hierarchical tree)
+  - Properties: `is_active` (hybrid property - works in Python and SQL)
+  - Instance methods: `is_active_at(check_date)` - Check if active at specific date
+  - Relationships: `account`, `parent`, `children`, `transactions`
+
 - **AllocationType** (`allocation_type`): NSC, University, Staff, etc.
 
 ### Resources
@@ -112,9 +128,59 @@ python/webui/schemas/
 ### Three-Tier Schema Strategy
 Schemas follow a consistent pattern for optimal performance:
 
-1. **Full Schemas** (`UserSchema`, `ProjectSchema`): All fields + nested relationships - Use for single object detail views
-2. **List Schemas** (`UserListSchema`, `ProjectListSchema`): Lightweight for collection endpoints - Excludes expensive nested queries
-3. **Summary Schemas** (`UserSummarySchema`, `ProjectSummarySchema`): Minimal fields for references - Used inside other schemas
+1. **Full Schemas** (`UserSchema`, `ProjectSchema`):
+   - All fields + nested relationships
+   - Use for: Single object detail views (`GET /api/v1/users/<username>`)
+   - Performance: Slower due to relationship loading
+   - Example fields: All user data + email_addresses + projects + institutions
+
+2. **List Schemas** (`UserListSchema`, `ProjectListSchema`):
+   - Core fields only, no expensive nested queries
+   - Use for: Collection endpoints (`GET /api/v1/users/`)
+   - Performance: Fast, suitable for pagination
+   - Example fields: Basic user data (id, name, email) but NO relationships
+
+3. **Summary Schemas** (`UserSummarySchema`, `ProjectSummarySchema`):
+   - Minimal fields for references
+   - Use for: Nested within other schemas (e.g., project.lead)
+   - Performance: Fastest, no additional queries
+   - Example fields: Just id, name, code - essential identifiers only
+
+**When to use which tier:**
+- Fetching 1 object → Use Full Schema (e.g., user profile page)
+- Fetching 10-100 objects → Use List Schema (e.g., user listing, search results)
+- Showing related object → Use Summary Schema (e.g., project's lead within project detail)
+
+**Concrete Example - User Schemas:**
+```python
+# UserSchema (Full) - Returns everything
+{
+    "user_id": 12345,
+    "username": "benkirk",
+    "first_name": "Benjamin",
+    "last_name": "Kirk",
+    "email_addresses": [{"email_address": "benkirk@ucar.edu", "is_primary": true}],
+    "active_projects": [{"projcode": "SCSG0001", "title": "..."}],
+    "institutions": [...],
+    "organizations": [...]
+}
+
+# UserListSchema - Just core fields
+{
+    "user_id": 12345,
+    "username": "benkirk",
+    "first_name": "Benjamin",
+    "last_name": "Kirk",
+    "primary_email": "benkirk@ucar.edu"
+}
+
+# UserSummarySchema - Minimal identifier
+{
+    "user_id": 12345,
+    "username": "benkirk",
+    "full_name": "Benjamin Shelton Kirk"
+}
+```
 
 ### Usage Examples
 ```python
@@ -195,7 +261,41 @@ All tables are pre-indexed for fast queries by `account_id` and `activity_date`:
 - **DiskChargeSummary** (`disk_charge_summary`): Daily storage charges
 - **ArchiveChargeSummary** (`archive_charge_summary`): Daily HPSS archive charges
 
-### Example Calculation
+### Using project.get_detailed_allocation_usage()
+
+The `Project.get_detailed_allocation_usage()` method implements this calculation logic and returns usage for all active allocations:
+
+```python
+# Get usage for all resources
+project = Project.get_by_projcode(session, 'SCSG0001')
+usage = project.get_detailed_allocation_usage()
+
+# Returns dict keyed by resource name:
+{
+    'Derecho': {
+        'allocated': 1000000.0,
+        'used': 456789.12,
+        'remaining': 543210.88,
+        'percent_used': 45.68,
+        'charges_by_type': {
+            'comp': 345678.90,
+            'dav': 111110.22,
+            'disk': 0.0,
+            'archive': 0.0
+        },
+        'adjustments': []  # If include_adjustments=True
+    },
+    'Casper': { ... }
+}
+
+# Filter by specific resource
+derecho_only = project.get_detailed_allocation_usage(resource_name='Derecho')
+
+# Exclude manual adjustments
+no_adjustments = project.get_detailed_allocation_usage(include_adjustments=False)
+```
+
+### Example SQL Calculation Logic
 ```python
 # For HPC resource over allocation period:
 comp_charges = SUM(CompChargeSummary.charges)
@@ -285,6 +385,77 @@ __table_args__ = (
 ### 5. Views
 - Mark views with `__table_args__ = {'info': {'is_view': True}}`
 - Never attempt INSERT/UPDATE/DELETE on views
+
+---
+
+## Common ORM Patterns
+
+### Accessing User Emails
+```python
+# Get primary email (preferred method)
+user = User.get_by_username(session, 'benkirk')
+print(user.primary_email)  # Returns primary email or first active email
+
+# Get all emails
+all_emails = user.all_emails  # Returns list of email strings
+
+# Access email relationship objects
+for email in user.email_addresses:
+    print(f"{email.email_address} (primary: {email.is_primary})")
+```
+
+### Checking Allocation Status
+```python
+from datetime import datetime, timedelta
+
+# Check if allocation is currently active (hybrid property)
+if allocation.is_active:
+    print("Allocation is active")
+
+# Check if allocation was/will be active at specific date
+check_date = datetime.now() + timedelta(days=30)
+if allocation.is_active_at(check_date):
+    print(f"Will be active on {check_date}")
+
+# Use in queries (SQL expression)
+active_allocations = session.query(Allocation).filter(
+    Allocation.is_active
+).all()
+```
+
+### Project Queries
+```python
+# Get project by code
+project = Project.get_by_projcode(session, 'SCSG0001')
+
+# Get project allocation usage (returns dict keyed by resource name)
+usage = project.get_detailed_allocation_usage()
+for resource_name, details in usage.items():
+    print(f"{resource_name}:")
+    print(f"  Allocated: {details['allocated']}")
+    print(f"  Used: {details['used']}")
+    print(f"  Remaining: {details['remaining']}")
+    print(f"  Percent Used: {details['percent_used']}%")
+    print(f"  Charges by type: {details['charges_by_type']}")
+
+# Filter by specific resource
+derecho_usage = project.get_detailed_allocation_usage(resource_name='Derecho')
+
+# Exclude manual adjustments
+usage_no_adj = project.get_detailed_allocation_usage(include_adjustments=False)
+```
+
+### User Project Access
+```python
+# Get user's active projects
+user = User.get_by_username(session, 'benkirk')
+for project in user.active_projects:
+    print(f"{project.projcode}: {project.title}")
+
+# Get all projects (including inactive)
+for project in user.all_projects:
+    print(f"{project.projcode} (active: {project.active})")
+```
 
 ---
 
@@ -384,8 +555,11 @@ from sam.queries import (
     get_projects_by_allocation_end_date,
     get_projects_with_expired_allocations
 )
+from datetime import datetime, timedelta
 
 # Find expiring projects
+# Returns: List[Tuple[Project, Allocation, str, Optional[int]]]
+#          Tuple elements: (project, allocation, resource_name, days_remaining)
 expiring = get_projects_by_allocation_end_date(
     session,
     start_date=datetime.now(),
@@ -393,13 +567,22 @@ expiring = get_projects_by_allocation_end_date(
     facility_names=['UNIV', 'WNA']
 )
 
+# Proper usage with tuple unpacking
+for project, allocation, resource_name, days_remaining in expiring:
+    print(f"{project.projcode}: {resource_name} expires in {days_remaining} days")
+
 # Find expired projects
+# Returns same structure: List[Tuple[Project, Allocation, str, Optional[int]]]
+#                         (project, allocation, resource_name, days_since_expiration)
 expired = get_projects_with_expired_allocations(
     session,
     max_days_expired=90,
     min_days_expired=365,
     facility_names=['UNIV', 'WNA']
 )
+
+for project, allocation, resource_name, days_since in expired:
+    print(f"{project.projcode}: {resource_name} expired {days_since} days ago")
 ```
 
 ---
@@ -525,6 +708,10 @@ git log --oneline -10                                 # Recent commits
 ❌ **DON'T** skip schema validation tests after model changes
 ❌ **DON'T** create files unnecessarily - prefer editing existing files
 ❌ **DON'T** batch todo completions - mark complete immediately
+❌ **DON'T** use `user.email` - use `user.primary_email` instead (no `email` attribute exists)
+❌ **DON'T** use `allocation.active` - use `allocation.is_active` instead (it's a hybrid property)
+❌ **DON'T** pass `session` to `project.get_detailed_allocation_usage()` - it uses SessionMixin internally
+❌ **DON'T** forget to unpack tuples from `get_projects_by_allocation_end_date()` - returns `(project, allocation, resource_name, days)`
 
 ✅ **DO** use schema validation tests before committing model changes
 ✅ **DO** check actual database schema when in doubt
@@ -533,9 +720,12 @@ git log --oneline -10                                 # Recent commits
 ✅ **DO** use proper exit codes (0, 1, 2, 130)
 ✅ **DO** keep tests fast (<1 minute for full suite)
 ✅ **DO** update CLAUDE.md when learning new patterns
+✅ **DO** use `allocation.is_active` for hybrid property behavior (works in Python and SQL)
+✅ **DO** unpack query result tuples properly when using `get_projects_by_allocation_end_date()`
 
 ---
 
 *Last Updated: 2025-11-13*
-*Current Branch: api_refactor*
-*Test Status: 200 passed, 0 skipped, 0 failed (Phases 1-7 complete)*
+*Current Branch: readme*
+*Test Status: 172 passed, 10 skipped, 0 failed*
+*Schema Coverage: 94% (91/97 tables)*
