@@ -1,11 +1,12 @@
-#-------------------------------------------------------------------------bh-
+# -------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
-#-------------------------------------------------------------------------eh-
+
+# -------------------------------------------------------------------------eh-
 
 
-#-------------------------------------------------------------------------bm-
-#----------------------------------------------------------------------------
+# -------------------------------------------------------------------------bm-
+# ----------------------------------------------------------------------------
 class Factor(Base, TimestampMixin):
     """
     Charging factors for resource types.
@@ -18,14 +19,15 @@ class Factor(Base, TimestampMixin):
     - HPSS reads
     - GLADE stored data factor
     """
-    __tablename__ = 'factor'
 
-    __table_args__ = (
-        Index('factor_resource_type_fk', 'resource_type_id'),
-    )
+    __tablename__ = "factor"
+
+    __table_args__ = (Index("factor_resource_type_fk", "resource_type_id"),)
 
     factor_id = Column(Integer, primary_key=True, autoincrement=True)
-    resource_type_id = Column(Integer, ForeignKey('resource_type.resource_type_id'), nullable=False)
+    resource_type_id = Column(
+        Integer, ForeignKey("resource_type.resource_type_id"), nullable=False
+    )
     factor_name = Column(String(50), nullable=False)
     value = Column(String(255), nullable=False)
 
@@ -34,12 +36,13 @@ class Factor(Base, TimestampMixin):
     end_date = Column(DateTime)
 
     # Relationships
-    resource_type = relationship('ResourceType', back_populates='factors')
+    resource_type = relationship("ResourceType", back_populates="factors")
 
     @property
     def is_active(self) -> bool:
         """Check if factor is currently active based on date range."""
         from datetime import datetime
+
         now = datetime.now()  # Use naive datetime to match database
         if self.end_date:
             return self.start_date <= now <= self.end_date
@@ -52,7 +55,7 @@ class Factor(Base, TimestampMixin):
         return f"<Factor(id={self.factor_id}, name='{self.factor_name}', value='{self.value}')>"
 
 
-#----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 class Formula(Base, TimestampMixin):
     """
     Charging formulas for resource types.
@@ -65,14 +68,15 @@ class Formula(Base, TimestampMixin):
     - Storage: @{gigabyte_years}/1000
     - Share jobs: @{cpu_hours}*@{queue_factor}
     """
-    __tablename__ = 'formula'
 
-    __table_args__ = (
-        Index('formula_resource_type_fk', 'resource_type_id'),
-    )
+    __tablename__ = "formula"
+
+    __table_args__ = (Index("formula_resource_type_fk", "resource_type_id"),)
 
     formula_id = Column(Integer, primary_key=True, autoincrement=True)
-    resource_type_id = Column(Integer, ForeignKey('resource_type.resource_type_id'), nullable=False)
+    resource_type_id = Column(
+        Integer, ForeignKey("resource_type.resource_type_id"), nullable=False
+    )
     formula_name = Column(String(50), nullable=False)
     formula_str = Column(String(1024), nullable=False)
 
@@ -81,12 +85,13 @@ class Formula(Base, TimestampMixin):
     end_date = Column(DateTime)
 
     # Relationships
-    resource_type = relationship('ResourceType', back_populates='formulas')
+    resource_type = relationship("ResourceType", back_populates="formulas")
 
     @property
     def is_active(self) -> bool:
         """Check if formula is currently active based on date range."""
         from datetime import datetime
+
         now = datetime.now()  # Use naive datetime to match database
         if self.end_date:
             return self.start_date <= now <= self.end_date
@@ -96,7 +101,8 @@ class Formula(Base, TimestampMixin):
     def variables(self) -> list:
         """Extract variable names from formula string."""
         import re
-        return re.findall(r'@\{([^}]+)\}', self.formula_str)
+
+        return re.findall(r"@\{([^}]+)\}", self.formula_str)
 
     def __str__(self):
         return f"{self.formula_name}"
@@ -105,4 +111,4 @@ class Formula(Base, TimestampMixin):
         return f"<Formula(id={self.formula_id}, name='{self.formula_name}')>"
 
 
-#-------------------------------------------------------------------------em-
+# -------------------------------------------------------------------------em-

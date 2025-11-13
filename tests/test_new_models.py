@@ -11,20 +11,30 @@ Tests the 7 ORM models added during database schema review:
 These models were added to address missing database table coverage.
 """
 
+from datetime import datetime
+
 import pytest
-from datetime import datetime, timedelta
-
 from sam import (
-    Factor, Formula, ApiCredentials, RoleApiCredentials,
-    ProjectCode, FosAoi, ResponsibleParty,
-    ResourceType, Role, Facility, MnemonicCode,
-    AreaOfInterest, Account, User
+    Account,
+    ApiCredentials,
+    AreaOfInterest,
+    Facility,
+    Factor,
+    Formula,
+    FosAoi,
+    MnemonicCode,
+    ProjectCode,
+    ResourceType,
+    ResponsibleParty,
+    Role,
+    RoleApiCredentials,
+    User,
 )
-
 
 # ============================================================================
 # Charging Models - Factor & Formula
 # ============================================================================
+
 
 class TestFactorModel:
     """Test Factor model - charging factors for resource types."""
@@ -56,7 +66,9 @@ class TestFactorModel:
 
         assert factor.resource_type is not None
         assert isinstance(factor.resource_type, ResourceType)
-        print(f"✅ Factor {factor.factor_name} → ResourceType {factor.resource_type.resource_type}")
+        print(
+            f"✅ Factor {factor.factor_name} → ResourceType {factor.resource_type.resource_type}"
+        )
 
     def test_resource_type_to_factors(self, session):
         """Test reverse relationship: ResourceType -> [Factors]."""
@@ -65,10 +77,12 @@ class TestFactorModel:
             pytest.skip("No factors in database")
 
         resource_type = factor.resource_type
-        assert hasattr(resource_type, 'factors')
+        assert hasattr(resource_type, "factors")
         assert len(resource_type.factors) > 0
         assert factor in resource_type.factors
-        print(f"✅ ResourceType {resource_type.resource_type} has {len(resource_type.factors)} factor(s)")
+        print(
+            f"✅ ResourceType {resource_type.resource_type} has {len(resource_type.factors)} factor(s)"
+        )
 
     def test_factor_is_active_property(self, session):
         """Test factor.is_active property for date-based validity."""
@@ -90,10 +104,11 @@ class TestFactorModel:
 
     def test_factor_with_end_date(self, session):
         """Test factors with end_date (expired factors)."""
-        expired_factors = session.query(Factor).filter(
-            Factor.end_date.isnot(None),
-            Factor.end_date < datetime.now()
-        ).all()
+        expired_factors = (
+            session.query(Factor)
+            .filter(Factor.end_date.isnot(None), Factor.end_date < datetime.now())
+            .all()
+        )
 
         print(f"✅ Found {len(expired_factors)} expired factor(s)")
         for factor in expired_factors:
@@ -106,8 +121,8 @@ class TestFactorModel:
         if not factor:
             pytest.skip("No factors in database")
 
-        assert hasattr(factor, 'creation_time')
-        assert hasattr(factor, 'modified_time')
+        assert hasattr(factor, "creation_time")
+        assert hasattr(factor, "modified_time")
         assert factor.creation_time is not None
         print(f"✅ Factor has timestamps: created={factor.creation_time}")
 
@@ -143,7 +158,9 @@ class TestFormulaModel:
 
         assert formula.resource_type is not None
         assert isinstance(formula.resource_type, ResourceType)
-        print(f"✅ Formula {formula.formula_name} → ResourceType {formula.resource_type.resource_type}")
+        print(
+            f"✅ Formula {formula.formula_name} → ResourceType {formula.resource_type.resource_type}"
+        )
 
     def test_resource_type_to_formulas(self, session):
         """Test reverse relationship: ResourceType -> [Formulas]."""
@@ -152,10 +169,12 @@ class TestFormulaModel:
             pytest.skip("No formulas in database")
 
         resource_type = formula.resource_type
-        assert hasattr(resource_type, 'formulas')
+        assert hasattr(resource_type, "formulas")
         assert len(resource_type.formulas) > 0
         assert formula in resource_type.formulas
-        print(f"✅ ResourceType {resource_type.resource_type} has {len(resource_type.formulas)} formula(s)")
+        print(
+            f"✅ ResourceType {resource_type.resource_type} has {len(resource_type.formulas)} formula(s)"
+        )
 
     def test_formula_variables_property(self, session):
         """Test formula.variables property extracts @{variable} names."""
@@ -169,7 +188,9 @@ class TestFormulaModel:
         # Check that variables were extracted from formula_str
         # Example: "@{wall_clock_hours}*@{number_of_nodes}" -> ['wall_clock_hours', 'number_of_nodes']
         if variables:
-            print(f"✅ Formula {formula.formula_name} uses variables: {', '.join(variables)}")
+            print(
+                f"✅ Formula {formula.formula_name} uses variables: {', '.join(variables)}"
+            )
             # Verify each variable appears in the formula string
             for var in variables:
                 assert f"@{{{var}}}" in formula.formula_str
@@ -196,8 +217,8 @@ class TestFormulaModel:
         if not formula:
             pytest.skip("No formulas in database")
 
-        assert hasattr(formula, 'creation_time')
-        assert hasattr(formula, 'modified_time')
+        assert hasattr(formula, "creation_time")
+        assert hasattr(formula, "modified_time")
         assert formula.creation_time is not None
         print(f"✅ Formula has timestamps: created={formula.creation_time}")
 
@@ -205,6 +226,7 @@ class TestFormulaModel:
 # ============================================================================
 # API Security Models - ApiCredentials & RoleApiCredentials
 # ============================================================================
+
 
 class TestApiCredentialsModel:
     """Test ApiCredentials model - API authentication."""
@@ -243,19 +265,27 @@ class TestApiCredentialsModel:
         if not api:
             pytest.skip("No API credentials in database")
 
-        assert hasattr(api, 'role_assignments')
-        print(f"✅ ApiCredentials {api.username} has {len(api.role_assignments)} role assignment(s)")
+        assert hasattr(api, "role_assignments")
+        print(
+            f"✅ ApiCredentials {api.username} has {len(api.role_assignments)} role assignment(s)"
+        )
 
     def test_enabled_api_credentials(self, session):
         """Test querying only enabled API credentials."""
-        enabled = session.query(ApiCredentials).filter(ApiCredentials.enabled == True).all()
+        enabled = (
+            session.query(ApiCredentials).filter(ApiCredentials.enabled == True).all()
+        )
         print(f"✅ Found {len(enabled)} enabled API credential(s)")
 
     def test_disabled_api_credentials(self, session):
         """Test querying disabled API credentials."""
-        disabled = session.query(ApiCredentials).filter(
-            (ApiCredentials.enabled == False) | (ApiCredentials.enabled.is_(None))
-        ).all()
+        disabled = (
+            session.query(ApiCredentials)
+            .filter(
+                (ApiCredentials.enabled == False) | (ApiCredentials.enabled.is_(None))
+            )
+            .all()
+        )
         print(f"✅ Found {len(disabled)} disabled API credential(s)")
 
 
@@ -277,7 +307,9 @@ class TestRoleApiCredentialsModel:
         assert mapping.role_api_credentials_id is not None
         assert mapping.role_id is not None
         assert mapping.api_credentials_id is not None
-        print(f"✅ RoleApiCredentials: role_id={mapping.role_id}, api_id={mapping.api_credentials_id}")
+        print(
+            f"✅ RoleApiCredentials: role_id={mapping.role_id}, api_id={mapping.api_credentials_id}"
+        )
 
     def test_role_api_to_role_relationship(self, session):
         """Test RoleApiCredentials -> Role relationship."""
@@ -297,7 +329,9 @@ class TestRoleApiCredentialsModel:
 
         assert mapping.api_credentials is not None
         assert isinstance(mapping.api_credentials, ApiCredentials)
-        print(f"✅ RoleApiCredentials → ApiCredentials {mapping.api_credentials.username}")
+        print(
+            f"✅ RoleApiCredentials → ApiCredentials {mapping.api_credentials.username}"
+        )
 
     def test_api_credentials_to_roles(self, session):
         """Test getting all roles for an API credential."""
@@ -318,7 +352,7 @@ class TestRoleApiCredentialsModel:
             pytest.skip("No role-API mappings in database")
 
         role = mapping.role
-        assert hasattr(role, 'api_credentials')
+        assert hasattr(role, "api_credentials")
         api_creds = [ra.api_credentials for ra in role.api_credentials]
         print(f"✅ Role {role.name} has {len(api_creds)} API credential(s)")
 
@@ -326,6 +360,7 @@ class TestRoleApiCredentialsModel:
 # ============================================================================
 # Project Code Model
 # ============================================================================
+
 
 class TestProjectCodeModel:
     """Test ProjectCode model - project code generation rules."""
@@ -346,7 +381,9 @@ class TestProjectCodeModel:
         assert proj_code.mnemonic_code_id is not None
         assert proj_code.digits is not None
         assert isinstance(proj_code.digits, int)
-        print(f"✅ ProjectCode: facility_id={proj_code.facility_id}, mnemonic_id={proj_code.mnemonic_code_id}, digits={proj_code.digits}")
+        print(
+            f"✅ ProjectCode: facility_id={proj_code.facility_id}, mnemonic_id={proj_code.mnemonic_code_id}, digits={proj_code.digits}"
+        )
 
     def test_project_code_composite_key(self, session):
         """Test composite primary key (facility_id, mnemonic_code_id)."""
@@ -355,14 +392,18 @@ class TestProjectCodeModel:
             pytest.skip("No project codes in database")
 
         # Try to query by both parts of composite key
-        same_code = session.query(ProjectCode).filter(
-            ProjectCode.facility_id == proj_code.facility_id,
-            ProjectCode.mnemonic_code_id == proj_code.mnemonic_code_id
-        ).one()
+        same_code = (
+            session.query(ProjectCode)
+            .filter(
+                ProjectCode.facility_id == proj_code.facility_id,
+                ProjectCode.mnemonic_code_id == proj_code.mnemonic_code_id,
+            )
+            .one()
+        )
 
         assert same_code.facility_id == proj_code.facility_id
         assert same_code.mnemonic_code_id == proj_code.mnemonic_code_id
-        print(f"✅ Composite key query works")
+        print("✅ Composite key query works")
 
     def test_project_code_to_facility(self, session):
         """Test ProjectCode -> Facility relationship."""
@@ -391,10 +432,12 @@ class TestProjectCodeModel:
             pytest.skip("No project codes in database")
 
         facility = proj_code.facility
-        assert hasattr(facility, 'project_codes')
+        assert hasattr(facility, "project_codes")
         assert len(facility.project_codes) > 0
         assert proj_code in facility.project_codes
-        print(f"✅ Facility {facility.facility_name} has {len(facility.project_codes)} project code rule(s)")
+        print(
+            f"✅ Facility {facility.facility_name} has {len(facility.project_codes)} project code rule(s)"
+        )
 
     def test_mnemonic_to_project_codes(self, session):
         """Test reverse relationship: MnemonicCode -> [ProjectCodes]."""
@@ -403,10 +446,12 @@ class TestProjectCodeModel:
             pytest.skip("No project codes in database")
 
         mnemonic = proj_code.mnemonic_code
-        assert hasattr(mnemonic, 'project_codes')
+        assert hasattr(mnemonic, "project_codes")
         assert len(mnemonic.project_codes) > 0
         assert proj_code in mnemonic.project_codes
-        print(f"✅ MnemonicCode {mnemonic.code} has {len(mnemonic.project_codes)} project code rule(s)")
+        print(
+            f"✅ MnemonicCode {mnemonic.code} has {len(mnemonic.project_codes)} project code rule(s)"
+        )
 
     def test_project_code_digits_range(self, session):
         """Test that digits field has reasonable values."""
@@ -422,12 +467,15 @@ class TestProjectCodeModel:
 
         max_digits = max(pc.digits for pc in proj_codes)
         min_digits = min(pc.digits for pc in proj_codes)
-        print(f"✅ All project code digits are in valid range (min={min_digits}, max={max_digits})")
+        print(
+            f"✅ All project code digits are in valid range (min={min_digits}, max={max_digits})"
+        )
 
 
 # ============================================================================
 # FOS/AOI Mapping Model
 # ============================================================================
+
 
 class TestFosAoiModel:
     """Test FosAoi model - Field of Science to Area of Interest mapping."""
@@ -457,7 +505,9 @@ class TestFosAoiModel:
 
         assert fos.area_of_interest is not None
         assert isinstance(fos.area_of_interest, AreaOfInterest)
-        print(f"✅ FOS {fos.fos_id} ({fos.fos}) → AOI {fos.area_of_interest.area_of_interest}")
+        print(
+            f"✅ FOS {fos.fos_id} ({fos.fos}) → AOI {fos.area_of_interest.area_of_interest}"
+        )
 
     def test_area_of_interest_to_fos(self, session):
         """Test reverse relationship: AreaOfInterest -> [FosAoi]."""
@@ -466,10 +516,12 @@ class TestFosAoiModel:
             pytest.skip("No FOS-AOI mappings in database")
 
         aoi = fos.area_of_interest
-        assert hasattr(aoi, 'fos_mappings')
+        assert hasattr(aoi, "fos_mappings")
         assert len(aoi.fos_mappings) > 0
         assert fos in aoi.fos_mappings
-        print(f"✅ AreaOfInterest {aoi.area_of_interest} has {len(aoi.fos_mappings)} FOS mapping(s)")
+        print(
+            f"✅ AreaOfInterest {aoi.area_of_interest} has {len(aoi.fos_mappings)} FOS mapping(s)"
+        )
 
     def test_fos_id_unique(self, session):
         """Test that fos_id is unique."""
@@ -488,8 +540,8 @@ class TestFosAoiModel:
         if not fos:
             pytest.skip("No FOS-AOI mappings in database")
 
-        assert hasattr(fos, 'creation_time')
-        assert hasattr(fos, 'modified_time')
+        assert hasattr(fos, "creation_time")
+        assert hasattr(fos, "modified_time")
         assert fos.creation_time is not None
         print(f"✅ FosAoi has timestamps: created={fos.creation_time}")
 
@@ -497,6 +549,7 @@ class TestFosAoiModel:
 # ============================================================================
 # Responsible Party Model
 # ============================================================================
+
 
 class TestResponsiblePartyModel:
     """Test ResponsibleParty model - account responsibility tracking."""
@@ -520,7 +573,7 @@ class TestResponsiblePartyModel:
         rp = ResponsibleParty(
             account_id=account.account_id,
             user_id=user.user_id,
-            responsible_party_type='PI'
+            responsible_party_type="PI",
         )
 
         session.add(rp)
@@ -529,13 +582,13 @@ class TestResponsiblePartyModel:
         assert rp.responsible_party_id is not None
         assert rp.account_id == account.account_id
         assert rp.user_id == user.user_id
-        assert rp.responsible_party_type == 'PI'
+        assert rp.responsible_party_type == "PI"
         print(f"✅ Created ResponsibleParty: {rp}")
 
         # Test relationships
         assert rp.account == account
         assert rp.user == user
-        print(f"✅ ResponsibleParty relationships work")
+        print("✅ ResponsibleParty relationships work")
 
         session.rollback()  # Don't save
 
@@ -565,8 +618,10 @@ class TestResponsiblePartyModel:
         if not account:
             pytest.skip("No accounts in database")
 
-        assert hasattr(account, 'responsible_parties')
-        print(f"✅ Account has {len(account.responsible_parties)} responsible part(y/ies)")
+        assert hasattr(account, "responsible_parties")
+        print(
+            f"✅ Account has {len(account.responsible_parties)} responsible part(y/ies)"
+        )
 
     def test_user_to_responsible_accounts(self, session):
         """Test reverse relationship: User -> [ResponsibleParty]."""
@@ -574,7 +629,7 @@ class TestResponsiblePartyModel:
         if not user:
             pytest.skip("No users in database")
 
-        assert hasattr(user, 'responsible_accounts')
+        assert hasattr(user, "responsible_accounts")
         print(f"✅ User has {len(user.responsible_accounts)} responsible account(s)")
 
     def test_responsible_party_timestamps(self, session):
@@ -589,14 +644,14 @@ class TestResponsiblePartyModel:
         rp = ResponsibleParty(
             account_id=account.account_id,
             user_id=user.user_id,
-            responsible_party_type='admin'
+            responsible_party_type="admin",
         )
 
         session.add(rp)
         session.flush()
 
-        assert hasattr(rp, 'creation_time')
-        assert hasattr(rp, 'modified_time')
+        assert hasattr(rp, "creation_time")
+        assert hasattr(rp, "modified_time")
         assert rp.creation_time is not None
         print(f"✅ ResponsibleParty has timestamps: created={rp.creation_time}")
 
@@ -606,6 +661,7 @@ class TestResponsiblePartyModel:
 # ============================================================================
 # Integration Tests - Cross-Model Queries
 # ============================================================================
+
 
 class TestNewModelsIntegration:
     """Test queries that span multiple new models."""
@@ -620,7 +676,9 @@ class TestNewModelsIntegration:
         print(f"\n✅ Resource Type: {resource_type.resource_type}")
         print(f"   Factors: {len(resource_type.factors)}")
         for factor in resource_type.factors:
-            print(f"     - {factor.factor_name}: {factor.value} (active={factor.is_active})")
+            print(
+                f"     - {factor.factor_name}: {factor.value} (active={factor.is_active})"
+            )
 
         print(f"   Formulas: {len(resource_type.formulas)}")
         for formula in resource_type.formulas:

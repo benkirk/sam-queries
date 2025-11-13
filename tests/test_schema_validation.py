@@ -10,14 +10,8 @@ schema drift early.
 """
 
 import pytest
-from sqlalchemy import inspect, MetaData, text
-from sqlalchemy.types import (
-    Integer, String, Float, Boolean, DateTime, Date,
-    Text, BigInteger, Numeric, TIMESTAMP
-)
-
 from sam.base import Base
-
+from sqlalchemy import text
 
 # ============================================================================
 # Type Mapping - SQLAlchemy types to MySQL types
@@ -26,16 +20,16 @@ from sam.base import Base
 # Maps SQLAlchemy column types to acceptable MySQL types
 # This accounts for SQLAlchemy's automatic type mapping
 TYPE_MAPPINGS = {
-    'Integer': ['INT', 'INTEGER', 'TINYINT', 'SMALLINT', 'MEDIUMINT', 'BIGINT'],
-    'BigInteger': ['BIGINT'],
-    'String': ['VARCHAR', 'CHAR'],
-    'Text': ['TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'TINYTEXT'],
-    'Float': ['FLOAT', 'DOUBLE'],  # SQLAlchemy Float → MySQL DOUBLE
-    'Numeric': ['DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE'],
-    'Boolean': ['BIT', 'TINYINT'],  # SQLAlchemy Boolean → MySQL BIT(1) or TINYINT(1)
-    'DateTime': ['DATETIME', 'TIMESTAMP'],  # Both are acceptable
-    'Date': ['DATE'],
-    'TIMESTAMP': ['TIMESTAMP', 'DATETIME'],
+    "Integer": ["INT", "INTEGER", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT"],
+    "BigInteger": ["BIGINT"],
+    "String": ["VARCHAR", "CHAR"],
+    "Text": ["TEXT", "MEDIUMTEXT", "LONGTEXT", "TINYTEXT"],
+    "Float": ["FLOAT", "DOUBLE"],  # SQLAlchemy Float → MySQL DOUBLE
+    "Numeric": ["DECIMAL", "NUMERIC", "FLOAT", "DOUBLE"],
+    "Boolean": ["BIT", "TINYINT"],  # SQLAlchemy Boolean → MySQL BIT(1) or TINYINT(1)
+    "DateTime": ["DATETIME", "TIMESTAMP"],  # Both are acceptable
+    "Date": ["DATE"],
+    "TIMESTAMP": ["TIMESTAMP", "DATETIME"],
 }
 
 
@@ -43,13 +37,16 @@ TYPE_MAPPINGS = {
 # Helper Functions
 # ============================================================================
 
+
 def get_db_columns(session, table_name):
     """
     Get column information from database INFORMATION_SCHEMA.
 
     Returns dict: {column_name: {'type': 'VARCHAR(255)', 'nullable': True, ...}}
     """
-    result = session.execute(text("""
+    result = session.execute(
+        text(
+            """
         SELECT
             COLUMN_NAME,
             COLUMN_TYPE,
@@ -59,27 +56,35 @@ def get_db_columns(session, table_name):
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = :table_name
-    """), {'table_name': table_name})
+    """
+        ),
+        {"table_name": table_name},
+    )
 
     columns = {}
     for row in result:
         columns[row[0]] = {
-            'type': row[1],
-            'nullable': row[2] == 'YES',
-            'key': row[3],
-            'extra': row[4]
+            "type": row[1],
+            "nullable": row[2] == "YES",
+            "key": row[3],
+            "extra": row[4],
         }
     return columns
 
 
 def get_table_type(session, table_name):
     """Check if table is a TABLE or VIEW."""
-    result = session.execute(text("""
+    result = session.execute(
+        text(
+            """
         SELECT TABLE_TYPE
         FROM INFORMATION_SCHEMA.TABLES
         WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = :table_name
-    """), {'table_name': table_name})
+    """
+        ),
+        {"table_name": table_name},
+    )
     row = result.fetchone()
     return row[0] if row else None
 
@@ -95,10 +100,10 @@ def normalize_type(db_type):
         'BIT(1)' → 'BIT'
     """
     # Remove everything in parentheses and after
-    base_type = db_type.split('(')[0].upper()
+    base_type = db_type.split("(")[0].upper()
 
     # Handle unsigned/signed
-    base_type = base_type.replace(' UNSIGNED', '').replace(' SIGNED', '')
+    base_type = base_type.replace(" UNSIGNED", "").replace(" SIGNED", "")
 
     return base_type.strip()
 
@@ -109,8 +114,8 @@ def get_orm_type_name(column):
     type_name = type(col_type).__name__
 
     # Handle special cases
-    if hasattr(col_type, 'length') and type_name == 'String':
-        return 'String'
+    if hasattr(col_type, "length") and type_name == "String":
+        return "String"
 
     return type_name
 
@@ -119,21 +124,22 @@ def get_orm_type_name(column):
 # Schema Validation Tests
 # ============================================================================
 
+
 class TestSchemaAlignment:
     """Validate ORM schemas match database tables."""
 
-    @pytest.fixture(scope='class')
+    @pytest.fixture(scope="class")
     def all_mappers(self):
         """Get all ORM mappers."""
         return list(Base.registry.mappers)
 
-    @pytest.fixture(scope='class')
+    @pytest.fixture(scope="class")
     def table_models(self, all_mappers):
         """Get only table models (exclude views)."""
         models = []
         for mapper in all_mappers:
             # Skip models that are views
-            if mapper.persist_selectable.info.get('is_view', False):
+            if mapper.persist_selectable.info.get("is_view", False):
                 continue
             models.append(mapper)
         return models
@@ -149,9 +155,10 @@ class TestSchemaAlignment:
             if table_type is None:
                 missing_tables.append(table_name)
 
-        assert not missing_tables, (
-            f"ORM models reference tables that don't exist in database:\n" +
-            "\n".join(f"  - {t}" for t in missing_tables)
+        assert (
+            not missing_tables
+        ), "ORM models reference tables that don't exist in database:\n" + "\n".join(
+            f"  - {t}" for t in missing_tables
         )
 
         print(f"✅ All {len(table_models)} ORM tables exist in database")
@@ -174,12 +181,12 @@ class TestSchemaAlignment:
                 mismatches.append(f"{table_name}: ORM has {missing} but DB doesn't")
 
         assert not mismatches, (
-            "ORM columns missing from database:\n" +
-            "\n".join(f"  {m}" for m in mismatches) +
-            "\n\nThese columns exist in the ORM but not in the actual database!"
+            "ORM columns missing from database:\n"
+            + "\n".join(f"  {m}" for m in mismatches)
+            + "\n\nThese columns exist in the ORM but not in the actual database!"
         )
 
-        print(f"✅ All ORM columns exist in database")
+        print("✅ All ORM columns exist in database")
 
     def test_database_columns_in_orm(self, session, table_models):
         """
@@ -232,7 +239,7 @@ class TestSchemaAlignment:
                     continue  # Skip - caught by previous test
 
                 orm_type = get_orm_type_name(col)
-                db_type = db_columns[col.name]['type']
+                db_type = db_columns[col.name]["type"]
                 db_type_normalized = normalize_type(db_type)
 
                 # Check if the types are compatible
@@ -241,7 +248,11 @@ class TestSchemaAlignment:
                 if acceptable_types and db_type_normalized not in acceptable_types:
                     # Check if it's a known/acceptable mismatch
                     # For example, some String fields might be TEXT
-                    if orm_type == 'String' and db_type_normalized in ['TEXT', 'MEDIUMTEXT', 'LONGTEXT']:
+                    if orm_type == "String" and db_type_normalized in [
+                        "TEXT",
+                        "MEDIUMTEXT",
+                        "LONGTEXT",
+                    ]:
                         continue  # This is fine
 
                     mismatches.append(
@@ -249,7 +260,9 @@ class TestSchemaAlignment:
                     )
 
         # Filter out known acceptable mismatches
-        significant_mismatches = [m for m in mismatches if not self._is_acceptable_mismatch(m)]
+        significant_mismatches = [
+            m for m in mismatches if not self._is_acceptable_mismatch(m)
+        ]
 
         if significant_mismatches:
             print("\n⚠️  Type mismatches found:")
@@ -258,16 +271,16 @@ class TestSchemaAlignment:
             if len(significant_mismatches) > 20:
                 print(f"  ... and {len(significant_mismatches) - 20} more")
         else:
-            print(f"✅ All column types match (within acceptable mappings)")
+            print("✅ All column types match (within acceptable mappings)")
 
     def _is_acceptable_mismatch(self, mismatch_str):
         """Check if a type mismatch is acceptable/expected."""
         # These are known acceptable mismatches that don't affect functionality
         acceptable = [
-            'ORM=String → DB=CHAR',  # String can map to CHAR or VARCHAR
-            'ORM=Integer → DB=TINYINT',  # Both are integers
-            'ORM=Integer → DB=SMALLINT',
-            'ORM=Integer → DB=MEDIUMINT',
+            "ORM=String → DB=CHAR",  # String can map to CHAR or VARCHAR
+            "ORM=Integer → DB=TINYINT",  # Both are integers
+            "ORM=Integer → DB=SMALLINT",
+            "ORM=Integer → DB=MEDIUMINT",
         ]
 
         for pattern in acceptable:
@@ -284,23 +297,22 @@ class TestSchemaAlignment:
             table_name = mapper.persist_selectable.name
 
             # Get ORM primary keys
-            orm_pks = {col.name for col in mapper.persist_selectable.primary_key.columns}
+            orm_pks = {
+                col.name for col in mapper.persist_selectable.primary_key.columns
+            }
 
             # Get database primary keys
             db_columns = get_db_columns(session, table_name)
-            db_pks = {name for name, info in db_columns.items() if 'PRI' in info['key']}
+            db_pks = {name for name, info in db_columns.items() if "PRI" in info["key"]}
 
             if orm_pks != db_pks:
-                mismatches.append(
-                    f"{table_name}: ORM PKs={orm_pks} vs DB PKs={db_pks}"
-                )
+                mismatches.append(f"{table_name}: ORM PKs={orm_pks} vs DB PKs={db_pks}")
 
-        assert not mismatches, (
-            "Primary key mismatches:\n" +
-            "\n".join(f"  {m}" for m in mismatches)
+        assert not mismatches, "Primary key mismatches:\n" + "\n".join(
+            f"  {m}" for m in mismatches
         )
 
-        print(f"✅ All primary keys match")
+        print("✅ All primary keys match")
 
     def test_foreign_keys_exist(self, session, table_models):
         """
@@ -318,17 +330,24 @@ class TestSchemaAlignment:
                 fk_column = fk.parent.name
 
                 # Query database to check if FK constraint exists
-                result = session.execute(text("""
+                result = session.execute(
+                    text(
+                        """
                     SELECT CONSTRAINT_NAME
                     FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
                     WHERE TABLE_SCHEMA = DATABASE()
                     AND TABLE_NAME = :table_name
                     AND COLUMN_NAME = :fk_column
                     AND REFERENCED_TABLE_NAME IS NOT NULL
-                """), {'table_name': table_name, 'fk_column': fk_column})
+                """
+                    ),
+                    {"table_name": table_name, "fk_column": fk_column},
+                )
 
                 if not result.fetchone():
-                    warnings.append(f"{table_name}.{fk_column} (ORM FK, no DB constraint)")
+                    warnings.append(
+                        f"{table_name}.{fk_column} (ORM FK, no DB constraint)"
+                    )
 
         if warnings:
             print(f"\n⚠️  {len(warnings)} foreign keys in ORM but no DB constraint:")
@@ -345,6 +364,7 @@ class TestSchemaAlignment:
 # Model Coverage Tests
 # ============================================================================
 
+
 class TestModelCoverage:
     """Test that all database tables have ORM models."""
 
@@ -355,15 +375,21 @@ class TestModelCoverage:
         This is informational - some tables intentionally don't have models.
         """
         # Get all ORM table names
-        orm_tables = {mapper.persist_selectable.name for mapper in Base.registry.mappers}
+        orm_tables = {
+            mapper.persist_selectable.name for mapper in Base.registry.mappers
+        }
 
         # Get all database tables (exclude views)
-        result = session.execute(text("""
+        result = session.execute(
+            text(
+                """
             SELECT TABLE_NAME
             FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_SCHEMA = DATABASE()
             AND TABLE_TYPE = 'BASE TABLE'
-        """))
+        """
+            )
+        )
 
         db_tables = {row[0] for row in result}
 
@@ -372,23 +398,25 @@ class TestModelCoverage:
 
         # Known tables that don't need models
         known_skip = {
-            'schema_version',  # Flyway migration metadata
-            'tables_dictionary',  # Database documentation
-            'EXPORT_TABLE',  # Temporary export table
-            'TIME_DIM',  # Data warehouse dimension
-            'stage_hpc_job',  # Staging table
-            'temp_joey_expired_project',  # Temporary table
+            "schema_version",  # Flyway migration metadata
+            "tables_dictionary",  # Database documentation
+            "EXPORT_TABLE",  # Temporary export table
+            "TIME_DIM",  # Data warehouse dimension
+            "stage_hpc_job",  # Staging table
+            "temp_joey_expired_project",  # Temporary table
         }
 
         unexpected_missing = missing_models - known_skip
 
-        print(f"\n📊 Database Coverage:")
+        print("\n📊 Database Coverage:")
         print(f"  ORM Models: {len(orm_tables)}")
         print(f"  Database Tables: {len(db_tables)}")
-        print(f"  Coverage: {len(orm_tables)}/{len(db_tables)} ({len(orm_tables)*100//len(db_tables)}%)")
+        print(
+            f"  Coverage: {len(orm_tables)}/{len(db_tables)} ({len(orm_tables)*100//len(db_tables)}%)"
+        )
 
         if missing_models:
-            print(f"\n  Tables without ORM models:")
+            print("\n  Tables without ORM models:")
             for table in sorted(missing_models):
                 status = "⚠️ " if table in unexpected_missing else "✓ "
                 print(f"    {status}{table}")
@@ -397,7 +425,7 @@ class TestModelCoverage:
             print(f"\n⚠️  Unexpected missing models: {unexpected_missing}")
             print("  Consider creating ORM models for these tables.")
         else:
-            print(f"\n✅ All expected tables have ORM models")
+            print("\n✅ All expected tables have ORM models")
 
     def test_all_models_have_tables(self, session):
         """
@@ -411,7 +439,7 @@ class TestModelCoverage:
             table_name = mapper.persist_selectable.name
 
             # Skip views
-            if mapper.persist_selectable.info.get('is_view', False):
+            if mapper.persist_selectable.info.get("is_view", False):
                 continue
 
             # Check if table exists
@@ -420,9 +448,9 @@ class TestModelCoverage:
                 missing_tables.append(f"{mapper.class_.__name__} → {table_name}")
 
         assert not missing_tables, (
-            "ORM models reference tables that don't exist:\n" +
-            "\n".join(f"  {t}" for t in missing_tables) +
-            "\n\nThese models exist but their tables don't!"
+            "ORM models reference tables that don't exist:\n"
+            + "\n".join(f"  {t}" for t in missing_tables)
+            + "\n\nThese models exist but their tables don't!"
         )
 
         print("✅ All ORM models have corresponding database tables")
@@ -432,6 +460,7 @@ class TestModelCoverage:
 # Critical Schema Validation (Quick Smoke Tests)
 # ============================================================================
 
+
 class TestCriticalSchemas:
     """
     Quick smoke tests for critical models.
@@ -440,23 +469,28 @@ class TestCriticalSchemas:
     Run these first in CI/CD for fast feedback.
     """
 
-    @pytest.mark.parametrize("model_name,table_name,expected_pk", [
-        ('User', 'users', ['user_id']),
-        ('Project', 'project', ['project_id']),
-        ('Account', 'account', ['account_id']),
-        ('Allocation', 'allocation', ['allocation_id']),
-        ('Resource', 'resources', ['resource_id']),
-        ('Factor', 'factor', ['factor_id']),
-        ('Formula', 'formula', ['formula_id']),
-        ('ProjectCode', 'project_code', ['facility_id', 'mnemonic_code_id']),
-    ])
+    @pytest.mark.parametrize(
+        "model_name,table_name,expected_pk",
+        [
+            ("User", "users", ["user_id"]),
+            ("Project", "project", ["project_id"]),
+            ("Account", "account", ["account_id"]),
+            ("Allocation", "allocation", ["allocation_id"]),
+            ("Resource", "resources", ["resource_id"]),
+            ("Factor", "factor", ["factor_id"]),
+            ("Formula", "formula", ["formula_id"]),
+            ("ProjectCode", "project_code", ["facility_id", "mnemonic_code_id"]),
+        ],
+    )
     def test_critical_models_have_correct_primary_keys(
         self, session, model_name, table_name, expected_pk
     ):
         """Test that critical models have correct primary keys."""
         # Get database PKs
         db_columns = get_db_columns(session, table_name)
-        db_pks = sorted([name for name, info in db_columns.items() if 'PRI' in info['key']])
+        db_pks = sorted(
+            [name for name, info in db_columns.items() if "PRI" in info["key"]]
+        )
 
         assert db_pks == sorted(expected_pk), (
             f"{model_name} primary key mismatch: "
@@ -481,9 +515,8 @@ class TestCriticalSchemas:
             else:
                 table_names[table_name] = model_name
 
-        assert not duplicates, (
-            "Multiple models map to same table:\n" +
-            "\n".join(f"  {d}" for d in duplicates)
+        assert not duplicates, "Multiple models map to same table:\n" + "\n".join(
+            f"  {d}" for d in duplicates
         )
 
         print(f"✅ No duplicate table names ({len(table_names)} unique tables)")
@@ -495,11 +528,11 @@ class TestCriticalSchemas:
         This model was completely wrong before - had 5 columns instead of 2.
         This test ensures it stays correct.
         """
-        table_name = 'xras_resource_repository_key_resource'
+        table_name = "xras_resource_repository_key_resource"
         db_columns = get_db_columns(session, table_name)
 
         # Should have exactly these columns
-        expected_columns = {'resource_repository_key', 'resource_id'}
+        expected_columns = {"resource_repository_key", "resource_id"}
         actual_columns = set(db_columns.keys())
 
         assert actual_columns == expected_columns, (
@@ -511,8 +544,8 @@ class TestCriticalSchemas:
         )
 
         # Verify resource_repository_key is PK
-        assert 'PRI' in db_columns['resource_repository_key']['key'], (
-            "resource_repository_key should be primary key"
-        )
+        assert (
+            "PRI" in db_columns["resource_repository_key"]["key"]
+        ), "resource_repository_key should be primary key"
 
         print("✅ XrasResourceRepositoryKeyResource schema is correct")

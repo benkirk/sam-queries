@@ -5,14 +5,20 @@ Tests querying existing data from all major ORM models.
 This is a read-only test suite that doesn't modify the database.
 """
 
-import pytest
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
-import sam
+import pytest
 from sam import (
-    User, Project, Account, Allocation, Resource, Organization,
-    Institution, Machine, Queue, Contract, AreaOfInterest,
-    EmailAddress, Phone, AccountUser, AllocationType
+    Account,
+    AccountUser,
+    Allocation,
+    Institution,
+    Machine,
+    Organization,
+    Project,
+    Queue,
+    Resource,
+    User,
 )
 
 
@@ -58,7 +64,11 @@ class TestBasicRead:
 
     def test_project_with_lead(self, session):
         """Test project with user relationship (lead)."""
-        project = session.query(Project).filter(Project.project_lead_user_id.isnot(None)).first()
+        project = (
+            session.query(Project)
+            .filter(Project.project_lead_user_id.isnot(None))
+            .first()
+        )
         assert project is not None
         assert project.lead is not None
         assert isinstance(project.lead, User)
@@ -84,7 +94,9 @@ class TestBasicRead:
         assert account is not None
         assert account.resource is not None
         assert isinstance(account.resource, Resource)
-        print(f"✅ Account {account.account_id} → Resource {account.resource.resource_name}")
+        print(
+            f"✅ Account {account.account_id} → Resource {account.resource.resource_name}"
+        )
 
     def test_allocation_count(self, session):
         """Test that we can query allocations."""
@@ -98,7 +110,9 @@ class TestBasicRead:
         assert allocation is not None
         assert allocation.account is not None
         assert isinstance(allocation.account, Account)
-        print(f"✅ Allocation {allocation.allocation_id} → Account {allocation.account.account_id}")
+        print(
+            f"✅ Allocation {allocation.allocation_id} → Account {allocation.account.account_id}"
+        )
 
     def test_resource_count(self, session):
         """Test that we can query resources."""
@@ -187,7 +201,7 @@ class TestComplexQueries:
             .filter(
                 Allocation.deleted == False,
                 Allocation.start_date <= now,
-                (Allocation.end_date.is_(None) | (Allocation.end_date >= now))
+                (Allocation.end_date.is_(None) | (Allocation.end_date >= now)),
             )
             .count()
         )
@@ -247,26 +261,38 @@ class TestRelationships:
         assert account_user.account is not None
         assert isinstance(account_user.account, Account)
 
-        print(f"✅ AccountUser relationships work: User={account_user.user.username}, Account={account_user.account.account_id}")
+        print(
+            f"✅ AccountUser relationships work: User={account_user.user.username}, Account={account_user.account.account_id}"
+        )
 
     def test_project_hierarchy(self, session):
         """Test project parent-child relationships."""
-        child_project = session.query(Project).filter(Project.parent_id.isnot(None)).first()
+        child_project = (
+            session.query(Project).filter(Project.parent_id.isnot(None)).first()
+        )
         if not child_project:
             print("ℹ️  No child projects found (skipping hierarchy test)")
             return
 
         assert child_project.parent is not None
         assert isinstance(child_project.parent, Project)
-        print(f"✅ Project hierarchy works: {child_project.projcode} → parent: {child_project.parent.projcode}")
+        print(
+            f"✅ Project hierarchy works: {child_project.projcode} → parent: {child_project.parent.projcode}"
+        )
 
     def test_allocation_parent_child(self, session):
         """Test allocation parent-child relationships."""
-        child_allocation = session.query(Allocation).filter(Allocation.parent_allocation_id.isnot(None)).first()
+        child_allocation = (
+            session.query(Allocation)
+            .filter(Allocation.parent_allocation_id.isnot(None))
+            .first()
+        )
         if not child_allocation:
             print("ℹ️  No child allocations found (skipping hierarchy test)")
             return
 
         assert child_allocation.parent is not None
         assert isinstance(child_allocation.parent, Allocation)
-        print(f"✅ Allocation hierarchy works: {child_allocation.allocation_id} → parent: {child_allocation.parent.allocation_id}")
+        print(
+            f"✅ Allocation hierarchy works: {child_allocation.allocation_id} → parent: {child_allocation.parent.allocation_id}"
+        )

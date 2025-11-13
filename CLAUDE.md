@@ -316,7 +316,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## Key Contacts & Context
 
-- **User**: Ben Kirk (benkirk@ucar.edu)
+- **User**: Ben Kirk (<benkirk@ucar.edu>)
 - **Organization**: CISL USS (University Services Section)
 - **Project**: SCSG0001 (CSG systems project)
 - **Facilities**: UNIV (university), WNA (Wyoming-NCAR Alliance)

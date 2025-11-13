@@ -5,14 +5,19 @@ Tests Create, Update, and Delete operations on ORM models.
 All tests use transactions that rollback to avoid polluting the database.
 """
 
-import pytest
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 
+import pytest
 from sam import (
-    User, Project, Account, Allocation, Resource, Organization,
-    Institution, EmailAddress, Phone, PhoneType, AccountUser,
-    AllocationType, LoginType, AcademicStatus, AreaOfInterest,
-    ResourceType, ChargeAdjustment, ChargeAdjustmentType
+    Account,
+    AccountUser,
+    Allocation,
+    ChargeAdjustment,
+    ChargeAdjustmentType,
+    EmailAddress,
+    Phone,
+    PhoneType,
+    User,
 )
 
 
@@ -28,10 +33,10 @@ class TestCreateOperations:
 
         # Create new email
         new_email = EmailAddress(
-            email_address=f'test_{datetime.now().timestamp()}@example.com',
+            email_address=f"test_{datetime.now().timestamp()}@example.com",
             user_id=user.user_id,
             is_primary=False,
-            active=True
+            active=True,
         )
 
         session.add(new_email)
@@ -39,7 +44,9 @@ class TestCreateOperations:
 
         assert new_email.email_address_id is not None
         assert new_email.user_id == user.user_id
-        print(f"✅ Created email: {new_email.email_address} (ID: {new_email.email_address_id})")
+        print(
+            f"✅ Created email: {new_email.email_address} (ID: {new_email.email_address_id})"
+        )
 
         # Verify relationship
         assert new_email.user == user
@@ -60,19 +67,21 @@ class TestCreateOperations:
         new_phone = Phone(
             user_id=user.user_id,
             ext_phone_type_id=phone_type.ext_phone_type_id,
-            phone_number='555-1234'
+            phone_number="555-1234",
         )
 
         session.add(new_phone)
         session.flush()
 
         assert new_phone.ext_phone_id is not None
-        print(f"✅ Created phone: {new_phone.phone_number} (ID: {new_phone.ext_phone_id})")
+        print(
+            f"✅ Created phone: {new_phone.phone_number} (ID: {new_phone.ext_phone_id})"
+        )
 
         # Verify relationships
         assert new_phone.user == user
         assert new_phone.phone_type == phone_type
-        print(f"✅ Phone relationships work")
+        print("✅ Phone relationships work")
 
         session.rollback()
 
@@ -88,10 +97,10 @@ class TestCreateOperations:
         new_allocation = Allocation(
             account_id=account.account_id,
             amount=10000.00,
-            description='Test allocation',
+            description="Test allocation",
             start_date=now,
             end_date=now + timedelta(days=365),
-            deleted=False
+            deleted=False,
         )
 
         session.add(new_allocation)
@@ -100,11 +109,13 @@ class TestCreateOperations:
         assert new_allocation.allocation_id is not None
         assert new_allocation.account_id == account.account_id
         assert float(new_allocation.amount) == 10000.00
-        print(f"✅ Created allocation: ID={new_allocation.allocation_id}, amount={new_allocation.amount}")
+        print(
+            f"✅ Created allocation: ID={new_allocation.allocation_id}, amount={new_allocation.amount}"
+        )
 
         # Verify relationship
         assert new_allocation.account == account
-        print(f"✅ Allocation→Account relationship works")
+        print("✅ Allocation→Account relationship works")
 
         session.rollback()
 
@@ -112,7 +123,11 @@ class TestCreateOperations:
         """Test creating a new account-user association."""
         # Get existing account and user
         account = session.query(Account).first()
-        user = session.query(User).filter(User.user_id != account.project.project_lead_user_id).first()
+        user = (
+            session.query(User)
+            .filter(User.user_id != account.project.project_lead_user_id)
+            .first()
+        )
 
         if not account or not user:
             pytest.skip("Need account and user in database")
@@ -124,7 +139,7 @@ class TestCreateOperations:
             user_id=user.user_id,
             start_date=now,
             end_date=None,  # No end date = active
-            creation_time=now  # Required field without server default
+            creation_time=now,  # Required field without server default
         )
 
         session.add(new_account_user)
@@ -136,7 +151,9 @@ class TestCreateOperations:
         # Verify relationships
         assert new_account_user.account == account
         assert new_account_user.user == user
-        print(f"✅ AccountUser relationships work: {user.username} → Account {account.account_id}")
+        print(
+            f"✅ AccountUser relationships work: {user.username} → Account {account.account_id}"
+        )
 
         session.rollback()
 
@@ -157,7 +174,7 @@ class TestCreateOperations:
             charge_adjustment_type_id=adj_type.charge_adjustment_type_id,
             amount=-100.00,  # Credit
             adjustment_date=datetime.now(UTC),
-            comment='Test adjustment'
+            comment="Test adjustment",
         )
 
         session.add(new_adjustment)
@@ -165,7 +182,9 @@ class TestCreateOperations:
 
         assert new_adjustment.charge_adjustment_id is not None
         assert float(new_adjustment.amount) == -100.00
-        print(f"✅ Created adjustment: ID={new_adjustment.charge_adjustment_id}, amount={new_adjustment.amount}")
+        print(
+            f"✅ Created adjustment: ID={new_adjustment.charge_adjustment_id}, amount={new_adjustment.amount}"
+        )
 
         session.rollback()
 
@@ -187,15 +206,21 @@ class TestUpdateOperations:
         session.flush()
 
         # Verify update
-        updated_email = session.query(EmailAddress).filter_by(email_address_id=original_id).first()
+        updated_email = (
+            session.query(EmailAddress).filter_by(email_address_id=original_id).first()
+        )
         assert updated_email.active == False
-        print(f"✅ Updated email {email.email_address}: active {original_active} → {updated_email.active}")
+        print(
+            f"✅ Updated email {email.email_address}: active {original_active} → {updated_email.active}"
+        )
 
         session.rollback()
 
     def test_update_allocation_amount(self, session):
         """Test updating allocation amount."""
-        allocation = session.query(Allocation).filter(Allocation.deleted == False).first()
+        allocation = (
+            session.query(Allocation).filter(Allocation.deleted == False).first()
+        )
         if not allocation:
             pytest.skip("No allocations in database")
 
@@ -208,15 +233,21 @@ class TestUpdateOperations:
         session.flush()
 
         # Verify update
-        updated_allocation = session.query(Allocation).filter_by(allocation_id=original_id).first()
+        updated_allocation = (
+            session.query(Allocation).filter_by(allocation_id=original_id).first()
+        )
         assert float(updated_allocation.amount) == new_amount
-        print(f"✅ Updated allocation {original_id}: amount {original_amount} → {new_amount}")
+        print(
+            f"✅ Updated allocation {original_id}: amount {original_amount} → {new_amount}"
+        )
 
         session.rollback()
 
     def test_update_allocation_dates(self, session):
         """Test updating allocation start/end dates."""
-        allocation = session.query(Allocation).filter(Allocation.deleted == False).first()
+        allocation = (
+            session.query(Allocation).filter(Allocation.deleted == False).first()
+        )
         if not allocation:
             pytest.skip("No allocations in database")
 
@@ -233,7 +264,7 @@ class TestUpdateOperations:
         # Verify updates
         assert allocation.start_date != original_start
         assert allocation.end_date != original_end
-        print(f"✅ Updated allocation dates")
+        print("✅ Updated allocation dates")
 
         session.rollback()
 
@@ -252,16 +283,16 @@ class TestUpdateOperations:
 
         # Verify update
         assert user.nickname == new_nickname
-        print(f"✅ Updated user {user.username}: nickname '{original_nickname}' → '{new_nickname}'")
+        print(
+            f"✅ Updated user {user.username}: nickname '{original_nickname}' → '{new_nickname}'"
+        )
 
         session.rollback()
 
     def test_update_account_user_end_date(self, session):
         """Test updating account_user end date (deactivating membership)."""
         account_user = (
-            session.query(AccountUser)
-            .filter(AccountUser.end_date.is_(None))
-            .first()
+            session.query(AccountUser).filter(AccountUser.end_date.is_(None)).first()
         )
         if not account_user:
             pytest.skip("No active account_user records found")
@@ -276,7 +307,9 @@ class TestUpdateOperations:
         # Verify update
         assert account_user.end_date is not None
         assert account_user.end_date == new_end_date
-        print(f"✅ Updated AccountUser {account_user.account_user_id}: end_date None → {new_end_date}")
+        print(
+            f"✅ Updated AccountUser {account_user.account_user_id}: end_date None → {new_end_date}"
+        )
 
         session.rollback()
 
@@ -286,7 +319,9 @@ class TestDeleteOperations:
 
     def test_soft_delete_allocation(self, session):
         """Test soft-deleting an allocation."""
-        allocation = session.query(Allocation).filter(Allocation.deleted == False).first()
+        allocation = (
+            session.query(Allocation).filter(Allocation.deleted == False).first()
+        )
         if not allocation:
             pytest.skip("No non-deleted allocations in database")
 
@@ -299,11 +334,15 @@ class TestDeleteOperations:
         session.flush()
 
         # Verify soft delete
-        deleted_allocation = session.query(Allocation).filter_by(allocation_id=original_id).first()
+        deleted_allocation = (
+            session.query(Allocation).filter_by(allocation_id=original_id).first()
+        )
         assert deleted_allocation is not None  # Still exists in DB
         assert deleted_allocation.deleted == True
         assert deleted_allocation.deletion_time is not None
-        print(f"✅ Soft-deleted allocation {original_id}: deleted {original_deleted} → {deleted_allocation.deleted}")
+        print(
+            f"✅ Soft-deleted allocation {original_id}: deleted {original_deleted} → {deleted_allocation.deleted}"
+        )
 
         session.rollback()
 
@@ -315,10 +354,10 @@ class TestDeleteOperations:
             pytest.skip("No users in database")
 
         test_email = EmailAddress(
-            email_address=f'delete_test_{datetime.now().timestamp()}@example.com',
+            email_address=f"delete_test_{datetime.now().timestamp()}@example.com",
             user_id=user.user_id,
             is_primary=False,
-            active=True
+            active=True,
         )
 
         session.add(test_email)
@@ -326,14 +365,19 @@ class TestDeleteOperations:
         email_id = test_email.email_address_id
 
         # Verify it exists
-        assert session.query(EmailAddress).filter_by(email_address_id=email_id).first() is not None
+        assert (
+            session.query(EmailAddress).filter_by(email_address_id=email_id).first()
+            is not None
+        )
 
         # Hard delete
         session.delete(test_email)
         session.flush()
 
         # Verify it's gone
-        deleted_email = session.query(EmailAddress).filter_by(email_address_id=email_id).first()
+        deleted_email = (
+            session.query(EmailAddress).filter_by(email_address_id=email_id).first()
+        )
         assert deleted_email is None
         print(f"✅ Hard-deleted email {email_id}")
 
@@ -351,7 +395,7 @@ class TestDeleteOperations:
         test_phone = Phone(
             user_id=user.user_id,
             ext_phone_type_id=phone_type.ext_phone_type_id,
-            phone_number='555-DELETE'
+            phone_number="555-DELETE",
         )
 
         session.add(test_phone)
@@ -381,10 +425,10 @@ class TestTransactionBehavior:
 
         # Create email
         test_email = EmailAddress(
-            email_address=f'rollback_test_{datetime.now().timestamp()}@example.com',
+            email_address=f"rollback_test_{datetime.now().timestamp()}@example.com",
             user_id=user.user_id,
             is_primary=False,
-            active=True
+            active=True,
         )
 
         session.add(test_email)
@@ -396,13 +440,18 @@ class TestTransactionBehavior:
 
         # Verify it doesn't persist
         # Need a new session to check
-        from test_config import create_test_session_factory, create_test_engine
+        from test_config import create_test_engine, create_test_session_factory
+
         engine = create_test_engine()
         SessionFactory = create_test_session_factory(engine)
         check_session = SessionFactory()
 
         try:
-            rolled_back_email = check_session.query(EmailAddress).filter_by(email_address_id=email_id).first()
+            rolled_back_email = (
+                check_session.query(EmailAddress)
+                .filter_by(email_address_id=email_id)
+                .first()
+            )
             assert rolled_back_email is None
             print(f"✅ Rollback prevented persistence of email {email_id}")
         finally:
@@ -416,10 +465,10 @@ class TestTransactionBehavior:
 
         # Create email and flush
         test_email = EmailAddress(
-            email_address=f'flush_test_{datetime.now().timestamp()}@example.com',
+            email_address=f"flush_test_{datetime.now().timestamp()}@example.com",
             user_id=user.user_id,
             is_primary=False,
-            active=True
+            active=True,
         )
 
         session.add(test_email)
@@ -434,8 +483,12 @@ class TestTransactionBehavior:
         session.rollback()
 
         # Verify rollback worked
-        assert test_email.email_address_id is None or session.query(EmailAddress).filter_by(email_address_id=email_id).first() is None
-        print(f"✅ Flush+Rollback prevented persistence")
+        assert (
+            test_email.email_address_id is None
+            or session.query(EmailAddress).filter_by(email_address_id=email_id).first()
+            is None
+        )
+        print("✅ Flush+Rollback prevented persistence")
 
 
 class TestComplexCRUD:
@@ -444,7 +497,9 @@ class TestComplexCRUD:
     def test_create_allocation_with_parent(self, session):
         """Test creating child allocation with parent relationship."""
         # Get an existing allocation to use as parent
-        parent_allocation = session.query(Allocation).filter(Allocation.deleted == False).first()
+        parent_allocation = (
+            session.query(Allocation).filter(Allocation.deleted == False).first()
+        )
         if not parent_allocation:
             pytest.skip("No allocations in database")
 
@@ -454,10 +509,10 @@ class TestComplexCRUD:
             account_id=parent_allocation.account_id,
             parent_allocation_id=parent_allocation.allocation_id,
             amount=5000.00,
-            description='Child test allocation',
+            description="Child test allocation",
             start_date=now,
             end_date=now + timedelta(days=180),
-            deleted=False
+            deleted=False,
         )
 
         session.add(child_allocation)
@@ -466,7 +521,9 @@ class TestComplexCRUD:
         # Verify relationship
         assert child_allocation.parent == parent_allocation
         assert child_allocation in parent_allocation.children
-        print(f"✅ Created child allocation {child_allocation.allocation_id} under parent {parent_allocation.allocation_id}")
+        print(
+            f"✅ Created child allocation {child_allocation.allocation_id} under parent {parent_allocation.allocation_id}"
+        )
 
         session.rollback()
 
@@ -485,7 +542,9 @@ class TestComplexCRUD:
 
         # Modified time should update (if database has ON UPDATE trigger)
         # Note: This depends on database-level triggers
-        print(f"✅ User update completed (modified_time tracking depends on DB triggers)")
+        print(
+            "✅ User update completed (modified_time tracking depends on DB triggers)"
+        )
 
         session.rollback()
 
@@ -499,10 +558,10 @@ class TestComplexCRUD:
         timestamp = datetime.now().timestamp()
         emails = [
             EmailAddress(
-                email_address=f'bulk_{i}_{timestamp}@example.com',
+                email_address=f"bulk_{i}_{timestamp}@example.com",
                 user_id=user.user_id,
                 is_primary=False,
-                active=True
+                active=True,
             )
             for i in range(5)
         ]

@@ -1,18 +1,20 @@
-#-------------------------------------------------------------------------bh-
+# -------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
-#-------------------------------------------------------------------------eh-
+
+# -------------------------------------------------------------------------eh-
 
 
-#-------------------------------------------------------------------------bm-
-#----------------------------------------------------------------------------
+# -------------------------------------------------------------------------bm-
+# ----------------------------------------------------------------------------
 class Resource(Base, TimestampMixin):
     """Computing resources (HPC systems, storage, etc.)."""
-    __tablename__ = 'resources'
+
+    __tablename__ = "resources"
 
     __table_args__ = (
-        Index('ix_resources_type', 'resource_type_id'),
-        Index('ix_resources_name', 'resource_name'),
+        Index("ix_resources_type", "resource_type_id"),
+        Index("ix_resources_name", "resource_name"),
     )
 
     def __eq__(self, other):
@@ -23,14 +25,17 @@ class Resource(Base, TimestampMixin):
 
     def __hash__(self):
         """Hash based on resource_id for set/dict operations."""
-        return hash(self.resource_id) if self.resource_id is not None else hash(id(self))
+        return (
+            hash(self.resource_id) if self.resource_id is not None else hash(id(self))
+        )
 
     resource_id = Column(Integer, primary_key=True, autoincrement=True)
     resource_name = Column(String(40), nullable=False, unique=True)
-    resource_type_id = Column(Integer, ForeignKey('resource_type.resource_type_id'),
-                             nullable=False)
+    resource_type_id = Column(
+        Integer, ForeignKey("resource_type.resource_type_id"), nullable=False
+    )
     description = Column(String(255))
-    activity_type = Column(String(12), nullable=False, default='NONE')
+    activity_type = Column(String(12), nullable=False, default="NONE")
 
     needs_default_project = Column(Boolean, nullable=False, default=False)
     configurable = Column(Boolean, nullable=False, default=True)
@@ -39,32 +44,56 @@ class Resource(Base, TimestampMixin):
     commission_date = Column(DateTime)
     decommission_date = Column(DateTime)
 
-    prim_sys_admin_user_id = Column(Integer, ForeignKey('users.user_id'))
-    prim_responsible_org_id = Column(Integer, ForeignKey('organization.organization_id'))
+    prim_sys_admin_user_id = Column(Integer, ForeignKey("users.user_id"))
+    prim_responsible_org_id = Column(
+        Integer, ForeignKey("organization.organization_id")
+    )
 
     default_first_threshold = Column(Integer)
     default_second_threshold = Column(Integer)
     default_home_dir_base = Column(String(255))
-    default_resource_shell_id = Column(Integer, ForeignKey('resource_shell.resource_shell_id'))
+    default_resource_shell_id = Column(
+        Integer, ForeignKey("resource_shell.resource_shell_id")
+    )
 
-    access_branch_resources = relationship('AccessBranchResource', back_populates='resource')
-    accounts = relationship('Account', back_populates='resource')
-    default_projects = relationship('DefaultProject', back_populates='resource')
-    default_shell = relationship('ResourceShell', foreign_keys=[default_resource_shell_id])
-    facility_resources = relationship('FacilityResource', back_populates='resource')
-    machines = relationship('Machine', back_populates='resource')
-    prim_responsible_org = relationship('Organization', foreign_keys=[prim_responsible_org_id], back_populates='primary_responsible_resources')
-    prim_sys_admin = relationship('User', foreign_keys=[prim_sys_admin_user_id], back_populates='administered_resources')
-    queues = relationship('Queue', back_populates='resource')
-    resource_type = relationship('ResourceType', back_populates='resources')
-    root_directories = relationship('DiskResourceRootDirectory', back_populates='resource')
-    shells = relationship('ResourceShell', back_populates='resource', foreign_keys='ResourceShell.resource_id')
-    user_homes = relationship('UserResourceHome', back_populates='resource')
+    access_branch_resources = relationship(
+        "AccessBranchResource", back_populates="resource"
+    )
+    accounts = relationship("Account", back_populates="resource")
+    default_projects = relationship("DefaultProject", back_populates="resource")
+    default_shell = relationship(
+        "ResourceShell", foreign_keys=[default_resource_shell_id]
+    )
+    facility_resources = relationship("FacilityResource", back_populates="resource")
+    machines = relationship("Machine", back_populates="resource")
+    prim_responsible_org = relationship(
+        "Organization",
+        foreign_keys=[prim_responsible_org_id],
+        back_populates="primary_responsible_resources",
+    )
+    prim_sys_admin = relationship(
+        "User",
+        foreign_keys=[prim_sys_admin_user_id],
+        back_populates="administered_resources",
+    )
+    queues = relationship("Queue", back_populates="resource")
+    resource_type = relationship("ResourceType", back_populates="resources")
+    root_directories = relationship(
+        "DiskResourceRootDirectory", back_populates="resource"
+    )
+    shells = relationship(
+        "ResourceShell",
+        back_populates="resource",
+        foreign_keys="ResourceShell.resource_id",
+    )
+    user_homes = relationship("UserResourceHome", back_populates="resource")
     # xras_hpc_amounts = relationship('XrasHpcAllocationAmount', back_populates='resource')  # REMOVED - XrasHpcAllocationAmountView is read-only
-    xras_resource_keys = relationship('XrasResourceRepositoryKeyResource', back_populates='resource')
+    xras_resource_keys = relationship(
+        "XrasResourceRepositoryKeyResource", back_populates="resource"
+    )
 
     @classmethod
-    def get_by_name(cls, session, resource_name: str) -> Optional['Resource']:
+    def get_by_name(cls, session, resource_name: str) -> Optional["Resource"]:
         """
         Get a resource by its name.
 
@@ -114,7 +143,7 @@ class Resource(Base, TimestampMixin):
         now = func.now()
         return and_(
             or_(cls.commission_date.is_(None), cls.commission_date <= now),
-            or_(cls.decommission_date.is_(None), cls.decommission_date > now)
+            or_(cls.decommission_date.is_(None), cls.decommission_date > now),
         )
 
     @hybrid_property
@@ -163,7 +192,7 @@ class Resource(Base, TimestampMixin):
         now = func.now()
         return and_(
             or_(cls.commission_date.is_(None), cls.commission_date <= now),
-            or_(cls.decommission_date.is_(None), cls.decommission_date > now)
+            or_(cls.decommission_date.is_(None), cls.decommission_date > now),
         )
 
     def __str__(self):
@@ -173,19 +202,20 @@ class Resource(Base, TimestampMixin):
         return f"<Resource(name='{self.resource_name}', type='{self.resource_type.resource_type if self.resource_type else None}')>"
 
 
-#----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 class ResourceType(Base, TimestampMixin, ActiveFlagMixin):
     """Types of resources (HPC, DISK, ARCHIVE, etc.)."""
-    __tablename__ = 'resource_type'
+
+    __tablename__ = "resource_type"
 
     resource_type_id = Column(Integer, primary_key=True, autoincrement=True)
     resource_type = Column(String(35), nullable=False, unique=True)
     description = Column(String(255))
     grace_period_days = Column(Integer)
 
-    resources = relationship('Resource', back_populates='resource_type')
-    factors = relationship('Factor', back_populates='resource_type')
-    formulas = relationship('Formula', back_populates='resource_type')
+    resources = relationship("Resource", back_populates="resource_type")
+    factors = relationship("Factor", back_populates="resource_type")
+    formulas = relationship("Formula", back_populates="resource_type")
 
     def __str__(self):
         return f"{self.resource_type}"
@@ -194,22 +224,23 @@ class ResourceType(Base, TimestampMixin, ActiveFlagMixin):
         return f"<ResourceType(type='{self.resource_type}')>"
 
 
-#----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 class ResourceShell(Base, TimestampMixin):
     """Available shells on resources."""
-    __tablename__ = 'resource_shell'
 
-    __table_args__ = (
-        Index('ix_resource_shell_resource', 'resource_id'),
-    )
+    __tablename__ = "resource_shell"
+
+    __table_args__ = (Index("ix_resource_shell_resource", "resource_id"),)
 
     resource_shell_id = Column(Integer, primary_key=True, autoincrement=True)
-    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    resource_id = Column(Integer, ForeignKey("resources.resource_id"), nullable=False)
     shell_name = Column(String(25), nullable=False)
     path = Column(String(1024), nullable=False)
 
-    resource = relationship('Resource', back_populates='shells', foreign_keys=[resource_id])
-    user_shells = relationship('UserResourceShell', back_populates='resource_shell')
+    resource = relationship(
+        "Resource", back_populates="shells", foreign_keys=[resource_id]
+    )
+    user_shells = relationship("UserResourceShell", back_populates="resource_shell")
 
     def __str__(self):
         return f"{self.shell_name}"
@@ -218,32 +249,40 @@ class ResourceShell(Base, TimestampMixin):
         return f"<ResourceShell(name='{self.shell_name}', path='{self.path}')>"
 
 
-#----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 class DiskResourceRootDirectory(Base):
     """Root directories for disk resources with charging exemption flags."""
-    __tablename__ = 'disk_resource_root_directory'
 
-    __table_args__ = (
-        Index('ix_disk_resource_root_resource', 'resource_id'),
-    )
+    __tablename__ = "disk_resource_root_directory"
+
+    __table_args__ = (Index("ix_disk_resource_root_resource", "resource_id"),)
 
     root_directory_id = Column(Integer, primary_key=True, autoincrement=True)
     root_directory = Column(String(64), nullable=False, unique=True)
     charging_exempt = Column(Boolean, nullable=False, default=False)
-    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
-    creation_time = Column(TIMESTAMP, nullable=False,
-                          server_default=text('CURRENT_TIMESTAMP'),
-                          onupdate=datetime.utcnow)
-    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
+    resource_id = Column(Integer, ForeignKey("resources.resource_id"), nullable=False)
+    creation_time = Column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=datetime.utcnow,
+    )
+    modified_time = Column(
+        TIMESTAMP,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
+    )
 
-    resource = relationship('Resource', back_populates='root_directories')
+    resource = relationship("Resource", back_populates="root_directories")
 
     def __str__(self):
         return f"{self.root_directory}"
 
     def __repr__(self):
-        return (f"<DiskResourceRootDirectory(path='{self.root_directory}', "
-                f"exempt={self.charging_exempt})>")
+        return (
+            f"<DiskResourceRootDirectory(path='{self.root_directory}', "
+            f"exempt={self.charging_exempt})>"
+        )
 
 
 # ============================================================================
@@ -251,4 +290,4 @@ class DiskResourceRootDirectory(Base):
 # ============================================================================
 
 
-#-------------------------------------------------------------------------em-
+# -------------------------------------------------------------------------em-

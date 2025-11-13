@@ -256,7 +256,7 @@ These schemas serialize the daily aggregated charge data:
 - No validation fields needed yet (API is GET-only)
 - Future: Add `load` support for POST/PUT/PATCH endpoints
 
-### 6. Backward Compatibility Not Required 
+### 6. Backward Compatibility Not Required
 - OK to change current return value structures.
 
 ---
@@ -290,7 +290,7 @@ These schemas serialize the daily aggregated charge data:
 
 ## Implementation Order
 
-1. **Phase 1** - Foundation (schemas/__init__.py, base setup)
+1. **Phase 1** - Foundation (schemas/**init**.py, base setup)
 2. **Phase 2** - Core schemas (User, Project)
 3. **Phase 6.1-6.2** - Refactor existing endpoints to use new schemas
 4. **Phase 7.2-7.3** - Test existing endpoints work with schemas
