@@ -88,7 +88,7 @@ class Resource(Base, TimestampMixin):
             True if resource is commissioned at the given date
         """
         if check_date is None:
-            check_date = datetime.utcnow()
+            check_date = datetime.now()
 
         if self.commission_date and self.commission_date > check_date:
             return False
@@ -136,7 +136,7 @@ class Resource(Base, TimestampMixin):
             ... else:
             ...     print(f"{resource.resource_name} is decommissioned")
         """
-        now = datetime.utcnow()
+        now = datetime.now()
 
         # Check if commissioned
         if self.commission_date and self.commission_date > now:

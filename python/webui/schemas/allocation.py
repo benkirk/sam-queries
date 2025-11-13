@@ -72,7 +72,7 @@ class AllocationSchema(BaseSchema):
 
     def get_is_active(self, obj):
         """Get computed is_active status."""
-        return obj.is_active_at(datetime.utcnow())
+        return obj.is_active_at(datetime.now())
 
 
 class AllocationWithUsageSchema(AllocationSchema):
@@ -135,7 +135,7 @@ class AllocationWithUsageSchema(AllocationSchema):
             return {}, 0.0, 0.0
 
         # Get date range for queries
-        now = datetime.utcnow()
+        now = datetime.now()
         start_date = obj.start_date
         end_date = obj.end_date or now
 
@@ -275,7 +275,7 @@ class AccountSchema(BaseSchema):
 
     def get_active_allocation(self, obj):
         """Get currently active allocation for this account."""
-        now = datetime.utcnow()
+        now = datetime.now()
         for alloc in obj.allocations:
             if alloc.is_active_at(now):
                 # Use AllocationWithUsageSchema to include usage calculations

@@ -54,7 +54,7 @@ def get_project_charges(projcode):
 
     # Parse date parameters
     try:
-        end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d') if request.args.get('end_date') else datetime.utcnow()
+        end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d') if request.args.get('end_date') else datetime.now()
         start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d') if request.args.get('start_date') else end_date - timedelta(days=30)
     except ValueError:
         return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
@@ -163,7 +163,7 @@ def get_project_charges_summary(projcode):
         resource_type = account.resource.resource_type.resource_type if account.resource.resource_type else 'UNKNOWN'
 
         # Find active allocation
-        now = datetime.utcnow()
+        now = datetime.now()
         active_alloc = None
         for alloc in account.allocations:
             if alloc.is_active_at(now) and not alloc.deleted:
@@ -225,7 +225,7 @@ def get_account_balance(account_id):
     include_adjustments = request.args.get('include_adjustments', 'true').lower() == 'true'
 
     # Find active allocation
-    now = datetime.utcnow()
+    now = datetime.now()
     active_alloc = None
     for alloc in account.allocations:
         if alloc.is_active_at(now) and not alloc.deleted:

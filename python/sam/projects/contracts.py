@@ -41,7 +41,7 @@ class Contract(Base, TimestampMixin):
     def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
         """Check if contract is active at a given date."""
         if check_date is None:
-            check_date = datetime.utcnow()
+            check_date = datetime.now()
 
         if self.start_date > check_date:
             return False

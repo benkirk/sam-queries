@@ -51,7 +51,7 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
             return False
 
         if check_date is None:
-            check_date = datetime.utcnow()
+            check_date = datetime.now()
 
         if self.start_date > check_date:
             return False

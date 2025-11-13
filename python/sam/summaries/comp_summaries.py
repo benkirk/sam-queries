@@ -162,7 +162,7 @@ class CompChargeSummaryStatus(Base):
                                nullable=False)
     modified = Column(DateTime,
                      server_default=text('CURRENT_TIMESTAMP'),
-                     onupdate=datetime.utcnow)
+                     onupdate=datetime.now)
 
     charge_summary = relationship('CompChargeSummary', back_populates='status_records')
 
@@ -170,7 +170,7 @@ class CompChargeSummaryStatus(Base):
     def age_days(self) -> Optional[float]:
         """Calculate age in days since last modification."""
         if self.modified:
-            delta = datetime.utcnow() - self.modified
+            delta = datetime.now() - self.modified
             return delta.total_seconds() / 86400
         return None
 

@@ -249,7 +249,7 @@ def get_project_allocations(projcode):
         query = query.join(Resource).filter(Resource.resource_name == resource_name)
 
     allocations_data = []
-    now = datetime.utcnow()
+    now = datetime.now()
 
     for account in query.all():
         # Find active allocation

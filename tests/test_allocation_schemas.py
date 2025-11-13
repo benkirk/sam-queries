@@ -5,7 +5,7 @@ Tests the complex schemas with usage calculations that match sam_search.py outpu
 """
 
 import pytest
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta
 from sam.projects.projects import Project
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
@@ -110,7 +110,7 @@ class TestAllocationSchemas:
 
         if account and account.allocations and account.resource:
             # Find active allocation
-            now = datetime.utcnow()
+            now = datetime.now()
             active_alloc = None
             for alloc in account.allocations:
                 if alloc.is_active_at(now) and not alloc.deleted:
@@ -162,7 +162,7 @@ class TestAllocationSchemas:
         ).first()
 
         if account and account.allocations and account.resource:
-            now = datetime.utcnow()
+            now = datetime.now()
             active_alloc = None
             for alloc in account.allocations:
                 if alloc.is_active_at(now) and not alloc.deleted:
@@ -323,7 +323,7 @@ class TestSchemaIntegration:
         ).all()
 
         allocations_with_usage = []
-        now = datetime.utcnow()
+        now = datetime.now()
 
         for account in accounts:
             if not account.resource:
