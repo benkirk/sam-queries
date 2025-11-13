@@ -1,9 +1,15 @@
 #----------------------------------------------------------------------------
-# environment
-CONFDIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" > /dev/null 2>&1 && pwd)"
+# Determine the directory containing this script, compatible with bash and zsh
+if [ -n "${BASH_SOURCE[0]}" ]; then
+  SCRIPT_PATH="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION}" ]; then
+  SCRIPT_PATH="${(%):-%x}"
+else
+  echo "Unknown shell!"
+fi
+CONFDIR="$(cd "$(dirname "$(realpath "${SCRIPT_PATH}")")" >/dev/null 2>&1 && pwd)"
 #----------------------------------------------------------------------------
 
-#ROOT_DIR=$(git rev-parse --show-toplevel)
 ROOT_DIR=$(realpath ${CONFDIR}/..)
 
 ETC_DIR=${ROOT_DIR}/etc
@@ -21,4 +27,10 @@ make --silent -C ${ROOT_DIR} ${ENV_NAME}
 
 conda activate ${ENV_DIR}
 
-PYTHONPATH=${ROOT_DIR}/python:${PYTHONPATH}
+# fully specify a new PYTHONPATH
+export PYTHONPATH="${ROOT_DIR}/python:"
+
+source ${ROOT_DIR}/.env || { echo "no top-level .env found!"; exit 1; }
+
+# prevent leakage
+unset SAM_DB_PASSWORD TEST_SAM_DB_PASSWORD LOCAL_SAM_DB_PASSWORD

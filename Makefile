@@ -1,4 +1,4 @@
-SHELL := /bin/bash
+SHELL := /bin/bash --login
 
 config_env := module load conda >/dev/null 2>&1 || true
 
