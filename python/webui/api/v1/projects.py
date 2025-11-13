@@ -14,6 +14,7 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required
 from webui.utils.rbac import require_permission, Permission
 from webui.extensions import db
+from webui.schemas import ProjectSchema, ProjectListSchema, ProjectSummarySchema
 from datetime import datetime, timedelta
 
 bp = Blueprint('api_projects', __name__)
@@ -126,19 +127,8 @@ def list_projects():
             query = query.filter(Project.active == active)
         projects = query.limit(per_page).offset((page - 1) * per_page).all()
 
-    # Serialize projects
-    projects_data = []
-    for project in projects:
-        projects_data.append({
-            'project_id': project.project_id,
-            'projcode': project.projcode,
-            'title': project.title,
-            'lead_username': project.lead.username if project.lead else None,
-            'admin_username': project.admin.username if project.admin else None,
-            'active': project.active,
-            'charging_exempt': project.charging_exempt,
-            'area_of_interest': project.area_of_interest.area_of_interest if project.area_of_interest else None,
-        })
+    # Serialize projects using ProjectListSchema
+    projects_data = ProjectListSchema(many=True).dump(projects)
 
     return jsonify({
         'projects': projects_data,
@@ -165,27 +155,8 @@ def get_project(projcode):
     if not project:
         return jsonify({'error': 'Project not found'}), 404
 
-    return jsonify({
-        'project_id': project.project_id,
-        'projcode': project.projcode,
-        'title': project.title,
-        'abstract': project.abstract,
-        'lead': {
-            'username': project.lead.username,
-            'name': project.lead.full_name,
-            'email': project.lead.primary_email
-        } if project.lead else None,
-        'admin': {
-            'username': project.admin.username,
-            'name': project.admin.full_name,
-            'email': project.admin.primary_email
-        } if project.admin else None,
-        'active': project.active,
-        'charging_exempt': project.charging_exempt,
-        'area_of_interest': project.area_of_interest.area_of_interest if project.area_of_interest else None,
-        'creation_time': project.creation_time.isoformat() if project.creation_time else None,
-        'modified_time': project.modified_time.isoformat() if project.modified_time else None,
-    })
+    # Serialize project using ProjectSchema
+    return jsonify(ProjectSchema().dump(project))
 
 
 @bp.route('/<projcode>/members', methods=['GET'])
