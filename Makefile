@@ -1,7 +1,8 @@
+# full bash login shell requied for our complex make rules
 SHELL := /bin/bash --login
 
+# common way to inialize enviromnent across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true
-
 
 clean:
 	rm *~
@@ -20,15 +21,15 @@ distclean:
 	chmod +x $@
 	git add $@ $<
 
-%: %.yml
+%: %.yaml
 	[ -d $@ ] && mv $@ $@.old && rm -rf $@.old &
 	$(MAKE) solve-$*
 	$(config_env) && conda env create --file $< --prefix $@
-	$(config_env) && conda activate ./$@ && conda-tree deptree --small 2>/dev/null || /bin/true
-	$(config_env) && conda activate ./$@ && pipdeptree --all 2>/dev/null || /bin/true
 	$(config_env) && conda activate ./$@ && conda list
+	$(config_env) && conda activate ./$@ && conda-tree deptree --small 2>/dev/null || true
+	$(config_env) && conda activate ./$@ && pipdeptree --all 2>/dev/null || true
 
-solve-%: %.yml
+solve-%: %.yaml
 	$(config_env) && conda env create --file $< --prefix $@ --dry-run
 
 fixperms:
