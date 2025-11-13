@@ -93,6 +93,162 @@ sam-queries/
 
 ---
 
+## Marshmallow-SQLAlchemy Schemas
+
+### Overview
+The API uses marshmallow-sqlalchemy for declarative serialization, replacing manual dictionary construction with type-safe schemas. Schemas automatically handle datetime serialization, nested relationships, and calculated fields.
+
+### Schema Organization
+```
+python/webui/schemas/
+├── __init__.py           # Base schema + exports
+├── user.py               # User schemas (3 tiers)
+├── project.py            # Project schemas (3 tiers)
+├── resource.py           # Resource schemas
+├── allocation.py         # Allocation/Account schemas ⭐ KEY FILE
+└── charges.py            # Charge summary schemas
+```
+
+### Three-Tier Schema Strategy
+Schemas follow a consistent pattern for optimal performance:
+
+1. **Full Schemas** (`UserSchema`, `ProjectSchema`): All fields + nested relationships - Use for single object detail views
+2. **List Schemas** (`UserListSchema`, `ProjectListSchema`): Lightweight for collection endpoints - Excludes expensive nested queries
+3. **Summary Schemas** (`UserSummarySchema`, `ProjectSummarySchema`): Minimal fields for references - Used inside other schemas
+
+### Usage Examples
+```python
+from webui.schemas import UserSchema, ProjectListSchema, AllocationWithUsageSchema
+
+# Serialize single object
+user_data = UserSchema().dump(user)
+
+# Serialize multiple objects
+projects_data = ProjectListSchema(many=True).dump(projects)
+
+# Serialize with context (for usage calculations)
+schema = AllocationWithUsageSchema()
+schema.context = {
+    'account': account,
+    'session': db.session,
+    'include_adjustments': True
+}
+allocation_data = schema.dump(allocation)
+```
+
+### Key Schemas
+
+#### AllocationWithUsageSchema ⭐
+**Most important schema** - calculates allocation balances matching sam_search.py output.
+
+**Calculated Fields**:
+- `used`: Total charges from summary tables
+- `remaining`: allocated - used
+- `percent_used`: (used / allocated) * 100
+- `charges_by_type`: Breakdown by comp/dav/disk/archive
+- `adjustments`: Manual charge adjustments (if enabled)
+
+**Context Parameters**:
+- `account`: Account object (provides resource/project info)
+- `session`: SQLAlchemy session (for charge queries)
+- `include_adjustments`: Include manual adjustments (default: True)
+
+**Resource Type Routing**:
+- HPC/DAV → CompChargeSummary + DavChargeSummary
+- DISK → DiskChargeSummary
+- ARCHIVE → ArchiveChargeSummary
+
+### Datetime Handling
+- Schemas automatically convert datetime objects to ISO format strings
+- No manual `.isoformat()` calls needed
+- Database uses naive datetimes (no timezone)
+
+### Method Fields
+Use Method fields to serialize `@property` methods:
+```python
+class UserSchema(BaseSchema):
+    full_name = fields.Method('get_full_name')
+
+    def get_full_name(self, obj):
+        return obj.full_name  # Calls @property
+```
+
+---
+
+## Allocation Balance Calculations
+
+### Overview
+Allocation balances are calculated in real-time from pre-aggregated summary tables. The logic is implemented in `AllocationWithUsageSchema` and matches `Project.get_detailed_allocation_usage()`.
+
+### Calculation Flow
+1. Determine resource type (HPC, DAV, DISK, ARCHIVE)
+2. Query appropriate summary table(s) for date range
+3. Sum charges by type
+4. Add manual adjustments (if enabled)
+5. Calculate: `remaining = allocated - (charges + adjustments)`
+
+### Summary Tables
+All tables are pre-indexed for fast queries by `account_id` and `activity_date`:
+
+- **CompChargeSummary** (`comp_charge_summary`): Daily HPC charges
+- **DavChargeSummary** (`dav_charge_summary`): Daily DAV charges
+- **DiskChargeSummary** (`disk_charge_summary`): Daily storage charges
+- **ArchiveChargeSummary** (`archive_charge_summary`): Daily HPSS archive charges
+
+### Example Calculation
+```python
+# For HPC resource over allocation period:
+comp_charges = SUM(CompChargeSummary.charges)
+    WHERE account_id = X
+    AND activity_date BETWEEN start_date AND end_date
+
+dav_charges = SUM(DavChargeSummary.charges)
+    WHERE account_id = X
+    AND activity_date BETWEEN start_date AND end_date
+
+adjustments = SUM(ChargeAdjustment.amount)
+    WHERE account_id = X
+    AND adjustment_date BETWEEN start_date AND end_date
+
+total_used = comp_charges + dav_charges + adjustments
+remaining = allocated - total_used
+percent_used = (total_used / allocated) * 100
+```
+
+---
+
+## API Endpoints
+
+### User Endpoints
+- `GET /api/v1/users/` → `UserListSchema(many=True)`
+- `GET /api/v1/users/<username>` → `UserSchema()`
+- `GET /api/v1/users/<username>/projects` → `ProjectListSchema(many=True)`
+
+### Project Endpoints
+- `GET /api/v1/projects/` → `ProjectListSchema(many=True)`
+- `GET /api/v1/projects/<projcode>` → `ProjectSchema()`
+- `GET /api/v1/projects/<projcode>/members` → `UserListSchema(many=True)`
+- `GET /api/v1/projects/<projcode>/allocations` → `AllocationWithUsageSchema(many=True)` ⭐
+- `GET /api/v1/projects/expiring` → `ProjectListSchema(many=True)`
+- `GET /api/v1/projects/recently_expired` → `ProjectListSchema(many=True)`
+
+### Charge/Balance Endpoints ⭐
+- `GET /api/v1/projects/<projcode>/charges` - Detailed charge summaries
+  - Query params: `start_date`, `end_date`, `resource_id`
+  - Returns: All charge types grouped by resource
+  - Schema: Custom charge breakdown
+
+- `GET /api/v1/projects/<projcode>/charges/summary` - Aggregated totals
+  - Returns: Summary of all active allocations with usage
+  - Schema: Allocation summaries with totals
+
+- `GET /api/v1/accounts/<account_id>/balance` - Current balance
+  - Query params: `include_adjustments` (default: true)
+  - Returns: Real-time allocation balance
+  - Schema: `AllocationWithUsageSchema()`
+
+---
+
 ## Important Patterns & Conventions
 
 ### 1. DateTime Handling
@@ -132,7 +288,12 @@ __table_args__ = (
 
 ---
 
-## Testing Strategy
+## Testing
+
+### Current Status
+- **172 tests passed, 10 skipped, 0 failed**
+- **Execution time**: ~50 seconds
+- **Schema coverage**: 94% (91/97 tables have ORM models)
 
 ### Test Execution
 ```bash
@@ -146,23 +307,18 @@ python3 -m pytest tests/test_schema_validation.py -v
 python3 -m pytest tests/ --cov=sam --cov-report=html
 ```
 
-### Test Results (Current)
-- **172 tests passed, 10 skipped**
-- Execution: ~50 seconds
-- Zero failures
-
 ### Test Files
 1. **test_basic_read.py** (26 tests): Basic queries, relationships
 2. **test_crud_operations.py** (17 tests): Create, update, delete, transactions
 3. **test_new_models.py** (51 tests): Factor, Formula, ApiCredentials, RoleApiCredentials, ProjectCode, FosAoi, ResponsibleParty
 4. **test_views.py** (24 tests): XRAS views, read-only enforcement
-5. **test_schema_validation.py** (18 tests): Automated schema drift detection
+5. **test_schema_validation.py** (18 tests): Automated schema drift detection ⭐ KEY
 6. **test_sam_search_cli.py** (44 tests): CLI integration tests
 
-### Schema Validation Tests
+### Schema Validation Tests ⭐
 **Purpose**: Prevent XrasResourceRepositoryKeyResource-style bugs where ORM models don't match database schema.
 
-**Coverage**:
+**What's validated**:
 - ✅ All ORM tables exist in database
 - ✅ All ORM columns exist in database
 - ✅ Type compatibility (SQLAlchemy → MySQL)
@@ -171,6 +327,18 @@ python3 -m pytest tests/ --cov=sam --cov-report=html
 - ✅ Coverage metrics (94% of DB tables have ORM)
 
 **Already caught**: DavActivity composite primary key mismatch!
+
+### Test Priorities
+**High Value (Implemented)**:
+- ✅ Schema validation - Prevents ORM/DB drift
+- ✅ CLI integration - Tests user-facing interface
+- ✅ New model tests - Validates recent additions
+- ✅ Basic CRUD - Core functionality coverage
+
+**Future Considerations (Optional)**:
+- ⚠️ Relationship tests - Deep relationship validation (medium-high effort)
+- ⚠️ Performance tests - Query optimization (if needed)
+- ⚠️ Load tests - Concurrent operations (if needed)
 
 ---
 
@@ -336,50 +504,15 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
-## Quick Reference Commands
+## Quick Reference
 
 ```bash
-# Database access
-mysql -u root -h 127.0.0.1 -proot sam
-
-# Run tests
-python3 -m pytest tests/ -v
-
-# Schema validation
-python3 -m pytest tests/test_schema_validation.py -v
-
-# CLI tests
-python3 -m pytest tests/test_sam_search_cli.py -v
-
-# User lookup
-./python/sam_search.py user benkirk --verbose
-
-# Project lookup
-./python/sam_search.py project SCSG0001 --list-users
-
-# Git status
-git status
-git log --oneline -10
-
-# Table inspection
-mysql -u root -h 127.0.0.1 -proot sam -e "SHOW CREATE TABLE <table>\G"
-mysql -u root -h 127.0.0.1 -proot sam -e "DESCRIBE <table>"
+# Most common commands (see full details in respective sections above)
+python3 -m pytest tests/ -v                          # Run all tests
+./python/sam_search.py user benkirk --list-projects  # User lookup
+./python/sam_search.py project SCSG0001 --list-users # Project lookup
+git log --oneline -10                                 # Recent commits
 ```
-
----
-
-## Testing Priorities
-
-### High Value Tests (Already Implemented)
-✅ **Schema validation** - Prevents ORM/DB drift
-✅ **CLI integration** - Tests user-facing interface
-✅ **New model tests** - Validates recent additions
-✅ **Basic CRUD** - Core functionality coverage
-
-### Future Considerations (Optional)
-⚠️ **Relationship tests** - Deep relationship validation (medium-high effort)
-⚠️ **Performance tests** - Query optimization (if needed)
-⚠️ **Load tests** - Concurrent operations (if needed)
 
 ---
 
@@ -403,16 +536,6 @@ mysql -u root -h 127.0.0.1 -proot sam -e "DESCRIBE <table>"
 
 ---
 
-## Success Metrics
-
-- **Test Coverage**: 172 tests passing ✅
-- **Schema Coverage**: 94% (91/97 tables) ✅
-- **CLI Coverage**: 100% commands tested ✅
-- **Test Speed**: ~50 seconds for full suite ✅
-- **Zero Failures**: All tests passing ✅
-
----
-
-*Last Updated: 2025-11-12*
-*Current Branch: testing*
-*Test Status: 172 passed, 10 skipped, 0 failed*
+*Last Updated: 2025-11-13*
+*Current Branch: api_refactor*
+*Test Status: 200 passed, 0 skipped, 0 failed (Phases 1-7 complete)*
