@@ -21,11 +21,8 @@ SAM_DB_SERVER=${SAM_DB_SERVER}
 EOF
 
 
-# Check detault
-mysql -u $SAM_DB_USERNAME -h $SAM_DB_SERVER
-
-
-# check remote DB
+# # Check detault
+# mysql -u $SAM_DB_USERNAME -h $SAM_DB_SERVER
 
 # check local (duplicated, subsetted) DB
 mysql -u $LOCAL_SAM_DB_USERNAME -h $LOCAL_SAM_DB_SERVER -proot --table sam <<EOF || { echo -e "\n\nCannot connect to LOCAL_SAM_DB_SERVER=${LOCAL_SAM_DB_SERVER}\nMaybe ./containers/sam-sql-dev/docker_start.sh"; exit 1; }
