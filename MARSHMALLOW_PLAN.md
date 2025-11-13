@@ -195,6 +195,7 @@ These schemas serialize the daily aggregated charge data:
 ### 7.3 API Endpoint Tests
 **File:** `tests/test_api_with_schemas.py`
 
+- Enpoint access requires login, username 'benkirk' with any password.
 - Test each endpoint returns correct schema format
 - Verify backward compatibility (same JSON structure as before)
 - Test new allocation/charge endpoints
@@ -256,7 +257,7 @@ These schemas serialize the daily aggregated charge data:
 - No validation fields needed yet (API is GET-only)
 - Future: Add `load` support for POST/PUT/PATCH endpoints
 
-### 6. Backward Compatibility Not Required 
+### 6. Backward Compatibility Not Required
 - OK to change current return value structures.
 
 ---
