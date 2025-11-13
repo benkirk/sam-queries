@@ -204,7 +204,6 @@ These schemas serialize the daily aggregated charge data:
 ### 7.4 Performance Tests
 **File:** `tests/test_schema_performance.py`
 
-- Compare manual dict construction vs schema serialization speed
 - Verify summary table queries perform well (should be fast - already indexed)
 - Test pagination with large result sets
 
@@ -257,10 +256,8 @@ These schemas serialize the daily aggregated charge data:
 - No validation fields needed yet (API is GET-only)
 - Future: Add `load` support for POST/PUT/PATCH endpoints
 
-### 6. Backward Compatibility
-- Maintain existing JSON response structure
-- Same field names as current manual dict construction
-- No breaking changes to existing API consumers
+### 6. Backward Compatibility Not Required 
+- OK to change current return value structures.
 
 ---
 
