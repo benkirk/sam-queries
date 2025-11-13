@@ -3,29 +3,49 @@
 ## Getting Started
 
 ### Prerequisites
-- Python 3.13+
+- Conda
 - Docker (for local database)
-- Access to NCAR network (for production database connections)
+- Access to NCAR network (for <ucar.edu> database connections, not required once local development environment established)
 
 ### Initial Setup
 
 Starting from a clean checkout:
 
-1. **Create conda environment**
+1. **Bootstrap `conda` environment**
    ```bash
-   make conda-env
-   conda activate sam
+   source etc/config_env.sh
    ```
 
 2. **Configure credentials**
 
    Create a `.env` file in the project root with your database credentials:
    ```bash
-   # .env (NEVER commit this file!)
-   SAM_DB_HOST=sam-sql.ucar.edu
-   SAM_DB_USER=your_username
-   SAM_DB_PASSWORD=your_password
-   SAM_DB_NAME=sam
+   #-------------------------
+   # local container instance
+   LOCAL_SAM_DB_USERNAME=.....
+   LOCAL_SAM_DB_SERVER=127.0.0.1
+   LOCAL_SAM_DB_PASSWORD=.....
+   SAM_DB_USERNAME=${LOCAL_SAM_DB_USERNAME}
+   SAM_DB_SERVER=${LOCAL_SAM_DB_SERVER}
+   SAM_DB_PASSWORD=${LOCAL_SAM_DB_PASSWORD}
+
+   #-------------------------
+   # test instance
+   TEST_SAM_DB_USERNAME=.....
+   TEST_SAM_DB_SERVER=test-sam-sql.ucar.edu
+   TEST_SAM_DB_PASSWORD=.....
+   #SAM_DB_USERNAME=${TEST_SAM_DB_USERNAME}
+   #SAM_DB_SERVER=${TEST_SAM_DB_SERVER}
+   #SAM_DB_PASSWORD=${TEST_SAM_DB_PASSWORD}
+
+   #-------------------------
+   # # prod instance
+   PROD_SAM_DB_USERNAME=.....
+   PROD_SAM_DB_SERVER=sam-sql.ucar.edu
+   PROD_SAM_DB_PASSWORD=.....
+   #SAM_DB_USERNAME=${PROD_SAM_DB_USERNAME}
+   #SAM_DB_SERVER=${PROD_SAM_DB_SERVER}
+   #SAM_DB_PASSWORD=${PROD_SAM_DB_PASSWORD}
    ```
 
    **Note**: The `.env` file is gitignored and should never be committed.
