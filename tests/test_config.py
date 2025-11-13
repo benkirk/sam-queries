@@ -3,15 +3,30 @@ Test Configuration for Local MySQL Database
 
 Provides connection strings and session factories for testing against
 the local MySQL clone.
+
+UPDATED: Now loads database credentials from .env file for consistency
+with main codebase and to enable easy environment switching.
 """
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
+from dotenv import load_dotenv, find_dotenv
+import os
 
+# Load environment variables from .env file
+load_dotenv(find_dotenv())
 
-# Local MySQL connection (Docker container)
-LOCAL_MYSQL_CONNECTION = 'mysql+pymysql://root:root@127.0.0.1:3306/sam'
+# Build connection string from environment variables
+# Falls back to local Docker defaults if not set in .env
+username = os.getenv('SAM_DB_USERNAME', 'root')
+password = os.getenv('SAM_DB_PASSWORD', 'root')
+server = os.getenv('SAM_DB_SERVER', '127.0.0.1')
+port = os.getenv('SAM_DB_PORT', '3306')
+database = 'sam'
+
+# Use pymysql driver (consistent with test suite requirements)
+LOCAL_MYSQL_CONNECTION = f'mysql+pymysql://{username}:{password}@{server}:{port}/{database}'
 
 
 def create_test_engine(echo=False):

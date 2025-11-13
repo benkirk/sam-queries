@@ -54,12 +54,63 @@ See `TEST_RESULTS_SUMMARY.md` for detailed results.
 
 ## Database Connection
 
-Tests connect to the local MySQL clone:
-- **Host:** localhost (Docker container: `local-sam-mysql`)
-- **Port:** 3306
-- **User:** root
-- **Password:** root
-- **Database:** sam
+Tests use the same `.env` file configuration as the main codebase for database credentials.
+
+### Configuration
+
+**Environment Variables (from `.env` in project root):**
+- `SAM_DB_USERNAME` - Database username (default: root)
+- `SAM_DB_PASSWORD` - Database password (default: root)
+- `SAM_DB_SERVER` - Database server (default: 127.0.0.1)
+- `SAM_DB_PORT` - Database port (default: 3306)
+- Database: `sam`
+
+**Default Connection (Local Docker):**
+```bash
+# In .env file:
+SAM_DB_USERNAME=${LOCAL_SAM_DB_USERNAME}
+SAM_DB_SERVER=${LOCAL_SAM_DB_SERVER}
+SAM_DB_PASSWORD=${LOCAL_SAM_DB_PASSWORD}
+
+# Which resolves to:
+# mysql+pymysql://root:root@127.0.0.1:3306/sam
+```
+
+### Switching Test Environments
+
+To test against different database instances, edit `.env` file:
+
+```bash
+# Local Docker (default - for most development)
+SAM_DB_USERNAME=${LOCAL_SAM_DB_USERNAME}
+SAM_DB_SERVER=${LOCAL_SAM_DB_SERVER}
+SAM_DB_PASSWORD=${LOCAL_SAM_DB_PASSWORD}
+
+# Test instance (for integration testing)
+# SAM_DB_USERNAME=${TEST_SAM_DB_USERNAME}
+# SAM_DB_SERVER=${TEST_SAM_DB_SERVER}
+# SAM_DB_PASSWORD=${TEST_SAM_DB_PASSWORD}
+
+# Production (read-only access for validation)
+# SAM_DB_USERNAME=${PROD_SAM_DB_USERNAME}
+# SAM_DB_SERVER=${PROD_SAM_DB_SERVER}
+# SAM_DB_PASSWORD=${PROD_SAM_DB_PASSWORD}
+```
+
+### Docker Setup
+
+Tests require a local MySQL database. To start the Docker container:
+
+```bash
+cd containers/sam-sql-dev/
+./docker_start.sh
+
+# Verify container is running
+docker ps | grep local-sam-mysql
+
+# Check database connectivity
+./tests/check_environment.sh
+```
 
 ## Usage Examples
 
