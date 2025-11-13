@@ -295,12 +295,13 @@ These schemas serialize the daily aggregated charge data:
 2. **Phase 2** - Core schemas (User, Project)
 3. **Phase 6.1-6.2** - Refactor existing endpoints to use new schemas
 4. **Phase 7.2-7.3** - Test existing endpoints work with schemas
-5. **Phase 3** - Accounting schemas (Allocation, Account, ChargeAdjustment)
-6. **Phase 4** - Summary/charge schemas
-7. **Phase 5** - Supporting schemas (Resource, etc.)
-8. **Phase 6.3** - New charge endpoints
-9. **Phase 7.1, 7.4** - Comprehensive testing
-10. **Phase 8** - Documentation and cleanup
+5. Pause to commit incremental progress
+6. **Phase 3** - Accounting schemas (Allocation, Account, ChargeAdjustment)
+7. **Phase 4** - Summary/charge schemas
+8. **Phase 5** - Supporting schemas (Resource, etc.)
+9. **Phase 6.3** - New charge endpoints
+10. **Phase 7.1, 7.4** - Comprehensive testing
+11. **Phase 8** - Documentation and cleanup
 
 **Rationale for this order:**
 - Prove the pattern with core models first
