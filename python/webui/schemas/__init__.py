@@ -38,6 +38,19 @@ class BaseSchema(SQLAlchemyAutoSchema):
 # Import and export all schemas
 from .user import UserSchema, UserListSchema, UserSummarySchema
 from .project import ProjectSchema, ProjectListSchema, ProjectSummarySchema
+from .resource import ResourceSchema, ResourceSummarySchema, ResourceTypeSchema
+from .allocation import (
+    AllocationSchema,
+    AllocationWithUsageSchema,
+    AccountSchema,
+    AccountSummarySchema
+)
+from .charges import (
+    CompChargeSummarySchema,
+    DavChargeSummarySchema,
+    DiskChargeSummarySchema,
+    ArchiveChargeSummarySchema
+)
 
 __all__ = [
     'BaseSchema',
@@ -49,4 +62,18 @@ __all__ = [
     'ProjectSchema',
     'ProjectListSchema',
     'ProjectSummarySchema',
+    # Resource schemas
+    'ResourceSchema',
+    'ResourceSummarySchema',
+    'ResourceTypeSchema',
+    # Allocation/Account schemas
+    'AllocationSchema',
+    'AllocationWithUsageSchema',
+    'AccountSchema',
+    'AccountSummarySchema',
+    # Charge summary schemas
+    'CompChargeSummarySchema',
+    'DavChargeSummarySchema',
+    'DiskChargeSummarySchema',
+    'ArchiveChargeSummarySchema',
 ]
