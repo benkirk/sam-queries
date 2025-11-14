@@ -66,7 +66,7 @@ chmod 600 .env
 ./python/sam_search.py user <your_username>
 
 # 4. Run tests to verify setup
-python3 -m pytest tests/ -v
+cd tests && pytest -v
 ```
 
 For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
@@ -113,7 +113,7 @@ For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
    ./python/sam_search.py user --search "a%" | head -10
 
    # Run test suite
-   python3 -m pytest tests/ -v
+   cd tests && pytest -v
    ```
 
 For full setup guide including local development database, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
@@ -315,16 +315,26 @@ sam-queries/
 │       ├── utils/               # RBAC, utilities
 │       └── templates/           # Jinja2 templates
 │
-├── tests/                       # Comprehensive test suite
-│   ├── README.md                # Testing documentation
-│   ├── TEST_RESULTS_SUMMARY.md  # Detailed test results
-│   ├── test_basic_read.py       # Basic ORM queries (26 tests)
-│   ├── test_crud_operations.py  # Create/update/delete (17 tests)
-│   ├── test_schema_validation.py # Schema drift detection (18 tests)
-│   ├── test_sam_search_cli.py   # CLI integration tests (44 tests)
-│   ├── test_schemas.py          # Marshmallow schema tests
-│   ├── test_views.py            # Database views (24 tests)
-│   └── test_new_models.py       # New model tests (51 tests)
+├── tests/                       # Comprehensive test suite (209 tests)
+│   ├── pytest.ini               # Pytest configuration
+│   ├── conftest.py              # Shared fixtures
+│   ├── unit/                    # Unit tests
+│   │   ├── test_basic_read.py   # Basic ORM queries
+│   │   ├── test_crud_operations.py # Create/update/delete
+│   │   └── test_new_models.py   # New model tests
+│   ├── integration/             # Integration tests
+│   │   ├── test_schema_validation.py # Schema drift detection
+│   │   ├── test_sam_search_cli.py # CLI integration tests
+│   │   └── test_views.py        # Database views
+│   ├── api/                     # API/schema tests
+│   │   ├── test_schemas.py      # Marshmallow schema tests
+│   │   └── test_allocation_schemas.py # Allocation schemas
+│   ├── tools/                   # Utility scripts
+│   ├── fixtures/                # Shared test configuration
+│   └── docs/                    # Test documentation
+│       ├── README.md            # Testing guide
+│       ├── TEST_RESULTS_SUMMARY.md # Test results
+│       └── CURRENT_PLAN.md      # Improvement history
 │
 ├── containers/
 │   └── sam-sql-dev/             # Docker container for local MySQL
@@ -350,7 +360,7 @@ sam-queries/
 - **[README.md](README.md)** - This file (overview and quick start)
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Comprehensive setup and development guide
 - **[python/webui/README.md](python/webui/README.md)** - Web UI and REST API documentation
-- **[tests/README.md](tests/README.md)** - Testing guide and best practices
+- **[tests/docs/README.md](tests/docs/README.md)** - Testing guide and best practices
 
 ### Technical Reference
 - **[CLAUDE.md](CLAUDE.md)** - Detailed technical documentation:
@@ -383,27 +393,32 @@ The project includes a test suite with 200+ tests covering:
 
 **Run all tests:**
 ```bash
-python3 -m pytest tests/ -v
+cd tests && pytest -v
 ```
 
 **Test specific areas:**
 ```bash
 # Schema validation
-python3 -m pytest tests/test_schema_validation.py -v
+cd tests && pytest integration/test_schema_validation.py -v
 
 # CLI integration
-python3 -m pytest tests/test_sam_search_cli.py -v
+cd tests && pytest integration/test_sam_search_cli.py -v
 
 # Marshmallow schemas
-python3 -m pytest tests/test_schemas.py -v
+cd tests && pytest api/test_schemas.py -v
+
+# Run by category
+cd tests && pytest unit/ -v          # Unit tests
+cd tests && pytest integration/ -v   # Integration tests
+cd tests && pytest api/ -v           # API tests
 ```
 
 **Expected results:**
 - With read-only database: ~190 passed, ~20 skipped (CRUD tests)
-- With local development database: ~200 passed, ~10 skipped
-- Execution time: ~50 seconds
+- With local development database: 209 passed, 10 skipped
+- Execution time: ~52 seconds
 
-For detailed testing documentation, see **[tests/README.md](tests/README.md)**.
+For detailed testing documentation, see **[tests/docs/README.md](tests/docs/README.md)**.
 
 ---
 
@@ -431,7 +446,7 @@ Before submitting changes:
 
 4. **Run tests before committing:**
    ```bash
-   python3 -m pytest tests/ -v
+   cd tests && pytest -v
    ```
 
 5. **Submit pull request** with:
@@ -618,7 +633,7 @@ Copyright (c) 2025 NCAR CISL
    - Setup issues → [CONTRIBUTING.md](CONTRIBUTING.md#troubleshooting)
    - ORM patterns → [CLAUDE.md](CLAUDE.md#key-orm-models)
    - API usage → [python/webui/README.md](python/webui/README.md#rest-api)
-   - Testing → [tests/README.md](tests/README.md)
+   - Testing → [tests/docs/README.md](tests/docs/README.md)
 
 3. **Support:**
    - Check existing documentation first
