@@ -1,0 +1,345 @@
+{% extends 'user/base.html' %}
+
+{% block title %}User Dashboard - SAM{% endblock %}
+
+{% block content %}
+<!-- Tab Navigation -->
+<ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link active" id="account-statements-tab" data-toggle="tab" href="#account-statements" role="tab" aria-controls="account-statements" aria-selected="true">
+            <i class="fas fa-file-invoice-dollar"></i> Account Statements
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" id="user-info-tab" data-toggle="tab" href="#user-info" role="tab" aria-controls="user-info" aria-selected="false">
+            <i class="fas fa-user-circle"></i> User Information
+        </a>
+    </li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="dashboardTabContent">
+    <!-- Account Statements Tab -->
+    <div class="tab-pane fade show active" id="account-statements" role="tabpanel" aria-labelledby="account-statements-tab">
+
+<!-- Loading Spinner -->
+<div id="loading" class="loading-spinner">
+    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+        <span class="sr-only">Loading...</span>
+    </div>
+</div>
+
+<!-- Projects Container -->
+<div id="projects-container" style="display: none;">
+    <!-- Summary Header -->
+    <div class="mb-3">
+        <h5 class="text-muted">
+            <i class="fas fa-folder-open"></i>
+            <span id="project-count">0</span> Projects
+        </h5>
+    </div>
+    <!-- Projects List -->
+    <div id="projects-list"></div>
+</div>
+
+<!-- No Projects Message -->
+<div id="no-projects" style="display: none;">
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> You are not currently a member of any active projects.
+    </div>
+</div>
+
+    </div>
+    <!-- End Account Statements Tab -->
+
+    <!-- User Information Tab -->
+    <div class="tab-pane fade" id="user-info" role="tabpanel" aria-labelledby="user-info-tab">
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-user"></i> User Profile</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-4 font-weight-bold">Username:</div>
+                            <div class="col-md-8">{{ user.username }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 font-weight-bold">Full Name:</div>
+                            <div class="col-md-8">{{ user.full_name }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 font-weight-bold">Primary Email:</div>
+                            <div class="col-md-8">{{ user.primary_email }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 font-weight-bold">User ID:</div>
+                            <div class="col-md-8">{{ user.user_id }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 font-weight-bold">Role:</div>
+                            <div class="col-md-8">
+                                {% for role in user.roles %}
+                                <span class="badge badge-primary">{{ role }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- End User Information Tab -->
+</div>
+<!-- End Tab Content -->
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Enhanced project cards */
+    .card-header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-bottom: 2px solid #0099CC;
+        user-select: none;
+    }
+
+    .card-header:hover {
+        background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    }
+
+    .chevron-icon {
+        margin-right: 8px;
+        color: #0099CC;
+    }
+
+    .project-stats-box {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-left: 3px solid #0099CC;
+        transition: all 0.3s ease;
+    }
+
+    .project-stats-box:hover {
+        border-left-color: #003366;
+        transform: translateX(2px);
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Format numbers with commas
+function formatNumber(num) {
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+    });
+}
+
+// Get progress bar color based on percentage
+function getProgressColor(percent) {
+    if (percent >= 90) return 'bg-danger';
+    if (percent >= 75) return 'bg-warning';
+    if (percent >= 50) return 'bg-info';
+    return 'bg-success';
+}
+
+// Create a project card
+function createProjectCard(project, index) {
+    const percentClass = getProgressColor(project.percent_used);
+    const cardId = `project-${index}`;
+
+    let resourcesHtml = '';
+    if (project.resources && project.resources.length > 0) {
+        resourcesHtml = `
+            <div class="mt-3">
+                <h6 class="mb-2">Resources:</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Resource</th>
+                                <th>Status</th>
+                                <th>Start Date</th>
+                                <th>End Date</th>
+                                <th>Allocated</th>
+                                <th>Used</th>
+                                <th>Remaining</th>
+                                <th style="width: 200px;">Usage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        project.resources.forEach(resource => {
+            const resPercentClass = getProgressColor(resource.percent_used);
+            const statusBadge = resource.status === 'Active'
+                ? '<span class="badge badge-success">Active</span>'
+                : '<span class="badge badge-secondary">Inactive</span>';
+            const adjustments = resource.adjustments || 0;
+            const startDate = resource.start_date ? new Date(resource.start_date).toLocaleDateString() : 'N/A';
+            const endDate = resource.end_date ? new Date(resource.end_date).toLocaleDateString() : 'N/A';
+
+            resourcesHtml += `
+                <tr class="resource-row" style="cursor: pointer;"
+                    data-projcode="${project.projcode}"
+                    data-resource="${resource.resource_name}"
+                    onclick="viewResourceDetails('${project.projcode}', '${resource.resource_name}')">
+                    <td><strong>${resource.resource_name}</strong></td>
+                    <td>${statusBadge}</td>
+                    <td>${startDate}</td>
+                    <td>${endDate}</td>
+                    <td class="text-primary">${formatNumber(resource.allocated)}</td>
+                    <td class="text-warning">${formatNumber(resource.used)}</td>
+                    <td class="text-success">${formatNumber(resource.remaining)}</td>
+                    <td>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar ${resPercentClass}"
+                                 role="progressbar"
+                                 style="width: ${Math.min(resource.percent_used, 100)}%"
+                                 aria-valuenow="${resource.percent_used}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                ${resource.percent_used.toFixed(1)}%
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        resourcesHtml += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="card mb-3">
+            <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#${cardId}">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="mb-1">
+                            <i class="fas fa-chevron-down chevron-icon" style="transition: transform 0.3s ease;"></i>
+                            <i class="fas fa-folder"></i> Project: ${project.projcode}
+                            ${project.active ? '<span class="badge badge-success ml-2">Active</span>' : '<span class="badge badge-secondary ml-2">Inactive</span>'}
+                        </h5>
+                        <p class="mb-0"><strong>Title:</strong> ${project.title || 'No title'}</p>
+                    </div>
+                    <div class="col-md-4 text-right">
+                        <p class="mb-0"><strong>Project Lead:</strong></p>
+                        <p class="mb-0">${project.lead_name || 'Not assigned'}</p>
+                    </div>
+                </div>
+            </div>
+            <div id="${cardId}" class="collapse show">
+                <div class="card-body">
+                    <!-- Overall Usage -->
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <div class="text-center p-3 project-stats-box rounded">
+                                <small class="text-muted font-weight-bold">ALLOCATED</small>
+                                <h5 class="mb-0 mt-1" style="color: #0099CC;">${formatNumber(project.total_allocated)}</h5>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center p-3 project-stats-box rounded">
+                                <small class="text-muted font-weight-bold">USED</small>
+                                <h5 class="mb-0 mt-1" style="color: #f59e0b;">${formatNumber(project.total_used)}</h5>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center p-3 project-stats-box rounded">
+                                <small class="text-muted font-weight-bold">REMAINING</small>
+                                <h5 class="mb-0 mt-1" style="color: #10b981;">${formatNumber(project.total_remaining)}</h5>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center p-3 project-stats-box rounded">
+                                <small class="text-muted font-weight-bold">USAGE</small>
+                                <h5 class="mb-0 mt-1" style="color: #003366;">${project.percent_used.toFixed(1)}%</h5>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="progress mb-3" style="height: 30px;">
+                        <div class="progress-bar ${percentClass}"
+                             role="progressbar"
+                             style="width: ${Math.min(project.percent_used, 100)}%"
+                             aria-valuenow="${project.percent_used}"
+                             aria-valuemin="0"
+                             aria-valuemax="100">
+                            ${project.percent_used.toFixed(1)}% Used
+                        </div>
+                    </div>
+
+                    ${resourcesHtml}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Load projects data
+function loadProjects() {
+    fetch('{{ url_for("user_dashboard.get_my_projects") }}')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load projects');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Hide loading spinner
+            document.getElementById('loading').style.display = 'none';
+
+            if (data.projects && data.projects.length > 0) {
+                // Show projects container
+                document.getElementById('projects-container').style.display = 'block';
+
+                // Set project count
+                document.getElementById('project-count').textContent = data.projects.length;
+
+                // Render project cards
+                const projectsList = document.getElementById('projects-list');
+                projectsList.innerHTML = data.projects.map((project, index) => createProjectCard(project, index)).join('');
+
+                // Add chevron rotation handlers
+                $('.collapse').on('show.bs.collapse', function() {
+                    $(this).prev('.card-header').find('.chevron-icon').css('transform', 'rotate(0deg)');
+                });
+                $('.collapse').on('hide.bs.collapse', function() {
+                    $(this).prev('.card-header').find('.chevron-icon').css('transform', 'rotate(-90deg)');
+                });
+            } else {
+                // Show no projects message
+                document.getElementById('no-projects').style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading projects:', error);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('projects-container').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Error loading projects: ${error.message}
+                </div>
+            `;
+            document.getElementById('projects-container').style.display = 'block';
+        });
+}
+
+// Navigate to resource details page
+function viewResourceDetails(projcode, resourceName) {
+    window.location.href = `{{ url_for('user_dashboard.resource_details') }}?projcode=${encodeURIComponent(projcode)}&resource=${encodeURIComponent(resourceName)}`;
+}
+
+// Load projects on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadProjects();
+});
+</script>
+{% endblock %}

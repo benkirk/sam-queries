@@ -21,7 +21,10 @@ def login():
     """
     # Redirect if already logged in
     if current_user.is_authenticated:
-        return redirect(url_for('admin.index'))
+        if 'admin' in current_user.roles:
+            return redirect(url_for('admin.index'))
+        else:
+            return redirect(url_for('user_dashboard.index'))
 
     if request.method == 'POST':
         username = request.form.get('username')
@@ -43,11 +46,16 @@ def login():
             remember = request.form.get('remember', False)
             login_user(auth_user, remember=remember)
 
-            # Redirect to next page or dashboard
+            # Redirect to next page or appropriate dashboard
             next_page = request.args.get('next')
             if next_page:
                 return redirect(next_page)
-            return redirect(url_for('admin.index'))
+
+            # Redirect based on user role
+            if 'admin' in auth_user.roles:
+                return redirect(url_for('admin.index'))
+            else:
+                return redirect(url_for('user_dashboard.index'))
         else:
             flash('Invalid username or password', 'error')
 

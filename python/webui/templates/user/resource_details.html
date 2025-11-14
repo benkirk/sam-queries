@@ -1,0 +1,886 @@
+{% extends 'user/base.html' %}
+
+{% block title %}Resource Details - {{ resource_name }} - SAM{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chart-container {
+        position: relative;
+        height: 400px;
+        margin-bottom: 30px;
+    }
+
+    .back-link {
+        margin-bottom: 20px;
+    }
+
+    .job-table {
+        font-size: 0.9rem;
+    }
+
+    .job-success {
+        color: #10b981;
+        font-weight: 600;
+    }
+
+    .job-failed {
+        color: #dc2626;
+        font-weight: 600;
+    }
+
+    /* Enhanced table styling */
+    .job-table thead {
+        background: linear-gradient(135deg, #003366 0%, #004d80 100%);
+        color: white;
+    }
+
+    .job-table thead th {
+        color: white !important;
+        border: none;
+        padding: 12px;
+    }
+
+    .job-table tbody tr {
+        transition: all 0.2s ease;
+    }
+
+    .job-table tbody tr:hover {
+        background-color: rgba(0, 153, 204, 0.05);
+    }
+
+    /* Charges table specific styling */
+    #charges-table tbody td {
+        font-size: 0.9rem;
+    }
+
+    #charges-table tbody td.text-right {
+        font-family: 'Courier New', monospace;
+    }
+
+    /* Changes table styling */
+    #changes-table thead {
+        background: linear-gradient(135deg, #003366 0%, #004d80 100%);
+        color: white;
+    }
+
+    #changes-table thead th {
+        color: white !important;
+        border: none;
+        padding: 12px;
+    }
+
+    #changes-table tbody tr {
+        transition: all 0.2s ease;
+    }
+
+    #changes-table tbody tr:hover {
+        background-color: rgba(0, 153, 204, 0.05);
+    }
+
+    #changes-table tbody td {
+        font-size: 0.9rem;
+    }
+
+    #changes-table .amount-positive {
+        color: #10b981;
+        font-weight: 600;
+    }
+
+    #changes-table .amount-negative {
+        color: #dc2626;
+        font-weight: 600;
+    }
+
+    #changes-table .type-badge {
+        font-size: 0.75rem;
+        padding: 4px 8px;
+    }
+
+    /* Chart card enhancement */
+    .chart-card {
+        border-top: 4px solid #0099CC;
+    }
+
+    /* Collapsible card header */
+    .card-header[data-toggle="collapse"] {
+        user-select: none;
+    }
+
+    .card-header[data-toggle="collapse"]:hover {
+        background-color: rgba(0, 153, 204, 0.05);
+    }
+
+    /* Rotate chevron when collapsed */
+    .collapsed .fa-chevron-down {
+        transform: rotate(-90deg);
+    }
+
+    [aria-expanded="true"] .fa-chevron-down {
+        transform: rotate(0deg);
+    }
+
+    [aria-expanded="false"] .fa-chevron-down {
+        transform: rotate(-90deg);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="back-link">
+    <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Dashboard
+    </a>
+</div>
+
+<div class="page-header">
+    <h1>
+        <i class="fas fa-chart-line"></i> Resource Usage Details
+    </h1>
+    <p class="text-muted">
+        Project: <strong>{{ projcode }}</strong> | Resource: <strong>{{ resource_name }}</strong> |
+        Lead: <strong id="page-header-lead">-</strong>
+    </p>
+</div>
+
+<!-- Allocation Information -->
+<div class="card mb-4" id="project-info-card" style="display: none;">
+    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseAllocation" aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-info-circle"></i> Allocation Information
+            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
+        </h5>
+    </div>
+    <div id="collapseAllocation" class="collapse show">
+        <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <div class="mb-2">
+                    <strong>Resource:</strong> <span id="allocation-resource">-</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="mb-2">
+                    <strong>Start Date:</strong> <span id="allocation-start">-</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="mb-2">
+                    <strong>End Date:</strong> <span id="allocation-end">-</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="mb-2">
+                    <strong>Status:</strong> <span id="allocation-status">-</span>
+                </div>
+            </div>
+        </div>
+        <hr class="my-3">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="text-center p-2 bg-light rounded">
+                    <small class="text-muted d-block mb-1">Allocated</small>
+                    <h5 class="mb-0" style="color: #0099CC;" id="info-allocated">-</h5>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-center p-2 bg-light rounded">
+                    <small class="text-muted d-block mb-1">Used</small>
+                    <h5 class="mb-0" style="color: #f59e0b;" id="info-used">-</h5>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-center p-2 bg-light rounded">
+                    <small class="text-muted d-block mb-1">Remaining</small>
+                    <h5 class="mb-0" style="color: #10b981;" id="info-remaining">-</h5>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-center p-2 bg-light rounded">
+                    <small class="text-muted d-block mb-1">Usage</small>
+                    <h5 class="mb-0" style="color: #003366;" id="info-percent">-</h5>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Allocation/Charge Changes -->
+<div class="card mb-4" id="changes-card" style="display: none;">
+    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseChanges" aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-exchange-alt"></i> Allocation/Charge Changes
+            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
+        </h5>
+    </div>
+    <div id="collapseChanges" class="collapse show">
+        <div class="card-body">
+            <div id="loading-changes" class="loading-spinner">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Loading changes...</span>
+                </div>
+            </div>
+            <div id="changes-container" style="display: none;">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="changes-table">
+                        <thead class="thead-dark">
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Comment</th>
+                                <th class="text-right">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="changes-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="no-changes" style="display: none;">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> No allocation or charge changes found.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Usage Chart -->
+<div class="card mb-4 chart-card">
+    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseChart" aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-chart-area"></i> Usage Over Time
+            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
+        </h5>
+    </div>
+    <div id="collapseChart" class="collapse show">
+        <div class="card-body">
+        <div id="loading-chart" class="loading-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading chart...</span>
+            </div>
+        </div>
+        <div class="chart-container" id="chart-container" style="display: none;">
+            <canvas id="usageChart"></canvas>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charges Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseCharges" aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-list"></i> Recent Usage (Charges)
+            <i class="fas fa-chevron-down" style="transition: transform 0.3s;"></i>
+        </h5>
+        <div>
+            <button type="button" class="btn btn-sm btn-success mr-2" id="export-csv" onclick="event.stopPropagation();">
+                <i class="fas fa-file-csv"></i> Export to CSV
+            </button>
+            <span id="charges-count" class="badge badge-primary">0 entries</span>
+        </div>
+    </div>
+    <div id="collapseCharges" class="collapse show">
+        <div class="card-body">
+        <!-- Date Range Selector -->
+        <div class="mb-3 p-3 bg-light rounded">
+            <form id="date-range-form" class="form-inline">
+                <div class="form-group mr-3">
+                    <label for="start-date" class="mr-2"><strong>Start Date:</strong></label>
+                    <input type="date" class="form-control form-control-sm" id="start-date" required>
+                </div>
+                <div class="form-group mr-3">
+                    <label for="end-date" class="mr-2"><strong>End Date:</strong></label>
+                    <input type="date" class="form-control form-control-sm" id="end-date" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm mr-2">
+                    <i class="fas fa-sync-alt"></i> Update
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="reset-dates">
+                    <i class="fas fa-undo"></i> Reset
+                </button>
+            </form>
+        </div>
+        <div id="loading-charges" class="loading-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading charges...</span>
+            </div>
+        </div>
+        <div id="charges-container" style="display: none;">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover job-table" id="charges-table">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>Date</th>
+                            <th>Type of Charge</th>
+                            <th>Comment</th>
+                            <th>User</th>
+                            <th class="text-right">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="charges-tbody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div id="no-charges" style="display: none;">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> No charge data found for the selected time period.
+            </div>
+        </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const projcode = '{{ projcode }}';
+const resourceName = '{{ resource_name }}';
+
+// Store allocation dates globally
+let allocationStartDate = null;
+let allocationEndDate = null;
+
+// Store current charges data for export
+let currentChargesData = [];
+
+// Format numbers
+function formatNumber(num) {
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+    });
+}
+
+// Format date/time
+function formatDateTime(isoString) {
+    if (!isoString) return 'N/A';
+    const date = new Date(isoString);
+    return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+// Format date to YYYY-MM-DD
+function formatDateForInput(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toISOString().split('T')[0];
+}
+
+// Load and render usage chart
+function loadUsageChart(startDate, endDate) {
+    let url = `{{ url_for('user_dashboard.get_resource_usage_timeseries') }}?projcode=${encodeURIComponent(projcode)}&resource=${encodeURIComponent(resourceName)}`;
+
+    if (startDate && endDate) {
+        url += `&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+    }
+
+    fetch(url)
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to load usage data');
+            return response.json();
+        })
+        .then(data => {
+            document.getElementById('loading-chart').style.display = 'none';
+            document.getElementById('chart-container').style.display = 'block';
+
+            // Prepare data for chart
+            const labels = data.data.map(d => d.date);
+            const compData = data.data.map(d => d.comp || 0);
+            const davData = data.data.map(d => d.dav || 0);
+            const diskData = data.data.map(d => d.disk || 0);
+            const archiveData = data.data.map(d => d.archive || 0);
+
+            // Determine which datasets to show based on resource type
+            const datasets = [];
+
+            if (data.resource_type === 'HPC' || data.resource_type === 'DAV') {
+                if (compData.some(v => v > 0)) {
+                    datasets.push({
+                        label: 'Compute Charges',
+                        data: compData,
+                        borderColor: '#003366',
+                        backgroundColor: 'rgba(0, 51, 102, 0.15)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3
+                    });
+                }
+                if (davData.some(v => v > 0)) {
+                    datasets.push({
+                        label: 'DAV Charges',
+                        data: davData,
+                        borderColor: '#0099CC',
+                        backgroundColor: 'rgba(0, 153, 204, 0.15)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3
+                    });
+                }
+            } else if (data.resource_type === 'DISK') {
+                datasets.push({
+                    label: 'Disk Charges',
+                    data: diskData,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 3
+                });
+            } else if (data.resource_type === 'ARCHIVE') {
+                datasets.push({
+                    label: 'Archive Charges',
+                    data: archiveData,
+                    borderColor: '#40C4E4',
+                    backgroundColor: 'rgba(64, 196, 228, 0.15)',
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 3
+                });
+            }
+
+            // Create chart
+            const ctx = document.getElementById('usageChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                color: '#1A202C',
+                                font: {
+                                    size: 13,
+                                    weight: '600'
+                                },
+                                padding: 15,
+                                usePointStyle: true
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: `${resourceName} - Resource Usage Charges`,
+                            color: '#003366',
+                            font: {
+                                size: 18,
+                                weight: 'bold',
+                                family: "'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif"
+                            },
+                            padding: {
+                                top: 10,
+                                bottom: 20
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 51, 102, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: '#0099CC',
+                            borderWidth: 2,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += formatNumber(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Charges',
+                                color: '#003366',
+                                font: {
+                                    size: 13,
+                                    weight: '600'
+                                }
+                            },
+                            ticks: {
+                                color: '#4A5568',
+                                font: {
+                                    size: 11
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 153, 204, 0.1)',
+                                drawBorder: false
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                color: '#003366',
+                                font: {
+                                    size: 13,
+                                    weight: '600'
+                                }
+                            },
+                            ticks: {
+                                color: '#4A5568',
+                                font: {
+                                    size: 11
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 153, 204, 0.1)',
+                                drawBorder: false
+                            }
+                        }
+                    }
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error loading chart:', error);
+            document.getElementById('loading-chart').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Error loading chart: ${error.message}
+                </div>
+            `;
+        });
+}
+
+// Load and render charges table
+function loadCharges(startDate, endDate) {
+    let url = `/api/v1/charges/details?projcode=${encodeURIComponent(projcode)}&resource=${encodeURIComponent(resourceName)}`;
+
+    if (startDate && endDate) {
+        url += `&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+    }
+
+    fetch(url)
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to load charges');
+            return response.json();
+        })
+        .then(data => {
+            document.getElementById('loading-charges').style.display = 'none';
+
+            if (data.charges && data.charges.length > 0) {
+                document.getElementById('charges-container').style.display = 'block';
+                document.getElementById('charges-count').textContent = `${data.charges.length} entries`;
+
+                const tbody = document.getElementById('charges-tbody');
+                tbody.innerHTML = '';
+
+                // Store data for export
+                currentChargesData = data.charges;
+
+                data.charges.forEach(charge => {
+                    const row = document.createElement('tr');
+
+                    // Determine charge type badge
+                    let typeBadge = '';
+                    let typeClass = 'badge-secondary';
+
+                    if (charge.type.includes('Compute') || charge.type.includes('HPC')) {
+                        typeClass = 'badge-primary';
+                    } else if (charge.type.includes('DAV')) {
+                        typeClass = 'badge-info';
+                    } else if (charge.type.includes('Disk')) {
+                        typeClass = 'badge-success';
+                    } else if (charge.type.includes('Archive')) {
+                        typeClass = 'badge-warning';
+                    }
+
+                    typeBadge = `<span class="badge ${typeClass} type-badge">${charge.type}</span>`;
+
+                    row.innerHTML = `
+                        <td><strong>${charge.date}</strong></td>
+                        <td>${typeBadge}</td>
+                        <td>${charge.comment || '-'}</td>
+                        <td>${charge.user || '-'}</td>
+                        <td class="text-right">${formatNumber(charge.amount)}</td>
+                    `;
+
+                    tbody.appendChild(row);
+                });
+            } else {
+                document.getElementById('no-charges').style.display = 'block';
+                currentChargesData = [];
+            }
+        })
+        .catch(error => {
+            console.error('Error loading charges:', error);
+            document.getElementById('loading-charges').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Error loading charges: ${error.message}
+                </div>
+            `;
+        });
+}
+
+// Load allocation/charge changes
+function loadAllocationChanges() {
+    const url = `/api/v1/allocations/changes?projcode=${encodeURIComponent(projcode)}&resource=${encodeURIComponent(resourceName)}`;
+
+    fetch(url)
+        .then(response => {
+            if (!response.ok) {
+                // If endpoint doesn't exist yet, just hide the loading spinner
+                document.getElementById('loading-changes').style.display = 'none';
+                document.getElementById('no-changes').style.display = 'block';
+                return null;
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (!data) return;
+
+            document.getElementById('loading-changes').style.display = 'none';
+
+            if (data.changes && data.changes.length > 0) {
+                document.getElementById('changes-container').style.display = 'block';
+                document.getElementById('changes-card').style.display = 'block';
+
+                const tbody = document.getElementById('changes-tbody');
+                tbody.innerHTML = '';
+
+                data.changes.forEach(change => {
+                    const row = document.createElement('tr');
+
+                    // Determine type badge
+                    let typeBadge = '';
+                    let typeClass = 'badge-secondary';
+
+                    if (change.type.includes('Allocation')) {
+                        typeClass = 'badge-primary';
+                    } else if (change.type.includes('Credit')) {
+                        typeClass = 'badge-success';
+                    } else if (change.type.includes('Reservation')) {
+                        typeClass = 'badge-warning';
+                    } else if (change.type.includes('Adjustment')) {
+                        typeClass = 'badge-info';
+                    }
+
+                    typeBadge = `<span class="badge ${typeClass} type-badge">${change.type}</span>`;
+
+                    // Format amount with color
+                    const amount = parseFloat(change.amount) || 0;
+                    const amountClass = amount >= 0 ? 'amount-positive' : 'amount-negative';
+                    const amountText = amount >= 0 ? `+${formatNumber(Math.abs(amount))}` : `-${formatNumber(Math.abs(amount))}`;
+
+                    row.innerHTML = `
+                        <td><strong>${change.date}</strong></td>
+                        <td>${typeBadge}</td>
+                        <td>${change.comment || '-'}</td>
+                        <td class="text-right ${amountClass}">${amountText}</td>
+                    `;
+
+                    tbody.appendChild(row);
+                });
+            } else {
+                document.getElementById('no-changes').style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading allocation changes:', error);
+            document.getElementById('loading-changes').style.display = 'none';
+            document.getElementById('no-changes').style.display = 'block';
+        });
+}
+
+// Load project information
+function loadProjectInfo() {
+    const url = `{{ url_for('user_dashboard.get_my_projects') }}`;
+
+    fetch(url)
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to load project data');
+            return response.json();
+        })
+        .then(data => {
+            // Find the project matching our projcode
+            const project = data.projects.find(p => p.projcode === projcode);
+            if (!project) {
+                console.error('Project not found');
+                return;
+            }
+
+            // Find the resource allocation
+            const resource = project.resources.find(r => r.resource_name === resourceName);
+            if (!resource) {
+                console.error('Resource not found');
+                return;
+            }
+
+            // Populate page header lead
+            document.getElementById('page-header-lead').textContent = project.lead_name || 'Not assigned';
+
+            // Store allocation dates
+            allocationStartDate = resource.start_date;
+            allocationEndDate = resource.end_date;
+
+            // Initialize date inputs with allocation period
+            if (resource.start_date) {
+                document.getElementById('start-date').value = formatDateForInput(resource.start_date);
+            }
+            if (resource.end_date) {
+                document.getElementById('end-date').value = formatDateForInput(resource.end_date);
+            }
+
+            // Populate allocation details
+            document.getElementById('allocation-resource').textContent = resource.resource_name;
+            document.getElementById('allocation-start').textContent = resource.start_date
+                ? new Date(resource.start_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                : 'N/A';
+            document.getElementById('allocation-end').textContent = resource.end_date
+                ? new Date(resource.end_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                : 'N/A';
+
+            const allocationStatusBadge = resource.status === 'Active'
+                ? '<span class="badge badge-success">Active</span>'
+                : '<span class="badge badge-secondary">Inactive</span>';
+            document.getElementById('allocation-status').innerHTML = allocationStatusBadge;
+
+            // Populate usage stats
+            document.getElementById('info-allocated').textContent = formatNumber(resource.allocated);
+            document.getElementById('info-used').textContent = formatNumber(resource.used);
+            document.getElementById('info-remaining').textContent = formatNumber(resource.remaining);
+            document.getElementById('info-percent').textContent = resource.percent_used.toFixed(1) + '%';
+
+            // Show the info card
+            document.getElementById('project-info-card').style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error loading project info:', error);
+        });
+}
+
+// Export charges to CSV
+function exportToCSV() {
+    if (currentChargesData.length === 0) {
+        alert('No data to export');
+        return;
+    }
+
+    // Create CSV content
+    const headers = ['Date', 'Type of Charge', 'Comment', 'User', 'Amount'];
+    let csvContent = headers.join(',') + '\n';
+
+    currentChargesData.forEach(charge => {
+        const row = [
+            charge.date,
+            `"${charge.type}"`,
+            `"${(charge.comment || '').replace(/"/g, '""')}"`,
+            charge.user || '',
+            charge.amount
+        ];
+        csvContent += row.join(',') + '\n';
+    });
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
+    const filename = `${projcode}_${resourceName}_charges_${startDate}_to_${endDate}.csv`;
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Handle collapse chevron rotation
+$(document).ready(function() {
+    $('.card-header[data-toggle="collapse"]').on('click', function() {
+        const target = $(this).data('target');
+        const chevron = $(this).find('.fa-chevron-down');
+
+        $(target).on('shown.bs.collapse', function() {
+            chevron.css('transform', 'rotate(0deg)');
+        });
+
+        $(target).on('hidden.bs.collapse', function() {
+            chevron.css('transform', 'rotate(-90deg)');
+        });
+    });
+
+    // Attach export button handler
+    document.getElementById('export-csv').addEventListener('click', exportToCSV);
+});
+
+// Handle date range form submission
+document.addEventListener('DOMContentLoaded', function() {
+    const dateForm = document.getElementById('date-range-form');
+    const resetBtn = document.getElementById('reset-dates');
+
+    dateForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+
+        if (startDate && endDate) {
+            if (new Date(startDate) > new Date(endDate)) {
+                alert('Start date must be before end date');
+                return;
+            }
+            // Reload chart and table with new date range
+            loadUsageChart(startDate, endDate);
+            loadCharges(startDate, endDate);
+        }
+    });
+
+    resetBtn.addEventListener('click', function() {
+        // Reset to allocation period
+        if (allocationStartDate) {
+            document.getElementById('start-date').value = formatDateForInput(allocationStartDate);
+        }
+        if (allocationEndDate) {
+            document.getElementById('end-date').value = formatDateForInput(allocationEndDate);
+        }
+        // Reload with allocation dates
+        loadUsageChart(
+            formatDateForInput(allocationStartDate),
+            formatDateForInput(allocationEndDate)
+        );
+        loadCharges(
+            formatDateForInput(allocationStartDate),
+            formatDateForInput(allocationEndDate)
+        );
+    });
+});
+
+// Load everything on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadProjectInfo();
+    loadAllocationChanges();
+    loadUsageChart();
+    loadCharges();
+});
+</script>
+{% endblock %}

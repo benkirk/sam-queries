@@ -6,6 +6,7 @@ import sam.session
 from webui.extensions import db
 from webui.blueprints.admin import admin_bp, init_admin
 from webui.blueprints.auth_bp import bp as auth_bp
+from webui.blueprints.user_dashboard import bp as user_dashboard_bp
 from webui.auth.models import AuthUser
 from webui.utils.rbac import rbac_context_processor
 from sam.core.users import User
@@ -32,6 +33,7 @@ def create_app():
         'mtrahan': ['facility_manager'],
         'rory': ['project_lead'],
         'andersnb': ['user'],
+        'negins': ['user'],
     }
 
     # Flask-SQLAlchemy configuration
@@ -77,6 +79,7 @@ def create_app():
 
     # Register blueprints
     app.register_blueprint(auth_bp)
+    app.register_blueprint(user_dashboard_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
 
     # Register API blueprints
@@ -91,7 +94,11 @@ def create_app():
     @app.route('/')
     def index():
         if current_user.is_authenticated:
-            return redirect(url_for('admin.index'))
+            # Redirect admin users to admin dashboard, regular users to user dashboard
+            if 'admin' in current_user.roles:
+                return redirect(url_for('admin.index'))
+            else:
+                return redirect(url_for('user_dashboard.index'))
         return redirect(url_for('auth.login'))
 
     return app
