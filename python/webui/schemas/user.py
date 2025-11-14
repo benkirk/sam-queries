@@ -139,25 +139,46 @@ class UserSchema(BaseSchema):
         return obj.primary_email
 
     def get_institutions(self, obj):
-        """Serialize user institutions."""
-        return [
-            {
-                'institution_name': ui.institution.institution_name,
-                'is_primary': ui.is_primary
-            }
-            for ui in obj.institutions
-        ]
+        """
+        Serialize user institutions.
+
+        Returns list of institutions with name and acronym.
+        Handles cases where institution relationship may be None.
+        """
+        institutions = []
+        for ui in obj.institutions:
+            if ui.institution:
+                institutions.append({
+                    'institution_name': ui.institution.name,
+                    'institution_acronym': ui.institution.acronym
+                })
+        return institutions
 
     def get_organizations(self, obj):
-        """Serialize user organizations."""
-        return [
-            {
-                'organization_acronym': uo.organization.acronym,
-                'organization_name': uo.organization.name
-            }
-            for uo in obj.organizations
-        ]
+        """
+        Serialize user organizations.
+
+        Returns list of organizations with acronym and name.
+        Handles cases where organization relationship may be None.
+        """
+        organizations = []
+        for uo in obj.organizations:
+            if uo.organization:
+                organizations.append({
+                    'organization_acronym': uo.organization.acronym,
+                    'organization_name': uo.organization.name
+                })
+        return organizations
 
     def get_roles(self, obj):
-        """Serialize user roles."""
-        return [ra.role.name for ra in obj.role_assignments]
+        """
+        Serialize user roles.
+
+        Returns list of role names.
+        Handles cases where role relationship may be None.
+        """
+        roles = []
+        for ra in obj.role_assignments:
+            if ra.role:
+                roles.append(ra.role.name)
+        return roles
