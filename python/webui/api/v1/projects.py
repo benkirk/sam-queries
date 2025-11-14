@@ -146,10 +146,18 @@ def list_projects():
 @require_permission(Permission.VIEW_PROJECTS)
 def get_project(projcode):
     """
-    GET /api/v1/projects/<projcode> - Get project details.
+    GET /api/v1/projects/<projcode> - Get project details with tree structure.
+
+    Query parameters:
+        max_depth (int): Maximum depth for tree traversal (default: 4)
+                        Controls how deep the project tree is expanded.
+                        Set to 0 to disable tree expansion.
 
     Returns:
-        JSON with project details
+        JSON with project details including:
+        - breadcrumb_path: List of projcodes from root to current project
+        - tree_depth: Depth of current project in tree (0 = root)
+        - tree: Full tree structure from root with nested children
     """
     from sam.queries import find_project_by_code
 
@@ -158,8 +166,16 @@ def get_project(projcode):
     if not project:
         return jsonify({'error': 'Project not found'}), 404
 
-    # Serialize project using ProjectSchema
-    return jsonify(ProjectSchema().dump(project))
+    # Get max_depth parameter (default: 4)
+    max_depth = request.args.get('max_depth', 4, type=int)
+
+    # Serialize project using ProjectSchema with tree context
+    schema = ProjectSchema()
+    schema.context = {
+        'max_depth': max_depth,
+        'session': db.session
+    }
+    return jsonify(schema.dump(project))
 
 
 @bp.route('/<projcode>/members', methods=['GET'])
