@@ -9,7 +9,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / 'python'))
 
-from test_config import (
+from fixtures.test_config import (
     create_test_engine,
     create_test_session_factory,
     get_test_session,
@@ -58,3 +58,35 @@ def session_commit(SessionFactory):
         session.commit()
     finally:
         session.close()
+
+
+# Common test data fixtures
+@pytest.fixture
+def test_user(session):
+    """Get known test user (benkirk)."""
+    from sam import User
+    return User.get_by_username(session, 'benkirk')
+
+
+@pytest.fixture
+def test_project(session):
+    """Get known test project (SCSG0001)."""
+    from sam import Project
+    return Project.get_by_projcode(session, 'SCSG0001')
+
+
+@pytest.fixture
+def test_allocation(test_project):
+    """Get active allocation from test project."""
+    for account in test_project.accounts:
+        for allocation in account.allocations:
+            if allocation.is_active:
+                return allocation
+    return None
+
+
+@pytest.fixture
+def test_resource(session):
+    """Get known test resource (Derecho)."""
+    from sam import Resource
+    return session.query(Resource).filter_by(resource_name='Derecho').first()

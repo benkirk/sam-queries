@@ -24,7 +24,7 @@ make conda-env
 ./python/sam_search.py user <your_username>
 
 # 4. Run tests
-python3 -m pytest tests/ -v
+cd tests && pytest -v
 ```
 
 For local development with write access, continue to the full setup guide below.
@@ -125,7 +125,7 @@ source etc/config_env.sh
 ./python/sam_search.py user --search "a%" | head -20
 
 # Run tests (most will pass with read-only access)
-python3 -m pytest tests/ -v
+cd tests && pytest -v
 ```
 
 **Expected results:**
@@ -283,16 +283,16 @@ All responses are JSON formatted using Marshmallow-SQLAlchemy schemas.
 
 ```bash
 # Run all tests
-python3 -m pytest tests/ -v
+cd tests && pytest -v
 
 # Run specific test file
-python3 -m pytest tests/test_schema_validation.py -v
+cd tests && pytest integration/test_schema_validation.py -v
 
 # Run tests matching a pattern
-python3 -m pytest tests/ -k "user" -v
+cd tests && pytest -k "user" -v
 
 # Run with coverage
-python3 -m pytest tests/ --cov=sam --cov-report=html
+cd tests && pytest --cov=sam --cov-report=html
 ```
 
 **Test categories:**
@@ -334,12 +334,12 @@ python3 -m pytest tests/ --cov=sam --cov-report=html
 
 4. **Run schema validation**:
    ```bash
-   pytest tests/test_schema_validation.py -v
+   cd tests && pytest integration/test_schema_validation.py -v
    ```
 
 5. **Verify all tests pass**:
    ```bash
-   pytest tests/ -v
+   cd tests && pytest -v
    ```
 
 #### Adding API Endpoints
@@ -391,7 +391,7 @@ python3 -m pytest tests/ --cov=sam --cov-report=html
 
 4. **Run CLI test suite**:
    ```bash
-   pytest tests/test_sam_search_cli.py -v
+   cd tests && pytest integration/test_sam_search_cli.py -v
    ```
 
 ## Code Style & Best Practices
@@ -500,12 +500,12 @@ class Account(Base):
 
 3. **Ensure all tests pass**:
    ```bash
-   python3 -m pytest tests/ -v
+   cd tests && pytest -v
    ```
 
 4. **Run schema validation** (if you modified ORM):
    ```bash
-   python3 -m pytest tests/test_schema_validation.py -v
+   cd tests && pytest integration/test_schema_validation.py -v
    ```
 
 5. **Submit a pull request** with:

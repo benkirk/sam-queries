@@ -36,9 +36,9 @@ class TestResourceSchemas:
             assert result['resource_type'] == 'HPC'
             assert 'description' in result
 
-    def test_resource_summary_schema(self, session):
+    def test_resource_summary_schema(self, test_resource):
         """Test ResourceSummarySchema serializes minimal fields."""
-        resource = Resource.get_by_name(session, 'Derecho')
+        resource = test_resource
 
         if resource:
             result = ResourceSummarySchema().dump(resource)
@@ -49,9 +49,9 @@ class TestResourceSchemas:
             # resource_type should be a string, not nested object
             assert isinstance(result['resource_type'], (str, type(None)))
 
-    def test_resource_schema_full(self, session):
+    def test_resource_schema_full(self, test_resource):
         """Test ResourceSchema serializes full details."""
-        resource = Resource.get_by_name(session, 'Derecho')
+        resource = test_resource
 
         if resource:
             result = ResourceSchema().dump(resource)
@@ -69,9 +69,9 @@ class TestResourceSchemas:
 class TestAllocationSchemas:
     """Test Allocation schemas including usage calculations."""
 
-    def test_allocation_schema_basic(self, session):
+    def test_allocation_schema_basic(self, session, test_project):
         """Test basic AllocationSchema without usage."""
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
 
         # Get an account with allocations
@@ -97,9 +97,9 @@ class TestAllocationSchemas:
             assert 'remaining' not in result
             assert 'percent_used' not in result
 
-    def test_allocation_with_usage_schema(self, session):
+    def test_allocation_with_usage_schema(self, session, test_project):
         """Test AllocationWithUsageSchema includes usage calculations."""
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
 
         # Get an account with allocations
@@ -151,9 +151,9 @@ class TestAllocationSchemas:
                 # Percent used should be reasonable
                 assert 0 <= result['percent_used'] <= 200  # Allow up to 200% for overages
 
-    def test_allocation_usage_calculations(self, session):
+    def test_allocation_usage_calculations(self, session, test_project):
         """Test that usage calculations match expected values."""
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
 
         account = session.query(Account).filter(
@@ -194,9 +194,9 @@ class TestAllocationSchemas:
 class TestAccountSchemas:
     """Test Account schemas."""
 
-    def test_account_summary_schema(self, session):
+    def test_account_summary_schema(self, session, test_project):
         """Test AccountSummarySchema serializes minimal fields."""
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
 
         account = session.query(Account).filter(
@@ -216,9 +216,9 @@ class TestAccountSchemas:
             if result['resource']:
                 assert 'resource_name' in result['resource']
 
-    def test_account_schema_with_allocation(self, session):
+    def test_account_schema_with_allocation(self, session, test_project):
         """Test AccountSchema includes active allocation with usage."""
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
 
         account = session.query(Account).filter(
@@ -307,13 +307,13 @@ class TestChargeSummarySchemas:
 class TestSchemaIntegration:
     """Test schema integration matching sam_search.py output."""
 
-    def test_project_allocation_usage_matches_cli(self, session):
+    def test_project_allocation_usage_matches_cli(self, session, test_project):
         """
         Test that AllocationWithUsageSchema output matches sam_search.py format.
 
         This validates that the API will return the same data structure as the CLI.
         """
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
 
         # Get all accounts for project

@@ -396,7 +396,7 @@ class TestTransactionBehavior:
 
         # Verify it doesn't persist
         # Need a new session to check
-        from test_config import create_test_session_factory, create_test_engine
+        from fixtures.test_config import create_test_session_factory, create_test_engine
         engine = create_test_engine()
         SessionFactory = create_test_session_factory(engine)
         check_session = SessionFactory()
