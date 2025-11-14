@@ -34,3 +34,19 @@ settings:
 
   # --- Optional: logging / debug ---
   verbose: true                    # print detailed progress (default: true)
+
+# --- Anonymization settings ---
+anonymization:
+  # Usernames to preserve (for testing/development purposes)
+  # These users will NOT be anonymized and will keep their real data
+  preserve_usernames:
+    - benkirk
+    - csgteam
+    # Add more usernames as needed for testing
+
+  # Whether to preserve related data for preserved users
+  preserve_emails: true            # keep real emails for preserved users
+  preserve_phones: true            # keep real phone numbers for preserved users
+
+  # Random seed for deterministic anonymization
+  seed: 42                         # change this to get different anonymized data
