@@ -314,29 +314,11 @@ tests/
 
 ---
 
-### 3.2 Add pytest Plugins for Enhanced Testing
+### 3.2 Use pytest Plugins for Enhanced Testing
 
 **Problem:** Missing common pytest features (coverage, parallel execution, etc.)
 
-**Solution:** Add pytest plugins to `conda-env.yaml`
-
-**File:** `conda-env.yaml` (add to pip dependencies)
-```yaml
-dependencies:
-  - python=3.13
-  - pip
-  - pip:
-      # Existing dependencies...
-
-      # Testing plugins
-      - pytest-cov          # Coverage reporting
-      - pytest-xdist        # Parallel test execution
-      - pytest-timeout      # Prevent hanging tests
-      - pytest-benchmark    # Performance benchmarks (optional)
-      - pytest-sugar        # Better output formatting (optional)
-```
-
-**Update pytest.ini:**
+**Solution:** Add pytest plugins to `pytest.ini`
 ```ini
 [pytest]
 # ... existing config ...
@@ -379,18 +361,8 @@ pytest -n auto --cov=sam --cov-report=html --timeout=300 tests/
 - Better visibility into test health
 
 **Files to Modify:**
-- `conda-env.yaml` - Add plugins
 - `pytest.ini` - Add plugin configuration
 - `tests/README.md` - Document plugin usage
-
-**Installation:**
-```bash
-# Recreate conda environment with new dependencies
-make conda-env
-
-# Or update existing environment
-conda env update --file conda-env.yaml --prune
-```
 
 **Estimated Time:** 1 hour
 
