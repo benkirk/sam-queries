@@ -20,9 +20,10 @@ Usage:
 """
 
 from marshmallow import fields
+from sam.projects.projects import Project
+
 from . import BaseSchema
 from .user import UserSummarySchema
-from sam.projects.projects import Project
 
 
 class ProjectSummarySchema(BaseSchema):
@@ -32,9 +33,10 @@ class ProjectSummarySchema(BaseSchema):
     Used when a project is referenced from another object.
     Only includes essential identification fields.
     """
+
     class Meta(BaseSchema.Meta):
         model = Project
-        fields = ('project_id', 'projcode', 'title', 'active')
+        fields = ("project_id", "projcode", "title", "active")
 
 
 class ProjectListSchema(BaseSchema):
@@ -44,27 +46,28 @@ class ProjectListSchema(BaseSchema):
     Includes key project fields with minimal nesting.
     Used for /api/v1/projects/ list endpoint.
     """
+
     class Meta(BaseSchema.Meta):
         model = Project
         fields = (
-            'project_id',
-            'projcode',
-            'title',
-            'lead_username',
-            'admin_username',
-            'active',
-            'charging_exempt',
-            'area_of_interest',
-            'parent_projcode',
-            'has_children',
+            "project_id",
+            "projcode",
+            "title",
+            "lead_username",
+            "admin_username",
+            "active",
+            "charging_exempt",
+            "area_of_interest",
+            "parent_projcode",
+            "has_children",
         )
 
     # Custom fields for lead/admin (just usernames, not full nested objects)
-    lead_username = fields.Method('get_lead_username')
-    admin_username = fields.Method('get_admin_username')
-    area_of_interest = fields.Method('get_area_of_interest')
-    parent_projcode = fields.Method('get_parent_projcode')
-    has_children = fields.Method('get_has_children')
+    lead_username = fields.Method("get_lead_username")
+    admin_username = fields.Method("get_admin_username")
+    area_of_interest = fields.Method("get_area_of_interest")
+    parent_projcode = fields.Method("get_parent_projcode")
+    has_children = fields.Method("get_has_children")
 
     def get_lead_username(self, obj):
         """Get lead username."""
@@ -94,32 +97,33 @@ class ProjectSchema(BaseSchema):
     Includes all project details plus related lead, admin, area of interest.
     Used for /api/v1/projects/<projcode> detail endpoint.
     """
+
     class Meta(BaseSchema.Meta):
         model = Project
         fields = (
-            'project_id',
-            'projcode',
-            'title',
-            'abstract',
-            'lead',
-            'admin',
-            'active',
-            'charging_exempt',
-            'area_of_interest',
-            'creation_time',
-            'modified_time',
-            'breadcrumb_path',
-            'tree_depth',
-            'tree',
+            "project_id",
+            "projcode",
+            "title",
+            "abstract",
+            "lead",
+            "admin",
+            "active",
+            "charging_exempt",
+            "area_of_interest",
+            "creation_time",
+            "modified_time",
+            "breadcrumb_path",
+            "tree_depth",
+            "tree",
         )
 
     # Nested user objects
     lead = fields.Nested(UserSummarySchema)
     admin = fields.Nested(UserSummarySchema)
-    area_of_interest = fields.Method('get_area_of_interest')
-    breadcrumb_path = fields.Method('get_breadcrumb_path')
-    tree_depth = fields.Method('get_tree_depth')
-    tree = fields.Method('get_tree')
+    area_of_interest = fields.Method("get_area_of_interest")
+    breadcrumb_path = fields.Method("get_breadcrumb_path")
+    tree_depth = fields.Method("get_tree_depth")
+    tree = fields.Method("get_tree")
 
     def get_area_of_interest(self, obj):
         """Get area of interest name."""
@@ -135,7 +139,7 @@ class ProjectSchema(BaseSchema):
         """
         breadcrumbs = obj.get_breadcrumb_path()
         # Extract just the projcodes from breadcrumb dicts
-        return [b['projcode'] for b in breadcrumbs]
+        return [b["projcode"] for b in breadcrumbs]
 
     def get_tree_depth(self, obj):
         """Get depth of project in tree (0 = root)."""
@@ -154,8 +158,8 @@ class ProjectSchema(BaseSchema):
             Dict with projcode, depth, and children list
         """
         tree_node = {
-            'projcode': project.projcode,
-            'depth': current_depth,
+            "projcode": project.projcode,
+            "depth": current_depth,
         }
 
         # Only add children if we haven't reached max depth
@@ -163,17 +167,17 @@ class ProjectSchema(BaseSchema):
             children = project.get_children()
             if children:
                 # Build nested structure for children
-                tree_node['children'] = [
+                tree_node["children"] = [
                     self._build_tree_recursive(child, current_depth + 1, max_depth)
                     for child in children
                 ]
             else:
-                tree_node['children'] = []
+                tree_node["children"] = []
         else:
             # At max depth, just indicate if there are more children
-            tree_node['children'] = []
+            tree_node["children"] = []
             if project.has_children:
-                tree_node['has_more'] = True
+                tree_node["has_more"] = True
 
         return tree_node
 
@@ -197,7 +201,7 @@ class ProjectSchema(BaseSchema):
             }
         """
         # Get max_depth from context, default to 4
-        max_depth = self.context.get('max_depth', 4) if self.context else 4
+        max_depth = self.context.get("max_depth", 4) if self.context else 4
 
         # Find the root of the tree
         root = obj.get_root()
