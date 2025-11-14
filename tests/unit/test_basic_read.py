@@ -19,11 +19,41 @@ from sam import (
 class TestBasicRead:
     """Test basic read operations on core models."""
 
-    def test_user_count(self, session):
-        """Test that we can query users."""
-        user_count = session.query(User).count()
-        assert user_count > 0, "Expected to find users in database"
-        print(f"✅ Found {user_count} users")
+    @pytest.mark.parametrize('model,min_count,model_name', [
+        (User, 1000, 'users'),
+        (Project, 100, 'projects'),
+        (Account, 100, 'accounts'),
+        (Allocation, 100, 'allocations'),
+        (Resource, 10, 'resources'),
+        (Organization, 50, 'organizations'),
+        (Institution, 100, 'institutions'),
+        (Machine, 5, 'machines'),
+        (Queue, 10, 'queues'),
+    ])
+    def test_model_count(self, session, model, min_count, model_name):
+        """Test that core models have expected record counts."""
+        count = session.query(model).count()
+        assert count >= min_count, f"{model.__name__} has only {count} records (expected >= {min_count})"
+        print(f"✅ Found {count} {model_name}")
+
+    @pytest.mark.parametrize('model,pk_column', [
+        (User, 'user_id'),
+        (Project, 'project_id'),
+        (Account, 'account_id'),
+        (Allocation, 'allocation_id'),
+        (Resource, 'resource_id'),
+        (Organization, 'organization_id'),
+        (Institution, 'institution_id'),
+        (Machine, 'machine_id'),
+        (Queue, 'queue_id'),
+    ])
+    def test_model_primary_key(self, session, model, pk_column):
+        """Test that models have valid primary keys."""
+        instance = session.query(model).first()
+        assert instance is not None, f"No records found for {model.__name__}"
+        assert hasattr(instance, pk_column), f"{model.__name__} missing primary key column '{pk_column}'"
+        assert getattr(instance, pk_column) is not None, f"{model.__name__}.{pk_column} is None"
+        print(f"✅ {model.__name__}.{pk_column} = {getattr(instance, pk_column)}")
 
     def test_user_query(self, session):
         """Test querying and accessing user properties."""
@@ -40,12 +70,6 @@ class TestBasicRead:
         assert len(user.email_addresses) > 0
         assert user.primary_email is not None
         print(f"✅ User {user.username} has email: {user.primary_email}")
-
-    def test_project_count(self, session):
-        """Test that we can query projects."""
-        project_count = session.query(Project).count()
-        assert project_count > 0, "Expected to find projects in database"
-        print(f"✅ Found {project_count} projects")
 
     def test_project_query(self, session):
         """Test querying and accessing project properties."""
@@ -64,12 +88,6 @@ class TestBasicRead:
         assert isinstance(project.lead, User)
         print(f"✅ Project {project.projcode} lead: {project.lead.username}")
 
-    def test_account_count(self, session):
-        """Test that we can query accounts."""
-        account_count = session.query(Account).count()
-        assert account_count > 0, "Expected to find accounts in database"
-        print(f"✅ Found {account_count} accounts")
-
     def test_account_with_project(self, session):
         """Test account with project relationship."""
         account = session.query(Account).filter(Account.project_id.isnot(None)).first()
@@ -86,12 +104,6 @@ class TestBasicRead:
         assert isinstance(account.resource, Resource)
         print(f"✅ Account {account.account_id} → Resource {account.resource.resource_name}")
 
-    def test_allocation_count(self, session):
-        """Test that we can query allocations."""
-        allocation_count = session.query(Allocation).count()
-        assert allocation_count > 0, "Expected to find allocations in database"
-        print(f"✅ Found {allocation_count} allocations")
-
     def test_allocation_with_account(self, session):
         """Test allocation with account relationship."""
         allocation = session.query(Allocation).first()
@@ -100,12 +112,6 @@ class TestBasicRead:
         assert isinstance(allocation.account, Account)
         print(f"✅ Allocation {allocation.allocation_id} → Account {allocation.account.account_id}")
 
-    def test_resource_count(self, session):
-        """Test that we can query resources."""
-        resource_count = session.query(Resource).count()
-        assert resource_count > 0, "Expected to find resources in database"
-        print(f"✅ Found {resource_count} resources")
-
     def test_resource_query(self, session):
         """Test querying and accessing resource properties."""
         resource = session.query(Resource).filter(Resource.is_active == True).first()
@@ -113,30 +119,6 @@ class TestBasicRead:
         assert resource.resource_id is not None
         assert resource.resource_name is not None
         print(f"✅ Resource: {resource.resource_name}")
-
-    def test_organization_count(self, session):
-        """Test that we can query organizations."""
-        org_count = session.query(Organization).count()
-        assert org_count > 0, "Expected to find organizations in database"
-        print(f"✅ Found {org_count} organizations")
-
-    def test_institution_count(self, session):
-        """Test that we can query institutions."""
-        inst_count = session.query(Institution).count()
-        assert inst_count > 0, "Expected to find institutions in database"
-        print(f"✅ Found {inst_count} institutions")
-
-    def test_machine_count(self, session):
-        """Test that we can query machines."""
-        machine_count = session.query(Machine).count()
-        assert machine_count > 0, "Expected to find machines in database"
-        print(f"✅ Found {machine_count} machines")
-
-    def test_queue_count(self, session):
-        """Test that we can query queues."""
-        queue_count = session.query(Queue).count()
-        assert queue_count > 0, "Expected to find queues in database"
-        print(f"✅ Found {queue_count} queues")
 
 
 class TestComplexQueries:
