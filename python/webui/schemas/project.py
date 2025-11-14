@@ -197,7 +197,7 @@ class ProjectSchema(BaseSchema):
             }
         """
         # Get max_depth from context, default to 4
-        max_depth = self.context.get('max_depth', 4) if self.context else 4
+        max_depth = getattr(self, 'context', {}).get('max_depth', 4)
 
         # Find the root of the tree
         root = obj.get_root()
