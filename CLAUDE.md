@@ -298,13 +298,13 @@ __table_args__ = (
 ### Test Execution
 ```bash
 # Run all tests
-python3 -m pytest tests/ -v
+cd tests && pytest -v
 
 # Run specific test file
-python3 -m pytest tests/test_schema_validation.py -v
+cd tests && pytest integration/test_schema_validation.py -v
 
 # Run with coverage (if needed)
-python3 -m pytest tests/ --cov=sam --cov-report=html
+cd tests && pytest --cov=sam --cov-report=html
 ```
 
 ### Test Files
@@ -462,9 +462,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ### Adding New ORM Models
 1. Create model in appropriate domain module
 2. Add to `sam/__init__.py` imports
-3. Create comprehensive tests in `tests/test_new_models.py`
-4. Run schema validation: `pytest tests/test_schema_validation.py`
-5. Verify all tests pass: `pytest tests/`
+3. Create comprehensive tests in `tests/unit/test_new_models.py`
+4. Run schema validation: `cd tests && pytest integration/test_schema_validation.py`
+5. Verify all tests pass: `cd tests && pytest -v`
 6. Commit with detailed message
 
 ### Fixing Schema Mismatches
@@ -476,9 +476,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ### Adding CLI Features
 1. Add functionality to `python/sam_search.py`
-2. Create integration tests in `tests/test_sam_search_cli.py`
+2. Create integration tests in `tests/integration/test_sam_search_cli.py`
 3. Test manually: `./python/sam_search.py <command>`
-4. Run test suite: `pytest tests/test_sam_search_cli.py`
+4. Run test suite: `cd tests && pytest integration/test_sam_search_cli.py`
 
 ---
 
@@ -508,7 +508,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ```bash
 # Most common commands (see full details in respective sections above)
-python3 -m pytest tests/ -v                          # Run all tests
+cd tests && pytest -v                                # Run all tests
 ./python/sam_search.py user benkirk --list-projects  # User lookup
 ./python/sam_search.py project SCSG0001 --list-users # Project lookup
 git log --oneline -10                                 # Recent commits
