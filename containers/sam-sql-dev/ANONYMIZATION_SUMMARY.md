@@ -57,8 +57,6 @@ Checks for:
 
 ## 🚀 Quick Start
 
-### Option 1: With Config File (Recommended)
-
 ```bash
 # 0. Configure preserved usernames (optional)
 # Edit containers/sam-sql-dev/config.yaml
@@ -71,22 +69,6 @@ python anonymize_sam_db.py --config containers/sam-sql-dev/config.yaml --dry-run
 
 # 3. Execute anonymization
 python anonymize_sam_db.py --config containers/sam-sql-dev/config.yaml
-
-# 4. Verify it worked
-python verify_anonymization.py
-```
-
-### Option 2: Default (No Config)
-
-```bash
-# 1. Preview what will be anonymized
-python preview_anonymization.py
-
-# 2. Dry-run to see statistics
-python anonymize_sam_db.py --dry-run
-
-# 3. Execute anonymization
-python anonymize_sam_db.py
 
 # 4. Verify it worked
 python verify_anonymization.py
