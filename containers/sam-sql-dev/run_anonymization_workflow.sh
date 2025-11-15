@@ -52,7 +52,7 @@ echo "==========================================================================
 echo ""
 read -p "Press ENTER to run dry-run (no changes will be committed)..."
 echo ""
-python3 "$SCRIPT_DIR/anonymize_sam_db.py" --dry-run
+python3 "$SCRIPT_DIR/anonymize_sam_db.py" --config config.yaml --dry-run
 
 echo ""
 echo ""
@@ -70,7 +70,7 @@ fi
 
 echo ""
 echo "Executing anonymization with mappings export..."
-python3 "$SCRIPT_DIR/anonymize_sam_db.py" --export-mappings "$SCRIPT_DIR/../anonymization_mappings.json"
+python3 "$SCRIPT_DIR/anonymize_sam_db.py" --config config.yaml --export-mappings "$SCRIPT_DIR/../anonymization_mappings.json"
 
 if [ $? -eq 0 ]; then
     echo ""

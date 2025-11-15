@@ -165,7 +165,7 @@ python anonymize_sam_db.py --connection "mysql+pymysql://user:pass@host/dbname"
 
 2. **Run dry-run to preview changes**
    ```bash
-   python anonymize_sam_db.py --dry-run
+   python anonymize_sam_db.py --config config.yaml --dry-run
    ```
 
 3. **Review sample transformations**
@@ -175,7 +175,7 @@ python anonymize_sam_db.py --connection "mysql+pymysql://user:pass@host/dbname"
 
 4. **Execute anonymization**
    ```bash
-   python anonymize_sam_db.py --export-mappings mappings.json
+   python anonymize_sam_db.py --config config.yaml --export-mappings mappings.json
    ```
 
 5. **Verify anonymized data**
