@@ -13,17 +13,22 @@ dependencies:
   - pandas
   - pip
   - pymysql
-  - pytest
   - sqlalchemy
   - sqlite
   - tqdm
   - pip:
       - dotenv
-      - pipdeptree
       - flask-admin[sqlalchemy-with-utils,s3,export]
-      - flask-login
       - flask-caching
-      - flask-limiter
       - flask-cors
+      - flask-limiter
+      - flask-login
       - marshmallow
       - marshmallow-sqlalchemy
+      - pipdeptree
+      - pytest
+      - pytest-benchmark
+      - pytest-cov
+      - pytest-sugar
+      - pytest-timeout
+      - pytest-xdist

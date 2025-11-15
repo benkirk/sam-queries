@@ -21,8 +21,8 @@ import sys
 from pathlib import Path
 
 
-# Path to the CLI script
-CLI_PATH = './python/sam_search.py'
+# Path to the CLI script (relative to repository root)
+CLI_PATH = str(Path(__file__).parent.parent.parent / 'python' / 'sam_search.py')
 
 
 def run_cli(*args, expect_success=True):

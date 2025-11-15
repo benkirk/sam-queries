@@ -22,9 +22,9 @@ from webui.schemas import (
 class TestUserSchemas:
     """Test User schema serialization."""
 
-    def test_user_summary_schema(self, session):
+    def test_user_summary_schema(self, test_user):
         """Test UserSummarySchema serializes minimal fields."""
-        user = User.get_by_username(session, 'benkirk')
+        user = test_user
         assert user is not None
 
         # Serialize with UserSummarySchema
@@ -43,9 +43,9 @@ class TestUserSchemas:
         assert 'roles' not in result
         assert 'first_name' not in result
 
-    def test_user_list_schema(self, session):
+    def test_user_list_schema(self, test_user):
         """Test UserListSchema serializes list fields."""
-        user = User.get_by_username(session, 'benkirk')
+        user = test_user
         assert user is not None
 
         # Serialize with UserListSchema
@@ -65,9 +65,9 @@ class TestUserSchemas:
         assert 'organizations' not in result
         assert 'roles' not in result
 
-    def test_user_schema_full(self, session):
+    def test_user_schema_full(self, test_user):
         """Test UserSchema serializes full details with relationships."""
-        user = User.get_by_username(session, 'benkirk')
+        user = test_user
         assert user is not None
 
         # Serialize with UserSchema
@@ -108,9 +108,9 @@ class TestUserSchemas:
         assert all('username' in u for u in result)
         assert all('email' in u for u in result)
 
-    def test_user_schema_property_fields(self, session):
+    def test_user_schema_property_fields(self, test_user):
         """Test that @property fields are serialized correctly."""
-        user = User.get_by_username(session, 'benkirk')
+        user = test_user
         assert user is not None
 
         result = UserSchema().dump(user)
@@ -124,9 +124,9 @@ class TestUserSchemas:
 class TestProjectSchemas:
     """Test Project schema serialization."""
 
-    def test_project_summary_schema(self, session):
+    def test_project_summary_schema(self, test_project):
         """Test ProjectSummarySchema serializes minimal fields."""
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
 
         # Serialize with ProjectSummarySchema
@@ -144,9 +144,9 @@ class TestProjectSchemas:
         assert 'lead' not in result
         assert 'admin' not in result
 
-    def test_project_list_schema(self, session):
+    def test_project_list_schema(self, test_project):
         """Test ProjectListSchema serializes list fields."""
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
 
         # Serialize with ProjectListSchema
@@ -167,9 +167,9 @@ class TestProjectSchemas:
         # Should NOT have full nested user objects
         assert 'lead' not in result or not isinstance(result.get('lead'), dict)
 
-    def test_project_schema_full(self, session):
+    def test_project_schema_full(self, test_project):
         """Test ProjectSchema serializes full details with relationships."""
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
 
         # Serialize with ProjectSchema
@@ -212,9 +212,9 @@ class TestProjectSchemas:
         assert all('projcode' in p for p in result)
         assert all('title' in p for p in result)
 
-    def test_project_schema_nested_users(self, session):
+    def test_project_schema_nested_users(self, test_project):
         """Test that nested user objects are serialized correctly."""
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
         assert project.lead is not None
 
@@ -233,9 +233,9 @@ class TestProjectSchemas:
 class TestSchemaDatetimeHandling:
     """Test that datetime fields are serialized correctly."""
 
-    def test_user_datetime_fields(self, session):
+    def test_user_datetime_fields(self, test_user):
         """Test User datetime serialization."""
-        user = User.get_by_username(session, 'benkirk')
+        user = test_user
         assert user is not None
 
         result = UserSchema().dump(user)
@@ -250,9 +250,9 @@ class TestSchemaDatetimeHandling:
             assert isinstance(result['modified_time'], str)
             datetime.fromisoformat(result['modified_time'])
 
-    def test_project_datetime_fields(self, session):
+    def test_project_datetime_fields(self, test_project):
         """Test Project datetime serialization."""
-        project = Project.get_by_projcode(session, 'SCSG0001')
+        project = test_project
         assert project is not None
 
         result = ProjectSchema().dump(project)
@@ -270,10 +270,10 @@ class TestSchemaDatetimeHandling:
 class TestSchemaEdgeCases:
     """Test schema handling of edge cases and None values."""
 
-    def test_user_with_no_email(self, session):
+    def test_user_with_no_email(self, test_user):
         """Test serialization of user with no email."""
         # Find a user without email or test with benkirk (should have email)
-        user = User.get_by_username(session, 'benkirk')
+        user = test_user
         assert user is not None
 
         result = UserSchema().dump(user)

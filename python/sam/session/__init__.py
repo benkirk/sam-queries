@@ -23,8 +23,9 @@ def init_sam_db_defaults():
     print(f'{username}:$SAM_DB_PASSWORD@{server}/{database}')
 
     # Create connection string
+    # Using pymysql driver for consistency with test suite
     global connection_string
-    connection_string = f'mysql+mysqlconnector://{username}:{password}@{server}/{database}'
+    connection_string = f'mysql+pymysql://{username}:{password}@{server}/{database}'
     #print(connection_string)
 
 # run on import
