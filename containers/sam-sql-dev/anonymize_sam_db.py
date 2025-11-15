@@ -6,9 +6,9 @@ Anonymizes a SAM database replica by replacing sensitive personal and institutio
 information while preserving referential integrity, statistical properties, and patterns.
 
 Usage:
-    python anonymize_sam_db.py --dry-run  # Preview changes without modifying DB
-    python anonymize_sam_db.py            # Execute anonymization
-    python anonymize_sam_db.py --export-mappings mappings.json  # Save mappings
+    python anonymize_sam_db.py --config config.yaml --dry-run  # Preview changes without modifying DB
+    python anonymize_sam_db.py --config config.yaml            # Execute anonymization
+    python anonymize_sam_db.py --config config.yaml --export-mappings mappings.json  # Save mappings
 """
 
 import argparse
@@ -95,10 +95,15 @@ class SAMAnonymizer:
         # Mapping caches for consistency
         self.user_id_to_names: Dict[int, Tuple[str, str, str]] = {}  # (first, middle, last)
         self.user_id_to_username: Dict[int, str] = {}
+        self.user_id_to_upid: Dict[int, int] = {}  # Track UPID mappings to avoid collisions
+        self.used_upids: Set[int] = set()  # Track all UPIDs in use
+        self.used_usernames: Set[str] = set()  # Track all usernames to avoid collisions
         self.preserved_user_ids: Set[int] = set()  # User IDs that are preserved
         self.institution_id_to_name: Dict[int, Tuple[str, str]] = {}  # (name, acronym)
         self.organization_id_to_name: Dict[int, Tuple[str, str]] = {}  # (name, acronym)
+        self.used_org_acronyms: Set[str] = set()  # Track organization acronyms to avoid collisions
         self.contract_id_to_number: Dict[int, str] = {}
+        self.used_contract_numbers: Set[str] = set()  # Track contract numbers to avoid collisions
 
         # Statistics
         self.stats = {
@@ -136,11 +141,57 @@ class SAMAnonymizer:
         return self.user_id_to_names[user_id]
 
     def _get_fake_username(self, user_id: int, original_username: str) -> str:
-        """Generate consistent fake username."""
-        if user_id not in self.user_id_to_username:
-            hash_suffix = self._deterministic_hash(original_username, 'username')[:8]
-            self.user_id_to_username[user_id] = f"user_{hash_suffix}"
-        return self.user_id_to_username[user_id]
+        """
+        Generate consistent fake username with collision avoidance.
+
+        Format: user_{8-char hex hash}
+        """
+        if user_id in self.user_id_to_username:
+            return self.user_id_to_username[user_id]
+
+        # Generate base username
+        hash_suffix = self._deterministic_hash(original_username, 'username')[:8]
+        fake_username = f"user_{hash_suffix}"
+
+        # Resolve collisions by appending counter
+        counter = 1
+        while fake_username in self.used_usernames:
+            fake_username = f"user_{hash_suffix}_{counter}"
+            counter += 1
+            if counter > 1000:
+                raise ValueError(f"Exhausted username space for user_id={user_id}")
+
+        # Cache and track
+        self.user_id_to_username[user_id] = fake_username
+        self.used_usernames.add(fake_username)
+        return fake_username
+
+    def _get_fake_upid(self, user_id: int, original_upid: Optional[int]) -> int:
+        """
+        Generate unique fake UPID for user, avoiding collisions.
+
+        Uses deterministic hash with collision detection and resolution.
+        UPID range: 900000-999999 (100,000 possible values)
+        """
+        if user_id in self.user_id_to_upid:
+            return self.user_id_to_upid[user_id]
+
+        # Start with deterministic hash
+        base_hash = int(self._deterministic_hash(str(original_upid or user_id))[:8], 16)
+        fake_upid = 900000 + (base_hash % 100000)
+
+        # Resolve collisions by incrementing
+        attempts = 0
+        while fake_upid in self.used_upids:
+            fake_upid = 900000 + ((base_hash + attempts) % 100000)
+            attempts += 1
+            if attempts > 100000:
+                raise ValueError("Exhausted UPID space - too many users!")
+
+        # Cache the mapping
+        self.user_id_to_upid[user_id] = fake_upid
+        self.used_upids.add(fake_upid)
+        return fake_upid
 
     def _get_fake_email(self, original_email: str, user_id: int) -> str:
         """
@@ -215,42 +266,84 @@ class SAMAnonymizer:
 
     def _get_fake_organization(self, org_id: int, original_name: str) -> Tuple[str, str]:
         """
-        Generate fake organization name and acronym.
+        Generate fake organization name and acronym with collision avoidance.
+
+        Due to limited pool size (12 names), uses numeric suffix for acronyms
+        to ensure uniqueness when needed.
 
         Returns:
             (name, acronym)
         """
-        if org_id not in self.organization_id_to_name:
-            hash_val = int(self._deterministic_hash(str(org_id)), 16)
-            fake_name = ORGANIZATION_NAMES[hash_val % len(ORGANIZATION_NAMES)]
-            # Generate acronym
-            words = fake_name.split()
-            acronym = ''.join(w[0].upper() for w in words[:4])  # Max 4 letters
-            self.organization_id_to_name[org_id] = (fake_name, acronym)
-        return self.organization_id_to_name[org_id]
+        if org_id in self.organization_id_to_name:
+            return self.organization_id_to_name[org_id]
+
+        hash_val = int(self._deterministic_hash(str(org_id)), 16)
+        fake_name = ORGANIZATION_NAMES[hash_val % len(ORGANIZATION_NAMES)]
+
+        # Generate base acronym from fake name
+        words = fake_name.split()
+        base_acronym = ''.join(w[0].upper() for w in words[:4])  # Max 4 letters
+
+        # Handle collisions by appending numeric suffix
+        acronym = base_acronym
+        counter = 1
+        while acronym in self.used_org_acronyms:
+            acronym = f"{base_acronym}{counter}"
+            counter += 1
+            if counter > 9999:
+                raise ValueError(f"Exhausted acronym space for org_id={org_id}")
+
+        # Cache and track
+        self.organization_id_to_name[org_id] = (fake_name, acronym)
+        self.used_org_acronyms.add(acronym)
+        return (fake_name, acronym)
 
     def _get_fake_contract_number(self, contract_id: int, original_number: str) -> str:
         """
-        Generate fake contract number preserving NSF/grant pattern.
+        Generate fake contract number preserving NSF/grant pattern with collision avoidance.
 
         Examples:
             AGS-0830068 -> TST-1234567
             ACI-1063057 -> TST-9876543
         """
-        if contract_id not in self.contract_id_to_number:
-            # Detect pattern: PREFIX-NUMBERS
-            match = re.match(r'^([A-Z]+)-(\d+)(.*)$', original_number)
-            if match:
-                prefix, numbers, suffix = match.groups()
-                hash_val = int(self._deterministic_hash(original_number)[:8], 16)
-                fake_number = hash_val % (10 ** len(numbers))
-                fake = f"TST-{fake_number:0{len(numbers)}d}{suffix}"
-            else:
-                # Non-standard format
-                hash_val = self._deterministic_hash(original_number)[:8]
-                fake = f"CONTRACT-{hash_val}"
-            self.contract_id_to_number[contract_id] = fake
-        return self.contract_id_to_number[contract_id]
+        if contract_id in self.contract_id_to_number:
+            return self.contract_id_to_number[contract_id]
+
+        # Detect pattern: PREFIX-NUMBERS
+        match = re.match(r'^([A-Z]+)-(\d+)(.*)$', original_number)
+        if match:
+            prefix, numbers, suffix = match.groups()
+            base_hash = int(self._deterministic_hash(original_number)[:8], 16)
+
+            # Generate contract number with collision detection
+            attempts = 0
+            while True:
+                hash_val = (base_hash + attempts) % (10 ** len(numbers))
+                fake = f"TST-{hash_val:0{len(numbers)}d}{suffix}"
+
+                if fake not in self.used_contract_numbers:
+                    break
+
+                attempts += 1
+                if attempts > 100000:
+                    raise ValueError(f"Exhausted contract number space for {original_number}")
+        else:
+            # Non-standard format - use hash-based with collision detection
+            base_hash = self._deterministic_hash(original_number)[:8]
+            fake = f"CONTRACT-{base_hash}"
+
+            # Handle collisions
+            counter = 1
+            while fake in self.used_contract_numbers:
+                fake = f"CONTRACT-{base_hash}-{counter}"
+                counter += 1
+                if counter > 10000:
+                    raise ValueError(f"Exhausted contract number space for {original_number}")
+
+        # Cache and track
+        self.contract_id_to_number[contract_id] = fake
+        self.used_contract_numbers.add(fake)
+        return fake
 
     def _get_fake_orcid(self, original_orcid: Optional[str]) -> Optional[str]:
         """
@@ -298,13 +391,46 @@ class SAMAnonymizer:
         else:
             return f"Anonymized text {hash_suffix}"[:max_length]
 
+    def _initialize_tracking_sets(self, session: Session):
+        """
+        Pre-populate tracking sets with existing database values.
+
+        This prevents collisions when updating records one-by-one, since some
+        records may still have their old/existing values when we try to update others.
+        """
+        print("[*] Initializing collision tracking with existing database values...")
+
+        # Track existing UPIDs
+        result = session.execute(text("SELECT DISTINCT upid FROM users WHERE upid IS NOT NULL"))
+        for row in result:
+            self.used_upids.add(row[0])
+        print(f"  Loaded {len(self.used_upids)} existing UPIDs")
+
+        # Track existing usernames
+        result = session.execute(text("SELECT DISTINCT username FROM users WHERE username IS NOT NULL"))
+        for row in result:
+            self.used_usernames.add(row[0])
+        print(f"  Loaded {len(self.used_usernames)} existing usernames")
+
+        # Track existing organization acronyms
+        result = session.execute(text("SELECT DISTINCT acronym FROM organization WHERE acronym IS NOT NULL"))
+        for row in result:
+            self.used_org_acronyms.add(row[0])
+        print(f"  Loaded {len(self.used_org_acronyms)} existing organization acronyms")
+
+        # Track existing contract numbers
+        result = session.execute(text("SELECT DISTINCT contract_number FROM contract WHERE contract_number IS NOT NULL"))
+        for row in result:
+            self.used_contract_numbers.add(row[0])
+        print(f"  Loaded {len(self.used_contract_numbers)} existing contract numbers")
+
     def anonymize_users(self, session: Session) -> int:
         """
         Anonymize users table.
 
         Anonymizes:
             - username, first_name, middle_name, last_name, nickname
-            - upid (offset to avoid conflicts)
+            - upid (unique assignment in range 900000-999999)
 
         Preserves:
             - user_id, unix_uid, relationships, flags
@@ -331,6 +457,11 @@ class SAMAnonymizer:
             if orig_username in self.preserve_usernames:
                 self.preserved_user_ids.add(user_id)
                 self.user_id_to_username[user_id] = orig_username
+                self.used_usernames.add(orig_username)  # Track to avoid collisions
+                # Track preserved UPID to avoid conflicts
+                if orig_upid:
+                    self.used_upids.add(orig_upid)
+                    self.user_id_to_upid[user_id] = orig_upid
                 preserved_count += 1
                 continue  # Skip anonymization for this user
 
@@ -338,7 +469,7 @@ class SAMAnonymizer:
             fake_first, fake_middle, fake_last = self._get_fake_name(user_id)
             fake_username = self._get_fake_username(user_id, orig_username)
             fake_nickname = None  # Clear nicknames
-            fake_upid = 90000 + (int(self._deterministic_hash(str(orig_upid or user_id))[:8], 16) % 10000)
+            fake_upid = self._get_fake_upid(user_id, orig_upid)
 
             # Update
             if not self.dry_run:
@@ -727,6 +858,10 @@ class SAMAnonymizer:
 
         with Session(self.engine) as session:
             try:
+                # Initialize tracking sets with existing database values
+                # This prevents collisions when updating records one-by-one
+                self._initialize_tracking_sets(session)
+
                 # Order matters for consistency!
                 self.anonymize_users(session)
                 self.anonymize_user_aliases(session)
@@ -768,6 +903,7 @@ class SAMAnonymizer:
         mappings = {
             'user_names': {k: list(v) for k, v in self.user_id_to_names.items()},
             'user_usernames': self.user_id_to_username,
+            'user_upids': self.user_id_to_upid,
             'institutions': {k: list(v) for k, v in self.institution_id_to_name.items()},
             'organizations': {k: list(v) for k, v in self.organization_id_to_name.items()},
             'contracts': self.contract_id_to_number,
