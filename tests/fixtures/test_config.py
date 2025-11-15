@@ -39,13 +39,22 @@ def create_test_engine(echo=False):
     Returns:
         SQLAlchemy Engine instance
     """
+    # Check if SSL is required (for remote servers)
+    require_ssl = os.getenv('SAM_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
+
+    # Build connect_args based on SSL requirement
+    connect_args = {}
+    if require_ssl:
+        connect_args['ssl'] = {'ssl_disabled': False}
+
     engine = create_engine(
         LOCAL_MYSQL_CONNECTION,
         echo=echo,
         pool_pre_ping=True,  # Verify connections before using
         pool_recycle=3600,   # Recycle connections after 1 hour
         pool_size=5,
-        max_overflow=10
+        max_overflow=10,
+        connect_args=connect_args
     )
     return engine
 
