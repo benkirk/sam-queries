@@ -39,18 +39,30 @@ def create_sam_engine(input_connection_string: str = None):
         SAM_DB_USERNAME
         SAM_DB_PASSWORD
         SAM_DB_SERVER
+        SAM_DB_REQUIRE_SSL (optional, default: false)
 
     Example connection_string:
         'mysql+pymysql://username:password@localhost/sam'
     """
+    import os
+
     if input_connection_string is None:
         input_connection_string = connection_string
+
+    # Check if SSL is required (for remote servers)
+    require_ssl = os.getenv('SAM_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
+
+    # Build connect_args based on SSL requirement
+    connect_args = {}
+    if require_ssl:
+        connect_args['ssl'] = {'ssl_disabled': False}
 
     engine = create_engine(
         input_connection_string,
         echo=False,  # Set to True for SQL debugging
         pool_pre_ping=True,
-        pool_recycle=3600
+        pool_recycle=3600,
+        connect_args=connect_args
     )
     SessionLocal = sessionmaker(bind=engine)
     return engine, SessionLocal
