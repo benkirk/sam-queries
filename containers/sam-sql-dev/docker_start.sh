@@ -6,7 +6,7 @@ MYSQL_ROOT_PASSWORD="root"
 MYSQL_IMAGE="mysql:9"
 waittime=20
 
-echo "🧱 Starting local MySQL Docker container..."
+echo "🧱 Starting local MySQL Docker container \"${CONTAINER_NAME}\"..."
 docker rm -f ${CONTAINER_NAME} >/dev/null 2>&1 || true
 docker run -d --name ${CONTAINER_NAME} \
   -e MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD} \
@@ -15,9 +15,7 @@ docker run -d --name ${CONTAINER_NAME} \
   -v ${CONTAINER_NAME}-vol:/var/lib/mysql \
   ${MYSQL_IMAGE}
 
-echo "⏳ Waiting ${waittime} seconds for MySQL to initialize..."
+echo "⏳ Waiting ${waittime} seconds for \"${CONTAINER_NAME}\" to initialize..."
 sleep ${waittime}
 
-echo "✅ Local MySQL container ready."
-
-# mysql -u root -h 127.0.0.1 -proot sam
+echo "✅ Local MySQL \"${CONTAINER_NAME}\" container ready."
