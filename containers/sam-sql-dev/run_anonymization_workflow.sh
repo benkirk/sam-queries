@@ -40,7 +40,7 @@ echo "==========================================================================
 echo "Step 1: Preview Sample Transformations"
 echo "================================================================================"
 echo ""
-read -p "Press ENTER to see sample anonymization transformations..."
+#read -p "Press ENTER to see sample anonymization transformations..."
 echo ""
 python3 "$SCRIPT_DIR/preview_anonymization.py"
 
@@ -50,7 +50,7 @@ echo "==========================================================================
 echo "Step 2: Dry-Run (Preview Changes)"
 echo "================================================================================"
 echo ""
-read -p "Press ENTER to run dry-run (no changes will be committed)..."
+#read -p "Press ENTER to run dry-run (no changes will be committed)..."
 echo ""
 python3 "$SCRIPT_DIR/anonymize_sam_db.py" --config config.yaml --dry-run
 
@@ -70,12 +70,12 @@ fi
 
 echo ""
 echo "Executing anonymization with mappings export..."
-python3 "$SCRIPT_DIR/anonymize_sam_db.py" --config config.yaml --export-mappings "$SCRIPT_DIR/../anonymization_mappings.json"
+python3 "$SCRIPT_DIR/anonymize_sam_db.py" --config config.yaml --export-mappings "$SCRIPT_DIR/anonymization_mappings.json"
 
 if [ $? -eq 0 ]; then
     echo ""
     echo -e "${GREEN}✓ Anonymization completed successfully!${NC}"
-    echo -e "${GREEN}  Mappings saved to: $SCRIPT_DIR/../anonymization_mappings.json${NC}"
+    echo -e "${GREEN}  Mappings saved to: $SCRIPT_DIR/anonymization_mappings.json${NC}"
 else
     echo ""
     echo -e "${RED}✗ Anonymization failed!${NC}"
