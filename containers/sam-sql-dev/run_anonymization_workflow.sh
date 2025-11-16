@@ -90,13 +90,37 @@ echo "==========================================================================
 echo ""
 read -p "Press ENTER to verify anonymization results..."
 echo ""
-python3 "$SCRIPT_DIR/verify_anonymization.py"
 
-if [ $? -eq 0 ]; then
+# Run original verification
+echo "Running basic verification checks..."
+python3 "$SCRIPT_DIR/verify_anonymization.py"
+VERIFY_EXIT=$?
+
+echo ""
+echo "-------------------------------------------------------------------------------"
+echo "Checking for username leaks in summary/activity tables..."
+echo "-------------------------------------------------------------------------------"
+python3 "$SCRIPT_DIR/check_username_leak.py"
+LEAK_EXIT=$?
+
+echo ""
+echo "-------------------------------------------------------------------------------"
+echo "Testing username consistency across all tables..."
+echo "-------------------------------------------------------------------------------"
+python3 "$SCRIPT_DIR/test_username_anonymization.py"
+CONSISTENCY_EXIT=$?
+
+# Evaluate results
+if [ $VERIFY_EXIT -eq 0 ] && [ $LEAK_EXIT -eq 0 ] && [ $CONSISTENCY_EXIT -eq 0 ]; then
     echo ""
     echo -e "${GREEN}================================================================================${NC}"
     echo -e "${GREEN}SUCCESS: Database anonymization complete and verified!${NC}"
     echo -e "${GREEN}================================================================================${NC}"
+    echo ""
+    echo "Verification Summary:"
+    echo "  ✓ Basic anonymization checks passed"
+    echo "  ✓ No username leaks detected (0 non-preserved usernames exposed)"
+    echo "  ✓ Username consistency verified across all tables"
     echo ""
     echo "Next steps:"
     echo "  1. Test your applications with the anonymized database"
@@ -105,7 +129,26 @@ if [ $? -eq 0 ]; then
     echo ""
 else
     echo ""
-    echo -e "${YELLOW}⚠️  Verification detected some potential issues.${NC}"
+    echo -e "${YELLOW}================================================================================${NC}"
+    echo -e "${YELLOW}⚠️  WARNING: Verification detected some issues${NC}"
+    echo -e "${YELLOW}================================================================================${NC}"
+    echo ""
+    if [ $VERIFY_EXIT -ne 0 ]; then
+        echo "  ✗ Basic verification failed"
+    else
+        echo "  ✓ Basic verification passed"
+    fi
+    if [ $LEAK_EXIT -ne 0 ]; then
+        echo "  ✗ Username leak check failed"
+    else
+        echo "  ✓ Username leak check passed"
+    fi
+    if [ $CONSISTENCY_EXIT -ne 0 ]; then
+        echo "  ✗ Consistency check failed"
+    else
+        echo "  ✓ Consistency check passed"
+    fi
+    echo ""
     echo -e "${YELLOW}   Review the warnings above and investigate.${NC}"
     echo ""
 fi

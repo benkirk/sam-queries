@@ -12,7 +12,8 @@ clean:
 	rm -rf dump/
 	docker rm -f local-sam-mysql || true
 
-%.sql.xz:
+backups/%.sql.xz:
+	mkdir -p $$(dirname $@)
 	rm -f $@
 	docker exec local-sam-mysql sh -c 'exec mysqldump --all-databases --lock-all-tables --triggers --routines --events -uroot -p"root"' | xz > $@
 
@@ -25,7 +26,7 @@ bootstrap:
 	@echo "Creating a local, subsetted database..."
 	@$(MAKE) clone
 	@echo "Backing up subsetted database..."
-	@$(MAKE) sam-local-dev.sql.gz
+	@$(MAKE) backups/sam-local-dev.sql.xz
 	@./run_anonymization_workflow.sh
 	@echo "Backing up obfuscates database..."
-	@$(MAKE) sam-obfuscated.sql.gz
+	@$(MAKE) backups/sam-obfuscated.sql.xz

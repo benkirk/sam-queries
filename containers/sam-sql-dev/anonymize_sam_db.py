@@ -95,6 +95,7 @@ class SAMAnonymizer:
         # Mapping caches for consistency
         self.user_id_to_names: Dict[int, Tuple[str, str, str]] = {}  # (first, middle, last)
         self.user_id_to_username: Dict[int, str] = {}
+        self.original_username_to_user_id: Dict[str, int] = {}  # Reverse mapping for activity tables
         self.user_id_to_upid: Dict[int, int] = {}  # Track UPID mappings to avoid collisions
         self.used_upids: Set[int] = set()  # Track all UPIDs in use
         self.used_usernames: Set[str] = set()  # Track all usernames to avoid collisions
@@ -452,6 +453,10 @@ class SAMAnonymizer:
 
         for row in users:
             user_id, orig_username, orig_first, orig_middle, orig_last, orig_nickname, orig_upid = row
+
+            # Build reverse mapping for activity tables
+            if orig_username:
+                self.original_username_to_user_id[orig_username] = user_id
 
             # Check if this user should be preserved
             if orig_username in self.preserve_usernames:
@@ -840,6 +845,139 @@ class SAMAnonymizer:
         print(f"[✓] Anonymized {count} contracts")
         return count
 
+    def anonymize_charge_summary_table(self, session: Session, table_name: str, id_column: str) -> int:
+        """
+        Anonymize charge summary tables (comp_charge_summary, dav_charge_summary, etc.).
+
+        These tables have:
+            - user_id (used for mapping)
+            - username (denormalized)
+            - act_username (denormalized)
+
+        Anonymizes username fields to match users table.
+        """
+        print(f"\n[*] Anonymizing {table_name} table...")
+
+        # Get count first
+        result = session.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
+        total = result.scalar()
+        print(f"  Found {total:,} records to process")
+
+        # Fetch records with username fields
+        result = session.execute(text(
+            f"SELECT {id_column}, user_id, username, act_username FROM {table_name}"
+        ))
+        records = result.fetchall()
+
+        count = 0
+        batch_size = 10000
+
+        for row in records:
+            summary_id, user_id, orig_username, orig_act_username = row
+
+            # Get anonymized username from user_id mapping
+            fake_username = None
+            fake_act_username = None
+
+            if user_id:
+                fake_username = self.user_id_to_username.get(user_id)
+                fake_act_username = fake_username  # Use same anonymized username
+
+            # Fallback: if no user_id, try reverse lookup from original username
+            if not fake_username and orig_username:
+                lookup_user_id = self.original_username_to_user_id.get(orig_username)
+                if lookup_user_id:
+                    fake_username = self.user_id_to_username.get(lookup_user_id)
+
+            if not fake_act_username and orig_act_username:
+                lookup_user_id = self.original_username_to_user_id.get(orig_act_username)
+                if lookup_user_id:
+                    fake_act_username = self.user_id_to_username.get(lookup_user_id)
+
+            # Update if we have anonymized values
+            if fake_username or fake_act_username:
+                if not self.dry_run:
+                    session.execute(text(
+                        f"UPDATE {table_name} SET "
+                        f"username = :username, "
+                        f"act_username = :act_username "
+                        f"WHERE {id_column} = :summary_id"
+                    ), {
+                        'username': fake_username or orig_username,
+                        'act_username': fake_act_username or orig_act_username,
+                        'summary_id': summary_id
+                    })
+
+            count += 1
+            if count % batch_size == 0:
+                print(f"  ... processed {count:,}/{total:,} records")
+                if not self.dry_run:
+                    session.commit()
+
+        if not self.dry_run:
+            session.commit()
+
+        print(f"[✓] Anonymized {count:,} {table_name} records")
+        return count
+
+    def anonymize_activity_table(self, session: Session, table_name: str, id_column: str) -> int:
+        """
+        Anonymize activity tables (hpc_activity, dav_activity, disk_activity, archive_activity).
+
+        These tables have:
+            - username (denormalized, NO user_id column)
+
+        Uses reverse mapping: original_username -> user_id -> anonymized_username
+        """
+        print(f"\n[*] Anonymizing {table_name} table...")
+
+        # Get count first
+        result = session.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
+        total = result.scalar()
+        print(f"  Found {total:,} records to process")
+
+        # Fetch records with username field
+        result = session.execute(text(
+            f"SELECT {id_column}, username FROM {table_name}"
+        ))
+        records = result.fetchall()
+
+        count = 0
+        batch_size = 10000
+
+        for row in records:
+            activity_id, orig_username = row
+
+            # Reverse lookup: original username -> user_id -> anonymized username
+            fake_username = orig_username  # Default to original
+            if orig_username:
+                user_id = self.original_username_to_user_id.get(orig_username)
+                if user_id:
+                    fake_username = self.user_id_to_username.get(user_id, orig_username)
+
+            # Update if username changed
+            if fake_username != orig_username:
+                if not self.dry_run:
+                    session.execute(text(
+                        f"UPDATE {table_name} SET username = :username "
+                        f"WHERE {id_column} = :activity_id"
+                    ), {
+                        'username': fake_username,
+                        'activity_id': activity_id
+                    })
+
+            count += 1
+            if count % batch_size == 0:
+                print(f"  ... processed {count:,}/{total:,} records")
+                if not self.dry_run:
+                    session.commit()
+
+        if not self.dry_run:
+            session.commit()
+
+        print(f"[✓] Anonymized {count:,} {table_name} records")
+        return count
+
     def anonymize_all(self) -> Dict[str, int]:
         """
         Execute full anonymization workflow.
@@ -871,6 +1009,25 @@ class SAMAnonymizer:
                 self.anonymize_organizations(session)
                 self.anonymize_projects(session)
                 self.anonymize_contracts(session)
+
+                # Anonymize charge summary tables (have user_id + username + act_username)
+                print("\n" + "=" * 70)
+                print("Anonymizing Charge Summary Tables")
+                print("=" * 70)
+                self.anonymize_charge_summary_table(session, 'comp_charge_summary', 'charge_summary_id')
+                self.anonymize_charge_summary_table(session, 'dav_charge_summary', 'dav_charge_summary_id')
+                self.anonymize_charge_summary_table(session, 'disk_charge_summary', 'disk_charge_summary_id')
+                self.anonymize_charge_summary_table(session, 'archive_charge_summary', 'archive_charge_summary_id')
+                self.anonymize_charge_summary_table(session, 'hpc_charge_summary', 'hpc_charge_summary_id')
+
+                # Anonymize activity tables (have username only)
+                print("\n" + "=" * 70)
+                print("Anonymizing Activity Tables")
+                print("=" * 70)
+                self.anonymize_activity_table(session, 'hpc_activity', 'hpc_activity_id')
+                self.anonymize_activity_table(session, 'dav_activity', 'dav_activity_id')
+                self.anonymize_activity_table(session, 'disk_activity', 'disk_activity_id')
+                self.anonymize_activity_table(session, 'archive_activity', 'archive_activity_id')
 
                 if not self.dry_run:
                     print("\n[*] Committing all changes...")
