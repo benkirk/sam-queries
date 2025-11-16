@@ -7,6 +7,7 @@ docker:
 
 clone:
 	@python3 bootstrap_clone.py
+	@docker exec local-sam-mysql sh -c 'mysql -uroot -proot -e "USE sam; TRUNCATE TABLE api_credentials;"'
 
 clean:
 	rm -rf dump/
