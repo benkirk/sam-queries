@@ -66,12 +66,12 @@ jobs:
 
       - name: Verify backup file exists
         run: |
-          if [ ! -f backups/sam-obfuscated.sql.xz ]; then
-            echo "❌ Backup file not found: backups/sam-obfuscated.sql.xz"
+          if [ ! -f containers/sam-sql-dev/backups/sam-obfuscated.sql.xz ]; then
+            echo "❌ Backup file not found: containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
             echo "Please ensure backup is committed or use artifacts"
             exit 1
           fi
-          ls -lh backups/sam-obfuscated.sql.xz
+          ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
 
       - name: Start MySQL with backup restore
         run: |
