@@ -34,7 +34,7 @@ docker rm -f ${CONTAINER_NAME} >/dev/null 2>&1 || true
 if [ "${RESTORE_MODE}" = true ]; then
   echo "🗑️  Removing existing volume for clean restore..."
   docker volume rm ${CONTAINER_NAME}-vol >/dev/null 2>&1 || true
-  waittime=60  # Increase wait time for restore
+  waittime=45  # Increase wait time for restore
 fi
 
 # Build docker run command with optional backup mount
@@ -66,4 +66,6 @@ echo "✅ Local MySQL \"${CONTAINER_NAME}\" container ready."
 
 if [ "${RESTORE_MODE}" = true ]; then
   echo "✅ Backup restored from: ${BACKUP_FILE}"
+  # (mysqlcheck not in oracle/mysql image...
+  #docker exec ${CONTAINER_NAME} sh -c 'mysqlcheck -a --all-databases -u root -proot'
 fi
