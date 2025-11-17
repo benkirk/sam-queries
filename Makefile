@@ -44,6 +44,8 @@ fixperms:
 	  done ;\
 	  getfacl $${file} ;\
 	done
+check:
+	$(config_env) && source etc/config_env.sh && cd tests/ && python3 -m pytest -v
 
 # this rule invokes emacs on each source file to remove trailing whitespace.
 trim-whitepace:

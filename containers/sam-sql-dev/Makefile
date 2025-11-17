@@ -1,4 +1,8 @@
-.PHONY: all docker clone clean bootstrap ci-up
+# full bash login shell requied for our complex make rules
+SHELL := /bin/bash --login
+
+
+.PHONY: all docker clone clean bootstrap db-up db-test db-down db-restart
 
 all: docker clone
 
@@ -33,17 +37,19 @@ bootstrap:
 	@echo "Backing up obfuscates database..."
 	@$(MAKE) backups/sam-obfuscated.sql.xz
 
-ci-up:
-	docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+db-up:
+	docker compose -f docker-compose.yaml -f docker-compose.ci.yaml up -d
 	@echo "Waiting for healthy status..."
 	@timeout 300 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 5; done'
 	@echo "✅ MySQL ready!"
 
-.PHONY: ci-test
-ci-test: ci-up
-	python3 check_username_leak.py
-	python3 test_username_anonymization.py
+db-test: db-up
+	source ../../etc/config_env.sh && python3 check_username_leak.py
+	source ../../etc/config_env.sh && python3 test_username_anonymization.py
 
-.PHONY: ci-down
-ci-down:
-	docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+db-down:
+	docker compose -f docker-compose.yaml -f docker-compose.ci.yaml down -v
+
+db-restart:
+	@$(MAKE) db-down
+	@$(MAKE) db-up

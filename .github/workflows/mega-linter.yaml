@@ -16,7 +16,7 @@ env:
   # Apply linter fixes configuration
   #
   # When active, APPLY_FIXES must also be defined as environment variable
-  # (in github/workflows/mega-linter.yml or other CI tool)
+  # (in github/workflows/mega-linter.yaml or other CI tool)
   #APPLY_FIXES: all
   APPLY_FIXES: none
 
@@ -83,7 +83,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.BENKIRK_GITHUB_TOKEN }}
 
           # ADD YOUR CUSTOM ENV VARIABLES HERE TO OVERRIDE VALUES OF
-          # .mega-linter.yml AT THE ROOT OF YOUR REPOSITORY
+          # .mega-linter.yaml AT THE ROOT OF YOUR REPOSITORY
 
       # Upload MegaLinter artifacts
       - name: Archive production artifacts

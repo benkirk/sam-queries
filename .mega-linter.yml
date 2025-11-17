@@ -35,4 +35,4 @@ JSON_PRETTIER_FILTER_REGEX_EXCLUDE: '(\.cspell\.json)'
 MARKDOWN_FILTER_REGEX_EXCLUDE: '(license\.md|docs/licenses)'
 REPOSITORY_KICS_ARGUMENTS: --exclude-severities medium,low,info,trace
 REPOSITORY_TRIVY_CONFIG_FILE: .trivy.yaml
-SPELL_FILTER_REGEX_EXCLUDE: (\.json|\.github|\.mega-linter\.yml)
+SPELL_FILTER_REGEX_EXCLUDE: (\.json|\.github|\.mega-linter\.yaml)

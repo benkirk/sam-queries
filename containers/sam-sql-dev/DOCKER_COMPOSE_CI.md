@@ -11,12 +11,12 @@ This setup allows you to:
 
 ```
 containers/sam-sql-dev/
-├── docker-compose.yml        # Base configuration
-├── docker-compose.ci.yml     # CI override (mounts backup)
+├── docker-compose.yaml        # Base configuration
+├── docker-compose.ci.yaml     # CI override (mounts backup)
 ├── backups/
 │   └── sam-fixed.sql.xz      # Anonymized backup
 └── .github/workflows/
-    └── sam-ci.yml            # GitHub Actions workflow
+    └── sam-ci.yaml            # GitHub Actions workflow
 ```
 
 ## Local Usage
@@ -26,7 +26,7 @@ containers/sam-sql-dev/
 cd containers/sam-sql-dev
 
 # Start MySQL and restore from backup
-docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+docker compose -f docker-compose.yaml -f docker-compose.ci.yaml up -d
 
 # Wait for healthy status
 docker compose ps
@@ -72,7 +72,7 @@ docker compose down
 **Step 1: Start Services**
 ```yaml
 - name: Start MySQL with backup restore
-  run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+  run: docker compose -f docker-compose.yaml -f docker-compose.ci.yaml up -d
 ```
 
 **Step 2: Wait for Healthy**
@@ -119,7 +119,7 @@ The health check verifies TWO conditions:
 
 ### Custom Backup File
 
-Edit `docker-compose.ci.yml`:
+Edit `docker-compose.ci.yaml`:
 ```yaml
 volumes:
   - ./backups/my-custom-backup.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
@@ -127,7 +127,7 @@ volumes:
 
 ### Custom Health Check
 
-Edit `docker-compose.yml`:
+Edit `docker-compose.yaml`:
 ```yaml
 healthcheck:
   test: |
@@ -232,7 +232,7 @@ docker compose logs -f mysql | grep -E "ready|restore|import"
 docker stats sam-mysql-ci
 
 # Increase health check timing
-# Edit docker-compose.ci.yml and increase start_period
+# Edit docker-compose.ci.yaml and increase start_period
 ```
 
 ### Health check passes but queries fail
@@ -249,7 +249,7 @@ healthcheck:
 
 ```bash
 # 1. Start services
-$ docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+$ docker compose -f docker-compose.yaml -f docker-compose.ci.yaml up -d
 Creating network "sam-sql-dev_sam-network" ... done
 Creating sam-mysql-ci ... done
 
@@ -285,7 +285,7 @@ Add targets for CI workflows:
 ```makefile
 .PHONY: ci-up
 ci-up:
-	docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+	docker compose -f docker-compose.yaml -f docker-compose.ci.yaml up -d
 	@echo "Waiting for healthy status..."
 	@timeout 300 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 5; done'
 	@echo "✅ MySQL ready!"
@@ -297,7 +297,7 @@ ci-test: ci-up
 
 .PHONY: ci-down
 ci-down:
-	docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+	docker compose -f docker-compose.yaml -f docker-compose.ci.yaml down -v
 ```
 
 Usage:

@@ -24,7 +24,7 @@ Tools for creating and managing a local development copy of the SAM (System for 
 ### Configuration
 
 - `config.yaml` - Database connection settings and anonymization options
-- `docker-compose.yml` - Local MySQL container definition
+- `docker-compose.yaml` - Local MySQL container definition
 
 ## Documentation
 
