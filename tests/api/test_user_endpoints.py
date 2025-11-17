@@ -65,6 +65,7 @@ class TestUserDetailEndpoint:
         assert 'organizations' in data
         assert 'roles' in data
 
+    @pytest.mark.xfail(reason="Likely to fail on obfuscated database.")
     def test_get_user_with_institutions(self, auth_client):
         """Test user with institutions (validates UserSchema bug fix)."""
         response = auth_client.get('/api/v1/users/negins')

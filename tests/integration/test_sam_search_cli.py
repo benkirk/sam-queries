@@ -183,6 +183,7 @@ class TestUserSpecialSearches:
 class TestProjectExactSearch:
     """Test exact project code lookups."""
 
+    @pytest.mark.xfail(reason="Likely to fail on obfuscated database.")
     def test_project_exact_found(self):
         """Test finding a specific project by exact code."""
         result = run_cli('project', 'SCSG0001')

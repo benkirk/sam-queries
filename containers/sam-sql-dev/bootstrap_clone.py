@@ -99,7 +99,7 @@ def load_config(path=CONFIG_FILE):
     return cfg
 
 def run(cmd, capture=False):
-    print("→", cmd)
+    print("→", f"{cmd[:20]} ...")
     if capture:
         res = subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         return res.stdout

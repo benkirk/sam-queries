@@ -15,6 +15,8 @@ from webui.api.v1.charges import bp as api_charges_bp
 
 
 def create_app():
+    import os
+
     app = Flask(__name__)
 
     # Flask configuration
@@ -38,14 +40,23 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = sam.session.connection_string
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+    # Check if SSL is required (for remote servers)
+    require_ssl = os.getenv('SAM_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
+
     # Production-ready connection pool configuration
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    engine_options = {
         'pool_size': 10,           # Number of connections to maintain
         'max_overflow': 20,        # Additional connections when pool is exhausted
         'pool_pre_ping': True,     # Verify connections before using
         'pool_recycle': 3600,      # Recycle connections after 1 hour
         'echo': False,             # Set to True for SQL debugging
     }
+
+    # Add SSL configuration if required
+    if require_ssl:
+        engine_options['connect_args'] = {'ssl': {'ssl_disabled': False}}
+
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
 
     # Initialize db with app
     db.init_app(app)
