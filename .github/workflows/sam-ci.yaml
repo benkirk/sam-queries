@@ -91,6 +91,11 @@ jobs:
           echo "PYTHONPATH=${PYTHONPATH}"
           python3 --version
 
+      - name: Run simple CLI test
+        run: |
+          pwd
+          ls
+
       - name: Run Test Suite
         run: |
           make check
