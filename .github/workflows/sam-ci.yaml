@@ -63,7 +63,7 @@ jobs:
       - name: Set Up Runtime Environment
         run: |
           touch .env
-          make -C conda-env
+          make conda-env
           source etc/config_env.sh
 
       - name: Interrogate Environment
