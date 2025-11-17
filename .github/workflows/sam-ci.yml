@@ -17,6 +17,9 @@ jobs:
         working-directory: containers/sam-sql-dev
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v1
 
@@ -28,9 +31,6 @@ jobs:
           docker buildx ls
           docker buildx inspect
           docker buildx du
-
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Verify backup file exists
         run: |
