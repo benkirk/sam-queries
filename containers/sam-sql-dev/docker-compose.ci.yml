@@ -1,13 +1,10 @@
 # Docker Compose override for CI environments
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.ci.yml up
 
-version: '3.8'
-
 services:
   mysql:
     volumes:
       # CI: Mount backup file from repository or artifacts
-      # Use sam-obfuscated.sql.xz for demo (replace with sam-fixed.sql.xz in production)
       - ./backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
     healthcheck:
       # More aggressive health checks for CI

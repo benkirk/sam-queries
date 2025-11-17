@@ -1,4 +1,4 @@
-.PHONY: all docker clone clean bootstrap
+.PHONY: all docker clone clean bootstrap ci-up
 
 all: docker clone
 
@@ -32,3 +32,18 @@ bootstrap:
 	@./run_anonymization_workflow.sh || true
 	@echo "Backing up obfuscates database..."
 	@$(MAKE) backups/sam-obfuscated.sql.xz
+
+ci-up:
+	docker-compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+	@echo "Waiting for healthy status..."
+	@timeout 300 bash -c 'until docker-compose ps | grep -q "healthy"; do sleep 5; done'
+	@echo "✅ MySQL ready!"
+
+.PHONY: ci-test
+ci-test: ci-up
+	python3 check_username_leak.py
+	python3 test_username_anonymization.py
+
+.PHONY: ci-down
+ci-down:
+	docker-compose -f docker-compose.yml -f docker-compose.ci.yml down -v

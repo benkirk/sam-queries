@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   mysql:
     image: mysql:9
@@ -13,7 +11,7 @@ services:
       # Persistent storage
       - mysql-data:/var/lib/mysql
       # Mount backup for auto-restore (override this in CI)
-      # - ./backups/sam-fixed.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
+      # - ./backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
     healthcheck:
       # Check if MySQL is ready AND restore is complete
       test: |
