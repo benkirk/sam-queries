@@ -55,14 +55,14 @@ jobs:
         run: |
           make -C containers/sam-sql-dev db-up
 
-      # - uses: conda-incubator/setup-miniconda@v3
-      #   with:
-      #     activate-environment: conda-env
-      #     environment-file: conda-env.yaml
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: ./conda-env/
+          environment-file: conda-env.yaml
 
       - name: Set Up Runtime Environment
         run: |
-          cat << EOF > .env
+          cat << EOF > .env && cat .env
           #-------------------------
           # local container instance
           LOCAL_SAM_DB_USERNAME=root

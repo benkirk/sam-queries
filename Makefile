@@ -23,7 +23,6 @@ distclean:
 
 %: %.yaml
 	[ -d $@ ] && mv $@ $@.old && rm -rf $@.old &
-	$(MAKE) solve-$*
 	$(config_env) && conda env create --file $< --prefix $@
 	$(config_env) && conda activate ./$@ && conda list
 	$(config_env) && conda activate ./$@ && conda-tree deptree --small 2>/dev/null || true
