@@ -73,7 +73,7 @@ jobs:
           SAM_DB_PASSWORD=\${LOCAL_SAM_DB_PASSWORD}
           EOF
           make conda-env
-          source etc/config_env.sh
+          #source etc/config_env.sh
 
       - name: Interrogate Environment
         run: |
