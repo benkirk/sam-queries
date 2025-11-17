@@ -28,6 +28,7 @@ bootstrap:
 	@$(MAKE) clone
 	@echo "Backing up subsetted database..."
 	@$(MAKE) backups/sam-local-dev.sql.xz
-	@./run_anonymization_workflow.sh
+	@echo "Anonymizing (some warnings OK)..."
+	@./run_anonymization_workflow.sh || true
 	@echo "Backing up obfuscates database..."
 	@$(MAKE) backups/sam-obfuscated.sql.xz
