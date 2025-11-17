@@ -38,8 +38,8 @@ jobs:
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
-          activate-environment: demo-github-actions
-          environment-file: conda.yaml
+          activate-environment: conda-env
+          environment-file: conda-env.yaml
 
       - name: Interrogate Environment
         run: |
