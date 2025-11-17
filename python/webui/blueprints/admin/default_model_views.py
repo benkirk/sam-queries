@@ -16,6 +16,11 @@ class SAMModelView(ModelView):
     # Flask Admin exposes edit/delete by default, but suppresses view.
     # Let's turn that on.
     can_view_details = True
+    #can_delete = False
+
+    #can_set_page_size = True
+    #page_size_options = (10, 25, 50, 100)
+    #page_size = 50
 
     def is_accessible(self):
         """
