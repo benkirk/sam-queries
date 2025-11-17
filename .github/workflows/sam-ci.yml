@@ -36,6 +36,40 @@ jobs:
           docker buildx inspect
           docker buildx du
 
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: demo-github-actions
+          environment-file: conda.yaml
+
+      - name: Interrogate Environment
+        run: |
+          conda list
+          df -h
+          cat /etc/os-release 2>/dev/null || true
+          uname -a
+          nvidia-smi 2>/dev/null || true
+          free -g
+          lscpu
+          echo && echo && echo
+          echo '----------------------------------------------------------------'
+          echo && echo && echo
+          echo "CC=${CC}"
+          echo "CXX=${CXX}"
+          echo "FC=${FC}"
+          echo "F77=${F77}"
+          echo
+          echo "CFLAGS=${CFLAGS}"
+          echo "CPPFLAGS=${CPPFLAGS}"
+          echo "CXXFLAGS=${CXXFLAGS}"
+          echo "FCFLAGS=${FCFLAGS}"
+          echo "F77FLAGS=${F77FLAGS}"
+          mpicc --version 2>/dev/null || true
+
+      - name: List Source Tree
+        run: |
+          pwd
+          find * ! -type d
+
       - name: Verify backup file exists
         run: |
           if [ ! -f backups/sam-obfuscated.sql.xz ]; then
