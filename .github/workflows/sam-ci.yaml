@@ -62,7 +62,16 @@ jobs:
 
       - name: Set Up Runtime Environment
         run: |
-          touch .env
+          cat << EOF > .env
+          #-------------------------
+          # local container instance
+          LOCAL_SAM_DB_USERNAME=root
+          LOCAL_SAM_DB_SERVER=127.0.0.1
+          LOCAL_SAM_DB_PASSWORD=root
+          SAM_DB_USERNAME=\${LOCAL_SAM_DB_USERNAME}
+          SAM_DB_SERVER=\${LOCAL_SAM_DB_SERVER}
+          SAM_DB_PASSWORD=\${LOCAL_SAM_DB_PASSWORD}
+          EOF
           make conda-env
           source etc/config_env.sh
 
