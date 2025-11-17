@@ -12,8 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-anonymization:
-    name: Test Database Anonymization
+  pytest:
+    name: Run Test Suite
     runs-on: ubuntu-latest
 
     # defaults:
@@ -23,6 +23,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: List Source Tree
+        run: |
+          pwd
+          find * ! -type d
 
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v1
@@ -37,10 +42,29 @@ jobs:
           docker buildx inspect
           docker buildx du
 
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          activate-environment: conda-env
-          environment-file: conda-env.yaml
+      - name: Verify MySQL backup file exists
+        run: |
+          if [ ! -f containers/sam-sql-dev/backups/sam-obfuscated.sql.xz ]; then
+            echo "❌ Backup file not found: containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+            echo "Please ensure backup is committed or use artifacts"
+            exit 1
+          fi
+          ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
+
+      - name: Start MySQL with backup restore
+        run: |
+          make -C containers/sam-sql-dev db-up
+
+      # - uses: conda-incubator/setup-miniconda@v3
+      #   with:
+      #     activate-environment: conda-env
+      #     environment-file: conda-env.yaml
+
+      - name: Set Up Runtime Environment
+        run: |
+          touch .env
+          make -C conda-env
+          source etc/config_env.sh
 
       - name: Interrogate Environment
         run: |
@@ -58,24 +82,6 @@ jobs:
           echo "CONDA_PREFIX=${CONDA_PREFIX}"
           echo "PYTHONPATH=${PYTHONPATH}"
           python3 --version
-
-      - name: List Source Tree
-        run: |
-          pwd
-          find * ! -type d
-
-      - name: Verify backup file exists
-        run: |
-          if [ ! -f containers/sam-sql-dev/backups/sam-obfuscated.sql.xz ]; then
-            echo "❌ Backup file not found: containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
-            echo "Please ensure backup is committed or use artifacts"
-            exit 1
-          fi
-          ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
-
-      - name: Start MySQL with backup restore
-        run: |
-          make -C containers/sam-sql-dev db-up
 
       - name: Run Test Suite
         run: |
