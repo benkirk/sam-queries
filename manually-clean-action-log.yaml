@@ -1,0 +1,21 @@
+name: Manually Remove old GitHub Action logs
+
+on:
+  workflow_dispatch:
+    inputs:
+      days-ago:
+        description: Timeframe to Purge
+        type: int
+        required: true
+        default: 1
+
+jobs:
+  delete-old-actions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: yanovation/delete-old-actions@v1
+        with:
+          token: ${{ secrets.BENKIRK_GITHUB_TOKEN }}
+          days-ago: ${{ inputs.days-ago }}
+          dry-run: false
