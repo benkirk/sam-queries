@@ -26,10 +26,10 @@ containers/sam-sql-dev/
 cd containers/sam-sql-dev
 
 # Start MySQL and restore from backup
-docker-compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 
 # Wait for healthy status
-docker-compose ps
+docker compose ps
 
 # Connect from host
 mysql -h 127.0.0.1 -u root -proot sam
@@ -38,7 +38,7 @@ mysql -h 127.0.0.1 -u root -proot sam
 ### Start fresh (no restore)
 ```bash
 # Just base config - no backup mounted
-docker-compose up -d
+docker compose up -d
 
 # Connect
 mysql -h 127.0.0.1 -u root -proot sam
@@ -47,10 +47,10 @@ mysql -h 127.0.0.1 -u root -proot sam
 ### Check health status
 ```bash
 # View service status
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f mysql
+docker compose logs -f mysql
 
 # Check health manually
 docker exec sam-mysql-ci mysqladmin ping -h localhost -u root -proot
@@ -59,10 +59,10 @@ docker exec sam-mysql-ci mysqladmin ping -h localhost -u root -proot
 ### Cleanup
 ```bash
 # Stop and remove containers + volumes
-docker-compose down -v
+docker compose down -v
 
 # Or just stop (keep volumes)
-docker-compose down
+docker compose down
 ```
 
 ## GitHub Actions CI
@@ -72,7 +72,7 @@ docker-compose down
 **Step 1: Start Services**
 ```yaml
 - name: Start MySQL with backup restore
-  run: docker-compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+  run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 ```
 
 **Step 2: Wait for Healthy**
@@ -80,7 +80,7 @@ docker-compose down
 - name: Wait for MySQL to be healthy
   run: |
     timeout 300 bash -c '
-      until docker-compose ps | grep -q "healthy"; do
+      until docker compose ps | grep -q "healthy"; do
         sleep 5
       done
     '
@@ -200,7 +200,7 @@ git commit -m "Add CI backup"
 ### Container never becomes healthy
 ```bash
 # Check logs
-docker-compose logs mysql
+docker compose logs mysql
 
 # Check if restore is running
 docker exec sam-mysql-ci ps aux | grep mysql
@@ -213,7 +213,7 @@ docker exec sam-mysql-ci mysql -u root -proot sam -e "SELECT COUNT(*) FROM users
 ### Connection refused from host
 ```bash
 # Check port mapping
-docker-compose ps
+docker compose ps
 # Should show: 0.0.0.0:3306->3306/tcp
 
 # Test connection
@@ -226,7 +226,7 @@ sudo ufw status
 ### Restore taking too long
 ```bash
 # Monitor restore progress in logs
-docker-compose logs -f mysql | grep -E "ready|restore|import"
+docker compose logs -f mysql | grep -E "ready|restore|import"
 
 # Check disk I/O
 docker stats sam-mysql-ci
@@ -249,12 +249,12 @@ healthcheck:
 
 ```bash
 # 1. Start services
-$ docker-compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+$ docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 Creating network "sam-sql-dev_sam-network" ... done
 Creating sam-mysql-ci ... done
 
 # 2. Wait for healthy (takes ~90-120 seconds)
-$ docker-compose ps
+$ docker compose ps
 NAME            STATUS                    PORTS
 sam-mysql-ci    Up 2 minutes (healthy)    0.0.0.0:3306->3306/tcp
 
@@ -271,7 +271,7 @@ $ python3 check_username_leak.py
 ✓ 0 non-anonymized usernames found
 
 # 5. Cleanup
-$ docker-compose down -v
+$ docker compose down -v
 Stopping sam-mysql-ci ... done
 Removing sam-mysql-ci ... done
 Removing network sam-sql-dev_sam-network
@@ -285,9 +285,9 @@ Add targets for CI workflows:
 ```makefile
 .PHONY: ci-up
 ci-up:
-	docker-compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+	docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 	@echo "Waiting for healthy status..."
-	@timeout 300 bash -c 'until docker-compose ps | grep -q "healthy"; do sleep 5; done'
+	@timeout 300 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 5; done'
 	@echo "✅ MySQL ready!"
 
 .PHONY: ci-test
@@ -297,7 +297,7 @@ ci-test: ci-up
 
 .PHONY: ci-down
 ci-down:
-	docker-compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+	docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
 ```
 
 Usage:

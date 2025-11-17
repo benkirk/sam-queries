@@ -716,7 +716,7 @@ mysql -u root -h 127.0.0.1 -proot sam -e "SELECT 1;"
 ./docker_start.sh
 
 # Or manually
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Anonymization Errors

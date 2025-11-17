@@ -31,7 +31,7 @@ jobs:
         run: |
           which docker
           docker --version
-          docker-compose --version
+          docker compose --version
           docker buildx ls
           docker buildx inspect
           docker buildx du
@@ -48,15 +48,15 @@ jobs:
   #     - name: Start MySQL with backup restore
   #       run: |
   #         echo "🚀 Starting MySQL container with backup restore..."
-  #         docker-compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+  #         docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 
   #     - name: Wait for MySQL to be healthy
   #       run: |
   #         echo "⏳ Waiting for MySQL to restore and become healthy..."
   #         timeout 300 bash -c '
-  #           until docker-compose -f docker-compose.yml -f docker-compose.ci.yml ps | grep -q "healthy"; do
+  #           until docker compose -f docker-compose.yml -f docker-compose.ci.yml ps | grep -q "healthy"; do
   #             echo "  ... still waiting (checking every 5s)"
-  #             docker-compose -f docker-compose.yml -f docker-compose.ci.yml ps mysql
+  #             docker compose -f docker-compose.yml -f docker-compose.ci.yml ps mysql
   #             sleep 5
   #           done
   #         '
@@ -64,8 +64,8 @@ jobs:
 
   #     - name: Verify container health
   #       run: |
-  #         docker-compose -f docker-compose.yml -f docker-compose.ci.yml ps
-  #         docker-compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail=50 mysql
+  #         docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
+  #         docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail=50 mysql
 
   #     - name: Install MySQL client on runner
   #       run: |
@@ -180,13 +180,13 @@ jobs:
   #       if: failure()
   #       run: |
   #         echo "📋 MySQL container logs:"
-  #         docker-compose -f docker-compose.yml -f docker-compose.ci.yml logs mysql
+  #         docker compose -f docker-compose.yml -f docker-compose.ci.yml logs mysql
 
   #     - name: Cleanup
   #       if: always()
   #       run: |
   #         echo "🧹 Cleaning up..."
-  #         docker-compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+  #         docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
 
   # # Optional: Job to test anonymization workflow end-to-end
   # test-anonymization-workflow:
@@ -204,13 +204,13 @@ jobs:
   #     - name: Start fresh MySQL (no restore)
   #       run: |
   #         echo "🚀 Starting fresh MySQL container..."
-  #         docker-compose -f docker-compose.yml up -d
+  #         docker compose -f docker-compose.yml up -d
 
   #     - name: Wait for MySQL to be ready
   #       run: |
   #         echo "⏳ Waiting for MySQL to be ready..."
   #         timeout 60 bash -c '
-  #           until docker-compose -f docker-compose.yml ps | grep -q "healthy" ||
+  #           until docker compose -f docker-compose.yml ps | grep -q "healthy" ||
   #                 docker exec sam-mysql-ci mysqladmin ping -h localhost -u root -proot > /dev/null 2>&1; do
   #             echo "  ... still waiting"
   #             sleep 3
@@ -237,4 +237,4 @@ jobs:
   #     - name: Cleanup
   #       if: always()
   #       run: |
-  #         docker-compose -f docker-compose.yml down -v
+  #         docker compose -f docker-compose.yml down -v

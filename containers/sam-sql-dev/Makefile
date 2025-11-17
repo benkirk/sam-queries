@@ -34,9 +34,9 @@ bootstrap:
 	@$(MAKE) backups/sam-obfuscated.sql.xz
 
 ci-up:
-	docker-compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+	docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 	@echo "Waiting for healthy status..."
-	@timeout 300 bash -c 'until docker-compose ps | grep -q "healthy"; do sleep 5; done'
+	@timeout 300 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 5; done'
 	@echo "✅ MySQL ready!"
 
 .PHONY: ci-test
@@ -46,4 +46,4 @@ ci-test: ci-up
 
 .PHONY: ci-down
 ci-down:
-	docker-compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+	docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v

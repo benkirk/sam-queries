@@ -1,5 +1,5 @@
 # Docker Compose override for CI environments
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.ci.yml up
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ci.yml up
 
 services:
   mysql:
