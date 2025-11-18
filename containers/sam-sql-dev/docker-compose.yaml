@@ -1,0 +1,32 @@
+services:
+  mysql:
+    image: mysql:9
+    container_name: sam-mysql-ci
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sam
+    ports:
+      - "3306:3306"
+    volumes:
+      # Persistent storage
+      - mysql-data:/var/lib/mysql
+      # Mount backup for auto-restore (override this in CI)
+      # - ./backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
+    healthcheck:
+      # Check if MySQL is ready AND restore is complete
+      test: |
+        mysqladmin ping -h localhost -u root -proot &&
+        mysql -u root -proot sam -e "SELECT COUNT(*) FROM users" > /dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+    networks:
+      - sam-network
+
+networks:
+  sam-network:
+    driver: bridge
+
+volumes:
+  mysql-data:

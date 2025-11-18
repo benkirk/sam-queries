@@ -1,0 +1,19 @@
+name: Automatically Remove old GitHub Action logs (cron)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # run at 3:43 UTC 11th of each month
+    # ref: https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#onschedule
+    - cron: '43 3 11 * *'
+
+jobs:
+  delete-old-actions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: yanovation/delete-old-actions@v1
+        with:
+          token: ${{ secrets.BENKIRK_GITHUB_TOKEN }}
+          days-ago: 60
+          dry-run: false

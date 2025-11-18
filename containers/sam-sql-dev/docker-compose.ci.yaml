@@ -1,0 +1,14 @@
+# Docker Compose override for CI environments
+# Usage: docker compose -f docker-compose.yaml -f docker-compose.ci.yaml up
+
+services:
+  mysql:
+    volumes:
+      # CI: Mount backup file from repository or artifacts
+      - ./backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
+    healthcheck:
+      # More aggressive health checks for CI
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 120s

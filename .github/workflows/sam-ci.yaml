@@ -1,0 +1,106 @@
+name: SAM Database CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: Run Test Suite
+    runs-on: ubuntu-latest
+
+    # defaults:
+    #   run:
+    #     working-directory: containers/sam-sql-dev
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: List Source Tree
+        run: |
+          pwd
+          find * ! -type d
+
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
+
+      - name: Query Host Runner & Docker Environment
+        run: |
+          which make 2>/dev/null || { sudo apt-get update && sudo apt-get install make; }
+          which docker
+          docker --version
+          docker compose --version
+          docker buildx ls
+          docker buildx inspect
+          docker buildx du
+
+      - name: Verify MySQL backup file exists
+        run: |
+          if [ ! -f containers/sam-sql-dev/backups/sam-obfuscated.sql.xz ]; then
+            echo "❌ Backup file not found: containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+            echo "Please ensure backup is committed or use artifacts"
+            exit 1
+          fi
+          ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
+
+      - name: Start MySQL with backup restore
+        run: |
+          make -C containers/sam-sql-dev db-up
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: ./conda-env/
+          environment-file: conda-env.yaml
+
+      - name: Set Up Runtime Environment
+        run: |
+          cat << EOF > .env && cat .env
+          #-------------------------
+          # local container instance
+          LOCAL_SAM_DB_USERNAME=root
+          LOCAL_SAM_DB_SERVER=127.0.0.1
+          LOCAL_SAM_DB_PASSWORD=root
+          SAM_DB_USERNAME=\${LOCAL_SAM_DB_USERNAME}
+          SAM_DB_SERVER=\${LOCAL_SAM_DB_SERVER}
+          SAM_DB_PASSWORD=\${LOCAL_SAM_DB_PASSWORD}
+          EOF
+          make conda-env
+          #source etc/config_env.sh
+
+      - name: Interrogate Environment
+        run: |
+          conda list
+          df -h
+          cat /etc/os-release 2>/dev/null || true
+          uname -a
+          nvidia-smi 2>/dev/null || true
+          free -g
+          lscpu
+          echo && echo && echo
+          echo '----------------------------------------------------------------'
+          which python3
+          echo "CONDA_PREFIX=${CONDA_PREFIX}"
+          echo "PYTHONPATH=${PYTHONPATH}"
+          python3 --version
+
+      - name: Run simple CLI test
+        run: |
+          pwd
+          ls
+
+      - name: Run Test Suite
+        run: |
+          make check
+
+      # - name: Cleanup
+      #   if: always()
+      #   run: |
+      #     make -C containers/sam-sql-dev db-down

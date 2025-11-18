@@ -23,7 +23,6 @@ distclean:
 
 %: %.yaml
 	[ -d $@ ] && mv $@ $@.old && rm -rf $@.old &
-	$(MAKE) solve-$*
 	$(config_env) && conda env create --file $< --prefix $@
 	$(config_env) && conda activate ./$@ && conda list
 	$(config_env) && conda activate ./$@ && conda-tree deptree --small 2>/dev/null || true
@@ -44,6 +43,9 @@ fixperms:
 	  done ;\
 	  getfacl $${file} ;\
 	done
+check:
+	$(config_env) && source etc/config_env.sh && cd tests/ && python3 tools/orm_inventory.py
+	$(config_env) && source etc/config_env.sh && cd tests/ && python3 -m pytest -v
 
 # this rule invokes emacs on each source file to remove trailing whitespace.
 trim-whitepace:
