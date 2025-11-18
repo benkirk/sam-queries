@@ -313,10 +313,11 @@
                     <thead class="thead-dark">
                         <tr>
                             <th>Date</th>
-                            <th>Type of Charge</th>
-                            <th>Comment</th>
-                            <th>User</th>
-                            <th class="text-right">Amount</th>
+                            <th class="text-right">Compute</th>
+                            <th class="text-right">DAV</th>
+                            <th class="text-right">Disk</th>
+                            <th class="text-right">Archive</th>
+                            <th class="text-right"><strong>Total</strong></th>
                         </tr>
                     </thead>
                     <tbody id="charges-tbody">
@@ -569,9 +570,9 @@ function loadUsageChart(startDate, endDate) {
         });
 }
 
-// Load and render charges table
+// Load and render charges table (uses same data as chart)
 function loadCharges(startDate, endDate) {
-    let url = `/api/v1/charges/details?projcode=${encodeURIComponent(projcode)}&resource=${encodeURIComponent(resourceName)}`;
+    let url = `{{ url_for('user_dashboard.get_resource_usage_timeseries') }}?projcode=${encodeURIComponent(projcode)}&resource=${encodeURIComponent(resourceName)}`;
 
     if (startDate && endDate) {
         url += `&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
@@ -579,47 +580,38 @@ function loadCharges(startDate, endDate) {
 
     fetch(url)
         .then(response => {
-            if (!response.ok) throw new Error('Failed to load charges');
+            if (!response.ok) throw new Error('Failed to load charges data');
             return response.json();
         })
         .then(data => {
             document.getElementById('loading-charges').style.display = 'none';
 
-            if (data.charges && data.charges.length > 0) {
+            if (data.data && data.data.length > 0) {
                 document.getElementById('charges-container').style.display = 'block';
-                document.getElementById('charges-count').textContent = `${data.charges.length} entries`;
+                document.getElementById('charges-count').textContent = `${data.data.length} days`;
 
                 const tbody = document.getElementById('charges-tbody');
                 tbody.innerHTML = '';
 
                 // Store data for export
-                currentChargesData = data.charges;
+                currentChargesData = data.data;
 
-                data.charges.forEach(charge => {
+                data.data.forEach(day => {
                     const row = document.createElement('tr');
 
-                    // Determine charge type badge
-                    let typeBadge = '';
-                    let typeClass = 'badge-secondary';
-
-                    if (charge.type.includes('Compute') || charge.type.includes('HPC')) {
-                        typeClass = 'badge-primary';
-                    } else if (charge.type.includes('DAV')) {
-                        typeClass = 'badge-info';
-                    } else if (charge.type.includes('Disk')) {
-                        typeClass = 'badge-success';
-                    } else if (charge.type.includes('Archive')) {
-                        typeClass = 'badge-warning';
-                    }
-
-                    typeBadge = `<span class="badge ${typeClass} type-badge">${charge.type}</span>`;
+                    const comp = day.comp || 0;
+                    const dav = day.dav || 0;
+                    const disk = day.disk || 0;
+                    const archive = day.archive || 0;
+                    const total = comp + dav + disk + archive;
 
                     row.innerHTML = `
-                        <td><strong>${charge.date}</strong></td>
-                        <td>${typeBadge}</td>
-                        <td>${charge.comment || '-'}</td>
-                        <td>${charge.user || '-'}</td>
-                        <td class="text-right">${formatNumber(charge.amount)}</td>
+                        <td><strong>${day.date}</strong></td>
+                        <td class="text-right">${formatNumber(comp)}</td>
+                        <td class="text-right">${formatNumber(dav)}</td>
+                        <td class="text-right">${formatNumber(disk)}</td>
+                        <td class="text-right">${formatNumber(archive)}</td>
+                        <td class="text-right"><strong>${formatNumber(total)}</strong></td>
                     `;
 
                     tbody.appendChild(row);

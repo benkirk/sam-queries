@@ -190,6 +190,122 @@ def get_project_details(projcode):
     })
 
 
+@bp.route('/api/project/<projcode>/tree')
+@login_required
+def get_project_tree(projcode):
+    """
+    Get project hierarchy (parent and children).
+
+    Args:
+        projcode: Project code
+
+    Returns:
+        JSON with parent project and list of child projects
+    """
+    from sam.projects.projects import Project
+
+    # Get the SAM user object
+    sam_user = db.session.query(User).filter_by(user_id=current_user.user_id).first()
+    if not sam_user:
+        return jsonify({'error': 'User not found'}), 404
+
+    # Verify user has access to at least one project
+    user_projects = [p.projcode for p in sam_user.all_projects]
+
+    # Get project
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return jsonify({'error': 'Project not found'}), 404
+
+    # Check if user has access to this project OR any of its parents/children
+    # (Allow viewing tree if user is member of any related project)
+    has_access = projcode in user_projects
+    if not has_access:
+        # Check if user has access to parent
+        if project.parent and project.parent.projcode in user_projects:
+            has_access = True
+        # Check if user has access to any children
+        if not has_access:
+            for child in project.get_children():
+                if child.projcode in user_projects:
+                    has_access = True
+                    break
+
+    if not has_access:
+        return jsonify({'error': 'Access denied'}), 403
+
+    # Helper function to get detailed resource usage for a project
+    def get_project_resource_usage(proj):
+        usage = proj.get_detailed_allocation_usage(include_adjustments=True)
+
+        resources = []
+        total_allocated = 0
+        total_used = 0
+
+        for resource_name, details in usage.items():
+            allocated = details.get('allocated', 0)
+            used = details.get('used', 0)
+            remaining = details.get('remaining', 0)
+            percent_used = details.get('percent_used', 0)
+
+            total_allocated += allocated
+            total_used += used
+
+            resources.append({
+                'resource_name': resource_name,
+                'allocated': allocated,
+                'used': used,
+                'remaining': remaining,
+                'percent_used': percent_used
+            })
+
+        overall_percent = (total_used / total_allocated * 100) if total_allocated > 0 else 0
+
+        return {
+            'resources': resources,
+            'total_allocated': total_allocated,
+            'total_used': total_used,
+            'total_remaining': total_allocated - total_used,
+            'percent_used': overall_percent
+        }
+
+    # Get parent with resource details
+    parent_data = None
+    if project.parent:
+        parent_usage = get_project_resource_usage(project.parent)
+        parent_data = {
+            'projcode': project.parent.projcode,
+            'title': project.parent.title,
+            'active': project.parent.active,
+            'usage': parent_usage
+        }
+
+    # Get current project resource usage
+    current_usage = get_project_resource_usage(project)
+
+    # Get children with resource details
+    children_data = []
+    children = project.get_children()
+    for child in children:
+        child_usage = get_project_resource_usage(child)
+        children_data.append({
+            'projcode': child.projcode,
+            'title': child.title,
+            'active': child.active,
+            'has_children': child.has_children,
+            'usage': child_usage
+        })
+
+    return jsonify({
+        'projcode': project.projcode,
+        'title': project.title,
+        'parent': parent_data,
+        'children': children_data,
+        'child_count': len(children_data),
+        'usage': current_usage
+    })
+
+
 @bp.route('/resource-details')
 @login_required
 def resource_details():
