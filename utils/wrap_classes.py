@@ -47,10 +47,10 @@ def determine_class_names(source_path):
 
 def wrap_python_classes(class_name):
     class_view_name=f"{class_name}DefaultAdmin"
-    class_view=f"# {class_name} Admin View\nclass {class_view_name}(ModelView):\n    pass\n"
+    class_view=f"# {class_name} Admin View\nclass {class_view_name}(SAMModelView):\n    pass\n"
     print(class_view, file=models)
 
-    implementor=f"     admin.add_view({class_view_name}({class_name}, Session(), name='{class_name}', endpoint='default_views/{camel_to_snake(class_name)}', category='Everything'))"
+    implementor=f"    admin.add_view({class_view_name}({class_name}, db.session, name='{class_name}', endpoint='default_views/{camel_to_snake(class_name)}', category='Everything'))"
     print(implementor, file=instantiate)
 
     class_schema=f"""# {class_name} marshmallow schema

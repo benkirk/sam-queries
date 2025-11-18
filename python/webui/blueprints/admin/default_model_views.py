@@ -62,7 +62,6 @@ class SAMModelView(ModelView):
 # Generated automatically from utils/wrap_classes.py
 #---------------------------------------------------
 
-
 # AcademicStatus Admin View
 class AcademicStatusDefaultAdmin(SAMModelView):
     pass
@@ -105,6 +104,10 @@ class AllocationTransactionDefaultAdmin(SAMModelView):
 
 # AllocationType Admin View
 class AllocationTypeDefaultAdmin(SAMModelView):
+    pass
+
+# ApiCredentials Admin View
+class ApiCredentialsDefaultAdmin(SAMModelView):
     pass
 
 # ArchiveActivity Admin View
@@ -235,6 +238,18 @@ class FacilityDefaultAdmin(SAMModelView):
 class FacilityResourceDefaultAdmin(SAMModelView):
     pass
 
+# Factor Admin View
+class FactorDefaultAdmin(SAMModelView):
+    pass
+
+# Formula Admin View
+class FormulaDefaultAdmin(SAMModelView):
+    pass
+
+# FosAoi Admin View
+class FosAoiDefaultAdmin(SAMModelView):
+    pass
+
 # HPCActivity Admin View
 class HPCActivityDefaultAdmin(SAMModelView):
     pass
@@ -307,6 +322,10 @@ class PhoneTypeDefaultAdmin(SAMModelView):
 class ProjectDefaultAdmin(SAMModelView):
     pass
 
+# ProjectCode Admin View
+class ProjectCodeDefaultAdmin(SAMModelView):
+    pass
+
 # ProjectContract Admin View
 class ProjectContractDefaultAdmin(SAMModelView):
     pass
@@ -343,8 +362,16 @@ class ResourceShellDefaultAdmin(SAMModelView):
 class ResourceTypeDefaultAdmin(SAMModelView):
     pass
 
+# ResponsibleParty Admin View
+class ResponsiblePartyDefaultAdmin(SAMModelView):
+    pass
+
 # Role Admin View
 class RoleDefaultAdmin(SAMModelView):
+    pass
+
+# RoleApiCredentials Admin View
+class RoleApiCredentialsDefaultAdmin(SAMModelView):
     pass
 
 # RoleUser Admin View
@@ -375,30 +402,30 @@ class UserResourceHomeDefaultAdmin(SAMModelView):
 class UserResourceShellDefaultAdmin(SAMModelView):
     pass
 
-# XrasAction Admin View
-class XrasActionDefaultAdmin(SAMModelView):
+# XrasActionView Admin View
+class XrasActionViewDefaultAdmin(SAMModelView):
     pass
 
-# XrasAllocation Admin View
-class XrasAllocationDefaultAdmin(SAMModelView):
+# XrasAllocationView Admin View
+class XrasAllocationViewDefaultAdmin(SAMModelView):
     pass
 
-# XrasHpcAllocationAmount Admin View
-class XrasHpcAllocationAmountDefaultAdmin(SAMModelView):
+# XrasHpcAllocationAmountView Admin View
+class XrasHpcAllocationAmountViewDefaultAdmin(SAMModelView):
     pass
 
-# XrasRequest Admin View
-class XrasRequestDefaultAdmin(SAMModelView):
+# XrasRequestView Admin View
+class XrasRequestViewDefaultAdmin(SAMModelView):
     pass
 
 # XrasResourceRepositoryKeyResource Admin View
 class XrasResourceRepositoryKeyResourceDefaultAdmin(SAMModelView):
     pass
 
-# XrasRole Admin View
-class XrasRoleDefaultAdmin(SAMModelView):
+# XrasRoleView Admin View
+class XrasRoleViewDefaultAdmin(SAMModelView):
     pass
 
-# XrasUser Admin View
-class XrasUserDefaultAdmin(SAMModelView):
+# XrasUserView Admin View
+class XrasUserViewDefaultAdmin(SAMModelView):
     pass

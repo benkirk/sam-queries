@@ -208,9 +208,4 @@ class ProjectSchema(BaseSchema):
 
     def get_active_directories(self, obj):
         """Return a list of active project directories"""
-        dirs=[]
-        if obj.directories:
-            for d in obj.directories:
-                if d.is_currently_active:
-                    dirs.append(f"{d.directory_name}")
-        return dirs
+        return obj.active_directories
