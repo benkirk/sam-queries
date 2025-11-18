@@ -230,6 +230,16 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         """Check if a user is active on this project."""
         return user in self.users
 
+    @property
+    def active_directories(self) -> List[str]:
+        """Return a list of active project directories (if any)."""
+        dirs=[]
+        if self.directories:
+            for d in self.directories:
+                if d.is_currently_active:
+                    dirs.append(f"{d.directory_name}")
+        return dirs
+
     def get_all_allocations_by_resource(self) -> Dict[str, Optional['Allocation']]:
         """
         Get the most recent active allocation for each resource.

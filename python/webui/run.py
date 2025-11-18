@@ -62,7 +62,7 @@ def create_app():
     db.init_app(app)
 
     # Make db.session available as app.Session for compatibility
-    app.Session = lambda: db.session
+    #app.Session = lambda: db.session
 
     # Initialize Flask-Login
     login_manager = LoginManager()

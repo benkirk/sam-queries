@@ -336,6 +336,7 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
     lead = project.lead
     users_dict[lead.user_id] = {
         'username': lead.username,
+        'unix_id': lead.unix_uid,
         'display_name': lead.display_name,
         'email': lead.primary_email,
         'role': 'Lead'
@@ -346,6 +347,7 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
         admin = project.admin
         users_dict[admin.user_id] = {
             'username': admin.username,
+            'unix_id': admin.unix_uid,
             'display_name': admin.display_name,
             'email': admin.primary_email,
             'role': 'Admin'
@@ -373,6 +375,7 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
         if member.user_id not in users_dict:
             users_dict[member.user_id] = {
                 'username': member.username,
+                'unix_id': member.unix_uid,
                 'display_name': member.display_name,
                 'email': member.primary_email,
                 'role': 'Member'

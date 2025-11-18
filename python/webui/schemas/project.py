@@ -86,7 +86,6 @@ class ProjectListSchema(BaseSchema):
         """Check if project has children."""
         return obj.has_children
 
-
 class ProjectSchema(BaseSchema):
     """
     Full project schema with nested relationships.
@@ -104,6 +103,7 @@ class ProjectSchema(BaseSchema):
             'lead',
             'admin',
             'active',
+            'directories',
             'charging_exempt',
             'area_of_interest',
             'creation_time',
@@ -116,6 +116,7 @@ class ProjectSchema(BaseSchema):
     # Nested user objects
     lead = fields.Nested(UserSummarySchema)
     admin = fields.Nested(UserSummarySchema)
+    directories = fields.Method('get_active_directories')
     area_of_interest = fields.Method('get_area_of_interest')
     breadcrumb_path = fields.Method('get_breadcrumb_path')
     tree_depth = fields.Method('get_tree_depth')
@@ -204,3 +205,7 @@ class ProjectSchema(BaseSchema):
 
         # Build tree from root
         return self._build_tree_recursive(root, 0, max_depth)
+
+    def get_active_directories(self, obj):
+        """Return a list of active project directories"""
+        return obj.active_directories

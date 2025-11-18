@@ -556,11 +556,10 @@ Examples:
                 print(f"     Used:       {resource_usage['used']:,.0f} / ({resource_usage['percent_used']:,.0f}%)")
 
         # Active project directories
-        if project.directories:
+        if project.active_directories:
             print("Directories:")
-            for d in project.directories:
-                if d.is_currently_active:
-                    print(f"  {d.directory_name}")
+            for d in project.active_directories:
+                print(f"  - {d}")
 
         # User count - handle circularity.
         # When calling this method through the project path, we may want to list users.

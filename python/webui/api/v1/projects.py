@@ -208,17 +208,20 @@ def get_project_members(projcode):
         'lead': {
             'username': lead['username'],
             'name': lead['display_name'],
+            'unix_uid': lead['unix_id'],
             'email': lead['email']
         } if lead else None,
         'admin': {
             'username': admin['username'],
             'name': admin['display_name'],
+            'unix_uid': admin['unix_id'],
             'email': admin['email']
         } if admin else None,
         'members': [
             {
                 'username': m['username'],
                 'name': m['display_name'],
+                'unix_uid': m['unix_id'],
                 'email': m['email']
             }
             for m in members
