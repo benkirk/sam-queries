@@ -1,0 +1,677 @@
+{% extends 'user/base.html' %}
+
+{% block title %}User Dashboard - SAM{% endblock %}
+
+{% block content %}
+<!-- Tab Navigation -->
+<ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link active" id="account-statements-tab" data-toggle="tab" href="#account-statements" role="tab" aria-controls="account-statements" aria-selected="true">
+            <i class="fas fa-file-invoice-dollar"></i> Account Statements
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" id="user-info-tab" data-toggle="tab" href="#user-info" role="tab" aria-controls="user-info" aria-selected="false">
+            <i class="fas fa-user-circle"></i> User Information
+        </a>
+    </li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="dashboardTabContent">
+    <!-- Account Statements Tab -->
+    <div class="tab-pane fade show active" id="account-statements" role="tabpanel" aria-labelledby="account-statements-tab">
+
+<!-- Loading Spinner -->
+<div id="loading" class="loading-spinner">
+    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+        <span class="sr-only">Loading...</span>
+    </div>
+</div>
+
+<!-- Projects Container -->
+<div id="projects-container" style="display: none;">
+    <!-- Summary Header -->
+    <div class="mb-3">
+        <h5 class="text-muted">
+            <i class="fas fa-folder-open"></i>
+            <span id="project-count">0</span> Projects
+        </h5>
+    </div>
+    <!-- Projects List -->
+    <div id="projects-list"></div>
+</div>
+
+<!-- No Projects Message -->
+<div id="no-projects" style="display: none;">
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> You are not currently a member of any active projects.
+    </div>
+</div>
+
+    </div>
+    <!-- End Account Statements Tab -->
+
+    <!-- User Information Tab -->
+    <div class="tab-pane fade" id="user-info" role="tabpanel" aria-labelledby="user-info-tab">
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-user"></i> User Profile</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-4 font-weight-bold">Username:</div>
+                            <div class="col-md-8">{{ user.username }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 font-weight-bold">Full Name:</div>
+                            <div class="col-md-8">{{ user.full_name }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 font-weight-bold">Primary Email:</div>
+                            <div class="col-md-8">{{ user.primary_email }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 font-weight-bold">User ID:</div>
+                            <div class="col-md-8">{{ user.user_id }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 font-weight-bold">Role:</div>
+                            <div class="col-md-8">
+                                {% for role in user.roles %}
+                                <span class="badge badge-primary">{{ role }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- End User Information Tab -->
+</div>
+<!-- End Tab Content -->
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Enhanced project cards */
+    .card-header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-bottom: 2px solid #0099CC;
+        user-select: none;
+    }
+
+    .card-header:hover {
+        background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    }
+
+    .chevron-icon {
+        margin-right: 8px;
+        color: #0099CC;
+    }
+
+    .project-stats-box {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-left: 3px solid #0099CC;
+        transition: all 0.3s ease;
+    }
+
+    .project-stats-box:hover {
+        border-left-color: #003366;
+        transform: translateX(2px);
+    }
+
+    /* Project Tree Table Styles */
+    .tree-current-row {
+        background: #e3f2fd;
+        font-weight: 600;
+    }
+
+    .tree-parent-row {
+        background: #f8f9fa;
+    }
+
+    .tree-inactive-row {
+        opacity: 0.6;
+    }
+
+    .tree-current-row td,
+    .tree-parent-row td {
+        border-left: 3px solid #0099CC;
+    }
+
+    .tree-parent-row td {
+        border-left-color: #6c757d;
+    }
+
+    .tree-current-row a,
+    .tree-parent-row a,
+    table a {
+        color: #0099CC;
+        text-decoration: none;
+    }
+
+    .tree-current-row a:hover,
+    .tree-parent-row a:hover,
+    table a:hover {
+        text-decoration: underline;
+    }
+
+    .badge-sm {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.4rem;
+    }
+
+    /* Resource rows within tree */
+    .tree-resource-row {
+        border-left: 3px solid #dee2e6;
+    }
+
+    .tree-resource-row:hover {
+        background-color: #f0f0f0 !important;
+    }
+
+    /* Cursor style for collapsible project rows */
+    tr[data-toggle="collapse"] {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    tr[data-toggle="collapse"]:hover {
+        background-color: #f8f9fa;
+    }
+
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Format numbers with commas
+function formatNumber(num) {
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+    });
+}
+
+// Get progress bar color based on percentage
+function getProgressColor(percent) {
+    if (percent >= 90) return 'bg-danger';
+    if (percent >= 75) return 'bg-warning';
+    if (percent >= 50) return 'bg-info';
+    return 'bg-success';
+}
+
+// Create a project card
+function createProjectCard(project, index) {
+    const percentClass = getProgressColor(project.percent_used);
+    const cardId = `project-${index}`;
+
+    let resourcesHtml = '';
+    if (project.resources && project.resources.length > 0) {
+        resourcesHtml = `
+            <div class="mt-3">
+                <h6 class="mb-2">Resources:</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Resource</th>
+                                <th>Status</th>
+                                <th>Start Date</th>
+                                <th>End Date</th>
+                                <th>Allocated</th>
+                                <th>Used</th>
+                                <th>Remaining</th>
+                                <th style="width: 200px;">Usage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        project.resources.forEach(resource => {
+            const resPercentClass = getProgressColor(resource.percent_used);
+            const statusBadge = resource.status === 'Active'
+                ? '<span class="badge badge-success">Active</span>'
+                : '<span class="badge badge-secondary">Inactive</span>';
+            const adjustments = resource.adjustments || 0;
+            const startDate = resource.start_date ? new Date(resource.start_date).toLocaleDateString() : 'N/A';
+            const endDate = resource.end_date ? new Date(resource.end_date).toLocaleDateString() : 'N/A';
+
+            resourcesHtml += `
+                <tr class="resource-row" style="cursor: pointer;"
+                    data-projcode="${project.projcode}"
+                    data-resource="${resource.resource_name}"
+                    onclick="viewResourceDetails('${project.projcode}', '${resource.resource_name}')">
+                    <td><strong>${resource.resource_name}</strong></td>
+                    <td>${statusBadge}</td>
+                    <td>${startDate}</td>
+                    <td>${endDate}</td>
+                    <td class="text-primary">${formatNumber(resource.allocated)}</td>
+                    <td class="text-warning">${formatNumber(resource.used)}</td>
+                    <td class="text-success">${formatNumber(resource.remaining)}</td>
+                    <td>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar ${resPercentClass}"
+                                 role="progressbar"
+                                 style="width: ${Math.min(resource.percent_used, 100)}%"
+                                 aria-valuenow="${resource.percent_used}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                ${resource.percent_used.toFixed(1)}%
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        resourcesHtml += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="card mb-3">
+            <!-- Card Header (clickable) -->
+            <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#${cardId}">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="mb-1">
+                            <i class="fas fa-chevron-right chevron-icon" style="transition: transform 0.3s ease;"></i>
+                            <i class="fas fa-folder"></i> Project: ${project.projcode}
+                            ${project.active ? '<span class="badge badge-success ml-2">Active</span>' : '<span class="badge badge-secondary ml-2">Inactive</span>'}
+                        </h5>
+                        <p class="mb-0"><strong>Title:</strong> ${project.title || 'No title'}</p>
+                    </div>
+                    <div class="col-md-4 text-right">
+                        <p class="mb-0"><strong>Project Lead:</strong></p>
+                        <p class="mb-0">${project.lead_name || 'Not assigned'}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fixed Header (always visible even when collapsed) -->
+            <div class="card-body border-bottom bg-light py-2 text-right text-muted" style="font-size: 0.9rem;">
+                <i class="fas fa-chart-line"></i> Usage: ${project.percent_used.toFixed(1)}%
+            </div>
+
+            <!-- Main Collapsible Container -->
+            <div id="${cardId}" class="collapse" data-projcode="${project.projcode}">
+                <div class="card-body">
+
+                    <!-- Section A: Overall Summary (EXPANDED by default) -->
+                    <div class="card mb-2">
+                        <div class="card-header py-2" style="cursor: pointer; background: #f8f9fa;" data-toggle="collapse" data-target="#summary-${index}">
+                            <h6 class="mb-0">
+                                <i class="fas fa-chevron-down chevron-icon"></i>
+                                Overall Summary
+                            </h6>
+                        </div>
+                        <div id="summary-${index}" class="collapse show" data-section="summary" data-projcode="${project.projcode}">
+                            <div class="card-body">
+                                <!-- Overall Usage Stats (4 boxes) -->
+                                <div class="row mb-3">
+                                    <div class="col-md-3">
+                                        <div class="text-center p-3 project-stats-box rounded">
+                                            <small class="text-muted font-weight-bold">ALLOCATED</small>
+                                            <h5 class="mb-0 mt-1" style="color: #0099CC;">${formatNumber(project.total_allocated)}</h5>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center p-3 project-stats-box rounded">
+                                            <small class="text-muted font-weight-bold">USED</small>
+                                            <h5 class="mb-0 mt-1" style="color: #f59e0b;">${formatNumber(project.total_used)}</h5>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center p-3 project-stats-box rounded">
+                                            <small class="text-muted font-weight-bold">REMAINING</small>
+                                            <h5 class="mb-0 mt-1" style="color: #10b981;">${formatNumber(project.total_remaining)}</h5>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center p-3 project-stats-box rounded">
+                                            <small class="text-muted font-weight-bold">USAGE</small>
+                                            <h5 class="mb-0 mt-1" style="color: #003366;">${project.percent_used.toFixed(1)}%</h5>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Progress Bar -->
+                                <div class="progress mb-3" style="height: 30px;">
+                                    <div class="progress-bar ${percentClass}"
+                                         role="progressbar"
+                                         style="width: ${Math.min(project.percent_used, 100)}%"
+                                         aria-valuenow="${project.percent_used}"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100">
+                                        ${project.percent_used.toFixed(1)}% Used
+                                    </div>
+                                </div>
+
+                                <!-- Resources Table -->
+                                ${resourcesHtml}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section B: Project Tree (COLLAPSED by default) -->
+                    <div class="card mb-2">
+                        <div class="card-header py-2" style="cursor: pointer; background: #f8f9fa;" data-toggle="collapse" data-target="#tree-${index}">
+                            <h6 class="mb-0">
+                                <i class="fas fa-chevron-right chevron-icon"></i>
+                                Project Tree
+                            </h6>
+                        </div>
+                        <div id="tree-${index}" class="collapse" data-section="tree" data-projcode="${project.projcode}">
+                            <div class="card-body">
+                                <div id="tree-container-${project.projcode}">
+                                    <div class="text-center text-muted py-3">
+                                        <i class="fas fa-sitemap"></i> Project hierarchy will be displayed here
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Load projects data
+function loadProjects() {
+    fetch('{{ url_for("user_dashboard.get_my_projects") }}')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load projects');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Hide loading spinner
+            document.getElementById('loading').style.display = 'none';
+
+            if (data.projects && data.projects.length > 0) {
+                // Show projects container
+                document.getElementById('projects-container').style.display = 'block';
+
+                // Set project count
+                document.getElementById('project-count').textContent = data.projects.length;
+
+                // Render project cards
+                const projectsList = document.getElementById('projects-list');
+                projectsList.innerHTML = data.projects.map((project, index) => createProjectCard(project, index)).join('');
+
+                // Add chevron rotation handlers for all collapsible sections
+                $('.collapse').on('show.bs.collapse', function() {
+                    $(this).prev('.card-header').find('.chevron-icon')
+                        .removeClass('fa-chevron-right')
+                        .addClass('fa-chevron-down');
+                });
+                $('.collapse').on('hide.bs.collapse', function() {
+                    $(this).prev('.card-header').find('.chevron-icon')
+                        .removeClass('fa-chevron-down')
+                        .addClass('fa-chevron-right');
+                });
+            } else {
+                // Show no projects message
+                document.getElementById('no-projects').style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading projects:', error);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('projects-container').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Error loading projects: ${error.message}
+                </div>
+            `;
+            document.getElementById('projects-container').style.display = 'block';
+        });
+}
+
+// Load project tree from API
+function loadProjectTree(projcode, containerId) {
+    const container = document.getElementById(containerId);
+
+    // Show loading state
+    container.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Loading project tree...</div>';
+
+    fetch(`/dashboard/api/project/${projcode}/tree`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load project tree');
+            }
+            return response.json();
+        })
+        .then(data => {
+            renderProjectTree(data, containerId);
+        })
+        .catch(error => {
+            console.error('Error loading project tree:', error);
+            container.innerHTML = '<div class="alert alert-warning small">Unable to load project tree</div>';
+        });
+}
+
+// Render project tree HTML
+function renderProjectTree(data, containerId) {
+    const container = document.getElementById(containerId);
+    let rowCounter = 0;
+
+    // Helper to create resource rows for a project
+    function createResourceRows(project, projectId, indentLevel) {
+        if (!project.usage || !project.usage.resources || project.usage.resources.length === 0) {
+            return '<tr class="tree-resource-row collapse show" id="resources-' + projectId + '" style="background-color: #fafafa;"><td colspan="5" class="text-muted small text-center">No resources</td></tr>';
+        }
+
+        let resourceHtml = '';
+        project.usage.resources.forEach(resource => {
+            const percentClass = getProgressColor(resource.percent_used);
+            resourceHtml += `
+                <tr class="tree-resource-row collapse show" id="resources-${projectId}" style="background-color: #fafafa;">
+                    <td style="padding-left: ${(indentLevel + 1) * 2}rem;">
+                        <i class="fas fa-server text-muted mr-2" style="font-size: 0.85rem;"></i>
+                        ${resource.resource_name}
+                    </td>
+                    <td class="text-right small">${formatNumber(resource.allocated)}</td>
+                    <td class="text-right small">${formatNumber(resource.used)}</td>
+                    <td class="text-right small">${formatNumber(resource.remaining)}</td>
+                    <td style="min-width: 250px;">
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar ${percentClass}"
+                                 role="progressbar"
+                                 style="width: ${Math.min(resource.percent_used, 100)}%"
+                                 aria-valuenow="${resource.percent_used}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                <strong>${resource.percent_used.toFixed(1)}%</strong>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+        return resourceHtml;
+    }
+
+    // Helper to create table row for a project (header row only, no aggregates)
+    function createProjectRow(project, type, indentLevel = 0) {
+        rowCounter++;
+        const projectId = `tree-${type}-${rowCounter}`;
+
+        // Check if project has resources to show
+        const hasResources = project.usage && project.usage.resources && project.usage.resources.length > 0;
+        const resourceCount = hasResources ? project.usage.resources.length : 0;
+
+        // Determine row styling based on type
+        let rowClass = '';
+        let badge = '';
+        let icon = '';
+
+        if (type === 'parent') {
+            rowClass = 'tree-parent-row';
+            badge = '<span class="badge badge-secondary badge-sm ml-2">Parent</span>';
+            icon = '<i class="fas fa-level-up-alt text-secondary mr-2"></i>';
+        } else if (type === 'current') {
+            rowClass = 'tree-current-row';
+            badge = '<span class="badge badge-primary badge-sm ml-2">Current</span>';
+            icon = '<i class="fas fa-folder-open text-primary mr-2"></i>';
+        } else if (type === 'child') {
+            rowClass = project.active ? '' : 'tree-inactive-row';
+            badge = project.active
+                ? '<span class="badge badge-success badge-sm ml-2">Active</span>'
+                : '<span class="badge badge-secondary badge-sm ml-2">Inactive</span>';
+            icon = '<i class="fas fa-folder text-muted mr-2"></i>';
+            if (project.has_children) {
+                badge += ' <i class="fas fa-sitemap ml-2 text-muted" title="Has children"></i>';
+            }
+        }
+
+        const paddingLeft = indentLevel > 0 ? `style="padding-left: ${indentLevel * 2}rem; cursor: pointer;"` : 'style="cursor: pointer;"';
+
+        // Build clickable project name
+        const projectName = type === 'current'
+            ? `<strong>${project.projcode} - ${project.title}</strong>`
+            : `<a href="#" onclick="navigateToProject('${project.projcode}'); return false;"><strong>${project.projcode}</strong> - ${project.title}</a>`;
+
+        // Add chevron for collapsible resources (starts expanded)
+        const chevron = hasResources
+            ? `<i class="fas fa-chevron-down mr-2" style="font-size: 0.75rem; transition: transform 0.3s;"></i>`
+            : '';
+
+        const resourceBadge = hasResources
+            ? ` <span class="badge badge-light badge-sm ml-2" style="font-size: 0.7rem;">${resourceCount} resource${resourceCount > 1 ? 's' : ''}</span>`
+            : '';
+
+        let projectRow = `
+            <tr class="${rowClass}" ${hasResources ? `data-toggle="collapse" data-target="#resources-${projectId}" onclick="toggleTreeChevron(this)"` : ''}>
+                <td colspan="5" ${paddingLeft}>
+                    ${chevron}${icon}${projectName}${badge}${resourceBadge}
+                </td>
+            </tr>
+        `;
+
+        // Add resource rows if they exist
+        if (hasResources) {
+            projectRow += createResourceRows(project, projectId, indentLevel);
+        }
+
+        return projectRow;
+    }
+
+    // Build table with header
+    let html = `
+        <div class="table-responsive">
+            <table class="table table-sm table-hover table-bordered mb-0">
+                <thead class="thead-light">
+                    <tr>
+                        <th style="width: 40%;">Project / Resource</th>
+                        <th class="text-right" style="width: 12%;">Allocated</th>
+                        <th class="text-right" style="width: 12%;">Used</th>
+                        <th class="text-right" style="width: 12%;">Remaining</th>
+                        <th style="width: 24%;">Usage</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    // Show parent (if exists)
+    if (data.parent) {
+        html += createProjectRow(data.parent, 'parent', 0);
+    }
+
+    // Show current project
+    html += createProjectRow(data, 'current', 0);
+
+    // Show children (if any)
+    if (data.children && data.children.length > 0) {
+        data.children.forEach(child => {
+            html += createProjectRow(child, 'child', 1);
+        });
+    }
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    container.innerHTML = html;
+}
+
+// Toggle chevron icon for tree rows
+function toggleTreeChevron(row) {
+    const chevron = $(row).find('.fa-chevron-right, .fa-chevron-down').first();
+    if (chevron.hasClass('fa-chevron-right')) {
+        chevron.removeClass('fa-chevron-right').addClass('fa-chevron-down');
+    } else {
+        chevron.removeClass('fa-chevron-down').addClass('fa-chevron-right');
+    }
+}
+
+// Navigate to another project card
+function navigateToProject(projcode) {
+    // Find the project card
+    const cards = document.querySelectorAll('[data-projcode]');
+    let targetCard = null;
+
+    for (const card of cards) {
+        if (card.getAttribute('data-projcode') === projcode) {
+            targetCard = card;
+            break;
+        }
+    }
+
+    if (targetCard) {
+        // Scroll to card
+        targetCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        // Expand the card
+        $(targetCard).collapse('show');
+
+        // Highlight briefly
+        const originalBg = targetCard.style.backgroundColor;
+        targetCard.style.backgroundColor = '#e3f2fd';
+        setTimeout(() => {
+            targetCard.style.backgroundColor = originalBg;
+        }, 2000);
+    } else {
+        // Project not in current user's list
+        alert(`Project ${projcode} is not in your project list.`);
+    }
+}
+
+// Navigate to resource details page
+function viewResourceDetails(projcode, resourceName) {
+    window.location.href = `{{ url_for('user_dashboard.resource_details') }}?projcode=${encodeURIComponent(projcode)}&resource=${encodeURIComponent(resourceName)}`;
+}
+
+// Lazy load project tree when tree section is first opened
+$(document).on('show.bs.collapse', '[data-section="tree"]', function() {
+    const treeSection = $(this);
+    const projcode = treeSection.data('projcode');
+    const containerId = `tree-container-${projcode}`;
+
+    // Only load once
+    if (!treeSection.data('tree-loaded')) {
+        loadProjectTree(projcode, containerId);
+        treeSection.data('tree-loaded', true);
+    }
+});
+
+// Load projects on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadProjects();
+});
+</script>
+{% endblock %}
