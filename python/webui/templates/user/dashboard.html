@@ -166,6 +166,25 @@
         padding: 0.2rem 0.4rem;
     }
 
+    /* Resource rows within tree */
+    .tree-resource-row {
+        border-left: 3px solid #dee2e6;
+    }
+
+    .tree-resource-row:hover {
+        background-color: #f0f0f0 !important;
+    }
+
+    /* Cursor style for collapsible project rows */
+    tr[data-toggle="collapse"] {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    tr[data-toggle="collapse"]:hover {
+        background-color: #f8f9fa;
+    }
+
 </style>
 {% endblock %}
 
@@ -447,15 +466,52 @@ function loadProjectTree(projcode, containerId) {
 // Render project tree HTML
 function renderProjectTree(data, containerId) {
     const container = document.getElementById(containerId);
+    let rowCounter = 0;
 
-    // Helper to create table row for a project
+    // Helper to create resource rows for a project
+    function createResourceRows(project, projectId, indentLevel) {
+        if (!project.usage || !project.usage.resources || project.usage.resources.length === 0) {
+            return '<tr class="tree-resource-row collapse show" id="resources-' + projectId + '" style="background-color: #fafafa;"><td colspan="5" class="text-muted small text-center">No resources</td></tr>';
+        }
+
+        let resourceHtml = '';
+        project.usage.resources.forEach(resource => {
+            const percentClass = getProgressColor(resource.percent_used);
+            resourceHtml += `
+                <tr class="tree-resource-row collapse show" id="resources-${projectId}" style="background-color: #fafafa;">
+                    <td style="padding-left: ${(indentLevel + 1) * 2}rem;">
+                        <i class="fas fa-server text-muted mr-2" style="font-size: 0.85rem;"></i>
+                        ${resource.resource_name}
+                    </td>
+                    <td class="text-right small">${formatNumber(resource.allocated)}</td>
+                    <td class="text-right small">${formatNumber(resource.used)}</td>
+                    <td class="text-right small">${formatNumber(resource.remaining)}</td>
+                    <td style="min-width: 250px;">
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar ${percentClass}"
+                                 role="progressbar"
+                                 style="width: ${Math.min(resource.percent_used, 100)}%"
+                                 aria-valuenow="${resource.percent_used}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                <strong>${resource.percent_used.toFixed(1)}%</strong>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+        return resourceHtml;
+    }
+
+    // Helper to create table row for a project (header row only, no aggregates)
     function createProjectRow(project, type, indentLevel = 0) {
-        // Handle missing usage data
-        const hasUsage = project.usage && project.usage.total_allocated > 0;
-        const allocated = hasUsage ? project.usage.total_allocated : 0;
-        const used = hasUsage ? project.usage.total_used : 0;
-        const remaining = hasUsage ? project.usage.total_remaining : 0;
-        const percentUsed = hasUsage ? project.usage.percent_used : 0;
+        rowCounter++;
+        const projectId = `tree-${type}-${rowCounter}`;
+
+        // Check if project has resources to show
+        const hasResources = project.usage && project.usage.resources && project.usage.resources.length > 0;
+        const resourceCount = hasResources ? project.usage.resources.length : 0;
 
         // Determine row styling based on type
         let rowClass = '';
@@ -481,38 +537,36 @@ function renderProjectTree(data, containerId) {
             }
         }
 
-        const percentClass = getProgressColor(percentUsed);
-        const paddingLeft = indentLevel > 0 ? `style="padding-left: ${indentLevel * 2}rem;"` : '';
+        const paddingLeft = indentLevel > 0 ? `style="padding-left: ${indentLevel * 2}rem; cursor: pointer;"` : 'style="cursor: pointer;"';
 
         // Build clickable project name
         const projectName = type === 'current'
             ? `<strong>${project.projcode} - ${project.title}</strong>`
             : `<a href="#" onclick="navigateToProject('${project.projcode}'); return false;"><strong>${project.projcode}</strong> - ${project.title}</a>`;
 
-        return `
-            <tr class="${rowClass}">
-                <td ${paddingLeft}>
-                    ${icon}${projectName}${badge}
-                </td>
-                <td class="text-right">${hasUsage ? formatNumber(allocated) : '-'}</td>
-                <td class="text-right">${hasUsage ? formatNumber(used) : '-'}</td>
-                <td class="text-right">${hasUsage ? formatNumber(remaining) : '-'}</td>
-                <td style="min-width: 250px;">
-                    ${hasUsage ? `
-                        <div class="progress" style="height: 24px;">
-                            <div class="progress-bar ${percentClass}"
-                                 role="progressbar"
-                                 style="width: ${Math.min(percentUsed, 100)}%"
-                                 aria-valuenow="${percentUsed}"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
-                                <strong>${percentUsed.toFixed(1)}%</strong>
-                            </div>
-                        </div>
-                    ` : '<span class="text-muted small">No allocations</span>'}
+        // Add chevron for collapsible resources (starts expanded)
+        const chevron = hasResources
+            ? `<i class="fas fa-chevron-down mr-2" style="font-size: 0.75rem; transition: transform 0.3s;"></i>`
+            : '';
+
+        const resourceBadge = hasResources
+            ? ` <span class="badge badge-light badge-sm ml-2" style="font-size: 0.7rem;">${resourceCount} resource${resourceCount > 1 ? 's' : ''}</span>`
+            : '';
+
+        let projectRow = `
+            <tr class="${rowClass}" ${hasResources ? `data-toggle="collapse" data-target="#resources-${projectId}" onclick="toggleTreeChevron(this)"` : ''}>
+                <td colspan="5" ${paddingLeft}>
+                    ${chevron}${icon}${projectName}${badge}${resourceBadge}
                 </td>
             </tr>
         `;
+
+        // Add resource rows if they exist
+        if (hasResources) {
+            projectRow += createResourceRows(project, projectId, indentLevel);
+        }
+
+        return projectRow;
     }
 
     // Build table with header
@@ -521,7 +575,7 @@ function renderProjectTree(data, containerId) {
             <table class="table table-sm table-hover table-bordered mb-0">
                 <thead class="thead-light">
                     <tr>
-                        <th style="width: 40%;">Project</th>
+                        <th style="width: 40%;">Project / Resource</th>
                         <th class="text-right" style="width: 12%;">Allocated</th>
                         <th class="text-right" style="width: 12%;">Used</th>
                         <th class="text-right" style="width: 12%;">Remaining</th>
@@ -553,6 +607,16 @@ function renderProjectTree(data, containerId) {
     `;
 
     container.innerHTML = html;
+}
+
+// Toggle chevron icon for tree rows
+function toggleTreeChevron(row) {
+    const chevron = $(row).find('.fa-chevron-right, .fa-chevron-down').first();
+    if (chevron.hasClass('fa-chevron-right')) {
+        chevron.removeClass('fa-chevron-right').addClass('fa-chevron-down');
+    } else {
+        chevron.removeClass('fa-chevron-down').addClass('fa-chevron-right');
+    }
 }
 
 // Navigate to another project card
