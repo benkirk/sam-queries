@@ -18,9 +18,9 @@
 
     NOTE: Parent context should include 'projcode' for link
 }}
-<tr class="resource-row"
-    onclick="window.location.href='/dashboard/resource/{{../projcode}}/{{resource_name}}'"
-    style="cursor: pointer;">
+<tr class="resource-row"{{#projcode}}
+    onclick="window.location.href='/dashboard/resource/{{projcode}}/{{resource_name}}'"
+    style="cursor: pointer;"{{/projcode}}>
     <td><strong>{{resource_name}}</strong></td>
     <td>
         {{#statusIsActive}}

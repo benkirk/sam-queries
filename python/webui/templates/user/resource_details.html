@@ -21,6 +21,42 @@
 <!-- Error Container -->
 <div id="error-container"></div>
 
+<!-- Resource Summary Card -->
+<div class="card mb-4" id="resource-summary-card" style="display: none;">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-info-circle"></i> Resource Summary
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Resource</th>
+                        <th>Status</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th>Allocated</th>
+                        <th>Used</th>
+                        <th>Remaining</th>
+                        <th style="width: 200px;">Usage</th>
+                    </tr>
+                </thead>
+                <tbody id="resource-summary-tbody">
+                    <tr>
+                        <td colspan="8" class="text-center">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                <span class="sr-only">Loading...</span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <!-- Usage Trend Card -->
 <div class="card mb-4" id="usage-card" style="display: none;">
     <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseUsage" aria-expanded="true">
@@ -116,9 +152,58 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('start-date').valueAsDate = startDate;
     document.getElementById('end-date').valueAsDate = endDate;
 
+    // Load resource summary first
+    await loadResourceSummary();
+
     // Load usage data
     await loadUsageData();
 });
+
+/**
+ * Load and render resource summary
+ */
+async function loadResourceSummary() {
+    try {
+        // Fetch project allocations
+        const url = `/api/v1/projects/${PROJCODE}/allocations`;
+        const data = await SAM.apiFetch(url);
+
+        console.log('Allocations data:', data); // Debug
+
+        // Find the specific resource we're viewing
+        // Note: allocation.resource.resource_name contains the resource name
+        const allocationData = data.allocations?.find(
+            alloc => alloc.resource?.resource_name === RESOURCE_NAME
+        );
+
+        if (allocationData) {
+            // Convert allocation data to resource format for rendering
+            const resourceData = {
+                resource_name: allocationData.resource.resource_name,
+                allocated: allocationData.amount,
+                used: allocationData.used,
+                remaining: allocationData.remaining,
+                percent_used: allocationData.percent_used,
+                status: allocationData.is_active ? 'Active' : 'Inactive',
+                start_date: allocationData.start_date,
+                end_date: allocationData.end_date,
+                charges_by_type: allocationData.charges_by_type
+            };
+
+            console.log('Resource data for rendering:', resourceData); // Debug
+
+            // Render using Mustache template
+            await SAM.Mustache.renderResourceRows(resourceData, PROJCODE, 'resource-summary-tbody');
+            document.getElementById('resource-summary-card').style.display = '';
+        } else {
+            console.warn(`Resource ${RESOURCE_NAME} not found in allocations`);
+            console.log('Available resources:', data.allocations?.map(a => a.resource?.resource_name));
+        }
+    } catch (error) {
+        console.error('Error loading resource summary:', error);
+        // Don't show error to user - just hide the card
+    }
+}
 
 /**
  * Load usage data and render sparkline

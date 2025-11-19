@@ -396,6 +396,40 @@ async function renderChargeTable(chargeData, tableBodyId) {
 }
 
 /**
+ * Render resource row(s) from API data
+ * @param {object|Array} resourceData - Single resource or array of resources
+ * @param {string} projcode - Project code for navigation links
+ * @param {string} tableBodyId - Target tbody element ID
+ */
+async function renderResourceRows(resourceData, projcode, tableBodyId) {
+    try {
+        // Normalize to array
+        const resources = Array.isArray(resourceData) ? resourceData : [resourceData];
+
+        // Preprocess all resources
+        const processedResources = resources.map(preprocessResource);
+
+        // Load template
+        const template = await loadTemplate('resource-row');
+
+        // Render all rows with projcode in context
+        const rows = processedResources.map(resource =>
+            Mustache.render(template, { ...resource, projcode: projcode })
+        ).join('');
+
+        // Insert into DOM
+        const tbody = document.getElementById(tableBodyId);
+        if (tbody) {
+            tbody.innerHTML = rows;
+        } else {
+            console.error(`Table body not found: ${tableBodyId}`);
+        }
+    } catch (error) {
+        console.error('Error rendering resource rows:', error);
+    }
+}
+
+/**
  * Simple sparkline renderer using Canvas (lighter than Chart.js)
  * @param {Array} data - Array of {date, value} objects
  * @param {string} canvasId - Canvas element ID
@@ -487,6 +521,7 @@ window.SAM.Mustache = {
     renderSparkline,
     renderTransactions,
     renderChargeTable,
+    renderResourceRows,
     renderSimpleSparkline,
     preprocessProject,
     preprocessResource,
