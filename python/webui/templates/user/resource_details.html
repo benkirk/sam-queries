@@ -378,7 +378,7 @@ function formatDateForInput(dateString) {
 
 // Load and render usage chart
 function loadUsageChart(startDate, endDate) {
-    let url = `/api/v1/projects/${encodeURIComponent(projcode)}/charges?resource=${encodeURIComponent(resourceName)}`;
+    let url = `/api/v1/projects/${encodeURIComponent(projcode)}/charges?resource=${encodeURIComponent(resourceName)}&group_by=date`;
 
     if (startDate && endDate) {
         url += `&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
@@ -572,7 +572,7 @@ function loadUsageChart(startDate, endDate) {
 
 // Load and render charges table (uses same data as chart)
 function loadCharges(startDate, endDate) {
-    let url = `/api/v1/projects/${encodeURIComponent(projcode)}/charges?resource=${encodeURIComponent(resourceName)}`;
+    let url = `/api/v1/projects/${encodeURIComponent(projcode)}/charges?resource=${encodeURIComponent(resourceName)}&group_by=date`;
 
     if (startDate && endDate) {
         url += `&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;

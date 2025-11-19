@@ -38,15 +38,17 @@ def get_project_charges(projcode):
     GET /api/v1/projects/<projcode>/charges - Get detailed charge summaries by date range.
 
     Query parameters:
-        start_date (str): Start date (YYYY-MM-DD) - defaults to 30 days ago
+        start_date (str): Start date (YYYY-MM-DD) - defaults to 90 days ago
         end_date (str): End date (YYYY-MM-DD) - defaults to today
-        resource_id (int): Optional filter by specific resource
+        resource (str): Optional filter by resource name
+        group_by (str): Optional 'date' to get time series aggregated by date
 
     Returns:
-        JSON with charge summaries grouped by resource type
+        JSON with charge summaries grouped by resource type, or time series if group_by=date
     """
     from sam.queries import find_project_by_code
     from sam.accounting.accounts import Account
+    from sam.resources.resources import Resource
     from sam.summaries.comp_summaries import CompChargeSummary
     from sam.summaries.dav_summaries import DavChargeSummary
     from sam.summaries.disk_summaries import DiskChargeSummary
@@ -59,21 +61,32 @@ def get_project_charges(projcode):
     # Parse date parameters
     try:
         end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d') if request.args.get('end_date') else datetime.now()
-        start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d') if request.args.get('start_date') else end_date - timedelta(days=30)
+        start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d') if request.args.get('start_date') else end_date - timedelta(days=90)
     except ValueError:
         return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
 
-    resource_id = request.args.get('resource_id', type=int)
+    resource_name = request.args.get('resource')
+    group_by = request.args.get('group_by')
 
-    # Get all accounts for this project
+    # Get account for this project/resource
     accounts_query = db.session.query(Account).filter(
         Account.project_id == project.project_id,
         Account.deleted == False
     )
-    if resource_id:
-        accounts_query = accounts_query.filter(Account.resource_id == resource_id)
 
-    account_ids = [acc.account_id for acc in accounts_query.all()]
+    if resource_name:
+        resource = db.session.query(Resource).filter_by(resource_name=resource_name).first()
+        if not resource:
+            return jsonify({'error': 'Resource not found'}), 404
+        accounts_query = accounts_query.filter(Account.resource_id == resource.resource_id)
+        account = accounts_query.first()
+        if not account:
+            return jsonify({'error': 'No account found for this project/resource'}), 404
+        account_ids = [account.account_id]
+        resource_type = resource.resource_type.resource_type if resource.resource_type else 'UNKNOWN'
+    else:
+        account_ids = [acc.account_id for acc in accounts_query.all()]
+        resource_type = None
 
     if not account_ids:
         return jsonify({
@@ -88,7 +101,93 @@ def get_project_charges(projcode):
             }
         })
 
-    # Query each charge type
+    # If group_by=date, return time series aggregated by date
+    if group_by == 'date':
+        daily_data = {}
+
+        # Query comp charges aggregated by date
+        if resource_type in ['HPC', 'DAV', None]:
+            comp_data = db.session.query(
+                CompChargeSummary.activity_date,
+                func.sum(CompChargeSummary.charges).label('total_charges')
+            ).filter(
+                CompChargeSummary.account_id.in_(account_ids),
+                CompChargeSummary.activity_date >= start_date,
+                CompChargeSummary.activity_date <= end_date
+            ).group_by(CompChargeSummary.activity_date).all()
+
+            for date, charges in comp_data:
+                date_str = date.strftime('%Y-%m-%d')
+                if date_str not in daily_data:
+                    daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+                daily_data[date_str]['comp'] = float(charges or 0.0)
+
+            # Query dav charges
+            dav_data = db.session.query(
+                DavChargeSummary.activity_date,
+                func.sum(DavChargeSummary.charges).label('total_charges')
+            ).filter(
+                DavChargeSummary.account_id.in_(account_ids),
+                DavChargeSummary.activity_date >= start_date,
+                DavChargeSummary.activity_date <= end_date
+            ).group_by(DavChargeSummary.activity_date).all()
+
+            for date, charges in dav_data:
+                date_str = date.strftime('%Y-%m-%d')
+                if date_str not in daily_data:
+                    daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+                daily_data[date_str]['dav'] = float(charges or 0.0)
+
+        # Query disk charges
+        if resource_type in ['DISK', None]:
+            disk_data = db.session.query(
+                DiskChargeSummary.activity_date,
+                func.sum(DiskChargeSummary.charges).label('total_charges')
+            ).filter(
+                DiskChargeSummary.account_id.in_(account_ids),
+                DiskChargeSummary.activity_date >= start_date,
+                DiskChargeSummary.activity_date <= end_date
+            ).group_by(DiskChargeSummary.activity_date).all()
+
+            for date, charges in disk_data:
+                date_str = date.strftime('%Y-%m-%d')
+                if date_str not in daily_data:
+                    daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+                daily_data[date_str]['disk'] = float(charges or 0.0)
+
+        # Query archive charges
+        if resource_type in ['ARCHIVE', None]:
+            archive_data = db.session.query(
+                ArchiveChargeSummary.activity_date,
+                func.sum(ArchiveChargeSummary.charges).label('total_charges')
+            ).filter(
+                ArchiveChargeSummary.account_id.in_(account_ids),
+                ArchiveChargeSummary.activity_date >= start_date,
+                ArchiveChargeSummary.activity_date <= end_date
+            ).group_by(ArchiveChargeSummary.activity_date).all()
+
+            for date, charges in archive_data:
+                date_str = date.strftime('%Y-%m-%d')
+                if date_str not in daily_data:
+                    daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+                daily_data[date_str]['archive'] = float(charges or 0.0)
+
+        # Convert to sorted list for charting
+        sorted_data = sorted([
+            {'date': date, **values}
+            for date, values in daily_data.items()
+        ], key=lambda x: x['date'])
+
+        return jsonify({
+            'projcode': projcode,
+            'resource_name': resource_name,
+            'resource_type': resource_type,
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'data': sorted_data
+        })
+
+    # Otherwise, return raw charge summaries
     comp_charges = db.session.query(CompChargeSummary).filter(
         CompChargeSummary.account_id.in_(account_ids),
         CompChargeSummary.activity_date >= start_date,
