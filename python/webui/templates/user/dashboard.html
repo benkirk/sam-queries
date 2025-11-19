@@ -538,12 +538,14 @@ function createProjectInfoBox(project) {
     }
 
     // Active Directories - handle both array and string
-    if (project.active_directories) {
+    // Note: API returns this as 'directories' not 'active_directories'
+    const dirField = project.directories || project.active_directories;
+    if (dirField) {
         let dirs = '';
-        if (Array.isArray(project.active_directories) && project.active_directories.length > 0) {
-            dirs = project.active_directories.join(', ');
-        } else if (typeof project.active_directories === 'string') {
-            dirs = project.active_directories;
+        if (Array.isArray(dirField) && dirField.length > 0) {
+            dirs = dirField.join(', ');
+        } else if (typeof dirField === 'string') {
+            dirs = dirField;
         }
         if (dirs) {
             items.push({
