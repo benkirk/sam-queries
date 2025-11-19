@@ -462,109 +462,137 @@ function createProjectInfoBox(project) {
     // Lead (always show)
     if (project.lead) {
         items.push({
-            label: 'Project Lead',
-            value: `${project.lead.full_name || project.lead.username} (${project.lead.username})`
+            label: 'Lead',
+            values: [`${project.lead.full_name || project.lead.username} (${project.lead.username})`],
+            isMulti: false
         });
     }
 
     // Admin
     if (project.admin && project.admin.username && (project.lead.username != project.admin.username)) {
         items.push({
-            label: 'Project Admin',
-            value: `${project.admin.full_name || project.admin.username} (${project.admin.username})`
+            label: 'Admin',
+            values: [`${project.admin.full_name || project.admin.username} (${project.admin.username})`],
+            isMulti: false
         });
     }
 
-    // Area of Interest - handle both array and object
-    if (project.area_of_interest) {
-        let aois = '';
-        if (Array.isArray(project.area_of_interest) && project.area_of_interest.length > 0) {
-            aois = project.area_of_interest.map(a => {
-                if (typeof a === 'string') return a;
-                return a.area_of_interest_name || a.name || JSON.stringify(a);
-            }).join(', ');
-        } else if (typeof project.area_of_interest === 'object' && project.area_of_interest.area_of_interest_name) {
-            aois = project.area_of_interest.area_of_interest_name;
-        } else if (typeof project.area_of_interest === 'string') {
-            aois = project.area_of_interest;
-        }
-        if (aois) {
-            items.push({
-                label: 'Area of Interest',
-                value: aois
+    // Type
+    if (project.project_type) {
+        items.push({
+            label: 'Type',
+            values: [`${project.project_type}`],
+            isMulti: false
+        });
+    }
+
+    // Panel
+    if (project.panel) {
+        items.push({
+            label: 'Panel',
+            values: [`${project.panel}`],
+            isMulti: false
+        });
+    }
+
+    // Helper function to normalize field values into arrays
+    function normalizeField(field, nameKeys = []) {
+        if (!field) return null;
+
+        let values = [];
+        if (Array.isArray(field)) {
+            values = field.map(item => {
+                if (typeof item === 'string') return item;
+                // Try each name key in order
+                for (const key of nameKeys) {
+                    if (item[key]) return item[key];
+                }
+                return item.name || JSON.stringify(item);
             });
+        } else if (typeof field === 'object') {
+            // Try each name key in order
+            for (const key of nameKeys) {
+                if (field[key]) {
+                    values = [field[key]];
+                    break;
+                }
+            }
+            if (values.length === 0 && field.name) {
+                values = [field.name];
+            }
+        } else if (typeof field === 'string') {
+            values = [field];
         }
+
+        return values.length > 0 ? values : null;
+    }
+
+    // Area of Interest - handle both array and object
+    const aois = normalizeField(project.area_of_interest, ['area_of_interest_name']);
+    if (aois) {
+        items.push({
+            label: 'Area of Interest',
+            values: aois,
+            isMulti: aois.length > 1
+        });
     }
 
     // Contracts - handle both array and object
-    if (project.contracts) {
-        let contracts = '';
-        if (Array.isArray(project.contracts) && project.contracts.length > 0) {
-            contracts = project.contracts.map(c => {
-                if (typeof c === 'string') return c;
-                return c.contract_name || c.name || JSON.stringify(c);
-            }).join(', ');
-        } else if (typeof project.contracts === 'object' && project.contracts.contract_name) {
-            contracts = project.contracts.contract_name;
-        } else if (typeof project.contracts === 'string') {
-            contracts = project.contracts;
-        }
-        if (contracts) {
-            items.push({
-                label: 'Contracts',
-                value: contracts
-            });
-        }
+    const contracts = normalizeField(project.contracts, ['contract_name']);
+    if (contracts) {
+        items.push({
+            label: 'Contracts',
+            values: contracts,
+            isMulti: contracts.length > 1
+        });
     }
 
     // Organizations - handle both array and object
-    if (project.organizations) {
-        let orgs = '';
-        if (Array.isArray(project.organizations) && project.organizations.length > 0) {
-            orgs = project.organizations.map(o => {
-                if (typeof o === 'string') return o;
-                return o.organization_name || o.name || JSON.stringify(o);
-            }).join(', ');
-        } else if (typeof project.organizations === 'object' && project.organizations.organization_name) {
-            orgs = project.organizations.organization_name;
-        } else if (typeof project.organizations === 'string') {
-            orgs = project.organizations;
-        }
-        if (orgs) {
-            items.push({
-                label: 'Organizations',
-                value: orgs
-            });
-        }
+    const orgs = normalizeField(project.organizations, ['organization_name']);
+    if (orgs) {
+        items.push({
+            label: 'Organizations',
+            values: orgs,
+            isMulti: orgs.length > 1
+        });
     }
 
     // Active Directories - handle both array and string
     // Note: API returns this as 'directories' not 'active_directories'
     const dirField = project.directories || project.active_directories;
-    if (dirField) {
-        let dirs = '';
-        if (Array.isArray(dirField) && dirField.length > 0) {
-            dirs = dirField.join(', ');
-        } else if (typeof dirField === 'string') {
-            dirs = dirField;
-        }
-        if (dirs) {
-            items.push({
-                label: 'Directories',
-                value: dirs
-            });
-        }
+    const dirs = normalizeField(dirField);
+    if (dirs) {
+        items.push({
+            label: 'Directories',
+            values: dirs,
+            isMulti: dirs.length > 1
+        });
     }
 
     // Build HTML
     let html = '<div class="project-stats-box"><h6><i class="fas fa-info-circle"></i> Project Information</h6>';
     items.forEach(item => {
-        html += `
-            <div class="stat-item">
-                <span class="stat-label">${item.label}:</span>
-                <span class="stat-value">${item.value}</span>
-            </div>
-        `;
+        if (item.isMulti) {
+            // Multi-valued field - render as list
+            html += `
+                <div class="stat-item">
+                    <span class="stat-label">${item.label}:</span>
+                    <span class="stat-value">
+                        <ul class="mb-0 pl-3">
+                            ${item.values.map(v => `<li>${v}</li>`).join('')}
+                        </ul>
+                    </span>
+                </div>
+            `;
+        } else {
+            // Single value - render inline
+            html += `
+                <div class="stat-item">
+                    <span class="stat-label">${item.label}:</span>
+                    <span class="stat-value">${item.values[0]}</span>
+                </div>
+            `;
+        }
     });
     html += '</div>';
 
