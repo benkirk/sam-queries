@@ -167,50 +167,10 @@ async function loadProjects() {
 }
 
 /**
- * Create HTML for a single project card (EXPANDED BY DEFAULT)
+ * Create HTML for a single project card (Compressed by default)
  */
 function createProjectCard(project, index) {
     const cardId = `project-${index}`;
-
-    // Project Tree Section
-    const treeId = `tree-${cardId}`;
-    const treeHtml = `
-        <div class="mt-3" data-section="tree" data-projcode="${project.projcode}">
-            <h6 class="mb-2">
-                <i class="fas fa-sitemap"></i> Project Hierarchy
-                <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#${treeId}" aria-expanded="false">
-                    <i class="fas fa-chevron-down"></i>
-                </button>
-            </h6>
-            <div id="${treeId}" class="collapse">
-                <div class="tree-container p-3 bg-light rounded">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status">
-                        <span class="sr-only">Loading tree...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Members Section
-    const membersId = `members-${cardId}`;
-    const membersHtml = `
-        <div class="mt-3" data-section="members" data-projcode="${project.projcode}">
-            <h6 class="mb-2">
-                <i class="fas fa-users"></i> Project Members
-                <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#${membersId}" aria-expanded="false">
-                    <i class="fas fa-chevron-down"></i>
-                </button>
-            </h6>
-            <div id="${membersId}" class="collapse">
-                <div class="members-container p-3 bg-light rounded">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status">
-                        <span class="sr-only">Loading members...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
 
     // Resources Section
     let resourcesHtml = '';
@@ -241,6 +201,47 @@ function createProjectCard(project, index) {
         `;
     }
 
+    // Members Section
+    const membersId = `members-${cardId}`;
+    const membersHtml = `
+        <div class="mt-3" data-section="members" data-projcode="${project.projcode}">
+            <h6 class="mb-2">
+                <i class="fas fa-users"></i> Project Members
+                <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#${membersId}" aria-expanded="false">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </h6>
+            <div id="${membersId}" class="collapse">
+                <div class="members-container p-3 bg-light rounded">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="sr-only">Loading members...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Project Tree Section
+    const treeId = `tree-${cardId}`;
+    const treeHtml = `
+        <div class="mt-3" data-section="tree" data-projcode="${project.projcode}">
+            <h6 class="mb-2">
+                <i class="fas fa-sitemap"></i> Project Hierarchy
+                <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#${treeId}" aria-expanded="false">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </h6>
+            <div id="${treeId}" class="collapse">
+                <div class="tree-container p-3 bg-light rounded">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="sr-only">Loading tree...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+
     return `
         <div class="card project-card mb-3">
             <div class="card-header" data-toggle="collapse" data-target="#${cardId}" aria-expanded="true">
@@ -259,7 +260,7 @@ function createProjectCard(project, index) {
                 </div>
             </div>
 
-            <div id="${cardId}" class="collapse show">
+            <div id="${cardId}" class="collapse">
                 <div class="card-body" data-projcode="${project.projcode}" data-project-info-loaded="false">
                     <!-- Project Info - will be loaded with full details -->
                     <div class="project-info-container">
@@ -268,9 +269,9 @@ function createProjectCard(project, index) {
                         </div>
                     </div>
 
-                    ${treeHtml}
-                    ${membersHtml}
                     ${resourcesHtml}
+                    ${membersHtml}
+                    ${treeHtml}
                 </div>
             </div>
         </div>
