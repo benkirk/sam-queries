@@ -36,6 +36,8 @@ def create_app():
         'rory': ['project_lead'],
         'andersnb': ['user'],
         'negins': ['user'],
+        'bdobbins': ['user'],
+        'tcraig': ['user'],
     }
 
     # Flask-SQLAlchemy configuration
