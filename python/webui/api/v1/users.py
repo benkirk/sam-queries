@@ -73,17 +73,8 @@ def get_current_user_projects():
             # Get allocation usage for this project
             usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
 
-            # Calculate totals across all resources
-            total_allocated = 0.0
-            total_used = 0.0
-            total_remaining = 0.0
-
             resources_list = []
             for resource_name, details in usage_data.items():
-                total_allocated += details.get('allocated', 0.0)
-                total_used += details.get('used', 0.0)
-                total_remaining += details.get('remaining', 0.0)
-
                 # Get adjustments
                 adjustments_total = details.get('adjustments', 0.0)
 
@@ -111,19 +102,12 @@ def get_current_user_projects():
                     'end_date': end_date_str,
                 })
 
-            # Calculate overall percent used
-            percent_used = (total_used / total_allocated * 100.0) if total_allocated > 0 else 0.0
-
             projects_data.append({
                 'projcode': project.projcode,
                 'title': project.title,
                 'active': project.active,
                 'lead_username': project.lead.username if project.lead else None,
                 'lead_name': project.lead.full_name if project.lead else None,
-                'total_allocated': total_allocated,
-                'total_used': total_used,
-                'total_remaining': total_remaining,
-                'percent_used': percent_used,
                 'resources': resources_list,
             })
 
