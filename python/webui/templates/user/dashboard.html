@@ -125,64 +125,46 @@
         transform: translateX(2px);
     }
 
-    /* Project Tree Table Styles */
-    .tree-current-row {
+    /* Project Tree Styles - Simplified */
+    .tree-list {
+        list-style-type: none;
+        padding-left: 0;
+        margin: 0;
+    }
+
+    .tree-list ul {
+        list-style-type: none;
+        padding-left: 2rem;
+        margin: 0.5rem 0;
+    }
+
+    .tree-list li {
+        padding: 0.5rem;
+        margin: 0.25rem 0;
+        border-left: 3px solid transparent;
+    }
+
+    .tree-list .tree-current {
         background: #e3f2fd;
+        border-left-color: #0099CC;
         font-weight: 600;
     }
 
-    .tree-parent-row {
-        background: #f8f9fa;
-    }
-
-    .tree-inactive-row {
-        opacity: 0.6;
-    }
-
-    .tree-current-row td,
-    .tree-parent-row td {
-        border-left: 3px solid #0099CC;
-    }
-
-    .tree-parent-row td {
+    .tree-list .tree-parent {
         border-left-color: #6c757d;
     }
 
-    .tree-current-row a,
-    .tree-parent-row a,
-    table a {
+    .tree-list .tree-inactive {
+        opacity: 0.6;
+    }
+
+    .tree-list a {
         color: #0099CC;
         text-decoration: none;
     }
 
-    .tree-current-row a:hover,
-    .tree-parent-row a:hover,
-    table a:hover {
+    .tree-list a:hover {
         text-decoration: underline;
-    }
-
-    .badge-sm {
-        font-size: 0.75rem;
-        padding: 0.2rem 0.4rem;
-    }
-
-    /* Resource rows within tree */
-    .tree-resource-row {
-        border-left: 3px solid #dee2e6;
-    }
-
-    .tree-resource-row:hover {
-        background-color: #f0f0f0 !important;
-    }
-
-    /* Cursor style for collapsible project rows */
-    tr[data-toggle="collapse"] {
-        cursor: pointer;
-        user-select: none;
-    }
-
-    tr[data-toggle="collapse"]:hover {
-        background-color: #f8f9fa;
     }
 
 </style>
@@ -363,19 +345,19 @@ function createProjectCard(project, index) {
                         </div>
                     </div>
 
-                    <!-- Section B: Project Tree (COLLAPSED by default) -->
-                    <div class="card mb-2">
+                    <!-- Section B: Project Tree (COLLAPSED by default, hidden if no tree) -->
+                    <div class="card mb-2" id="tree-section-${index}">
                         <div class="card-header py-2" style="cursor: pointer; background: #f8f9fa;" data-toggle="collapse" data-target="#tree-${index}">
                             <h6 class="mb-0">
                                 <i class="fas fa-chevron-right chevron-icon"></i>
-                                Project Tree
+                                Project Hierarchy
                             </h6>
                         </div>
-                        <div id="tree-${index}" class="collapse" data-section="tree" data-projcode="${project.projcode}">
+                        <div id="tree-${index}" class="collapse" data-section="tree" data-projcode="${project.projcode}" data-card-index="${index}">
                             <div class="card-body">
                                 <div id="tree-container-${project.projcode}">
                                     <div class="text-center text-muted py-3">
-                                        <i class="fas fa-sitemap"></i> Project hierarchy will be displayed here
+                                        <i class="fas fa-sitemap"></i> Loading hierarchy...
                                     </div>
                                 </div>
                             </div>
@@ -441,239 +423,95 @@ function loadProjects() {
 }
 
 // Load project tree from API
-function loadProjectTree(projcode, containerId) {
+function loadProjectTree(projcode, containerId, cardIndex) {
     const container = document.getElementById(containerId);
 
     // Show loading state
-    container.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Loading project tree...</div>';
+    container.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Loading hierarchy...</div>';
 
-    // Fetch project details and allocations
-    Promise.all([
-        fetch(`/api/v1/projects/${projcode}`).then(r => r.json()),
-        fetch(`/api/v1/projects/${projcode}/allocations`).then(r => r.json())
-    ])
-        .then(([projectData, allocationsData]) => {
-            // Convert API v1 format to dashboard tree format
-            const treeData = convertToTreeFormat(projectData, allocationsData);
-            renderProjectTree(treeData, containerId);
+    // Fetch project details
+    fetch(`/api/v1/projects/${projcode}`)
+        .then(r => r.json())
+        .then(projectData => {
+            // Function to count total nodes in tree
+            function countTreeNodes(node) {
+                let count = 1;  // Count this node
+                if (node.children && node.children.length > 0) {
+                    node.children.forEach(child => {
+                        count += countTreeNodes(child);
+                    });
+                }
+                return count;
+            }
+
+            // Check if there's actually a tree (more than just one project)
+            const totalNodes = projectData.tree ? countTreeNodes(projectData.tree) : 1;
+            const hasTree = totalNodes > 1;
+
+            if (!hasTree) {
+                // Show message for standalone projects
+                container.innerHTML = '<div class="text-muted text-center py-3"><i class="fas fa-info-circle"></i> No project hierarchy</div>';
+                return;
+            }
+
+            // Tree exists, render it
+            renderSimpleProjectTree(projectData, containerId);
         })
         .catch(error => {
             console.error('Error loading project tree:', error);
-            container.innerHTML = '<div class="alert alert-warning small">Unable to load project tree</div>';
+            container.innerHTML = '<div class="alert alert-warning small">Unable to load hierarchy</div>';
         });
 }
 
-// Convert API v1 project data to dashboard tree format
-function convertToTreeFormat(projectData, allocationsData) {
-    // Helper to extract usage from allocations
-    function getUsageData(allocations) {
-        const resources = [];
-        let total_allocated = 0;
-        let total_used = 0;
-
-        if (allocations && allocations.allocations) {
-            allocations.allocations.forEach(alloc => {
-                const allocated = alloc.amount || 0;
-                const used = alloc.used || 0;
-                const remaining = alloc.remaining || 0;
-                const percent_used = alloc.percent_used || 0;
-
-                total_allocated += allocated;
-                total_used += used;
-
-                if (alloc.resource) {
-                    resources.push({
-                        resource_name: alloc.resource.resource_name,
-                        allocated: allocated,
-                        used: used,
-                        remaining: remaining,
-                        percent_used: percent_used
-                    });
-                }
-            });
-        }
-
-        const overall_percent = total_allocated > 0 ? (total_used / total_allocated * 100) : 0;
-
-        return {
-            resources: resources,
-            total_allocated: total_allocated,
-            total_used: total_used,
-            total_remaining: total_allocated - total_used,
-            percent_used: overall_percent
-        };
-    }
-
-    const usage = getUsageData(allocationsData);
-
-    // Construct tree data matching dashboard format
-    const treeData = {
-        projcode: projectData.projcode,
-        title: projectData.title,
-        active: projectData.active,
-        parent: null,  // API v1 doesn't provide full parent details easily
-        children: [],   // API v1 doesn't provide children in single call
-        usage: usage,
-        child_count: 0
-    };
-
-    return treeData;
-}
-
-// Render project tree HTML
-function renderProjectTree(data, containerId) {
+// Render simplified project tree - just project codes in hierarchy
+function renderSimpleProjectTree(projectData, containerId) {
     const container = document.getElementById(containerId);
-    let rowCounter = 0;
+    const currentProjcode = projectData.projcode;
 
-    // Helper to create resource rows for a project
-    function createResourceRows(project, projectId, indentLevel) {
-        if (!project.usage || !project.usage.resources || project.usage.resources.length === 0) {
-            return '<tr class="tree-resource-row collapse show" id="resources-' + projectId + '" style="background-color: #fafafa;"><td colspan="5" class="text-muted small text-center">No resources</td></tr>';
-        }
-
-        let resourceHtml = '';
-        project.usage.resources.forEach(resource => {
-            const percentClass = getProgressColor(resource.percent_used);
-            resourceHtml += `
-                <tr class="tree-resource-row collapse show" id="resources-${projectId}" style="background-color: #fafafa;">
-                    <td style="padding-left: ${(indentLevel + 1) * 2}rem;">
-                        <i class="fas fa-server text-muted mr-2" style="font-size: 0.85rem;"></i>
-                        ${resource.resource_name}
-                    </td>
-                    <td class="text-right small">${formatNumber(resource.allocated)}</td>
-                    <td class="text-right small">${formatNumber(resource.used)}</td>
-                    <td class="text-right small">${formatNumber(resource.remaining)}</td>
-                    <td style="min-width: 250px;">
-                        <div class="progress" style="height: 20px;">
-                            <div class="progress-bar ${percentClass}"
-                                 role="progressbar"
-                                 style="width: ${Math.min(resource.percent_used, 100)}%"
-                                 aria-valuenow="${resource.percent_used}"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
-                                <strong>${resource.percent_used.toFixed(1)}%</strong>
-                            </div>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        });
-        return resourceHtml;
-    }
-
-    // Helper to create table row for a project (header row only, no aggregates)
-    function createProjectRow(project, type, indentLevel = 0) {
-        rowCounter++;
-        const projectId = `tree-${type}-${rowCounter}`;
-
-        // Check if project has resources to show
-        const hasResources = project.usage && project.usage.resources && project.usage.resources.length > 0;
-        const resourceCount = hasResources ? project.usage.resources.length : 0;
-
-        // Determine row styling based on type
-        let rowClass = '';
-        let badge = '';
+    // Helper to build tree list item
+    function buildTreeItem(projcode, isCurrent) {
+        let classes = [];
         let icon = '';
+        let badge = '';
 
-        if (type === 'parent') {
-            rowClass = 'tree-parent-row';
-            badge = '<span class="badge badge-secondary badge-sm ml-2">Parent</span>';
-            icon = '<i class="fas fa-level-up-alt text-secondary mr-2"></i>';
-        } else if (type === 'current') {
-            rowClass = 'tree-current-row';
+        if (isCurrent) {
+            classes.push('tree-current');
+            icon = '<i class="fas fa-arrow-right mr-2"></i>';
             badge = '<span class="badge badge-primary badge-sm ml-2">Current</span>';
-            icon = '<i class="fas fa-folder-open text-primary mr-2"></i>';
-        } else if (type === 'child') {
-            rowClass = project.active ? '' : 'tree-inactive-row';
-            badge = project.active
-                ? '<span class="badge badge-success badge-sm ml-2">Active</span>'
-                : '<span class="badge badge-secondary badge-sm ml-2">Inactive</span>';
-            icon = '<i class="fas fa-folder text-muted mr-2"></i>';
-            if (project.has_children) {
-                badge += ' <i class="fas fa-sitemap ml-2 text-muted" title="Has children"></i>';
-            }
+        } else {
+            icon = '<i class="fas fa-folder mr-2"></i>';
         }
 
-        const paddingLeft = indentLevel > 0 ? `style="padding-left: ${indentLevel * 2}rem; cursor: pointer;"` : 'style="cursor: pointer;"';
+        const classStr = classes.length > 0 ? ` class="${classes.join(' ')}"` : '';
+        const linkOrText = isCurrent
+            ? `<strong>${projcode}</strong>`
+            : `<a href="#" onclick="navigateToProject('${projcode}'); return false;">${projcode}</a>`;
 
-        // Build clickable project name
-        const projectName = type === 'current'
-            ? `<strong>${project.projcode} - ${project.title}</strong>`
-            : `<a href="#" onclick="navigateToProject('${project.projcode}'); return false;"><strong>${project.projcode}</strong> - ${project.title}</a>`;
+        return `<li${classStr}>${icon}${linkOrText}${badge}</li>`;
+    }
 
-        // Add chevron for collapsible resources (starts expanded)
-        const chevron = hasResources
-            ? `<i class="fas fa-chevron-down mr-2" style="font-size: 0.75rem; transition: transform 0.3s;"></i>`
-            : '';
+    // Recursively render tree from root
+    function renderTreeNode(node, depth = 0) {
+        const isCurrent = node.projcode === currentProjcode;
+        let html = buildTreeItem(node.projcode, isCurrent);
 
-        const resourceBadge = hasResources
-            ? ` <span class="badge badge-light badge-sm ml-2" style="font-size: 0.7rem;">${resourceCount} resource${resourceCount > 1 ? 's' : ''}</span>`
-            : '';
-
-        let projectRow = `
-            <tr class="${rowClass}" ${hasResources ? `data-toggle="collapse" data-target="#resources-${projectId}" onclick="toggleTreeChevron(this)"` : ''}>
-                <td colspan="5" ${paddingLeft}>
-                    ${chevron}${icon}${projectName}${badge}${resourceBadge}
-                </td>
-            </tr>
-        `;
-
-        // Add resource rows if they exist
-        if (hasResources) {
-            projectRow += createResourceRows(project, projectId, indentLevel);
+        if (node.children && node.children.length > 0) {
+            html += '<ul>';
+            node.children.forEach(child => {
+                html += renderTreeNode(child, depth + 1);
+            });
+            html += '</ul>';
         }
 
-        return projectRow;
+        return html;
     }
 
-    // Build table with header
-    let html = `
-        <div class="table-responsive">
-            <table class="table table-sm table-hover table-bordered mb-0">
-                <thead class="thead-light">
-                    <tr>
-                        <th style="width: 40%;">Project / Resource</th>
-                        <th class="text-right" style="width: 12%;">Allocated</th>
-                        <th class="text-right" style="width: 12%;">Used</th>
-                        <th class="text-right" style="width: 12%;">Remaining</th>
-                        <th style="width: 24%;">Usage</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
-
-    // Show parent (if exists)
-    if (data.parent) {
-        html += createProjectRow(data.parent, 'parent', 0);
-    }
-
-    // Show current project
-    html += createProjectRow(data, 'current', 0);
-
-    // Show children (if any)
-    if (data.children && data.children.length > 0) {
-        data.children.forEach(child => {
-            html += createProjectRow(child, 'child', 1);
-        });
-    }
-
-    html += `
-                </tbody>
-            </table>
-        </div>
-    `;
+    // Render the full tree starting from root
+    let html = '<ul class="tree-list">';
+    html += renderTreeNode(projectData.tree);
+    html += '</ul>';
 
     container.innerHTML = html;
-}
-
-// Toggle chevron icon for tree rows
-function toggleTreeChevron(row) {
-    const chevron = $(row).find('.fa-chevron-right, .fa-chevron-down').first();
-    if (chevron.hasClass('fa-chevron-right')) {
-        chevron.removeClass('fa-chevron-right').addClass('fa-chevron-down');
-    } else {
-        chevron.removeClass('fa-chevron-down').addClass('fa-chevron-right');
-    }
 }
 
 // Navigate to another project card
@@ -717,11 +555,12 @@ function viewResourceDetails(projcode, resourceName) {
 $(document).on('show.bs.collapse', '[data-section="tree"]', function() {
     const treeSection = $(this);
     const projcode = treeSection.data('projcode');
+    const cardIndex = treeSection.data('card-index');
     const containerId = `tree-container-${projcode}`;
 
     // Only load once
     if (!treeSection.data('tree-loaded')) {
-        loadProjectTree(projcode, containerId);
+        loadProjectTree(projcode, containerId, cardIndex);
         treeSection.data('tree-loaded', true);
     }
 });
