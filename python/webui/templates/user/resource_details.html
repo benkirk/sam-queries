@@ -378,7 +378,7 @@ function formatDateForInput(dateString) {
 
 // Load and render usage chart
 function loadUsageChart(startDate, endDate) {
-    let url = `{{ url_for('user_dashboard.get_resource_usage_timeseries') }}?projcode=${encodeURIComponent(projcode)}&resource=${encodeURIComponent(resourceName)}`;
+    let url = `/api/v1/projects/${encodeURIComponent(projcode)}/charges?resource=${encodeURIComponent(resourceName)}`;
 
     if (startDate && endDate) {
         url += `&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
@@ -572,7 +572,7 @@ function loadUsageChart(startDate, endDate) {
 
 // Load and render charges table (uses same data as chart)
 function loadCharges(startDate, endDate) {
-    let url = `{{ url_for('user_dashboard.get_resource_usage_timeseries') }}?projcode=${encodeURIComponent(projcode)}&resource=${encodeURIComponent(resourceName)}`;
+    let url = `/api/v1/projects/${encodeURIComponent(projcode)}/charges?resource=${encodeURIComponent(resourceName)}`;
 
     if (startDate && endDate) {
         url += `&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
@@ -703,7 +703,7 @@ function loadAllocationChanges() {
 
 // Load project information
 function loadProjectInfo() {
-    const url = `{{ url_for('user_dashboard.get_my_projects') }}`;
+    const url = `/api/v1/users/me/projects?format=dashboard`;
 
     fetch(url)
         .then(response => {

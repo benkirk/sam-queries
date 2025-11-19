@@ -390,7 +390,7 @@ function createProjectCard(project, index) {
 
 // Load projects data
 function loadProjects() {
-    fetch('{{ url_for("user_dashboard.get_my_projects") }}')
+    fetch('/api/v1/users/me/projects?format=dashboard')
         .then(response => {
             if (!response.ok) {
                 throw new Error('Failed to load projects');
@@ -447,20 +447,77 @@ function loadProjectTree(projcode, containerId) {
     // Show loading state
     container.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Loading project tree...</div>';
 
-    fetch(`/dashboard/api/project/${projcode}/tree`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to load project tree');
-            }
-            return response.json();
-        })
-        .then(data => {
-            renderProjectTree(data, containerId);
+    // Fetch project details and allocations
+    Promise.all([
+        fetch(`/api/v1/projects/${projcode}`).then(r => r.json()),
+        fetch(`/api/v1/projects/${projcode}/allocations`).then(r => r.json())
+    ])
+        .then(([projectData, allocationsData]) => {
+            // Convert API v1 format to dashboard tree format
+            const treeData = convertToTreeFormat(projectData, allocationsData);
+            renderProjectTree(treeData, containerId);
         })
         .catch(error => {
             console.error('Error loading project tree:', error);
             container.innerHTML = '<div class="alert alert-warning small">Unable to load project tree</div>';
         });
+}
+
+// Convert API v1 project data to dashboard tree format
+function convertToTreeFormat(projectData, allocationsData) {
+    // Helper to extract usage from allocations
+    function getUsageData(allocations) {
+        const resources = [];
+        let total_allocated = 0;
+        let total_used = 0;
+
+        if (allocations && allocations.allocations) {
+            allocations.allocations.forEach(alloc => {
+                const allocated = alloc.amount || 0;
+                const used = alloc.used || 0;
+                const remaining = alloc.remaining || 0;
+                const percent_used = alloc.percent_used || 0;
+
+                total_allocated += allocated;
+                total_used += used;
+
+                if (alloc.resource) {
+                    resources.push({
+                        resource_name: alloc.resource.resource_name,
+                        allocated: allocated,
+                        used: used,
+                        remaining: remaining,
+                        percent_used: percent_used
+                    });
+                }
+            });
+        }
+
+        const overall_percent = total_allocated > 0 ? (total_used / total_allocated * 100) : 0;
+
+        return {
+            resources: resources,
+            total_allocated: total_allocated,
+            total_used: total_used,
+            total_remaining: total_allocated - total_used,
+            percent_used: overall_percent
+        };
+    }
+
+    const usage = getUsageData(allocationsData);
+
+    // Construct tree data matching dashboard format
+    const treeData = {
+        projcode: projectData.projcode,
+        title: projectData.title,
+        active: projectData.active,
+        parent: null,  // API v1 doesn't provide full parent details easily
+        children: [],   // API v1 doesn't provide children in single call
+        usage: usage,
+        child_count: 0
+    };
+
+    return treeData;
 }
 
 // Render project tree HTML

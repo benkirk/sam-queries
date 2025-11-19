@@ -51,6 +51,13 @@ from .charges import (
     DiskChargeSummarySchema,
     ArchiveChargeSummarySchema
 )
+from .jobs import CompJobSchema
+from .charge_details import (
+    HPCChargeDetailSchema,
+    DavChargeDetailSchema,
+    DiskChargeDetailSchema,
+    ArchiveChargeDetailSchema
+)
 
 __all__ = [
     'BaseSchema',
@@ -76,4 +83,11 @@ __all__ = [
     'DavChargeSummarySchema',
     'DiskChargeSummarySchema',
     'ArchiveChargeSummarySchema',
+    # Job schemas
+    'CompJobSchema',
+    # Charge detail schemas
+    'HPCChargeDetailSchema',
+    'DavChargeDetailSchema',
+    'DiskChargeDetailSchema',
+    'ArchiveChargeDetailSchema',
 ]

@@ -18,7 +18,11 @@ from webui.schemas import (
     CompChargeSummarySchema,
     DavChargeSummarySchema,
     DiskChargeSummarySchema,
-    ArchiveChargeSummarySchema
+    ArchiveChargeSummarySchema,
+    HPCChargeDetailSchema,
+    DavChargeDetailSchema,
+    DiskChargeDetailSchema,
+    ArchiveChargeDetailSchema
 )
 from datetime import datetime, timedelta
 from sqlalchemy import func
@@ -451,14 +455,8 @@ def get_charge_details():
             HPCActivity.activity_date <= end_date
         ).order_by(HPCActivity.activity_date.desc()).limit(1000).all()
 
-        for hpc_charge, hpc_activity, user in hpc_charges:
-            charges.append({
-                'date': hpc_activity.activity_date.strftime('%Y-%m-%d') if hpc_activity.activity_date else 'N/A',
-                'type': 'HPC Compute',
-                'comment': f'Job {hpc_activity.job_id}' if hpc_activity.job_id else '-',
-                'user': user.username if user else '-',
-                'amount': float(hpc_charge.charge) if hpc_charge.charge else 0
-            })
+        # Use HPCChargeDetailSchema for serialization
+        charges.extend(HPCChargeDetailSchema(many=True).dump(hpc_charges))
 
         # Query DAV charges if applicable
         dav_charges = db.session.query(DavCharge, DavActivity, User).join(
@@ -471,14 +469,8 @@ def get_charge_details():
             DavActivity.activity_date <= end_date
         ).order_by(DavActivity.activity_date.desc()).limit(1000).all()
 
-        for dav_charge, dav_activity, user in dav_charges:
-            charges.append({
-                'date': dav_activity.activity_date.strftime('%Y-%m-%d') if dav_activity.activity_date else 'N/A',
-                'type': 'DAV',
-                'comment': f'Session {dav_activity.session_id}' if dav_activity.session_id else '-',
-                'user': user.username if user else '-',
-                'amount': float(dav_charge.charge) if dav_charge.charge else 0
-            })
+        # Use DavChargeDetailSchema for serialization
+        charges.extend(DavChargeDetailSchema(many=True).dump(dav_charges))
 
     elif resource_type == 'DISK':
         # Query Disk charges
@@ -492,14 +484,8 @@ def get_charge_details():
             DiskActivity.activity_date <= end_date
         ).order_by(DiskActivity.activity_date.desc()).limit(1000).all()
 
-        for disk_charge, disk_activity, user in disk_charges:
-            charges.append({
-                'date': disk_activity.activity_date.strftime('%Y-%m-%d') if disk_activity.activity_date else 'N/A',
-                'type': 'Disk Storage',
-                'comment': f'{disk_activity.volume_gb} GB' if disk_activity.volume_gb else '-',
-                'user': user.username if user else '-',
-                'amount': float(disk_charge.charge) if disk_charge.charge else 0
-            })
+        # Use DiskChargeDetailSchema for serialization
+        charges.extend(DiskChargeDetailSchema(many=True).dump(disk_charges))
 
     elif resource_type == 'ARCHIVE':
         # Query Archive charges
@@ -513,14 +499,8 @@ def get_charge_details():
             ArchiveActivity.activity_date <= end_date
         ).order_by(ArchiveActivity.activity_date.desc()).limit(1000).all()
 
-        for archive_charge, archive_activity, user in archive_charges:
-            charges.append({
-                'date': archive_activity.activity_date.strftime('%Y-%m-%d') if archive_activity.activity_date else 'N/A',
-                'type': 'Archive',
-                'comment': f'{archive_activity.volume_gb} GB' if archive_activity.volume_gb else '-',
-                'user': user.username if user else '-',
-                'amount': float(archive_charge.charge) if archive_charge.charge else 0
-            })
+        # Use ArchiveChargeDetailSchema for serialization
+        charges.extend(ArchiveChargeDetailSchema(many=True).dump(archive_charges))
 
     # Sort by date descending
     charges.sort(key=lambda x: x['date'], reverse=True)
