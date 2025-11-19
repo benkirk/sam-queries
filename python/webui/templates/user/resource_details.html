@@ -312,12 +312,7 @@
                 <table class="table table-striped table-hover job-table" id="charges-table">
                     <thead class="thead-dark">
                         <tr>
-                            <th>Date</th>
-                            <th class="text-right">Compute</th>
-                            <th class="text-right">DAV</th>
-                            <th class="text-right">Disk</th>
-                            <th class="text-right">Archive</th>
-                            <th class="text-right"><strong>Total</strong></th>
+                            <!-- Table headers will be dynamically generated based on data -->
                         </tr>
                     </thead>
                     <tbody id="charges-tbody">
@@ -590,11 +585,28 @@ function loadCharges(startDate, endDate) {
                 document.getElementById('charges-container').style.display = 'block';
                 document.getElementById('charges-count').textContent = `${data.data.length} days`;
 
-                const tbody = document.getElementById('charges-tbody');
-                tbody.innerHTML = '';
-
                 // Store data for export
                 currentChargesData = data.data;
+
+                // Determine which columns have non-zero values
+                const hasComp = data.data.some(day => (day.comp || 0) > 0);
+                const hasDav = data.data.some(day => (day.dav || 0) > 0);
+                const hasDisk = data.data.some(day => (day.disk || 0) > 0);
+                const hasArchive = data.data.some(day => (day.archive || 0) > 0);
+
+                // Build table header dynamically
+                const table = document.getElementById('charges-table');
+                const thead = table.querySelector('thead tr');
+                thead.innerHTML = '<th>Date</th>';
+
+                if (hasComp) thead.innerHTML += '<th class="text-right">Compute</th>';
+                if (hasDav) thead.innerHTML += '<th class="text-right">DAV</th>';
+                if (hasDisk) thead.innerHTML += '<th class="text-right">Disk</th>';
+                if (hasArchive) thead.innerHTML += '<th class="text-right">Archive</th>';
+
+                // Build table body with matching columns
+                const tbody = document.getElementById('charges-tbody');
+                tbody.innerHTML = '';
 
                 data.data.forEach(day => {
                     const row = document.createElement('tr');
@@ -603,17 +615,14 @@ function loadCharges(startDate, endDate) {
                     const dav = day.dav || 0;
                     const disk = day.disk || 0;
                     const archive = day.archive || 0;
-                    const total = comp + dav + disk + archive;
 
-                    row.innerHTML = `
-                        <td><strong>${day.date}</strong></td>
-                        <td class="text-right">${formatNumber(comp)}</td>
-                        <td class="text-right">${formatNumber(dav)}</td>
-                        <td class="text-right">${formatNumber(disk)}</td>
-                        <td class="text-right">${formatNumber(archive)}</td>
-                        <td class="text-right"><strong>${formatNumber(total)}</strong></td>
-                    `;
+                    let rowHtml = `<td><strong>${day.date}</strong></td>`;
+                    if (hasComp) rowHtml += `<td class="text-right">${formatNumber(comp)}</td>`;
+                    if (hasDav) rowHtml += `<td class="text-right">${formatNumber(dav)}</td>`;
+                    if (hasDisk) rowHtml += `<td class="text-right">${formatNumber(disk)}</td>`;
+                    if (hasArchive) rowHtml += `<td class="text-right">${formatNumber(archive)}</td>`;
 
+                    row.innerHTML = rowHtml;
                     tbody.appendChild(row);
                 });
             } else {
