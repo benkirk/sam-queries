@@ -21,26 +21,6 @@
 <!-- Error Container -->
 <div id="error-container"></div>
 
-<!-- Allocation Information Card -->
-<div class="card mb-4" id="allocation-card" style="display: none;">
-    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseAllocation" aria-expanded="true">
-        <h5 class="mb-0">
-            <i class="fas fa-info-circle"></i> Allocation Information
-            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
-        </h5>
-    </div>
-    <div id="collapseAllocation" class="collapse show">
-        <div class="card-body" id="allocation-info">
-            <!-- Loaded via Mustache -->
-            <div class="loading-spinner">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="sr-only">Loading allocation info...</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Usage Trend Card -->
 <div class="card mb-4" id="usage-card" style="display: none;">
     <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseUsage" aria-expanded="true">
@@ -113,41 +93,6 @@
     </div>
 </div>
 
-<!-- Allocation Changes Card -->
-<div class="card mb-4" id="changes-card" style="display: none;">
-    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseChanges" aria-expanded="false">
-        <h5 class="mb-0">
-            <i class="fas fa-history"></i> Allocation Changes
-            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
-        </h5>
-    </div>
-    <div id="collapseChanges" class="collapse">
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-sm table-hover" id="changes-table">
-                    <thead class="thead-dark">
-                        <tr>
-                            <th>Date</th>
-                            <th>Type</th>
-                            <th>Comment</th>
-                            <th class="text-right">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody id="changes-tbody">
-                        <tr>
-                            <td colspan="4" class="text-center">
-                                <div class="spinner-border spinner-border-sm text-primary" role="status">
-                                    <span class="sr-only">Loading...</span>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block extra_js %}
@@ -160,7 +105,6 @@
 const PROJCODE = '{{ projcode }}';
 const RESOURCE_NAME = '{{ resource_name }}';
 
-let allocationData = null;
 let chargeData = null;
 
 // Load all data on page load
@@ -173,70 +117,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('start-date').valueAsDate = startDate;
     document.getElementById('end-date').valueAsDate = endDate;
 
-    // Load data
-    await loadAllData();
+    // Load usage data
+    await loadUsageData();
 });
-
-/**
- * Load all resource data
- */
-async function loadAllData() {
-    try {
-        await Promise.all([
-            loadAllocationInfo(),
-            loadUsageData(),
-            loadAllocationChanges()
-        ]);
-    } catch (error) {
-        console.error('Error loading resource data:', error);
-        SAM.showError('Failed to load resource details. Please try refreshing the page.');
-    }
-}
-
-/**
- * Load allocation information
- */
-async function loadAllocationInfo() {
-    try {
-        const data = await SAM.apiFetch(`/api/v1/projects/${PROJCODE}/allocations`);
-
-        // Find allocation for this resource
-        const allocation = data.allocations.find(a =>
-            a.resource_name === RESOURCE_NAME ||
-            (a.account && a.account.resource && a.account.resource.resource_name === RESOURCE_NAME)
-        );
-
-        if (!allocation) {
-            throw new Error('Allocation not found for this resource');
-        }
-
-        allocationData = allocation;
-
-        // Preprocess for Mustache
-        const processed = SAM.Mustache.preprocessResource({
-            resource_name: RESOURCE_NAME,
-            ...allocation
-        });
-
-        // Add progress bar data
-        processed.percent = allocation.percent_used || 0;
-        processed.colorClass = getProgressColor(processed.percent);
-        processed.width = Math.min(Math.max(processed.percent, 0), 100);
-
-        // Render using allocation-info template
-        const template = await SAM.Mustache.loadTemplate('allocation-info');
-        const html = Mustache.render(template, processed, {
-            'progress-bar': await SAM.Mustache.loadTemplate('progress-bar')
-        });
-
-        document.getElementById('allocation-info').innerHTML = html;
-        document.getElementById('allocation-card').style.display = '';
-
-    } catch (error) {
-        console.error('Error loading allocation info:', error);
-        document.getElementById('allocation-card').style.display = 'none';
-    }
-}
 
 /**
  * Load usage data and render sparkline
@@ -286,30 +169,5 @@ async function loadUsageData() {
     }
 }
 
-/**
- * Load allocation changes history
- */
-async function loadAllocationChanges() {
-    try {
-        const url = `/api/v1/allocations/changes?` +
-            `projcode=${PROJCODE}&resource=${encodeURIComponent(RESOURCE_NAME)}`;
-
-        const data = await SAM.apiFetch(url);
-
-        if (data.changes && data.changes.length > 0) {
-            await SAM.Mustache.renderTransactions(data.changes, 'changes-tbody');
-            document.getElementById('changes-card').style.display = '';
-        } else {
-            document.getElementById('changes-tbody').innerHTML = `
-                <tr><td colspan="4" class="text-center text-muted">No allocation changes found</td></tr>
-            `;
-            document.getElementById('changes-card').style.display = '';
-        }
-
-    } catch (error) {
-        console.error('Error loading allocation changes:', error);
-        document.getElementById('changes-card').style.display = 'none';
-    }
-}
 </script>
 {% endblock %}

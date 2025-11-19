@@ -372,111 +372,121 @@ def get_allocation_changes():
     Returns:
         JSON with list of allocation changes and charge adjustments
     """
-    from sam.queries import find_project_by_code
-    from sam.accounting.accounts import Account
-    from sam.accounting.allocations import Allocation
-    from sam.accounting.adjustments import ChargeAdjustment
+    try:
+        from sam.queries import find_project_by_code
+        from sam.accounting.accounts import Account
+        from sam.accounting.allocations import Allocation
+        from sam.accounting.adjustments import ChargeAdjustment
 
-    projcode = request.args.get('projcode')
-    resource_name = request.args.get('resource')
+        projcode = request.args.get('projcode')
+        resource_name = request.args.get('resource')
 
-    if not projcode or not resource_name:
-        return jsonify({'error': 'Both projcode and resource parameters are required'}), 400
+        if not projcode or not resource_name:
+            return jsonify({'error': 'Both projcode and resource parameters are required'}), 400
 
-    project = find_project_by_code(db.session, projcode)
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
+        project = find_project_by_code(db.session, projcode)
+        if not project:
+            return jsonify({'error': 'Project not found'}), 404
 
-    # Find the account for this project/resource
-    from sam.resources.resources import Resource
-    resource = db.session.query(Resource).filter(
-        Resource.resource_name == resource_name
-    ).first()
+        # Find the account for this project/resource
+        from sam.resources.resources import Resource
+        resource = db.session.query(Resource).filter(
+            Resource.resource_name == resource_name
+        ).first()
 
-    if not resource:
-        return jsonify({'error': 'Resource not found'}), 404
+        if not resource:
+            return jsonify({'error': 'Resource not found'}), 404
 
-    account = db.session.query(Account).filter(
-        Account.project_id == project.project_id,
-        Account.resource_id == resource.resource_id,
-        Account.deleted == False
-    ).first()
+        account = db.session.query(Account).filter(
+            Account.project_id == project.project_id,
+            Account.resource_id == resource.resource_id,
+            Account.deleted == False
+        ).first()
 
-    if not account:
-        return jsonify({'changes': []})
+        if not account:
+            return jsonify({'changes': []})
 
-    changes = []
+        changes = []
 
-    # Get allocation transactions (new allocations and adjustments)
-    for allocation in account.allocations:
-        if allocation.deleted:
-            continue
+        # Get allocation transactions (new allocations and adjustments)
+        for allocation in account.allocations:
+            if allocation.deleted:
+                continue
 
-        # Determine allocation type
-        alloc_type = 'Allocation: New'
-        comment = ''
+            # Determine allocation type
+            alloc_type = 'Allocation: New'
+            comment = ''
 
-        # Check if this is an adjustment (has parent)
-        if allocation.parent_id:
-            parent = db.session.query(Allocation).filter(
-                Allocation.allocation_id == allocation.parent_id
-            ).first()
-            if parent:
-                amount_diff = allocation.amount - parent.amount
-                if amount_diff != 0:
-                    alloc_type = 'Allocation: Adjustment'
-                    comment = allocation.comment or ''
+            # Check if this is an adjustment (has parent)
+            if allocation.parent_allocation_id:
+                parent = allocation.parent  # Use relationship instead of querying
+                if parent:
+                    amount_diff = allocation.amount - parent.amount
+                    if amount_diff != 0:
+                        alloc_type = 'Allocation: Adjustment'
+                        comment = allocation.description or ''
 
-                    changes.append({
-                        'date': allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else 'N/A',
-                        'type': alloc_type,
-                        'comment': comment,
-                        'amount': amount_diff
-                    })
-                    continue
+                        changes.append({
+                            'date': allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else 'N/A',
+                            'type': alloc_type,
+                            'comment': comment,
+                            'amount': amount_diff
+                        })
+                        continue
 
-        # For new allocations
-        if allocation.amount and allocation.amount != 0:
+            # For new allocations
+            if allocation.amount and allocation.amount != 0:
+                changes.append({
+                    'date': allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else 'N/A',
+                    'type': alloc_type,
+                    'comment': allocation.description or '',
+                    'amount': allocation.amount
+                })
+
+        # Get charge adjustments (credits, corrections, etc.)
+        charge_adjustments = db.session.query(ChargeAdjustment).filter(
+            ChargeAdjustment.account_id == account.account_id
+        ).all()
+
+        for adj in charge_adjustments:
+            adj_type = 'Charge: Credit'
+            if adj.adjustment_type:
+                type_str = adj.adjustment_type.type if hasattr(adj.adjustment_type, 'type') else str(adj.adjustment_type)
+                if 'reservation' in type_str.lower():
+                    adj_type = 'Charge: Reservation'
+                elif 'credit' in type_str.lower():
+                    adj_type = 'Charge: Credit'
+                elif 'correction' in type_str.lower():
+                    adj_type = 'Charge: Correction'
+                else:
+                    adj_type = f'Charge: {type_str}'
+
             changes.append({
-                'date': allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else 'N/A',
-                'type': alloc_type,
-                'comment': allocation.comment or '',
-                'amount': allocation.amount
+                'date': adj.adjustment_date.strftime('%Y-%m-%d') if adj.adjustment_date else 'N/A',
+                'type': adj_type,
+                'comment': adj.comment or '',
+                'amount': adj.amount or 0
             })
 
-    # Get charge adjustments (credits, corrections, etc.)
-    charge_adjustments = db.session.query(ChargeAdjustment).filter(
-        ChargeAdjustment.account_id == account.account_id
-    ).all()
+        # Sort by date (most recent first)
+        changes.sort(key=lambda x: x['date'], reverse=True)
 
-    for adj in charge_adjustments:
-        adj_type = 'Charge: Credit'
-        if adj.adjustment_type:
-            if 'reservation' in adj.adjustment_type.lower():
-                adj_type = 'Charge: Reservation'
-            elif 'credit' in adj.adjustment_type.lower():
-                adj_type = 'Charge: Credit'
-            elif 'correction' in adj.adjustment_type.lower():
-                adj_type = 'Charge: Correction'
-            else:
-                adj_type = f'Charge: {adj.adjustment_type}'
-
-        changes.append({
-            'date': adj.adjustment_date.strftime('%Y-%m-%d') if adj.adjustment_date else 'N/A',
-            'type': adj_type,
-            'comment': adj.comment or '',
-            'amount': adj.amount or 0
+        return jsonify({
+            'projcode': projcode,
+            'resource': resource_name,
+            'changes': changes,
+            'total_changes': len(changes)
         })
 
-    # Sort by date (most recent first)
-    changes.sort(key=lambda x: x['date'], reverse=True)
-
-    return jsonify({
-        'projcode': projcode,
-        'resource': resource_name,
-        'changes': changes,
-        'total_changes': len(changes)
-    })
+    except Exception as e:
+        import traceback
+        error_details = {
+            'error': str(e),
+            'type': type(e).__name__,
+            'traceback': traceback.format_exc()
+        }
+        print(f"Error in get_allocation_changes: {error_details}")
+        return jsonify(error_details), 500
 
 
 @bp.route('/charges/details', methods=['GET'])
