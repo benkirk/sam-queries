@@ -1,0 +1,21 @@
+{{!
+    Progress Bar Template (Partial)
+    Reusable progress bar with color coding
+
+    Data structure:
+    {
+        percent: 45.68,
+        label: "45.7%" (optional, defaults to percent with %)
+        height: 20 (optional, defaults to 28)
+    }
+}}
+<div class="progress" style="height: {{#height}}{{height}}{{/height}}{{^height}}28{{/height}}px;">
+    <div class="progress-bar {{colorClass}}"
+         role="progressbar"
+         style="width: {{width}}%"
+         aria-valuenow="{{percent}}"
+         aria-valuemin="0"
+         aria-valuemax="100">
+        {{#label}}{{label}}{{/label}}{{^label}}{{percent}}%{{/label}}
+    </div>
+</div>

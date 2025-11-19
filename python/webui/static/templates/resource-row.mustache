@@ -1,0 +1,50 @@
+{{!
+    Resource Row Template (Partial)
+    Single table row showing resource allocation details
+
+    Data structure:
+    {
+        resource_name: "Derecho",
+        allocated: 500000.0,
+        used: 234567.89,
+        remaining: 265432.11,
+        percent_used: 46.91,
+        charges_by_type: {comp: 200000, dav: 34567.89, disk: 0, archive: 0},
+        adjustments: -1000.0,
+        status: "Active",
+        start_date: "2024-01-01T00:00:00",
+        end_date: "2024-12-31T23:59:59"
+    }
+
+    NOTE: Parent context should include 'projcode' for link
+}}
+<tr class="resource-row"
+    onclick="window.location.href='/dashboard/resource/{{../projcode}}/{{resource_name}}'"
+    style="cursor: pointer;">
+    <td><strong>{{resource_name}}</strong></td>
+    <td>
+        {{#statusIsActive}}
+        <span class="badge badge-success">{{status}}</span>
+        {{/statusIsActive}}
+        {{^statusIsActive}}
+        <span class="badge badge-secondary">{{status}}</span>
+        {{/statusIsActive}}
+    </td>
+    <td>{{start_date_formatted}}</td>
+    <td>{{end_date_formatted}}</td>
+    <td class="text-primary">{{allocated_formatted}}</td>
+    <td class="text-warning">{{used_formatted}}</td>
+    <td class="text-success">{{remaining_formatted}}</td>
+    <td>
+        <div class="progress" style="height: 20px;">
+            <div class="progress-bar {{resourceProgressColor}}"
+                 role="progressbar"
+                 style="width: {{progressWidth}}%"
+                 aria-valuenow="{{percent_used}}"
+                 aria-valuemin="0"
+                 aria-valuemax="100">
+                {{percent_used_formatted}}%
+            </div>
+        </div>
+    </td>
+</tr>
