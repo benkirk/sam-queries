@@ -54,17 +54,11 @@ class ProjectListSchema(BaseSchema):
             'admin_username',
             'active',
             'charging_exempt',
-            'area_of_interest',
-            'parent_projcode',
-            'has_children',
         )
 
     # Custom fields for lead/admin (just usernames, not full nested objects)
     lead_username = fields.Method('get_lead_username')
     admin_username = fields.Method('get_admin_username')
-    area_of_interest = fields.Method('get_area_of_interest')
-    parent_projcode = fields.Method('get_parent_projcode')
-    has_children = fields.Method('get_has_children')
 
     def get_lead_username(self, obj):
         """Get lead username."""
@@ -72,19 +66,6 @@ class ProjectListSchema(BaseSchema):
 
     def get_admin_username(self, obj):
         """Get admin username."""
-        return obj.admin.username if obj.admin else None
-
-    def get_area_of_interest(self, obj):
-        """Get area of interest name."""
-        return obj.area_of_interest.area_of_interest if obj.area_of_interest else None
-
-    def get_parent_projcode(self, obj):
-        """Get parent project code if exists."""
-        return obj.parent.projcode if obj.parent else None
-
-    def get_has_children(self, obj):
-        """Check if project has children."""
-        return obj.has_children
 
 class ProjectSchema(BaseSchema):
     """
