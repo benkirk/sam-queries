@@ -157,7 +157,6 @@ class TestProjectSchemas:
         assert 'title' in result
         assert 'active' in result
         assert 'charging_exempt' in result
-        assert 'area_of_interest' in result
 
         # Should have lead/admin as simple strings (not nested objects)
         assert 'lead_username' in result

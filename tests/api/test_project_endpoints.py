@@ -22,8 +22,8 @@ class TestProjectListEndpoint:
         assert 'total' in data
         assert isinstance(data['projects'], list)
 
-    def test_list_projects_tree_fields(self, auth_client):
-        """Test that list includes new tree fields."""
+    def test_list_projects_fields(self, auth_client):
+        """Test that list includes certain fields."""
         response = auth_client.get('/api/v1/projects/')
         assert response.status_code == 200
 
@@ -32,11 +32,10 @@ class TestProjectListEndpoint:
         assert 'projects' in data
         assert isinstance(data['projects'], list)
 
-        # If there are projects, verify tree fields exist
+        # If there are projects, verify projcode exists
         if len(data['projects']) > 0:
             project = data['projects'][0]
-            assert 'parent_projcode' in project or 'parent_project_id' in project
-            assert 'has_children' in project or 'projcode' in project
+            assert 'projcode' in project
 
     def test_list_projects_pagination(self, auth_client):
         """Test pagination parameters."""

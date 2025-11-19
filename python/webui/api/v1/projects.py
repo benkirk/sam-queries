@@ -136,7 +136,7 @@ def list_projects():
 
     Query parameters:
         page (int): Page number (default: 1)
-        per_page (int): Items per page (default: 50, max: 100)
+        per_page (int): Items per page (default: 50, max: 1000)
         search (str): Search term for projcode/title
         active (bool): Filter by active status
         facility (str): Filter by facility name
@@ -145,7 +145,7 @@ def list_projects():
         JSON with projects list, pagination info
     """
     page = request.args.get('page', 1, type=int)
-    per_page = min(request.args.get('per_page', 50, type=int), 100)
+    per_page = min(request.args.get('per_page', 50, type=int), 1000)
     search = request.args.get('search', '')
     active = request.args.get('active', type=lambda v: v.lower() == 'true')
     facility = request.args.get('facility', '')
