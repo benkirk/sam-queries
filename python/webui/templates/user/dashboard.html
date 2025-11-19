@@ -467,7 +467,7 @@ function createProjectInfoBox(project) {
     }
 
     // Admin
-    if (project.admin && project.admin.username) {
+    if (project.admin && project.admin.username && (project.lead.username != project.admin.username)) {
         items.push({
             label: 'Project Admin',
             value: `${project.admin.full_name || project.admin.username} (${project.admin.username})`

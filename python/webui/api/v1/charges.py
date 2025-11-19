@@ -508,10 +508,10 @@ def get_charge_details():
     from sam.queries import find_project_by_code
     from sam.accounting.accounts import Account
     from sam.resources.resources import Resource
-    from sam.activity.hpc_activity import HPCActivity, HPCCharge
-    from sam.activity.dav_activity import DavActivity, DavCharge
-    from sam.activity.disk_activity import DiskActivity, DiskCharge
-    from sam.activity.archive_activity import ArchiveActivity, ArchiveCharge
+    from sam.activity.hpc import HPCActivity, HPCCharge
+    from sam.activity.dav import DavActivity, DavCharge
+    from sam.activity.disk import DiskActivity, DiskCharge
+    from sam.activity.archive import ArchiveActivity, ArchiveCharge
     from sam.core.users import User
 
     projcode = request.args.get('projcode')
