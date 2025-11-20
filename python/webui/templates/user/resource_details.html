@@ -135,37 +135,15 @@
                     <thead class="thead-dark">
                         <tr>
                             <th>Date</th>
-                            {% if detail_data.charge_totals.comp > 0 %}
-                            <th class="text-right">Compute</th>
-                            {% endif %}
-                            {% if detail_data.charge_totals.dav > 0 %}
-                            <th class="text-right">DAV</th>
-                            {% endif %}
-                            {% if detail_data.charge_totals.disk > 0 %}
-                            <th class="text-right">Disk</th>
-                            {% endif %}
-                            {% if detail_data.charge_totals.archive > 0 %}
-                            <th class="text-right">Archive</th>
-                            {% endif %}
+                            <th class="text-right">Value</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% if detail_data.daily_charges %}
-                            {% for day in detail_data.daily_charges %}
+                        {% if detail_data.daily_charges and detail_data.daily_charges['dates'] %}
+                            {% for i in range(detail_data.daily_charges['dates']|length) %}
                             <tr>
-                                <td>{{ day.date.strftime('%Y-%m-%d') if day.date.strftime else day.date }}</td>
-                                {% if detail_data.charge_totals.comp > 0 %}
-                                <td class="text-right">{{ '{:,.0f}'.format(day.comp) }}</td>
-                                {% endif %}
-                                {% if detail_data.charge_totals.dav > 0 %}
-                                <td class="text-right">{{ '{:,.0f}'.format(day.dav) }}</td>
-                                {% endif %}
-                                {% if detail_data.charge_totals.disk > 0 %}
-                                <td class="text-right">{{ '{:,.2f}'.format(day.disk) }}</td>
-                                {% endif %}
-                                {% if detail_data.charge_totals.archive > 0 %}
-                                <td class="text-right">{{ '{:,.2f}'.format(day.archive) }}</td>
-                                {% endif %}
+                                <td>{{ detail_data.daily_charges['dates'][i] }}</td>
+                                <td class="text-right">{{ '{:,.0f}'.format(detail_data.daily_charges['values'][i]) }}</td>
                             </tr>
                             {% endfor %}
                         {% else %}

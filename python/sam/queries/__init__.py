@@ -1485,33 +1485,12 @@ def get_resource_detail_data(
                 'end_date': datetime,
                 'status': str
             },
-            'daily_charges': [
-                {
-                    'date': date,
-                    'comp': float,
-                    'dav': float,
-                    'disk': float,
-                    'archive': float
-                }
-            ],
-            'charge_totals': {
-                'comp': float,
-                'dav': float,
-                'disk': float,
-                'archive': float,
-                'total': float
-            }
+            'daily_charges': {
+                  'dates': [],
+                  'values': [],
+            },
         }
         Returns None if project or resource not found.
-
-    Example:
-        >>> from datetime import datetime, timedelta
-        >>> end = datetime.now()
-        >>> start = end - timedelta(days=30)
-        >>> data = get_resource_detail_data(session, 'SCSG0001', 'Derecho', start, end)
-        >>> if data:
-        ...     print(f"Total charges: {data['charge_totals']['total']:.2f}")
-        ...     print(f"Days of data: {len(data['daily_charges'])}")
     """
     # Find project
     project = find_project_by_code(session, projcode)
@@ -1561,20 +1540,17 @@ def get_resource_detail_data(
             'project': project,
             'resource': resource,
             'resource_summary': resource_summary,
-            'daily_charges': [],
-            'charge_totals': {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0, 'total': 0.0}
+            'daily_charges': { 'dates': None, 'values': None }
         }
 
     # Determine resource type to query appropriate tables
     resource_type = resource.resource_type.resource_type if resource.resource_type else 'HPC'
 
-    # Query daily charges by type
-    daily_charges_map = {}  # date -> {comp, dav, disk, archive}
-    charge_totals = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+    results = None
 
-    # Query comp charges
-    if resource_type in ['HPC', 'DAV']:
-        comp_results = session.query(
+    # Query appropriate charges
+    if resource_type in  [ 'HPC', 'DAV' ]:
+        results = session.query(
             CompChargeSummary.activity_date,
             func.sum(CompChargeSummary.charges).label('charges')
         ).filter(
@@ -1583,33 +1559,9 @@ def get_resource_detail_data(
             CompChargeSummary.activity_date <= end_date
         ).group_by(CompChargeSummary.activity_date).all()
 
-        for row in comp_results:
-            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
-            if date_key not in daily_charges_map:
-                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-            daily_charges_map[date_key]['comp'] = float(row.charges or 0.0)
-            charge_totals['comp'] += float(row.charges or 0.0)
-
-        # Query DAV charges
-        dav_results = session.query(
-            DavChargeSummary.activity_date,
-            func.sum(DavChargeSummary.charges).label('charges')
-        ).filter(
-            DavChargeSummary.account_id == account.account_id,
-            DavChargeSummary.activity_date >= start_date,
-            DavChargeSummary.activity_date <= end_date
-        ).group_by(DavChargeSummary.activity_date).all()
-
-        for row in dav_results:
-            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
-            if date_key not in daily_charges_map:
-                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-            daily_charges_map[date_key]['dav'] = float(row.charges or 0.0)
-            charge_totals['dav'] += float(row.charges or 0.0)
-
     # Query disk charges
     if resource_type == 'DISK':
-        disk_results = session.query(
+        results = session.query(
             DiskChargeSummary.activity_date,
             func.sum(DiskChargeSummary.charges).label('charges')
         ).filter(
@@ -1618,16 +1570,9 @@ def get_resource_detail_data(
             DiskChargeSummary.activity_date <= end_date
         ).group_by(DiskChargeSummary.activity_date).all()
 
-        for row in disk_results:
-            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
-            if date_key not in daily_charges_map:
-                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-            daily_charges_map[date_key]['disk'] = float(row.charges or 0.0)
-            charge_totals['disk'] += float(row.charges or 0.0)
-
     # Query archive charges
     if resource_type == 'ARCHIVE':
-        archive_results = session.query(
+        results = session.query(
             ArchiveChargeSummary.activity_date,
             func.sum(ArchiveChargeSummary.charges).label('charges')
         ).filter(
@@ -1636,26 +1581,17 @@ def get_resource_detail_data(
             ArchiveChargeSummary.activity_date <= end_date
         ).group_by(ArchiveChargeSummary.activity_date).all()
 
-        for row in archive_results:
-            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
-            if date_key not in daily_charges_map:
-                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-            daily_charges_map[date_key]['archive'] = float(row.charges or 0.0)
-            charge_totals['archive'] += float(row.charges or 0.0)
+    dates = []
+    values = []
+    for row in results:
+        dates.append( row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date )
+        values.append( float(row.charges or 0.0) )
 
-    # Convert map to sorted list
-    daily_charges = [
-        {'date': date, **charges}
-        for date, charges in sorted(daily_charges_map.items())
-    ]
-
-    # Calculate total
-    charge_totals['total'] = sum(charge_totals.values())
+    daily_charges = { 'dates': dates, 'values': values }
 
     return {
         'project': project,
         'resource': resource,
         'resource_summary': resource_summary,
         'daily_charges': daily_charges,
-        'charge_totals': charge_totals
     }
