@@ -103,6 +103,10 @@ def create_app():
     # Initialize Flask-Admin
     init_admin(app)
 
+    # Auto-login middleware for development (enabled via DISABLE_AUTH=1)
+    from webui.utils.dev_auth import auto_login_middleware
+    auto_login_middleware(app, db)
+
     # Home page redirect
     @app.route('/')
     def index():

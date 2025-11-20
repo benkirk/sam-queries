@@ -1357,3 +1357,318 @@ def get_user_project_access(session: Session, username: str) -> List[Dict]:
         })
 
     return access_list
+
+
+# ============================================================================
+# Dashboard Query Helpers
+# ============================================================================
+
+def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
+    """
+    Get all dashboard data for a user in one optimized query set.
+
+    Loads user, their active projects, and allocation usage for each project.
+    Optimized for server-side dashboard rendering with minimal database queries.
+
+    Args:
+        session: SQLAlchemy session
+        user_id: User ID to fetch dashboard for
+
+    Returns:
+        Dictionary with structure:
+        {
+            'user': User object,
+            'projects': [
+                {
+                    'project': Project object,
+                    'resources': List[Dict],  # From get_detailed_allocation_usage()
+                    'member_count': int,
+                    'has_children': bool
+                }
+            ],
+            'total_projects': int
+        }
+
+    Example:
+        >>> data = get_user_dashboard_data(session, 12345)
+        >>> print(f"User {data['user'].username} has {data['total_projects']} projects")
+        >>> for proj_data in data['projects']:
+        ...     proj = proj_data['project']
+        ...     print(f"{proj.projcode}: {len(proj_data['resources'])} resources")
+    """
+    # Get user with active projects eagerly loaded
+    user = session.query(User)\
+        .options(
+            selectinload(User.email_addresses),
+            joinedload(User.led_projects).joinedload(Project.lead),
+            joinedload(User.admin_projects).joinedload(Project.admin)
+        )\
+        .filter(User.user_id == user_id)\
+        .first()
+
+    if not user:
+        return {
+            'user': None,
+            'projects': [],
+            'total_projects': 0
+        }
+
+    # Get active projects
+    projects = user.active_projects
+
+    # Build project data with resource usage
+    project_data_list = []
+    for project in projects:
+        # Get allocation usage for all resources
+        resources = []
+        usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
+
+        for resource_name, usage in usage_data.items():
+            resources.append({
+                'resource_name': resource_name,
+                'allocated': usage.get('allocated', 0.0),
+                'used': usage.get('used', 0.0),
+                'remaining': usage.get('remaining', 0.0),
+                'percent_used': usage.get('percent_used', 0.0),
+                'charges_by_type': usage.get('charges_by_type', {}),
+                'adjustments': usage.get('adjustments', 0.0),
+                'status': usage.get('status', 'Unknown'),
+                'start_date': usage.get('start_date'),
+                'end_date': usage.get('end_date')
+            })
+
+        # Count members (without loading all user objects)
+        member_count = session.query(func.count(func.distinct(AccountUser.user_id)))\
+            .join(Account, AccountUser.account_id == Account.account_id)\
+            .filter(
+                Account.project_id == project.project_id,
+                or_(
+                    AccountUser.end_date.is_(None),
+                    AccountUser.end_date >= datetime.now()
+                )
+            ).scalar() or 0
+
+        project_data_list.append({
+            'project': project,
+            'resources': resources,
+            'member_count': member_count,
+            'has_children': project.has_children if hasattr(project, 'has_children') else False
+        })
+
+    return {
+        'user': user,
+        'projects': project_data_list,
+        'total_projects': len(projects)
+    }
+
+
+def get_resource_detail_data(
+    session: Session,
+    projcode: str,
+    resource_name: str,
+    start_date: datetime,
+    end_date: datetime
+) -> Optional[Dict]:
+    """
+    Get resource usage details for charts and summary display.
+
+    Fetches allocation summary and daily charge breakdown for a specific
+    resource on a project within a date range.
+
+    Args:
+        session: SQLAlchemy session
+        projcode: Project code
+        resource_name: Resource name (e.g., 'Derecho', 'GLADE')
+        start_date: Start of date range
+        end_date: End of date range
+
+    Returns:
+        Dictionary with structure:
+        {
+            'project': Project object,
+            'resource': Resource object,
+            'resource_summary': {
+                'resource_name': str,
+                'allocated': float,
+                'used': float,
+                'remaining': float,
+                'percent_used': float,
+                'charges_by_type': Dict[str, float],
+                'start_date': datetime,
+                'end_date': datetime,
+                'status': str
+            },
+            'daily_charges': [
+                {
+                    'date': date,
+                    'comp': float,
+                    'dav': float,
+                    'disk': float,
+                    'archive': float
+                }
+            ],
+            'charge_totals': {
+                'comp': float,
+                'dav': float,
+                'disk': float,
+                'archive': float,
+                'total': float
+            }
+        }
+        Returns None if project or resource not found.
+
+    Example:
+        >>> from datetime import datetime, timedelta
+        >>> end = datetime.now()
+        >>> start = end - timedelta(days=30)
+        >>> data = get_resource_detail_data(session, 'SCSG0001', 'Derecho', start, end)
+        >>> if data:
+        ...     print(f"Total charges: {data['charge_totals']['total']:.2f}")
+        ...     print(f"Days of data: {len(data['daily_charges'])}")
+    """
+    # Find project
+    project = find_project_by_code(session, projcode)
+    if not project:
+        return None
+
+    # Find resource
+    resource = session.query(Resource)\
+        .filter(Resource.resource_name == resource_name)\
+        .first()
+
+    if not resource:
+        return None
+
+    # Get allocation usage for this specific resource
+    all_usage = project.get_detailed_allocation_usage(
+        resource_name=resource_name,
+        include_adjustments=True
+    )
+
+    resource_summary = all_usage.get(resource_name)
+    if not resource_summary:
+        # No allocation for this resource
+        resource_summary = {
+            'resource_name': resource_name,
+            'allocated': 0.0,
+            'used': 0.0,
+            'remaining': 0.0,
+            'percent_used': 0.0,
+            'charges_by_type': {},
+            'start_date': None,
+            'end_date': None,
+            'status': 'No Allocation'
+        }
+
+    # Get account for this project+resource
+    account = session.query(Account)\
+        .filter(
+            Account.project_id == project.project_id,
+            Account.resource_id == resource.resource_id,
+            Account.deleted == False
+        )\
+        .first()
+
+    if not account:
+        return {
+            'project': project,
+            'resource': resource,
+            'resource_summary': resource_summary,
+            'daily_charges': [],
+            'charge_totals': {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0, 'total': 0.0}
+        }
+
+    # Determine resource type to query appropriate tables
+    resource_type = resource.resource_type.resource_type if resource.resource_type else 'HPC'
+
+    # Query daily charges by type
+    daily_charges_map = {}  # date -> {comp, dav, disk, archive}
+    charge_totals = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+
+    # Query comp charges
+    if resource_type in ['HPC', 'DAV']:
+        comp_results = session.query(
+            CompChargeSummary.activity_date,
+            func.sum(CompChargeSummary.charges).label('charges')
+        ).filter(
+            CompChargeSummary.account_id == account.account_id,
+            CompChargeSummary.activity_date >= start_date,
+            CompChargeSummary.activity_date <= end_date
+        ).group_by(CompChargeSummary.activity_date).all()
+
+        for row in comp_results:
+            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
+            if date_key not in daily_charges_map:
+                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+            daily_charges_map[date_key]['comp'] = float(row.charges or 0.0)
+            charge_totals['comp'] += float(row.charges or 0.0)
+
+        # Query DAV charges
+        dav_results = session.query(
+            DavChargeSummary.activity_date,
+            func.sum(DavChargeSummary.charges).label('charges')
+        ).filter(
+            DavChargeSummary.account_id == account.account_id,
+            DavChargeSummary.activity_date >= start_date,
+            DavChargeSummary.activity_date <= end_date
+        ).group_by(DavChargeSummary.activity_date).all()
+
+        for row in dav_results:
+            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
+            if date_key not in daily_charges_map:
+                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+            daily_charges_map[date_key]['dav'] = float(row.charges or 0.0)
+            charge_totals['dav'] += float(row.charges or 0.0)
+
+    # Query disk charges
+    if resource_type == 'DISK':
+        disk_results = session.query(
+            DiskChargeSummary.activity_date,
+            func.sum(DiskChargeSummary.charges).label('charges')
+        ).filter(
+            DiskChargeSummary.account_id == account.account_id,
+            DiskChargeSummary.activity_date >= start_date,
+            DiskChargeSummary.activity_date <= end_date
+        ).group_by(DiskChargeSummary.activity_date).all()
+
+        for row in disk_results:
+            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
+            if date_key not in daily_charges_map:
+                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+            daily_charges_map[date_key]['disk'] = float(row.charges or 0.0)
+            charge_totals['disk'] += float(row.charges or 0.0)
+
+    # Query archive charges
+    if resource_type == 'ARCHIVE':
+        archive_results = session.query(
+            ArchiveChargeSummary.activity_date,
+            func.sum(ArchiveChargeSummary.charges).label('charges')
+        ).filter(
+            ArchiveChargeSummary.account_id == account.account_id,
+            ArchiveChargeSummary.activity_date >= start_date,
+            ArchiveChargeSummary.activity_date <= end_date
+        ).group_by(ArchiveChargeSummary.activity_date).all()
+
+        for row in archive_results:
+            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
+            if date_key not in daily_charges_map:
+                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+            daily_charges_map[date_key]['archive'] = float(row.charges or 0.0)
+            charge_totals['archive'] += float(row.charges or 0.0)
+
+    # Convert map to sorted list
+    daily_charges = [
+        {'date': date, **charges}
+        for date, charges in sorted(daily_charges_map.items())
+    ]
+
+    # Calculate total
+    charge_totals['total'] = sum(charge_totals.values())
+
+    return {
+        'project': project,
+        'resource': resource,
+        'resource_summary': resource_summary,
+        'daily_charges': daily_charges,
+        'charge_totals': charge_totals
+    }

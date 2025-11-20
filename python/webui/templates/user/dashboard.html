@@ -22,28 +22,170 @@
     <!-- Account Statements Tab -->
     <div class="tab-pane fade show active" id="account-statements" role="tabpanel">
 
-        <!-- Error Container -->
-        <div id="error-container"></div>
-
         <!-- Projects Section -->
         <div id="projects-section">
             <!-- Summary Header -->
             <div class="mb-3">
                 <h5 class="text-muted">
                     <i class="fas fa-folder-open"></i>
-                    <span id="project-count">Loading...</span>
+                    <span id="project-count">{{ dashboard_data.total_projects }} Project{{ 's' if dashboard_data.total_projects != 1 else '' }}</span>
                 </h5>
             </div>
 
             <!-- Projects List -->
             <div id="projects-list">
-                <!-- Loading spinner -->
-                <div class="loading-spinner">
-                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
-                        <span class="sr-only">Loading projects...</span>
+                {% if dashboard_data.projects %}
+                    {% for project_data in dashboard_data.projects %}
+                        {% set project = project_data.project %}
+                        {% set resources = project_data.resources %}
+                        {% set card_id = 'project-' ~ loop.index0 %}
+
+                        <div class="card project-card mb-3">
+                            <div class="card-header" data-toggle="collapse" data-target="#{{ card_id }}" aria-expanded="false" style="cursor: pointer;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h5 class="mb-0">
+                                            <i class="fas fa-folder-open text-primary"></i>
+                                            <strong>{{ project.projcode }}</strong> - {{ project.title or 'Untitled Project' }}
+                                        </h5>
+                                    </div>
+                                    <div>
+                                        {% if project.active %}
+                                            <span class="badge badge-success">Active</span>
+                                        {% else %}
+                                            <span class="badge badge-secondary">Inactive</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="{{ card_id }}" class="collapse">
+                                <div class="card-body">
+                                    <!-- Project Info -->
+                                    <div class="project-stats-box mb-3">
+                                        <h6><i class="fas fa-info-circle"></i> Project Information</h6>
+                                        <div class="stat-item">
+                                            <span class="stat-label">Lead:</span>
+                                            <span class="stat-value">{{ project.lead.full_name if project.lead else 'N/A' }}</span>
+                                        </div>
+                                        {% if project.admin and project.admin.user_id != project.lead.user_id %}
+                                        <div class="stat-item">
+                                            <span class="stat-label">Admin:</span>
+                                            <span class="stat-value">{{ project.admin.full_name }}</span>
+                                        </div>
+                                        {% endif %}
+                                        <div class="stat-item">
+                                            <span class="stat-label">Members:</span>
+                                            <span class="stat-value">{{ project_data.member_count }}</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Resources Section -->
+                                    {% if resources %}
+                                    <div class="mt-3">
+                                        <h6 class="mb-2"><i class="fas fa-server"></i> Resources:</h6>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-bordered table-hover">
+                                                <thead class="thead-light">
+                                                    <tr>
+                                                        <th>Resource</th>
+                                                        <th>Start Date</th>
+                                                        <th>End Date</th>
+                                                        <th>Allocated</th>
+                                                        <th>Used</th>
+                                                        <th>Remaining</th>
+                                                        <th style="width: 200px;">Usage</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for resource in resources %}
+                                                        {% set percent = resource.percent_used | round(1) %}
+                                                        {% if percent >= 90 %}
+                                                            {% set progress_class = 'bg-danger' %}
+                                                        {% elif percent >= 75 %}
+                                                            {% set progress_class = 'bg-warning' %}
+                                                        {% else %}
+                                                            {% set progress_class = 'bg-success' %}
+                                                        {% endif %}
+
+                                                        <tr class="resource-row" style="cursor: pointer;"
+                                                            onclick="location.href='{{ url_for('user_dashboard.resource_details', projcode=project.projcode, resource=resource.resource_name) }}'">
+                                                            <td><strong>{{ resource.resource_name }}</strong></td>
+                                                            <td>{{ resource.start_date.strftime('%Y-%m-%d') if resource.start_date else 'N/A' }}</td>
+                                                            <td>{{ resource.end_date.strftime('%Y-%m-%d') if resource.end_date else 'N/A' }}</td>
+                                                            <td class="text-primary">{{ '{:,.0f}'.format(resource.allocated) }}</td>
+                                                            <td class="text-warning">{{ '{:,.0f}'.format(resource.used) }}</td>
+                                                            <td class="text-success">{{ '{:,.0f}'.format(resource.remaining) }}</td>
+                                                            <td>
+                                                                <div class="progress" style="height: 20px;">
+                                                                    <div class="progress-bar {{ progress_class }}"
+                                                                         role="progressbar"
+                                                                         style="width: {{ [0, [percent, 100] | min] | max }}%"
+                                                                         aria-valuenow="{{ percent }}"
+                                                                         aria-valuemin="0"
+                                                                         aria-valuemax="100">
+                                                                        {{ percent }}%
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                                    <!-- Members Section (Lazy Loaded) -->
+                                    <div class="mt-3">
+                                        <h6 class="mb-2">
+                                            <i class="fas fa-users"></i> Project Members
+                                            <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#members-{{ card_id }}" aria-expanded="false">
+                                                <i class="fas fa-chevron-down"></i>
+                                            </button>
+                                        </h6>
+                                        <div id="members-{{ card_id }}" class="collapse">
+                                            <div class="members-container p-3 bg-light rounded"
+                                                 data-load-url="{{ url_for('user_dashboard.members_fragment', projcode=project.projcode) }}"
+                                                 data-loaded="false">
+                                                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                                    <span class="sr-only">Loading members...</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Project Tree Section (Lazy Loaded) -->
+                                    {% if project_data.has_children or project.parent_project_id %}
+                                    <div class="mt-3">
+                                        <h6 class="mb-2">
+                                            <i class="fas fa-sitemap"></i> Project Hierarchy
+                                            <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#tree-{{ card_id }}" aria-expanded="false">
+                                                <i class="fas fa-chevron-down"></i>
+                                            </button>
+                                        </h6>
+                                        <div id="tree-{{ card_id }}" class="collapse">
+                                            <div class="tree-container p-3 bg-light rounded"
+                                                 data-load-url="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode) }}"
+                                                 data-loaded="false">
+                                                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                                    <span class="sr-only">Loading tree...</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        You are not currently a member of any active projects.
                     </div>
-                    <p class="mt-2 text-muted">Loading projects...</p>
-                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -70,7 +212,7 @@
                             </tr>
                             <tr>
                                 <th>Email:</th>
-                                <td>{{ user.email_address }}</td>
+                                <td>{{ user.primary_email or 'N/A' }}</td>
                             </tr>
                         </table>
                     </div>
@@ -87,564 +229,32 @@
 {% block extra_js %}
 <script>
 /**
- * Dashboard Controller
- * Loads and renders project data with direct HTML generation
+ * Minimal Dashboard JavaScript for Lazy Loading
+ * Loads HTML fragments on-demand when sections are expanded
  */
 
-// Load projects on page load
-document.addEventListener('DOMContentLoaded', async function() {
-    await loadProjects();
-});
+// Handle collapse events to lazy-load content
+$(document).on('show.bs.collapse', function(event) {
+    const container = $(event.target).find('[data-load-url]:not([data-loaded="true"])').first();
 
-/**
- * Load and render projects from API
- */
-async function loadProjects() {
-    const projectsList = document.getElementById('projects-list');
-    const projectCount = document.getElementById('project-count');
-    const errorContainer = document.getElementById('error-container');
+    if (container.length > 0) {
+        const url = container.data('load-url');
 
-    try {
-        // Clear any previous errors
-        if (errorContainer) {
-            errorContainer.innerHTML = '';
-        }
-
-        // Fetch projects data
-        const data = await fetch('/api/v1/users/me/projects?format=dashboard')
+        // Fetch HTML fragment
+        fetch(url)
             .then(response => {
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                return response.json();
+                return response.text();
+            })
+            .then(html => {
+                container.html(html);
+                container.attr('data-loaded', 'true');
+            })
+            .catch(error => {
+                console.error('Error loading content:', error);
+                container.html('<p class="text-danger mb-0">Failed to load content</p>');
             });
-
-        console.log('Projects data:', data); // Debug
-
-        // Update project count
-        if (projectCount) {
-            const count = data.total_projects || 0;
-            projectCount.textContent = `${count} Project${count !== 1 ? 's' : ''}`;
-        }
-
-        // Render projects
-        if (projectsList) {
-            if (data.projects && data.projects.length > 0) {
-                projectsList.innerHTML = data.projects.map((project, index) =>
-                    createProjectCard(project, index)
-                ).join('');
-
-                // Load detailed info for all expanded projects
-                data.projects.forEach(project => {
-                    loadProjectDetails(project.projcode, project);
-                });
-            } else {
-                projectsList.innerHTML = `
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i>
-                        You are not currently a member of any active projects.
-                    </div>
-                `;
-            }
-        }
-
-    } catch (error) {
-        console.error('Error loading projects:', error);
-
-        if (projectsList) {
-            projectsList.innerHTML = '';
-        }
-
-        if (errorContainer) {
-            errorContainer.innerHTML = `
-                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    <i class="fas fa-exclamation-circle"></i> Failed to load projects. Please try refreshing the page.
-                    <button type="button" class="close" data-dismiss="alert">
-                        <span>&times;</span>
-                    </button>
-                </div>
-            `;
-        }
     }
-}
-
-/**
- * Create HTML for a single project card (Compressed by default)
- */
-function createProjectCard(project, index) {
-    const cardId = `project-${index}`;
-
-    // Resources Section
-    let resourcesHtml = '';
-    if (project.resources && project.resources.length > 0) {
-        resourcesHtml = `
-            <div class="mt-3">
-                <h6 class="mb-2"><i class="fas fa-server"></i> Resources:</h6>
-                <div class="table-responsive">
-                    <table class="table table-sm table-bordered table-hover">
-                        <thead class="thead-light">
-                            <tr>
-                                <th>Resource</th>
-                                <th>Start Date</th>
-                                <th>End Date</th>
-                                <th>Allocated</th>
-                                <th>Used</th>
-                                <th>Remaining</th>
-                                <th style="width: 200px;">Usage</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${project.resources.map(resource => createResourceRow(resource, project.projcode)).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
-    }
-
-    // Members Section
-    const membersId = `members-${cardId}`;
-    const membersHtml = `
-        <div class="mt-3" data-section="members" data-projcode="${project.projcode}">
-            <h6 class="mb-2">
-                <i class="fas fa-users"></i> Project Members
-                <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#${membersId}" aria-expanded="false">
-                    <i class="fas fa-chevron-down"></i>
-                </button>
-            </h6>
-            <div id="${membersId}" class="collapse">
-                <div class="members-container p-3 bg-light rounded">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status">
-                        <span class="sr-only">Loading members...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Project Tree Section
-    const treeId = `tree-${cardId}`;
-    const treeHtml = `
-        <div class="mt-3" data-section="tree" data-projcode="${project.projcode}">
-            <h6 class="mb-2">
-                <i class="fas fa-sitemap"></i> Project Hierarchy
-                <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#${treeId}" aria-expanded="false">
-                    <i class="fas fa-chevron-down"></i>
-                </button>
-            </h6>
-            <div id="${treeId}" class="collapse">
-                <div class="tree-container p-3 bg-light rounded">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status">
-                        <span class="sr-only">Loading tree...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-
-    return `
-        <div class="card project-card mb-3">
-            <div class="card-header" data-toggle="collapse" data-target="#${cardId}" aria-expanded="true">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h5 class="mb-0">
-                            <i class="fas fa-folder-open text-primary"></i>
-                            <strong>${project.projcode}</strong> - ${project.title || 'Untitled Project'}
-                        </h5>
-                    </div>
-                    <div>
-                        ${project.active ?
-                            '<span class="badge badge-success">Active</span>' :
-                            '<span class="badge badge-secondary">Inactive</span>'}
-                    </div>
-                </div>
-            </div>
-
-            <div id="${cardId}" class="collapse">
-                <div class="card-body" data-projcode="${project.projcode}" data-project-info-loaded="false">
-                    <!-- Project Info - will be loaded with full details -->
-                    <div class="project-info-container">
-                        <div class="spinner-border spinner-border-sm text-primary" role="status">
-                            <span class="sr-only">Loading project details...</span>
-                        </div>
-                    </div>
-
-                    ${resourcesHtml}
-                    ${membersHtml}
-                    ${treeHtml}
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-/**
- * Create HTML for a resource table row
- */
-function createResourceRow(resource, projcode) {
-    const resPercentClass = getProgressColor(resource.percent_used || 0);
-    const resProgressWidth = Math.min(Math.max(resource.percent_used || 0, 0), 100);
-    const statusBadge = resource.status === 'Active' ?
-        '<span class="badge badge-success">Active</span>' :
-        '<span class="badge badge-secondary">Inactive</span>';
-    const startDate = resource.start_date ? new Date(resource.start_date).toLocaleDateString() : 'N/A';
-    const endDate = resource.end_date ? new Date(resource.end_date).toLocaleDateString() : 'N/A';
-
-    return `
-        <tr class="resource-row" style="cursor: pointer;"
-            onclick="viewResourceDetails('${projcode}', '${resource.resource_name}')">
-            <td><strong>${resource.resource_name}</strong></td>
-            <td>${startDate}</td>
-            <td>${endDate}</td>
-            <td class="text-primary">${formatNumber(resource.allocated || 0)}</td>
-            <td class="text-warning">${formatNumber(resource.used || 0)}</td>
-            <td class="text-success">${formatNumber(resource.remaining || 0)}</td>
-            <td>
-                <div class="progress" style="height: 20px;">
-                    <div class="progress-bar ${resPercentClass}"
-                         role="progressbar"
-                         style="width: ${resProgressWidth}%"
-                         aria-valuenow="${resource.percent_used || 0}"
-                         aria-valuemin="0"
-                         aria-valuemax="100">
-                        ${formatNumber(resource.percent_used || 0, 1, 1)}%
-                    </div>
-                </div>
-            </td>
-        </tr>
-    `;
-}
-
-/**
- * Navigate to resource details page
- */
-function viewResourceDetails(projcode, resourceName) {
-    window.location.href = `/dashboard/resource-details?projcode=${encodeURIComponent(projcode)}&resource=${encodeURIComponent(resourceName)}`;
-}
-
-/**
- * Load project tree when user expands the hierarchy section
- */
-$(document).on('show.bs.collapse', '[id^="tree-project-"]', function() {
-    const treeId = $(this).attr('id');
-    const treeSection = $(this).closest('[data-section="tree"]');
-    const projcode = treeSection.data('projcode');
-    const treeContainer = $(this).find('.tree-container');
-
-    // Only load once
-    if (treeContainer.data('loaded')) {
-        return;
-    }
-
-    loadProjectTree(projcode, treeContainer);
 });
-
-/**
- * Load and render project tree
- */
-async function loadProjectTree(projcode, container) {
-    try {
-        const response = await fetch(`/api/v1/projects/${projcode}`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-
-        if (data.tree) {
-            const treeHtml = renderProjectTree(data.tree, projcode);
-            container.html(`<ul class="tree-list">${treeHtml}</ul>`);
-        } else {
-            container.html('<p class="text-muted mb-0">No project hierarchy</p>');
-        }
-
-        container.data('loaded', true);
-    } catch (error) {
-        console.error('Error loading project tree:', error);
-        container.html('<p class="text-danger mb-0">Failed to load project hierarchy</p>');
-    }
-}
-
-/**
- * Recursively render project tree with current project highlighted
- */
-function renderProjectTree(node, currentProjcode) {
-    const isCurrent = node.projcode === currentProjcode;
-    const style = isCurrent ? 'style="background: #fff3cd; font-weight: bold; border-left-color: #ffc107;"' : '';
-    const icon = isCurrent ? '<i class="fas fa-arrow-right text-warning mr-1"></i>' : '';
-
-    let html = `<li ${style}>${icon}<strong>${node.projcode}</strong>`;
-
-    if (node.title) {
-        html += ` - ${node.title}`;
-    }
-
-    if (node.children && node.children.length > 0) {
-        html += '<ul class="tree-list">';
-        node.children.forEach(child => {
-            html += renderProjectTree(child, currentProjcode);
-        });
-        html += '</ul>';
-    }
-
-    html += '</li>';
-    return html;
-}
-
-/**
- * Load detailed project information
- * @param {string} projcode - Project code
- * @param {object} fallbackData - Optional fallback data from dashboard API
- */
-async function loadProjectDetails(projcode, fallbackData) {
-    const cardBody = $(`.card-body[data-projcode="${projcode}"]`);
-    const container = cardBody.find('.project-info-container');
-
-    // Only load once
-    if (cardBody.data('project-info-loaded') === 'true') {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/v1/projects/${projcode}`);
-        if (!response.ok) {
-            console.error(`Failed to fetch project ${projcode}: ${response.status} ${response.statusText}`);
-            throw new Error(`HTTP ${response.status}`);
-        }
-        const data = await response.json();
-
-        console.log('Project data for', projcode, ':', data); // Debug
-
-        const infoHtml = createProjectInfoBox(data);
-        container.html(infoHtml);
-        cardBody.data('project-info-loaded', 'true');
-    } catch (error) {
-        console.error('Error loading project details for', projcode, ':', error);
-
-        // Use fallback data if available
-        if (fallbackData) {
-            console.log('Using fallback data for', projcode);
-            const simpleHtml = `
-                <div class="project-stats-box">
-                    <h6><i class="fas fa-info-circle"></i> Project Information</h6>
-                    <div class="stat-item">
-                        <span class="stat-label">Project Lead:</span>
-                        <span class="stat-value">${fallbackData.lead_name || 'N/A'} ${fallbackData.lead_username ? '(' + fallbackData.lead_username + ')' : ''}</span>
-                    </div>
-                </div>
-            `;
-            container.html(simpleHtml);
-        } else {
-            // Show a minimal info box
-            const simpleHtml = `
-                <div class="project-stats-box">
-                    <h6><i class="fas fa-info-circle"></i> Project Information</h6>
-                    <div class="stat-item">
-                        <span class="stat-label">Project Code:</span>
-                        <span class="stat-value">${projcode}</span>
-                    </div>
-                    <p class="text-muted small mt-2 mb-0">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        Unable to load additional project details.
-                    </p>
-                </div>
-            `;
-            container.html(simpleHtml);
-        }
-        cardBody.data('project-info-loaded', 'true');
-    }
-}
-
-/**
- * Create project information box with all metadata
- */
-function createProjectInfoBox(project) {
-    let items = [];
-
-    // Lead (always show)
-    if (project.lead) {
-        items.push({
-            label: 'Lead',
-            values: [`${project.lead.full_name || project.lead.username} (${project.lead.username})`],
-            isMulti: false
-        });
-    }
-
-    // Admin
-    if (project.admin && project.admin.username && (project.lead.username != project.admin.username)) {
-        items.push({
-            label: 'Admin',
-            values: [`${project.admin.full_name || project.admin.username} (${project.admin.username})`],
-            isMulti: false
-        });
-    }
-
-    // Type
-    if (project.project_type) {
-        items.push({
-            label: 'Type',
-            values: [`${project.project_type}`],
-            isMulti: false
-        });
-    }
-
-    // Panel
-    if (project.panel) {
-        items.push({
-            label: 'Panel',
-            values: [`${project.panel}`],
-            isMulti: false
-        });
-    }
-
-    // Helper function to normalize field values into arrays
-    function normalizeField(field, nameKeys = []) {
-        if (!field) return null;
-
-        let values = [];
-        if (Array.isArray(field)) {
-            values = field.map(item => {
-                if (typeof item === 'string') return item;
-                // Try each name key in order
-                for (const key of nameKeys) {
-                    if (item[key]) return item[key];
-                }
-                return item.name || JSON.stringify(item);
-            });
-        } else if (typeof field === 'object') {
-            // Try each name key in order
-            for (const key of nameKeys) {
-                if (field[key]) {
-                    values = [field[key]];
-                    break;
-                }
-            }
-            if (values.length === 0 && field.name) {
-                values = [field.name];
-            }
-        } else if (typeof field === 'string') {
-            values = [field];
-        }
-
-        return values.length > 0 ? values : null;
-    }
-
-    // Area of Interest - handle both array and object
-    const aois = normalizeField(project.area_of_interest, ['area_of_interest_name']);
-    if (aois) {
-        items.push({
-            label: 'Area of Interest',
-            values: aois,
-            isMulti: aois.length > 1
-        });
-    }
-
-    // Contracts - handle both array and object
-    const contracts = normalizeField(project.contracts, ['contract_name']);
-    if (contracts) {
-        items.push({
-            label: 'Contracts',
-            values: contracts,
-            isMulti: contracts.length > 1
-        });
-    }
-
-    // Organizations - handle both array and object
-    const orgs = normalizeField(project.organizations, ['organization_name']);
-    if (orgs) {
-        items.push({
-            label: 'Organizations',
-            values: orgs,
-            isMulti: orgs.length > 1
-        });
-    }
-
-    // Active Directories - handle both array and string
-    // Note: API returns this as 'directories' not 'active_directories'
-    const dirField = project.directories || project.active_directories;
-    const dirs = normalizeField(dirField);
-    if (dirs) {
-        items.push({
-            label: 'Directories',
-            values: dirs,
-            isMulti: dirs.length > 1
-        });
-    }
-
-    // Build HTML
-    let html = '<div class="project-stats-box"><h6><i class="fas fa-info-circle"></i> Project Information</h6>';
-    items.forEach(item => {
-        if (item.isMulti) {
-            // Multi-valued field - render as list
-            html += `
-                <div class="stat-item">
-                    <span class="stat-label">${item.label}:</span>
-                    <span class="stat-value">
-                        <ul class="mb-0 pl-3">
-                            ${item.values.map(v => `<li>${v}</li>`).join('')}
-                        </ul>
-                    </span>
-                </div>
-            `;
-        } else {
-            // Single value - render inline
-            html += `
-                <div class="stat-item">
-                    <span class="stat-label">${item.label}:</span>
-                    <span class="stat-value">${item.values[0]}</span>
-                </div>
-            `;
-        }
-    });
-    html += '</div>';
-
-    return html;
-}
-
-/**
- * Load project members when user expands the members section
- */
-$(document).on('show.bs.collapse', '[id^="members-project-"]', function() {
-    const membersSection = $(this).closest('[data-section="members"]');
-    const projcode = membersSection.data('projcode');
-    const membersContainer = $(this).find('.members-container');
-
-    // Only load once
-    if (membersContainer.data('loaded')) {
-        return;
-    }
-
-    loadProjectMembers(projcode, membersContainer);
-});
-
-/**
- * Load and render project members
- */
-async function loadProjectMembers(projcode, container) {
-    try {
-        const response = await fetch(`/api/v1/projects/${projcode}/members`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-
-        if (data.members && data.members.length > 0) {
-            let html = '<ul class="list-group list-group-flush">';
-            data.members.forEach(member => {
-                const emailDisplay = member.primary_email || member.email_address || '';
-                html += `
-                    <li class="list-group-item py-2">
-                        <i class="fas fa-user text-muted mr-2"></i>
-                        <strong>${member.full_name || member.username}</strong>
-                        ${emailDisplay ? `<small class="text-muted ml-2">(${emailDisplay})</small>` : ''}
-                    </li>
-                `;
-            });
-            html += '</ul>';
-            container.html(html);
-        } else {
-            container.html('<p class="text-muted mb-0">No members found</p>');
-        }
-
-        container.data('loaded', true);
-    } catch (error) {
-        console.error('Error loading project members:', error);
-        container.html('<p class="text-danger mb-0">Failed to load project members</p>');
-    }
-}
 </script>
 {% endblock %}

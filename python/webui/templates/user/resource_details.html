@@ -18,11 +18,33 @@
     </p>
 </div>
 
-<!-- Error Container -->
-<div id="error-container"></div>
+<!-- Date Range Selector -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-calendar"></i> Date Range
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('user_dashboard.resource_details') }}" class="form-inline">
+            <input type="hidden" name="projcode" value="{{ projcode }}">
+            <input type="hidden" name="resource" value="{{ resource_name }}">
+
+            <label for="start_date" class="mr-2">Start Date:</label>
+            <input type="date" id="start_date" name="start_date" value="{{ start_date }}" class="form-control form-control-sm mr-3">
+
+            <label for="end_date" class="mr-2">End Date:</label>
+            <input type="date" id="end_date" name="end_date" value="{{ end_date }}" class="form-control form-control-sm mr-3">
+
+            <button type="submit" class="btn btn-sm btn-primary">
+                <i class="fas fa-sync"></i> Update Range
+            </button>
+        </form>
+    </div>
+</div>
 
 <!-- Resource Summary Card -->
-<div class="card mb-4" id="resource-summary-card" style="display: none;">
+<div class="card mb-4">
     <div class="card-header">
         <h5 class="mb-0">
             <i class="fas fa-info-circle"></i> Resource Summary
@@ -42,22 +64,86 @@
                         <th style="width: 200px;">Usage</th>
                     </tr>
                 </thead>
-                <tbody id="resource-summary-tbody">
+                <tbody>
+                    {% set summary = detail_data.resource_summary %}
+                    {% set percent = summary.percent_used | round(1) %}
+                    {% if percent >= 90 %}
+                        {% set progress_class = 'bg-danger' %}
+                    {% elif percent >= 75 %}
+                        {% set progress_class = 'bg-warning' %}
+                    {% else %}
+                        {% set progress_class = 'bg-success' %}
+                    {% endif %}
+
                     <tr>
-                        <td colspan="8" class="text-center">
-                            <div class="spinner-border spinner-border-sm text-primary" role="status">
-                                <span class="sr-only">Loading...</span>
+                        <td><strong>{{ summary.resource_name }}</strong></td>
+                        <td>{{ summary.start_date.strftime('%Y-%m-%d') if summary.start_date else 'N/A' }}</td>
+                        <td>{{ summary.end_date.strftime('%Y-%m-%d') if summary.end_date else 'N/A' }}</td>
+                        <td class="text-primary">{{ '{:,.0f}'.format(summary.allocated) }}</td>
+                        <td class="text-warning">{{ '{:,.0f}'.format(summary.used) }}</td>
+                        <td class="text-success">{{ '{:,.0f}'.format(summary.remaining) }}</td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar {{ progress_class }}"
+                                     role="progressbar"
+                                     style="width: {{ [0, [percent, 100] | min] | max }}%"
+                                     aria-valuenow="{{ percent }}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                    {{ percent }}%
+                                </div>
                             </div>
                         </td>
                     </tr>
                 </tbody>
             </table>
         </div>
+
+        <!-- Charge Breakdown -->
+        {% if detail_data.charge_totals.total > 0 %}
+        <div class="mt-3">
+            <h6>Charge Breakdown (Selected Period):</h6>
+            <div class="row">
+                {% if detail_data.charge_totals.comp > 0 %}
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <div class="stat-label">Compute</div>
+                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.comp) }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if detail_data.charge_totals.dav > 0 %}
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <div class="stat-label">DAV</div>
+                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.dav) }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if detail_data.charge_totals.disk > 0 %}
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <div class="stat-label">Disk</div>
+                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.disk) }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if detail_data.charge_totals.archive > 0 %}
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <div class="stat-label">Archive</div>
+                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.archive) }}</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 
-<!-- Usage Trend Card -->
-<div class="card mb-4" id="usage-card" style="display: none;">
+<!-- Usage Trend Chart Card -->
+<div class="card mb-4">
     <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseUsage" aria-expanded="true">
         <h5 class="mb-0">
             <i class="fas fa-chart-area"></i> Usage Trend
@@ -66,33 +152,15 @@
     </div>
     <div id="collapseUsage" class="collapse show">
         <div class="card-body">
-            <div class="mb-3">
-                <label for="date-range" class="font-weight-bold">Date Range:</label>
-                <div class="row">
-                    <div class="col-md-4">
-                        <input type="date" id="start-date" class="form-control form-control-sm">
-                    </div>
-                    <div class="col-md-4">
-                        <input type="date" id="end-date" class="form-control form-control-sm">
-                    </div>
-                    <div class="col-md-4">
-                        <button class="btn btn-sm btn-primary" onclick="loadUsageData()">
-                            <i class="fas fa-sync"></i> Update
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Canvas for sparkline -->
-            <div class="mt-3">
-                <canvas id="usage-sparkline" width="800" height="200"></canvas>
+            <div class="chart-container">
+                {{ usage_chart | safe }}
             </div>
         </div>
     </div>
 </div>
 
 <!-- Recent Usage (Charges) Card -->
-<div class="card mb-4" id="charges-card" style="display: none;">
+<div class="card mb-4">
     <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseCharges" aria-expanded="true">
         <h5 class="mb-0">
             <i class="fas fa-table"></i> Recent Usage (Charges)
@@ -106,20 +174,48 @@
                     <thead class="thead-dark">
                         <tr>
                             <th>Date</th>
-                            <th id="header-comp" style="display: none; text-align: right;">Compute</th>
-                            <th id="header-dav" style="display: none; text-align: right;">DAV</th>
-                            <th id="header-disk" style="display: none; text-align: right;">Disk</th>
-                            <th id="header-archive" style="display: none; text-align: right;">Archive</th>
+                            {% if detail_data.charge_totals.comp > 0 %}
+                            <th class="text-right">Compute</th>
+                            {% endif %}
+                            {% if detail_data.charge_totals.dav > 0 %}
+                            <th class="text-right">DAV</th>
+                            {% endif %}
+                            {% if detail_data.charge_totals.disk > 0 %}
+                            <th class="text-right">Disk</th>
+                            {% endif %}
+                            {% if detail_data.charge_totals.archive > 0 %}
+                            <th class="text-right">Archive</th>
+                            {% endif %}
+                            <th class="text-right"><strong>Total</strong></th>
                         </tr>
                     </thead>
-                    <tbody id="charges-tbody">
-                        <tr>
-                            <td colspan="6" class="text-center">
-                                <div class="spinner-border spinner-border-sm text-primary" role="status">
-                                    <span class="sr-only">Loading...</span>
-                                </div>
-                            </td>
-                        </tr>
+                    <tbody>
+                        {% if detail_data.daily_charges %}
+                            {% for day in detail_data.daily_charges %}
+                            <tr>
+                                <td>{{ day.date.strftime('%Y-%m-%d') if day.date.strftime else day.date }}</td>
+                                {% if detail_data.charge_totals.comp > 0 %}
+                                <td class="text-right">{{ '{:,.2f}'.format(day.comp) }}</td>
+                                {% endif %}
+                                {% if detail_data.charge_totals.dav > 0 %}
+                                <td class="text-right">{{ '{:,.2f}'.format(day.dav) }}</td>
+                                {% endif %}
+                                {% if detail_data.charge_totals.disk > 0 %}
+                                <td class="text-right">{{ '{:,.2f}'.format(day.disk) }}</td>
+                                {% endif %}
+                                {% if detail_data.charge_totals.archive > 0 %}
+                                <td class="text-right">{{ '{:,.2f}'.format(day.archive) }}</td>
+                                {% endif %}
+                                <td class="text-right"><strong>{{ '{:,.2f}'.format(day.comp + day.dav + day.disk + day.archive) }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">
+                                    No charges recorded for this period
+                                </td>
+                            </tr>
+                        {% endif %}
                     </tbody>
                 </table>
             </div>
@@ -130,127 +226,38 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-/**
- * Resource Details Controller
- * Loads and displays resource allocation and usage data
- */
-
-const PROJCODE = '{{ projcode }}';
-const RESOURCE_NAME = '{{ resource_name }}';
-
-let chargeData = null;
-
-// Load all data on page load
-document.addEventListener('DOMContentLoaded', async function() {
-    // Set default date range (last 30 days)
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
-
-    document.getElementById('start-date').valueAsDate = startDate;
-    document.getElementById('end-date').valueAsDate = endDate;
-
-    // Load resource summary first
-    await loadResourceSummary();
-
-    // Load usage data
-    await loadUsageData();
-});
-
-/**
- * Load and render resource summary
- */
-async function loadResourceSummary() {
-    try {
-        // Fetch project allocations
-        const url = `/api/v1/projects/${PROJCODE}/allocations`;
-        const data = await SAM.apiFetch(url);
-
-        console.log('Allocations data:', data); // Debug
-
-        // Find the specific resource we're viewing
-        // Note: allocation.resource.resource_name contains the resource name
-        const allocationData = data.allocations?.find(
-            alloc => alloc.resource?.resource_name === RESOURCE_NAME
-        );
-
-        if (allocationData) {
-            // Convert allocation data to resource format for rendering
-            const resourceData = {
-                resource_name: allocationData.resource.resource_name,
-                allocated: allocationData.amount,
-                used: allocationData.used,
-                remaining: allocationData.remaining,
-                percent_used: allocationData.percent_used,
-                status: allocationData.is_active ? 'Active' : 'Inactive',
-                start_date: allocationData.start_date,
-                end_date: allocationData.end_date,
-                charges_by_type: allocationData.charges_by_type
-            };
-
-            console.log('Resource data for rendering:', resourceData); // Debug
-
-            // Render using Mustache template
-            await SAM.Mustache.renderResourceRows(resourceData, PROJCODE, 'resource-summary-tbody');
-            document.getElementById('resource-summary-card').style.display = '';
-        } else {
-            console.warn(`Resource ${RESOURCE_NAME} not found in allocations`);
-            console.log('Available resources:', data.allocations?.map(a => a.resource?.resource_name));
-        }
-    } catch (error) {
-        console.error('Error loading resource summary:', error);
-        // Don't show error to user - just hide the card
-    }
+<style>
+.stat-box {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    text-align: center;
+    margin-bottom: 15px;
 }
 
-/**
- * Load usage data and render sparkline
- */
-async function loadUsageData() {
-    try {
-        const startDate = document.getElementById('start-date').value;
-        const endDate = document.getElementById('end-date').value;
-
-        if (!startDate || !endDate) {
-            return;
-        }
-
-        const url = `/api/v1/projects/${PROJCODE}/charges?` +
-            `resource=${encodeURIComponent(RESOURCE_NAME)}&` +
-            `start_date=${startDate}&end_date=${endDate}&group_by=date`;
-
-        const data = await SAM.apiFetch(url);
-        chargeData = data.data || [];
-
-        // Render charges table
-        const processed = await SAM.Mustache.renderChargeTable(chargeData, 'charges-tbody');
-
-        // Update table headers based on which columns have data
-        document.getElementById('header-comp').style.display = processed.hasComp ? '' : 'none';
-        document.getElementById('header-dav').style.display = processed.hasDav ? '' : 'none';
-        document.getElementById('header-disk').style.display = processed.hasDisk ? '' : 'none';
-        document.getElementById('header-archive').style.display = processed.hasArchive ? '' : 'none';
-
-        // Render sparkline (simple canvas chart)
-        if (chargeData.length > 0) {
-            const sparklineData = chargeData.map(day => ({
-                date: day.date,
-                value: (day.comp || 0) + (day.dav || 0) + (day.disk || 0) + (day.archive || 0)
-            }));
-
-            SAM.Mustache.renderSimpleSparkline(sparklineData, 'usage-sparkline');
-        }
-
-        document.getElementById('usage-card').style.display = '';
-        document.getElementById('charges-card').style.display = '';
-
-    } catch (error) {
-        console.error('Error loading usage data:', error);
-        document.getElementById('usage-card').style.display = 'none';
-        document.getElementById('charges-card').style.display = 'none';
-    }
+.stat-box .stat-label {
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+    margin-bottom: 5px;
 }
 
-</script>
+.stat-box .stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.tree-list {
+    list-style: none;
+    padding-left: 20px;
+}
+
+.tree-list li {
+    padding: 5px;
+    border-left: 2px solid #dee2e6;
+    margin-left: 10px;
+}
+</style>
 {% endblock %}
