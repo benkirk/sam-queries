@@ -98,47 +98,6 @@
                 </tbody>
             </table>
         </div>
-
-        <!-- Charge Breakdown -->
-        {% if detail_data.charge_totals.total > 0 %}
-        <div class="mt-3">
-            <h6>Charge Breakdown (Selected Period):</h6>
-            <div class="row">
-                {% if detail_data.charge_totals.comp > 0 %}
-                <div class="col-md-3">
-                    <div class="stat-box">
-                        <div class="stat-label">Compute</div>
-                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.comp) }}</div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if detail_data.charge_totals.dav > 0 %}
-                <div class="col-md-3">
-                    <div class="stat-box">
-                        <div class="stat-label">DAV</div>
-                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.dav) }}</div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if detail_data.charge_totals.disk > 0 %}
-                <div class="col-md-3">
-                    <div class="stat-box">
-                        <div class="stat-label">Disk</div>
-                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.disk) }}</div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if detail_data.charge_totals.archive > 0 %}
-                <div class="col-md-3">
-                    <div class="stat-box">
-                        <div class="stat-label">Archive</div>
-                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.archive) }}</div>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
     </div>
 </div>
 
@@ -188,7 +147,6 @@
                             {% if detail_data.charge_totals.archive > 0 %}
                             <th class="text-right">Archive</th>
                             {% endif %}
-                            <th class="text-right"><strong>Total</strong></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -197,10 +155,10 @@
                             <tr>
                                 <td>{{ day.date.strftime('%Y-%m-%d') if day.date.strftime else day.date }}</td>
                                 {% if detail_data.charge_totals.comp > 0 %}
-                                <td class="text-right">{{ '{:,.2f}'.format(day.comp) }}</td>
+                                <td class="text-right">{{ '{:,.0f}'.format(day.comp) }}</td>
                                 {% endif %}
                                 {% if detail_data.charge_totals.dav > 0 %}
-                                <td class="text-right">{{ '{:,.2f}'.format(day.dav) }}</td>
+                                <td class="text-right">{{ '{:,.0f}'.format(day.dav) }}</td>
                                 {% endif %}
                                 {% if detail_data.charge_totals.disk > 0 %}
                                 <td class="text-right">{{ '{:,.2f}'.format(day.disk) }}</td>
@@ -208,7 +166,6 @@
                                 {% if detail_data.charge_totals.archive > 0 %}
                                 <td class="text-right">{{ '{:,.2f}'.format(day.archive) }}</td>
                                 {% endif %}
-                                <td class="text-right"><strong>{{ '{:,.2f}'.format(day.comp + day.dav + day.disk + day.archive) }}</strong></td>
                             </tr>
                             {% endfor %}
                         {% else %}

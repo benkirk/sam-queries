@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 
 from webui.extensions import db
 from sam.queries import get_user_dashboard_data, get_resource_detail_data, get_users_on_project
-from webui.utils.charts import generate_usage_sparkline, generate_charge_breakdown_bars, generate_usage_timeseries_matplotlib
+from webui.utils.charts import generate_usage_sparkline, generate_usage_timeseries_matplotlib
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/dashboard')
 
@@ -90,7 +90,7 @@ def resource_details():
     # Generate charts server-side
     usage_chart = generate_usage_sparkline(detail_data['daily_charges'])
     #usage_chart = generate_usage_timeseries_matplotlib(detail_data['daily_charges'])
-    breakdown_chart = generate_charge_breakdown_bars(detail_data['charge_totals'])
+    #breakdown_chart = generate_charge_breakdown_bars(detail_data['charge_totals'])
 
     return render_template(
         'user/resource_details.html',
@@ -101,7 +101,6 @@ def resource_details():
         end_date=end_date.strftime('%Y-%m-%d'),
         detail_data=detail_data,
         usage_chart=usage_chart,
-        breakdown_chart=breakdown_chart
     )
 
 
