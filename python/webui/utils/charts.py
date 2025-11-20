@@ -19,7 +19,7 @@ def format_number(value: float, decimals: int = 2) -> str:
         return f"{value:.{decimals}f}"
 
 
-def generate_usage_sparkline(daily_charges: List[Dict], width: int = 800, height: int = 200) -> str:
+def generate_usage_sparkline(daily_charges: List[Dict], width: int = 1000, height: int = 200) -> str:
     """
     Generate a simple SVG sparkline chart for usage data.
 
@@ -42,7 +42,7 @@ def generate_usage_sparkline(daily_charges: List[Dict], width: int = 800, height
         return '<div class="text-muted">No usage data available for selected date range.</div>'
 
     # Chart dimensions
-    padding = 40
+    padding = 20
     chart_width = width - (2 * padding)
     chart_height = height - (2 * padding)
 

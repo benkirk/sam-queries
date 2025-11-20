@@ -76,7 +76,7 @@
                     {% endif %}
 
                     <tr>
-                        <td><strong>{{ summary.resource_name }}</strong></td>
+                        <td><strong>{{ resource_name }}</strong></td>
                         <td>{{ summary.start_date.strftime('%Y-%m-%d') if summary.start_date else 'N/A' }}</td>
                         <td>{{ summary.end_date.strftime('%Y-%m-%d') if summary.end_date else 'N/A' }}</td>
                         <td class="text-primary">{{ '{:,.0f}'.format(summary.allocated) }}</td>
@@ -153,7 +153,9 @@
     <div id="collapseUsage" class="collapse show">
         <div class="card-body">
             <div class="chart-container">
+              <center>
                 {{ usage_chart | safe }}
+              </center>
             </div>
         </div>
     </div>
