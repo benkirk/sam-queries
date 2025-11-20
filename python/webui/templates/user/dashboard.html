@@ -66,18 +66,49 @@
                                         <h6><i class="fas fa-info-circle"></i> Project Information</h6>
                                         <div class="stat-item">
                                             <span class="stat-label">Lead:</span>
-                                            <span class="stat-value">{{ project.lead.full_name if project.lead else 'N/A' }}</span>
+                                            <span class="stat-value">{{ project.lead.display_name if project.lead else 'N/A' }}</span>
                                         </div>
                                         {% if project.admin and project.admin.user_id != project.lead.user_id %}
                                         <div class="stat-item">
                                             <span class="stat-label">Admin:</span>
-                                            <span class="stat-value">{{ project.admin.full_name }}</span>
+                                            <span class="stat-value">{{ project.admin.display_name }}</span>
                                         </div>
                                         {% endif %}
                                         <div class="stat-item">
-                                            <span class="stat-label">Members:</span>
-                                            <span class="stat-value">{{ project_data.member_count }}</span>
+                                            <span class="stat-label">Type:</span>
+                                            <span class="stat-value">{{ project.allocation_type.allocation_type if project.allocation_type else 'N/A' }}</span>
                                         </div>
+                                        <div class="stat-item">
+                                            <span class="stat-label">Panel:</span>
+                                            <span class="stat-value">{{ project.allocation_type.panel.panel_name if project.allocation_type.panel else 'N/A' }}</span>
+                                        </div>
+                                        <!-- Contracts -->
+                                        {% if project.contracts %}
+                                        <div class="stat-item">
+                                          <span class="stat-label">Contracts:</span>
+                                          <span class="stat-value">
+                                            <ul>
+                                              {% for pc in project.contracts %}
+                                                  {% set label = pc.contract %}
+                                                  <li>{{ label }}</li>
+                                              {% endfor %}
+                                            </ul>
+                                          </span>
+                                        </div>
+                                        {% endif %}
+                                        <!-- Project directories list -->
+                                        {% if project.active_directories %}
+                                        <div class="stat-item">
+                                          <span class="stat-label">Directories:</span>
+                                          <span class="stat-value">
+                                            <ul>
+                                              {% for dir in project.active_directories %}
+                                                  <li>{{ dir }}</li>
+                                              {% endfor %}
+                                            </ul>
+                                          </span>
+                                        </div>
+                                        {% endif %}
                                     </div>
 
                                     <!-- Resources Section -->
@@ -208,7 +239,7 @@
                             </tr>
                             <tr>
                                 <th>Name:</th>
-                                <td>{{ user.first_name }} {{ user.last_name }}</td>
+                                <td>{{ user.display_name }}</td>
                             </tr>
                             <tr>
                                 <th>Email:</th>

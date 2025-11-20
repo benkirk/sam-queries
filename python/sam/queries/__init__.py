@@ -1382,7 +1382,6 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
                 {
                     'project': Project object,
                     'resources': List[Dict],  # From get_detailed_allocation_usage()
-                    'member_count': int,
                     'has_children': bool
                 }
             ],
@@ -1437,21 +1436,9 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
                 'end_date': usage.get('end_date')
             })
 
-        # Count members (without loading all user objects)
-        member_count = session.query(func.count(func.distinct(AccountUser.user_id)))\
-            .join(Account, AccountUser.account_id == Account.account_id)\
-            .filter(
-                Account.project_id == project.project_id,
-                or_(
-                    AccountUser.end_date.is_(None),
-                    AccountUser.end_date >= datetime.now()
-                )
-            ).scalar() or 0
-
         project_data_list.append({
             'project': project,
             'resources': resources,
-            'member_count': member_count,
             'has_children': project.has_children if hasattr(project, 'has_children') else False
         })
 
