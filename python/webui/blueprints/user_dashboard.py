@@ -121,7 +121,7 @@ def members_fragment(projcode):
 
     return render_template(
         'user/fragments/members_table.html',
-        members=members
+        members=sorted(members, key=lambda member: member["display_name"])
     )
 
 
