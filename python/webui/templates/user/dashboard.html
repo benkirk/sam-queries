@@ -183,7 +183,6 @@ function createProjectCard(project, index) {
                         <thead class="thead-light">
                             <tr>
                                 <th>Resource</th>
-                                <th>Status</th>
                                 <th>Start Date</th>
                                 <th>End Date</th>
                                 <th>Allocated</th>
@@ -294,7 +293,6 @@ function createResourceRow(resource, projcode) {
         <tr class="resource-row" style="cursor: pointer;"
             onclick="viewResourceDetails('${projcode}', '${resource.resource_name}')">
             <td><strong>${resource.resource_name}</strong></td>
-            <td>${statusBadge}</td>
             <td>${startDate}</td>
             <td>${endDate}</td>
             <td class="text-primary">${formatNumber(resource.allocated || 0)}</td>
