@@ -1,0 +1,265 @@
+{% extends 'user/base.html' %}
+
+{% block title %}Resource Details - {{ resource_name }} - SAM{% endblock %}
+
+{% block content %}
+<div class="back-link mb-3">
+    <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Dashboard
+    </a>
+</div>
+
+<div class="page-header">
+    <h1>
+        <i class="fas fa-chart-line"></i> Resource Usage Details
+    </h1>
+    <p class="text-muted">
+        Project: <strong>{{ projcode }}</strong> | Resource: <strong>{{ resource_name }}</strong>
+    </p>
+</div>
+
+<!-- Date Range Selector -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-calendar"></i> Date Range
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('user_dashboard.resource_details') }}" class="form-inline">
+            <input type="hidden" name="projcode" value="{{ projcode }}">
+            <input type="hidden" name="resource" value="{{ resource_name }}">
+
+            <label for="start_date" class="mr-2">Start Date:</label>
+            <input type="date" id="start_date" name="start_date" value="{{ start_date }}" class="form-control form-control-sm mr-3">
+
+            <label for="end_date" class="mr-2">End Date:</label>
+            <input type="date" id="end_date" name="end_date" value="{{ end_date }}" class="form-control form-control-sm mr-3">
+
+            <button type="submit" class="btn btn-sm btn-primary">
+                <i class="fas fa-sync"></i> Update Range
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Resource Summary Card -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-info-circle"></i> Resource Summary
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Resource</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th>Allocated</th>
+                        <th>Used</th>
+                        <th>Remaining</th>
+                        <th style="width: 200px;">Usage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set summary = detail_data.resource_summary %}
+                    {% set percent = summary.percent_used | round(1) %}
+                    {% if percent >= 90 %}
+                        {% set progress_class = 'bg-danger' %}
+                    {% elif percent >= 75 %}
+                        {% set progress_class = 'bg-warning' %}
+                    {% else %}
+                        {% set progress_class = 'bg-success' %}
+                    {% endif %}
+
+                    <tr>
+                        <td><strong>{{ resource_name }}</strong></td>
+                        <td>{{ summary.start_date.strftime('%Y-%m-%d') if summary.start_date else 'N/A' }}</td>
+                        <td>{{ summary.end_date.strftime('%Y-%m-%d') if summary.end_date else 'N/A' }}</td>
+                        <td class="text-primary">{{ '{:,.0f}'.format(summary.allocated) }}</td>
+                        <td class="text-warning">{{ '{:,.0f}'.format(summary.used) }}</td>
+                        <td class="text-success">{{ '{:,.0f}'.format(summary.remaining) }}</td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar {{ progress_class }}"
+                                     role="progressbar"
+                                     style="width: {{ [0, [percent, 100] | min] | max }}%"
+                                     aria-valuenow="{{ percent }}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                    {{ percent }}%
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Charge Breakdown -->
+        {% if detail_data.charge_totals.total > 0 %}
+        <div class="mt-3">
+            <h6>Charge Breakdown (Selected Period):</h6>
+            <div class="row">
+                {% if detail_data.charge_totals.comp > 0 %}
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <div class="stat-label">Compute</div>
+                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.comp) }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if detail_data.charge_totals.dav > 0 %}
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <div class="stat-label">DAV</div>
+                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.dav) }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if detail_data.charge_totals.disk > 0 %}
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <div class="stat-label">Disk</div>
+                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.disk) }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if detail_data.charge_totals.archive > 0 %}
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <div class="stat-label">Archive</div>
+                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.archive) }}</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Usage Trend Chart Card -->
+<div class="card mb-4">
+    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseUsage" aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-chart-area"></i> Usage Trend
+            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
+        </h5>
+    </div>
+    <div id="collapseUsage" class="collapse show">
+        <div class="card-body">
+            <div class="chart-container">
+              <center>
+                {{ usage_chart | safe }}
+              </center>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Usage (Charges) Card -->
+<div class="card mb-4">
+    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseCharges" aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-table"></i> Recent Usage (Charges)
+            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
+        </h5>
+    </div>
+    <div id="collapseCharges" class="collapse show">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover" id="charges-table">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>Date</th>
+                            {% if detail_data.charge_totals.comp > 0 %}
+                            <th class="text-right">Compute</th>
+                            {% endif %}
+                            {% if detail_data.charge_totals.dav > 0 %}
+                            <th class="text-right">DAV</th>
+                            {% endif %}
+                            {% if detail_data.charge_totals.disk > 0 %}
+                            <th class="text-right">Disk</th>
+                            {% endif %}
+                            {% if detail_data.charge_totals.archive > 0 %}
+                            <th class="text-right">Archive</th>
+                            {% endif %}
+                            <th class="text-right"><strong>Total</strong></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if detail_data.daily_charges %}
+                            {% for day in detail_data.daily_charges %}
+                            <tr>
+                                <td>{{ day.date.strftime('%Y-%m-%d') if day.date.strftime else day.date }}</td>
+                                {% if detail_data.charge_totals.comp > 0 %}
+                                <td class="text-right">{{ '{:,.2f}'.format(day.comp) }}</td>
+                                {% endif %}
+                                {% if detail_data.charge_totals.dav > 0 %}
+                                <td class="text-right">{{ '{:,.2f}'.format(day.dav) }}</td>
+                                {% endif %}
+                                {% if detail_data.charge_totals.disk > 0 %}
+                                <td class="text-right">{{ '{:,.2f}'.format(day.disk) }}</td>
+                                {% endif %}
+                                {% if detail_data.charge_totals.archive > 0 %}
+                                <td class="text-right">{{ '{:,.2f}'.format(day.archive) }}</td>
+                                {% endif %}
+                                <td class="text-right"><strong>{{ '{:,.2f}'.format(day.comp + day.dav + day.disk + day.archive) }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">
+                                    No charges recorded for this period
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<style>
+.stat-box {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    text-align: center;
+    margin-bottom: 15px;
+}
+
+.stat-box .stat-label {
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+
+.stat-box .stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.tree-list {
+    list-style: none;
+    padding-left: 20px;
+}
+
+.tree-list li {
+    padding: 5px;
+    border-left: 2px solid #dee2e6;
+    margin-left: 10px;
+}
+</style>
+{% endblock %}

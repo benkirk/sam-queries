@@ -54,17 +54,11 @@ class ProjectListSchema(BaseSchema):
             'admin_username',
             'active',
             'charging_exempt',
-            'area_of_interest',
-            'parent_projcode',
-            'has_children',
         )
 
     # Custom fields for lead/admin (just usernames, not full nested objects)
     lead_username = fields.Method('get_lead_username')
     admin_username = fields.Method('get_admin_username')
-    area_of_interest = fields.Method('get_area_of_interest')
-    parent_projcode = fields.Method('get_parent_projcode')
-    has_children = fields.Method('get_has_children')
 
     def get_lead_username(self, obj):
         """Get lead username."""
@@ -72,19 +66,6 @@ class ProjectListSchema(BaseSchema):
 
     def get_admin_username(self, obj):
         """Get admin username."""
-        return obj.admin.username if obj.admin else None
-
-    def get_area_of_interest(self, obj):
-        """Get area of interest name."""
-        return obj.area_of_interest.area_of_interest if obj.area_of_interest else None
-
-    def get_parent_projcode(self, obj):
-        """Get parent project code if exists."""
-        return obj.parent.projcode if obj.parent else None
-
-    def get_has_children(self, obj):
-        """Check if project has children."""
-        return obj.has_children
 
 class ProjectSchema(BaseSchema):
     """
@@ -106,6 +87,9 @@ class ProjectSchema(BaseSchema):
             'directories',
             'charging_exempt',
             'area_of_interest',
+            'project_type',
+            'panel',
+            'contracts',
             'creation_time',
             'modified_time',
             'breadcrumb_path',
@@ -118,6 +102,9 @@ class ProjectSchema(BaseSchema):
     admin = fields.Nested(UserSummarySchema)
     directories = fields.Method('get_active_directories')
     area_of_interest = fields.Method('get_area_of_interest')
+    project_type = fields.Method('get_type')
+    panel = fields.Method('get_panel')
+    contracts = fields.Method('get_contracts')
     breadcrumb_path = fields.Method('get_breadcrumb_path')
     tree_depth = fields.Method('get_tree_depth')
     tree = fields.Method('get_tree')
@@ -125,6 +112,22 @@ class ProjectSchema(BaseSchema):
     def get_area_of_interest(self, obj):
         """Get area of interest name."""
         return obj.area_of_interest.area_of_interest if obj.area_of_interest else None
+
+    def get_type(self,obj):
+        """Get project type"""
+        return obj.allocation_type.allocation_type if obj.allocation_type else None
+
+    def get_panel(self,obj):
+        """Get associated panel"""
+        return obj.allocation_type.panel.panel_name if obj.allocation_type.panel else None
+
+    def get_contracts(self,obj):
+        """Get associated contracts"""
+        contracts = []
+        if obj.contracts:
+            for pc in obj.contracts:
+                contracts.append(f"{pc.contract.contract_source.contract_source} {str(pc.contract.contract_number):<20} {pc.contract.title}")
+        return contracts
 
     def get_breadcrumb_path(self, obj):
         """

@@ -1,0 +1,15 @@
+{# Fragment: Project Members Table #}
+<ul class="list-group list-group-flush">
+    {% for member in members %}
+    <li class="list-group-item py-2">
+        <i class="fas fa-user text-muted mr-2"></i>
+        <strong>{{ member.display_name }}</strong>
+        {% if member.email %}
+        <small class="text-muted ml-2">({{ member.email }})</small>
+        {% endif %}
+        {% if member.role %}
+        <!-- <span class="badge badge-info badge-sm ml-2">{{ member.role }}</span> -->
+        {% endif %}
+    </li>
+    {% endfor %}
+</ul>

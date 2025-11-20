@@ -1,0 +1,11 @@
+{# Page Header Partial - Reusable page header with icon, title, and description #}
+{% macro page_header(icon, title, description='') %}
+<div class="page-header">
+    <h1>
+        <i class="fas fa-{{ icon }}"></i> {{ title }}
+    </h1>
+    {% if description %}
+    <p class="text-muted">{{ description }}</p>
+    {% endif %}
+</div>
+{% endmacro %}

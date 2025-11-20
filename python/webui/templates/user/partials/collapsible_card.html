@@ -1,0 +1,16 @@
+{# Collapsible Card Partial - Reusable card with collapsible content #}
+{% macro collapsible_card(id, icon, title, content, expanded=true, display='block') %}
+<div class="card mb-4" id="{{ id }}-card" style="display: {{ display }};">
+    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapse{{ id }}" aria-expanded="{{ 'true' if expanded else 'false' }}">
+        <h5 class="mb-0">
+            <i class="fas fa-{{ icon }}"></i> {{ title }}
+            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
+        </h5>
+    </div>
+    <div id="collapse{{ id }}" class="collapse {{ 'show' if expanded else '' }}">
+        <div class="card-body">
+            {{ content }}
+        </div>
+    </div>
+</div>
+{% endmacro %}
