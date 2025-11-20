@@ -210,3 +210,51 @@ def generate_charge_breakdown_bars(charge_totals: Dict[str, float], width: int =
     """
 
     return svg
+
+
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend
+import matplotlib.pyplot as plt
+from io import StringIO
+from typing import List, Dict
+
+def generate_usage_timeseries_matplotlib(daily_charges: List[Dict]) -> str:
+    """
+    Generate advanced time-series chart using Matplotlib.
+
+    Args:
+        daily_charges: List of {date, comp, dav, disk, archive} dicts
+
+    Returns:
+        SVG string ready for template rendering
+    """
+    if not daily_charges:
+        return '<p class="text-muted">No data available</p>'
+
+    # Extract data
+    dates = [d['date'] for d in daily_charges]
+    comp = [d.get('comp', 0) for d in daily_charges]
+    dav = [d.get('dav', 0) for d in daily_charges]
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 4))
+
+    # Plot stacked area chart
+    ax.plot(dates, comp)
+
+    # Styling
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Charges (core-hours)')
+    ax.set_title('Resource Usage Over Time')
+    ax.legend(loc='upper left')
+    ax.grid(True, alpha=0.3)
+
+    # Format dates on x-axis
+    fig.autofmt_xdate()
+
+    # Render to SVG
+    svg_io = StringIO()
+    fig.savefig(svg_io, format='svg', bbox_inches='tight')
+    plt.close(fig)
+
+    return svg_io.getvalue()
