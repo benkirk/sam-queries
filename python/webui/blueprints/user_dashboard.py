@@ -87,8 +87,6 @@ def resource_details():
         flash(f'Project {projcode} or resource {resource_name} not found', 'error')
         return redirect(url_for('user_dashboard.index'))
 
-    print(detail_data)
-
     # Generate charts server-side
     usage_chart = generate_usage_timeseries_matplotlib(detail_data['daily_charges'])
     #breakdown_chart = generate_charge_breakdown_bars(detail_data['charge_totals'])
