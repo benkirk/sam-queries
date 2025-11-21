@@ -1136,36 +1136,49 @@ def get_daily_usage_trend(session, projcode: str,
     ]
 
 
-def get_recent_jobs_for_project(session, projcode: str,
-                               limit: int = 100,
-                               resource: Optional[str] = None) -> List[CompActivityChargeView]:
+def get_jobs_for_project(session, projcode: str,
+                         start_date: datetime,
+                         end_date: datetime,
+                         resource: str,
+                         limit: Optional[int] = None) -> List[CompActivityChargeView]:
     """
-    Get recent jobs for a project using the charge view.
+    Get jobs for a project within a date range using the charge view.
 
     Args:
         session: SQLAlchemy session
         projcode: Project code
-        limit: Maximum number of jobs to return (default 100)
-        resource: Optional machine filter (e.g., 'Derecho')
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        resource: Machine filter (e.g., 'Derecho')
+        limit: Optional maximum number of jobs to return (default None = no limit)
 
     Returns:
         List of CompActivityChargeView view records ordered by submit time (descending)
 
     Example:
-        >>> jobs = get_recent_jobs_for_project(session, 'UCUB0001', limit=50)
+        >>> jobs = get_jobs_for_project(
+        ...     session, 'UCUB0001',
+        ...     datetime(2024, 1, 1),
+        ...     datetime(2024, 1, 31),
+        ...     'Derecho',
+        ...     limit=50
+        ... )
         >>> for job in jobs:
         ...     print(f"{job.job_id}: {job.core_hours} hours, {job.charge} charged")
     """
     query = session.query(CompActivityChargeView).filter(
-        CompActivityChargeView.projcode == projcode
+        CompActivityChargeView.projcode == projcode,
+        CompActivityChargeView.machine == resource,
+        CompActivityChargeView.activity_date >= start_date,
+        CompActivityChargeView.activity_date <= end_date
+    ).order_by(
+        CompActivityChargeView.activity_date.desc()
     )
 
-    if resource:
-        query = query.filter(CompActivityChargeView.machine == resource)
+    if limit is not None:
+        query = query.limit(limit)
 
-    return query.order_by(
-        CompActivityChargeView.submit_time.desc()
-    ).limit(limit).all()
+    return query.all()
 
 
 def get_queue_usage_breakdown(session, projcode: str,

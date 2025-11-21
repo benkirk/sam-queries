@@ -12,7 +12,7 @@ from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 
 from webui.extensions import db
-from sam.queries import get_user_dashboard_data, get_resource_detail_data, get_users_on_project, get_user_breakdown_for_project
+from sam.queries import get_user_dashboard_data, get_resource_detail_data, get_users_on_project, get_user_breakdown_for_project, get_jobs_for_project
 from webui.utils.charts import generate_usage_timeseries_matplotlib
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/dashboard')
@@ -177,3 +177,63 @@ def tree_fragment(projcode):
     tree_html = f'<ul class="tree-list">{render_tree_node(root, projcode)}</ul>'
 
     return tree_html
+
+
+@bp.route('/jobs/<projcode>/<resource>')
+@login_required
+def jobs_fragment(projcode, resource):
+    """
+    Lazy-loaded HTML fragment showing project jobs with pagination.
+
+    Query parameters:
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        page: Page number (default 1)
+
+    Returns:
+        HTML table of jobs (no full page layout)
+    """
+    # Get date range from query params
+    try:
+        start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d')
+        end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d')
+    except (TypeError, ValueError):
+        return '<p class="text-danger mb-0">Invalid date range</p>'
+
+    # Pagination parameters
+    page = int(request.args.get('page', 1))
+    per_page = 50
+
+    # Get all jobs to calculate total count
+    from sam.queries import get_jobs_for_project
+    all_jobs = get_jobs_for_project(
+        db.session,
+        projcode,
+        start_date,
+        end_date,
+        resource
+    )
+
+    total_jobs = len(all_jobs)
+    total_pages = (total_jobs + per_page - 1) // per_page  # Ceiling division
+
+    # Get paginated subset
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    jobs = all_jobs[start_idx:end_idx]
+
+    if not jobs and page == 1:
+        return '<p class="text-muted mb-0">No jobs found for this period</p>'
+
+    return render_template(
+        'user/fragments/jobs_table.html',
+        jobs=jobs,
+        page=page,
+        per_page=per_page,
+        total_jobs=total_jobs,
+        total_pages=total_pages,
+        projcode=projcode,
+        resource=resource,
+        start_date=start_date.strftime('%Y-%m-%d'),
+        end_date=end_date.strftime('%Y-%m-%d')
+    )

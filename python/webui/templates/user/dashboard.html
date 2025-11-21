@@ -256,36 +256,3 @@
 <!-- End Tab Content -->
 
 {% endblock %}
-
-{% block extra_js %}
-<script>
-/**
- * Minimal Dashboard JavaScript for Lazy Loading
- * Loads HTML fragments on-demand when sections are expanded
- */
-
-// Handle collapse events to lazy-load content
-$(document).on('show.bs.collapse', function(event) {
-    const container = $(event.target).find('[data-load-url]:not([data-loaded="true"])').first();
-
-    if (container.length > 0) {
-        const url = container.data('load-url');
-
-        // Fetch HTML fragment
-        fetch(url)
-            .then(response => {
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                return response.text();
-            })
-            .then(html => {
-                container.html(html);
-                container.attr('data-loaded', 'true');
-            })
-            .catch(error => {
-                console.error('Error loading content:', error);
-                container.html('<p class="text-danger mb-0">Failed to load content</p>');
-            });
-    }
-});
-</script>
-{% endblock %}
