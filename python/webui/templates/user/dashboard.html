@@ -41,7 +41,7 @@
                         {% set card_id = 'project-' ~ loop.index0 %}
 
                         <div class="card project-card mb-3">
-                            <div class="card-header" data-toggle="collapse" data-target="#{{ card_id }}" aria-expanded="false" style="cursor: pointer;">
+                            <div class="card-header" data-toggle="collapse" data-target="#{{ card_id }}" aria-expanded="{{ 'true' if dashboard_data.total_projects == 1 else 'false' }}" style="cursor: pointer;">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
                                         <h5 class="mb-0">
@@ -50,16 +50,28 @@
                                         </h5>
                                     </div>
                                     <div>
-                                        {% if project.active %}
-                                            <span class="badge badge-success">Active</span>
-                                        {% else %}
-                                            <span class="badge badge-secondary">Inactive</span>
+                                        {# Show user's role on this project #}
+                                        {% if project.lead and project.lead.user_id == user.user_id %}
+                                            <span class="badge badge-primary"><i class="fas fa-star"></i> Lead</span>
+                                        {% elif project.admin and project.admin.user_id == user.user_id %}
+                                            <span class="badge badge-info"><i class="fas fa-user-shield"></i> Admin</span>
+                                        {% endif %}
+                                        {# Show usage warning if any resource exceeds thresholds #}
+                                        {% set max_usage = resources | map(attribute='percent_used') | max | default(0) %}
+                                        {% if max_usage >= usage_critical_threshold %}
+                                            <span class="badge badge-danger" title="Resource usage above {{ usage_critical_threshold }}%">
+                                                <i class="fas fa-exclamation-circle"></i> {{ max_usage | round(0) | int }}% used
+                                            </span>
+                                        {% elif max_usage >= usage_warning_threshold %}
+                                            <span class="badge badge-warning" title="Resource usage above {{ usage_warning_threshold }}%">
+                                                <i class="fas fa-exclamation-triangle"></i> {{ max_usage | round(0) | int }}% used
+                                            </span>
                                         {% endif %}
                                     </div>
                                 </div>
                             </div>
 
-                            <div id="{{ card_id }}" class="collapse">
+                            <div id="{{ card_id }}" class="collapse{{ ' show' if dashboard_data.total_projects == 1 else '' }}">
                                 <div class="card-body">
                                     <!-- Project Info -->
                                     <div class="project-stats-box mb-3">

@@ -1845,9 +1845,10 @@ def search_users_by_pattern(
 
 def get_project_member_user_ids(session: Session, project_id: int) -> List[int]:
     """
-    Get list of user IDs who are members of a project.
+    Get list of user IDs who are currently active members of a project.
 
-    Includes lead, admin, and all users in any account.
+    Includes lead, admin, and all users with active memberships in any account.
+    Active means start_date <= now and (end_date is NULL or end_date >= now).
 
     Args:
         session: SQLAlchemy session
@@ -1868,13 +1869,14 @@ def get_project_member_user_ids(session: Session, project_id: int) -> List[int]:
     if project.project_admin_user_id:
         user_ids.add(project.project_admin_user_id)
 
-    # Add all account users
+    # Add all currently active account users
     account_ids = session.query(Account.account_id).filter(
         Account.project_id == project_id
     ).subquery()
 
     account_users = session.query(AccountUser.user_id).filter(
-        AccountUser.account_id.in_(select(account_ids))
+        AccountUser.account_id.in_(select(account_ids)),
+        AccountUser.is_currently_active  # Filter by active date range
     ).distinct().all()
 
     for (uid,) in account_users:

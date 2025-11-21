@@ -26,6 +26,11 @@ from webui.utils.project_permissions import can_manage_project_members, can_chan
 bp = Blueprint('user_dashboard', __name__, url_prefix='/dashboard')
 
 
+# Usage threshold configuration (percentage)
+USAGE_WARNING_THRESHOLD = 75  # Yellow warning
+USAGE_CRITICAL_THRESHOLD = 90  # Red critical
+
+
 @bp.route('/')
 @login_required
 def index():
@@ -41,7 +46,9 @@ def index():
     return render_template(
         'user/dashboard.html',
         user=current_user,
-        dashboard_data=dashboard_data
+        dashboard_data=dashboard_data,
+        usage_warning_threshold=USAGE_WARNING_THRESHOLD,
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
     )
 
 
