@@ -1337,8 +1337,6 @@ def get_user_breakdown_for_project(session, projcode: str,
     results = session.query(
         CompChargeSummary.username,
         CompChargeSummary.user_id,
-        User.first_name,
-        User.last_name,
         sql_func.sum(CompChargeSummary.num_jobs).label('jobs'),
         sql_func.sum(CompChargeSummary.core_hours).label('core_hours'),
         sql_func.sum(CompChargeSummary.charges).label('charges')
@@ -1352,29 +1350,16 @@ def get_user_breakdown_for_project(session, projcode: str,
     ).group_by(
         CompChargeSummary.username,
         CompChargeSummary.user_id,
-        User.first_name,
-        User.last_name
     ).having(
         sql_func.sum(CompChargeSummary.charges) > 0
     ).order_by(
         sql_func.sum(CompChargeSummary.charges).desc()
     ).all()
 
-    def make_display_name(first, last, username):
-        """Build display name from first/last or fall back to username."""
-        if first and last:
-            return f"{first} {last}"
-        elif first:
-            return first
-        elif last:
-            return last
-        return username
-
     return [
         {
             'username': row.username,
             'user_id': row.user_id,
-            'display_name': make_display_name(row.first_name, row.last_name, row.username),
             'jobs': row.jobs or 0,
             'core_hours': float(row.core_hours or 0.0),
             'charges': float(row.charges or 0.0)
