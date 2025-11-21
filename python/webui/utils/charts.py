@@ -56,12 +56,12 @@ def generate_usage_timeseries_matplotlib(daily_charges: List[Dict]) -> str:
     fig, ax = plt.subplots(figsize=(12, 4))
 
     # Plot stacked area chart
-    ax.bar(dates, comp, width=1)
+    ax.bar(dates, comp, width=1, lw=2)
 
     # Styling
-    ax.set_xlabel('Date')
-    ax.set_ylabel('Charges (core-hours)')
-    ax.set_title('Resource Usage Over Time')
+    #ax.set_xlabel('Date')
+    ax.set_ylabel('Charges')
+    #ax.set_title('Resource Usage Over Time')
     #ax.legend(loc='upper left')
     ax.grid(True, alpha=0.3)
 
