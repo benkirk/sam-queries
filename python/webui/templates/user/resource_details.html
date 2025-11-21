@@ -120,6 +120,53 @@
     </div>
 </div>
 
+<!-- User Breakdown Card -->
+<div class="card mb-4">
+    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseUsers" aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-users"></i> Usage by User
+            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
+        </h5>
+    </div>
+    <div id="collapseUsers" class="collapse show">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover" id="users-table">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>Username</th>
+                            <th class="text-right">Jobs</th>
+                            <th class="text-right">Charges</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if user_breakdown %}
+                            {% for user in user_breakdown %}
+                            <tr>
+                                <td><strong>{{ user.username }}</strong></td>
+                                <td class="text-right">{{ '{:,}'.format(user.jobs) }}</td>
+                                <td class="text-right">{{ '{:,.0f}'.format(user.charges) }}</td>
+                            </tr>
+                            {% endfor %}
+                            <tr class="table-info font-weight-bold">
+                                <td>Total</td>
+                                <td class="text-right">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
+                                <td class="text-right">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted">
+                                    No user activity recorded for this period
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Recent Usage (Charges) Card, collapsed by default -->
 <div class="card mb-4">
     <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseCharges" aria-expanded="true">

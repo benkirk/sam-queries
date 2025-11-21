@@ -12,7 +12,7 @@ from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 
 from webui.extensions import db
-from sam.queries import get_user_dashboard_data, get_resource_detail_data, get_users_on_project
+from sam.queries import get_user_dashboard_data, get_resource_detail_data, get_users_on_project, get_user_breakdown_for_project
 from webui.utils.charts import generate_usage_timeseries_matplotlib
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/dashboard')
@@ -87,6 +87,15 @@ def resource_details():
         flash(f'Project {projcode} or resource {resource_name} not found', 'error')
         return redirect(url_for('user_dashboard.index'))
 
+    # Fetch user breakdown data
+    user_breakdown = get_user_breakdown_for_project(
+        db.session,
+        projcode,
+        start_date,
+        end_date,
+        resource_name
+    )
+
     # Generate charts server-side
     usage_chart = generate_usage_timeseries_matplotlib(detail_data['daily_charges'])
     #breakdown_chart = generate_charge_breakdown_bars(detail_data['charge_totals'])
@@ -99,6 +108,7 @@ def resource_details():
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d'),
         detail_data=detail_data,
+        user_breakdown=user_breakdown,
         usage_chart=usage_chart,
     )
 

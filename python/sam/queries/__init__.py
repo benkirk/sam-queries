@@ -1291,6 +1291,69 @@ def get_user_usage_on_project(session, projcode: str,
     ]
 
 
+def get_user_breakdown_for_project(session, projcode: str,
+                                   start_date: datetime,
+                                   end_date: datetime,
+                                   resource: str) -> List[Dict[str, any]]:
+    """
+    Get per-user usage breakdown for a project on a specific resource.
+    Returns all users with nonzero usage within the date range.
+
+    Args:
+        session: SQLAlchemy session
+        projcode: Project code
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        resource: Resource filter (e.g., 'Derecho')
+
+    Returns:
+        List of dicts with keys: username, user_id, jobs, core_hours, charges
+        Ordered by charges descending
+
+    Example:
+        >>> users = get_user_breakdown_for_project(
+        ...     session, 'UCUB0001',
+        ...     datetime(2024, 1, 1),
+        ...     datetime(2024, 1, 31),
+        ...     resource='Derecho'
+        ... )
+        >>> for user in users:
+        ...     print(f"{user['username']}: {user['jobs']} jobs, {user['charges']:.2f} charges")
+    """
+    from sqlalchemy import func as sql_func
+
+    results = session.query(
+        CompChargeSummary.username,
+        CompChargeSummary.user_id,
+        sql_func.sum(CompChargeSummary.num_jobs).label('jobs'),
+        sql_func.sum(CompChargeSummary.core_hours).label('core_hours'),
+        sql_func.sum(CompChargeSummary.charges).label('charges')
+    ).filter(
+        CompChargeSummary.projcode == projcode,
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date,
+        CompChargeSummary.resource == resource
+    ).group_by(
+        CompChargeSummary.username,
+        CompChargeSummary.user_id
+    ).having(
+        sql_func.sum(CompChargeSummary.charges) > 0
+    ).order_by(
+        sql_func.sum(CompChargeSummary.charges).desc()
+    ).all()
+
+    return [
+        {
+            'username': row.username,
+            'user_id': row.user_id,
+            'jobs': row.jobs or 0,
+            'core_hours': float(row.core_hours or 0.0),
+            'charges': float(row.charges or 0.0)
+        }
+        for row in results
+    ]
+
+
 # ============================================================================
 # Complex Queries
 # ============================================================================
