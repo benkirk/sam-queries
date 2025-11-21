@@ -1803,20 +1803,15 @@ def change_project_admin(
         raise ValueError(f"Project {project_id} not found")
 
     if new_admin_user_id:
-        # Ensure new admin is a member of the project
-        account = session.query(Account).filter(
-            Account.project_id == project_id
+        # Ensure new admin is a member of the project (on ANY account)
+        member = session.query(AccountUser).join(Account).filter(
+            Account.project_id == project_id,
+            AccountUser.user_id == new_admin_user_id
         ).first()
 
-        if account:
-            member = session.query(AccountUser).filter(
-                AccountUser.account_id == account.account_id,
-                AccountUser.user_id == new_admin_user_id
-            ).first()
-
-            # Also allow if they are the lead
-            if not member and project.project_lead_user_id != new_admin_user_id:
-                raise ValueError("User must be a project member before becoming admin")
+        # Also allow if they are the lead
+        if not member and project.project_lead_user_id != new_admin_user_id:
+            raise ValueError("User must be a project member before becoming admin")
 
     project.project_admin_user_id = new_admin_user_id
     session.commit()

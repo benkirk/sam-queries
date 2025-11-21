@@ -14,6 +14,6 @@ source ${SCRIPTDIR}/../.env
 exe=$(realpath ${SCRIPTDIR}/../python/webui/run.py)
 
 DISABLE_AUTH=1 \
-  DEV_AUTO_LOGIN_USER=tcraig \
+  DEV_AUTO_LOGIN_USER=benkirk \
   FLASK_DEBUG=1 \
   python3 ${exe}
