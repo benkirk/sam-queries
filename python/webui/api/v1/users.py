@@ -150,6 +150,50 @@ def get_current_user_projects():
         })
 
 
+@bp.route('/search', methods=['GET'])
+@login_required
+def search_users():
+    """
+    GET /api/v1/users/search - Search users for autocomplete functionality.
+
+    Query parameters:
+        q (str): Search query (minimum 2 characters, required)
+        projcode (str): Optional project code to exclude existing members
+        limit (int): Maximum results to return (default: 20, max: 50)
+
+    Returns:
+        JSON array of matching users with username, display_name, email
+    """
+    from sam.queries import search_users_by_pattern, get_project_member_user_ids
+    from sam.projects.projects import Project
+
+    query = request.args.get('q', '').strip()
+
+    if len(query) < 2:
+        return jsonify([])
+
+    limit = min(request.args.get('limit', 20, type=int), 50)
+
+    # Get existing members to exclude if projcode provided
+    exclude_ids = None
+    projcode = request.args.get('projcode')
+    if projcode:
+        project = db.session.query(Project).filter_by(projcode=projcode).first()
+        if project:
+            exclude_ids = get_project_member_user_ids(db.session, project.project_id)
+
+    users = search_users_by_pattern(db.session, query, limit=limit, exclude_user_ids=exclude_ids)
+
+    return jsonify([
+        {
+            'username': u.username,
+            'display_name': u.display_name,
+            'email': u.primary_email or ''
+        }
+        for u in users
+    ])
+
+
 @bp.route('/', methods=['GET'])
 @login_required
 @require_permission(Permission.VIEW_USERS)

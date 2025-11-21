@@ -1318,7 +1318,7 @@ def get_user_breakdown_for_project(session, projcode: str,
         resource: Resource filter (e.g., 'Derecho')
 
     Returns:
-        List of dicts with keys: username, user_id, jobs, core_hours, charges
+        List of dicts with keys: username, user_id, display_name, jobs, core_hours, charges
         Ordered by charges descending
 
     Example:
@@ -1333,12 +1333,15 @@ def get_user_breakdown_for_project(session, projcode: str,
     """
     from sqlalchemy import func as sql_func
 
+    # Join with User table to get display_name
     results = session.query(
         CompChargeSummary.username,
         CompChargeSummary.user_id,
         sql_func.sum(CompChargeSummary.num_jobs).label('jobs'),
         sql_func.sum(CompChargeSummary.core_hours).label('core_hours'),
         sql_func.sum(CompChargeSummary.charges).label('charges')
+    ).outerjoin(
+        User, CompChargeSummary.user_id == User.user_id
     ).filter(
         CompChargeSummary.projcode == projcode,
         CompChargeSummary.activity_date >= start_date,
@@ -1346,7 +1349,7 @@ def get_user_breakdown_for_project(session, projcode: str,
         CompChargeSummary.resource == resource
     ).group_by(
         CompChargeSummary.username,
-        CompChargeSummary.user_id
+        CompChargeSummary.user_id,
     ).having(
         sql_func.sum(CompChargeSummary.charges) > 0
     ).order_by(
@@ -1658,3 +1661,90 @@ def get_resource_detail_data(
         'resource_summary': resource_summary,
         'daily_charges': daily_charges,
     }
+
+
+# ============================================================================
+# Project Member Management
+# ============================================================================
+
+def search_users_by_pattern(
+    session: Session,
+    pattern: str,
+    limit: int = 50,
+    exclude_user_ids: Optional[List[int]] = None
+) -> List[User]:
+    """
+    Search users by username, first name, last name, or email for autocomplete.
+
+    Args:
+        session: SQLAlchemy session
+        pattern: Search pattern (will be wrapped with % for LIKE)
+        limit: Maximum results to return (default 50)
+        exclude_user_ids: Optional list of user IDs to exclude from results
+
+    Returns:
+        List of User objects matching the pattern
+    """
+    like_pattern = f"%{pattern}%"
+
+    # Search by username, first name, last name, or email
+    # Join with email addresses to search by email too
+    from sam.core.users import EmailAddress
+
+    query = session.query(User).outerjoin(
+        EmailAddress, User.user_id == EmailAddress.user_id
+    ).filter(
+        or_(
+            User.username.ilike(like_pattern),
+            User.first_name.ilike(like_pattern),
+            User.last_name.ilike(like_pattern),
+            EmailAddress.email_address.ilike(like_pattern)
+        )
+    ).distinct()
+
+    if exclude_user_ids:
+        query = query.filter(~User.user_id.in_(exclude_user_ids))
+
+    return query.order_by(User.last_name, User.first_name, User.username).limit(limit).all()
+
+
+def get_project_member_user_ids(session: Session, project_id: int) -> List[int]:
+    """
+    Get list of user IDs who are currently active members of a project.
+
+    Includes lead, admin, and all users with active memberships in any account.
+    Active means start_date <= now and (end_date is NULL or end_date >= now).
+
+    Args:
+        session: SQLAlchemy session
+        project_id: Project ID
+
+    Returns:
+        List of user IDs
+    """
+    project = session.get(Project, project_id)
+    if not project:
+        return []
+
+    user_ids = set()
+
+    # Add lead and admin
+    if project.project_lead_user_id:
+        user_ids.add(project.project_lead_user_id)
+    if project.project_admin_user_id:
+        user_ids.add(project.project_admin_user_id)
+
+    # Add all currently active account users
+    account_ids = session.query(Account.account_id).filter(
+        Account.project_id == project_id
+    ).subquery()
+
+    account_users = session.query(AccountUser.user_id).filter(
+        AccountUser.account_id.in_(select(account_ids)),
+        AccountUser.is_currently_active  # Filter by active date range
+    ).distinct().all()
+
+    for (uid,) in account_users:
+        user_ids.add(uid)
+
+    return list(user_ids)

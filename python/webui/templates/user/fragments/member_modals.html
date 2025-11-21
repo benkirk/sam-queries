@@ -1,0 +1,149 @@
+{# Fragment: Member Management Modals #}
+
+<!-- Add Member Modal -->
+<div class="modal fade" id="addMemberModal" tabindex="-1" role="dialog" aria-labelledby="addMemberModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="addMemberModalLabel">
+                    <i class="fas fa-user-plus"></i> Add Member to Project
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form id="addMemberForm">
+                <input type="hidden" id="addMemberProjcode" name="projcode" value="">
+                <div class="modal-body">
+                    <!-- User Search -->
+                    <div class="form-group">
+                        <label for="userSearch">Search User</label>
+                        <input type="text" class="form-control" id="userSearch"
+                               placeholder="Type username, first name, or last name..."
+                               autocomplete="off">
+                        <input type="hidden" id="selectedUsername" name="username">
+                        <small class="form-text text-muted">Start typing to search (minimum 2 characters)</small>
+                        <div id="userSearchResults" class="list-group mt-2" style="display:none; max-height: 200px; overflow-y: auto;"></div>
+                    </div>
+
+                    <!-- Selected User Display -->
+                    <div id="selectedUserDisplay" class="alert alert-info" style="display:none;">
+                        <i class="fas fa-user-check"></i>
+                        <strong id="selectedUserName"></strong>
+                        <small id="selectedUserEmail" class="text-muted ml-2"></small>
+                        <button type="button" class="close" onclick="clearSelectedUser()" aria-label="Clear">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+
+                    <!-- Date Range -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="memberStartDate">Start Date</label>
+                                <input type="date" class="form-control" id="memberStartDate" name="start_date">
+                                <small class="form-text text-muted">Defaults to today</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="memberEndDate">End Date <span class="text-muted">(optional)</span></label>
+                                <input type="date" class="form-control" id="memberEndDate" name="end_date">
+                                <small class="form-text text-muted">Leave blank for no end date</small>
+                            </div>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">
+                        The member will have access to all resources associated with this project.
+                    </small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="addMemberSubmitBtn" disabled>
+                        <i class="fas fa-user-plus"></i> Add Member
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Remove Member Confirmation Modal -->
+<div class="modal fade" id="removeMemberModal" tabindex="-1" role="dialog" aria-labelledby="removeMemberModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="removeMemberModalLabel">
+                    <i class="fas fa-user-times"></i> Remove Member
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to remove <strong id="removeMemberName"></strong> from this project?</p>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Warning:</strong> This will remove them from all resources associated with this project.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmRemoveBtn">
+                    <i class="fas fa-user-times"></i> Remove Member
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Change Admin Confirmation Modal -->
+<div class="modal fade" id="changeAdminModal" tabindex="-1" role="dialog" aria-labelledby="changeAdminModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="changeAdminModalLabel">
+                    <i class="fas fa-user-shield"></i> Change Project Admin
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="changeAdminMessage"></p>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Note:</strong> The project admin can manage project members but cannot change who the admin is.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-info" id="confirmAdminChangeBtn">
+                    <i class="fas fa-check"></i> Confirm
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Error Alert Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" role="dialog" aria-labelledby="errorModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="errorModalLabel">
+                    <i class="fas fa-exclamation-circle"></i> Error
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="errorMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>

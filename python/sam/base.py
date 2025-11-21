@@ -25,7 +25,7 @@ class TimestampMixin:
 
     @declared_attr
     def creation_time(cls):
-        return Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
+        return Column(DateTime, nullable=False, default=datetime.now, server_default=text('CURRENT_TIMESTAMP'))
 
     @declared_attr
     def modified_time(cls):

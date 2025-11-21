@@ -1,15 +1,104 @@
-{# Fragment: Project Members Table #}
-<ul class="list-group list-group-flush">
-    {% for member in members %}
-    <li class="list-group-item py-2">
-        <i class="fas fa-user text-muted mr-2"></i>
-        <strong>{{ member.display_name }}</strong>
-        {% if member.email %}
-        <small class="text-muted ml-2">({{ member.email }})</small>
-        {% endif %}
-        {% if member.role %}
-        <!-- <span class="badge badge-info badge-sm ml-2">{{ member.role }}</span> -->
-        {% endif %}
-    </li>
-    {% endfor %}
-</ul>
+{# Fragment: Project Members Table with Management Controls #}
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="text-muted small">
+        {{ members|length }} member{{ 's' if members|length != 1 else '' }}
+    </span>
+    {% if can_manage %}
+    <button class="btn btn-sm btn-primary" onclick="showAddMemberModal('{{ projcode }}')">
+        <i class="fas fa-user-plus"></i> Add Member
+    </button>
+    {% endif %}
+</div>
+
+<div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+        <thead class="thead-light">
+            <tr>
+                <th>Name</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Role</th>
+                {% if can_manage %}
+                <th class="text-right" style="width: 180px;">Actions</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for member in members %}
+            <tr>
+                <td>
+                    <i class="fas fa-user text-muted mr-1"></i>
+                    <strong>{{ member.display_name }}</strong>
+                </td>
+                <td><code>{{ member.username }}</code></td>
+                <td>
+                    {% if member.email %}
+                    <a href="mailto:{{ member.email }}">{{ member.email }}</a>
+                    {% else %}
+                    <span class="text-muted">N/A</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if member.role == 'Lead' %}
+                        <span class="badge badge-primary">
+                            <i class="fas fa-star"></i> Lead
+                        </span>
+                    {% elif member.role == 'Admin' %}
+                        <span class="badge badge-info">
+                            <i class="fas fa-user-shield"></i> Admin
+                        </span>
+                    {% endif %}
+                </td>
+                {% if can_manage %}
+                <td class="text-right">
+                    {% if member.role == 'Lead' %}
+                        {# Cannot modify the lead #}
+                        <span class="text-muted small" title="Project lead cannot be removed">
+                            <i class="fas fa-lock"></i>
+                        </span>
+                    {% elif member.role == 'Admin' %}
+                        {# Admin actions - only lead can change admin #}
+                        {% if can_change_admin %}
+                        <button class="btn btn-xs btn-outline-warning"
+                                onclick="removeAdminRole('{{ projcode }}', '{{ member.username }}')"
+                                title="Remove admin role (keep as member)">
+                            <i class="fas fa-user-minus"></i>
+                        </button>
+                        {% endif %}
+                        <button class="btn btn-xs btn-outline-danger"
+                                onclick="confirmRemoveMember('{{ projcode }}', '{{ member.username }}', '{{ member.display_name }}')"
+                                title="Remove from project">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    {% else %}
+                        {# Regular member actions #}
+                        {% if can_change_admin %}
+                        <button class="btn btn-xs btn-outline-info"
+                                onclick="makeAdmin('{{ projcode }}', '{{ member.username }}')"
+                                title="Make project admin">
+                            <i class="fas fa-user-shield"></i>
+                        </button>
+                        {% endif %}
+                        <button class="btn btn-xs btn-outline-danger"
+                                onclick="confirmRemoveMember('{{ projcode }}', '{{ member.username }}', '{{ member.display_name }}')"
+                                title="Remove from project">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    {% endif %}
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<style>
+.btn-xs {
+    padding: 0.125rem 0.375rem;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    border-radius: 0.2rem;
+}
+</style>

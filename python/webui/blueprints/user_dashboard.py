@@ -12,10 +12,20 @@ from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 
 from webui.extensions import db
-from sam.queries import get_user_dashboard_data, get_resource_detail_data, get_users_on_project, get_user_breakdown_for_project, get_jobs_for_project
+from sam.queries import (
+    get_user_dashboard_data, get_resource_detail_data, get_users_on_project,
+    get_user_breakdown_for_project, get_jobs_for_project, find_project_by_code
+)
+from sam.projects.projects import Project
 from webui.utils.charts import generate_usage_timeseries_matplotlib
+from webui.utils.project_permissions import can_manage_project_members, can_change_admin
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/dashboard')
+
+
+# Usage threshold configuration (percentage)
+USAGE_WARNING_THRESHOLD = 75  # Yellow warning
+USAGE_CRITICAL_THRESHOLD = 90  # Red critical
 
 
 @bp.route('/')
@@ -33,7 +43,9 @@ def index():
     return render_template(
         'user/dashboard.html',
         user=current_user,
-        dashboard_data=dashboard_data
+        dashboard_data=dashboard_data,
+        usage_warning_threshold=USAGE_WARNING_THRESHOLD,
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
     )
 
 
@@ -120,8 +132,13 @@ def members_fragment(projcode):
     Lazy-loaded HTML fragment showing project members.
 
     Returns:
-        HTML table of project members (no full page layout)
+        HTML table of project members with management controls (if authorized)
     """
+    project = Project.get_by_projcode(db.session, projcode)
+
+    if not project:
+        return '<p class="text-danger mb-0">Project not found</p>'
+
     members = get_users_on_project(db.session, projcode)
 
     if not members:
@@ -129,7 +146,11 @@ def members_fragment(projcode):
 
     return render_template(
         'user/fragments/members_table.html',
-        members=sorted(members, key=lambda member: member["display_name"])
+        members=sorted(members, key=lambda member: member["display_name"]),
+        projcode=projcode,
+        project=project,
+        can_manage=can_manage_project_members(current_user, project),
+        can_change_admin=can_change_admin(current_user, project)
     )
 
 
@@ -237,3 +258,12 @@ def jobs_fragment(projcode, resource):
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d')
     )
+
+
+# Note: Member management API endpoints have been moved to /api/v1/projects/
+# See python/webui/api/v1/projects.py for:
+#   POST /api/v1/projects/<projcode>/members - Add member
+#   DELETE /api/v1/projects/<projcode>/members/<username> - Remove member
+#   PUT /api/v1/projects/<projcode>/admin - Change admin
+# See python/webui/api/v1/users.py for:
+#   GET /api/v1/users/search - Search users
