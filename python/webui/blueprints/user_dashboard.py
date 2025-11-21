@@ -46,7 +46,7 @@ def resource_details():
     Query parameters:
         projcode: Project code
         resource: Resource name
-        start_date: Optional start date (default: 30 days ago)
+        start_date: Optional start date (default: 90 days ago)
         end_date: Optional end date (default: today)
 
     Returns:
@@ -59,12 +59,12 @@ def resource_details():
         flash('Missing project code or resource name', 'error')
         return redirect(url_for('user_dashboard.index'))
 
-    # Parse date range (default to last 30 days)
+    # Parse date range (default to last 90 days)
     try:
         if request.args.get('start_date'):
             start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d')
         else:
-            start_date = datetime.now() - timedelta(days=30)
+            start_date = datetime.now() - timedelta(days=90)
 
         if request.args.get('end_date'):
             end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d')
