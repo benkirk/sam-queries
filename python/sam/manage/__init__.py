@@ -86,7 +86,7 @@ def remove_user_from_project(session: Session, project_id: int, user_id: int) ->
         ValueError: If trying to remove the project lead
     """
     # Get project to check lead/admin
-    project = session.query(Project).get(project_id)
+    project = session.get(Project, project_id)
 
     if not project:
         raise ValueError(f"Project {project_id} not found")
@@ -131,7 +131,7 @@ def change_project_admin(
     Raises:
         ValueError: If new admin is not a project member
     """
-    project = session.query(Project).get(project_id)
+    project = session.get(Project, project_id)
 
     if not project:
         raise ValueError(f"Project {project_id} not found")

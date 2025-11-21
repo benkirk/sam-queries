@@ -1722,7 +1722,7 @@ def get_project_member_user_ids(session: Session, project_id: int) -> List[int]:
     Returns:
         List of user IDs
     """
-    project = session.query(Project).get(project_id)
+    project = session.get(Project, project_id)
     if not project:
         return []
 
