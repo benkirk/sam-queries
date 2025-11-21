@@ -14,8 +14,10 @@ from flask_login import login_required, current_user
 from webui.utils.rbac import require_permission, Permission
 from webui.extensions import db
 from webui.schemas import UserSchema, UserListSchema, UserSummarySchema, ProjectListSchema
+from webui.api.helpers import register_error_handlers, get_user_or_404, serialize_projects_by_role
 
 bp = Blueprint('api_users', __name__)
+register_error_handlers(bp)
 
 
 @bp.route('/me', methods=['GET'])
@@ -119,35 +121,9 @@ def get_current_user_projects():
 
     else:
         # Grouped format (default): projects grouped by role
-        # Use ProjectListSchema for consistent serialization
         schema = ProjectListSchema()
-
-        # Get projects where user is lead
-        led_projects = [
-            {**schema.dump(p), 'role': 'lead'}
-            for p in user.led_projects
-        ]
-
-        # Get projects where user is admin
-        admin_projects = [
-            {**schema.dump(p), 'role': 'admin'}
-            for p in user.admin_projects
-        ]
-
-        # Get all active projects (as member)
-        member_projects = [
-            {**schema.dump(p), 'role': 'member'}
-            for p in user.active_projects
-            if p not in user.led_projects and p not in user.admin_projects
-        ]
-
-        return jsonify({
-            'username': user.username,
-            'led_projects': led_projects,
-            'admin_projects': admin_projects,
-            'member_projects': member_projects,
-            'total_projects': len(led_projects) + len(admin_projects) + len(member_projects)
-        })
+        data = serialize_projects_by_role(user, schema)
+        return jsonify({'username': user.username, **data})
 
 
 @bp.route('/search', methods=['GET'])
@@ -255,14 +231,10 @@ def get_user(username):
     Returns:
         JSON with user details
     """
-    from sam.queries import find_user_by_username
+    user, error = get_user_or_404(db.session, username)
+    if error:
+        return error
 
-    user = find_user_by_username(db.session, username)
-
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-
-    # Serialize user using UserSchema
     return jsonify(UserSchema().dump(user))
 
 
@@ -276,51 +248,10 @@ def get_user_projects(username):
     Returns:
         JSON with list of projects where user is lead, admin, or member
     """
-    from sam.queries import find_user_by_username
+    user, error = get_user_or_404(db.session, username)
+    if error:
+        return error
 
-    user = find_user_by_username(db.session, username)
-
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-
-    # Use ProjectListSchema for consistent serialization
     schema = ProjectListSchema()
-
-    # Get projects where user is lead
-    led_projects = [
-        {**schema.dump(p), 'role': 'lead'}
-        for p in user.led_projects
-    ]
-
-    # Get projects where user is admin
-    admin_projects = [
-        {**schema.dump(p), 'role': 'admin'}
-        for p in user.admin_projects
-    ]
-
-    # Get all active projects (as member)
-    member_projects = [
-        {**schema.dump(p), 'role': 'member'}
-        for p in user.active_projects
-        if p not in user.led_projects and p not in user.admin_projects
-    ]
-
-    return jsonify({
-        'username': username,
-        'led_projects': led_projects,
-        'admin_projects': admin_projects,
-        'member_projects': member_projects,
-        'total_projects': len(led_projects) + len(admin_projects) + len(member_projects)
-    })
-
-
-@bp.errorhandler(403)
-def forbidden(e):
-    """Handle forbidden access."""
-    return jsonify({'error': 'Forbidden - insufficient permissions'}), 403
-
-
-@bp.errorhandler(401)
-def unauthorized(e):
-    """Handle unauthorized access."""
-    return jsonify({'error': 'Unauthorized - authentication required'}), 401
+    data = serialize_projects_by_role(user, schema)
+    return jsonify({'username': username, **data})

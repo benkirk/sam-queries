@@ -24,10 +24,12 @@ from webui.schemas import (
     DiskChargeDetailSchema,
     ArchiveChargeDetailSchema
 )
+from webui.api.helpers import register_error_handlers, get_project_or_404, parse_date_range
 from datetime import datetime, timedelta
 from sqlalchemy import func
 
 bp = Blueprint('api_charges', __name__)
+register_error_handlers(bp)
 
 
 @bp.route('/projects/<projcode>/charges', methods=['GET'])
@@ -46,7 +48,6 @@ def get_project_charges(projcode):
     Returns:
         JSON with charge summaries grouped by resource type, or time series if group_by=date
     """
-    from sam.queries import find_project_by_code
     from sam.accounting.accounts import Account
     from sam.resources.resources import Resource
     from sam.summaries.comp_summaries import CompChargeSummary
@@ -54,16 +55,14 @@ def get_project_charges(projcode):
     from sam.summaries.disk_summaries import DiskChargeSummary
     from sam.summaries.archive_summaries import ArchiveChargeSummary
 
-    project = find_project_by_code(db.session, projcode)
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
+    project, error = get_project_or_404(db.session, projcode)
+    if error:
+        return error
 
     # Parse date parameters
-    try:
-        end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d') if request.args.get('end_date') else datetime.now()
-        start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d') if request.args.get('start_date') else end_date - timedelta(days=90)
-    except ValueError:
-        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    start_date, end_date, error = parse_date_range(days_back=90)
+    if error:
+        return error
 
     resource_name = request.args.get('resource')
     group_by = request.args.get('group_by')
@@ -239,16 +238,15 @@ def get_project_charges_summary(projcode):
     Returns:
         JSON with total charges by resource type for all active allocations
     """
-    from sam.queries import find_project_by_code
     from sam.accounting.accounts import Account
     from sam.summaries.comp_summaries import CompChargeSummary
     from sam.summaries.dav_summaries import DavChargeSummary
     from sam.summaries.disk_summaries import DiskChargeSummary
     from sam.summaries.archive_summaries import ArchiveChargeSummary
 
-    project = find_project_by_code(db.session, projcode)
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
+    project, error = get_project_or_404(db.session, projcode)
+    if error:
+        return error
 
     # Get all accounts
     accounts = db.session.query(Account).filter(
@@ -302,15 +300,3 @@ def get_project_charges_summary(projcode):
         'resources': summary_by_resource,
         'total_resources': len(summary_by_resource)
     })
-
-
-@bp.errorhandler(403)
-def forbidden(e):
-    """Handle forbidden access."""
-    return jsonify({'error': 'Forbidden - insufficient permissions'}), 403
-
-
-@bp.errorhandler(401)
-def unauthorized(e):
-    """Handle unauthorized access."""
-    return jsonify({'error': 'Unauthorized - authentication required'}), 401

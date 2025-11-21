@@ -18,9 +18,11 @@ from webui.schemas import (
     ProjectSchema, ProjectListSchema, ProjectSummarySchema,
     AllocationWithUsageSchema, UserSummarySchema, CompJobSchema
 )
+from webui.api.helpers import register_error_handlers, get_project_or_404, parse_date_range
 from datetime import datetime, timedelta
 
 bp = Blueprint('api_projects', __name__)
+register_error_handlers(bp)
 
 
 # ============================================================================
@@ -194,16 +196,9 @@ def get_project(projcode):
         - tree_depth: Depth of current project in tree (0 = root)
         - tree: Full tree structure from root with nested children
     """
-    from sam.queries import find_project_by_code
-
-    project = find_project_by_code(db.session, projcode)
-
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
-
-    # # Check access: admin permission OR user is project member
-    # if not _user_can_access_project(project):
-    #     return jsonify({'error': 'Forbidden - insufficient permissions'}), 403
+    project, error = get_project_or_404(db.session, projcode)
+    if error:
+        return error
 
     # Get max_depth parameter (default: 4)
     max_depth = request.args.get('max_depth', 4, type=int)
@@ -228,12 +223,9 @@ def get_project_members(projcode):
     Returns:
         JSON with lead, admin, and all members
     """
-    from sam.queries import find_project_by_code
-
-    project = find_project_by_code(db.session, projcode)
-
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
+    project, error = get_project_or_404(db.session, projcode)
+    if error:
+        return error
 
     # Check access: admin permission OR user is project member
     from webui.utils.rbac import has_permission
@@ -280,13 +272,11 @@ def get_project_allocations(projcode):
     Returns:
         JSON with allocations including usage details for the project
     """
-    from sam.queries import find_project_by_code
     from sam.accounting.accounts import Account
 
-    project = find_project_by_code(db.session, projcode)
-
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
+    project, error = get_project_or_404(db.session, projcode)
+    if error:
+        return error
 
     # # Check access: admin permission OR user is project member
     # from webui.utils.rbac import has_permission
@@ -449,14 +439,13 @@ def add_member(projcode):
     Returns:
         JSON with success status and member info
     """
-    from sam.queries import find_project_by_code
     from sam.manage import add_user_to_project
     from sam.core.users import User
     from webui.utils.project_permissions import can_manage_project_members
 
-    project = find_project_by_code(db.session, projcode)
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
+    project, error = get_project_or_404(db.session, projcode)
+    if error:
+        return error
 
     if not can_manage_project_members(current_user, project):
         return jsonify({'error': 'Unauthorized - insufficient permissions'}), 403
@@ -510,14 +499,13 @@ def remove_member(projcode, username):
     Returns:
         JSON with success status
     """
-    from sam.queries import find_project_by_code
     from sam.manage import remove_user_from_project
     from sam.core.users import User
     from webui.utils.project_permissions import can_manage_project_members
 
-    project = find_project_by_code(db.session, projcode)
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
+    project, error = get_project_or_404(db.session, projcode)
+    if error:
+        return error
 
     if not can_manage_project_members(current_user, project):
         return jsonify({'error': 'Unauthorized - insufficient permissions'}), 403
@@ -549,14 +537,13 @@ def update_admin(projcode):
     Returns:
         JSON with success status and new admin info
     """
-    from sam.queries import find_project_by_code
     from sam.manage import change_project_admin
     from sam.core.users import User
     from webui.utils.project_permissions import can_change_admin
 
-    project = find_project_by_code(db.session, projcode)
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
+    project, error = get_project_or_404(db.session, projcode)
+    if error:
+        return error
 
     if not can_change_admin(current_user, project):
         return jsonify({'error': 'Unauthorized - only project lead can change admin'}), 403
@@ -610,7 +597,6 @@ def get_project_jobs(projcode):
     Returns:
         JSON with list of jobs including job ID, date/time, and resource usage
     """
-    from sam.queries import find_project_by_code
     from sam.activity.computational import CompJob
 
     resource_name = request.args.get('resource')
@@ -619,21 +605,14 @@ def get_project_jobs(projcode):
     if not resource_name:
         return jsonify({'error': 'Resource parameter is required'}), 400
 
-    project = find_project_by_code(db.session, projcode)
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
-
-    # # Check access: admin permission OR user is project member
-    # from webui.utils.rbac import has_permission
-    # if not (has_permission(current_user, Permission.VIEW_ALLOCATIONS) or _user_can_access_project(project)):
-    #     return jsonify({'error': 'Forbidden - insufficient permissions'}), 403
+    project, error = get_project_or_404(db.session, projcode)
+    if error:
+        return error
 
     # Parse dates
-    try:
-        end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d') if request.args.get('end_date') else datetime.now()
-        start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d') if request.args.get('start_date') else end_date - timedelta(days=30)
-    except ValueError:
-        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    start_date, end_date, error = parse_date_range(days_back=30)
+    if error:
+        return error
 
     # Query jobs for this project and resource
     jobs = db.session.query(CompJob).filter(
@@ -654,15 +633,3 @@ def get_project_jobs(projcode):
         'total_jobs': len(jobs_data),
         'jobs': jobs_data
     })
-
-
-@bp.errorhandler(403)
-def forbidden(e):
-    """Handle forbidden access."""
-    return jsonify({'error': 'Forbidden - insufficient permissions'}), 403
-
-
-@bp.errorhandler(401)
-def unauthorized(e):
-    """Handle unauthorized access."""
-    return jsonify({'error': 'Unauthorized - authentication required'}), 401
