@@ -128,8 +128,8 @@ def _format_project_allocation_tuple(project, alloc, res_name, days_value, days_
 # ============================================================================
 
 @bp.route('/', methods=['GET'])
-#@login_required
-#@require_permission(Permission.VIEW_PROJECTS)
+@login_required
+@require_permission(Permission.VIEW_PROJECTS)
 def list_projects():
     """
     GET /api/v1/projects - List projects with pagination and filtering.
@@ -176,7 +176,7 @@ def list_projects():
 
 
 @bp.route('/<projcode>', methods=['GET'])
-#@login_required
+@login_required
 def get_project(projcode):
     """
     GET /api/v1/projects/<projcode> - Get project details with tree structure.
@@ -218,7 +218,7 @@ def get_project(projcode):
 
 
 @bp.route('/<projcode>/members', methods=['GET'])
-#@login_required
+@login_required
 def get_project_members(projcode):
     """
     GET /api/v1/projects/<projcode>/members - Get project members.
@@ -264,7 +264,7 @@ def get_project_members(projcode):
 
 
 @bp.route('/<projcode>/allocations', methods=['GET'])
-#@login_required
+@login_required
 def get_project_allocations(projcode):
     """
     GET /api/v1/projects/<projcode>/allocations - Get project allocations with usage.
@@ -331,8 +331,8 @@ def get_project_allocations(projcode):
 
 
 @bp.route('/expiring', methods=['GET'])
-#@login_required
-#@require_permission(Permission.VIEW_ALLOCATIONS)
+@login_required
+@require_permission(Permission.VIEW_ALLOCATIONS)
 def get_expiring_projects():
     """
     GET /api/v1/projects/expiring - Get projects with expiring allocations.
@@ -376,8 +376,8 @@ def get_expiring_projects():
 
 
 @bp.route('/recently_expired', methods=['GET'])
-#@login_required
-#@require_permission(Permission.VIEW_ALLOCATIONS)
+@login_required
+@require_permission(Permission.VIEW_ALLOCATIONS)
 def get_recently_expired_projects():
     """
     GET /api/v1/projects/recently_expired - Get projects with recently expired allocations.
@@ -432,7 +432,7 @@ def get_recently_expired_projects():
 
 
 @bp.route('/<projcode>/jobs', methods=['GET'])
-#@login_required
+@login_required
 def get_project_jobs(projcode):
     """
     GET /api/v1/projects/<projcode>/jobs - Get job history for a project.
