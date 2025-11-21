@@ -238,9 +238,9 @@ def serialize_projects_by_role(user, schema):
 
 ---
 
-## Phase 2: Schema Consolidation (4-5 hours)
+## Phase 2: Schema Consolidation & Query Reuse (4-5 hours)
 
-These changes refactor repetitive schema patterns.
+These changes refactor repetitive schema patterns and consolidate query logic.
 
 ### 2.1 Charge Detail Schema Base Class
 
@@ -349,7 +349,7 @@ class DavChargeSummarySchema(BaseChargeSummarySchema):
 
 ---
 
-### 2.3 Charge Query Module Extraction
+### 2.3 Leverage `sam.queries` Module for Charge Queries
 
 **Problem**: Same charge summary table queries duplicated in API and schema.
 
@@ -357,69 +357,81 @@ class DavChargeSummarySchema(BaseChargeSummarySchema):
 - `api/v1/charges.py` (lines 108-173)
 - `schemas/allocation.py` (lines 170-222)
 
-**Proposed Solution**: Create `queries/charges.py`:
+**Existing Solution in `sam.queries`**: The `sam/queries/__init__.py` module already provides comprehensive charge query utilities that should be reused:
+
 ```python
-"""Charge query utilities for the web UI."""
-
-from datetime import datetime
-from sqlalchemy import func
-from sam.summaries.charge_summaries import (
-    CompChargeSummary, DavChargeSummary,
-    DiskChargeSummary, ArchiveChargeSummary
+# Already available in sam.queries:
+from sam.queries import (
+    get_user_charge_summary,      # User charges by date range
+    get_project_usage_summary,    # Aggregated project usage totals
+    get_daily_usage_trend,        # Daily breakdown for charts
+    get_resource_detail_data,     # Full resource detail with daily charges
+    get_user_dashboard_data,      # Optimized dashboard queries
+    get_user_breakdown_for_project,  # Per-user usage on a project
+    get_queue_usage_breakdown,    # Usage by queue
 )
-
-def get_charge_totals(session, account_ids, start_date, end_date, resource_type='HPC'):
-    """
-    Get total charges by type for given accounts and date range.
-
-    Returns:
-        dict: {'comp': float, 'dav': float, 'disk': float, 'archive': float}
-    """
-    totals = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-
-    if resource_type in ('HPC', 'DAV'):
-        # Query comp and dav summaries
-        comp_total = session.query(func.sum(CompChargeSummary.charges)).filter(
-            CompChargeSummary.account_id.in_(account_ids),
-            CompChargeSummary.activity_date.between(start_date, end_date)
-        ).scalar() or 0.0
-        totals['comp'] = float(comp_total)
-
-        dav_total = session.query(func.sum(DavChargeSummary.charges)).filter(
-            DavChargeSummary.account_id.in_(account_ids),
-            DavChargeSummary.activity_date.between(start_date, end_date)
-        ).scalar() or 0.0
-        totals['dav'] = float(dav_total)
-
-    elif resource_type == 'DISK':
-        disk_total = session.query(func.sum(DiskChargeSummary.charges)).filter(
-            DiskChargeSummary.account_id.in_(account_ids),
-            DiskChargeSummary.activity_date.between(start_date, end_date)
-        ).scalar() or 0.0
-        totals['disk'] = float(disk_total)
-
-    elif resource_type == 'ARCHIVE':
-        archive_total = session.query(func.sum(ArchiveChargeSummary.charges)).filter(
-            ArchiveChargeSummary.account_id.in_(account_ids),
-            ArchiveChargeSummary.activity_date.between(start_date, end_date)
-        ).scalar() or 0.0
-        totals['archive'] = float(archive_total)
-
-    return totals
-
-
-def get_daily_charges(session, account_ids, start_date, end_date):
-    """
-    Get daily charge breakdown for timeline visualization.
-
-    Returns:
-        list: [{'date': 'YYYY-MM-DD', 'comp': float, 'dav': float, ...}, ...]
-    """
-    # Implementation for daily aggregation
-    pass
 ```
 
-**Impact**: Reusable query logic, single source of truth
+**Refactoring Approach**:
+
+1. **In `api/v1/charges.py`**: Replace inline charge queries with `sam.queries` functions:
+   ```python
+   from sam.queries import get_resource_detail_data, get_daily_usage_trend
+
+   @bp.route('/projects/<projcode>/charges')
+   def get_project_charges(projcode):
+       # Use existing sam.queries function instead of inline queries
+       data = get_resource_detail_data(
+           db.session, projcode, resource_name, start_date, end_date
+       )
+       return jsonify(data)
+   ```
+
+2. **In `schemas/allocation.py`**: Use `Project.get_detailed_allocation_usage()` which already encapsulates the charge aggregation logic (see `sam/projects/projects.py`).
+
+3. **Add any missing utilities to `sam.queries`**: If specific query patterns aren't already covered, add them to `sam/queries/__init__.py` rather than creating a webui-specific module. This makes them available to:
+   - The webui API endpoints
+   - The `sam_search.py` CLI tool
+   - Any future interfaces
+
+**Key `sam.queries` Functions for Charges**:
+
+| Function | Purpose | Use Case |
+|----------|---------|----------|
+| `get_resource_detail_data()` | Resource summary + daily charges | Resource detail pages |
+| `get_daily_usage_trend()` | Daily charge breakdown | Timeline charts |
+| `get_project_usage_summary()` | Aggregated totals | Dashboard summaries |
+| `get_user_breakdown_for_project()` | Per-user usage | User contribution views |
+| `get_queue_usage_breakdown()` | Usage by queue | Queue analysis |
+
+**Impact**:
+- Webui endpoints become thin wrappers around `sam.queries`
+- Single source of truth for charge calculations
+- CLI and API share consistent query logic
+- ~60 lines of duplicate queries removed from webui
+
+**Architecture Principle**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        sam.queries                              │
+│  (Database queries, business logic, data aggregation)           │
+│  • Reusable by CLI, API, scripts                                │
+│  • Returns Python objects/dicts                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+   │ sam_search  │    │   webui/    │    │  (future)   │
+   │    CLI      │    │    API      │    │   tools     │
+   │             │    │   schemas   │    │             │
+   └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+- **`sam.queries`**: Database operations, business logic, calculations
+- **`webui/schemas`**: HTTP serialization (Marshmallow), field selection, nested relationships
+- **`webui/api`**: Request handling, authentication, thin wrappers around queries
 
 ---
 
@@ -554,18 +566,24 @@ def require_project_access(f):
 
 ### New Files to Create
 - `api/helpers.py` - Response helpers, date parsing, project lookup
-- `queries/charges.py` - Charge query utilities (optional, Phase 2)
 - `api/access_control.py` - Access control decorators (optional, Phase 3)
 
 ### Files to Modify
+
+#### WebUI Module (`python/webui/`)
 | File | Phase | Changes |
 |------|-------|---------|
 | `api/v1/users.py` | 1, 3 | Use helpers, split endpoint |
 | `api/v1/projects.py` | 1 | Use helpers |
-| `api/v1/charges.py` | 1, 2 | Use helpers, extract queries |
+| `api/v1/charges.py` | 1, 2 | Use helpers, use `sam.queries` functions |
 | `schemas/charge_details.py` | 2 | Base class refactor |
 | `schemas/charges.py` | 2 | Inheritance refactor |
-| `schemas/allocation.py` | 2 | Use charge query module |
+| `schemas/allocation.py` | 2 | Use `Project.get_detailed_allocation_usage()` |
+
+#### SAM Core Module (`python/sam/`)
+| File | Phase | Changes |
+|------|-------|---------|
+| `queries/__init__.py` | 2 | Add any missing charge query utilities (if needed) |
 
 ---
 
