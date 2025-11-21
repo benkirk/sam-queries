@@ -31,8 +31,8 @@ bp = Blueprint('api_charges', __name__)
 
 
 @bp.route('/projects/<projcode>/charges', methods=['GET'])
-#@login_required
-#@require_permission(Permission.VIEW_ALLOCATIONS)
+@login_required
+@require_permission(Permission.VIEW_ALLOCATIONS)
 def get_project_charges(projcode):
     """
     GET /api/v1/projects/<projcode>/charges - Get detailed charge summaries by date range.
@@ -226,8 +226,8 @@ def get_project_charges(projcode):
 
 
 @bp.route('/projects/<projcode>/charges/summary', methods=['GET'])
-#@login_required
-#@require_permission(Permission.VIEW_ALLOCATIONS)
+@login_required
+@require_permission(Permission.VIEW_ALLOCATIONS)
 def get_project_charges_summary(projcode):
     """
     GET /api/v1/projects/<projcode>/charges/summary - Get aggregated charge totals by resource type.

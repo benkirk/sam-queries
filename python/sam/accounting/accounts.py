@@ -55,6 +55,34 @@ class Account(Base, SoftDeleteMixin):
     users = relationship('AccountUser', back_populates='account', lazy='selectin')
     responsible_parties = relationship('ResponsibleParty', back_populates='account')
 
+    @classmethod
+    def get_by_project_and_resource(cls, session, project_id: int, resource_id: int,
+                                     exclude_deleted: bool = True) -> Optional['Account']:
+        """
+        Get an account by project and resource IDs.
+
+        Args:
+            session: SQLAlchemy session
+            project_id: Project ID
+            resource_id: Resource ID
+            exclude_deleted: If True, exclude deleted accounts (default True)
+
+        Returns:
+            Account object if found, None otherwise
+
+        Example:
+            >>> account = Account.get_by_project_and_resource(session, 123, 456)
+        """
+        query = session.query(cls).filter(
+            cls.project_id == project_id,
+            cls.resource_id == resource_id
+        )
+
+        if exclude_deleted:
+            query = query.filter(cls.deleted == False)
+
+        return query.first()
+
     def __str__(self):
         return f"{self.project.projcode if self.project else None} - {self.resource.resource_name if self.resource else None}"
 

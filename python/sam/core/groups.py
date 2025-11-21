@@ -35,6 +35,23 @@ class AdhocGroup(Base, ActiveFlagMixin):
     tags = relationship('AdhocGroupTag', back_populates='group')
     system_accounts = relationship('AdhocSystemAccountEntry', back_populates='group')
 
+    @classmethod
+    def get_by_name(cls, session, group_name: str) -> Optional['AdhocGroup']:
+        """
+        Get a group by its name.
+
+        Args:
+            session: SQLAlchemy session
+            group_name: Name of the group
+
+        Returns:
+            AdhocGroup object if found, None otherwise
+
+        Example:
+            >>> group = AdhocGroup.get_by_name(session, 'research_group')
+        """
+        return session.query(cls).filter(cls.group_name == group_name).first()
+
     def __str__(self):
         return f"{self.group_name}"
 

@@ -12,8 +12,8 @@ from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 
 from webui.extensions import db
-from sam.queries import get_user_dashboard_data, get_resource_detail_data, get_users_on_project
-from webui.utils.charts import generate_usage_sparkline, generate_charge_breakdown_bars, generate_usage_timeseries_matplotlib
+from sam.queries import get_user_dashboard_data, get_resource_detail_data, get_users_on_project, get_user_breakdown_for_project, get_jobs_for_project
+from webui.utils.charts import generate_usage_timeseries_matplotlib
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/dashboard')
 
@@ -46,7 +46,7 @@ def resource_details():
     Query parameters:
         projcode: Project code
         resource: Resource name
-        start_date: Optional start date (default: 30 days ago)
+        start_date: Optional start date (default: 90 days ago)
         end_date: Optional end date (default: today)
 
     Returns:
@@ -59,12 +59,12 @@ def resource_details():
         flash('Missing project code or resource name', 'error')
         return redirect(url_for('user_dashboard.index'))
 
-    # Parse date range (default to last 30 days)
+    # Parse date range (default to last 90 days)
     try:
         if request.args.get('start_date'):
             start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d')
         else:
-            start_date = datetime.now() - timedelta(days=30)
+            start_date = datetime.now() - timedelta(days=90)
 
         if request.args.get('end_date'):
             end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d')
@@ -87,10 +87,18 @@ def resource_details():
         flash(f'Project {projcode} or resource {resource_name} not found', 'error')
         return redirect(url_for('user_dashboard.index'))
 
+    # Fetch user breakdown data
+    user_breakdown = get_user_breakdown_for_project(
+        db.session,
+        projcode,
+        start_date,
+        end_date,
+        resource_name
+    )
+
     # Generate charts server-side
-    usage_chart = generate_usage_sparkline(detail_data['daily_charges'])
-    #usage_chart = generate_usage_timeseries_matplotlib(detail_data['daily_charges'])
-    breakdown_chart = generate_charge_breakdown_bars(detail_data['charge_totals'])
+    usage_chart = generate_usage_timeseries_matplotlib(detail_data['daily_charges'])
+    #breakdown_chart = generate_charge_breakdown_bars(detail_data['charge_totals'])
 
     return render_template(
         'user/resource_details.html',
@@ -100,8 +108,8 @@ def resource_details():
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d'),
         detail_data=detail_data,
+        user_breakdown=user_breakdown,
         usage_chart=usage_chart,
-        breakdown_chart=breakdown_chart
     )
 
 
@@ -169,3 +177,63 @@ def tree_fragment(projcode):
     tree_html = f'<ul class="tree-list">{render_tree_node(root, projcode)}</ul>'
 
     return tree_html
+
+
+@bp.route('/jobs/<projcode>/<resource>')
+@login_required
+def jobs_fragment(projcode, resource):
+    """
+    Lazy-loaded HTML fragment showing project jobs with pagination.
+
+    Query parameters:
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        page: Page number (default 1)
+
+    Returns:
+        HTML table of jobs (no full page layout)
+    """
+    # Get date range from query params
+    try:
+        start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d')
+        end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d')
+    except (TypeError, ValueError):
+        return '<p class="text-danger mb-0">Invalid date range</p>'
+
+    # Pagination parameters
+    page = int(request.args.get('page', 1))
+    per_page = 50
+
+    # Get all jobs to calculate total count
+    from sam.queries import get_jobs_for_project
+    all_jobs = get_jobs_for_project(
+        db.session,
+        projcode,
+        start_date,
+        end_date,
+        resource
+    )
+
+    total_jobs = len(all_jobs)
+    total_pages = (total_jobs + per_page - 1) // per_page  # Ceiling division
+
+    # Get paginated subset
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    jobs = all_jobs[start_idx:end_idx]
+
+    if not jobs and page == 1:
+        return '<p class="text-muted mb-0">No jobs found for this period</p>'
+
+    return render_template(
+        'user/fragments/jobs_table.html',
+        jobs=jobs,
+        page=page,
+        per_page=per_page,
+        total_jobs=total_jobs,
+        total_pages=total_pages,
+        projcode=projcode,
+        resource=resource,
+        start_date=start_date.strftime('%Y-%m-%d'),
+        end_date=end_date.strftime('%Y-%m-%d')
+    )

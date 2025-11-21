@@ -98,47 +98,6 @@
                 </tbody>
             </table>
         </div>
-
-        <!-- Charge Breakdown -->
-        {% if detail_data.charge_totals.total > 0 %}
-        <div class="mt-3">
-            <h6>Charge Breakdown (Selected Period):</h6>
-            <div class="row">
-                {% if detail_data.charge_totals.comp > 0 %}
-                <div class="col-md-3">
-                    <div class="stat-box">
-                        <div class="stat-label">Compute</div>
-                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.comp) }}</div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if detail_data.charge_totals.dav > 0 %}
-                <div class="col-md-3">
-                    <div class="stat-box">
-                        <div class="stat-label">DAV</div>
-                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.dav) }}</div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if detail_data.charge_totals.disk > 0 %}
-                <div class="col-md-3">
-                    <div class="stat-box">
-                        <div class="stat-label">Disk</div>
-                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.disk) }}</div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if detail_data.charge_totals.archive > 0 %}
-                <div class="col-md-3">
-                    <div class="stat-box">
-                        <div class="stat-label">Archive</div>
-                        <div class="stat-value">{{ '{:,.0f}'.format(detail_data.charge_totals.archive) }}</div>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
     </div>
 </div>
 
@@ -161,7 +120,54 @@
     </div>
 </div>
 
-<!-- Recent Usage (Charges) Card -->
+<!-- User Breakdown Card -->
+<div class="card mb-4">
+    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseUsers" aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-users"></i> Usage by User
+            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
+        </h5>
+    </div>
+    <div id="collapseUsers" class="collapse show">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover" id="users-table">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>Username</th>
+                            <th class="text-right">Jobs</th>
+                            <th class="text-right">Charges</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if user_breakdown %}
+                            {% for user in user_breakdown %}
+                            <tr>
+                                <td><strong>{{ user.username }}</strong></td>
+                                <td class="text-right">{{ '{:,}'.format(user.jobs) }}</td>
+                                <td class="text-right">{{ '{:,.0f}'.format(user.charges) }}</td>
+                            </tr>
+                            {% endfor %}
+                            <tr class="table-info font-weight-bold">
+                                <td>Total</td>
+                                <td class="text-right">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
+                                <td class="text-right">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted">
+                                    No user activity recorded for this period
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Usage (Charges) Card, collapsed by default -->
 <div class="card mb-4">
     <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseCharges" aria-expanded="true">
         <h5 class="mb-0">
@@ -169,46 +175,22 @@
             <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
         </h5>
     </div>
-    <div id="collapseCharges" class="collapse show">
+    <div id="collapseCharges" class="collapse">
         <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-sm table-hover" id="charges-table">
                     <thead class="thead-dark">
                         <tr>
                             <th>Date</th>
-                            {% if detail_data.charge_totals.comp > 0 %}
-                            <th class="text-right">Compute</th>
-                            {% endif %}
-                            {% if detail_data.charge_totals.dav > 0 %}
-                            <th class="text-right">DAV</th>
-                            {% endif %}
-                            {% if detail_data.charge_totals.disk > 0 %}
-                            <th class="text-right">Disk</th>
-                            {% endif %}
-                            {% if detail_data.charge_totals.archive > 0 %}
-                            <th class="text-right">Archive</th>
-                            {% endif %}
-                            <th class="text-right"><strong>Total</strong></th>
+                            <th class="text-right">Value</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% if detail_data.daily_charges %}
-                            {% for day in detail_data.daily_charges %}
+                        {% if detail_data.daily_charges and detail_data.daily_charges['dates'] %}
+                            {% for i in range(detail_data.daily_charges['dates']|length) %}
                             <tr>
-                                <td>{{ day.date.strftime('%Y-%m-%d') if day.date.strftime else day.date }}</td>
-                                {% if detail_data.charge_totals.comp > 0 %}
-                                <td class="text-right">{{ '{:,.2f}'.format(day.comp) }}</td>
-                                {% endif %}
-                                {% if detail_data.charge_totals.dav > 0 %}
-                                <td class="text-right">{{ '{:,.2f}'.format(day.dav) }}</td>
-                                {% endif %}
-                                {% if detail_data.charge_totals.disk > 0 %}
-                                <td class="text-right">{{ '{:,.2f}'.format(day.disk) }}</td>
-                                {% endif %}
-                                {% if detail_data.charge_totals.archive > 0 %}
-                                <td class="text-right">{{ '{:,.2f}'.format(day.archive) }}</td>
-                                {% endif %}
-                                <td class="text-right"><strong>{{ '{:,.2f}'.format(day.comp + day.dav + day.disk + day.archive) }}</strong></td>
+                                <td>{{ detail_data.daily_charges['dates'][i] }}</td>
+                                <td class="text-right">{{ '{:,.0f}'.format(detail_data.daily_charges['values'][i]) }}</td>
                             </tr>
                             {% endfor %}
                         {% else %}
@@ -220,6 +202,29 @@
                         {% endif %}
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Job List Card (Lazy Loaded with Pagination) -->
+<div class="card mb-4">
+    <div class="card-header" style="cursor: pointer;" data-toggle="collapse" data-target="#collapseJobs" aria-expanded="false">
+        <h5 class="mb-0">
+            <i class="fas fa-list"></i> Job List
+            <i class="fas fa-chevron-down float-right" style="transition: transform 0.3s;"></i>
+        </h5>
+    </div>
+    <div id="collapseJobs" class="collapse">
+        <div class="card-body">
+            <div id="jobs-container"
+                 data-load-url="{{ url_for('user_dashboard.jobs_fragment', projcode=projcode, resource=resource_name) }}?start_date={{ start_date }}&end_date={{ end_date }}"
+                 data-loaded="false">
+                <div class="text-center p-3">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading jobs...</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

@@ -102,7 +102,7 @@ def get_resources_by_type(session: Session, resource_type: str) -> List[str]:
 
 def find_user_by_username(session: Session, username: str) -> Optional[User]:
     """Find a user by username."""
-    return session.query(User).filter(User.username == username).first()
+    return User.get_by_username(session, username)
 
 
 def find_users_by_name(session: Session, name_part: str) -> List[User]:
@@ -247,7 +247,7 @@ def get_users_without_primary_email(session: Session) -> List[User]:
 
 def find_project_by_code(session: Session, projcode: str) -> Optional[Project]:
     """Find a project by its code."""
-    return session.query(Project).filter(Project.projcode == projcode).first()
+    return Project.get_by_projcode(session, projcode)
 
 
 def get_project_with_full_details(session: Session, projcode: str) -> Optional[Project]:
@@ -890,9 +890,7 @@ def get_allocation_summary_by_facility(
 
 def get_group_by_name(session: Session, group_name: str) -> Optional[AdhocGroup]:
     """Find a group by name."""
-    return session.query(AdhocGroup)\
-        .filter(AdhocGroup.group_name == group_name)\
-        .first()
+    return AdhocGroup.get_by_name(session, group_name)
 
 
 def get_groups_by_tag(session: Session, tag: str) -> List[AdhocGroup]:
@@ -1023,7 +1021,7 @@ def get_user_charge_summary(session, user_id: int,
 def get_project_usage_summary(session, projcode: str,
                               start_date: datetime,
                               end_date: datetime,
-                              resource: Optional[str] = None) -> Dict[str, float]:
+                              resource: str) -> Dict[str, float]:
     """
     Get aggregated usage summary for a project.
 
@@ -1032,15 +1030,13 @@ def get_project_usage_summary(session, projcode: str,
         projcode: Project code (e.g., 'UCUB0001')
         start_date: Start date (inclusive)
         end_date: End date (inclusive)
-        resource: Optional resource filter (e.g., 'Derecho')
+        resource: Resource filter (e.g., 'Derecho')
 
     Returns:
         Dictionary with keys:
         - total_jobs: Number of jobs
         - total_core_hours: Total core hours consumed
         - total_charges: Total charges incurred
-        - average_charge_per_job: Average charge per job
-        - average_core_hours_per_job: Average core hours per job
 
     Example:
         >>> summary = get_project_usage_summary(
@@ -1061,10 +1057,7 @@ def get_project_usage_summary(session, projcode: str,
         CompChargeSummary.projcode == projcode,
         CompChargeSummary.activity_date >= start_date,
         CompChargeSummary.activity_date <= end_date
-    )
-
-    if resource:
-        query = query.filter(CompChargeSummary.resource == resource)
+    ).filter(CompChargeSummary.resource == resource)
 
     result = query.first()
 
@@ -1076,8 +1069,6 @@ def get_project_usage_summary(session, projcode: str,
         'total_jobs': total_jobs,
         'total_core_hours': total_core_hours,
         'total_charges': total_charges,
-        'average_charge_per_job': (float(total_charges) / float(total_jobs)) if total_jobs > 0 else 0.0,
-        'average_core_hours_per_job': (float(total_core_hours) / float(total_jobs) ) if total_jobs > 0 else 0.0
     }
 
 
@@ -1143,36 +1134,49 @@ def get_daily_usage_trend(session, projcode: str,
     ]
 
 
-def get_recent_jobs_for_project(session, projcode: str,
-                               limit: int = 100,
-                               resource: Optional[str] = None) -> List[CompActivityChargeView]:
+def get_jobs_for_project(session, projcode: str,
+                         start_date: datetime,
+                         end_date: datetime,
+                         resource: str,
+                         limit: Optional[int] = None) -> List[CompActivityChargeView]:
     """
-    Get recent jobs for a project using the charge view.
+    Get jobs for a project within a date range using the charge view.
 
     Args:
         session: SQLAlchemy session
         projcode: Project code
-        limit: Maximum number of jobs to return (default 100)
-        resource: Optional machine filter (e.g., 'Derecho')
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        resource: Machine filter (e.g., 'Derecho')
+        limit: Optional maximum number of jobs to return (default None = no limit)
 
     Returns:
         List of CompActivityChargeView view records ordered by submit time (descending)
 
     Example:
-        >>> jobs = get_recent_jobs_for_project(session, 'UCUB0001', limit=50)
+        >>> jobs = get_jobs_for_project(
+        ...     session, 'UCUB0001',
+        ...     datetime(2024, 1, 1),
+        ...     datetime(2024, 1, 31),
+        ...     'Derecho',
+        ...     limit=50
+        ... )
         >>> for job in jobs:
         ...     print(f"{job.job_id}: {job.core_hours} hours, {job.charge} charged")
     """
     query = session.query(CompActivityChargeView).filter(
-        CompActivityChargeView.projcode == projcode
+        CompActivityChargeView.projcode == projcode,
+        CompActivityChargeView.machine == resource,
+        CompActivityChargeView.activity_date >= start_date,
+        CompActivityChargeView.activity_date <= end_date
+    ).order_by(
+        CompActivityChargeView.activity_date.desc()
     )
 
-    if resource:
-        query = query.filter(CompActivityChargeView.machine == resource)
+    if limit is not None:
+        query = query.limit(limit)
 
-    return query.order_by(
-        CompActivityChargeView.submit_time.desc()
-    ).limit(limit).all()
+    return query.all()
 
 
 def get_queue_usage_breakdown(session, projcode: str,
@@ -1285,6 +1289,69 @@ def get_user_usage_on_project(session, projcode: str,
     ).order_by(
         sql_func.sum(CompChargeSummary.charges).desc()
     ).limit(limit).all()
+
+    return [
+        {
+            'username': row.username,
+            'user_id': row.user_id,
+            'jobs': row.jobs or 0,
+            'core_hours': float(row.core_hours or 0.0),
+            'charges': float(row.charges or 0.0)
+        }
+        for row in results
+    ]
+
+
+def get_user_breakdown_for_project(session, projcode: str,
+                                   start_date: datetime,
+                                   end_date: datetime,
+                                   resource: str) -> List[Dict[str, any]]:
+    """
+    Get per-user usage breakdown for a project on a specific resource.
+    Returns all users with nonzero usage within the date range.
+
+    Args:
+        session: SQLAlchemy session
+        projcode: Project code
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        resource: Resource filter (e.g., 'Derecho')
+
+    Returns:
+        List of dicts with keys: username, user_id, jobs, core_hours, charges
+        Ordered by charges descending
+
+    Example:
+        >>> users = get_user_breakdown_for_project(
+        ...     session, 'UCUB0001',
+        ...     datetime(2024, 1, 1),
+        ...     datetime(2024, 1, 31),
+        ...     resource='Derecho'
+        ... )
+        >>> for user in users:
+        ...     print(f"{user['username']}: {user['jobs']} jobs, {user['charges']:.2f} charges")
+    """
+    from sqlalchemy import func as sql_func
+
+    results = session.query(
+        CompChargeSummary.username,
+        CompChargeSummary.user_id,
+        sql_func.sum(CompChargeSummary.num_jobs).label('jobs'),
+        sql_func.sum(CompChargeSummary.core_hours).label('core_hours'),
+        sql_func.sum(CompChargeSummary.charges).label('charges')
+    ).filter(
+        CompChargeSummary.projcode == projcode,
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date,
+        CompChargeSummary.resource == resource
+    ).group_by(
+        CompChargeSummary.username,
+        CompChargeSummary.user_id
+    ).having(
+        sql_func.sum(CompChargeSummary.charges) > 0
+    ).order_by(
+        sql_func.sum(CompChargeSummary.charges).desc()
+    ).all()
 
     return [
         {
@@ -1485,44 +1552,20 @@ def get_resource_detail_data(
                 'end_date': datetime,
                 'status': str
             },
-            'daily_charges': [
-                {
-                    'date': date,
-                    'comp': float,
-                    'dav': float,
-                    'disk': float,
-                    'archive': float
-                }
-            ],
-            'charge_totals': {
-                'comp': float,
-                'dav': float,
-                'disk': float,
-                'archive': float,
-                'total': float
-            }
+            'daily_charges': {
+                  'dates': [],
+                  'values': [],
+            },
         }
         Returns None if project or resource not found.
-
-    Example:
-        >>> from datetime import datetime, timedelta
-        >>> end = datetime.now()
-        >>> start = end - timedelta(days=30)
-        >>> data = get_resource_detail_data(session, 'SCSG0001', 'Derecho', start, end)
-        >>> if data:
-        ...     print(f"Total charges: {data['charge_totals']['total']:.2f}")
-        ...     print(f"Days of data: {len(data['daily_charges'])}")
     """
     # Find project
-    project = find_project_by_code(session, projcode)
+    project = Project.get_by_projcode(session, projcode)
     if not project:
         return None
 
     # Find resource
-    resource = session.query(Resource)\
-        .filter(Resource.resource_name == resource_name)\
-        .first()
-
+    resource = Resource.get_by_name(session, resource_name)
     if not resource:
         return None
 
@@ -1548,33 +1591,29 @@ def get_resource_detail_data(
         }
 
     # Get account for this project+resource
-    account = session.query(Account)\
-        .filter(
-            Account.project_id == project.project_id,
-            Account.resource_id == resource.resource_id,
-            Account.deleted == False
-        )\
-        .first()
+    account = Account.get_by_project_and_resource(
+        session,
+        project.project_id,
+        resource.resource_id,
+        exclude_deleted=True
+    )
 
     if not account:
         return {
             'project': project,
             'resource': resource,
             'resource_summary': resource_summary,
-            'daily_charges': [],
-            'charge_totals': {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0, 'total': 0.0}
+            'daily_charges': { 'dates': None, 'values': None }
         }
 
     # Determine resource type to query appropriate tables
     resource_type = resource.resource_type.resource_type if resource.resource_type else 'HPC'
 
-    # Query daily charges by type
-    daily_charges_map = {}  # date -> {comp, dav, disk, archive}
-    charge_totals = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+    results = None
 
-    # Query comp charges
-    if resource_type in ['HPC', 'DAV']:
-        comp_results = session.query(
+    # Query appropriate charges
+    if resource_type in  [ 'HPC', 'DAV' ]:
+        results = session.query(
             CompChargeSummary.activity_date,
             func.sum(CompChargeSummary.charges).label('charges')
         ).filter(
@@ -1583,33 +1622,9 @@ def get_resource_detail_data(
             CompChargeSummary.activity_date <= end_date
         ).group_by(CompChargeSummary.activity_date).all()
 
-        for row in comp_results:
-            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
-            if date_key not in daily_charges_map:
-                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-            daily_charges_map[date_key]['comp'] = float(row.charges or 0.0)
-            charge_totals['comp'] += float(row.charges or 0.0)
-
-        # Query DAV charges
-        dav_results = session.query(
-            DavChargeSummary.activity_date,
-            func.sum(DavChargeSummary.charges).label('charges')
-        ).filter(
-            DavChargeSummary.account_id == account.account_id,
-            DavChargeSummary.activity_date >= start_date,
-            DavChargeSummary.activity_date <= end_date
-        ).group_by(DavChargeSummary.activity_date).all()
-
-        for row in dav_results:
-            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
-            if date_key not in daily_charges_map:
-                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-            daily_charges_map[date_key]['dav'] = float(row.charges or 0.0)
-            charge_totals['dav'] += float(row.charges or 0.0)
-
     # Query disk charges
     if resource_type == 'DISK':
-        disk_results = session.query(
+        results = session.query(
             DiskChargeSummary.activity_date,
             func.sum(DiskChargeSummary.charges).label('charges')
         ).filter(
@@ -1618,16 +1633,9 @@ def get_resource_detail_data(
             DiskChargeSummary.activity_date <= end_date
         ).group_by(DiskChargeSummary.activity_date).all()
 
-        for row in disk_results:
-            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
-            if date_key not in daily_charges_map:
-                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-            daily_charges_map[date_key]['disk'] = float(row.charges or 0.0)
-            charge_totals['disk'] += float(row.charges or 0.0)
-
     # Query archive charges
     if resource_type == 'ARCHIVE':
-        archive_results = session.query(
+        results = session.query(
             ArchiveChargeSummary.activity_date,
             func.sum(ArchiveChargeSummary.charges).label('charges')
         ).filter(
@@ -1636,26 +1644,17 @@ def get_resource_detail_data(
             ArchiveChargeSummary.activity_date <= end_date
         ).group_by(ArchiveChargeSummary.activity_date).all()
 
-        for row in archive_results:
-            date_key = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
-            if date_key not in daily_charges_map:
-                daily_charges_map[date_key] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-            daily_charges_map[date_key]['archive'] = float(row.charges or 0.0)
-            charge_totals['archive'] += float(row.charges or 0.0)
+    dates = []
+    values = []
+    for row in results:
+        dates.append( row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date )
+        values.append( float(row.charges or 0.0) )
 
-    # Convert map to sorted list
-    daily_charges = [
-        {'date': date, **charges}
-        for date, charges in sorted(daily_charges_map.items())
-    ]
-
-    # Calculate total
-    charge_totals['total'] = sum(charge_totals.values())
+    daily_charges = { 'dates': dates, 'values': values }
 
     return {
         'project': project,
         'resource': resource,
         'resource_summary': resource_summary,
         'daily_charges': daily_charges,
-        'charge_totals': charge_totals
     }

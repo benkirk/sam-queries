@@ -1,0 +1,107 @@
+<div class="table-responsive">
+    <table class="table table-sm table-hover">
+        <thead class="thead-dark">
+            <tr>
+                <th>Job ID</th>
+                <th>Submit Time</th>
+                <th>Queue</th>
+                <th>Nodes</th>
+                <th>Core Hours</th>
+                <th class="text-right">Charge</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in jobs %}
+            <tr>
+                <td><code>{{ job.job_id }}</code></td>
+                <td>{{ job.submit_time.strftime('%Y-%m-%d %H:%M') if job.submit_time else 'N/A' }}</td>
+                <td>{{ job.queue or 'N/A' }}</td>
+                <td>{{ job.nodes or 0 }}</td>
+                <td>{{ '{:,.2f}'.format(job.core_hours or 0) }}</td>
+                <td class="text-right">{{ '{:,.2f}'.format(job.charge or 0) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination Controls -->
+{% if total_pages > 1 %}
+<nav aria-label="Job list pagination">
+    <ul class="pagination pagination-sm justify-content-center">
+        <!-- Previous Button -->
+        <li class="page-item {% if page == 1 %}disabled{% endif %}">
+            <a class="page-link" href="#" onclick="loadJobsPage({{ page - 1 }}); return false;">
+                <i class="fas fa-chevron-left"></i> Previous
+            </a>
+        </li>
+
+        <!-- Page Numbers -->
+        {% set start_page = [1, page - 2]|max %}
+        {% set end_page = [total_pages, page + 2]|min %}
+
+        {% if start_page > 1 %}
+        <li class="page-item">
+            <a class="page-link" href="#" onclick="loadJobsPage(1); return false;">1</a>
+        </li>
+        {% if start_page > 2 %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+        {% endif %}
+
+        {% for p in range(start_page, end_page + 1) %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+            <a class="page-link" href="#" onclick="loadJobsPage({{ p }}); return false;">{{ p }}</a>
+        </li>
+        {% endfor %}
+
+        {% if end_page < total_pages %}
+        {% if end_page < total_pages - 1 %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+        <li class="page-item">
+            <a class="page-link" href="#" onclick="loadJobsPage({{ total_pages }}); return false;">{{ total_pages }}</a>
+        </li>
+        {% endif %}
+
+        <!-- Next Button -->
+        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+            <a class="page-link" href="#" onclick="loadJobsPage({{ page + 1 }}); return false;">
+                Next <i class="fas fa-chevron-right"></i>
+            </a>
+        </li>
+    </ul>
+</nav>
+
+<div class="text-center text-muted small mb-2">
+    Showing {{ (page - 1) * per_page + 1 }} - {{ [page * per_page, total_jobs]|min }} of {{ total_jobs }} jobs
+</div>
+
+<!-- Pagination JavaScript -->
+<script>
+function loadJobsPage(pageNum) {
+    const container = $('#jobs-container');
+    const url = "{{ url_for('user_dashboard.jobs_fragment', projcode=projcode, resource=resource) }}" +
+                "?start_date={{ start_date }}" +
+                "&end_date={{ end_date }}" +
+                "&page=" + pageNum;
+
+    // Show loading indicator
+    container.html('<div class="text-center p-3"><div class="spinner-border text-primary" role="status"><span class="sr-only">Loading...</span></div></div>');
+
+    // Fetch new page
+    fetch(url)
+        .then(response => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.text();
+        })
+        .then(html => {
+            container.html(html);
+        })
+        .catch(error => {
+            console.error('Error loading jobs page:', error);
+            container.html('<p class="text-danger mb-0">Failed to load jobs</p>');
+        });
+}
+</script>
+{% endif %}

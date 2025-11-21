@@ -19,7 +19,7 @@ bp = Blueprint('api_users', __name__)
 
 
 @bp.route('/me', methods=['GET'])
-#@login_required
+@login_required
 def get_current_user():
     """
     GET /api/v1/users/me - Get current user's details.
@@ -40,7 +40,7 @@ def get_current_user():
 
 
 @bp.route('/me/projects', methods=['GET'])
-#@login_required
+@login_required
 def get_current_user_projects():
     """
     GET /api/v1/users/me/projects - Get current user's projects.
@@ -151,8 +151,8 @@ def get_current_user_projects():
 
 
 @bp.route('/', methods=['GET'])
-#@login_required
-#@require_permission(Permission.VIEW_USERS)
+@login_required
+@require_permission(Permission.VIEW_USERS)
 def list_users():
     """
     GET /api/v1/users - List users with pagination and filtering.
@@ -202,8 +202,8 @@ def list_users():
 
 
 @bp.route('/<username>', methods=['GET'])
-#@login_required
-#@require_permission(Permission.VIEW_USERS)
+@login_required
+@require_permission(Permission.VIEW_USERS)
 def get_user(username):
     """
     GET /api/v1/users/<username> - Get user details.
@@ -223,8 +223,8 @@ def get_user(username):
 
 
 @bp.route('/<username>/projects', methods=['GET'])
-#@login_required
-#@require_permission(Permission.VIEW_PROJECTS)
+@login_required
+@require_permission(Permission.VIEW_PROJECTS)
 def get_user_projects(username):
     """
     GET /api/v1/users/<username>/projects - Get user's projects.
