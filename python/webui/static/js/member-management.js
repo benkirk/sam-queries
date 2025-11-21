@@ -1,7 +1,16 @@
 /**
  * Member Management Functions
  * Handles adding/removing project members and admin role changes
+ *
+ * API v1 endpoints:
+ *   GET    /api/v1/users/search - Search users
+ *   POST   /api/v1/projects/<projcode>/members - Add member
+ *   DELETE /api/v1/projects/<projcode>/members/<username> - Remove member
+ *   PUT    /api/v1/projects/<projcode>/admin - Change admin
  */
+
+// API base path
+const API_BASE = '/api/v1';
 
 // Track current project code for operations
 let currentProjcode = null;
@@ -30,6 +39,21 @@ function showAddMemberModal(projcode) {
 }
 
 /**
+ * Reload the members HTML fragment from the server
+ */
+function reloadMembersFragment(projcode) {
+    const url = `/dashboard/members/${projcode}`;
+    return fetch(url)
+        .then(response => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.text();
+        })
+        .then(html => {
+            reloadMembersContainer(projcode, html);
+        });
+}
+
+/**
  * User search autocomplete with debouncing
  */
 $(document).ready(function() {
@@ -44,7 +68,7 @@ $(document).ready(function() {
         }
 
         searchTimeout = setTimeout(() => {
-            fetch(`/dashboard/users/search?q=${encodeURIComponent(query)}&projcode=${encodeURIComponent(projcode)}`)
+            fetch(`${API_BASE}/users/search?q=${encodeURIComponent(query)}&projcode=${encodeURIComponent(projcode)}`)
                 .then(response => response.json())
                 .then(users => {
                     const results = $('#userSearchResults');
@@ -107,25 +131,24 @@ $(document).ready(function() {
         e.preventDefault();
 
         const projcode = $('#addMemberProjcode').val();
-        const formData = new FormData(this);
 
         // Disable submit button during request
         const submitBtn = $('#addMemberSubmitBtn');
         submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Adding...');
 
-        fetch(`/dashboard/projects/${projcode}/members/add`, {
+        fetch(`${API_BASE}/projects/${projcode}/members`, {
             method: 'POST',
-            body: formData
+            body: new FormData(this)
         })
-        .then(response => {
-            if (!response.ok) {
-                return response.text().then(text => { throw new Error(text); });
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok) {
+                throw new Error(data.error || 'Failed to add member');
             }
-            return response.text();
+            // Reload members fragment
+            return reloadMembersFragment(projcode);
         })
-        .then(html => {
-            // Find the members container for this project and update it
-            reloadMembersContainer(projcode, html);
+        .then(() => {
             $('#addMemberModal').modal('hide');
         })
         .catch(error => {
@@ -146,17 +169,18 @@ $(document).ready(function() {
 
         btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Removing...');
 
-        fetch(`/dashboard/projects/${currentProjcode}/members/${username}/remove`, {
-            method: 'POST'
+        fetch(`${API_BASE}/projects/${currentProjcode}/members/${username}`, {
+            method: 'DELETE'
         })
-        .then(response => {
-            if (!response.ok) {
-                return response.text().then(text => { throw new Error(text); });
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok) {
+                throw new Error(data.error || 'Failed to remove member');
             }
-            return response.text();
+            // Reload members fragment
+            return reloadMembersFragment(currentProjcode);
         })
-        .then(html => {
-            reloadMembersContainer(currentProjcode, html);
+        .then(() => {
             $('#removeMemberModal').modal('hide');
         })
         .catch(error => {
@@ -180,18 +204,19 @@ $(document).ready(function() {
         const formData = new FormData();
         formData.append('admin_username', username);
 
-        fetch(`/dashboard/projects/${currentProjcode}/admin`, {
-            method: 'POST',
+        fetch(`${API_BASE}/projects/${currentProjcode}/admin`, {
+            method: 'PUT',
             body: formData
         })
-        .then(response => {
-            if (!response.ok) {
-                return response.text().then(text => { throw new Error(text); });
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok) {
+                throw new Error(data.error || 'Failed to change admin');
             }
-            return response.text();
+            // Reload members fragment
+            return reloadMembersFragment(currentProjcode);
         })
-        .then(html => {
-            reloadMembersContainer(currentProjcode, html);
+        .then(() => {
             $('#changeAdminModal').modal('hide');
         })
         .catch(error => {

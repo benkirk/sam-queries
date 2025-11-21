@@ -431,6 +431,165 @@ def get_recently_expired_projects():
     })
 
 
+# ============================================================================
+# Member Management Routes
+# ============================================================================
+
+@bp.route('/<projcode>/members', methods=['POST'])
+@login_required
+def add_member(projcode):
+    """
+    POST /api/v1/projects/<projcode>/members - Add a member to a project.
+
+    JSON body:
+        username (str): Username to add (required)
+        start_date (str): Membership start date YYYY-MM-DD (optional, defaults to today)
+        end_date (str): Membership end date YYYY-MM-DD (optional, null for no end)
+
+    Returns:
+        JSON with success status and member info
+    """
+    from sam.queries import find_project_by_code, add_user_to_project
+    from sam.core.users import User
+    from webui.utils.project_permissions import can_manage_project_members
+
+    project = find_project_by_code(db.session, projcode)
+    if not project:
+        return jsonify({'error': 'Project not found'}), 404
+
+    if not can_manage_project_members(current_user, project):
+        return jsonify({'error': 'Unauthorized - insufficient permissions'}), 403
+
+    # Get data from JSON body or form data
+    data = request.get_json() or request.form
+    username = data.get('username')
+    if not username:
+        return jsonify({'error': 'Username is required'}), 400
+
+    user = db.session.query(User).filter_by(username=username).first()
+    if not user:
+        return jsonify({'error': f'User "{username}" not found'}), 404
+
+    # Parse dates
+    start_date = None
+    end_date = None
+    try:
+        start_date_str = data.get('start_date', '').strip() if data.get('start_date') else ''
+        if start_date_str:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+
+        end_date_str = data.get('end_date', '').strip() if data.get('end_date') else ''
+        if end_date_str:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+
+    try:
+        add_user_to_project(db.session, project.project_id, user.user_id, start_date, end_date)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    return jsonify({
+        'success': True,
+        'message': f'Added {username} to project {projcode}',
+        'member': {
+            'username': user.username,
+            'display_name': user.display_name,
+            'user_id': user.user_id
+        }
+    })
+
+
+@bp.route('/<projcode>/members/<username>', methods=['DELETE'])
+@login_required
+def remove_member(projcode, username):
+    """
+    DELETE /api/v1/projects/<projcode>/members/<username> - Remove a member from a project.
+
+    Returns:
+        JSON with success status
+    """
+    from sam.queries import find_project_by_code, remove_user_from_project
+    from sam.core.users import User
+    from webui.utils.project_permissions import can_manage_project_members
+
+    project = find_project_by_code(db.session, projcode)
+    if not project:
+        return jsonify({'error': 'Project not found'}), 404
+
+    if not can_manage_project_members(current_user, project):
+        return jsonify({'error': 'Unauthorized - insufficient permissions'}), 403
+
+    user = db.session.query(User).filter_by(username=username).first()
+    if not user:
+        return jsonify({'error': f'User "{username}" not found'}), 404
+
+    try:
+        remove_user_from_project(db.session, project.project_id, user.user_id)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    return jsonify({
+        'success': True,
+        'message': f'Removed {username} from project {projcode}'
+    })
+
+
+@bp.route('/<projcode>/admin', methods=['PUT'])
+@login_required
+def update_admin(projcode):
+    """
+    PUT /api/v1/projects/<projcode>/admin - Change the project admin.
+
+    JSON body:
+        admin_username (str): Username for new admin (empty string to clear admin)
+
+    Returns:
+        JSON with success status and new admin info
+    """
+    from sam.queries import find_project_by_code, change_project_admin
+    from sam.core.users import User
+    from webui.utils.project_permissions import can_change_admin
+
+    project = find_project_by_code(db.session, projcode)
+    if not project:
+        return jsonify({'error': 'Project not found'}), 404
+
+    if not can_change_admin(current_user, project):
+        return jsonify({'error': 'Unauthorized - only project lead can change admin'}), 403
+
+    data = request.get_json() or request.form
+    admin_username = data.get('admin_username', '').strip() if data.get('admin_username') else ''
+
+    if admin_username:
+        new_admin = db.session.query(User).filter_by(username=admin_username).first()
+        if not new_admin:
+            return jsonify({'error': f'User "{admin_username}" not found'}), 404
+
+        try:
+            change_project_admin(db.session, project.project_id, new_admin.user_id)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+        return jsonify({
+            'success': True,
+            'message': f'Changed admin to {admin_username}',
+            'admin': {
+                'username': new_admin.username,
+                'display_name': new_admin.display_name,
+                'user_id': new_admin.user_id
+            }
+        })
+    else:
+        # Clear admin
+        change_project_admin(db.session, project.project_id, None)
+        return jsonify({
+            'success': True,
+            'message': 'Cleared project admin',
+            'admin': None
+        })
+
+
 @bp.route('/<projcode>/jobs', methods=['GET'])
 @login_required
 def get_project_jobs(projcode):

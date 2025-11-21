@@ -7,18 +7,15 @@ Refactored to use server-side rendering with direct ORM queries instead of
 JavaScript API calls for improved performance and simplicity.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, jsonify, abort
+from flask import Blueprint, render_template, request, flash, redirect, url_for
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 
 from webui.extensions import db
 from sam.queries import (
     get_user_dashboard_data, get_resource_detail_data, get_users_on_project,
-    get_user_breakdown_for_project, get_jobs_for_project,
-    add_user_to_project, remove_user_from_project, change_project_admin,
-    search_users_by_pattern, get_project_member_user_ids, find_project_by_code
+    get_user_breakdown_for_project, get_jobs_for_project, find_project_by_code
 )
-from sam.core.users import User
 from sam.projects.projects import Project
 from webui.utils.charts import generate_usage_timeseries_matplotlib
 from webui.utils.project_permissions import can_manage_project_members, can_change_admin
@@ -263,196 +260,10 @@ def jobs_fragment(projcode, resource):
     )
 
 
-# ============================================================================
-# Project Member Management Routes
-# ============================================================================
-
-@bp.route('/projects/<projcode>/members/add', methods=['POST'])
-@login_required
-def add_member(projcode):
-    """
-    Add a member to a project.
-
-    Form parameters:
-        username: Username to add
-        start_date: Membership start date (YYYY-MM-DD)
-        end_date: Membership end date (YYYY-MM-DD)
-
-    Returns:
-        Updated members HTML fragment on success, error message on failure
-    """
-    project = Project.get_by_projcode(db.session, projcode)
-
-    if not project:
-        return 'Project not found', 404
-
-    if not can_manage_project_members(current_user, project):
-        return 'Unauthorized', 403
-
-    username = request.form.get('username')
-    if not username:
-        return 'Username is required', 400
-
-    user = User.get_by_username(db.session, username)
-    if not user:
-        return f'User "{username}" not found', 404
-
-    # Parse dates - start_date defaults to now, end_date is optional (can be NULL)
-    start_date = None
-    end_date = None
-
-    try:
-        start_date_str = request.form.get('start_date', '').strip()
-        if start_date_str:
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-        # else: start_date stays None, will default to now in add_user_to_project
-
-        end_date_str = request.form.get('end_date', '').strip()
-        if end_date_str:
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
-        # else: end_date stays None (no end date)
-    except ValueError:
-        return 'Invalid date format. Use YYYY-MM-DD.', 400
-
-    # Add user to project
-    try:
-        add_user_to_project(db.session, project.project_id, user.user_id, start_date, end_date)
-    except ValueError as e:
-        return str(e), 400
-
-    # Return updated members fragment
-    members = get_users_on_project(db.session, projcode)
-    return render_template(
-        'user/fragments/members_table.html',
-        members=sorted(members, key=lambda m: m["display_name"]),
-        projcode=projcode,
-        project=project,
-        can_manage=can_manage_project_members(current_user, project),
-        can_change_admin=can_change_admin(current_user, project)
-    )
-
-
-@bp.route('/projects/<projcode>/members/<username>/remove', methods=['POST'])
-@login_required
-def remove_member(projcode, username):
-    """
-    Remove a member from a project.
-
-    Returns:
-        Updated members HTML fragment on success, error message on failure
-    """
-    project = Project.get_by_projcode(db.session, projcode)
-
-    if not project:
-        return 'Project not found', 404
-
-    if not can_manage_project_members(current_user, project):
-        return 'Unauthorized', 403
-
-    user = User.get_by_username(db.session, username)
-    if not user:
-        return f'User "{username}" not found', 404
-
-    # Remove user from project
-    try:
-        remove_user_from_project(db.session, project.project_id, user.user_id)
-    except ValueError as e:
-        return str(e), 400
-
-    # Return updated members fragment
-    members = get_users_on_project(db.session, projcode)
-    return render_template(
-        'user/fragments/members_table.html',
-        members=sorted(members, key=lambda m: m["display_name"]),
-        projcode=projcode,
-        project=project,
-        can_manage=can_manage_project_members(current_user, project),
-        can_change_admin=can_change_admin(current_user, project)
-    )
-
-
-@bp.route('/projects/<projcode>/admin', methods=['POST'])
-@login_required
-def update_admin(projcode):
-    """
-    Change the project admin.
-
-    Form parameters:
-        admin_username: Username for new admin (empty to clear admin)
-
-    Returns:
-        Updated members HTML fragment on success, error message on failure
-    """
-    project = Project.get_by_projcode(db.session, projcode)
-
-    if not project:
-        return 'Project not found', 404
-
-    if not can_change_admin(current_user, project):
-        return 'Unauthorized - only project lead or system admin can change admin', 403
-
-    admin_username = request.form.get('admin_username', '').strip()
-
-    if admin_username:
-        new_admin = User.get_by_username(db.session, admin_username)
-        if not new_admin:
-            return f'User "{admin_username}" not found', 404
-
-        try:
-            change_project_admin(db.session, project.project_id, new_admin.user_id)
-        except ValueError as e:
-            return str(e), 400
-    else:
-        # Clear admin
-        change_project_admin(db.session, project.project_id, None)
-
-    # Return updated members fragment
-    # Need to refresh project to get updated admin
-    db.session.refresh(project)
-    members = get_users_on_project(db.session, projcode)
-    return render_template(
-        'user/fragments/members_table.html',
-        members=sorted(members, key=lambda m: m["display_name"]),
-        projcode=projcode,
-        project=project,
-        can_manage=can_manage_project_members(current_user, project),
-        can_change_admin=can_change_admin(current_user, project)
-    )
-
-
-@bp.route('/users/search')
-@login_required
-def search_users():
-    """
-    Search users for autocomplete functionality.
-
-    Query parameters:
-        q: Search query (minimum 2 characters)
-        projcode: Optional project code to exclude existing members
-
-    Returns:
-        JSON array of matching users
-    """
-    query = request.args.get('q', '').strip()
-
-    if len(query) < 2:
-        return jsonify([])
-
-    # Get existing members to exclude if projcode provided
-    exclude_ids = None
-    projcode = request.args.get('projcode')
-    if projcode:
-        project = Project.get_by_projcode(db.session, projcode)
-        if project:
-            exclude_ids = get_project_member_user_ids(db.session, project.project_id)
-
-    users = search_users_by_pattern(db.session, query, limit=20, exclude_user_ids=exclude_ids)
-
-    return jsonify([
-        {
-            'username': u.username,
-            'display_name': u.display_name,
-            'email': u.primary_email or ''
-        }
-        for u in users
-    ])
+# Note: Member management API endpoints have been moved to /api/v1/projects/
+# See python/webui/api/v1/projects.py for:
+#   POST /api/v1/projects/<projcode>/members - Add member
+#   DELETE /api/v1/projects/<projcode>/members/<username> - Remove member
+#   PUT /api/v1/projects/<projcode>/admin - Change admin
+# See python/webui/api/v1/users.py for:
+#   GET /api/v1/users/search - Search users
