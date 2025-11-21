@@ -449,7 +449,8 @@ def add_member(projcode):
     Returns:
         JSON with success status and member info
     """
-    from sam.queries import find_project_by_code, add_user_to_project
+    from sam.queries import find_project_by_code
+    from sam.manage import add_user_to_project
     from sam.core.users import User
     from webui.utils.project_permissions import can_manage_project_members
 
@@ -509,7 +510,8 @@ def remove_member(projcode, username):
     Returns:
         JSON with success status
     """
-    from sam.queries import find_project_by_code, remove_user_from_project
+    from sam.queries import find_project_by_code
+    from sam.manage import remove_user_from_project
     from sam.core.users import User
     from webui.utils.project_permissions import can_manage_project_members
 
@@ -547,7 +549,8 @@ def update_admin(projcode):
     Returns:
         JSON with success status and new admin info
     """
-    from sam.queries import find_project_by_code, change_project_admin
+    from sam.queries import find_project_by_code
+    from sam.manage import change_project_admin
     from sam.core.users import User
     from webui.utils.project_permissions import can_change_admin
 
