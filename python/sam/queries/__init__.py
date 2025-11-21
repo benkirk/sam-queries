@@ -102,7 +102,7 @@ def get_resources_by_type(session: Session, resource_type: str) -> List[str]:
 
 def find_user_by_username(session: Session, username: str) -> Optional[User]:
     """Find a user by username."""
-    return session.query(User).filter(User.username == username).first()
+    return User.get_by_username(session, username)
 
 
 def find_users_by_name(session: Session, name_part: str) -> List[User]:
@@ -247,7 +247,7 @@ def get_users_without_primary_email(session: Session) -> List[User]:
 
 def find_project_by_code(session: Session, projcode: str) -> Optional[Project]:
     """Find a project by its code."""
-    return session.query(Project).filter(Project.projcode == projcode).first()
+    return Project.get_by_projcode(session, projcode)
 
 
 def get_project_with_full_details(session: Session, projcode: str) -> Optional[Project]:
@@ -890,9 +890,7 @@ def get_allocation_summary_by_facility(
 
 def get_group_by_name(session: Session, group_name: str) -> Optional[AdhocGroup]:
     """Find a group by name."""
-    return session.query(AdhocGroup)\
-        .filter(AdhocGroup.group_name == group_name)\
-        .first()
+    return AdhocGroup.get_by_name(session, group_name)
 
 
 def get_groups_by_tag(session: Session, tag: str) -> List[AdhocGroup]:
@@ -1562,15 +1560,12 @@ def get_resource_detail_data(
         Returns None if project or resource not found.
     """
     # Find project
-    project = find_project_by_code(session, projcode)
+    project = Project.get_by_projcode(session, projcode)
     if not project:
         return None
 
     # Find resource
-    resource = session.query(Resource)\
-        .filter(Resource.resource_name == resource_name)\
-        .first()
-
+    resource = Resource.get_by_name(session, resource_name)
     if not resource:
         return None
 
@@ -1596,13 +1591,12 @@ def get_resource_detail_data(
         }
 
     # Get account for this project+resource
-    account = session.query(Account)\
-        .filter(
-            Account.project_id == project.project_id,
-            Account.resource_id == resource.resource_id,
-            Account.deleted == False
-        )\
-        .first()
+    account = Account.get_by_project_and_resource(
+        session,
+        project.project_id,
+        resource.resource_id,
+        exclude_deleted=True
+    )
 
     if not account:
         return {
