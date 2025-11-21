@@ -1023,7 +1023,7 @@ def get_user_charge_summary(session, user_id: int,
 def get_project_usage_summary(session, projcode: str,
                               start_date: datetime,
                               end_date: datetime,
-                              resource: Optional[str] = None) -> Dict[str, float]:
+                              resource: str) -> Dict[str, float]:
     """
     Get aggregated usage summary for a project.
 
@@ -1032,15 +1032,13 @@ def get_project_usage_summary(session, projcode: str,
         projcode: Project code (e.g., 'UCUB0001')
         start_date: Start date (inclusive)
         end_date: End date (inclusive)
-        resource: Optional resource filter (e.g., 'Derecho')
+        resource: Resource filter (e.g., 'Derecho')
 
     Returns:
         Dictionary with keys:
         - total_jobs: Number of jobs
         - total_core_hours: Total core hours consumed
         - total_charges: Total charges incurred
-        - average_charge_per_job: Average charge per job
-        - average_core_hours_per_job: Average core hours per job
 
     Example:
         >>> summary = get_project_usage_summary(
@@ -1061,10 +1059,7 @@ def get_project_usage_summary(session, projcode: str,
         CompChargeSummary.projcode == projcode,
         CompChargeSummary.activity_date >= start_date,
         CompChargeSummary.activity_date <= end_date
-    )
-
-    if resource:
-        query = query.filter(CompChargeSummary.resource == resource)
+    ).filter(CompChargeSummary.resource == resource)
 
     result = query.first()
 
@@ -1076,8 +1071,6 @@ def get_project_usage_summary(session, projcode: str,
         'total_jobs': total_jobs,
         'total_core_hours': total_core_hours,
         'total_charges': total_charges,
-        'average_charge_per_job': (float(total_charges) / float(total_jobs)) if total_jobs > 0 else 0.0,
-        'average_core_hours_per_job': (float(total_core_hours) / float(total_jobs) ) if total_jobs > 0 else 0.0
     }
 
 
