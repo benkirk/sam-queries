@@ -32,6 +32,7 @@ class Permission(Enum):
     CREATE_PROJECTS = "create_projects"
     DELETE_PROJECTS = "delete_projects"
     VIEW_PROJECT_MEMBERS = "view_project_members"
+    EDIT_PROJECT_MEMBERS = "edit_project_members"
 
     # Allocation management
     VIEW_ALLOCATIONS = "view_allocations"
@@ -68,6 +69,7 @@ ROLE_PERMISSIONS = {
         Permission.EDIT_PROJECTS,
         Permission.CREATE_PROJECTS,
         Permission.VIEW_PROJECT_MEMBERS,
+        Permission.EDIT_PROJECT_MEMBERS,
         Permission.VIEW_ALLOCATIONS,
         Permission.EDIT_ALLOCATIONS,
         Permission.CREATE_ALLOCATIONS,

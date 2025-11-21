@@ -134,6 +134,7 @@
                 <table class="table table-sm table-hover" id="users-table">
                     <thead class="thead-dark">
                         <tr>
+                            <th>User</th>
                             <th>Username</th>
                             <th class="text-right">Jobs</th>
                             <th class="text-right">Charges</th>
@@ -143,19 +144,20 @@
                         {% if user_breakdown %}
                             {% for user in user_breakdown %}
                             <tr>
-                                <td><strong>{{ user.username }}</strong></td>
+                                <td><strong>{{ user.display_name }}</strong></td>
+                                <td><code>{{ user.username }}</code></td>
                                 <td class="text-right">{{ '{:,}'.format(user.jobs) }}</td>
                                 <td class="text-right">{{ '{:,.0f}'.format(user.charges) }}</td>
                             </tr>
                             {% endfor %}
                             <tr class="table-info font-weight-bold">
-                                <td>Total</td>
+                                <td colspan="2">Total</td>
                                 <td class="text-right">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
                                 <td class="text-right">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="3" class="text-center text-muted">
+                                <td colspan="4" class="text-center text-muted">
                                     No user activity recorded for this period
                                 </td>
                             </tr>

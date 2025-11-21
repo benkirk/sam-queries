@@ -1318,7 +1318,7 @@ def get_user_breakdown_for_project(session, projcode: str,
         resource: Resource filter (e.g., 'Derecho')
 
     Returns:
-        List of dicts with keys: username, user_id, jobs, core_hours, charges
+        List of dicts with keys: username, user_id, display_name, jobs, core_hours, charges
         Ordered by charges descending
 
     Example:
@@ -1333,12 +1333,17 @@ def get_user_breakdown_for_project(session, projcode: str,
     """
     from sqlalchemy import func as sql_func
 
+    # Join with User table to get display_name
     results = session.query(
         CompChargeSummary.username,
         CompChargeSummary.user_id,
+        User.first_name,
+        User.last_name,
         sql_func.sum(CompChargeSummary.num_jobs).label('jobs'),
         sql_func.sum(CompChargeSummary.core_hours).label('core_hours'),
         sql_func.sum(CompChargeSummary.charges).label('charges')
+    ).outerjoin(
+        User, CompChargeSummary.user_id == User.user_id
     ).filter(
         CompChargeSummary.projcode == projcode,
         CompChargeSummary.activity_date >= start_date,
@@ -1346,17 +1351,30 @@ def get_user_breakdown_for_project(session, projcode: str,
         CompChargeSummary.resource == resource
     ).group_by(
         CompChargeSummary.username,
-        CompChargeSummary.user_id
+        CompChargeSummary.user_id,
+        User.first_name,
+        User.last_name
     ).having(
         sql_func.sum(CompChargeSummary.charges) > 0
     ).order_by(
         sql_func.sum(CompChargeSummary.charges).desc()
     ).all()
 
+    def make_display_name(first, last, username):
+        """Build display name from first/last or fall back to username."""
+        if first and last:
+            return f"{first} {last}"
+        elif first:
+            return first
+        elif last:
+            return last
+        return username
+
     return [
         {
             'username': row.username,
             'user_id': row.user_id,
+            'display_name': make_display_name(row.first_name, row.last_name, row.username),
             'jobs': row.jobs or 0,
             'core_hours': float(row.core_hours or 0.0),
             'charges': float(row.charges or 0.0)
@@ -1658,3 +1676,228 @@ def get_resource_detail_data(
         'resource_summary': resource_summary,
         'daily_charges': daily_charges,
     }
+
+
+# ============================================================================
+# Project Member Management
+# ============================================================================
+
+def add_user_to_project(
+    session: Session,
+    project_id: int,
+    user_id: int,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None
+) -> None:
+    """
+    Add a user to all accounts for a project.
+
+    This adds the user to every account (resource) associated with the project,
+    enabling them to use all resources the project has access to.
+
+    Args:
+        session: SQLAlchemy session
+        project_id: Project ID
+        user_id: User ID to add
+        start_date: Start date for membership (defaults to now if not provided)
+        end_date: End date for membership (optional, defaults to None/no end date)
+
+    Raises:
+        ValueError: If user is already a member of any account
+    """
+    # Default start_date to now if not provided
+    if start_date is None:
+        start_date = datetime.now()
+
+    accounts = session.query(Account).filter(
+        Account.project_id == project_id,
+        Account.deleted == False
+    ).all()
+
+    if not accounts:
+        raise ValueError(f"No accounts found for project {project_id}")
+
+    for account in accounts:
+        # Check if already exists
+        existing = session.query(AccountUser).filter(
+            AccountUser.account_id == account.account_id,
+            AccountUser.user_id == user_id
+        ).first()
+
+        if not existing:
+            account_user = AccountUser(
+                account_id=account.account_id,
+                user_id=user_id,
+                start_date=start_date,
+                end_date=end_date  # Can be None
+            )
+            session.add(account_user)
+
+    session.commit()
+
+
+def remove_user_from_project(session: Session, project_id: int, user_id: int) -> None:
+    """
+    Remove a user from all accounts in a project.
+
+    Also clears the admin role if the user being removed is the project admin.
+    Cannot remove the project lead.
+
+    Args:
+        session: SQLAlchemy session
+        project_id: Project ID
+        user_id: User ID to remove
+
+    Raises:
+        ValueError: If trying to remove the project lead
+    """
+    # Get project to check lead/admin
+    project = session.query(Project).get(project_id)
+
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+
+    # Cannot remove the lead
+    if project.project_lead_user_id == user_id:
+        raise ValueError("Cannot remove the project lead")
+
+    # Get all account IDs for this project
+    account_ids = session.query(Account.account_id).filter(
+        Account.project_id == project_id
+    ).subquery()
+
+    # Remove from all accounts
+    session.query(AccountUser).filter(
+        AccountUser.account_id.in_(select(account_ids)),
+        AccountUser.user_id == user_id
+    ).delete(synchronize_session=False)
+
+    # Clear admin role if they had it
+    if project.project_admin_user_id == user_id:
+        project.project_admin_user_id = None
+
+    session.commit()
+
+
+def change_project_admin(
+    session: Session,
+    project_id: int,
+    new_admin_user_id: Optional[int]
+) -> None:
+    """
+    Change the project admin to a different user.
+
+    The new admin must already be a member of the project (unless clearing admin).
+
+    Args:
+        session: SQLAlchemy session
+        project_id: Project ID
+        new_admin_user_id: User ID for new admin, or None to clear admin
+
+    Raises:
+        ValueError: If new admin is not a project member
+    """
+    project = session.query(Project).get(project_id)
+
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+
+    if new_admin_user_id:
+        # Ensure new admin is a member of the project
+        account = session.query(Account).filter(
+            Account.project_id == project_id
+        ).first()
+
+        if account:
+            member = session.query(AccountUser).filter(
+                AccountUser.account_id == account.account_id,
+                AccountUser.user_id == new_admin_user_id
+            ).first()
+
+            # Also allow if they are the lead
+            if not member and project.project_lead_user_id != new_admin_user_id:
+                raise ValueError("User must be a project member before becoming admin")
+
+    project.project_admin_user_id = new_admin_user_id
+    session.commit()
+
+
+def search_users_by_pattern(
+    session: Session,
+    pattern: str,
+    limit: int = 50,
+    exclude_user_ids: Optional[List[int]] = None
+) -> List[User]:
+    """
+    Search users by username, first name, last name, or email for autocomplete.
+
+    Args:
+        session: SQLAlchemy session
+        pattern: Search pattern (will be wrapped with % for LIKE)
+        limit: Maximum results to return (default 50)
+        exclude_user_ids: Optional list of user IDs to exclude from results
+
+    Returns:
+        List of User objects matching the pattern
+    """
+    like_pattern = f"%{pattern}%"
+
+    # Search by username, first name, last name, or email
+    # Join with email addresses to search by email too
+    from sam.core.users import EmailAddress
+
+    query = session.query(User).outerjoin(
+        EmailAddress, User.user_id == EmailAddress.user_id
+    ).filter(
+        or_(
+            User.username.ilike(like_pattern),
+            User.first_name.ilike(like_pattern),
+            User.last_name.ilike(like_pattern),
+            EmailAddress.email_address.ilike(like_pattern)
+        )
+    ).distinct()
+
+    if exclude_user_ids:
+        query = query.filter(~User.user_id.in_(exclude_user_ids))
+
+    return query.order_by(User.last_name, User.first_name, User.username).limit(limit).all()
+
+
+def get_project_member_user_ids(session: Session, project_id: int) -> List[int]:
+    """
+    Get list of user IDs who are members of a project.
+
+    Includes lead, admin, and all users in any account.
+
+    Args:
+        session: SQLAlchemy session
+        project_id: Project ID
+
+    Returns:
+        List of user IDs
+    """
+    project = session.query(Project).get(project_id)
+    if not project:
+        return []
+
+    user_ids = set()
+
+    # Add lead and admin
+    if project.project_lead_user_id:
+        user_ids.add(project.project_lead_user_id)
+    if project.project_admin_user_id:
+        user_ids.add(project.project_admin_user_id)
+
+    # Add all account users
+    account_ids = session.query(Account.account_id).filter(
+        Account.project_id == project_id
+    ).subquery()
+
+    account_users = session.query(AccountUser.user_id).filter(
+        AccountUser.account_id.in_(select(account_ids))
+    ).distinct().all()
+
+    for (uid,) in account_users:
+        user_ids.add(uid)
+
+    return list(user_ids)
