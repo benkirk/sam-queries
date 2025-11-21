@@ -19,6 +19,7 @@ from webui.schemas import (
     AllocationWithUsageSchema, UserSummarySchema, CompJobSchema
 )
 from webui.api.helpers import register_error_handlers, get_project_or_404, parse_date_range
+from webui.api.access_control import require_project_member_access
 from datetime import datetime, timedelta
 
 bp = Blueprint('api_projects', __name__)
@@ -214,7 +215,8 @@ def get_project(projcode):
 
 @bp.route('/<projcode>/members', methods=['GET'])
 @login_required
-def get_project_members(projcode):
+@require_project_member_access(Permission.VIEW_PROJECT_MEMBERS)
+def get_project_members(project):
     """
     GET /api/v1/projects/<projcode>/members - Get project members.
 
@@ -223,15 +225,6 @@ def get_project_members(projcode):
     Returns:
         JSON with lead, admin, and all members
     """
-    project, error = get_project_or_404(db.session, projcode)
-    if error:
-        return error
-
-    # Check access: admin permission OR user is project member
-    from webui.utils.rbac import has_permission
-    if not (has_permission(current_user, Permission.VIEW_PROJECT_MEMBERS) or _user_can_access_project(project)):
-        return jsonify({'error': 'Forbidden - insufficient permissions'}), 403
-
     # Use UserSummarySchema for consistent serialization
     schema = UserSummarySchema()
 
@@ -247,7 +240,7 @@ def get_project_members(projcode):
     ]
 
     return jsonify({
-        'projcode': projcode,
+        'projcode': project.projcode,
         'lead': lead,
         'admin': admin,
         'members': members,

@@ -169,3 +169,61 @@ def serialize_projects_by_role(user, schema) -> Dict[str, Any]:
         'member_projects': member_projects,
         'total_projects': len(led_projects) + len(admin_projects) + len(member_projects)
     }
+
+
+# ============================================================================
+# Standard Response Helpers
+# ============================================================================
+
+def success_response(data: Any, message: Optional[str] = None) -> Tuple[Any, int]:
+    """
+    Create a standard success response wrapper.
+
+    Args:
+        data: The response data payload
+        message: Optional success message
+
+    Returns:
+        tuple: (JSON response, 200 status code)
+
+    Usage:
+        return success_response({'user': user_data}, 'User created successfully')
+        # Returns: {'success': True, 'data': {...}, 'message': '...'}
+    """
+    response = {'success': True, 'data': data}
+    if message:
+        response['message'] = message
+    return jsonify(response), 200
+
+
+def error_response(
+    message: str,
+    status_code: int = 400,
+    code: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None
+) -> Tuple[Any, int]:
+    """
+    Create a standard error response wrapper.
+
+    Args:
+        message: Human-readable error message
+        status_code: HTTP status code (default: 400)
+        code: Machine-readable error code (e.g., 'NOT_FOUND', 'INVALID_DATE')
+        details: Additional error details dict
+
+    Returns:
+        tuple: (JSON response, status code)
+
+    Usage:
+        return error_response('User not found', 404, code='USER_NOT_FOUND')
+        # Returns: {'error': 'User not found', 'code': 'USER_NOT_FOUND'}
+
+        return error_response('Validation failed', 400, details={'field': 'email', 'reason': 'invalid format'})
+        # Returns: {'error': 'Validation failed', 'details': {...}}
+    """
+    response = {'error': message}
+    if code:
+        response['code'] = code
+    if details:
+        response['details'] = details
+    return jsonify(response), status_code

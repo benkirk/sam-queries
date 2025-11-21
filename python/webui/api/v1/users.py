@@ -9,6 +9,7 @@ Example usage:
     GET /api/v1/users/johndoe/projects
 """
 
+from datetime import datetime
 from flask import Blueprint, jsonify, request, abort
 from flask_login import login_required, current_user
 from webui.utils.rbac import require_permission, Permission
@@ -18,6 +19,92 @@ from webui.api.helpers import register_error_handlers, get_user_or_404, serializ
 
 bp = Blueprint('api_users', __name__)
 register_error_handlers(bp)
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def _serialize_dashboard_format(user):
+    """
+    Serialize user's projects in dashboard format with allocation usage details.
+
+    Args:
+        user: User object with active_projects relationship
+
+    Returns:
+        dict with username, projects list (with usage details), and total_projects
+    """
+    projects = user.active_projects
+    projects_data = []
+
+    for project in projects:
+        # Get allocation usage for this project
+        usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
+
+        resources_list = []
+        for resource_name, details in usage_data.items():
+            # Get adjustments
+            adjustments_total = details.get('adjustments', 0.0)
+
+            # Determine status based on end_date
+            status = 'Active'
+            end_date = details.get('end_date')
+            if end_date and end_date < datetime.now():
+                status = 'Expired'
+
+            # Format dates for JSON serialization
+            start_date = details.get('start_date')
+            start_date_str = start_date.isoformat() if start_date else None
+            end_date_str = end_date.isoformat() if end_date else None
+
+            resources_list.append({
+                'resource_name': resource_name,
+                'allocated': details.get('allocated', 0.0),
+                'used': details.get('used', 0.0),
+                'remaining': details.get('remaining', 0.0),
+                'percent_used': details.get('percent_used', 0.0),
+                'charges_by_type': details.get('charges_by_type', {}),
+                'adjustments': adjustments_total,
+                'status': status,
+                'start_date': start_date_str,
+                'end_date': end_date_str,
+            })
+
+        projects_data.append({
+            'projcode': project.projcode,
+            'title': project.title,
+            'active': project.active,
+            'lead_username': project.lead.username if project.lead else None,
+            'lead_name': project.lead.full_name if project.lead else None,
+            'resources': resources_list,
+        })
+
+    return {
+        'username': user.username,
+        'projects': projects_data,
+        'total_projects': len(projects_data)
+    }
+
+
+def _serialize_grouped_format(user, schema):
+    """
+    Serialize user's projects in grouped format (led/admin/member).
+
+    Args:
+        user: User object with led_projects, admin_projects, active_projects
+        schema: Marshmallow schema instance for project serialization
+
+    Returns:
+        dict with username and role-grouped projects
+    """
+    data = serialize_projects_by_role(user, schema)
+    return {'username': user.username, **data}
+
+
+# ============================================================================
+# Routes
+# ============================================================================
 
 
 @bp.route('/me', methods=['GET'])
@@ -56,7 +143,6 @@ def get_current_user_projects():
         JSON with list of projects where user is lead, admin, or member
     """
     from sam.core.users import User
-    from datetime import datetime
 
     # Get current user from SAM database
     user = db.session.query(User).filter_by(user_id=current_user.user_id).first()
@@ -67,63 +153,9 @@ def get_current_user_projects():
     format_type = request.args.get('format', 'grouped')
 
     if format_type == 'dashboard':
-        # Dashboard format: flat list with allocation usage details
-        projects = user.active_projects
-        projects_data = []
-
-        for project in projects:
-            # Get allocation usage for this project
-            usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
-
-            resources_list = []
-            for resource_name, details in usage_data.items():
-                # Get adjustments
-                adjustments_total = details.get('adjustments', 0.0)
-
-                # Determine status based on end_date
-                status = 'Active'
-                end_date = details.get('end_date')
-                if end_date and end_date < datetime.now():
-                    status = 'Expired'
-
-                # Format dates for JSON serialization
-                start_date = details.get('start_date')
-                start_date_str = start_date.isoformat() if start_date else None
-                end_date_str = end_date.isoformat() if end_date else None
-
-                resources_list.append({
-                    'resource_name': resource_name,
-                    'allocated': details.get('allocated', 0.0),
-                    'used': details.get('used', 0.0),
-                    'remaining': details.get('remaining', 0.0),
-                    'percent_used': details.get('percent_used', 0.0),
-                    'charges_by_type': details.get('charges_by_type', {}),
-                    'adjustments': adjustments_total,
-                    'status': status,
-                    'start_date': start_date_str,
-                    'end_date': end_date_str,
-                })
-
-            projects_data.append({
-                'projcode': project.projcode,
-                'title': project.title,
-                'active': project.active,
-                'lead_username': project.lead.username if project.lead else None,
-                'lead_name': project.lead.full_name if project.lead else None,
-                'resources': resources_list,
-            })
-
-        return jsonify({
-            'username': user.username,
-            'projects': projects_data,
-            'total_projects': len(projects_data)
-        })
-
+        return jsonify(_serialize_dashboard_format(user))
     else:
-        # Grouped format (default): projects grouped by role
-        schema = ProjectListSchema()
-        data = serialize_projects_by_role(user, schema)
-        return jsonify({'username': user.username, **data})
+        return jsonify(_serialize_grouped_format(user, ProjectListSchema()))
 
 
 @bp.route('/search', methods=['GET'])
