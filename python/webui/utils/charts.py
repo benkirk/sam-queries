@@ -42,17 +42,27 @@ def generate_usage_timeseries_matplotlib(daily_charges: List[Dict]) -> str:
     dates = daily_charges['dates']
     comp = daily_charges['values']
 
+    # 1. Combine using zip() & sort the tuples
+    combined = sorted(zip(dates, comp))
+
+    # 2. Unpack using zip(*...)
+    dates, comp = zip(*combined)
+
+    # 3. Convert tuples back to lists
+    dates = list(dates)
+    comp = list(comp)
+
     # Create figure
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = plt.subplots(figsize=(12, 4))
 
     # Plot stacked area chart
-    ax.plot(dates, comp)
+    ax.bar(dates, comp, width=1)
 
     # Styling
     ax.set_xlabel('Date')
     ax.set_ylabel('Charges (core-hours)')
     ax.set_title('Resource Usage Over Time')
-    ax.legend(loc='upper left')
+    #ax.legend(loc='upper left')
     ax.grid(True, alpha=0.3)
 
     # Format dates on x-axis
