@@ -1,5 +1,5 @@
 # full bash login shell requied for our complex make rules
-SHELL := /bin/bash --login
+#SHELL := /bin/bash --login
 
 
 .PHONY: all docker clone clean bootstrap db-up db-test db-down db-restart

@@ -136,9 +136,20 @@ $(document).ready(function() {
         const submitBtn = $('#addMemberSubmitBtn');
         submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Adding...');
 
+        // Build JSON payload from form data
+        const formData = new FormData(this);
+        const payload = {
+            username: formData.get('username'),
+            start_date: formData.get('start_date') || null,
+            end_date: formData.get('end_date') || null
+        };
+
         fetch(`${API_BASE}/projects/${projcode}/members`, {
             method: 'POST',
-            body: new FormData(this)
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
         })
         .then(response => response.json().then(data => ({ ok: response.ok, data })))
         .then(({ ok, data }) => {
@@ -201,12 +212,17 @@ $(document).ready(function() {
 
         btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Updating...');
 
-        const formData = new FormData();
-        formData.append('admin_username', username);
+        // Build JSON payload
+        const payload = {
+            admin_username: username || null
+        };
 
         fetch(`${API_BASE}/projects/${currentProjcode}/admin`, {
             method: 'PUT',
-            body: formData
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
         })
         .then(response => response.json().then(data => ({ ok: response.ok, data })))
         .then(({ ok, data }) => {
