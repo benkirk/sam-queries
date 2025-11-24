@@ -308,8 +308,9 @@ sam-queries/
 │   └── webui/                   # Flask web application
 │       ├── README.md            # Web UI documentation
 │       ├── run.py               # Development server
-│       ├── auth/                # Authentication providers
-│       ├── blueprints/          # Flask blueprints (admin, auth)
+│       ├── auth/                # Authentication (providers, models, blueprint)
+│       ├── admin/               # Flask-Admin interface
+│       ├── dashboards/          # Dashboard blueprints (user, status)
 │       ├── api/                 # REST API v1 endpoints
 │       ├── schemas/             # Marshmallow-SQLAlchemy schemas
 │       ├── utils/               # RBAC, utilities

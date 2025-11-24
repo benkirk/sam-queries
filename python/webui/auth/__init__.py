@@ -7,5 +7,6 @@ and Flask-Login integration.
 
 from .models import AuthUser
 from .providers import get_auth_provider
+from .blueprint import bp
 
-__all__ = ['AuthUser', 'get_auth_provider']
+__all__ = ['AuthUser', 'get_auth_provider', 'bp']

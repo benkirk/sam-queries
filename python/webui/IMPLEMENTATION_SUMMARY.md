@@ -62,7 +62,7 @@ class UserAdmin(SAMModelView):
 {% endif %}
 ```
 
-### 3. Authentication Blueprint (`python/webui/blueprints/auth_bp.py`)
+### 3. Authentication Blueprint (`python/webui/auth/blueprint.py`)
 
 **Routes:**
 - `GET/POST /auth/login` - Login page and handler
@@ -111,9 +111,9 @@ class UserAdmin(SAMModelView):
 ### 6. Updated Flask-Admin Views
 
 **Modified Files:**
-- `blueprints/admin/default_model_views.py` - Added authentication to `SAMModelView`
-- `blueprints/admin/custom_model_views.py` - Added RBAC to `UserAdmin` as example
-- `blueprints/admin/views.py` - Added authentication to `MyAdminIndexView`
+- `admin/default_model_views.py` - Added authentication to `SAMModelView`
+- `admin/custom_model_views.py` - Added RBAC to `UserAdmin` as example
+- `admin/views.py` - Added authentication to `MyAdminIndexView`
 
 **Features:**
 - All admin views now require authentication
@@ -133,14 +133,18 @@ python/webui/
 ├── auth/                       # ✓ NEW - Authentication
 │   ├── __init__.py
 │   ├── models.py              # AuthUser wrapper
-│   └── providers.py           # Stub/LDAP/SAML providers
-├── blueprints/
-│   ├── auth_bp.py             # ✓ NEW - Login/logout
-│   └── admin/                 # ✓ UPDATED with RBAC
-│       ├── views.py           # Added authentication
-│       ├── default_model_views.py  # Added base auth
-│       ├── custom_model_views.py   # Added RBAC example
-│       └── ...
+│   ├── providers.py           # Stub/LDAP/SAML providers
+│   └── blueprint.py           # ✓ NEW - Login/logout
+├── admin/                     # ✓ UPDATED with RBAC
+│   ├── __init__.py
+│   ├── views.py               # Added authentication
+│   ├── default_model_views.py  # Added base auth
+│   ├── custom_model_views.py   # Added RBAC example
+│   └── ...
+├── dashboards/                 # Dashboard blueprints
+│   ├── user/                   # User dashboard
+│   │   └── blueprint.py        # User dashboard routes
+│   └── status/                 # Status dashboard (future)
 ├── utils/                     # ✓ NEW - Utilities
 │   ├── __init__.py
 │   └── rbac.py               # RBAC permissions

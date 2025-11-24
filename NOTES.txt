@@ -1,0 +1,24 @@
+you keep running into this issue: "The API requires session authentication."  when trying to query my end points.  how can I make this easier on you
+between sessions so you can reliably query my APIs?
+
+⏺ Great question! There are a few options to make API testing easier for me:
+
+  Option 1: API Key Authentication (Recommended)
+
+  Add support for API key authentication alongside session auth. This would let me use simple curl commands:
+
+  curl -H "X-API-Key: <your-key>" http://127.0.0.1:5050/api/v1/projects/SCSG0001/allocations
+
+  Looking at your codebase, I see you already have ApiCredentials model with bcrypt password hashing. We could extend this to support API keys.
+
+
+
+Option 4: Long-lived Session Token
+
+  Give me a session token that I can reuse:
+
+  # You run this once and give me the token
+  curl -c cookies.txt -u benkirk:password http://127.0.0.1:5050/auth/login
+  # Then I use:
+  curl -b cookies.txt http://127.0.0.1:5050/api/v1/...
+cd /Users/benkirk/codes/sam-queries && set -a && source .env && set +a && DISABLE_AUTH=1 DEV_AUTO_LOGIN_USER=benkirk FLASK_DEBUG=1 python3

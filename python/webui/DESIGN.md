@@ -31,17 +31,19 @@ python/webui/
 ├── auth/                       # Authentication module
 │   ├── __init__.py
 │   ├── models.py               # AuthUser (Flask-Login wrapper)
-│   └── providers.py            # Auth providers (stub, LDAP, SAML)
-├── blueprints/                 # Flask blueprints
-│   ├── __init__.py
-│   ├── auth_bp.py              # Login/logout routes
-│   └── admin/                  # Flask-Admin views
-│       ├── __init__.py         # Admin initialization
-│       ├── views.py            # Custom admin index view
-│       ├── default_model_views.py  # Base SAMModelView class
-│       ├── custom_model_views.py   # Customized model views
-│       ├── expiration_views.py     # Expiration dashboard
-│       └── add_default_models.py   # Auto-register all models
+│   ├── providers.py            # Auth providers (stub, LDAP, SAML)
+│   └── blueprint.py            # Login/logout routes
+├── admin/                      # Flask-Admin views
+│   ├── __init__.py             # Admin initialization
+│   ├── views.py                # Custom admin index view
+│   ├── default_model_views.py  # Base SAMModelView class
+│   ├── custom_model_views.py   # Customized model views
+│   ├── expiration_views.py     # Expiration dashboard
+│   └── add_default_models.py   # Auto-register all models
+├── dashboards/                 # Dashboard blueprints
+│   ├── user/                   # User dashboard
+│   │   └── blueprint.py        # User dashboard routes
+│   └── status/                 # Status dashboard (future)
 ├── utils/                      # Utilities
 │   ├── __init__.py
 │   └── rbac.py                 # RBAC permissions and decorators
@@ -462,7 +464,7 @@ gunicorn -c gunicorn_config.py 'webui.run:create_app()'
 
 ### How do I create a custom dashboard for a role?
 
-Modify `MyAdminIndexView.index()` in `webui/blueprints/admin/views.py`:
+Modify `MyAdminIndexView.index()` in `webui/admin/views.py`:
 
 ```python
 @expose('/')
@@ -482,7 +484,7 @@ def index(self):
 ### How do I add a new Flask-Admin model view?
 
 ```python
-# In webui/blueprints/admin/__init__.py
+# In webui/admin/__init__.py
 from sam.models import MyNewModel
 from .custom_model_views import MyNewModelAdmin
 
