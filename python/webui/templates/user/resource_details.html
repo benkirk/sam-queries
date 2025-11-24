@@ -141,6 +141,11 @@
                     </thead>
                     <tbody>
                         {% if user_breakdown %}
+                            <tr class="table-info font-weight-bold">
+                                <td>Total</td>
+                                <td class="text-right">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
+                                <td class="text-right">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
+                            </tr>
                             {% for user in user_breakdown %}
                             <tr>
                                 <td><code>{{ user.username }}</code></td>
@@ -148,11 +153,6 @@
                                 <td class="text-right">{{ '{:,.0f}'.format(user.charges) }}</td>
                             </tr>
                             {% endfor %}
-                            <tr class="table-info font-weight-bold">
-                                <td>Total</td>
-                                <td class="text-right">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
-                                <td class="text-right">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
-                            </tr>
                         {% else %}
                             <tr>
                                 <td colspan="4" class="text-center text-muted">
