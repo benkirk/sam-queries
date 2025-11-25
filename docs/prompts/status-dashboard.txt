@@ -41,3 +41,9 @@ straightforward.
   - File system information
   - Known outages or degraded resources
   - Resource reservations (if any)
+
+Client-side automatic refresh at several minute intervals is
+acceptable, although a path towards WebSocket push via Flask-SocketIO
+should be compared.
+
+Lets mature this plan and document in docs/
