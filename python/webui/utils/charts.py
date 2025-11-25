@@ -36,7 +36,7 @@ def generate_usage_timeseries_matplotlib(daily_charges: List[Dict]) -> str:
         SVG string ready for template rendering
     """
     if not daily_charges:
-        return '<p class="text-muted">No data available</p>'
+        return '<div class="text-center text-muted">No usage data recorded for this period</div>'
 
     # Extract data
     dates = daily_charges['dates']
@@ -44,6 +44,10 @@ def generate_usage_timeseries_matplotlib(daily_charges: List[Dict]) -> str:
 
     # 1. Combine using zip() & sort the tuples
     combined = sorted(zip(dates, comp))
+
+    # Check if there's any data to plot
+    if not combined:
+        return '<div class="text-center text-muted">No usage data recorded for this period</div>'
 
     # 2. Unpack using zip(*...)
     dates, comp = zip(*combined)
