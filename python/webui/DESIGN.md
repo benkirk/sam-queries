@@ -51,9 +51,9 @@ python/webui/
     ├── auth/
     │   ├── login.html          # Login page
     │   └── profile.html        # User profile
-    ├── admin/
-    │   └── expirations_dashboard.html
-    └── custom_admin_index.html # Dashboard
+    └── admin/
+        ├── expirations_dashboard.html
+        └── index.html # Dashboard
 ```
 
 ## Authentication System
@@ -267,7 +267,7 @@ def index(self):
         # Show project lead widgets
         pass
 
-    return self.render('custom_admin_index.html', ...)
+    return self.render('admin/index.html', ...)
 ```
 
 ## API Endpoints (Future)
@@ -478,7 +478,7 @@ def index(self):
                           projects=my_projects)
 
     # Default dashboard
-    return self.render('custom_admin_index.html', ...)
+    return self.render('admin/index.html', ...)
 ```
 
 ### How do I add a new Flask-Admin model view?

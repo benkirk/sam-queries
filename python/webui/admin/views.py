@@ -57,7 +57,7 @@ class MyAdminIndexView(AdminIndexView):
         )
         expired_count = len(expired_projects)
 
-        return self.render('custom_admin_index.html',
+        return self.render('admin/index.html',
                            user_count=f"{user_count:,}",
                            project_count=f"{project_count:,}",
                            resource_count=f"{resource_count:,}",
