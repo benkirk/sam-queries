@@ -98,14 +98,17 @@ python/webui/
 ├── extensions.py               # Flask extension instances
 ├── auth/                       # Authentication module
 │   ├── models.py               # AuthUser (Flask-Login wrapper)
-│   └── providers.py            # Auth providers (stub, LDAP, SAML)
-├── blueprints/                 # Flask blueprints
-│   ├── auth_bp.py              # Login/logout routes
-│   └── admin/                  # Flask-Admin views
-│       ├── views.py            # Custom admin index
-│       ├── custom_model_views.py   # RBAC-enabled model views
-│       ├── expiration_views.py     # Expiration dashboard
-│       └── ...
+│   ├── providers.py            # Auth providers (stub, LDAP, SAML)
+│   └── blueprint.py            # Login/logout routes
+├── admin/                      # Flask-Admin views
+│   ├── views.py                # Custom admin index
+│   ├── custom_model_views.py   # RBAC-enabled model views
+│   ├── expiration_views.py     # Expiration dashboard
+│   └── ...
+├── dashboards/                 # Dashboard blueprints
+│   ├── user/                   # User dashboard
+│   │   └── blueprint.py        # User dashboard routes
+│   └── status/                 # Status dashboard (future)
 ├── utils/                      # Utilities
 │   └── rbac.py                 # RBAC permissions and decorators
 ├── api/                        # REST API v1
@@ -486,7 +489,7 @@ Status: 403
 
 ### Adding a New Flask-Admin View
 
-In `webui/blueprints/admin/__init__.py`:
+In `webui/admin/__init__.py`:
 
 ```python
 from sam.models import MyModel

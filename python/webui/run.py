@@ -4,9 +4,9 @@ from flask_login import LoginManager, current_user
 import sam.session
 
 from webui.extensions import db
-from webui.blueprints.admin import admin_bp, init_admin
-from webui.blueprints.auth_bp import bp as auth_bp
-from webui.blueprints.user_dashboard import bp as user_dashboard_bp
+from webui.admin import admin_bp, init_admin
+from webui.auth import bp as auth_bp
+from webui.dashboards.user import bp as user_dashboard_bp
 from webui.auth.models import AuthUser
 from webui.utils.rbac import rbac_context_processor
 from sam.core.users import User

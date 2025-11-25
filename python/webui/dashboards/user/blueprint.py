@@ -41,7 +41,7 @@ def index():
     dashboard_data = get_user_dashboard_data(db.session, current_user.user_id)
 
     return render_template(
-        'user/dashboard.html',
+        'dashboards/user/dashboard.html',
         user=current_user,
         dashboard_data=dashboard_data,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
@@ -113,7 +113,7 @@ def resource_details():
     #breakdown_chart = generate_charge_breakdown_bars(detail_data['charge_totals'])
 
     return render_template(
-        'user/resource_details.html',
+        'dashboards/user/resource_details.html',
         user=current_user,
         projcode=projcode,
         resource_name=resource_name,
@@ -145,7 +145,7 @@ def members_fragment(projcode):
         return '<p class="text-muted mb-0">No members found or project not accessible</p>'
 
     return render_template(
-        'user/fragments/members_table.html',
+        'dashboards/user/fragments/members_table.html',
         members=sorted(members, key=lambda member: member["display_name"]),
         projcode=projcode,
         project=project,
@@ -247,7 +247,7 @@ def jobs_fragment(projcode, resource):
         return '<p class="text-muted mb-0">No jobs found for this period</p>'
 
     return render_template(
-        'user/fragments/jobs_table.html',
+        'dashboards/user/fragments/jobs_table.html',
         jobs=jobs,
         page=page,
         per_page=per_page,
