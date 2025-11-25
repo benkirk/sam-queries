@@ -1,7 +1,655 @@
 {% extends 'dashboards/base.html' %}
 
-{% block title %}Systems Status Dashboard {% endblock %}
+{% block title %}System Status Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .status-badge {
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: bold;
+        display: inline-block;
+    }
+    .status-online { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .status-degraded { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+    .status-offline { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+    .metric-card {
+        background: #f8f9fa;
+        border-left: 4px solid #007bff;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border-radius: 0.25rem;
+    }
+    .metric-card h6 {
+        color: #6c757d;
+        font-size: 0.875rem;
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+    }
+    .metric-card .value {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #212529;
+    }
+
+    .queue-table, .filesystem-table, .nodetype-table {
+        font-size: 0.9rem;
+    }
+
+    .last-updated {
+        color: #6c757d;
+        font-size: 0.875rem;
+    }
+
+    .outage-card {
+        border-left: 4px solid #dc3545;
+        margin-bottom: 1rem;
+    }
+    .outage-card.severity-critical { border-left-color: #dc3545; }
+    .outage-card.severity-major { border-left-color: #fd7e14; }
+    .outage-card.severity-minor { border-left-color: #ffc107; }
+    .outage-card.severity-maintenance { border-left-color: #17a2b8; }
+
+    .reservation-card {
+        border-left: 4px solid #17a2b8;
+    }
+
+    .no-data-message {
+        text-align: center;
+        color: #6c757d;
+        padding: 2rem;
+        font-style: italic;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
+<meta http-equiv="refresh" content="300">
+
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-server"></i> System Status Dashboard</h2>
+    <div class="last-updated">
+        <i class="fas fa-clock"></i> Auto-refresh every 5 minutes
+    </div>
+</div>
+
+<!-- Active Outages Banner -->
+{% if outages %}
+<div class="alert alert-warning mb-4">
+    <h5><i class="fas fa-exclamation-triangle"></i> Active System Issues ({{ outages|length }})</h5>
+    {% for outage in outages %}
+    <div class="outage-card card severity-{{ outage.severity }}">
+        <div class="card-body">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <strong>{{ outage.system_name|upper }}</strong>
+                    {% if outage.component %} - {{ outage.component }}{% endif %}
+                    <span class="badge badge-{{ 'danger' if outage.severity == 'critical' else 'warning' if outage.severity == 'major' else 'info' }}">
+                        {{ outage.severity }}
+                    </span>
+                </div>
+                <div class="text-muted small">
+                    {{ outage.start_time.strftime('%Y-%m-%d %H:%M') }}
+                </div>
+            </div>
+            <div class="mt-2">
+                <strong>{{ outage.title }}</strong>
+            </div>
+            {% if outage.description %}
+            <div class="text-muted">{{ outage.description }}</div>
+            {% endif %}
+            {% if outage.estimated_resolution %}
+            <div class="text-muted small mt-1">
+                <i class="fas fa-clock"></i> Estimated resolution: {{ outage.estimated_resolution.strftime('%Y-%m-%d %H:%M') }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Tab Navigation -->
+<ul class="nav nav-tabs mb-4" id="statusTabs" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link active" id="derecho-tab" data-toggle="tab" href="#derecho" role="tab">
+            <i class="fas fa-server"></i> Derecho
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" id="casper-tab" data-toggle="tab" href="#casper" role="tab">
+            <i class="fas fa-hdd"></i> Casper
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" id="jupyterhub-tab" data-toggle="tab" href="#jupyterhub" role="tab">
+            <i class="fas fa-book"></i> JupyterHub
+        </a>
+    </li>
+    {% if reservations %}
+    <li class="nav-item">
+        <a class="nav-link" id="reservations-tab" data-toggle="tab" href="#reservations" role="tab">
+            <i class="fas fa-calendar-alt"></i> Reservations ({{ reservations|length }})
+        </a>
+    </li>
+    {% endif %}
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="statusTabContent">
+    <!-- Derecho Tab -->
+    <div class="tab-pane fade show active" id="derecho" role="tabpanel">
+        {% if derecho_status %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>
+                    <i class="fas fa-server"></i> Derecho System Status
+                    <span class="float-right last-updated">
+                        Last updated: {{ derecho_status.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                    </span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- Login Nodes -->
+                <h6 class="mb-3"><i class="fas fa-desktop"></i> Login Nodes</h6>
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <h6>CPU Login Nodes</h6>
+                            <div class="value">
+                                <span class="status-badge status-{{ 'online' if derecho_status.cpu_login_available else 'offline' }}">
+                                    {{ 'Online' if derecho_status.cpu_login_available else 'Offline' }}
+                                </span>
+                            </div>
+                            {% if derecho_status.cpu_login_user_count is not none %}
+                            <div class="text-muted mt-2">{{ derecho_status.cpu_login_user_count }} users</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <h6>GPU Login Nodes</h6>
+                            <div class="value">
+                                <span class="status-badge status-{{ 'online' if derecho_status.gpu_login_available else 'offline' }}">
+                                    {{ 'Online' if derecho_status.gpu_login_available else 'Offline' }}
+                                </span>
+                            </div>
+                            {% if derecho_status.gpu_login_user_count is not none %}
+                            <div class="text-muted mt-2">{{ derecho_status.gpu_login_user_count }} users</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Compute Nodes -->
+                <h6 class="mb-3"><i class="fas fa-server"></i> Compute Nodes</h6>
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h6 class="text-primary">CPU Partition</h6>
+                        <table class="table table-sm">
+                            <tr><td>Total Nodes:</td><td><strong>{{ derecho_status.cpu_nodes_total }}</strong></td></tr>
+                            <tr><td>Available:</td><td class="text-success"><strong>{{ derecho_status.cpu_nodes_available }}</strong></td></tr>
+                            <tr><td>Down:</td><td class="text-danger"><strong>{{ derecho_status.cpu_nodes_down }}</strong></td></tr>
+                            <tr><td>Reserved:</td><td class="text-warning"><strong>{{ derecho_status.cpu_nodes_reserved }}</strong></td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-primary">GPU Partition</h6>
+                        <table class="table table-sm">
+                            <tr><td>Total Nodes:</td><td><strong>{{ derecho_status.gpu_nodes_total }}</strong></td></tr>
+                            <tr><td>Available:</td><td class="text-success"><strong>{{ derecho_status.gpu_nodes_available }}</strong></td></tr>
+                            <tr><td>Down:</td><td class="text-danger"><strong>{{ derecho_status.gpu_nodes_down }}</strong></td></tr>
+                            <tr><td>Reserved:</td><td class="text-warning"><strong>{{ derecho_status.gpu_nodes_reserved }}</strong></td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Utilization -->
+                <h6 class="mb-3"><i class="fas fa-chart-bar"></i> Resource Utilization</h6>
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>CPU Utilization</h6>
+                            <div class="value">{{ derecho_status.cpu_utilization_percent|round(1) }}%</div>
+                            <div class="progress mt-2">
+                                <div class="progress-bar bg-{{ 'danger' if derecho_status.cpu_utilization_percent >= 90 else 'warning' if derecho_status.cpu_utilization_percent >= 75 else 'success' }}"
+                                     style="width: {{ derecho_status.cpu_utilization_percent }}%"></div>
+                            </div>
+                            <div class="text-muted small mt-1">
+                                {{ '{:,}'.format(derecho_status.cpu_cores_allocated) }} / {{ '{:,}'.format(derecho_status.cpu_cores_total) }} cores
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>GPU Utilization</h6>
+                            <div class="value">{{ derecho_status.gpu_utilization_percent|round(1) }}%</div>
+                            <div class="progress mt-2">
+                                <div class="progress-bar bg-{{ 'danger' if derecho_status.gpu_utilization_percent >= 90 else 'warning' if derecho_status.gpu_utilization_percent >= 75 else 'success' }}"
+                                     style="width: {{ derecho_status.gpu_utilization_percent }}%"></div>
+                            </div>
+                            <div class="text-muted small mt-1">
+                                {{ derecho_status.gpu_count_allocated }} / {{ derecho_status.gpu_count_total }} GPUs
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Memory Utilization</h6>
+                            <div class="value">{{ derecho_status.memory_utilization_percent|round(1) }}%</div>
+                            <div class="progress mt-2">
+                                <div class="progress-bar bg-{{ 'danger' if derecho_status.memory_utilization_percent >= 90 else 'warning' if derecho_status.memory_utilization_percent >= 75 else 'success' }}"
+                                     style="width: {{ derecho_status.memory_utilization_percent }}%"></div>
+                            </div>
+                            <div class="text-muted small mt-1">
+                                {{ '{:,.0f}'.format(derecho_status.memory_allocated_gb) }} / {{ '{:,.0f}'.format(derecho_status.memory_total_gb) }} GB
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Jobs -->
+                <h6 class="mb-3"><i class="fas fa-tasks"></i> Job Statistics</h6>
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Running Jobs</h6>
+                            <div class="value">{{ derecho_status.running_jobs }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Pending Jobs</h6>
+                            <div class="value">{{ derecho_status.pending_jobs }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Active Users</h6>
+                            <div class="value">{{ derecho_status.active_users }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Queues -->
+                {% if derecho_queues %}
+                <h6 class="mb-3"><i class="fas fa-list"></i> Queue Status</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered queue-table">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Queue</th>
+                                <th>Running Jobs</th>
+                                <th>Pending Jobs</th>
+                                <th>Active Users</th>
+                                <th>Cores Allocated</th>
+                                <th>GPUs Allocated</th>
+                                <th>Nodes Allocated</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for queue in derecho_queues %}
+                            <tr>
+                                <td><strong>{{ queue.queue_name }}</strong></td>
+                                <td>{{ queue.running_jobs }}</td>
+                                <td>{{ queue.pending_jobs }}</td>
+                                <td>{{ queue.active_users }}</td>
+                                <td>{{ '{:,}'.format(queue.cores_allocated) }}</td>
+                                <td>{{ queue.gpus_allocated }}</td>
+                                <td>{{ queue.nodes_allocated }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+
+                <!-- Filesystems -->
+                {% if derecho_filesystems %}
+                <h6 class="mb-3 mt-4"><i class="fas fa-database"></i> Filesystem Status</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered filesystem-table">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Filesystem</th>
+                                <th>Status</th>
+                                <th>Capacity (TB)</th>
+                                <th>Used (TB)</th>
+                                <th>Utilization</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for fs in derecho_filesystems %}
+                            <tr>
+                                <td><strong>{{ fs.filesystem_name }}</strong></td>
+                                <td>
+                                    <span class="status-badge status-{{ fs.status_name }}">
+                                        {{ fs.status_name|capitalize }}
+                                    </span>
+                                </td>
+                                <td>{{ '{:,.1f}'.format(fs.capacity_tb) if fs.capacity_tb else 'N/A' }}</td>
+                                <td>{{ '{:,.1f}'.format(fs.used_tb) if fs.used_tb else 'N/A' }}</td>
+                                <td>
+                                    {% if fs.utilization_percent is not none %}
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar bg-{{ 'danger' if fs.utilization_percent >= 90 else 'warning' if fs.utilization_percent >= 75 else 'success' }}"
+                                             style="width: {{ fs.utilization_percent }}%">
+                                            {{ fs.utilization_percent|round(1) }}%
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    N/A
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="no-data-message">
+            <i class="fas fa-info-circle fa-3x mb-3"></i>
+            <p>No Derecho status data available.</p>
+        </div>
+        {% endif %}
+    </div>
+    <!-- End Derecho Tab -->
+
+    <!-- Casper Tab -->
+    <div class="tab-pane fade" id="casper" role="tabpanel">
+        {% if casper_status %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>
+                    <i class="fas fa-hdd"></i> Casper System Status
+                    <span class="float-right last-updated">
+                        Last updated: {{ casper_status.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                    </span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- Login Nodes -->
+                <h6 class="mb-3"><i class="fas fa-desktop"></i> Login Nodes</h6>
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <h6>Login Node Status</h6>
+                            <div class="value">
+                                {{ casper_status.login_nodes_available }} / {{ casper_status.login_nodes_total }} Available
+                            </div>
+                            {% if casper_status.login_total_users is not none %}
+                            <div class="text-muted mt-2">{{ casper_status.login_total_users }} total users</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <h6>Compute Nodes</h6>
+                            <div class="value">{{ casper_status.compute_nodes_available }} / {{ casper_status.compute_nodes_total }} Available</div>
+                            {% if casper_status.compute_nodes_down > 0 %}
+                            <div class="text-danger mt-2">{{ casper_status.compute_nodes_down }} nodes down</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Utilization -->
+                <h6 class="mb-3"><i class="fas fa-chart-bar"></i> Resource Utilization</h6>
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>CPU Utilization</h6>
+                            <div class="value">{{ casper_status.cpu_utilization_percent|round(1) }}%</div>
+                            <div class="progress mt-2">
+                                <div class="progress-bar bg-{{ 'danger' if casper_status.cpu_utilization_percent >= 90 else 'warning' if casper_status.cpu_utilization_percent >= 75 else 'success' }}"
+                                     style="width: {{ casper_status.cpu_utilization_percent }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>GPU Utilization</h6>
+                            <div class="value">{{ casper_status.gpu_utilization_percent|round(1) }}%</div>
+                            <div class="progress mt-2">
+                                <div class="progress-bar bg-{{ 'danger' if casper_status.gpu_utilization_percent >= 90 else 'warning' if casper_status.gpu_utilization_percent >= 75 else 'success' }}"
+                                     style="width: {{ casper_status.gpu_utilization_percent }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Memory Utilization</h6>
+                            <div class="value">{{ casper_status.memory_utilization_percent|round(1) }}%</div>
+                            <div class="progress mt-2">
+                                <div class="progress-bar bg-{{ 'danger' if casper_status.memory_utilization_percent >= 90 else 'warning' if casper_status.memory_utilization_percent >= 75 else 'success' }}"
+                                     style="width: {{ casper_status.memory_utilization_percent }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Jobs -->
+                <h6 class="mb-3"><i class="fas fa-tasks"></i> Job Statistics</h6>
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Running Jobs</h6>
+                            <div class="value">{{ casper_status.running_jobs }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Pending Jobs</h6>
+                            <div class="value">{{ casper_status.pending_jobs }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Active Users</h6>
+                            <div class="value">{{ casper_status.active_users }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Node Types -->
+                {% if casper_node_types %}
+                <h6 class="mb-3"><i class="fas fa-server"></i> Node Type Status</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered nodetype-table">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Node Type</th>
+                                <th>Total</th>
+                                <th>Available</th>
+                                <th>Down</th>
+                                <th>Allocated</th>
+                                <th>Specs</th>
+                                <th>Utilization</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for nt in casper_node_types %}
+                            <tr>
+                                <td><strong>{{ nt.node_type }}</strong></td>
+                                <td>{{ nt.nodes_total }}</td>
+                                <td class="text-success">{{ nt.nodes_available }}</td>
+                                <td class="text-danger">{{ nt.nodes_down }}</td>
+                                <td class="text-warning">{{ nt.nodes_allocated }}</td>
+                                <td>
+                                    <small>
+                                        {{ nt.cores_per_node }} cores,
+                                        {{ nt.memory_gb_per_node }} GB RAM
+                                        {% if nt.gpu_model %}<br>{{ nt.gpus_per_node }}x {{ nt.gpu_model }}{% endif %}
+                                    </small>
+                                </td>
+                                <td>
+                                    {% if nt.utilization_percent is not none %}
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar bg-{{ 'danger' if nt.utilization_percent >= 90 else 'warning' if nt.utilization_percent >= 75 else 'success' }}"
+                                             style="width: {{ nt.utilization_percent }}%">
+                                            {{ nt.utilization_percent|round(1) }}%
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    N/A
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+
+                <!-- Queues -->
+                {% if casper_queues %}
+                <h6 class="mb-3 mt-4"><i class="fas fa-list"></i> Queue Status</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered queue-table">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Queue</th>
+                                <th>Running Jobs</th>
+                                <th>Pending Jobs</th>
+                                <th>Active Users</th>
+                                <th>Cores Allocated</th>
+                                <th>Nodes Allocated</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for queue in casper_queues %}
+                            <tr>
+                                <td><strong>{{ queue.queue_name }}</strong></td>
+                                <td>{{ queue.running_jobs }}</td>
+                                <td>{{ queue.pending_jobs }}</td>
+                                <td>{{ queue.active_users }}</td>
+                                <td>{{ '{:,}'.format(queue.cores_allocated) }}</td>
+                                <td>{{ queue.nodes_allocated }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="no-data-message">
+            <i class="fas fa-info-circle fa-3x mb-3"></i>
+            <p>No Casper status data available.</p>
+        </div>
+        {% endif %}
+    </div>
+    <!-- End Casper Tab -->
+
+    <!-- JupyterHub Tab -->
+    <div class="tab-pane fade" id="jupyterhub" role="tabpanel">
+        {% if jupyterhub_status %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>
+                    <i class="fas fa-book"></i> JupyterHub Status
+                    <span class="float-right last-updated">
+                        Last updated: {{ jupyterhub_status.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                    </span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Service Status</h6>
+                            <div class="value">
+                                <span class="status-badge status-{{ 'online' if jupyterhub_status.available else 'offline' }}">
+                                    {{ 'Online' if jupyterhub_status.available else 'Offline' }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Active Users</h6>
+                            <div class="value">{{ jupyterhub_status.active_users }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="metric-card">
+                            <h6>Active Sessions</h6>
+                            <div class="value">{{ jupyterhub_status.active_sessions }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <h6 class="mb-3 mt-4"><i class="fas fa-chart-bar"></i> Resource Utilization</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <h6>CPU Utilization</h6>
+                            <div class="value">{{ jupyterhub_status.cpu_utilization_percent|round(1) }}%</div>
+                            <div class="progress mt-2">
+                                <div class="progress-bar bg-{{ 'danger' if jupyterhub_status.cpu_utilization_percent >= 90 else 'warning' if jupyterhub_status.cpu_utilization_percent >= 75 else 'success' }}"
+                                     style="width: {{ jupyterhub_status.cpu_utilization_percent }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <h6>Memory Utilization</h6>
+                            <div class="value">{{ jupyterhub_status.memory_utilization_percent|round(1) }}%</div>
+                            <div class="progress mt-2">
+                                <div class="progress-bar bg-{{ 'danger' if jupyterhub_status.memory_utilization_percent >= 90 else 'warning' if jupyterhub_status.memory_utilization_percent >= 75 else 'success' }}"
+                                     style="width: {{ jupyterhub_status.memory_utilization_percent }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="no-data-message">
+            <i class="fas fa-info-circle fa-3x mb-3"></i>
+            <p>No JupyterHub status data available.</p>
+        </div>
+        {% endif %}
+    </div>
+    <!-- End JupyterHub Tab -->
+
+    <!-- Reservations Tab -->
+    {% if reservations %}
+    <div class="tab-pane fade" id="reservations" role="tabpanel">
+        <h5 class="mb-3"><i class="fas fa-calendar-alt"></i> Upcoming Maintenance &amp; Reservations</h5>
+        {% for res in reservations %}
+        <div class="card reservation-card mb-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6>
+                            <strong>{{ res.system_name|upper }}</strong> - {{ res.reservation_name }}
+                        </h6>
+                    </div>
+                    <div class="text-muted">
+                        {{ res.start_time.strftime('%Y-%m-%d %H:%M') }} - {{ res.end_time.strftime('%H:%M') }}
+                    </div>
+                </div>
+                {% if res.description %}
+                <p class="mb-2">{{ res.description }}</p>
+                {% endif %}
+                <div class="text-muted small">
+                    {% if res.node_count %}{{ res.node_count }} nodes{% endif %}
+                    {% if res.partition %} - Partition: {{ res.partition }}{% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    <!-- End Reservations Tab -->
+</div>
+<!-- End Tab Content -->
 
 {% endblock %}
