@@ -1,0 +1,685 @@
+# System Status Dashboard - Implementation Plan
+
+## Executive Summary
+
+This plan implements a comprehensive system status dashboard for HPC resources (Derecho, Casper, JupyterHub) alongside the existing user dashboard. Phase 1 delivers a complete foundation with database schema, POST APIs for data ingestion, tabbed UI with auto-refresh, and refactored shared components.
+
+**Key Technical Decisions:**
+- **Database**: Separate MySQL database `system_status` on same SAM_DB_SERVER
+- **ORM Location**: New `python/system_status/` tree (parallel to `sam/`)
+- **Data Granularity**: 5-minute intervals, 7-day retention
+- **Client Refresh**: Simple AJAX polling (5-minute intervals)
+- **Phase 1 Scope**: Full foundation (DB, ORM, APIs, UI)
+
+---
+
+## Architecture Overview
+
+### Database Strategy
+
+**Separate MySQL Database**: `system_status` on existing SAM_DB_SERVER
+- Clean separation from SAM accounting data
+- Independent schema evolution
+- Reuses proven connection infrastructure
+- Environment variables: `STATUS_DB_USERNAME`, `STATUS_DB_PASSWORD`, `STATUS_DB_SERVER`
+
+**Time-Series Pattern**: 5-minute interval snapshots with indexed timestamps
+- Retention: 7 days of detailed data
+- Automatic cleanup via cron
+- Follows SAM's summary table patterns (indexed by date + component)
+
+### ORM Structure
+
+**New Directory**: `python/system_status/` (parallel to `sam/`)
+```
+python/system_status/
+├── __init__.py
+├── base.py                    # Base classes, mixins
+├── session/
+│   └── __init__.py            # create_status_engine()
+├── models/
+│   ├── __init__.py
+│   ├── derecho.py             # DerechoStatus, DerechoQueueStatus, DerechoFilesystemStatus
+│   ├── casper.py              # CasperStatus, CasperNodeTypeStatus, CasperQueueStatus
+│   ├── jupyterhub.py          # JupyterHubStatus (placeholder)
+│   └── outages.py             # SystemOutage, ResourceReservation
+└── queries/
+    └── __init__.py            # Query helpers
+```
+
+**Rationale**: Complete separation from SAM accounting domain
+
+### API Architecture
+
+**Blueprint**: `/api/v1/status/`
+
+**POST Endpoints** (data ingestion, requires `MANAGE_SYSTEM_STATUS` permission):
+- `/api/v1/status/derecho` - Ingest Derecho metrics
+- `/api/v1/status/casper` - Ingest Casper metrics
+- `/api/v1/status/jupyterhub` - Ingest JupyterHub metrics
+- `/api/v1/status/outage` - Report outages/degradations
+
+**GET Endpoints** (dashboard consumption, requires login):
+- `/api/v1/status/derecho/latest` - Latest Derecho status
+- `/api/v1/status/casper/latest` - Latest Casper status
+- `/api/v1/status/jupyterhub/latest` - Latest JupyterHub status
+- `/api/v1/status/outages` - Active outages
+- `/api/v1/status/reservations` - Upcoming reservations
+
+**Pattern Compliance**: Follows existing SAM API patterns:
+- `@login_required` + `@require_permission` decorators
+- `request.get_json()` for POST bodies
+- Consistent error handling via `register_error_handlers()`
+- Standard response wrappers
+
+### UI Architecture
+
+**Tabbed Dashboard**: 3 tabs (Derecho, Casper, JupyterHub)
+- Lazy loading on tab switch
+- AJAX auto-refresh every 5 minutes
+- Shared component library (refactored from user dashboard)
+
+**Refactored Components**:
+- `tab_navigation.html` - Reusable tab macro
+- `status_badge.html` - Status indicator macro
+- `metric_card.html` - Metric display cards
+- `loading_spinner.html` - Already exists, reused
+
+**JavaScript**: `status-dashboard.js`
+- Fetch latest status via GET APIs
+- Render system-specific views
+- Auto-refresh with configurable intervals
+- Tab-aware refresh (only active tab)
+
+---
+
+## Database Schema
+
+### Core Tables (5-minute intervals)
+
+#### Derecho Tables
+
+**`derecho_status`** - System-level metrics
+- Primary key: `status_id`
+- Indexed: `timestamp`, `created_at`
+- Key fields:
+  - Login nodes: CPU/GPU availability, user counts, system load
+  - Compute nodes: CPU/GPU partition totals, available, down, reserved
+  - Utilization: CPU/GPU/memory percentages
+  - Jobs: running, pending, active users
+
+**`derecho_queue_status`** - Per-queue metrics
+- Primary key: `queue_status_id`
+- Unique constraint: `(timestamp, queue_name)`
+- Fields: running_jobs, pending_jobs, active_users, resource allocations
+
+**`derecho_filesystem_status`** - Filesystem health
+- Primary key: `fs_status_id`
+- Unique constraint: `(timestamp, filesystem_name)`
+- Fields: availability, degraded status, capacity, utilization
+
+#### Casper Tables
+
+**`casper_status`** - Aggregate system metrics
+- Heterogeneous system (multiple node types)
+- Fields: login nodes, compute nodes, CPU/GPU/memory utilization, jobs
+
+**`casper_node_type_status`** - Per-node-type breakdown
+- Unique constraint: `(timestamp, node_type)`
+- Node types: standard, bigmem, gpu-mi100, gpu-v100, gpu-a100
+- Fields: nodes available/down, specs (cores, memory, GPU model), utilization
+
+**`casper_queue_status`** - Per-queue metrics
+- Similar to Derecho queue status
+
+#### JupyterHub Tables
+
+**`jupyterhub_status`** - JupyterHub metrics (placeholder)
+- Fields: availability, active_users, active_sessions, utilization
+
+#### Support Tables
+
+**`system_outages`** - Known outages and degradations
+- Fields: system_name, component, severity, status, title, description
+- Timestamps: start_time, end_time, estimated_resolution
+
+**`resource_reservations`** - Scheduled reservations
+- Fields: system_name, reservation_name, start/end times, node_count, partition
+
+### Indexing Strategy
+
+All time-series tables indexed for fast queries:
+- Single index on `timestamp`
+- Composite indexes: `(timestamp, component_id)` for filtered queries
+- Follows SAM's summary table pattern (CompChargeSummary, etc.)
+
+---
+
+## Implementation Plan
+
+### Phase 1A: Database & ORM Foundation (Days 1-2)
+
+1. **Environment configuration**:
+   - Add `STATUS_DB_*` variables to `.env`
+   - Create `system_status` database on MySQL server
+
+2. **ORM implementation**:
+   - Create `python/system_status/` directory structure
+   - Implement base classes and mixins (`base.py`)
+   - Create session factory (`session/__init__.py`)
+   - Implement all model classes (derecho, casper, jupyterhub, outages)
+
+3. **Database creation**:
+   - SQL script: `scripts/create_status_db.sql`
+   - Python setup script: `scripts/setup_status_db.py` (uses ORM to create tables)
+
+### Phase 1B: API Layer (Days 3-4)
+
+4. **API implementation**:
+   - Create `python/webui/api/v1/status.py` (all POST/GET endpoints)
+   - Add `Permission.MANAGE_SYSTEM_STATUS` to `python/webui/utils/rbac.py`
+   - Register blueprint in `python/webui/run.py`
+
+5. **Testing infrastructure**:
+   - Create mock data: `tests/mock_data/status_mock_data.json`
+   - API tests: `tests/api/test_status_api.py`
+   - Mock ingestion script: `scripts/ingest_mock_status.py`
+
+### Phase 1C: UI Implementation (Days 5-6)
+
+6. **Component refactoring**:
+   - Create `tab_navigation.html`, `status_badge.html`, `metric_card.html` macros
+   - Update user dashboard to use new `render_tabs` macro
+
+7. **Status dashboard**:
+   - Implement `templates/dashboards/status/dashboard.html`
+   - Create `static/js/status-dashboard.js` (fetch, render, auto-refresh)
+   - Add status-specific CSS if needed
+
+### Phase 1D: Integration & Testing (Days 7-8)
+
+8. **Integration testing**:
+   - End-to-end tests: POST → GET flow
+   - UI tests: tab switching, auto-refresh
+   - Performance validation: query speed with 7 days of data
+
+9. **Documentation**:
+   - API documentation: `docs/status_dashboard_api.md`
+   - Schema documentation: `docs/status_dashboard_schema.md`
+   - Update `CLAUDE.md` with status patterns
+
+10. **Data retention**:
+    - Cleanup script: `scripts/cleanup_status_data.py`
+    - Cron setup for daily cleanup (retain 7 days)
+
+---
+
+## System Status Metrics
+
+### Derecho (CPU + GPU Partitions)
+
+**Login Nodes**: CPU and GPU login nodes
+- Availability (boolean)
+- User count
+- System load (1min, 5min, 15min averages)
+
+**Compute Nodes**: Separate CPU and GPU partitions
+- Total, available, down, reserved (per partition)
+- Node health status
+
+**Utilization**:
+- CPU: cores total/allocated/idle, utilization %
+- GPU: count total/allocated/idle, utilization %
+- Memory: total/allocated GB, utilization %
+
+**Queues**: Per-queue breakdown
+- Running jobs, pending jobs, active users
+- Resource allocations (cores, GPUs, nodes)
+
+**Filesystems**: glade, campaign, scratch
+- Availability, degraded status
+- Capacity and utilization
+
+### Casper (Heterogeneous System)
+
+**Login Nodes**: Multiple login nodes
+- Available/total count
+- Total user count across all logins
+
+**Node Types**: Multiple heterogeneous types
+- Standard: 36 cores, 192 GB RAM
+- Bigmem: 64 cores, 768 GB RAM
+- GPU-MI100: 64 cores, 512 GB, 2x AMD MI100
+- GPU-V100: 36 cores, 384 GB, 4x NVIDIA V100
+- GPU-A100: 64 cores, 512 GB, 4x NVIDIA A100
+
+**Per-Node-Type Metrics**:
+- Total, available, down, allocated counts
+- Utilization percentage
+- Hardware specs
+
+**Queues**: casper, gpudev, htc
+- Running/pending jobs
+- Active users
+
+### JupyterHub (Placeholder)
+
+**Basic Metrics**:
+- Availability
+- Active users, active sessions
+- CPU/memory utilization
+
+**Note**: Full implementation deferred to Phase 2+
+
+---
+
+## Data Flow
+
+### Ingestion (HPC → API → Database)
+
+```
+HPC Collectors (separate codebase, Phase 2)
+    ↓ POST /api/v1/status/derecho (JSON)
+API Endpoint (status.py)
+    ↓ Validate, authenticate
+    ↓ Create ORM objects
+Database (system_status)
+    ↓ INSERT with timestamp
+5-minute interval table
+```
+
+### Consumption (Database → API → Dashboard)
+
+```
+Browser (status-dashboard.js)
+    ↓ GET /api/v1/status/derecho/latest
+API Endpoint (status.py)
+    ↓ Query latest status by timestamp
+Database (system_status)
+    ↓ Return ORM objects
+API serializes to JSON
+    ↓ HTTP response
+JavaScript renders HTML
+    ↓ Update DOM
+Dashboard displays current status
+```
+
+### Auto-Refresh
+
+```
+JavaScript timer (5-minute interval)
+    ↓ Trigger fetch
+    ↓ GET latest status
+    ↓ Render updated view
+    ↓ Schedule next refresh
+```
+
+---
+
+## Mock Data Structure
+
+**File**: `tests/mock_data/status_mock_data.json`
+
+**Purpose**: Development and testing data
+
+**Contents**:
+- Realistic Derecho metrics (2488 CPU nodes, 82 GPU nodes, queue data, filesystems)
+- Casper heterogeneous node breakdown (5 node types)
+- JupyterHub placeholder data
+- Sample outages and reservations
+
+**Usage**:
+- Manual testing: `scripts/ingest_mock_status.py`
+- Automated tests: Load via API tests
+- Dashboard development: Provides immediate visual feedback
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+
+1. **ORM Models** (`tests/unit/test_status_models.py`):
+   - Validate all model definitions
+   - Test relationships and constraints
+   - Test mixin behaviors
+
+2. **Session Management** (`tests/unit/test_status_session.py`):
+   - Test `create_status_engine()` with various configs
+   - Validate SSL and pooling settings
+
+### API Tests
+
+3. **POST Endpoints** (`tests/api/test_status_post.py`):
+   - Test data ingestion for all systems
+   - Validate required fields
+   - Test error handling (auth, malformed data)
+
+4. **GET Endpoints** (`tests/api/test_status_get.py`):
+   - Test latest status retrieval
+   - Test filtering (system_name for outages)
+   - Test empty database handling
+
+### Integration Tests
+
+5. **End-to-End Flow** (`tests/integration/test_status_flow.py`):
+   - POST mock data → GET latest → verify consistency
+   - Test data retention cleanup
+   - Test concurrent writes
+
+6. **UI Tests** (`tests/integration/test_status_ui.py`):
+   - Test dashboard rendering
+   - Test tab switching
+   - Test auto-refresh (if using Selenium/Playwright)
+
+### Performance Tests
+
+7. **Query Performance** (`tests/performance/test_status_queries.py`):
+   - Insert 7 days of 5-minute data (~2000 records)
+   - Measure GET endpoint response times
+   - Validate index effectiveness
+
+---
+
+## Data Retention & Cleanup
+
+**Retention Policy**: 7 days of 5-minute interval data
+- ~2,016 records per week per main status table
+- Derecho: ~3 tables × 2,016 = ~6K records/week
+- Casper: ~3 tables × 2,016 = ~6K records/week
+- Total: ~15K records/week (manageable)
+
+**Cleanup Script**: `scripts/cleanup_status_data.py`
+- Deletes records older than 7 days
+- Runs daily via cron (2 AM)
+- Logs deletion counts
+
+**Cron Entry**:
+```cron
+0 2 * * * /path/to/python scripts/cleanup_status_data.py >> /var/log/status_cleanup.log 2>&1
+```
+
+---
+
+## Future Phases
+
+### Phase 2: Historical Visualization & Real HPC Data
+
+**Historical Charts**:
+- 7-day trend charts using matplotlib/SVG
+- Drill-down: daily → hourly → 5-minute views
+- Optional daily summary tables for long-term trends
+
+**HPC Data Collectors** (separate codebase):
+- SLURM queue parsing (`squeue`, `sinfo`)
+- Node health monitoring
+- Filesystem monitoring (`df`, `lfs quota`)
+- API authentication via `ApiCredentials` pattern
+
+### Phase 3: WebSocket Push & Alerts
+
+**Flask-SocketIO**:
+- Real-time updates without polling
+- Push notifications for outages
+- Sub-minute refresh rates
+
+**User Alerts**:
+- Email/Slack notifications
+- User-subscribed alerts (e.g., queue wait times)
+
+### Phase 4: Advanced Analytics
+
+**Predictive Analytics**:
+- Queue wait time predictions (ML-based)
+- Capacity planning from historical trends
+- Anomaly detection
+
+---
+
+## Critical Files for Implementation
+
+### Top 5 Files to Read Before Implementation
+
+1. **`python/sam/session/__init__.py`** (lines 1-68)
+   - **Why**: Connection factory pattern - establish how to replicate for status DB
+   - **Key patterns**: Environment variable loading, SSL config, pooling
+
+2. **`python/webui/api/v1/projects.py`** (lines 421-483, 521-573)
+   - **Why**: POST endpoint patterns - add_member() shows complete flow
+   - **Key patterns**: Validation, authorization, error handling, response format
+
+3. **`python/webui/dashboards/user/blueprint.py`** (all)
+   - **Why**: Dashboard route patterns - understand blueprint structure
+   - **Key patterns**: Route definitions, template rendering, session passing
+
+4. **`python/webui/templates/dashboards/user/dashboard.html`** (all)
+   - **Why**: Tabbed interface implementation - see tab navigation structure
+   - **Key patterns**: Bootstrap tabs, lazy loading, collapsible cards
+
+5. **`python/webui/static/js/lazy-loading.js`** (all 27 lines)
+   - **Why**: Fragment loading pattern - understand auto-loading mechanism
+   - **Key patterns**: Event listeners, data attributes, fetch/insert
+
+### Additional Reference Files
+
+6. **`python/sam/summaries/comp_summaries.py`** - Time-series aggregation pattern
+7. **`python/webui/api/helpers.py`** - Response wrappers and error handling
+8. **`python/webui/utils/rbac.py`** - Permission system and decorators
+9. **`python/sam/projects/projects.py`** (lines 306-441) - Query aggregation pattern
+10. **`tests/integration/test_schema_validation.py`** - Schema validation approach
+
+---
+
+## Key Technical Patterns to Follow
+
+### 1. Database Connection (from `sam/session/__init__.py`)
+
+```python
+# Environment-driven connection string
+connection_string = f'mysql+pymysql://{username}:{password}@{server}/{database}'
+
+# Engine with pooling and SSL
+engine = create_engine(
+    connection_string,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    connect_args={'ssl': {'ssl_disabled': False}} if require_ssl else {}
+)
+```
+
+### 2. API POST Pattern (from `projects.py`)
+
+```python
+@bp.route('/endpoint', methods=['POST'])
+@login_required
+@require_permission(Permission.X)
+def endpoint():
+    # 1. Get JSON
+    data = request.get_json()
+
+    # 2. Validate required fields
+    if not data.get('field'):
+        return jsonify({'error': 'Field required'}), 400
+
+    # 3. Business logic with error handling
+    try:
+        # ... do work ...
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    # 4. Success response
+    return jsonify({'success': True, 'message': '...'}), 201
+```
+
+### 3. Time-Series Table Pattern (from `comp_summaries.py`)
+
+```python
+class StatusTable(Base, StatusSnapshotMixin):
+    __tablename__ = 'table_name'
+
+    __table_args__ = (
+        Index('ix_timestamp', 'timestamp'),
+        Index('ix_timestamp_component', 'timestamp', 'component_id'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, nullable=False, index=True)
+    # ... metrics ...
+```
+
+### 4. Dashboard Tab Pattern (from `user/dashboard.html`)
+
+```html
+<!-- Tab navigation -->
+<ul class="nav nav-tabs">
+    <li class="nav-item">
+        <a class="nav-link active" data-toggle="tab" href="#tab1">Tab 1</a>
+    </li>
+</ul>
+
+<!-- Tab content -->
+<div class="tab-content">
+    <div class="tab-pane fade show active" id="tab1">
+        <div class="status-container"
+             data-api-url="{{ url_for('api.endpoint') }}"
+             data-refresh-interval="300000">
+            <!-- Content loaded via JavaScript -->
+        </div>
+    </div>
+</div>
+```
+
+### 5. Auto-Refresh JavaScript Pattern
+
+```javascript
+function loadData(container) {
+    fetch(container.getAttribute('data-api-url'))
+        .then(response => response.json())
+        .then(data => renderView(container, data))
+        .catch(error => showError(container, error));
+}
+
+// Auto-refresh
+const interval = parseInt(container.getAttribute('data-refresh-interval'));
+setInterval(() => loadData(container), interval);
+```
+
+---
+
+## Dependencies & Prerequisites
+
+### Python Packages (already installed)
+
+- SQLAlchemy 2.0
+- Flask
+- Flask-Login
+- pymysql
+- python-dotenv
+
+### Database
+
+- MySQL/MariaDB server (existing SAM_DB_SERVER)
+- CREATE DATABASE permission for `system_status`
+
+### Frontend
+
+- Bootstrap 4.6.2 (already in use)
+- Font Awesome 5.15.4 (already in use)
+- jQuery 3.6.0 (already in use)
+
+### No New Dependencies Required
+
+All required libraries already present in SAM project.
+
+---
+
+## Success Criteria
+
+### Phase 1 Complete When:
+
+1. ✅ Separate `system_status` MySQL database created and accessible
+2. ✅ All ORM models defined and tested in `python/system_status/`
+3. ✅ POST APIs successfully ingest mock data for all three systems
+4. ✅ GET APIs return latest status correctly formatted
+5. ✅ Status dashboard renders with 3 tabs
+6. ✅ Auto-refresh works (5-minute intervals)
+7. ✅ Shared components refactored and reused
+8. ✅ User dashboard migrated to use new shared tab navigation
+9. ✅ All tests pass (unit, API, integration)
+10. ✅ Documentation complete (API docs, schema docs, CLAUDE.md updated)
+11. ✅ Data cleanup script tested and scheduled via cron
+
+### Quality Gates
+
+- **Code Coverage**: Aim for >80% on new code
+- **Response Times**: GET endpoints < 100ms with 7 days of data
+- **UI Performance**: Dashboard renders < 500ms
+- **Schema Validation**: No drift between ORM and database
+
+---
+
+## Risk Mitigation
+
+### Risk 1: Database Performance with 5-Minute Data
+
+**Mitigation**:
+- Proper indexing strategy (composite indexes on timestamp + component)
+- 7-day retention limit
+- Query optimization (fetch latest first, limit results)
+- Consider materialized views if needed (Phase 2)
+
+### Risk 2: Concurrent Writes (Multiple HPC Collectors)
+
+**Mitigation**:
+- Use unique constraints on `(timestamp, component_id)`
+- Database handles concurrent INSERTs
+- Transaction isolation via SQLAlchemy sessions
+- Test concurrent writes in integration tests
+
+### Risk 3: Stale Data Display
+
+**Mitigation**:
+- Show timestamp on dashboard ("Last updated: ...")
+- Color-code by age (>10 minutes = warning)
+- Auto-refresh keeps data fresh
+- Fallback message if no data available
+
+### Risk 4: API Authentication for HPC Collectors
+
+**Mitigation**:
+- Use existing `ApiCredentials` pattern from SAM
+- Create service accounts for HPC collectors
+- Assign `MANAGE_SYSTEM_STATUS` permission
+- API key rotation procedures (Phase 2)
+
+---
+
+## Alignment with Existing Patterns
+
+This implementation maintains complete consistency with SAM's established patterns:
+
+✅ **Database**: Separate database on same MySQL server (like multi-tenant approach)
+✅ **ORM**: Parallel directory structure (`system_status/` alongside `sam/`)
+✅ **API**: Same blueprint patterns, decorators, error handling
+✅ **Session Management**: Reuses proven connection factory pattern
+✅ **UI**: Extends existing dashboard infrastructure
+✅ **Testing**: Mirrors SAM's comprehensive test suite approach
+✅ **Documentation**: Follows CLAUDE.md documentation pattern
+
+**No Breaking Changes**: User dashboard remains fully functional throughout implementation.
+
+---
+
+## Conclusion
+
+This plan delivers a production-ready system status dashboard foundation that:
+
+1. **Separates concerns** - Status data isolated from accounting data
+2. **Scales efficiently** - 5-minute intervals with automatic cleanup
+3. **Follows proven patterns** - Reuses SAM's established architecture
+4. **Enables future growth** - Clear path to Phase 2+ enhancements
+5. **Ships complete** - Full stack (DB → API → UI) in Phase 1
+
+**Implementation Timeline**: 8 days for Phase 1 complete delivery
+
+**Ready for Review**: This plan is ready for approval and implementation.
