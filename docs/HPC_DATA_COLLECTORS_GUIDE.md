@@ -99,20 +99,6 @@ POST /api/v1/status/derecho
 {
   "timestamp": "2025-11-25T14:30:00",  // Optional, defaults to now
 
-  // Login Nodes - CPU
-  "cpu_login_available": true,
-  "cpu_login_user_count": 45,
-  "cpu_login_load_1min": 2.5,
-  "cpu_login_load_5min": 2.8,
-  "cpu_login_load_15min": 3.1,
-
-  // Login Nodes - GPU
-  "gpu_login_available": true,
-  "gpu_login_user_count": 12,
-  "gpu_login_load_1min": 1.2,
-  "gpu_login_load_5min": 1.5,
-  "gpu_login_load_15min": 1.4,
-
   // Compute Nodes - CPU Partition
   "cpu_nodes_total": 2488,
   "cpu_nodes_available": 1850,
@@ -146,6 +132,41 @@ POST /api/v1/status/derecho
   "running_jobs": 1245,
   "pending_jobs": 328,
   "active_users": 156,
+
+  // Login Nodes - Per-node tracking (8 total: 4 CPU, 4 GPU)
+  "login_nodes": [
+    {
+      "node_name": "derecho1",
+      "node_type": "cpu",          // 'cpu' or 'gpu'
+      "available": true,
+      "degraded": false,
+      "user_count": 12,
+      "load_1min": 2.3,
+      "load_5min": 2.5,
+      "load_15min": 2.8
+    },
+    {
+      "node_name": "derecho2",
+      "node_type": "cpu",
+      "available": true,
+      "degraded": false,
+      "user_count": 11,
+      "load_1min": 2.1,
+      "load_5min": 2.4,
+      "load_15min": 2.7
+    },
+    {
+      "node_name": "derecho5",
+      "node_type": "gpu",
+      "available": true,
+      "degraded": false,
+      "user_count": 3,
+      "load_1min": 1.1,
+      "load_5min": 1.3,
+      "load_15min": 1.2
+    }
+    // ... up to 8 login nodes total
+  ],
 
   // Optional: Queue-specific data
   "queues": [
@@ -190,6 +211,14 @@ POST /api/v1/status/derecho
   ]
 }
 ```
+
+**Login Node Fields**:
+- `node_name` (required): Hostname (e.g., "derecho1", "derecho5")
+- `node_type` (required): Either "cpu" or "gpu"
+- `available` (required): Boolean - node is accessible
+- `degraded` (optional): Boolean - node is up but degraded, defaults to false
+- `user_count` (optional): Number of logged-in users
+- `load_1min`, `load_5min`, `load_15min` (optional): Load averages
 
 ### Data Collection Commands
 
@@ -361,11 +390,6 @@ Casper is heterogeneous, so includes node type breakdown:
 {
   "timestamp": "2025-11-25T14:30:00",  // Optional
 
-  // Login Nodes
-  "login_nodes_available": 4,
-  "login_nodes_total": 4,
-  "login_total_users": 78,
-
   // Compute Nodes (aggregate)
   "compute_nodes_total": 260,
   "compute_nodes_available": 185,
@@ -380,6 +404,28 @@ Casper is heterogeneous, so includes node type breakdown:
   "running_jobs": 456,
   "pending_jobs": 89,
   "active_users": 92,
+
+  // Login Nodes - Per-node tracking (2 nodes)
+  "login_nodes": [
+    {
+      "node_name": "casper1",
+      "available": true,
+      "degraded": false,
+      "user_count": 39,
+      "load_1min": 3.2,
+      "load_5min": 3.4,
+      "load_15min": 3.6
+    },
+    {
+      "node_name": "casper2",
+      "available": true,
+      "degraded": false,
+      "user_count": 39,
+      "load_1min": 3.1,
+      "load_5min": 3.3,
+      "load_15min": 3.5
+    }
+  ],
 
   // Node Type Breakdown
   "node_types": [
@@ -423,6 +469,15 @@ Casper is heterogeneous, so includes node type breakdown:
 }
 ```
 
+**Casper Login Node Fields**:
+- `node_name` (required): Hostname (e.g., "casper1", "casper2")
+- `available` (required): Boolean - node is accessible
+- `degraded` (optional): Boolean - node is up but degraded, defaults to false
+- `user_count` (optional): Number of logged-in users
+- `load_1min`, `load_5min`, `load_15min` (optional): Load averages
+
+**Note**: Casper login nodes do not have a `node_type` field (unlike Derecho) since all Casper login nodes are the same type.
+
 ### Node Type Detection
 
 ```bash
@@ -454,14 +509,20 @@ POST /api/v1/status/jupyterhub
 ```json
 {
   "timestamp": "2025-11-25T14:30:00",  // Optional
-
-  "available": true,
-  "active_users": 68,
-  "active_sessions": 72,
-  "cpu_utilization_percent": 45.2,
-  "memory_utilization_percent": 52.8
+  "available": true,                   // Required - service is up
+  "active_users": 68,                  // Required - number of active users
+  "active_sessions": 72,               // Required - number of running servers
+  "cpu_utilization_percent": 45.2,    // Optional - aggregate CPU usage
+  "memory_utilization_percent": 52.8  // Optional - aggregate memory usage
 }
 ```
+
+**JupyterHub Fields**:
+- `available` (required): Boolean - service is accessible
+- `active_users` (required): Number of users with active sessions
+- `active_sessions` (required): Number of running Jupyter servers
+- `cpu_utilization_percent` (optional): Aggregate CPU utilization across all sessions
+- `memory_utilization_percent` (optional): Aggregate memory utilization across all sessions
 
 ### Data Collection
 
@@ -496,16 +557,28 @@ POST /api/v1/status/outage
 
 ```json
 {
-  "system_name": "derecho",             // Required: derecho, casper, jupyterhub
-  "title": "Brief outage description",  // Required
+  "system_name": "Derecho",             // Required: system name (e.g., "Derecho", "Casper", "JupyterHub")
+  "title": "Brief outage description",  // Required: short summary
   "severity": "major",                  // Required: critical, major, minor, maintenance
-  "component": "Login nodes",           // Optional
-  "description": "Detailed description",// Optional
-  "status": "investigating",            // Optional: investigating, identified, monitoring, resolved
-  "start_time": "2025-11-25T08:15:00", // Optional, defaults to now
-  "estimated_resolution": "2025-11-25T18:00:00"  // Optional
+  "status": "investigating",            // Required: investigating, identified, monitoring, resolved
+  "component": "Login nodes",           // Optional: affected component (e.g., "login nodes", "queue", "filesystem")
+  "description": "Detailed description of issue and impact",  // Optional: longer explanation
+  "start_time": "2025-11-25T08:15:00",  // Optional: when outage started, defaults to now
+  "end_time": "2025-11-25T10:30:00",    // Optional: when resolved (set when status=resolved)
+  "estimated_resolution": "2025-11-25T18:00:00"  // Optional: ETA for resolution
 }
 ```
+
+**Outage Fields**:
+- `system_name` (required): System name - "Derecho", "Casper", "JupyterHub", etc.
+- `title` (required): Brief description (appears in dashboard alerts)
+- `severity` (required): One of "critical", "major", "minor", "maintenance"
+- `status` (required): One of "investigating", "identified", "monitoring", "resolved"
+- `component` (optional): Affected component or subsystem
+- `description` (optional): Detailed explanation of issue and impact
+- `start_time` (optional): ISO 8601 timestamp, defaults to current time
+- `end_time` (optional): ISO 8601 timestamp, set when outage is resolved
+- `estimated_resolution` (optional): ISO 8601 timestamp for expected resolution
 
 ### Example: Automated Outage Detection
 
@@ -547,7 +620,10 @@ def check_login_nodes():
     "success": true,
     "message": "Derecho status ingested successfully",
     "status_id": 12345,
-    "timestamp": "2025-11-25T14:30:00"
+    "timestamp": "2025-11-25T14:30:00",
+    "login_node_ids": [101, 102, 103, 104, 105, 106, 107, 108],  // If login_nodes provided
+    "queue_ids": [50, 51],        // If queues provided
+    "filesystem_ids": [10, 11]    // If filesystems provided
   }
   ```
 
@@ -740,5 +816,12 @@ hpc-status-collectors/
 
 ## Changelog
 
-- **2025-11-25**: Initial release (Phase 1)
+- **2025-11-25**:
+  - Initial release (Phase 1)
+  - Updated to per-node login tracking (breaking change)
+    - Derecho: `login_nodes` array replaces aggregate `cpu_login_*` and `gpu_login_*` fields
+    - Casper: `login_nodes` array replaces aggregate `login_nodes_available`, `login_nodes_total`, `login_total_users` fields
+    - Each login node tracked individually with availability, load, and user count
+  - Updated outage schema with new severity/status fields
+  - JupyterHub schema updated with `active_sessions` field
 - Future: Add WebSocket push API, real-time streaming
