@@ -14,6 +14,7 @@ from sam.core.users import User
 from webui.api.v1.projects import bp as api_projects_bp
 from webui.api.v1.users import bp as api_users_bp
 from webui.api.v1.charges import bp as api_charges_bp
+from webui.api.v1.status import bp as api_status_bp
 
 
 def create_app():
@@ -101,6 +102,7 @@ def create_app():
     app.register_blueprint(api_projects_bp, url_prefix='/api/v1/projects')
     app.register_blueprint(api_users_bp, url_prefix='/api/v1/users')
     app.register_blueprint(api_charges_bp, url_prefix='/api/v1')
+    app.register_blueprint(api_status_bp, url_prefix='/api/v1/status')
 
     # Initialize Flask-Admin
     init_admin(app)

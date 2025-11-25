@@ -1,0 +1,761 @@
+"""
+System Status API endpoints (v1).
+
+Provides RESTful API for system status data ingestion and retrieval.
+
+POST endpoints (data ingestion, requires MANAGE_SYSTEM_STATUS permission):
+    POST /api/v1/status/derecho
+    POST /api/v1/status/casper
+    POST /api/v1/status/jupyterhub
+    POST /api/v1/status/outage
+
+GET endpoints (status retrieval, public with login):
+    GET /api/v1/status/derecho/latest
+    GET /api/v1/status/casper/latest
+    GET /api/v1/status/jupyterhub/latest
+    GET /api/v1/status/outages
+    GET /api/v1/status/reservations
+"""
+
+from flask import Blueprint, jsonify, request
+from flask_login import login_required
+from webui.utils.rbac import require_permission, Permission
+from webui.api.helpers import register_error_handlers
+from datetime import datetime
+import sys
+from pathlib import Path
+
+# Add system_status to path
+python_dir = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(python_dir))
+
+from system_status import (
+    create_status_engine, get_session,
+    DerechoStatus, DerechoQueueStatus, DerechoFilesystemStatus,
+    CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
+    JupyterHubStatus,
+    SystemOutage, ResourceReservation
+)
+
+bp = Blueprint('api_status', __name__)
+register_error_handlers(bp)
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def _get_status_session():
+    """Get a system_status database session."""
+    engine, SessionLocal = create_status_engine()
+    return SessionLocal()
+
+
+def _validate_timestamp(data):
+    """
+    Validate and parse timestamp from request data.
+
+    Args:
+        data: Request data dict
+
+    Returns:
+        datetime object or None if not provided (will use current time)
+
+    Raises:
+        ValueError if timestamp format is invalid
+    """
+    timestamp_str = data.get('timestamp')
+    if not timestamp_str:
+        return datetime.now()
+
+    try:
+        # Try ISO format first
+        return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        try:
+            # Try common datetime formats
+            return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            raise ValueError(f"Invalid timestamp format: {timestamp_str}. Use ISO format or 'YYYY-MM-DD HH:MM:SS'")
+
+
+# ============================================================================
+# POST Endpoints - Data Ingestion
+# ============================================================================
+
+@bp.route('/derecho', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_SYSTEM_STATUS)
+def ingest_derecho():
+    """
+    POST /api/v1/status/derecho - Ingest Derecho system metrics.
+
+    Requires MANAGE_SYSTEM_STATUS permission.
+
+    JSON body should contain:
+        - timestamp (optional): ISO format or 'YYYY-MM-DD HH:MM:SS', defaults to now
+        - System-level metrics (cpu_login_available, cpu_nodes_total, etc.)
+        - queues (optional): List of queue status dicts
+        - filesystems (optional): List of filesystem status dicts
+
+    Returns:
+        JSON with success status and created record IDs
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'JSON body required'}), 400
+
+    try:
+        timestamp = _validate_timestamp(data)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    session = _get_status_session()
+    try:
+        # Create main status record
+        derecho_status = DerechoStatus(
+            timestamp=timestamp,
+            # Login nodes - CPU
+            cpu_login_available=data.get('cpu_login_available', True),
+            cpu_login_user_count=data.get('cpu_login_user_count'),
+            cpu_login_load_1min=data.get('cpu_login_load_1min'),
+            cpu_login_load_5min=data.get('cpu_login_load_5min'),
+            cpu_login_load_15min=data.get('cpu_login_load_15min'),
+            # Login nodes - GPU
+            gpu_login_available=data.get('gpu_login_available', True),
+            gpu_login_user_count=data.get('gpu_login_user_count'),
+            gpu_login_load_1min=data.get('gpu_login_load_1min'),
+            gpu_login_load_5min=data.get('gpu_login_load_5min'),
+            gpu_login_load_15min=data.get('gpu_login_load_15min'),
+            # Compute nodes - CPU
+            cpu_nodes_total=data.get('cpu_nodes_total', 0),
+            cpu_nodes_available=data.get('cpu_nodes_available', 0),
+            cpu_nodes_down=data.get('cpu_nodes_down', 0),
+            cpu_nodes_reserved=data.get('cpu_nodes_reserved', 0),
+            # Compute nodes - GPU
+            gpu_nodes_total=data.get('gpu_nodes_total', 0),
+            gpu_nodes_available=data.get('gpu_nodes_available', 0),
+            gpu_nodes_down=data.get('gpu_nodes_down', 0),
+            gpu_nodes_reserved=data.get('gpu_nodes_reserved', 0),
+            # CPU utilization
+            cpu_cores_total=data.get('cpu_cores_total', 0),
+            cpu_cores_allocated=data.get('cpu_cores_allocated', 0),
+            cpu_cores_idle=data.get('cpu_cores_idle', 0),
+            cpu_utilization_percent=data.get('cpu_utilization_percent'),
+            # GPU utilization
+            gpu_count_total=data.get('gpu_count_total', 0),
+            gpu_count_allocated=data.get('gpu_count_allocated', 0),
+            gpu_count_idle=data.get('gpu_count_idle', 0),
+            gpu_utilization_percent=data.get('gpu_utilization_percent'),
+            # Memory
+            memory_total_gb=data.get('memory_total_gb', 0.0),
+            memory_allocated_gb=data.get('memory_allocated_gb', 0.0),
+            memory_utilization_percent=data.get('memory_utilization_percent'),
+            # Jobs
+            running_jobs=data.get('running_jobs', 0),
+            pending_jobs=data.get('pending_jobs', 0),
+            active_users=data.get('active_users', 0),
+        )
+        session.add(derecho_status)
+        session.flush()  # Get the ID
+
+        result = {
+            'success': True,
+            'message': 'Derecho status ingested successfully',
+            'status_id': derecho_status.status_id,
+            'timestamp': timestamp.isoformat()
+        }
+
+        # Handle queue status if provided
+        queues = data.get('queues', [])
+        if queues:
+            queue_ids = []
+            for queue_data in queues:
+                queue_status = DerechoQueueStatus(
+                    timestamp=timestamp,
+                    queue_name=queue_data['queue_name'],
+                    running_jobs=queue_data.get('running_jobs', 0),
+                    pending_jobs=queue_data.get('pending_jobs', 0),
+                    active_users=queue_data.get('active_users', 0),
+                    cores_allocated=queue_data.get('cores_allocated', 0),
+                    gpus_allocated=queue_data.get('gpus_allocated', 0),
+                    nodes_allocated=queue_data.get('nodes_allocated', 0),
+                )
+                session.add(queue_status)
+                session.flush()
+                queue_ids.append(queue_status.queue_status_id)
+            result['queue_ids'] = queue_ids
+
+        # Handle filesystem status if provided
+        filesystems = data.get('filesystems', [])
+        if filesystems:
+            fs_ids = []
+            for fs_data in filesystems:
+                fs_status = DerechoFilesystemStatus(
+                    timestamp=timestamp,
+                    filesystem_name=fs_data['filesystem_name'],
+                    available=fs_data.get('available', True),
+                    degraded=fs_data.get('degraded', False),
+                    capacity_tb=fs_data.get('capacity_tb'),
+                    used_tb=fs_data.get('used_tb'),
+                    utilization_percent=fs_data.get('utilization_percent'),
+                )
+                session.add(fs_status)
+                session.flush()
+                fs_ids.append(fs_status.fs_status_id)
+            result['filesystem_ids'] = fs_ids
+
+        session.commit()
+        return jsonify(result), 201
+
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+    finally:
+        session.close()
+
+
+@bp.route('/casper', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_SYSTEM_STATUS)
+def ingest_casper():
+    """
+    POST /api/v1/status/casper - Ingest Casper system metrics.
+
+    Requires MANAGE_SYSTEM_STATUS permission.
+
+    JSON body should contain:
+        - timestamp (optional): ISO format or 'YYYY-MM-DD HH:MM:SS', defaults to now
+        - Aggregate system metrics
+        - node_types (optional): List of node type status dicts
+        - queues (optional): List of queue status dicts
+
+    Returns:
+        JSON with success status and created record IDs
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'JSON body required'}), 400
+
+    try:
+        timestamp = _validate_timestamp(data)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    session = _get_status_session()
+    try:
+        # Create main status record
+        casper_status = CasperStatus(
+            timestamp=timestamp,
+            login_nodes_available=data.get('login_nodes_available', 0),
+            login_nodes_total=data.get('login_nodes_total', 0),
+            login_total_users=data.get('login_total_users'),
+            compute_nodes_total=data.get('compute_nodes_total', 0),
+            compute_nodes_available=data.get('compute_nodes_available', 0),
+            compute_nodes_down=data.get('compute_nodes_down', 0),
+            cpu_utilization_percent=data.get('cpu_utilization_percent'),
+            gpu_utilization_percent=data.get('gpu_utilization_percent'),
+            memory_utilization_percent=data.get('memory_utilization_percent'),
+            running_jobs=data.get('running_jobs', 0),
+            pending_jobs=data.get('pending_jobs', 0),
+            active_users=data.get('active_users', 0),
+        )
+        session.add(casper_status)
+        session.flush()
+
+        result = {
+            'success': True,
+            'message': 'Casper status ingested successfully',
+            'status_id': casper_status.status_id,
+            'timestamp': timestamp.isoformat()
+        }
+
+        # Handle node type status if provided
+        node_types = data.get('node_types', [])
+        if node_types:
+            nodetype_ids = []
+            for nt_data in node_types:
+                nt_status = CasperNodeTypeStatus(
+                    timestamp=timestamp,
+                    node_type=nt_data['node_type'],
+                    nodes_total=nt_data.get('nodes_total', 0),
+                    nodes_available=nt_data.get('nodes_available', 0),
+                    nodes_down=nt_data.get('nodes_down', 0),
+                    nodes_allocated=nt_data.get('nodes_allocated', 0),
+                    cores_per_node=nt_data.get('cores_per_node'),
+                    memory_gb_per_node=nt_data.get('memory_gb_per_node'),
+                    gpu_model=nt_data.get('gpu_model'),
+                    gpus_per_node=nt_data.get('gpus_per_node'),
+                    utilization_percent=nt_data.get('utilization_percent'),
+                )
+                session.add(nt_status)
+                session.flush()
+                nodetype_ids.append(nt_status.node_type_status_id)
+            result['node_type_ids'] = nodetype_ids
+
+        # Handle queue status if provided
+        queues = data.get('queues', [])
+        if queues:
+            queue_ids = []
+            for queue_data in queues:
+                queue_status = CasperQueueStatus(
+                    timestamp=timestamp,
+                    queue_name=queue_data['queue_name'],
+                    running_jobs=queue_data.get('running_jobs', 0),
+                    pending_jobs=queue_data.get('pending_jobs', 0),
+                    active_users=queue_data.get('active_users', 0),
+                    cores_allocated=queue_data.get('cores_allocated', 0),
+                    nodes_allocated=queue_data.get('nodes_allocated', 0),
+                )
+                session.add(queue_status)
+                session.flush()
+                queue_ids.append(queue_status.queue_status_id)
+            result['queue_ids'] = queue_ids
+
+        session.commit()
+        return jsonify(result), 201
+
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+    finally:
+        session.close()
+
+
+@bp.route('/jupyterhub', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_SYSTEM_STATUS)
+def ingest_jupyterhub():
+    """
+    POST /api/v1/status/jupyterhub - Ingest JupyterHub metrics.
+
+    Requires MANAGE_SYSTEM_STATUS permission.
+
+    JSON body should contain:
+        - timestamp (optional): ISO format or 'YYYY-MM-DD HH:MM:SS', defaults to now
+        - Basic JupyterHub metrics
+
+    Returns:
+        JSON with success status and created record ID
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'JSON body required'}), 400
+
+    try:
+        timestamp = _validate_timestamp(data)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    session = _get_status_session()
+    try:
+        jupyterhub_status = JupyterHubStatus(
+            timestamp=timestamp,
+            available=data.get('available', True),
+            active_users=data.get('active_users', 0),
+            active_sessions=data.get('active_sessions', 0),
+            cpu_utilization_percent=data.get('cpu_utilization_percent'),
+            memory_utilization_percent=data.get('memory_utilization_percent'),
+        )
+        session.add(jupyterhub_status)
+        session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'JupyterHub status ingested successfully',
+            'status_id': jupyterhub_status.status_id,
+            'timestamp': timestamp.isoformat()
+        }), 201
+
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+    finally:
+        session.close()
+
+
+@bp.route('/outage', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_SYSTEM_STATUS)
+def report_outage():
+    """
+    POST /api/v1/status/outage - Report a system outage or degradation.
+
+    Requires MANAGE_SYSTEM_STATUS permission.
+
+    JSON body should contain:
+        - system_name (required): System identifier (e.g., 'derecho', 'casper')
+        - title (required): Brief outage title
+        - severity (required): 'critical', 'major', 'minor', 'maintenance'
+        - description (optional): Detailed description
+        - component (optional): Affected component
+        - start_time (optional): ISO format, defaults to now
+        - estimated_resolution (optional): ISO format
+
+    Returns:
+        JSON with success status and outage ID
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'JSON body required'}), 400
+
+    # Validate required fields
+    required = ['system_name', 'title', 'severity']
+    missing = [f for f in required if not data.get(f)]
+    if missing:
+        return jsonify({'error': f'Missing required fields: {", ".join(missing)}'}), 400
+
+    # Validate severity
+    valid_severities = ['critical', 'major', 'minor', 'maintenance']
+    if data['severity'] not in valid_severities:
+        return jsonify({'error': f'Invalid severity. Must be one of: {", ".join(valid_severities)}'}), 400
+
+    session = _get_status_session()
+    try:
+        # Parse timestamps
+        start_time = datetime.now()
+        if data.get('start_time'):
+            try:
+                start_time = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
+            except ValueError:
+                return jsonify({'error': 'Invalid start_time format'}), 400
+
+        estimated_resolution = None
+        if data.get('estimated_resolution'):
+            try:
+                estimated_resolution = datetime.fromisoformat(data['estimated_resolution'].replace('Z', '+00:00'))
+            except ValueError:
+                return jsonify({'error': 'Invalid estimated_resolution format'}), 400
+
+        outage = SystemOutage(
+            system_name=data['system_name'],
+            title=data['title'],
+            severity=data['severity'],
+            status=data.get('status', 'investigating'),
+            description=data.get('description'),
+            component=data.get('component'),
+            start_time=start_time,
+            estimated_resolution=estimated_resolution,
+        )
+        session.add(outage)
+        session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Outage reported successfully',
+            'outage_id': outage.outage_id,
+            'system_name': outage.system_name,
+            'severity': outage.severity
+        }), 201
+
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+    finally:
+        session.close()
+
+
+# ============================================================================
+# GET Endpoints - Status Retrieval
+# ============================================================================
+
+@bp.route('/derecho/latest', methods=['GET'])
+@login_required
+def get_derecho_latest():
+    """
+    GET /api/v1/status/derecho/latest - Get latest Derecho status.
+
+    Returns:
+        JSON with latest Derecho system status including queues and filesystems
+    """
+    session = _get_status_session()
+    try:
+        # Get latest main status
+        status = session.query(DerechoStatus).order_by(
+            DerechoStatus.timestamp.desc()
+        ).first()
+
+        if not status:
+            return jsonify({'message': 'No Derecho status data available'}), 404
+
+        # Get queues for same timestamp
+        queues = session.query(DerechoQueueStatus).filter_by(
+            timestamp=status.timestamp
+        ).all()
+
+        # Get filesystems for same timestamp
+        filesystems = session.query(DerechoFilesystemStatus).filter_by(
+            timestamp=status.timestamp
+        ).all()
+
+        # Build response
+        result = {
+            'timestamp': status.timestamp.isoformat(),
+            'cpu_login_available': status.cpu_login_available,
+            'gpu_login_available': status.gpu_login_available,
+            'cpu_nodes': {
+                'total': status.cpu_nodes_total,
+                'available': status.cpu_nodes_available,
+                'down': status.cpu_nodes_down,
+                'reserved': status.cpu_nodes_reserved,
+            },
+            'gpu_nodes': {
+                'total': status.gpu_nodes_total,
+                'available': status.gpu_nodes_available,
+                'down': status.gpu_nodes_down,
+                'reserved': status.gpu_nodes_reserved,
+            },
+            'cpu_utilization_percent': status.cpu_utilization_percent,
+            'gpu_utilization_percent': status.gpu_utilization_percent,
+            'memory_utilization_percent': status.memory_utilization_percent,
+            'jobs': {
+                'running': status.running_jobs,
+                'pending': status.pending_jobs,
+                'active_users': status.active_users,
+            },
+            'queues': [
+                {
+                    'name': q.queue_name,
+                    'running_jobs': q.running_jobs,
+                    'pending_jobs': q.pending_jobs,
+                    'active_users': q.active_users,
+                }
+                for q in queues
+            ],
+            'filesystems': [
+                {
+                    'name': fs.filesystem_name,
+                    'status': fs.status_name,
+                    'available': fs.available,
+                    'degraded': fs.degraded,
+                    'utilization_percent': fs.utilization_percent,
+                }
+                for fs in filesystems
+            ],
+        }
+
+        return jsonify(result), 200
+
+    finally:
+        session.close()
+
+
+@bp.route('/casper/latest', methods=['GET'])
+@login_required
+def get_casper_latest():
+    """
+    GET /api/v1/status/casper/latest - Get latest Casper status.
+
+    Returns:
+        JSON with latest Casper system status including node types and queues
+    """
+    session = _get_status_session()
+    try:
+        # Get latest main status
+        status = session.query(CasperStatus).order_by(
+            CasperStatus.timestamp.desc()
+        ).first()
+
+        if not status:
+            return jsonify({'message': 'No Casper status data available'}), 404
+
+        # Get node types for same timestamp
+        node_types = session.query(CasperNodeTypeStatus).filter_by(
+            timestamp=status.timestamp
+        ).all()
+
+        # Get queues for same timestamp
+        queues = session.query(CasperQueueStatus).filter_by(
+            timestamp=status.timestamp
+        ).all()
+
+        # Build response
+        result = {
+            'timestamp': status.timestamp.isoformat(),
+            'login_nodes': {
+                'available': status.login_nodes_available,
+                'total': status.login_nodes_total,
+                'users': status.login_total_users,
+            },
+            'compute_nodes': {
+                'total': status.compute_nodes_total,
+                'available': status.compute_nodes_available,
+                'down': status.compute_nodes_down,
+            },
+            'cpu_utilization_percent': status.cpu_utilization_percent,
+            'gpu_utilization_percent': status.gpu_utilization_percent,
+            'memory_utilization_percent': status.memory_utilization_percent,
+            'jobs': {
+                'running': status.running_jobs,
+                'pending': status.pending_jobs,
+                'active_users': status.active_users,
+            },
+            'node_types': [
+                {
+                    'type': nt.node_type,
+                    'nodes_total': nt.nodes_total,
+                    'nodes_available': nt.nodes_available,
+                    'nodes_down': nt.nodes_down,
+                    'utilization_percent': nt.utilization_percent,
+                    'specs': {
+                        'cores': nt.cores_per_node,
+                        'memory_gb': nt.memory_gb_per_node,
+                        'gpu_model': nt.gpu_model,
+                        'gpus': nt.gpus_per_node,
+                    }
+                }
+                for nt in node_types
+            ],
+            'queues': [
+                {
+                    'name': q.queue_name,
+                    'running_jobs': q.running_jobs,
+                    'pending_jobs': q.pending_jobs,
+                    'active_users': q.active_users,
+                }
+                for q in queues
+            ],
+        }
+
+        return jsonify(result), 200
+
+    finally:
+        session.close()
+
+
+@bp.route('/jupyterhub/latest', methods=['GET'])
+@login_required
+def get_jupyterhub_latest():
+    """
+    GET /api/v1/status/jupyterhub/latest - Get latest JupyterHub status.
+
+    Returns:
+        JSON with latest JupyterHub status
+    """
+    session = _get_status_session()
+    try:
+        status = session.query(JupyterHubStatus).order_by(
+            JupyterHubStatus.timestamp.desc()
+        ).first()
+
+        if not status:
+            return jsonify({'message': 'No JupyterHub status data available'}), 404
+
+        result = {
+            'timestamp': status.timestamp.isoformat(),
+            'available': status.available,
+            'active_users': status.active_users,
+            'active_sessions': status.active_sessions,
+            'cpu_utilization_percent': status.cpu_utilization_percent,
+            'memory_utilization_percent': status.memory_utilization_percent,
+        }
+
+        return jsonify(result), 200
+
+    finally:
+        session.close()
+
+
+@bp.route('/outages', methods=['GET'])
+@login_required
+def get_outages():
+    """
+    GET /api/v1/status/outages - Get active system outages.
+
+    Query params:
+        - system_name (optional): Filter by system
+        - status (optional): Filter by status (investigating, identified, monitoring, resolved)
+        - include_resolved (optional): Include resolved outages (default: false)
+
+    Returns:
+        JSON list of outages
+    """
+    session = _get_status_session()
+    try:
+        query = session.query(SystemOutage)
+
+        # Filter by system
+        system_name = request.args.get('system_name')
+        if system_name:
+            query = query.filter(SystemOutage.system_name == system_name)
+
+        # Filter by status
+        status_filter = request.args.get('status')
+        if status_filter:
+            query = query.filter(SystemOutage.status == status_filter)
+        elif not request.args.get('include_resolved', '').lower() in ('true', '1', 'yes'):
+            # Exclude resolved unless explicitly requested
+            query = query.filter(SystemOutage.status != 'resolved')
+
+        # Order by most recent first
+        outages = query.order_by(SystemOutage.start_time.desc()).all()
+
+        result = [
+            {
+                'outage_id': o.outage_id,
+                'system_name': o.system_name,
+                'component': o.component,
+                'title': o.title,
+                'description': o.description,
+                'severity': o.severity,
+                'status': o.status,
+                'start_time': o.start_time.isoformat(),
+                'end_time': o.end_time.isoformat() if o.end_time else None,
+                'estimated_resolution': o.estimated_resolution.isoformat() if o.estimated_resolution else None,
+            }
+            for o in outages
+        ]
+
+        return jsonify(result), 200
+
+    finally:
+        session.close()
+
+
+@bp.route('/reservations', methods=['GET'])
+@login_required
+def get_reservations():
+    """
+    GET /api/v1/status/reservations - Get upcoming resource reservations.
+
+    Query params:
+        - system_name (optional): Filter by system
+        - upcoming_only (optional): Only future reservations (default: true)
+
+    Returns:
+        JSON list of reservations
+    """
+    session = _get_status_session()
+    try:
+        query = session.query(ResourceReservation)
+
+        # Filter by system
+        system_name = request.args.get('system_name')
+        if system_name:
+            query = query.filter(ResourceReservation.system_name == system_name)
+
+        # Filter by upcoming
+        if request.args.get('upcoming_only', 'true').lower() in ('true', '1', 'yes'):
+            query = query.filter(ResourceReservation.end_time >= datetime.now())
+
+        # Order by start time
+        reservations = query.order_by(ResourceReservation.start_time).all()
+
+        result = [
+            {
+                'reservation_id': r.reservation_id,
+                'system_name': r.system_name,
+                'reservation_name': r.reservation_name,
+                'description': r.description,
+                'start_time': r.start_time.isoformat(),
+                'end_time': r.end_time.isoformat(),
+                'node_count': r.node_count,
+                'partition': r.partition,
+            }
+            for r in reservations
+        ]
+
+        return jsonify(result), 200
+
+    finally:
+        session.close()
