@@ -42,7 +42,7 @@ function showAddMemberModal(projcode) {
  * Reload the members HTML fragment from the server
  */
 function reloadMembersFragment(projcode) {
-    const url = `/dashboard/members/${projcode}`;
+    const url = `/user/members/${projcode}`;
     return fetch(url)
         .then(response => {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);

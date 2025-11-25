@@ -20,7 +20,7 @@ from sam.projects.projects import Project
 from webui.utils.charts import generate_usage_timeseries_matplotlib
 from webui.utils.project_permissions import can_manage_project_members, can_change_admin
 
-bp = Blueprint('user_dashboard', __name__, url_prefix='/dashboard')
+bp = Blueprint('user_dashboard', __name__, url_prefix='/user')
 
 
 # Usage threshold configuration (percentage)
