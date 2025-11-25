@@ -204,13 +204,6 @@ def index():
 - `metric_card.html` - Metric display cards with icons
 - `progress_bar.html` - Utilization progress bars with color coding
 
-**Auto-Refresh Options**:
-1. **Meta refresh tag** (simplest): `<meta http-equiv="refresh" content="300">`
-2. **JavaScript reload**: `setTimeout(() => location.reload(), 300000)`
-3. **AJAX fragment update** (future): Fetch updated fragments without full reload
-
-**Recommended**: Start with meta refresh, can add AJAX later if needed
-
 ---
 
 ## Database Schema
@@ -507,14 +500,6 @@ setTimeout(() => location.reload(), 300000);
    - Test tab switching (Bootstrap tabs)
    - Test with empty database (graceful handling)
 
-### Performance Tests
-
-7. **Query Performance** (`tests/performance/test_status_queries.py`):
-   - Insert 7 days of 5-minute data (~2000 records)
-   - Measure ORM query response times (order by timestamp desc, limit 1)
-   - Measure dashboard render time
-   - Validate index effectiveness
-
 ---
 
 ## Data Retention & Cleanup
@@ -539,12 +524,12 @@ setTimeout(() => location.reload(), 300000);
 
 ## Future Phases (Planned)
 
-### HPC Data Collectors (External Project)
+### HPC Data Collectors (Parallel Project)
 
 **Status**: Not started | **Priority**: High
 **Implementation Guide**: See `docs/HPC_DATA_COLLECTORS_GUIDE.md`
 
-This is a **separate project** that will implement the actual data collection from HPC systems. The collectors will:
+This is a **parallel project** that will implement the actual data collection from HPC systems. The collectors will:
 - Run on Derecho/Casper/JupyterHub systems (or monitoring nodes)
 - Execute every 5 minutes via cron
 - Gather metrics using SLURM commands (`squeue`, `sinfo`, `scontrol`)
@@ -855,43 +840,6 @@ class StatusTable(Base, StatusSnapshotMixin):
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, index=True)
     # ... metrics ...
-```
-
-### 4. Dashboard Tab Pattern (from `user/dashboard.html`)
-
-```html
-<!-- Tab navigation -->
-<ul class="nav nav-tabs">
-    <li class="nav-item">
-        <a class="nav-link active" data-toggle="tab" href="#tab1">Tab 1</a>
-    </li>
-</ul>
-
-<!-- Tab content -->
-<div class="tab-content">
-    <div class="tab-pane fade show active" id="tab1">
-        <div class="status-container"
-             data-api-url="{{ url_for('api.endpoint') }}"
-             data-refresh-interval="300000">
-            <!-- Content loaded via JavaScript -->
-        </div>
-    </div>
-</div>
-```
-
-### 5. Auto-Refresh JavaScript Pattern
-
-```javascript
-function loadData(container) {
-    fetch(container.getAttribute('data-api-url'))
-        .then(response => response.json())
-        .then(data => renderView(container, data))
-        .catch(error => showError(container, error));
-}
-
-// Auto-refresh
-const interval = parseInt(container.getAttribute('data-refresh-interval'));
-setInterval(() => loadData(container), interval);
 ```
 
 ---
