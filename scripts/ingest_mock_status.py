@@ -24,7 +24,9 @@ sys.path.insert(0, str(python_dir))
 from system_status import (
     create_status_engine, get_session,
     DerechoStatus, DerechoQueueStatus, DerechoFilesystemStatus,
+    DerechoLoginNodeStatus,
     CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
+    CasperLoginNodeStatus,
     JupyterHubStatus,
     SystemOutage, ResourceReservation
 )
@@ -77,16 +79,6 @@ def ingest_mock_data():
 
         derecho_status = DerechoStatus(
             timestamp=timestamp,
-            cpu_login_available=derecho_data['cpu_login_available'],
-            cpu_login_user_count=derecho_data['cpu_login_user_count'],
-            cpu_login_load_1min=derecho_data['cpu_login_load_1min'],
-            cpu_login_load_5min=derecho_data['cpu_login_load_5min'],
-            cpu_login_load_15min=derecho_data['cpu_login_load_15min'],
-            gpu_login_available=derecho_data['gpu_login_available'],
-            gpu_login_user_count=derecho_data['gpu_login_user_count'],
-            gpu_login_load_1min=derecho_data['gpu_login_load_1min'],
-            gpu_login_load_5min=derecho_data['gpu_login_load_5min'],
-            gpu_login_load_15min=derecho_data['gpu_login_load_15min'],
             cpu_nodes_total=derecho_data['cpu_nodes_total'],
             cpu_nodes_available=derecho_data['cpu_nodes_available'],
             cpu_nodes_down=derecho_data['cpu_nodes_down'],
@@ -112,6 +104,22 @@ def ingest_mock_data():
         )
         session.add(derecho_status)
         print(f"   ✓ Derecho main status")
+
+        # Derecho login nodes
+        for node_data in derecho_data['login_nodes']:
+            login_node = DerechoLoginNodeStatus(
+                timestamp=timestamp,
+                node_name=node_data['node_name'],
+                node_type=node_data['node_type'],
+                available=node_data['available'],
+                degraded=node_data['degraded'],
+                user_count=node_data.get('user_count'),
+                load_1min=node_data.get('load_1min'),
+                load_5min=node_data.get('load_5min'),
+                load_15min=node_data.get('load_15min'),
+            )
+            session.add(login_node)
+            print(f"   ✓ Derecho login node: {node_data['node_name']} ({node_data['node_type']})")
 
         # Derecho queues
         for queue_data in derecho_data['queues']:
@@ -149,9 +157,6 @@ def ingest_mock_data():
 
         casper_status = CasperStatus(
             timestamp=timestamp,
-            login_nodes_available=casper_data['login_nodes_available'],
-            login_nodes_total=casper_data['login_nodes_total'],
-            login_total_users=casper_data['login_total_users'],
             compute_nodes_total=casper_data['compute_nodes_total'],
             compute_nodes_available=casper_data['compute_nodes_available'],
             compute_nodes_down=casper_data['compute_nodes_down'],
@@ -164,6 +169,21 @@ def ingest_mock_data():
         )
         session.add(casper_status)
         print(f"   ✓ Casper main status")
+
+        # Casper login nodes
+        for node_data in casper_data['login_nodes']:
+            login_node = CasperLoginNodeStatus(
+                timestamp=timestamp,
+                node_name=node_data['node_name'],
+                available=node_data['available'],
+                degraded=node_data['degraded'],
+                user_count=node_data.get('user_count'),
+                load_1min=node_data.get('load_1min'),
+                load_5min=node_data.get('load_5min'),
+                load_15min=node_data.get('load_15min'),
+            )
+            session.add(login_node)
+            print(f"   ✓ Casper login node: {node_data['node_name']}")
 
         # Casper node types
         for nt_data in casper_data['node_types']:

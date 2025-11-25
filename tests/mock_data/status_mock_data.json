@@ -1,16 +1,88 @@
 {
   "derecho": {
     "timestamp": "2025-01-25T14:30:00",
-    "cpu_login_available": true,
-    "cpu_login_user_count": 45,
-    "cpu_login_load_1min": 2.5,
-    "cpu_login_load_5min": 2.8,
-    "cpu_login_load_15min": 3.1,
-    "gpu_login_available": true,
-    "gpu_login_user_count": 12,
-    "gpu_login_load_1min": 1.2,
-    "gpu_login_load_5min": 1.5,
-    "gpu_login_load_15min": 1.4,
+    "login_nodes": [
+      {
+        "node_name": "derecho1",
+        "node_type": "cpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 12,
+        "load_1min": 2.3,
+        "load_5min": 2.5,
+        "load_15min": 2.8
+      },
+      {
+        "node_name": "derecho2",
+        "node_type": "cpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 11,
+        "load_1min": 2.1,
+        "load_5min": 2.4,
+        "load_15min": 2.7
+      },
+      {
+        "node_name": "derecho3",
+        "node_type": "cpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 10,
+        "load_1min": 2.8,
+        "load_5min": 3.1,
+        "load_15min": 3.4
+      },
+      {
+        "node_name": "derecho4",
+        "node_type": "cpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 12,
+        "load_1min": 2.6,
+        "load_5min": 2.9,
+        "load_15min": 3.2
+      },
+      {
+        "node_name": "derecho5",
+        "node_type": "gpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 3,
+        "load_1min": 1.1,
+        "load_5min": 1.3,
+        "load_15min": 1.2
+      },
+      {
+        "node_name": "derecho6",
+        "node_type": "gpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 3,
+        "load_1min": 1.2,
+        "load_5min": 1.5,
+        "load_15min": 1.4
+      },
+      {
+        "node_name": "derecho7",
+        "node_type": "gpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 3,
+        "load_1min": 1.3,
+        "load_5min": 1.6,
+        "load_15min": 1.5
+      },
+      {
+        "node_name": "derecho8",
+        "node_type": "gpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 3,
+        "load_1min": 1.0,
+        "load_5min": 1.4,
+        "load_15min": 1.3
+      }
+    ],
     "cpu_nodes_total": 2488,
     "cpu_nodes_available": 1850,
     "cpu_nodes_down": 15,
@@ -109,9 +181,26 @@
   },
   "casper": {
     "timestamp": "2025-01-25T14:30:00",
-    "login_nodes_available": 4,
-    "login_nodes_total": 4,
-    "login_total_users": 78,
+    "login_nodes": [
+      {
+        "node_name": "casper1",
+        "available": true,
+        "degraded": false,
+        "user_count": 39,
+        "load_1min": 3.2,
+        "load_5min": 3.4,
+        "load_15min": 3.6
+      },
+      {
+        "node_name": "casper2",
+        "available": true,
+        "degraded": false,
+        "user_count": 39,
+        "load_1min": 3.1,
+        "load_5min": 3.3,
+        "load_15min": 3.5
+      }
+    ],
     "compute_nodes_total": 260,
     "compute_nodes_available": 185,
     "compute_nodes_down": 3,

@@ -19,19 +19,7 @@ class DerechoStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
 
     status_id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # Login Nodes - CPU
-    cpu_login_available = Column(Boolean, nullable=False, default=True)
-    cpu_login_user_count = Column(Integer, nullable=True)
-    cpu_login_load_1min = Column(Float, nullable=True)
-    cpu_login_load_5min = Column(Float, nullable=True)
-    cpu_login_load_15min = Column(Float, nullable=True)
-
-    # Login Nodes - GPU
-    gpu_login_available = Column(Boolean, nullable=False, default=True)
-    gpu_login_user_count = Column(Integer, nullable=True)
-    gpu_login_load_1min = Column(Float, nullable=True)
-    gpu_login_load_5min = Column(Float, nullable=True)
-    gpu_login_load_15min = Column(Float, nullable=True)
+    # NOTE: Login node metrics moved to derecho_login_node_status table
 
     # Compute Nodes - CPU Partition
     cpu_nodes_total = Column(Integer, nullable=False)

@@ -19,10 +19,7 @@ class CasperStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
 
     status_id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # Login Nodes
-    login_nodes_available = Column(Integer, nullable=False)
-    login_nodes_total = Column(Integer, nullable=False)
-    login_total_users = Column(Integer, nullable=True)
+    # NOTE: Login node metrics moved to casper_login_node_status table
 
     # Compute Nodes (Aggregate)
     compute_nodes_total = Column(Integer, nullable=False)

@@ -32,9 +32,19 @@ sys.path.insert(0, str(python_dir))
 from system_status import (
     create_status_engine, get_session,
     DerechoStatus, DerechoQueueStatus, DerechoFilesystemStatus,
+    DerechoLoginNodeStatus,
     CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
+    CasperLoginNodeStatus,
     JupyterHubStatus,
     SystemOutage, ResourceReservation
+)
+from webui.schemas.status import (
+    DerechoStatusSchema, DerechoQueueSchema, DerechoFilesystemSchema,
+    DerechoLoginNodeSchema,
+    CasperStatusSchema, CasperNodeTypeSchema, CasperQueueSchema,
+    CasperLoginNodeSchema,
+    JupyterHubStatusSchema,
+    SystemOutageSchema, ResourceReservationSchema,
 )
 
 bp = Blueprint('api_status', __name__)
@@ -94,7 +104,8 @@ def ingest_derecho():
 
     JSON body should contain:
         - timestamp (optional): ISO format or 'YYYY-MM-DD HH:MM:SS', defaults to now
-        - System-level metrics (cpu_login_available, cpu_nodes_total, etc.)
+        - System-level metrics (cpu_nodes_total, cpu_nodes_available, etc.)
+        - login_nodes (optional): List of login node status dicts
         - queues (optional): List of queue status dicts
         - filesystems (optional): List of filesystem status dicts
 
@@ -115,18 +126,6 @@ def ingest_derecho():
         # Create main status record
         derecho_status = DerechoStatus(
             timestamp=timestamp,
-            # Login nodes - CPU
-            cpu_login_available=data.get('cpu_login_available', True),
-            cpu_login_user_count=data.get('cpu_login_user_count'),
-            cpu_login_load_1min=data.get('cpu_login_load_1min'),
-            cpu_login_load_5min=data.get('cpu_login_load_5min'),
-            cpu_login_load_15min=data.get('cpu_login_load_15min'),
-            # Login nodes - GPU
-            gpu_login_available=data.get('gpu_login_available', True),
-            gpu_login_user_count=data.get('gpu_login_user_count'),
-            gpu_login_load_1min=data.get('gpu_login_load_1min'),
-            gpu_login_load_5min=data.get('gpu_login_load_5min'),
-            gpu_login_load_15min=data.get('gpu_login_load_15min'),
             # Compute nodes - CPU
             cpu_nodes_total=data.get('cpu_nodes_total', 0),
             cpu_nodes_available=data.get('cpu_nodes_available', 0),
@@ -165,6 +164,27 @@ def ingest_derecho():
             'status_id': derecho_status.status_id,
             'timestamp': timestamp.isoformat()
         }
+
+        # Handle login nodes if provided
+        login_nodes = data.get('login_nodes', [])
+        if login_nodes:
+            login_node_ids = []
+            for node_data in login_nodes:
+                login_node = DerechoLoginNodeStatus(
+                    timestamp=timestamp,
+                    node_name=node_data['node_name'],
+                    node_type=node_data.get('node_type', 'cpu'),
+                    available=node_data.get('available', True),
+                    degraded=node_data.get('degraded', False),
+                    user_count=node_data.get('user_count'),
+                    load_1min=node_data.get('load_1min'),
+                    load_5min=node_data.get('load_5min'),
+                    load_15min=node_data.get('load_15min'),
+                )
+                session.add(login_node)
+                session.flush()
+                login_node_ids.append(login_node.login_node_id)
+            result['login_node_ids'] = login_node_ids
 
         # Handle queue status if provided
         queues = data.get('queues', [])
@@ -227,6 +247,7 @@ def ingest_casper():
     JSON body should contain:
         - timestamp (optional): ISO format or 'YYYY-MM-DD HH:MM:SS', defaults to now
         - Aggregate system metrics
+        - login_nodes (optional): List of login node status dicts
         - node_types (optional): List of node type status dicts
         - queues (optional): List of queue status dicts
 
@@ -247,9 +268,6 @@ def ingest_casper():
         # Create main status record
         casper_status = CasperStatus(
             timestamp=timestamp,
-            login_nodes_available=data.get('login_nodes_available', 0),
-            login_nodes_total=data.get('login_nodes_total', 0),
-            login_total_users=data.get('login_total_users'),
             compute_nodes_total=data.get('compute_nodes_total', 0),
             compute_nodes_available=data.get('compute_nodes_available', 0),
             compute_nodes_down=data.get('compute_nodes_down', 0),
@@ -269,6 +287,26 @@ def ingest_casper():
             'status_id': casper_status.status_id,
             'timestamp': timestamp.isoformat()
         }
+
+        # Handle login nodes if provided
+        login_nodes = data.get('login_nodes', [])
+        if login_nodes:
+            login_node_ids = []
+            for node_data in login_nodes:
+                login_node = CasperLoginNodeStatus(
+                    timestamp=timestamp,
+                    node_name=node_data['node_name'],
+                    available=node_data.get('available', True),
+                    degraded=node_data.get('degraded', False),
+                    user_count=node_data.get('user_count'),
+                    load_1min=node_data.get('load_1min'),
+                    load_5min=node_data.get('load_5min'),
+                    load_15min=node_data.get('load_15min'),
+                )
+                session.add(login_node)
+                session.flush()
+                login_node_ids.append(login_node.login_node_id)
+            result['login_node_ids'] = login_node_ids
 
         # Handle node type status if provided
         node_types = data.get('node_types', [])
@@ -466,7 +504,7 @@ def get_derecho_latest():
     GET /api/v1/status/derecho/latest - Get latest Derecho status.
 
     Returns:
-        JSON with latest Derecho system status including queues and filesystems
+        JSON with latest Derecho system status including login nodes, queues, and filesystems
     """
     session = _get_status_session()
     try:
@@ -478,6 +516,11 @@ def get_derecho_latest():
         if not status:
             return jsonify({'message': 'No Derecho status data available'}), 404
 
+        # Get login nodes for same timestamp
+        login_nodes = session.query(DerechoLoginNodeStatus).filter_by(
+            timestamp=status.timestamp
+        ).all()
+
         # Get queues for same timestamp
         queues = session.query(DerechoQueueStatus).filter_by(
             timestamp=status.timestamp
@@ -488,51 +531,11 @@ def get_derecho_latest():
             timestamp=status.timestamp
         ).all()
 
-        # Build response
-        result = {
-            'timestamp': status.timestamp.isoformat(),
-            'cpu_login_available': status.cpu_login_available,
-            'gpu_login_available': status.gpu_login_available,
-            'cpu_nodes': {
-                'total': status.cpu_nodes_total,
-                'available': status.cpu_nodes_available,
-                'down': status.cpu_nodes_down,
-                'reserved': status.cpu_nodes_reserved,
-            },
-            'gpu_nodes': {
-                'total': status.gpu_nodes_total,
-                'available': status.gpu_nodes_available,
-                'down': status.gpu_nodes_down,
-                'reserved': status.gpu_nodes_reserved,
-            },
-            'cpu_utilization_percent': status.cpu_utilization_percent,
-            'gpu_utilization_percent': status.gpu_utilization_percent,
-            'memory_utilization_percent': status.memory_utilization_percent,
-            'jobs': {
-                'running': status.running_jobs,
-                'pending': status.pending_jobs,
-                'active_users': status.active_users,
-            },
-            'queues': [
-                {
-                    'name': q.queue_name,
-                    'running_jobs': q.running_jobs,
-                    'pending_jobs': q.pending_jobs,
-                    'active_users': q.active_users,
-                }
-                for q in queues
-            ],
-            'filesystems': [
-                {
-                    'name': fs.filesystem_name,
-                    'status': fs.status_name,
-                    'available': fs.available,
-                    'degraded': fs.degraded,
-                    'utilization_percent': fs.utilization_percent,
-                }
-                for fs in filesystems
-            ],
-        }
+        # Serialize with marshmallow schemas
+        result = DerechoStatusSchema().dump(status)
+        result['login_nodes'] = DerechoLoginNodeSchema(many=True).dump(login_nodes)
+        result['queues'] = DerechoQueueSchema(many=True).dump(queues)
+        result['filesystems'] = DerechoFilesystemSchema(many=True).dump(filesystems)
 
         return jsonify(result), 200
 
@@ -547,7 +550,7 @@ def get_casper_latest():
     GET /api/v1/status/casper/latest - Get latest Casper status.
 
     Returns:
-        JSON with latest Casper system status including node types and queues
+        JSON with latest Casper system status including login nodes, node types, and queues
     """
     session = _get_status_session()
     try:
@@ -559,6 +562,11 @@ def get_casper_latest():
         if not status:
             return jsonify({'message': 'No Casper status data available'}), 404
 
+        # Get login nodes for same timestamp
+        login_nodes = session.query(CasperLoginNodeStatus).filter_by(
+            timestamp=status.timestamp
+        ).all()
+
         # Get node types for same timestamp
         node_types = session.query(CasperNodeTypeStatus).filter_by(
             timestamp=status.timestamp
@@ -569,53 +577,11 @@ def get_casper_latest():
             timestamp=status.timestamp
         ).all()
 
-        # Build response
-        result = {
-            'timestamp': status.timestamp.isoformat(),
-            'login_nodes': {
-                'available': status.login_nodes_available,
-                'total': status.login_nodes_total,
-                'users': status.login_total_users,
-            },
-            'compute_nodes': {
-                'total': status.compute_nodes_total,
-                'available': status.compute_nodes_available,
-                'down': status.compute_nodes_down,
-            },
-            'cpu_utilization_percent': status.cpu_utilization_percent,
-            'gpu_utilization_percent': status.gpu_utilization_percent,
-            'memory_utilization_percent': status.memory_utilization_percent,
-            'jobs': {
-                'running': status.running_jobs,
-                'pending': status.pending_jobs,
-                'active_users': status.active_users,
-            },
-            'node_types': [
-                {
-                    'type': nt.node_type,
-                    'nodes_total': nt.nodes_total,
-                    'nodes_available': nt.nodes_available,
-                    'nodes_down': nt.nodes_down,
-                    'utilization_percent': nt.utilization_percent,
-                    'specs': {
-                        'cores': nt.cores_per_node,
-                        'memory_gb': nt.memory_gb_per_node,
-                        'gpu_model': nt.gpu_model,
-                        'gpus': nt.gpus_per_node,
-                    }
-                }
-                for nt in node_types
-            ],
-            'queues': [
-                {
-                    'name': q.queue_name,
-                    'running_jobs': q.running_jobs,
-                    'pending_jobs': q.pending_jobs,
-                    'active_users': q.active_users,
-                }
-                for q in queues
-            ],
-        }
+        # Serialize with marshmallow schemas
+        result = CasperStatusSchema().dump(status)
+        result['login_nodes'] = CasperLoginNodeSchema(many=True).dump(login_nodes)
+        result['node_types'] = CasperNodeTypeSchema(many=True).dump(node_types)
+        result['queues'] = CasperQueueSchema(many=True).dump(queues)
 
         return jsonify(result), 200
 
@@ -641,14 +607,8 @@ def get_jupyterhub_latest():
         if not status:
             return jsonify({'message': 'No JupyterHub status data available'}), 404
 
-        result = {
-            'timestamp': status.timestamp.isoformat(),
-            'available': status.available,
-            'active_users': status.active_users,
-            'active_sessions': status.active_sessions,
-            'cpu_utilization_percent': status.cpu_utilization_percent,
-            'memory_utilization_percent': status.memory_utilization_percent,
-        }
+        # Serialize with marshmallow schema
+        result = JupyterHubStatusSchema().dump(status)
 
         return jsonify(result), 200
 
@@ -690,21 +650,8 @@ def get_outages():
         # Order by most recent first
         outages = query.order_by(SystemOutage.start_time.desc()).all()
 
-        result = [
-            {
-                'outage_id': o.outage_id,
-                'system_name': o.system_name,
-                'component': o.component,
-                'title': o.title,
-                'description': o.description,
-                'severity': o.severity,
-                'status': o.status,
-                'start_time': o.start_time.isoformat(),
-                'end_time': o.end_time.isoformat() if o.end_time else None,
-                'estimated_resolution': o.estimated_resolution.isoformat() if o.estimated_resolution else None,
-            }
-            for o in outages
-        ]
+        # Serialize with marshmallow schema
+        result = SystemOutageSchema(many=True).dump(outages)
 
         return jsonify(result), 200
 
@@ -741,19 +688,8 @@ def get_reservations():
         # Order by start time
         reservations = query.order_by(ResourceReservation.start_time).all()
 
-        result = [
-            {
-                'reservation_id': r.reservation_id,
-                'system_name': r.system_name,
-                'reservation_name': r.reservation_name,
-                'description': r.description,
-                'start_time': r.start_time.isoformat(),
-                'end_time': r.end_time.isoformat(),
-                'node_count': r.node_count,
-                'partition': r.partition,
-            }
-            for r in reservations
-        ]
+        # Serialize with marshmallow schema
+        result = ResourceReservationSchema(many=True).dump(reservations)
 
         return jsonify(result), 200
 
