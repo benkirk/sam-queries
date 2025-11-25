@@ -61,12 +61,12 @@ Created SVG-based chart generation module (no external dependencies):
 
 #### Updated Routes:
 
-**`GET /dashboard/`**
+**`GET /user/`**
 - **Before**: Rendered empty template, JavaScript fetched data from `/api/v1/users/me/projects`
 - **After**: Calls `get_user_dashboard_data()`, passes data to template
 - **Performance**: Reduced from ~15-20 HTTP requests to 1 request
 
-**`GET /dashboard/resource-details`**
+**`GET /user/resource-details`**
 - **Before**: JavaScript fetched data from multiple API endpoints
 - **After**:
   - Accepts optional `start_date`, `end_date` query params
@@ -78,13 +78,13 @@ Created SVG-based chart generation module (no external dependencies):
 
 #### New Lightweight Routes (HTML Fragments):
 
-**`GET /dashboard/members/<projcode>`**
+**`GET /user/members/<projcode>`**
 - **Purpose**: Lazy-load project members list
 - **Returns**: HTML fragment (not full page)
 - **Uses**: `get_users_on_project()` query helper
 - **Template**: `user/fragments/members_table.html`
 
-**`GET /dashboard/tree/<projcode>`**
+**`GET /user/tree/<projcode>`**
 - **Purpose**: Lazy-load project hierarchy tree
 - **Returns**: HTML fragment (not full page)
 - **Implementation**: Recursive tree rendering inline
@@ -185,11 +185,11 @@ Created SVG-based chart generation module (no external dependencies):
 
 ### HTTP Requests Reduced
 
-**Dashboard Page (`/dashboard`)**:
+**Dashboard Page (`/user`)**:
 - Before: 1 (HTML) + 1 (projects API) + N (members/tree per project) = **~15-20 requests**
 - After: 1 (HTML with all data) + lazy (members/tree on-demand) = **1-3 requests**
 
-**Resource Details Page (`/dashboard/resource-details`)**:
+**Resource Details Page (`/user/resource-details`)**:
 - Before: 1 (HTML) + 1 (allocation API) + 1 (charges API) + 1 (jobs API) = **~4-6 requests**
 - After: 1 (HTML with all data + charts) = **1 request**
 
@@ -273,7 +273,7 @@ Created SVG-based chart generation module (no external dependencies):
    ```
 
 2. **Test dashboard**:
-   - Visit `/dashboard`
+   - Visit `/user`
    - Verify projects load
    - Check allocation balances match `sam_search.py`
    - Test resource details page
