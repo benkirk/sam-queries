@@ -7,6 +7,7 @@ from webui.extensions import db
 from webui.admin import admin_bp, init_admin
 from webui.auth import bp as auth_bp
 from webui.dashboards.user import bp as user_dashboard_bp
+from webui.dashboards.status import bp as status_dashboard_bp
 from webui.auth.models import AuthUser
 from webui.utils.rbac import rbac_context_processor
 from sam.core.users import User
@@ -93,6 +94,7 @@ def create_app():
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(user_dashboard_bp)
+    app.register_blueprint(status_dashboard_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
 
     # Register API blueprints
