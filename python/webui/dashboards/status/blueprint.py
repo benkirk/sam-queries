@@ -35,7 +35,9 @@ def index():
     """
     engine, SessionLocal = create_status_engine()
 
-    with get_session(SessionLocal) as session:
+    # Create session with expire_on_commit=False so objects remain accessible
+    session = SessionLocal(expire_on_commit=False)
+    try:
         # Get latest Derecho status
         derecho_status = session.query(DerechoStatus).order_by(
             DerechoStatus.timestamp.desc()
@@ -81,17 +83,19 @@ def index():
             ResourceReservation.end_time >= datetime.now()
         ).order_by(ResourceReservation.start_time).all()
 
-    return render_template(
-        'dashboards/status/dashboard.html',
-        user=current_user,
-        derecho_status=derecho_status,
-        derecho_queues=derecho_queues,
-        derecho_filesystems=derecho_filesystems,
-        casper_status=casper_status,
-        casper_node_types=casper_node_types,
-        casper_queues=casper_queues,
-        jupyterhub_status=jupyterhub_status,
-        outages=outages,
-        reservations=reservations,
-        now=datetime.now(),
-    )
+        return render_template(
+            'dashboards/status/dashboard.html',
+            user=current_user,
+            derecho_status=derecho_status,
+            derecho_queues=derecho_queues,
+            derecho_filesystems=derecho_filesystems,
+            casper_status=casper_status,
+            casper_node_types=casper_node_types,
+            casper_queues=casper_queues,
+            jupyterhub_status=jupyterhub_status,
+            outages=outages,
+            reservations=reservations,
+            now=datetime.now(),
+        )
+    finally:
+        session.close()
