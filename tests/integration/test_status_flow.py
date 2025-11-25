@@ -115,7 +115,7 @@ class TestDerechoIntegration:
         # Verify main status matches
         assert get_result['cpu_nodes_total'] == 2488
         assert get_result['running_jobs'] == 1245
-        assert get_result['cpu_utilization_pct'] == 76.2
+        assert get_result['cpu_utilization_percent'] == 76.2
 
         # Verify login nodes match
         assert 'login_nodes' in get_result
@@ -138,9 +138,50 @@ class TestDerechoIntegration:
         assert derecho5['user_count'] == 3
         assert derecho5['load_1min'] == 1.1
 
-    def test_database_persistence(self, status_session):
+    def test_database_persistence(self, auth_client, status_session):
         """Verify data was persisted correctly in database."""
-        # Query main status
+        # First, clear and post data
+        status_session.query(DerechoLoginNodeStatus).delete()
+        status_session.query(DerechoStatus).delete()
+        status_session.commit()
+
+        post_data = {
+            'timestamp': '2025-01-25T14:30:00',
+            'cpu_nodes_total': 2488,
+            'cpu_nodes_available': 1850,
+            'cpu_nodes_down': 15,
+            'cpu_nodes_reserved': 623,
+            'gpu_nodes_total': 82,
+            'gpu_nodes_available': 45,
+            'gpu_nodes_down': 2,
+            'gpu_nodes_reserved': 35,
+            'cpu_cores_total': 321536,
+            'cpu_cores_allocated': 245000,
+            'cpu_cores_idle': 76536,
+            'cpu_utilization_percent': 76.2,
+            'gpu_count_total': 656,
+            'gpu_count_allocated': 485,
+            'gpu_count_idle': 171,
+            'gpu_utilization_percent': 73.9,
+            'memory_total_gb': 650000.0,
+            'memory_allocated_gb': 495000.0,
+            'memory_utilization_percent': 76.2,
+            'running_jobs': 1245,
+            'pending_jobs': 328,
+            'active_users': 156,
+            'login_nodes': [
+                {'node_name': 'derecho1', 'node_type': 'cpu', 'available': True, 'degraded': False},
+                {'node_name': 'derecho2', 'node_type': 'cpu', 'available': True, 'degraded': False},
+                {'node_name': 'derecho5', 'node_type': 'gpu', 'available': True, 'degraded': False}
+            ]
+        }
+
+        response = auth_client.post('/api/v1/status/derecho',
+                                   json=post_data,
+                                   content_type='application/json')
+        assert response.status_code == 201
+
+        # Now query main status
         status = status_session.query(DerechoStatus).order_by(
             DerechoStatus.timestamp.desc()
         ).first()

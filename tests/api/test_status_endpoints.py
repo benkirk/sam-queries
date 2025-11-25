@@ -255,6 +255,11 @@ class TestDerechoGet:
     @pytest.fixture(autouse=True)
     def setup_derecho_data(self, status_session):
         """Create test data for Derecho GET tests."""
+        # Clear existing data first
+        status_session.query(DerechoLoginNodeStatus).delete()
+        status_session.query(DerechoStatus).delete()
+        status_session.commit()
+
         timestamp = datetime.now()
 
         # Create main status
@@ -341,6 +346,11 @@ class TestCasperGet:
     @pytest.fixture(autouse=True)
     def setup_casper_data(self, status_session):
         """Create test data for Casper GET tests."""
+        # Clear existing data first
+        status_session.query(CasperLoginNodeStatus).delete()
+        status_session.query(CasperStatus).delete()
+        status_session.commit()
+
         timestamp = datetime.now()
 
         # Create main status

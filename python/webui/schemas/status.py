@@ -208,15 +208,15 @@ class JupyterHubStatusSchema(Schema):
 
     Status for the JupyterHub/Casper JupyterHub service.
     """
-    jupyterhub_id = fields.Int()
+    status_id = fields.Int()
     timestamp = fields.DateTime()
     available = fields.Bool()
-    degraded = fields.Bool()
 
     # User/Server Metrics
     active_users = fields.Int(allow_none=True)
-    active_servers = fields.Int(allow_none=True)
-    pending_spawns = fields.Int(allow_none=True)
+    active_sessions = fields.Int(allow_none=True)
+    cpu_utilization_percent = fields.Float(allow_none=True)
+    memory_utilization_percent = fields.Float(allow_none=True)
 
 
 # ============================================================================
@@ -227,23 +227,27 @@ class SystemOutageSchema(Schema):
     """Schema for system outages."""
     outage_id = fields.Int()
     system_name = fields.Str()
-    outage_type = fields.Str()  # 'full', 'partial', 'degraded'
+    component = fields.Str(allow_none=True)
+    severity = fields.Str()  # 'critical', 'major', 'minor', 'maintenance'
+    status = fields.Str()  # 'investigating', 'identified', 'monitoring', 'resolved'
+    title = fields.Str()
+    description = fields.Str(allow_none=True)
     start_time = fields.DateTime()
     end_time = fields.DateTime(allow_none=True)
-    description = fields.Str(allow_none=True)
-    impact = fields.Str(allow_none=True)
-    status = fields.Str()  # 'active', 'scheduled', 'resolved'
+    estimated_resolution = fields.DateTime(allow_none=True)
     created_at = fields.DateTime()
-    updated_at = fields.DateTime()
+    updated_at = fields.DateTime(allow_none=True)
 
 
 class ResourceReservationSchema(Schema):
     """Schema for resource reservations."""
     reservation_id = fields.Int()
-    resource_name = fields.Str()
+    system_name = fields.Str()
     reservation_name = fields.Str()
+    description = fields.Str(allow_none=True)
     start_time = fields.DateTime()
     end_time = fields.DateTime()
-    nodes_reserved = fields.Int(allow_none=True)
-    description = fields.Str(allow_none=True)
+    node_count = fields.Int(allow_none=True)
+    partition = fields.Str(allow_none=True)
     created_at = fields.DateTime()
+    updated_at = fields.DateTime(allow_none=True)

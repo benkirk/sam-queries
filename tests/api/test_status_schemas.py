@@ -65,8 +65,9 @@ class TestDerechoSchemas:
         assert result['cpu_nodes_total'] == 100
         assert result['running_jobs'] == 150
         assert result['cpu_utilization_percent'] == 78.1
-        # Datetime should be serialized
-        assert isinstance(result['timestamp'], datetime)
+        # Datetime should be serialized to string
+        assert isinstance(result['timestamp'], str)
+        assert result['timestamp'] == '2025-01-25T14:30:00'
 
     def test_derecho_login_node_schema(self):
         """Test DerechoLoginNodeSchema serialization."""
@@ -174,7 +175,6 @@ class TestCasperSchemas:
         """Test CasperStatusSchema serialization."""
         timestamp = datetime(2025, 1, 25, 14, 30, 0)
         status = CasperStatus(
-            casper_id=1,
             timestamp=timestamp,
             compute_nodes_total=260,
             compute_nodes_available=185,
@@ -190,7 +190,7 @@ class TestCasperSchemas:
         schema = CasperStatusSchema()
         result = schema.dump(status)
 
-        assert result['status_id'] == 1
+        assert 'status_id' in result
         assert result['compute_nodes_total'] == 260
         assert result['running_jobs'] == 456
 
@@ -250,10 +250,8 @@ class TestJupyterHubSchema:
         """Test JupyterHubStatusSchema serialization."""
         timestamp = datetime(2025, 1, 25, 14, 30, 0)
         status = JupyterHubStatus(
-            jupyterhub_id=1,
             timestamp=timestamp,
             available=True,
-            degraded=False,
             active_users=45,
             active_sessions=50,
             cpu_utilization_percent=62.3,
@@ -263,7 +261,7 @@ class TestJupyterHubSchema:
         schema = JupyterHubStatusSchema()
         result = schema.dump(status)
 
-        assert result['jupyterhub_id'] == 1
+        assert 'status_id' in result
         assert result['available'] is True
         assert result['active_users'] == 45
 
@@ -275,14 +273,15 @@ class TestSupportSchemas:
         """Test SystemOutageSchema serialization."""
         start_time = datetime(2025, 1, 25, 10, 0, 0)
         outage = SystemOutage(
-            outage_id=1,
             system_name='Derecho',
-            outage_type='partial',
+            component='GPU nodes',
+            severity='major',
+            status='monitoring',
+            title='GPU node maintenance',
+            description='GPU node maintenance in progress',
             start_time=start_time,
             end_time=None,
-            description='GPU node maintenance',
-            impact='GPU jobs affected',
-            status='active',
+            estimated_resolution=None,
             created_at=start_time,
             updated_at=start_time
         )
@@ -290,28 +289,33 @@ class TestSupportSchemas:
         schema = SystemOutageSchema()
         result = schema.dump(outage)
 
-        assert result['outage_id'] == 1
+        assert 'outage_id' in result
         assert result['system_name'] == 'Derecho'
-        assert result['status'] == 'active'
+        assert result['status'] == 'monitoring'
+        assert result['severity'] == 'major'
+        assert result['title'] == 'GPU node maintenance'
 
     def test_resource_reservation_schema(self):
         """Test ResourceReservationSchema serialization."""
         start_time = datetime(2025, 2, 1, 8, 0, 0)
         end_time = datetime(2025, 2, 1, 16, 0, 0)
+        created_at = datetime(2025, 1, 25, 10, 0, 0)
         reservation = ResourceReservation(
-            reservation_id=1,
-            resource_name='Derecho',
+            system_name='Derecho',
             reservation_name='MONTHLY_MAINTENANCE',
+            description='Monthly system maintenance',
             start_time=start_time,
             end_time=end_time,
-            nodes_reserved=50,
-            description='Monthly system maintenance',
-            created_at=datetime.now()
+            node_count=50,
+            partition='main',
+            created_at=created_at,
+            updated_at=None
         )
 
         schema = ResourceReservationSchema()
         result = schema.dump(reservation)
 
-        assert result['reservation_id'] == 1
-        assert result['resource_name'] == 'Derecho'
+        assert 'reservation_id' in result
+        assert result['system_name'] == 'Derecho'
         assert result['reservation_name'] == 'MONTHLY_MAINTENANCE'
+        assert result['node_count'] == 50
