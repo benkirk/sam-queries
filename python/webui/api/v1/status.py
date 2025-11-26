@@ -31,15 +31,16 @@ sys.path.insert(0, str(python_dir))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoQueueStatus, DerechoFilesystemStatus,
+    DerechoStatus, DerechoQueueStatus,
     DerechoLoginNodeStatus,
     CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
     CasperLoginNodeStatus,
     JupyterHubStatus,
+    FilesystemStatus,
     SystemOutage, ResourceReservation
 )
 from webui.schemas.status import (
-    DerechoStatusSchema, DerechoQueueSchema, DerechoFilesystemSchema,
+    DerechoStatusSchema, DerechoQueueSchema, FilesystemSchema,
     DerechoLoginNodeSchema,
     CasperStatusSchema, CasperNodeTypeSchema, CasperQueueSchema,
     CasperLoginNodeSchema,
@@ -211,9 +212,10 @@ def ingest_derecho():
         if filesystems:
             fs_ids = []
             for fs_data in filesystems:
-                fs_status = DerechoFilesystemStatus(
+                fs_status = FilesystemStatus(
                     timestamp=timestamp,
                     filesystem_name=fs_data['filesystem_name'],
+                    system_name='derecho',  # Tag with system name
                     available=fs_data.get('available', True),
                     degraded=fs_data.get('degraded', False),
                     capacity_tb=fs_data.get('capacity_tb'),
@@ -349,6 +351,26 @@ def ingest_casper():
                 session.flush()
                 queue_ids.append(queue_status.queue_status_id)
             result['queue_ids'] = queue_ids
+
+        # Handle filesystem status if provided
+        filesystems = data.get('filesystems', [])
+        if filesystems:
+            fs_ids = []
+            for fs_data in filesystems:
+                fs_status = FilesystemStatus(
+                    timestamp=timestamp,
+                    filesystem_name=fs_data['filesystem_name'],
+                    system_name='casper',  # Tag with system name
+                    available=fs_data.get('available', True),
+                    degraded=fs_data.get('degraded', False),
+                    capacity_tb=fs_data.get('capacity_tb'),
+                    used_tb=fs_data.get('used_tb'),
+                    utilization_percent=fs_data.get('utilization_percent'),
+                )
+                session.add(fs_status)
+                session.flush()
+                fs_ids.append(fs_status.fs_status_id)
+            result['filesystem_ids'] = fs_ids
 
         session.commit()
         return jsonify(result), 201
@@ -526,16 +548,17 @@ def get_derecho_latest():
             timestamp=status.timestamp
         ).all()
 
-        # Get filesystems for same timestamp
-        filesystems = session.query(DerechoFilesystemStatus).filter_by(
-            timestamp=status.timestamp
+        # Get filesystems for same timestamp (filter by system_name='derecho')
+        filesystems = session.query(FilesystemStatus).filter_by(
+            timestamp=status.timestamp,
+            system_name='derecho'
         ).all()
 
         # Serialize with marshmallow schemas
         result = DerechoStatusSchema().dump(status)
         result['login_nodes'] = DerechoLoginNodeSchema(many=True).dump(login_nodes)
         result['queues'] = DerechoQueueSchema(many=True).dump(queues)
-        result['filesystems'] = DerechoFilesystemSchema(many=True).dump(filesystems)
+        result['filesystems'] = FilesystemSchema(many=True).dump(filesystems)
 
         return jsonify(result), 200
 
@@ -577,11 +600,18 @@ def get_casper_latest():
             timestamp=status.timestamp
         ).all()
 
+        # Get filesystems for same timestamp (filter by system_name='casper')
+        filesystems = session.query(FilesystemStatus).filter_by(
+            timestamp=status.timestamp,
+            system_name='casper'
+        ).all()
+
         # Serialize with marshmallow schemas
         result = CasperStatusSchema().dump(status)
         result['login_nodes'] = CasperLoginNodeSchema(many=True).dump(login_nodes)
         result['node_types'] = CasperNodeTypeSchema(many=True).dump(node_types)
         result['queues'] = CasperQueueSchema(many=True).dump(queues)
+        result['filesystems'] = FilesystemSchema(many=True).dump(filesystems)
 
         return jsonify(result), 200
 

@@ -4,6 +4,7 @@
 {% import 'dashboards/status/partials/job_statistics.html' as jobs %}
 {% import 'dashboards/status/partials/queue_table.html' as queues %}
 {% import 'dashboards/status/partials/nodetype_table.html' as nodetypes %}
+{% import 'dashboards/status/partials/filesystem_table.html' as fs %}
 {% import 'dashboards/status/partials/no_data_message.html' as empty %}
 
 {% if casper_status %}
@@ -58,6 +59,12 @@
         {% if casper_queues %}
         <h6 class="mb-3 mt-4"><i class="fas fa-list"></i> Queue Status</h6>
         {{ queues.queue_table(casper_queues, show_gpus=false) }}
+        {% endif %}
+
+        <!-- Filesystems -->
+        {% if casper_filesystems %}
+        <h6 class="mb-3 mt-4"><i class="fas fa-database"></i> Filesystem Status</h6>
+        {{ fs.filesystem_table(casper_filesystems) }}
         {% endif %}
     </div>
 </div>

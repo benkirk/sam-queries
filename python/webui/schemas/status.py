@@ -67,19 +67,25 @@ class CasperLoginNodeSchema(Schema):
 
 
 # ============================================================================
-# Derecho Schemas
+# Common Schemas
 # ============================================================================
 
-class DerechoFilesystemSchema(Schema):
-    """Schema for Derecho filesystem status."""
+class FilesystemSchema(Schema):
+    """Schema for filesystem status (common to all systems)."""
     fs_status_id = fields.Int()
     filesystem_name = fields.Str()
+    system_name = fields.Str(allow_none=True)
     available = fields.Bool()
     degraded = fields.Bool()
     capacity_tb = fields.Float(allow_none=True)
     used_tb = fields.Float(allow_none=True)
     utilization_percent = fields.Float(allow_none=True)
     timestamp = fields.DateTime()
+
+
+# ============================================================================
+# Derecho Schemas
+# ============================================================================
 
 
 class DerechoQueueSchema(Schema):

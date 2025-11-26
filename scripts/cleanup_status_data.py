@@ -23,9 +23,10 @@ sys.path.insert(0, str(python_dir))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoQueueStatus, DerechoFilesystemStatus,
+    DerechoStatus, DerechoQueueStatus,
     CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
     JupyterHubStatus,
+    FilesystemStatus,
     SystemOutage, ResourceReservation
 )
 
@@ -62,10 +63,10 @@ def cleanup_old_data(retention_days=7, dry_run=False):
         tables_to_clean = [
             (DerechoStatus, 'derecho_status'),
             (DerechoQueueStatus, 'derecho_queue_status'),
-            (DerechoFilesystemStatus, 'derecho_filesystem_status'),
             (CasperStatus, 'casper_status'),
             (CasperNodeTypeStatus, 'casper_node_type_status'),
             (CasperQueueStatus, 'casper_queue_status'),
+            (FilesystemStatus, 'filesystem_status'),
             (JupyterHubStatus, 'jupyterhub_status'),
         ]
 

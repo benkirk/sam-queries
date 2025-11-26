@@ -61,7 +61,7 @@ from .charge_details import (
 from .status import (
     DerechoStatusSchema,
     DerechoQueueSchema,
-    DerechoFilesystemSchema,
+    FilesystemSchema,
     DerechoLoginNodeSchema,
     CasperStatusSchema,
     CasperNodeTypeSchema,
@@ -106,7 +106,7 @@ __all__ = [
     # System Status schemas
     'DerechoStatusSchema',
     'DerechoQueueSchema',
-    'DerechoFilesystemSchema',
+    'FilesystemSchema',
     'DerechoLoginNodeSchema',
     'CasperStatusSchema',
     'CasperNodeTypeSchema',

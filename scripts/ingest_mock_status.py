@@ -23,10 +23,11 @@ sys.path.insert(0, str(python_dir))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoQueueStatus, DerechoFilesystemStatus,
+    DerechoStatus, DerechoQueueStatus,
     DerechoLoginNodeStatus,
     CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
     CasperLoginNodeStatus,
+    FilesystemStatus,
     JupyterHubStatus,
     SystemOutage, ResourceReservation
 )
@@ -138,9 +139,10 @@ def ingest_mock_data():
 
         # Derecho filesystems
         for fs_data in derecho_data['filesystems']:
-            fs_status = DerechoFilesystemStatus(
+            fs_status = FilesystemStatus(
                 timestamp=timestamp,
                 filesystem_name=fs_data['filesystem_name'],
+                system_name='derecho',
                 available=fs_data['available'],
                 degraded=fs_data['degraded'],
                 capacity_tb=fs_data['capacity_tb'],
@@ -216,6 +218,22 @@ def ingest_mock_data():
             )
             session.add(queue_status)
             print(f"   ✓ Casper queue: {queue_data['queue_name']}")
+
+        # Casper filesystems
+        if 'filesystems' in casper_data:
+            for fs_data in casper_data['filesystems']:
+                fs_status = FilesystemStatus(
+                    timestamp=timestamp,
+                    filesystem_name=fs_data['filesystem_name'],
+                    system_name='casper',
+                    available=fs_data['available'],
+                    degraded=fs_data['degraded'],
+                    capacity_tb=fs_data['capacity_tb'],
+                    used_tb=fs_data['used_tb'],
+                    utilization_percent=fs_data['utilization_percent'],
+                )
+                session.add(fs_status)
+                print(f"   ✓ Casper filesystem: {fs_data['filesystem_name']}")
 
         # JupyterHub
         print("\n3. Ingesting JupyterHub status...")

@@ -81,23 +81,5 @@ class DerechoQueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     nodes_allocated = Column(Integer, nullable=False, default=0)
 
 
-class DerechoFilesystemStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin):
-    """
-    Filesystem health for Derecho (5-minute intervals).
-    Tracks glade, campaign, scratch filesystems.
-    """
-    __tablename__ = 'derecho_filesystem_status'
-
-    __table_args__ = (
-        UniqueConstraint('timestamp', 'filesystem_name', name='uq_derecho_fs_timestamp_name'),
-    )
-
-    fs_status_id = Column(Integer, primary_key=True, autoincrement=True)
-    filesystem_name = Column(String(64), nullable=False, index=True)
-
-    # Status inherited from AvailabilityMixin: available, degraded
-
-    # Capacity
-    capacity_tb = Column(Float, nullable=True)
-    used_tb = Column(Float, nullable=True)
-    utilization_percent = Column(Float, nullable=True)
+# NOTE: Filesystem tracking moved to common FilesystemStatus model
+# See system_status/models/filesystems.py

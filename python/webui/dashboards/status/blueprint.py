@@ -16,9 +16,10 @@ sys.path.insert(0, str(python_dir))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoQueueStatus, DerechoFilesystemStatus,
+    DerechoStatus, DerechoQueueStatus,
     CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
     JupyterHubStatus,
+    FilesystemStatus,
     SystemOutage, ResourceReservation,
     DerechoLoginNodeStatus, CasperLoginNodeStatus
 )
@@ -51,8 +52,9 @@ def index():
             derecho_queues = session.query(DerechoQueueStatus).filter_by(
                 timestamp=derecho_status.timestamp
             ).all()
-            derecho_filesystems = session.query(DerechoFilesystemStatus).filter_by(
-                timestamp=derecho_status.timestamp
+            derecho_filesystems = session.query(FilesystemStatus).filter_by(
+                timestamp=derecho_status.timestamp,
+                system_name='derecho'
             ).all()
             derecho_login_nodes = session.query(DerechoLoginNodeStatus).filter_by(
                 timestamp=derecho_status.timestamp
@@ -66,6 +68,7 @@ def index():
         casper_node_types = []
         casper_queues = []
         casper_login_nodes = []
+        casper_filesystems = []
         if casper_status:
             casper_node_types = session.query(CasperNodeTypeStatus).filter_by(
                 timestamp=casper_status.timestamp
@@ -75,6 +78,10 @@ def index():
             ).all()
             casper_login_nodes = session.query(CasperLoginNodeStatus).filter_by(
                 timestamp=casper_status.timestamp
+            ).all()
+            casper_filesystems = session.query(FilesystemStatus).filter_by(
+                timestamp=casper_status.timestamp,
+                system_name='casper'
             ).all()
 
         # Get latest JupyterHub status
@@ -103,6 +110,7 @@ def index():
             casper_node_types=casper_node_types,
             casper_queues=casper_queues,
             casper_login_nodes=casper_login_nodes,
+            casper_filesystems=casper_filesystems,
             jupyterhub_status=jupyterhub_status,
             outages=outages,
             reservations=reservations,
