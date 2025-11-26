@@ -69,21 +69,28 @@ def classify_node_type(node_name: str, node_data: dict, system_type: str) -> str
         # Casper: Multiple node types based on Qlist and resources
         if ngpus > 0:
             # GPU node - determine type from gpu_type field
-            if 'h100' in gpu_type:
+            # (most-to-least specific)
+            if 'mi300a' in gpu_type:
+                return 'gpu-mi300a'
+            elif 'h100' in gpu_type:
                 return 'gpu-h100'
             elif 'a100' in gpu_type:
                 return 'gpu-a100'
             elif 'v100' in gpu_type:
                 return 'gpu-v100'
             elif 'l40' in gpu_type:
-                return 'gpu-l40'
+                return 'viz-l40'
             elif 'gp100' in gpu_type:
-                return 'gpu-gp100'
+                return 'viz-gp100'
             else:
                 return 'gpu'
         elif 'largemem' in qlist:
             return 'largemem'
-        elif 'htc' in qlist or 'jhublogin' in qlist:
+        elif 'jhublogin' in qlist:
+            return 'jhublogin'
+        elif 'gdex' in qlist:
+            return 'gdex'
+        elif 'htc' in qlist:
             return 'htc'
         else:
             # Standard compute node
