@@ -1,0 +1,19 @@
+Lets implement the @collectors/docs/PBS_COLLECTORS_PLAN.md, initially
+developing the collectors and testing them manually.  We can run the
+collectors in a simple while loop for the time being, and defer the
+"Deployment" and "Monitoring" for later implementation.
+
+Please pay extra attention to the JSON results from "pbsnodes -aj -F
+json" and lets use as much information as possible to infer node types
+- for both machines but especially Casper.  Note in particular the
+fields under "resources_available", especially "cpu_type", "gpu_type"
+"Qlist", etc...  We can infer much from this output instead of
+hard-coding conf files.
+
+ssh to casper and derecho both work so you can run relevant commands
+for testing.
+
+You can start the development web server via "utils/run-webui-dbg.sh"
+which will disable auth for testing purposes, allowing testing the API
+aspects, and then checking the dashboard on
+http://127.0.0.1:5050/status/.
