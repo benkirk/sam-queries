@@ -3,10 +3,10 @@
     <div class="col-md-{{ '4' if show_gpus else '6' }}">
         <div class="metric-card">
             <h6>CPU Utilization</h6>
-            <div class="value">{{ status.cpu_utilization_percent|round(1) }}%</div>
+            <div class="value">{{ (status.cpu_utilization_percent|default(0, true))|round(1) }}%</div>
             <div class="progress mt-2">
-                <div class="progress-bar bg-{{ 'danger' if status.cpu_utilization_percent >= 90 else 'warning' if status.cpu_utilization_percent >= 75 else 'success' }}"
-                     style="width: {{ status.cpu_utilization_percent }}%"></div>
+                <div class="progress-bar bg-{{ 'danger' if (status.cpu_utilization_percent|default(0, true)) >= 90 else 'warning' if (status.cpu_utilization_percent|default(0, true)) >= 75 else 'success' }}"
+                     style="width: {{ status.cpu_utilization_percent|default(0, true) }}%"></div>
             </div>
             {% if status.cpu_cores_allocated is defined and status.cpu_cores_total is defined %}
             <div class="text-muted small mt-1">
@@ -19,10 +19,10 @@
     <div class="col-md-4">
         <div class="metric-card">
             <h6>GPU Utilization</h6>
-            <div class="value">{{ status.gpu_utilization_percent|round(1) }}%</div>
+            <div class="value">{{ (status.gpu_utilization_percent|default(0, true))|round(1) }}%</div>
             <div class="progress mt-2">
-                <div class="progress-bar bg-{{ 'danger' if status.gpu_utilization_percent >= 90 else 'warning' if status.gpu_utilization_percent >= 75 else 'success' }}"
-                     style="width: {{ status.gpu_utilization_percent }}%"></div>
+                <div class="progress-bar bg-{{ 'danger' if (status.gpu_utilization_percent|default(0, true)) >= 90 else 'warning' if (status.gpu_utilization_percent|default(0, true)) >= 75 else 'success' }}"
+                     style="width: {{ status.gpu_utilization_percent|default(0, true) }}%"></div>
             </div>
             {% if status.gpu_count_allocated is defined and status.gpu_count_total is defined %}
             <div class="text-muted small mt-1">
@@ -35,10 +35,10 @@
     <div class="col-md-{{ '4' if show_gpus else '6' }}">
         <div class="metric-card">
             <h6>Memory Utilization</h6>
-            <div class="value">{{ status.memory_utilization_percent|round(1) }}%</div>
+            <div class="value">{{ (status.memory_utilization_percent|default(0, true))|round(1) }}%</div>
             <div class="progress mt-2">
-                <div class="progress-bar bg-{{ 'danger' if status.memory_utilization_percent >= 90 else 'warning' if status.memory_utilization_percent >= 75 else 'success' }}"
-                     style="width: {{ status.memory_utilization_percent }}%"></div>
+                <div class="progress-bar bg-{{ 'danger' if (status.memory_utilization_percent|default(0, true)) >= 90 else 'warning' if (status.memory_utilization_percent|default(0, true)) >= 75 else 'success' }}"
+                     style="width: {{ status.memory_utilization_percent|default(0, true) }}%"></div>
             </div>
             {% if status.memory_allocated_gb is defined and status.memory_total_gb is defined %}
             <div class="text-muted small mt-1">
