@@ -15,8 +15,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'python'))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoLoginNodeStatus, DerechoQueueStatus, DerechoFilesystemStatus,
+    DerechoStatus, DerechoLoginNodeStatus, DerechoQueueStatus,
     CasperStatus, CasperLoginNodeStatus, CasperNodeTypeStatus, CasperQueueStatus,
+    FilesystemStatus,
     JupyterHubStatus, SystemOutage, ResourceReservation
 )
 
@@ -29,7 +30,7 @@ def status_session():
         # Clean up any existing test data
         session.query(DerechoLoginNodeStatus).delete()
         session.query(DerechoQueueStatus).delete()
-        session.query(DerechoFilesystemStatus).delete()
+        session.query(FilesystemStatus).delete()
         session.query(DerechoStatus).delete()
         session.query(CasperLoginNodeStatus).delete()
         session.query(CasperNodeTypeStatus).delete()

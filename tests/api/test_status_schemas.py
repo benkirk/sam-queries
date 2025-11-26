@@ -14,12 +14,13 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'python'))
 
 from system_status import (
-    DerechoStatus, DerechoLoginNodeStatus, DerechoQueueStatus, DerechoFilesystemStatus,
+    DerechoStatus, DerechoLoginNodeStatus, DerechoQueueStatus,
     CasperStatus, CasperLoginNodeStatus, CasperNodeTypeStatus, CasperQueueStatus,
+    FilesystemStatus,
     JupyterHubStatus, SystemOutage, ResourceReservation
 )
 from webui.schemas.status import (
-    DerechoStatusSchema, DerechoLoginNodeSchema, DerechoQueueSchema, DerechoFilesystemSchema,
+    DerechoStatusSchema, DerechoLoginNodeSchema, DerechoQueueSchema, FilesystemSchema,
     CasperStatusSchema, CasperLoginNodeSchema, CasperNodeTypeSchema, CasperQueueSchema,
     JupyterHubStatusSchema, SystemOutageSchema, ResourceReservationSchema
 )
@@ -145,13 +146,14 @@ class TestDerechoSchemas:
         assert result['queue_name'] == 'main'
         assert result['running_jobs'] == 100
 
-    def test_derecho_filesystem_schema(self):
-        """Test DerechoFilesystemSchema serialization."""
+    def test_filesystem_schema(self):
+        """Test FilesystemSchema serialization."""
         timestamp = datetime(2025, 1, 25, 14, 30, 0)
-        fs = DerechoFilesystemStatus(
+        fs = FilesystemStatus(
             fs_status_id=1,
             timestamp=timestamp,
             filesystem_name='glade',
+            system_name='derecho',
             available=True,
             degraded=False,
             capacity_tb=20000.0,
@@ -159,11 +161,12 @@ class TestDerechoSchemas:
             utilization_percent=82.5
         )
 
-        schema = DerechoFilesystemSchema()
+        schema = FilesystemSchema()
         result = schema.dump(fs)
 
         assert result['fs_status_id'] == 1
         assert result['filesystem_name'] == 'glade'
+        assert result['system_name'] == 'derecho'
         assert result['available'] is True
         assert result['capacity_tb'] == 20000.0
 
