@@ -71,6 +71,12 @@ jobs:
           SAM_DB_USERNAME=\${LOCAL_SAM_DB_USERNAME}
           SAM_DB_SERVER=\${LOCAL_SAM_DB_SERVER}
           SAM_DB_PASSWORD=\${LOCAL_SAM_DB_PASSWORD}
+
+          #-------------------------
+          # system status database
+          STATUS_DB_USERNAME=root
+          STATUS_DB_PASSWORD=root
+          STATUS_DB_SERVER=127.0.0.1
           EOF
           make conda-env
           #source etc/config_env.sh
