@@ -68,6 +68,7 @@ class CasperCollector:
                 'compute_nodes_available': node_stats['cpu_nodes_available'],
                 'compute_nodes_down': node_stats['cpu_nodes_down'],
                 'cpu_utilization_percent': node_stats.get('cpu_utilization_percent', 0.0),
+                'gpu_utilization_percent': node_stats.get('gpu_utilization_percent'),
                 'memory_utilization_percent': node_stats.get('memory_utilization_percent', 0.0),
             })
 

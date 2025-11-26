@@ -88,4 +88,5 @@ class CasperQueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
 
     # Resource Allocations
     cores_allocated = Column(Integer, nullable=False, default=0)
+    gpus_allocated = Column(Integer, nullable=False, default=0)
     nodes_allocated = Column(Integer, nullable=False, default=0)

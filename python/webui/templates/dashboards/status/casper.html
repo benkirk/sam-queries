@@ -57,8 +57,8 @@
 
         <!-- Queues -->
         {% if casper_queues %}
-        <h6 class="mb-3 mt-4"><i class="fas fa-list"></i> Queue Status</h6>
-        {{ queues.queue_table(casper_queues, show_gpus=false) }}
+        <h6 class="mb-3"><i class="fas fa-list"></i> Queue Status</h6>
+        {{ queues.queue_table(casper_queues, show_gpus=true) }}
         {% endif %}
 
         <!-- Filesystems -->

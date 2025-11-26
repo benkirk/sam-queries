@@ -128,13 +128,20 @@ class NodeParser:
             'memory_allocated_gb': 0.0,
         }
 
-        # Add GPU fields for Derecho
+        # Add GPU fields for both systems
         if system_type == 'derecho':
             stats.update({
                 'gpu_nodes_total': 0,
                 'gpu_nodes_available': 0,
                 'gpu_nodes_down': 0,
                 'gpu_nodes_reserved': 0,
+                'gpu_count_total': 0,
+                'gpu_count_allocated': 0,
+                'gpu_count_idle': 0,
+            })
+        else:
+            # Casper doesn't track GPU nodes at system level, just GPU counts
+            stats.update({
                 'gpu_count_total': 0,
                 'gpu_count_allocated': 0,
                 'gpu_count_idle': 0,
@@ -180,8 +187,8 @@ class NodeParser:
             stats['memory_total_gb'] += mem_kb / (1024 * 1024)
             stats['memory_allocated_gb'] += mem_alloc_kb / (1024 * 1024)
 
-            # GPUs (Derecho only in aggregate stats)
-            if system_type == 'derecho' and is_gpu:
+            # GPUs (aggregate for both systems if node has GPUs)
+            if is_gpu:
                 ngpus = int(resources.get('ngpus', 0))
                 ngpus_allocated = int(resources_assigned.get('ngpus', 0))
                 stats['gpu_count_total'] += ngpus
@@ -196,12 +203,12 @@ class NodeParser:
         else:
             stats['cpu_utilization_percent'] = 0.0
 
-        if system_type == 'derecho' and stats.get('gpu_count_total', 0) > 0:
+        if stats.get('gpu_count_total', 0) > 0:
             stats['gpu_utilization_percent'] = round(
                 (stats['gpu_count_allocated'] / stats['gpu_count_total']) * 100, 2
             )
         else:
-            stats['gpu_utilization_percent'] = 0.0
+            stats['gpu_utilization_percent'] = None  # Use None instead of 0.0 when no GPUs
 
         if stats['memory_total_gb'] > 0:
             stats['memory_utilization_percent'] = round(

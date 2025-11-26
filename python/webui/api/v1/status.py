@@ -345,6 +345,7 @@ def ingest_casper():
                     pending_jobs=queue_data.get('pending_jobs', 0),
                     active_users=queue_data.get('active_users', 0),
                     cores_allocated=queue_data.get('cores_allocated', 0),
+                    gpus_allocated=queue_data.get('gpus_allocated', 0),
                     nodes_allocated=queue_data.get('nodes_allocated', 0),
                 )
                 session.add(queue_status)
