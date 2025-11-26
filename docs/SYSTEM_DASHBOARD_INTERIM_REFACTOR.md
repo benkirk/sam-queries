@@ -387,6 +387,200 @@ Update API data format sections to show login_nodes arrays instead of aggregate 
 
 ---
 
+## Task 4: Implement Comprehensive Tests
+
+### Test Files to Create
+
+**1. API Endpoint Tests:** `tests/api/test_status_endpoints.py` (~400 lines)
+
+**Test classes:**
+- `TestDerechoIngestion` - POST /api/v1/status/derecho
+- `TestCasperIngestion` - POST /api/v1/status/casper
+- `TestJupyterHubIngestion` - POST /api/v1/status/jupyterhub
+- `TestOutageReporting` - POST /api/v1/status/outage
+- `TestStatusRetrieval` - GET endpoints (latest status)
+
+**Test coverage:**
+- Authentication (unauthenticated should fail)
+- Authorization (requires MANAGE_SYSTEM_STATUS permission)
+- Data validation (missing required fields, invalid formats)
+- Timestamp parsing (ISO format, custom format, default to now)
+- Login nodes array handling (new)
+- Queue/filesystem/nodetype array handling
+- Response structure validation
+- Error handling (400, 401, 403, 404, 500)
+
+**Example tests:**
+```python
+class TestDerechoIngestion:
+    def test_ingest_derecho_success(self, auth_client, mock_status_data):
+        """Test successful Derecho status ingestion."""
+        response = auth_client.post(
+            '/api/v1/status/derecho',
+            json=mock_status_data['derecho']
+        )
+        assert response.status_code == 201
+        data = response.get_json()
+        assert data['success'] is True
+        assert 'status_id' in data
+        assert 'login_node_ids' in data  # NEW
+
+    def test_ingest_missing_login_nodes(self, auth_client):
+        """Test ingestion without login_nodes array (optional)."""
+        minimal_data = {'cpu_nodes_total': 2488, ...}
+        response = auth_client.post('/api/v1/status/derecho', json=minimal_data)
+        assert response.status_code == 201
+
+    def test_ingest_unauthenticated(self, client):
+        """POST requires authentication."""
+        response = client.post('/api/v1/status/derecho', json={})
+        assert response.status_code in [302, 401]
+```
+
+**2. Schema Tests:** `tests/api/test_status_schemas.py` (~200 lines)
+
+**Test classes:**
+- `TestDerechoSchemas` - All Derecho-related schemas
+- `TestCasperSchemas` - All Casper-related schemas
+- `TestJupyterHubSchemas` - JupyterHub schema
+- `TestOutageSchemas` - Outage and reservation schemas
+
+**Test coverage:**
+- Field presence validation
+- Type validation (datetime → ISO string, float → number)
+- Nested serialization (login_nodes, queues, filesystems)
+- Many=True serialization (arrays)
+- Missing data handling (None vs empty list)
+
+**Example tests:**
+```python
+from webui.schemas import DerechoStatusSchema, DerechoLoginNodeStatusSchema
+
+class TestDerechoSchemas:
+    def test_derecho_status_schema(self, session):
+        """Test DerechoStatus serialization."""
+        from system_status import DerechoStatus
+
+        status = session.query(DerechoStatus).first()
+        result = DerechoStatusSchema().dump(status)
+
+        # Validate field presence
+        assert 'status_id' in result
+        assert 'timestamp' in result
+        assert 'cpu_nodes_total' in result
+
+        # Validate types
+        assert isinstance(result['timestamp'], str)  # ISO format
+        assert isinstance(result['cpu_nodes_total'], int)
+
+    def test_login_node_schema_many(self, session):
+        """Test login nodes array serialization."""
+        from system_status import DerechoLoginNodeStatus
+
+        nodes = session.query(DerechoLoginNodeStatus).limit(5).all()
+        result = DerechoLoginNodeStatusSchema(many=True).dump(nodes)
+
+        assert isinstance(result, list)
+        assert len(result) <= 5
+        for node in result:
+            assert 'node_name' in node
+            assert 'available' in node
+```
+
+**3. Integration Tests:** `tests/integration/test_status_flow.py` (~150 lines)
+
+**Test classes:**
+- `TestStatusIngestionFlow` - POST → DB → GET flow
+- `TestDataRetention` - Cleanup script behavior
+- `TestConcurrentWrites` - Multiple simultaneous ingestions
+
+**Test coverage:**
+- End-to-end flow: POST data → verify DB storage → GET retrieval
+- Login nodes persist correctly
+- Timestamp-based queries work
+- Cleanup script deletes old data
+- Concurrent writes don't conflict
+
+**Example tests:**
+```python
+class TestStatusIngestionFlow:
+    def test_derecho_full_flow(self, auth_client, session):
+        """Test POST → Database → GET for Derecho."""
+        # Step 1: POST status data
+        post_data = {...}  # From mock_status_data.json
+        response = auth_client.post('/api/v1/status/derecho', json=post_data)
+        assert response.status_code == 201
+        status_id = response.get_json()['status_id']
+
+        # Step 2: Verify database storage
+        from system_status import DerechoStatus, DerechoLoginNodeStatus
+        status = session.query(DerechoStatus).get(status_id)
+        assert status is not None
+        assert status.cpu_nodes_total == post_data['cpu_nodes_total']
+
+        login_nodes = session.query(DerechoLoginNodeStatus).filter_by(
+            timestamp=status.timestamp
+        ).all()
+        assert len(login_nodes) == len(post_data['login_nodes'])
+
+        # Step 3: GET latest status
+        response = auth_client.get('/api/v1/status/derecho/latest')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status_id'] == status_id
+        assert 'login_nodes' in data
+        assert len(data['login_nodes']) == len(post_data['login_nodes'])
+```
+
+### Test Fixtures
+
+**Update:** `tests/api/conftest.py`
+
+Add status-specific fixtures:
+```python
+@pytest.fixture
+def mock_status_data():
+    """Load mock status data from JSON file."""
+    import json
+    with open('tests/mock_data/status_mock_data.json') as f:
+        return json.load(f)
+
+@pytest.fixture
+def status_session():
+    """System status database session."""
+    from system_status import create_status_engine, get_session
+    engine, SessionLocal = create_status_engine()
+    session = SessionLocal()
+    yield session
+    session.rollback()
+    session.close()
+```
+
+### Database Setup Script
+
+**Update:** `scripts/setup_status_db.py`
+
+Add creation of login_node_status tables:
+```python
+from system_status import (
+    DerechoStatus, DerechoLoginNodeStatus,  # Add new model
+    CasperStatus, CasperLoginNodeStatus,    # Add new model
+    # ... other models
+)
+
+# Tables will auto-create via Base.metadata.create_all()
+```
+
+**Files to create:**
+- `tests/api/test_status_endpoints.py` (~400 lines)
+- `tests/api/test_status_schemas.py` (~200 lines)
+- `tests/integration/test_status_flow.py` (~150 lines)
+
+**Files to modify:**
+- `tests/api/conftest.py` (add fixtures)
+
+---
+
 ## Task 3: Split Dashboard Template into Modular Components
 
 ### Rationale
@@ -638,200 +832,6 @@ Create one file per macro in `partials/`:
 
 ---
 
-## Task 4: Implement Comprehensive Tests
-
-### Test Files to Create
-
-**1. API Endpoint Tests:** `tests/api/test_status_endpoints.py` (~400 lines)
-
-**Test classes:**
-- `TestDerechoIngestion` - POST /api/v1/status/derecho
-- `TestCasperIngestion` - POST /api/v1/status/casper
-- `TestJupyterHubIngestion` - POST /api/v1/status/jupyterhub
-- `TestOutageReporting` - POST /api/v1/status/outage
-- `TestStatusRetrieval` - GET endpoints (latest status)
-
-**Test coverage:**
-- Authentication (unauthenticated should fail)
-- Authorization (requires MANAGE_SYSTEM_STATUS permission)
-- Data validation (missing required fields, invalid formats)
-- Timestamp parsing (ISO format, custom format, default to now)
-- Login nodes array handling (new)
-- Queue/filesystem/nodetype array handling
-- Response structure validation
-- Error handling (400, 401, 403, 404, 500)
-
-**Example tests:**
-```python
-class TestDerechoIngestion:
-    def test_ingest_derecho_success(self, auth_client, mock_status_data):
-        """Test successful Derecho status ingestion."""
-        response = auth_client.post(
-            '/api/v1/status/derecho',
-            json=mock_status_data['derecho']
-        )
-        assert response.status_code == 201
-        data = response.get_json()
-        assert data['success'] is True
-        assert 'status_id' in data
-        assert 'login_node_ids' in data  # NEW
-
-    def test_ingest_missing_login_nodes(self, auth_client):
-        """Test ingestion without login_nodes array (optional)."""
-        minimal_data = {'cpu_nodes_total': 2488, ...}
-        response = auth_client.post('/api/v1/status/derecho', json=minimal_data)
-        assert response.status_code == 201
-
-    def test_ingest_unauthenticated(self, client):
-        """POST requires authentication."""
-        response = client.post('/api/v1/status/derecho', json={})
-        assert response.status_code in [302, 401]
-```
-
-**2. Schema Tests:** `tests/api/test_status_schemas.py` (~200 lines)
-
-**Test classes:**
-- `TestDerechoSchemas` - All Derecho-related schemas
-- `TestCasperSchemas` - All Casper-related schemas
-- `TestJupyterHubSchemas` - JupyterHub schema
-- `TestOutageSchemas` - Outage and reservation schemas
-
-**Test coverage:**
-- Field presence validation
-- Type validation (datetime → ISO string, float → number)
-- Nested serialization (login_nodes, queues, filesystems)
-- Many=True serialization (arrays)
-- Missing data handling (None vs empty list)
-
-**Example tests:**
-```python
-from webui.schemas import DerechoStatusSchema, DerechoLoginNodeStatusSchema
-
-class TestDerechoSchemas:
-    def test_derecho_status_schema(self, session):
-        """Test DerechoStatus serialization."""
-        from system_status import DerechoStatus
-
-        status = session.query(DerechoStatus).first()
-        result = DerechoStatusSchema().dump(status)
-
-        # Validate field presence
-        assert 'status_id' in result
-        assert 'timestamp' in result
-        assert 'cpu_nodes_total' in result
-
-        # Validate types
-        assert isinstance(result['timestamp'], str)  # ISO format
-        assert isinstance(result['cpu_nodes_total'], int)
-
-    def test_login_node_schema_many(self, session):
-        """Test login nodes array serialization."""
-        from system_status import DerechoLoginNodeStatus
-
-        nodes = session.query(DerechoLoginNodeStatus).limit(5).all()
-        result = DerechoLoginNodeStatusSchema(many=True).dump(nodes)
-
-        assert isinstance(result, list)
-        assert len(result) <= 5
-        for node in result:
-            assert 'node_name' in node
-            assert 'available' in node
-```
-
-**3. Integration Tests:** `tests/integration/test_status_flow.py` (~150 lines)
-
-**Test classes:**
-- `TestStatusIngestionFlow` - POST → DB → GET flow
-- `TestDataRetention` - Cleanup script behavior
-- `TestConcurrentWrites` - Multiple simultaneous ingestions
-
-**Test coverage:**
-- End-to-end flow: POST data → verify DB storage → GET retrieval
-- Login nodes persist correctly
-- Timestamp-based queries work
-- Cleanup script deletes old data
-- Concurrent writes don't conflict
-
-**Example tests:**
-```python
-class TestStatusIngestionFlow:
-    def test_derecho_full_flow(self, auth_client, session):
-        """Test POST → Database → GET for Derecho."""
-        # Step 1: POST status data
-        post_data = {...}  # From mock_status_data.json
-        response = auth_client.post('/api/v1/status/derecho', json=post_data)
-        assert response.status_code == 201
-        status_id = response.get_json()['status_id']
-
-        # Step 2: Verify database storage
-        from system_status import DerechoStatus, DerechoLoginNodeStatus
-        status = session.query(DerechoStatus).get(status_id)
-        assert status is not None
-        assert status.cpu_nodes_total == post_data['cpu_nodes_total']
-
-        login_nodes = session.query(DerechoLoginNodeStatus).filter_by(
-            timestamp=status.timestamp
-        ).all()
-        assert len(login_nodes) == len(post_data['login_nodes'])
-
-        # Step 3: GET latest status
-        response = auth_client.get('/api/v1/status/derecho/latest')
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['status_id'] == status_id
-        assert 'login_nodes' in data
-        assert len(data['login_nodes']) == len(post_data['login_nodes'])
-```
-
-### Test Fixtures
-
-**Update:** `tests/api/conftest.py`
-
-Add status-specific fixtures:
-```python
-@pytest.fixture
-def mock_status_data():
-    """Load mock status data from JSON file."""
-    import json
-    with open('tests/mock_data/status_mock_data.json') as f:
-        return json.load(f)
-
-@pytest.fixture
-def status_session():
-    """System status database session."""
-    from system_status import create_status_engine, get_session
-    engine, SessionLocal = create_status_engine()
-    session = SessionLocal()
-    yield session
-    session.rollback()
-    session.close()
-```
-
-### Database Setup Script
-
-**Update:** `scripts/setup_status_db.py`
-
-Add creation of login_node_status tables:
-```python
-from system_status import (
-    DerechoStatus, DerechoLoginNodeStatus,  # Add new model
-    CasperStatus, CasperLoginNodeStatus,    # Add new model
-    # ... other models
-)
-
-# Tables will auto-create via Base.metadata.create_all()
-```
-
-**Files to create:**
-- `tests/api/test_status_endpoints.py` (~400 lines)
-- `tests/api/test_status_schemas.py` (~200 lines)
-- `tests/integration/test_status_flow.py` (~150 lines)
-
-**Files to modify:**
-- `tests/api/conftest.py` (add fixtures)
-
----
-
 ## Implementation Order
 
 Execute tasks in this sequence for minimal disruption:
@@ -856,19 +856,19 @@ Execute tasks in this sequence for minimal disruption:
 4. Update blueprint to query login nodes
 5. Update HPC collectors guide documentation
 
-### Phase D: Templates (UI Layer)
-1. Create `partials/` directory and all macro files
-2. Create `fragments/` directory and reservations.html
-3. Create system-specific templates (derecho.html, casper.html, jupyterhub.html)
-4. Refactor main dashboard.html to use includes
-5. Test dashboard rendering manually
-
 ### Phase E: Testing (Validation)
 1. Create test fixtures in conftest.py
 2. Implement API endpoint tests
 3. Implement schema tests
 4. Implement integration tests
 5. Run full test suite: `cd tests && pytest -v api/ integration/`
+
+### Phase D: Templates (UI Layer)
+1. Create `partials/` directory and all macro files
+2. Create `fragments/` directory and reservations.html
+3. Create system-specific templates (derecho.html, casper.html, jupyterhub.html)
+4. Refactor main dashboard.html to use includes
+5. Test dashboard rendering manually
 
 ---
 

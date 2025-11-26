@@ -97,6 +97,13 @@ jobs:
           echo "PYTHONPATH=${PYTHONPATH}"
           python3 --version
 
+      - name: Add System Status MySQL Database
+        run: |
+          mysql -h 127.0.0.1 -proot -uroot < scripts/create_status_db.sql
+          python scripts/setup_status_db.py
+          python scripts/ingest_mock_status.py
+          python scripts/test_status_db.py
+
       - name: Run simple CLI test
         run: |
           pwd
