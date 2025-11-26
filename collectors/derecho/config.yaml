@@ -1,0 +1,34 @@
+system_name: derecho
+pbs_host: derecho
+
+login_nodes:
+  - name: derecho1
+    type: cpu
+  - name: derecho2
+    type: cpu
+  - name: derecho3
+    type: cpu
+  - name: derecho4
+    type: cpu
+  - name: derecho5
+    type: gpu
+  - name: derecho6
+    type: gpu
+  - name: derecho7
+    type: gpu
+  - name: derecho8
+    type: gpu
+
+filesystems:
+  - glade
+  - campaign
+  - derecho_scratch
+
+queues:
+  - main
+  - preempt
+  - develop
+  - cpudev
+  - cpu
+  - gpudev
+  - gpu
