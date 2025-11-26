@@ -59,13 +59,8 @@ def classify_node_type(node_name: str, node_data: dict, system_type: str) -> str
     if system_type == 'derecho':
         # Derecho: CPU vs GPU nodes
         if ngpus > 0:
-            # GPU node - determine GPU type
-            if 'a100' in gpu_type:
-                return 'gpu-a100'
-            elif 'h100' in gpu_type:
-                return 'gpu-h100'
-            else:
-                return 'gpu'
+            # GPU node - A100s on Derecho
+            return 'gpu-a100'
         else:
             # CPU node
             return 'cpu'
@@ -78,6 +73,8 @@ def classify_node_type(node_name: str, node_data: dict, system_type: str) -> str
                 return 'gpu-h100'
             elif 'a100' in gpu_type:
                 return 'gpu-a100'
+            elif 'v100' in gpu_type:
+                return 'gpu-v100'
             elif 'l40' in gpu_type:
                 return 'gpu-l40'
             elif 'gp100' in gpu_type:

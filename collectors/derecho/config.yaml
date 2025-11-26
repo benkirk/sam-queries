@@ -7,17 +7,17 @@ login_nodes:
   - name: derecho2
     type: cpu
   - name: derecho3
-    type: cpu
+    type: gpu
   - name: derecho4
     type: cpu
   - name: derecho5
-    type: gpu
+    type: cpu
   - name: derecho6
-    type: gpu
+    type: cpu
   - name: derecho7
     type: gpu
   - name: derecho8
-    type: gpu
+    type: cpu
 
 filesystems:
   - glade
