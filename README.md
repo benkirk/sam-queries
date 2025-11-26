@@ -288,8 +288,12 @@ sam-queries/
 ├── conda-env.yaml              # Conda environment specification
 ├── .env                         # Database credentials (you create this)
 │
+├── docs/                        # Project documentation
+│   ├── SYSTEM_DASHBOARD_PLAN.md # System status dashboard implementation plan
+│   └── HPC_DATA_COLLECTORS_GUIDE.md # Guide for implementing HPC data collectors
+│
 ├── python/
-│   ├── sam/                     # SQLAlchemy ORM models
+│   ├── sam/                     # SQLAlchemy ORM models (SAM database)
 │   │   ├── __init__.py          # Main exports
 │   │   ├── base.py              # Base classes, mixins
 │   │   ├── session.py           # Database session factory
@@ -303,6 +307,20 @@ sam-queries/
 │   │   ├── integration/         # XRAS integration
 │   │   └── security/            # Roles, API credentials
 │   │
+│   ├── system_status/           # System status ORM models (system_status database)
+│   │   ├── __init__.py          # Main exports
+│   │   ├── base.py              # Base classes, mixins for status models
+│   │   ├── session/             # Database session management
+│   │   │   └── __init__.py      # Session factory for system_status DB
+│   │   ├── models/              # Status tracking models
+│   │   │   ├── __init__.py      # Model exports
+│   │   │   ├── derecho.py       # Derecho HPC status (3 tables)
+│   │   │   ├── casper.py        # Casper HPC status (3 tables)
+│   │   │   ├── jupyterhub.py    # JupyterHub status
+│   │   │   └── outages.py       # System outages and reservations
+│   │   └── queries/             # Status query functions
+│   │       └── __init__.py      # Common status queries
+│   │
 │   ├── sam_search.py            # CLI tool for user/project searches
 │   │
 │   └── webui/                   # Flask web application
@@ -310,11 +328,28 @@ sam-queries/
 │       ├── run.py               # Development server
 │       ├── auth/                # Authentication (providers, models, blueprint)
 │       ├── admin/               # Flask-Admin interface
-│       ├── dashboards/          # Dashboard blueprints (user, status)
+│       ├── dashboards/          # Dashboard blueprints
+│       │   ├── user/            # User dashboard
+│       │   └── status/          # System status dashboard
+│       │       └── blueprint.py # Status dashboard routes
 │       ├── api/                 # REST API v1 endpoints
+│       │   └── v1/
+│       │       ├── status.py    # System status API endpoints
+│       │       └── ...          # Other API endpoints
 │       ├── schemas/             # Marshmallow-SQLAlchemy schemas
 │       ├── utils/               # RBAC, utilities
 │       └── templates/           # Jinja2 templates
+│           └── dashboards/
+│               ├── user/        # User dashboard templates
+│               └── status/      # Status dashboard templates
+│                   └── dashboard.html # Main status dashboard
+│
+├── scripts/                     # Utility scripts
+│   ├── setup_status_db.py       # Create system_status database tables
+│   ├── test_status_db.py        # Test system_status database connection
+│   ├── cleanup_status_data.py   # Clean up old status snapshots (7-day retention)
+│   ├── ingest_mock_status.py    # Ingest mock status data for testing
+│   └── create_status_db.sql     # SQL script for database creation
 │
 ├── tests/                       # Comprehensive test suite (209 tests)
 │   ├── pytest.ini               # Pytest configuration
@@ -330,6 +365,8 @@ sam-queries/
 │   ├── api/                     # API/schema tests
 │   │   ├── test_schemas.py      # Marshmallow schema tests
 │   │   └── test_allocation_schemas.py # Allocation schemas
+│   ├── mock_data/               # Test data
+│   │   └── status_mock_data.json # Mock system status data
 │   ├── tools/                   # Utility scripts
 │   ├── fixtures/                # Shared test configuration
 │   └── docs/                    # Test documentation

@@ -1,0 +1,22 @@
+{% macro node_status_table(status) %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h6 class="text-primary">CPU Partition</h6>
+        <table class="table table-sm">
+            <tr><td>Total Nodes:</td><td><strong>{{ status.cpu_nodes_total }}</strong></td></tr>
+            <tr><td>Available:</td><td class="text-success"><strong>{{ status.cpu_nodes_available }}</strong></td></tr>
+            <tr><td>Down:</td><td class="text-danger"><strong>{{ status.cpu_nodes_down }}</strong></td></tr>
+            <tr><td>Reserved:</td><td class="text-warning"><strong>{{ status.cpu_nodes_reserved }}</strong></td></tr>
+        </table>
+    </div>
+    <div class="col-md-6">
+        <h6 class="text-primary">GPU Partition</h6>
+        <table class="table table-sm">
+            <tr><td>Total Nodes:</td><td><strong>{{ status.gpu_nodes_total }}</strong></td></tr>
+            <tr><td>Available:</td><td class="text-success"><strong>{{ status.gpu_nodes_available }}</strong></td></tr>
+            <tr><td>Down:</td><td class="text-danger"><strong>{{ status.gpu_nodes_down }}</strong></td></tr>
+            <tr><td>Reserved:</td><td class="text-warning"><strong>{{ status.gpu_nodes_reserved }}</strong></td></tr>
+        </table>
+    </div>
+</div>
+{% endmacro %}

@@ -1,0 +1,24 @@
+considering the needs of the POST APls in
+@python/webui/api/v1/status.py, lets update the
+@docs/HPC_DATA_COLLECTORS_GUIDE.md to create a collectors
+implementation plan. The problem at the moment is it is incomplete and
+assumes slurm.
+
+I want you to create a plan using the PBS-specific commands shown in
+@utils/sample_collector_commands.sh.  you may run that script or its
+commands, they will create lots of output so be prepared.
+
+I want to fill out the
+```pre
+collectors
+├── casper
+├── derecho
+└── jupyterhub
+```
+
+directory tree, beginning with casper and derecho, with scripts that
+can be run as collectors, probably cron triggered but as a daemon is
+OK too.  A combination of python, make, and bash is fine.
+
+Given the similarites of the commands lets make the resulting
+collectors share as much commonality as reasonable.

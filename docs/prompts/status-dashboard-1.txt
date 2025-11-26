@@ -1,0 +1,49 @@
+Lets plan a system status dashboard to go alongside the existing
+initial user dashboard at python/webui/dashboards
+python/webui/templates/dashboards, refactoring for commonality as
+necessary.
+
+The initial system status dashboard should be a similar tabbed
+interface with 3 initial tabs: "Derecho", "Casper", and "JupyterHub".
+At first just placeholders for the system statuses.  This refactoring
+and tabbed placeholders is phase 1.
+
+Casper is very heterogeneous as described here
+https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/casper/#casper-hardware
+so the dashboard should be sufficiently flexible.
+
+Derecho is logically a CPU- and GPU- partition as described here
+https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/#derecho-hardware
+
+Phase 2 and beyond will pursue: - Flask Side Data consumers for each
+resource defined in python/webui/dashboards/status, with any new POST APIs required defined at python/webui/api/v1,
+
+Ideally we will be able to show historical usage for the past <= 7
+days using lightweight SVG matplotlib or similar.  This implies a
+database of system status.  Rather than putting this into the existing
+SAM database as additional tables, I would like to consider options
+for a server-side sqlite database to hold just these data or another
+database named 'system_status' on the same mysql server defined in the
+environment variable SAM_DB_SERVER as used elsewhere in the project.
+Lets discuss the pros/cons, I prefer the mysql route if it is
+straightforward.
+
+- JupyterHub can remain a placeholder
+- Mock HPC side data, with the real HPC side producers / agents coming from a different code base later,
+- The HPC data collectors for Derecho and Casper will provide
+  information such as
+  - Login Node availability, user count, system load
+  - Compute Node availability, types and health
+  - Queues
+  - Number of running jobs & users per queue \
+  - Number of pending jobs per queue
+  - GPU/CPU utilization, (+memory for Casper)
+  - File system information
+  - Known outages or degraded resources
+  - Resource reservations (if any)
+
+Client-side automatic refresh at several minute intervals is
+acceptable, although a path towards WebSocket push via Flask-SocketIO
+should be compared.
+
+Lets mature this plan and document in docs/

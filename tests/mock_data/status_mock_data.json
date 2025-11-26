@@ -1,0 +1,342 @@
+{
+  "derecho": {
+    "timestamp": "2025-01-25T14:30:00",
+    "login_nodes": [
+      {
+        "node_name": "derecho1",
+        "node_type": "cpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 12,
+        "load_1min": 2.3,
+        "load_5min": 2.5,
+        "load_15min": 2.8
+      },
+      {
+        "node_name": "derecho2",
+        "node_type": "cpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 11,
+        "load_1min": 2.1,
+        "load_5min": 2.4,
+        "load_15min": 2.7
+      },
+      {
+        "node_name": "derecho3",
+        "node_type": "cpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 10,
+        "load_1min": 2.8,
+        "load_5min": 3.1,
+        "load_15min": 3.4
+      },
+      {
+        "node_name": "derecho4",
+        "node_type": "cpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 12,
+        "load_1min": 2.6,
+        "load_5min": 2.9,
+        "load_15min": 3.2
+      },
+      {
+        "node_name": "derecho5",
+        "node_type": "gpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 3,
+        "load_1min": 1.1,
+        "load_5min": 1.3,
+        "load_15min": 1.2
+      },
+      {
+        "node_name": "derecho6",
+        "node_type": "gpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 3,
+        "load_1min": 1.2,
+        "load_5min": 1.5,
+        "load_15min": 1.4
+      },
+      {
+        "node_name": "derecho7",
+        "node_type": "gpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 3,
+        "load_1min": 1.3,
+        "load_5min": 1.6,
+        "load_15min": 1.5
+      },
+      {
+        "node_name": "derecho8",
+        "node_type": "gpu",
+        "available": true,
+        "degraded": false,
+        "user_count": 3,
+        "load_1min": 1.0,
+        "load_5min": 1.4,
+        "load_15min": 1.3
+      }
+    ],
+    "cpu_nodes_total": 2488,
+    "cpu_nodes_available": 1850,
+    "cpu_nodes_down": 15,
+    "cpu_nodes_reserved": 623,
+    "gpu_nodes_total": 82,
+    "gpu_nodes_available": 45,
+    "gpu_nodes_down": 2,
+    "gpu_nodes_reserved": 35,
+    "cpu_cores_total": 321536,
+    "cpu_cores_allocated": 245000,
+    "cpu_cores_idle": 76536,
+    "cpu_utilization_percent": 76.2,
+    "gpu_count_total": 656,
+    "gpu_count_allocated": 485,
+    "gpu_count_idle": 171,
+    "gpu_utilization_percent": 73.9,
+    "memory_total_gb": 650000.0,
+    "memory_allocated_gb": 495000.0,
+    "memory_utilization_percent": 76.2,
+    "running_jobs": 1245,
+    "pending_jobs": 328,
+    "active_users": 156,
+    "queues": [
+      {
+        "queue_name": "main",
+        "running_jobs": 890,
+        "pending_jobs": 245,
+        "active_users": 98,
+        "cores_allocated": 185000,
+        "gpus_allocated": 0,
+        "nodes_allocated": 1432
+      },
+      {
+        "queue_name": "preempt",
+        "running_jobs": 125,
+        "pending_jobs": 45,
+        "active_users": 32,
+        "cores_allocated": 35000,
+        "gpus_allocated": 0,
+        "nodes_allocated": 271
+      },
+      {
+        "queue_name": "develop",
+        "running_jobs": 45,
+        "pending_jobs": 12,
+        "active_users": 28,
+        "cores_allocated": 4500,
+        "gpus_allocated": 0,
+        "nodes_allocated": 35
+      },
+      {
+        "queue_name": "gpudev",
+        "running_jobs": 18,
+        "pending_jobs": 8,
+        "active_users": 15,
+        "cores_allocated": 2000,
+        "gpus_allocated": 145,
+        "nodes_allocated": 16
+      },
+      {
+        "queue_name": "gpumain",
+        "running_jobs": 167,
+        "pending_jobs": 18,
+        "active_users": 45,
+        "cores_allocated": 18500,
+        "gpus_allocated": 340,
+        "nodes_allocated": 143
+      }
+    ],
+    "filesystems": [
+      {
+        "filesystem_name": "glade",
+        "available": true,
+        "degraded": false,
+        "capacity_tb": 20000.0,
+        "used_tb": 16500.0,
+        "utilization_percent": 82.5
+      },
+      {
+        "filesystem_name": "campaign",
+        "available": true,
+        "degraded": false,
+        "capacity_tb": 30000.0,
+        "used_tb": 24000.0,
+        "utilization_percent": 80.0
+      },
+      {
+        "filesystem_name": "scratch",
+        "available": true,
+        "degraded": false,
+        "capacity_tb": 5000.0,
+        "used_tb": 3250.0,
+        "utilization_percent": 65.0
+      }
+    ]
+  },
+  "casper": {
+    "timestamp": "2025-01-25T14:30:00",
+    "login_nodes": [
+      {
+        "node_name": "casper1",
+        "available": true,
+        "degraded": false,
+        "user_count": 39,
+        "load_1min": 3.2,
+        "load_5min": 3.4,
+        "load_15min": 3.6
+      },
+      {
+        "node_name": "casper2",
+        "available": true,
+        "degraded": false,
+        "user_count": 39,
+        "load_1min": 3.1,
+        "load_5min": 3.3,
+        "load_15min": 3.5
+      }
+    ],
+    "compute_nodes_total": 260,
+    "compute_nodes_available": 185,
+    "compute_nodes_down": 3,
+    "cpu_utilization_percent": 68.5,
+    "gpu_utilization_percent": 82.3,
+    "memory_utilization_percent": 71.2,
+    "running_jobs": 456,
+    "pending_jobs": 89,
+    "active_users": 92,
+    "node_types": [
+      {
+        "node_type": "standard",
+        "nodes_total": 114,
+        "nodes_available": 78,
+        "nodes_down": 1,
+        "nodes_allocated": 35,
+        "cores_per_node": 36,
+        "memory_gb_per_node": 192,
+        "gpu_model": null,
+        "gpus_per_node": null,
+        "utilization_percent": 65.2
+      },
+      {
+        "node_type": "bigmem",
+        "nodes_total": 32,
+        "nodes_available": 18,
+        "nodes_down": 0,
+        "nodes_allocated": 14,
+        "cores_per_node": 64,
+        "memory_gb_per_node": 768,
+        "gpu_model": null,
+        "gpus_per_node": null,
+        "utilization_percent": 58.3
+      },
+      {
+        "node_type": "gpu-mi100",
+        "nodes_total": 16,
+        "nodes_available": 8,
+        "nodes_down": 0,
+        "nodes_allocated": 8,
+        "cores_per_node": 64,
+        "memory_gb_per_node": 512,
+        "gpu_model": "AMD MI100",
+        "gpus_per_node": 2,
+        "utilization_percent": 75.0
+      },
+      {
+        "node_type": "gpu-v100",
+        "nodes_total": 64,
+        "nodes_available": 42,
+        "nodes_down": 2,
+        "nodes_allocated": 20,
+        "cores_per_node": 36,
+        "memory_gb_per_node": 384,
+        "gpu_model": "NVIDIA V100",
+        "gpus_per_node": 4,
+        "utilization_percent": 82.7
+      },
+      {
+        "node_type": "gpu-a100",
+        "nodes_total": 34,
+        "nodes_available": 39,
+        "nodes_down": 0,
+        "nodes_allocated": 21,
+        "cores_per_node": 64,
+        "memory_gb_per_node": 512,
+        "gpu_model": "NVIDIA A100",
+        "gpus_per_node": 4,
+        "utilization_percent": 88.9
+      }
+    ],
+    "queues": [
+      {
+        "queue_name": "casper",
+        "running_jobs": 298,
+        "pending_jobs": 56,
+        "active_users": 67,
+        "cores_allocated": 8500,
+        "nodes_allocated": 158
+      },
+      {
+        "queue_name": "gpudev",
+        "running_jobs": 78,
+        "pending_jobs": 18,
+        "active_users": 32,
+        "cores_allocated": 2800,
+        "nodes_allocated": 45
+      },
+      {
+        "queue_name": "htc",
+        "running_jobs": 80,
+        "pending_jobs": 15,
+        "active_users": 28,
+        "cores_allocated": 1200,
+        "nodes_allocated": 42
+      }
+    ]
+  },
+  "jupyterhub": {
+    "timestamp": "2025-01-25T14:30:00",
+    "available": true,
+    "active_users": 68,
+    "active_sessions": 72,
+    "cpu_utilization_percent": 45.2,
+    "memory_utilization_percent": 52.8
+  },
+  "outages": [
+    {
+      "system_name": "derecho",
+      "component": "GPU Login Node 2",
+      "title": "GPU Login Node Intermittent Network Issues",
+      "description": "Users may experience connection timeouts when accessing derecho-gpu2.hpc.ucar.edu",
+      "severity": "minor",
+      "status": "monitoring",
+      "start_time": "2025-01-24T08:15:00",
+      "estimated_resolution": "2025-01-25T18:00:00"
+    }
+  ],
+  "reservations": [
+    {
+      "system_name": "derecho",
+      "reservation_name": "MONTHLY_MAINTENANCE",
+      "description": "Monthly maintenance window - system unavailable",
+      "start_time": "2025-02-01T06:00:00",
+      "end_time": "2025-02-01T18:00:00",
+      "node_count": 2488,
+      "partition": "all"
+    },
+    {
+      "system_name": "casper",
+      "reservation_name": "GPU_UPGRADE",
+      "description": "GPU node firmware upgrade",
+      "start_time": "2025-01-28T10:00:00",
+      "end_time": "2025-01-28T14:00:00",
+      "node_count": 98,
+      "partition": "gpu-v100,gpu-a100"
+    }
+  ]
+}

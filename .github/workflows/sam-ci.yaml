@@ -13,6 +13,9 @@ concurrency:
 
 jobs:
   pytest:
+    defaults:
+      run:
+        shell: bash -el {0}
     name: Run Test Suite
     runs-on: ubuntu-latest
 
@@ -57,6 +60,7 @@ jobs:
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
+          auto-activate-base: false
           activate-environment: ./conda-env/
           environment-file: conda-env.yaml
 
@@ -71,6 +75,12 @@ jobs:
           SAM_DB_USERNAME=\${LOCAL_SAM_DB_USERNAME}
           SAM_DB_SERVER=\${LOCAL_SAM_DB_SERVER}
           SAM_DB_PASSWORD=\${LOCAL_SAM_DB_PASSWORD}
+
+          #-------------------------
+          # system status database
+          STATUS_DB_USERNAME=root
+          STATUS_DB_PASSWORD=root
+          STATUS_DB_SERVER=127.0.0.1
           EOF
           make conda-env
           #source etc/config_env.sh
@@ -90,6 +100,13 @@ jobs:
           echo "CONDA_PREFIX=${CONDA_PREFIX}"
           echo "PYTHONPATH=${PYTHONPATH}"
           python3 --version
+
+      - name: Add System Status MySQL Database
+        run: |
+          mysql -h 127.0.0.1 -proot -uroot < scripts/create_status_db.sql
+          python scripts/setup_status_db.py
+          python scripts/ingest_mock_status.py
+          python scripts/test_status_db.py
 
       - name: Run simple CLI test
         run: |

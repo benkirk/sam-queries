@@ -1,0 +1,41 @@
+{% macro filesystem_table(filesystems) %}
+<div class="table-responsive">
+    <table class="table table-sm table-bordered filesystem-table">
+        <thead class="thead-light">
+            <tr>
+                <th>Filesystem</th>
+                <th>Status</th>
+                <th>Capacity (TB)</th>
+                <th>Used (TB)</th>
+                <th>Utilization</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fs in filesystems %}
+            <tr>
+                <td><strong>{{ fs.filesystem_name }}</strong></td>
+                <td>
+                    <span class="status-badge status-{{ fs.status_name }}">
+                        {{ fs.status_name|capitalize }}
+                    </span>
+                </td>
+                <td>{{ '{:,.1f}'.format(fs.capacity_tb) if fs.capacity_tb else 'N/A' }}</td>
+                <td>{{ '{:,.1f}'.format(fs.used_tb) if fs.used_tb else 'N/A' }}</td>
+                <td>
+                    {% if fs.utilization_percent is not none %}
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar bg-{{ 'danger' if fs.utilization_percent >= 90 else 'warning' if fs.utilization_percent >= 75 else 'success' }}"
+                             style="width: {{ fs.utilization_percent }}%">
+                            {{ fs.utilization_percent|round(1) }}%
+                        </div>
+                    </div>
+                    {% else %}
+                    N/A
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}

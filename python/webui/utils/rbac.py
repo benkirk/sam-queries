@@ -53,6 +53,7 @@ class Permission(Enum):
     # System administration
     MANAGE_ROLES = "manage_roles"
     VIEW_SYSTEM_STATS = "view_system_stats"
+    MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 

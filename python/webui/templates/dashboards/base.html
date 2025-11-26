@@ -14,7 +14,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('user_dashboard.index') }}">
-                <i class="fas fa-server"></i> SAM
+                <i class="fas fa-tasks"></i> SAM
             </a>
             <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -24,6 +24,11 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('user_dashboard.index') }}">
                             <i class="fas fa-home"></i> User Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('status_dashboard.index') }}">
+                            <i class="fas fa-server"></i> System Status
                         </a>
                     </li>
                 </ul>

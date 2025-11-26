@@ -1,0 +1,47 @@
+{% macro nodetype_table(node_types) %}
+<div class="table-responsive">
+    <table class="table table-sm table-bordered nodetype-table">
+        <thead class="thead-light">
+            <tr>
+                <th>Node Type</th>
+                <th>Total</th>
+                <th>Available</th>
+                <th>Down</th>
+                <th>Allocated</th>
+                <th>Specs</th>
+                <th>Utilization</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for nt in node_types %}
+            <tr>
+                <td><strong>{{ nt.node_type }}</strong></td>
+                <td>{{ nt.nodes_total }}</td>
+                <td class="text-success">{{ nt.nodes_available }}</td>
+                <td class="text-danger">{{ nt.nodes_down }}</td>
+                <td class="text-warning">{{ nt.nodes_allocated }}</td>
+                <td>
+                    <small>
+                        {{ nt.cores_per_node }} cores,
+                        {{ nt.memory_gb_per_node }} GB RAM
+                        {% if nt.gpu_model %}<br>{{ nt.gpus_per_node }}x {{ nt.gpu_model }}{% endif %}
+                    </small>
+                </td>
+                <td>
+                    {% if nt.utilization_percent is not none %}
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar bg-{{ 'danger' if nt.utilization_percent >= 90 else 'warning' if nt.utilization_percent >= 75 else 'success' }}"
+                             style="width: {{ nt.utilization_percent }}%">
+                            {{ nt.utilization_percent|round(1) }}%
+                        </div>
+                    </div>
+                    {% else %}
+                    N/A
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}

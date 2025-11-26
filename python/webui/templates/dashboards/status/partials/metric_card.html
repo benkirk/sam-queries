@@ -1,0 +1,15 @@
+{% macro metric_card(title, value, subtitle=none, progress_percent=none, progress_color='success') %}
+<div class="metric-card">
+    <h6>{{ title }}</h6>
+    <div class="value">{{ value|safe }}</div>
+    {% if progress_percent is not none %}
+    <div class="progress mt-2">
+        <div class="progress-bar bg-{{ progress_color }}"
+             style="width: {{ progress_percent }}%"></div>
+    </div>
+    {% endif %}
+    {% if subtitle %}
+    <div class="text-muted small mt-1">{{ subtitle|safe }}</div>
+    {% endif %}
+</div>
+{% endmacro %}

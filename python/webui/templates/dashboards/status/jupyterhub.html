@@ -1,0 +1,61 @@
+{% import 'dashboards/status/partials/system_header.html' as header %}
+{% import 'dashboards/status/partials/metric_card.html' as metric %}
+{% import 'dashboards/status/partials/no_data_message.html' as empty %}
+
+{% if jupyterhub_status %}
+<div class="card mb-3">
+    {{ header.system_header('<i class="fas fa-book"></i> JupyterHub Status', jupyterhub_status.timestamp) }}
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>Service Status</h6>
+                    <div class="value">
+                        <span class="status-badge status-{{ 'online' if jupyterhub_status.available else 'offline' }}">
+                            {{ 'Online' if jupyterhub_status.available else 'Offline' }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>Active Users</h6>
+                    <div class="value">{{ jupyterhub_status.active_users }}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>Active Sessions</h6>
+                    <div class="value">{{ jupyterhub_status.active_sessions }}</div>
+                </div>
+            </div>
+        </div>
+
+        <h6 class="mb-3 mt-4"><i class="fas fa-chart-bar"></i> Resource Utilization</h6>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="metric-card">
+                    <h6>CPU Utilization</h6>
+                    <div class="value">{{ jupyterhub_status.cpu_utilization_percent|round(1) }}%</div>
+                    <div class="progress mt-2">
+                        <div class="progress-bar bg-{{ 'danger' if jupyterhub_status.cpu_utilization_percent >= 90 else 'warning' if jupyterhub_status.cpu_utilization_percent >= 75 else 'success' }}"
+                             style="width: {{ jupyterhub_status.cpu_utilization_percent }}%"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="metric-card">
+                    <h6>Memory Utilization</h6>
+                    <div class="value">{{ jupyterhub_status.memory_utilization_percent|round(1) }}%</div>
+                    <div class="progress mt-2">
+                        <div class="progress-bar bg-{{ 'danger' if jupyterhub_status.memory_utilization_percent >= 90 else 'warning' if jupyterhub_status.memory_utilization_percent >= 75 else 'success' }}"
+                             style="width: {{ jupyterhub_status.memory_utilization_percent }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+{{ empty.no_data_message('No JupyterHub status data available.') }}
+{% endif %}

@@ -58,6 +58,19 @@ from .charge_details import (
     DiskChargeDetailSchema,
     ArchiveChargeDetailSchema
 )
+from .status import (
+    DerechoStatusSchema,
+    DerechoQueueSchema,
+    FilesystemSchema,
+    DerechoLoginNodeSchema,
+    CasperStatusSchema,
+    CasperNodeTypeSchema,
+    CasperQueueSchema,
+    CasperLoginNodeSchema,
+    JupyterHubStatusSchema,
+    SystemOutageSchema,
+    ResourceReservationSchema,
+)
 
 __all__ = [
     'BaseSchema',
@@ -90,4 +103,16 @@ __all__ = [
     'DavChargeDetailSchema',
     'DiskChargeDetailSchema',
     'ArchiveChargeDetailSchema',
+    # System Status schemas
+    'DerechoStatusSchema',
+    'DerechoQueueSchema',
+    'FilesystemSchema',
+    'DerechoLoginNodeSchema',
+    'CasperStatusSchema',
+    'CasperNodeTypeSchema',
+    'CasperQueueSchema',
+    'CasperLoginNodeSchema',
+    'JupyterHubStatusSchema',
+    'SystemOutageSchema',
+    'ResourceReservationSchema',
 ]
