@@ -470,7 +470,7 @@ Casper is heterogeneous, so includes node type breakdown:
 ```
 
 **Casper Login Node Fields**:
-- `node_name` (required): Hostname (e.g., "casper1", "casper2")
+- `node_name` (required): Hostname (e.g., "casper-login1", "casper-login2")
 - `available` (required): Boolean - node is accessible
 - `degraded` (optional): Boolean - node is up but degraded, defaults to false
 - `user_count` (optional): Number of logged-in users
