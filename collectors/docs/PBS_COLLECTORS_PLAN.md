@@ -65,9 +65,6 @@ collectors/
     ├── install.sh
     ├── crontab.template
     ├── logrotate.conf
-    └── systemd/                 # Alternative to cron
-        ├── derecho-collector.service
-        └── derecho-collector.timer
 ```
 
 ---
@@ -85,23 +82,23 @@ class PBSClient:
     Wrapper for PBS command execution.
     Handles SSH invocation, timeouts, and error capture.
     """
-    
+
     def __init__(self, host: str, timeout: int = 30):
         self.host = host
         self.timeout = timeout
         self.logger = logging.getLogger(__name__)
-    
+
     def run_command(self, cmd: str, json_output: bool = False) -> dict | str:
         """
         Execute PBS command via SSH.
-        
+
         Args:
-            cmd: Command to run (e.g., "pbsnodes -aSj -F json")
+            cmd: Command to run (e.g., "pbsnodes -aj -F json")
             json_output: If True, parse JSON response
-            
+
         Returns:
             Parsed JSON dict or raw string output
-            
+
         Raises:
             PBSCommandError: If command fails or times out
         """
@@ -113,30 +110,30 @@ class PBSClient:
             text=True,
             timeout=self.timeout
         )
-        
+
         if result.returncode != 0:
             raise PBSCommandError(f"Command failed: {cmd}", result.stderr)
-        
+
         if json_output:
             try:
                 return json.loads(result.stdout)
             except json.JSONDecodeError as e:
                 raise PBSParseError(f"Invalid JSON from {cmd}", e)
-        
+
         return result.stdout
-    
+
     def get_nodes_json(self) -> dict:
-        """Execute pbsnodes -aSj -F json"""
-        return self.run_command("pbsnodes -aSj -F json", json_output=True)
-    
+        """Execute pbsnodes -aj -F json"""
+        return self.run_command("pbsnodes -aj -F json", json_output=True)
+
     def get_jobs_json(self) -> dict:
         """Execute qstat -f -F json"""
         return self.run_command("qstat -f -F json", json_output=True)
-    
+
     def get_queue_summary(self) -> str:
         """Execute qstat -Qa"""
         return self.run_command("qstat -Qa")
-    
+
     def get_reservations(self) -> str:
         """Execute pbs_rstat -f"""
         return self.run_command("pbs_rstat -f")
@@ -152,22 +149,22 @@ class PBSClient:
 
 ### 2.2 Node Parser (`lib/parsers/nodes.py`)
 
-**Purpose**: Parse `pbsnodes -aSj -F json` output into API-ready format.
+**Purpose**: Parse `pbsnodes -aj -F json` output into API-ready format.
 
 **Key Functions**:
 ```python
 class NodeParser:
     """Parse pbsnodes JSON output."""
-    
+
     @staticmethod
     def parse_nodes(pbsnodes_json: dict, system_type: str) -> dict:
         """
         Parse pbsnodes JSON into node statistics.
-        
+
         Args:
-            pbsnodes_json: Output from pbsnodes -aSj -F json
+            pbsnodes_json: Output from pbsnodes -aj -F json
             system_type: 'derecho' or 'casper'
-            
+
         Returns:
             {
                 'cpu_nodes_total': int,
@@ -182,7 +179,7 @@ class NodeParser:
             }
         """
         nodes = pbsnodes_json.get('nodes', {})
-        
+
         stats = {
             'cpu_nodes_total': 0,
             'cpu_nodes_available': 0,
@@ -194,7 +191,7 @@ class NodeParser:
             'memory_total_gb': 0.0,
             'memory_allocated_gb': 0.0,
         }
-        
+
         if system_type == 'derecho':
             stats.update({
                 'gpu_nodes_total': 0,
@@ -205,17 +202,17 @@ class NodeParser:
                 'gpu_count_allocated': 0,
                 'gpu_count_idle': 0,
             })
-        
+
         for node_name, node_data in nodes.items():
             state = node_data.get('state', '')
-            
+
             # Determine node type
             if system_type == 'derecho':
                 is_gpu = 'gpu' in node_data.get('resources_available', {}).get('partition', '')
                 node_category = 'gpu' if is_gpu else 'cpu'
             else:  # casper
                 node_category = 'cpu'  # Will be split by node_type later
-            
+
             # Count nodes by state
             if 'down' in state or 'offline' in state:
                 stats[f'{node_category}_nodes_down'] += 1
@@ -223,25 +220,25 @@ class NodeParser:
                 stats[f'{node_category}_nodes_reserved'] += 1
             elif 'free' in state or 'idle' in state:
                 stats[f'{node_category}_nodes_available'] += 1
-            
+
             stats[f'{node_category}_nodes_total'] += 1
-            
+
             # Aggregate resources
             resources = node_data.get('resources_available', {})
             resources_assigned = node_data.get('resources_assigned', {})
-            
+
             ncpus = int(resources.get('ncpus', 0))
             ncpus_allocated = int(resources_assigned.get('ncpus', 0))
             stats['cpu_cores_total'] += ncpus
             stats['cpu_cores_allocated'] += ncpus_allocated
             stats['cpu_cores_idle'] += (ncpus - ncpus_allocated)
-            
+
             # Memory (convert to GB)
             mem_kb = parse_memory(resources.get('mem', '0kb'))
             mem_alloc_kb = parse_memory(resources_assigned.get('mem', '0kb'))
             stats['memory_total_gb'] += mem_kb / (1024 * 1024)
             stats['memory_allocated_gb'] += mem_alloc_kb / (1024 * 1024)
-            
+
             # GPUs (if present)
             if system_type == 'derecho' and is_gpu:
                 ngpus = int(resources.get('ngpus', 0))
@@ -249,43 +246,43 @@ class NodeParser:
                 stats['gpu_count_total'] += ngpus
                 stats['gpu_count_allocated'] += ngpus_allocated
                 stats['gpu_count_idle'] += (ngpus - ngpus_allocated)
-        
+
         # Calculate utilization percentages
         if stats['cpu_cores_total'] > 0:
             stats['cpu_utilization_percent'] = round(
                 (stats['cpu_cores_allocated'] / stats['cpu_cores_total']) * 100, 2
             )
-        
+
         if system_type == 'derecho' and stats['gpu_count_total'] > 0:
             stats['gpu_utilization_percent'] = round(
                 (stats['gpu_count_allocated'] / stats['gpu_count_total']) * 100, 2
             )
-        
+
         if stats['memory_total_gb'] > 0:
             stats['memory_utilization_percent'] = round(
                 (stats['memory_allocated_gb'] / stats['memory_total_gb']) * 100, 2
             )
-        
+
         return stats
 
     @staticmethod
     def parse_casper_node_types(pbsnodes_json: dict, node_type_config: dict) -> list:
         """
         Parse Casper nodes by node type.
-        
+
         Args:
             pbsnodes_json: Output from pbsnodes
             node_type_config: YAML config with node type definitions
-            
+
         Returns:
             List of node type status dicts for API
         """
         node_types = {}
-        
+
         for node_name, node_data in pbsnodes_json.get('nodes', {}).items():
             # Determine node type from name or resources
             node_type = classify_casper_node(node_name, node_data, node_type_config)
-            
+
             if node_type not in node_types:
                 node_types[node_type] = {
                     'node_type': node_type,
@@ -295,17 +292,17 @@ class NodeParser:
                     'nodes_allocated': 0,
                     **node_type_config.get(node_type, {})  # cores_per_node, gpu_model, etc.
                 }
-            
+
             state = node_data.get('state', '')
             node_types[node_type]['nodes_total'] += 1
-            
+
             if 'down' in state or 'offline' in state:
                 node_types[node_type]['nodes_down'] += 1
             elif 'free' in state or 'idle' in state:
                 node_types[node_type]['nodes_available'] += 1
             elif 'job-busy' in state:
                 node_types[node_type]['nodes_allocated'] += 1
-        
+
         # Calculate utilization per type
         for nt_data in node_types.values():
             if nt_data['nodes_total'] > 0:
@@ -313,11 +310,11 @@ class NodeParser:
                 available = nt_data['nodes_available']
                 total = nt_data['nodes_total']
                 nt_data['utilization_percent'] = round((allocated / total) * 100, 2)
-        
+
         return list(node_types.values())
 ```
 
-**Helper Functions**:
+**Sample Helper Functions**:
 ```python
 def parse_memory(mem_str: str) -> int:
     """Convert PBS memory string (e.g., '256gb', '512mb') to KB."""
@@ -335,12 +332,13 @@ def parse_memory(mem_str: str) -> int:
 def classify_casper_node(node_name: str, node_data: dict, config: dict) -> str:
     """
     Determine Casper node type from name or resources.
-    
+
     Strategy:
-    1. Check node name patterns (e.g., 'csg*' = standard, 'csgv*' = gpu-v100)
+    1. Check Qlist resources in node_data
     2. Check GPU resources in node_data
     3. Check memory size for bigmem classification
-    4. Default to 'standard'
+    4. Hostname fallback
+    5. Default to 'htc'
     """
     # Name-based classification
     if 'csgv' in node_name.lower():
@@ -349,26 +347,30 @@ def classify_casper_node(node_name: str, node_data: dict, config: dict) -> str:
         return 'gpu-a100'
     elif 'csgm' in node_name.lower():
         return 'gpu-mi100'
-    
+
     # Resource-based classification
     resources = node_data.get('resources_available', {})
-    
+
+    # FIXME!!: Check QList
+
     # Check for GPUs
     if 'ngpus' in resources and int(resources['ngpus']) > 0:
         # Determine GPU model from features or config
-        gpu_type = resources.get('gpu_model', '')
+        gpu_type = resources.get('gpu_type', '')
         if 'v100' in gpu_type.lower():
-            return 'gpu-v100'
+            return 'v100'
         elif 'a100' in gpu_type.lower():
-            return 'gpu-a100'
-        elif 'mi100' in gpu_type.lower():
-            return 'gpu-mi100'
-    
+            return 'a100'
+        elif 'h100' in gpu_type.lower():
+            return 'h100'
+        elif 'mi300a' in gpu_type.lower():
+            return 'mi100'
+
     # Check memory for bigmem
     mem_gb = parse_memory(resources.get('mem', '0')) / (1024 * 1024)
     if mem_gb >= 512:  # Threshold from config
         return 'bigmem'
-    
+
     return 'standard'
 ```
 
@@ -381,12 +383,12 @@ def classify_casper_node(node_name: str, node_data: dict, config: dict) -> str:
 ```python
 class JobParser:
     """Parse qstat job data."""
-    
+
     @staticmethod
     def parse_jobs(qstat_json: dict) -> dict:
         """
         Parse qstat JSON into job statistics.
-        
+
         Returns:
             {
                 'running_jobs': int,
@@ -395,23 +397,23 @@ class JobParser:
             }
         """
         jobs = qstat_json.get('Jobs', {})
-        
+
         running = 0
         pending = 0
         users = set()
-        
+
         for job_id, job_data in jobs.items():
             state = job_data.get('job_state', '')
             user = job_data.get('Job_Owner', '').split('@')[0]
-            
+
             if user:
                 users.add(user)
-            
+
             if state == 'R':  # Running
                 running += 1
             elif state == 'Q':  # Queued
                 pending += 1
-        
+
         return {
             'running_jobs': running,
             'pending_jobs': pending,
@@ -428,32 +430,32 @@ class JobParser:
 ```python
 class QueueParser:
     """Parse qstat -Qa output."""
-    
+
     @staticmethod
     def parse_queues(qstat_output: str, qstat_json: dict) -> list:
         """
         Parse queue summary and detailed job data.
-        
+
         Args:
             qstat_output: Text output from qstat -Qa
             qstat_json: JSON from qstat -f -F json (for per-queue breakdown)
-            
+
         Returns:
             List of queue status dicts
         """
         queues = {}
-        
+
         # Parse jobs by queue
         for job_id, job_data in qstat_json.get('Jobs', {}).items():
             queue = job_data.get('queue', 'unknown')
             state = job_data.get('job_state', '')
             user = job_data.get('Job_Owner', '').split('@')[0]
-            
+
             resources = job_data.get('Resource_List', {})
             ncpus = int(resources.get('ncpus', 0))
             ngpus = int(resources.get('ngpus', 0))
             nodect = int(resources.get('nodect', 0))
-            
+
             if queue not in queues:
                 queues[queue] = {
                     'queue_name': queue,
@@ -464,7 +466,7 @@ class QueueParser:
                     'gpus_allocated': 0,
                     'nodes_allocated': 0,
                 }
-            
+
             if state == 'R':
                 queues[queue]['running_jobs'] += 1
                 queues[queue]['cores_allocated'] += ncpus
@@ -472,16 +474,16 @@ class QueueParser:
                 queues[queue]['nodes_allocated'] += nodect
             elif state == 'Q':
                 queues[queue]['pending_jobs'] += 1
-            
+
             if user:
                 queues[queue]['active_users'].add(user)
-        
+
         # Convert sets to counts
         result = []
         for q_data in queues.values():
             q_data['active_users'] = len(q_data['active_users'])
             result.append(q_data)
-        
+
         return result
 ```
 
@@ -494,29 +496,29 @@ class QueueParser:
 ```python
 class LoginNodeCollector:
     """Collect login node metrics via SSH."""
-    
+
     def __init__(self, base_host: str, timeout: int = 10):
         self.base_host = base_host
         self.timeout = timeout
         self.logger = logging.getLogger(__name__)
-    
+
     def collect_login_node_data(self, login_nodes: list) -> list:
         """
         Collect metrics from all login nodes.
-        
+
         Args:
             login_nodes: List of dicts with 'name' and optionally 'type'
                 Example: [{'name': 'derecho1', 'type': 'cpu'}, ...]
-        
+
         Returns:
             List of login node status dicts for API
         """
         results = []
-        
+
         for node_info in login_nodes:
             node_name = node_info['name']
             node_type = node_info.get('type')  # Derecho only
-            
+
             try:
                 data = self._collect_single_node(node_name)
                 data['node_name'] = node_name
@@ -536,16 +538,16 @@ class LoginNodeCollector:
                     'load_5min': None,
                     'load_15min': None,
                 })
-        
+
         return results
-    
+
     def _collect_single_node(self, node_name: str) -> dict:
         """Collect metrics from a single login node."""
         # SSH through base host to login node
         # Example: ssh derecho "ssh derecho1 'cat /proc/loadavg; who | wc -l'"
-        
+
         cmd = f"""ssh -o ConnectTimeout={self.timeout} {self.base_host} "ssh {node_name} 'cat /proc/loadavg; echo ---; who | wc -l'" """
-        
+
         result = subprocess.run(
             cmd,
             shell=True,
@@ -553,15 +555,15 @@ class LoginNodeCollector:
             text=True,
             timeout=self.timeout
         )
-        
+
         if result.returncode != 0:
             raise SSHError(f"Failed to connect to {node_name}")
-        
+
         # Parse output
         parts = result.stdout.strip().split('---')
         loadavg = parts[0].strip().split()
         user_count = int(parts[1].strip())
-        
+
         return {
             'available': True,
             'degraded': False,
@@ -581,43 +583,43 @@ class LoginNodeCollector:
 ```python
 class FilesystemParser:
     """Parse df output for filesystem status."""
-    
+
     @staticmethod
     def parse_filesystems(df_output: str, fs_config: list) -> list:
         """
         Parse df output into filesystem status.
-        
+
         Args:
             df_output: Output from 'BLOCKSIZE=TiB df <paths>'
             fs_config: List of filesystem names to track
-            
+
         Returns:
             List of filesystem status dicts
         """
         filesystems = []
-        
+
         for line in df_output.strip().split('\n'):
             if line.startswith('Filesystem') or not line.strip():
                 continue
-            
+
             parts = line.split()
             if len(parts) < 6:
                 continue
-            
+
             # df output: Filesystem  Size  Used  Avail  Use%  Mounted
             filesystem = parts[0]
             size_tb = float(parts[1].replace('T', ''))
             used_tb = float(parts[2].replace('T', ''))
             utilization = int(parts[4].replace('%', ''))
             mountpoint = parts[5]
-            
+
             # Match to configured filesystem
             fs_name = None
             for configured_fs in fs_config:
                 if configured_fs.lower() in mountpoint.lower():
                     fs_name = configured_fs
                     break
-            
+
             if fs_name:
                 filesystems.append({
                     'filesystem_name': fs_name,
@@ -627,7 +629,7 @@ class FilesystemParser:
                     'used_tb': used_tb,
                     'utilization_percent': float(utilization),
                 })
-        
+
         return filesystems
 ```
 
@@ -640,37 +642,37 @@ class FilesystemParser:
 ```python
 class SAMAPIClient:
     """Client for SAM Status Dashboard API."""
-    
+
     def __init__(self, base_url: str, username: str, password: str):
         self.base_url = base_url.rstrip('/')
         self.auth = (username, password)
         self.session = requests.Session()
         self.logger = logging.getLogger(__name__)
-    
-    def post_status(self, system: str, data: dict, 
+
+    def post_status(self, system: str, data: dict,
                    max_retries: int = 3, dry_run: bool = False) -> dict:
         """
         Post status data to API with retry logic.
-        
+
         Args:
             system: 'derecho' or 'casper'
             data: Status data dict
             max_retries: Number of retry attempts
             dry_run: If True, log data but don't post
-            
+
         Returns:
             API response dict
-            
+
         Raises:
             APIError: If all retries fail
         """
         url = f"{self.base_url}/api/v1/status/{system}"
-        
+
         if dry_run:
             self.logger.info(f"[DRY RUN] Would POST to {url}")
             self.logger.info(f"[DRY RUN] Data: {json.dumps(data, indent=2)}")
             return {'success': True, 'message': 'Dry run - no data posted'}
-        
+
         for attempt in range(max_retries):
             try:
                 response = self.session.post(
@@ -680,15 +682,15 @@ class SAMAPIClient:
                     timeout=30,
                     headers={'Content-Type': 'application/json'}
                 )
-                
+
                 response.raise_for_status()
                 result = response.json()
-                
+
                 self.logger.info(
                     f"✓ Posted {system} status: status_id={result.get('status_id')}"
                 )
                 return result
-                
+
             except requests.exceptions.HTTPError as e:
                 if e.response.status_code in (401, 403):
                     # Don't retry auth errors
@@ -700,17 +702,17 @@ class SAMAPIClient:
                     # Retry server errors
                     if attempt == max_retries - 1:
                         raise APIError(f"HTTP error after {max_retries} attempts: {e}")
-                    
+
                     wait = 2 ** attempt
                     self.logger.warning(
                         f"HTTP {e.response.status_code}, retry {attempt+1}/{max_retries} in {wait}s"
                     )
                     time.sleep(wait)
-                    
+
             except requests.exceptions.RequestException as e:
                 if attempt == max_retries - 1:
                     raise APIError(f"Network error after {max_retries} attempts: {e}")
-                
+
                 wait = 2 ** attempt
                 self.logger.warning(
                     f"Network error, retry {attempt+1}/{max_retries} in {wait}s: {e}"
@@ -727,7 +729,7 @@ class SAMAPIClient:
 ```python
 class CollectorConfig:
     """Configuration loader for collectors."""
-    
+
     def __init__(self, system: str, config_dir: str = None):
         self.system = system
         self.config_dir = config_dir or os.path.join(
@@ -735,7 +737,7 @@ class CollectorConfig:
         )
         self._load_env()
         self._load_yaml()
-    
+
     def _load_env(self):
         """Load environment variables from .env file."""
         env_file = os.path.join(
@@ -743,30 +745,30 @@ class CollectorConfig:
         )
         if os.path.exists(env_file):
             load_dotenv(env_file)
-        
-        self.api_url = os.getenv('SAM_API_URL', 'http://localhost:5050')
-        self.api_user = os.getenv('SAM_API_USER')
-        self.api_password = os.getenv('SAM_API_PASSWORD')
-        
+
+        self.api_url = os.getenv('STATUS_API_URL', 'http://localhost:5050')
+        self.api_user = os.getenv('STATUS_API_USER')
+        self.api_password = os.getenv('STATUS_API_PASSWORD')
+
         if not self.api_user or not self.api_password:
-            raise ConfigError("SAM_API_USER and SAM_API_PASSWORD required in .env")
-    
+            raise ConfigError("STATUS_API_USER and STATUS_API_PASSWORD required in .env")
+
     def _load_yaml(self):
         """Load system-specific YAML configuration."""
         config_file = os.path.join(self.config_dir, 'config.yaml')
-        
+
         if not os.path.exists(config_file):
             raise ConfigError(f"Config file not found: {config_file}")
-        
+
         with open(config_file, 'r') as f:
             self.yaml_config = yaml.safe_load(f)
-        
+
         # Extract common config
         self.pbs_host = self.yaml_config['pbs_host']
         self.login_nodes = self.yaml_config['login_nodes']
         self.filesystems = self.yaml_config.get('filesystems', [])
         self.queues = self.yaml_config.get('queues', [])
-    
+
     def get_node_type_config(self) -> dict:
         """Get node type configuration (Casper only)."""
         if self.system == 'casper':
@@ -808,11 +810,13 @@ queues:
   - main
   - preempt
   - develop
+  - cpudev
+  - cpu
   - gpudev
-  - gpumain
+  - gpu
 ```
 
-**Example node_types.yaml (Casper)**:
+**Example node_types.yaml (Casper)**: FIXME with data from `pbsnodes -aj -F json`
 ```yaml
 standard:
   cores_per_node: 36
@@ -826,11 +830,17 @@ bigmem:
   gpu_model: null
   gpus_per_node: null
 
-gpu-v100:
+gpu-v100-4way:
   cores_per_node: 36
   memory_gb_per_node: 384
   gpu_model: "NVIDIA V100"
   gpus_per_node: 4
+
+gpu-v100-8way:
+  cores_per_node: 36
+  memory_gb_per_node: 384
+  gpu_model: "NVIDIA V100"
+  gpus_per_node: 8
 
 gpu-a100:
   cores_per_node: 64
@@ -838,10 +848,16 @@ gpu-a100:
   gpu_model: "NVIDIA A100"
   gpus_per_node: 4
 
-gpu-mi100:
+gpu-h100:
   cores_per_node: 64
   memory_gb_per_node: 512
-  gpu_model: "AMD MI100"
+  gpu_model: "NVIDIA A100"
+  gpus_per_node: 4
+
+gpu-mi300a:
+  cores_per_node: 64
+  memory_gb_per_node: 512
+  gpu_model: "AMD MI300a"
   gpus_per_node: 4
 ```
 
@@ -855,23 +871,23 @@ gpu-mi100:
 def setup_logging(log_file: str = None, verbose: bool = False):
     """
     Configure logging for collectors.
-    
+
     Args:
         log_file: Path to log file (None = stdout only)
         verbose: Enable DEBUG level logging
     """
     level = logging.DEBUG if verbose else logging.INFO
-    
+
     format_str = '[%(asctime)s] %(levelname)s [%(name)s] %(message)s'
     formatter = logging.Formatter(format_str, datefmt='%Y-%m-%d %H:%M:%S')
-    
+
     handlers = []
-    
+
     # Console handler
     console = logging.StreamHandler()
     console.setFormatter(formatter)
     handlers.append(console)
-    
+
     # File handler
     if log_file:
         file_handler = logging.handlers.RotatingFileHandler(
@@ -881,9 +897,9 @@ def setup_logging(log_file: str = None, verbose: bool = False):
         )
         file_handler.setFormatter(formatter)
         handlers.append(file_handler)
-    
+
     logging.basicConfig(level=level, handlers=handlers)
-    
+
     # Suppress noisy libraries
     logging.getLogger('urllib3').setLevel(logging.WARNING)
     logging.getLogger('requests').setLevel(logging.WARNING)
@@ -927,14 +943,14 @@ from ssh_utils import LoginNodeCollector
 
 class DerechoCollector:
     """Main Derecho data collector."""
-    
-    def __init__(self, config: CollectorConfig, dry_run: bool = False, 
+
+    def __init__(self, config: CollectorConfig, dry_run: bool = False,
                  json_only: bool = False):
         self.config = config
         self.dry_run = dry_run
         self.json_only = json_only
         self.logger = logging.getLogger(__name__)
-        
+
         # Initialize clients
         self.pbs = PBSClient(config.pbs_host)
         self.api = SAMAPIClient(
@@ -943,18 +959,18 @@ class DerechoCollector:
             config.api_password
         )
         self.login_collector = LoginNodeCollector(config.pbs_host)
-    
+
     def collect(self) -> dict:
         """
         Collect all Derecho metrics.
-        
+
         Returns:
             Complete data dict ready for API posting
         """
         data = {
             'timestamp': datetime.now().isoformat()
         }
-        
+
         # Collect node data
         try:
             self.logger.info("Collecting node data...")
@@ -986,7 +1002,7 @@ class DerechoCollector:
                 'memory_total_gb': 0.0,
                 'memory_allocated_gb': 0.0,
             })
-        
+
         # Collect job data
         try:
             self.logger.info("Collecting job data...")
@@ -995,7 +1011,7 @@ class DerechoCollector:
             data.update(job_stats)
             self.logger.info(f"  Jobs: {job_stats['running_jobs']} running, "
                            f"{job_stats['pending_jobs']} pending")
-            
+
             # Parse queues
             queue_summary = self.pbs.get_queue_summary()
             data['queues'] = QueueParser.parse_queues(queue_summary, jobs_json)
@@ -1008,7 +1024,7 @@ class DerechoCollector:
                 'active_users': 0,
                 'queues': []
             })
-        
+
         # Collect login node data
         try:
             self.logger.info("Collecting login node data...")
@@ -1021,7 +1037,7 @@ class DerechoCollector:
         except Exception as e:
             self.logger.error(f"Failed to collect login node data: {e}")
             data['login_nodes'] = []
-        
+
         # Collect filesystem data
         try:
             self.logger.info("Collecting filesystem data...")
@@ -1034,30 +1050,30 @@ class DerechoCollector:
         except Exception as e:
             self.logger.error(f"Failed to collect filesystem data: {e}")
             data['filesystems'] = []
-        
+
         return data
-    
+
     def run(self) -> int:
         """
         Execute collection and posting.
-        
+
         Returns:
             Exit code (0 = success, 1 = failure)
         """
         try:
             data = self.collect()
-            
+
             if self.json_only:
                 print(json.dumps(data, indent=2))
                 return 0
-            
+
             result = self.api.post_status('derecho', data, dry_run=self.dry_run)
-            
+
             if not self.dry_run:
                 self.logger.info(f"✓ Success: status_id={result.get('status_id')}")
-            
+
             return 0
-            
+
         except Exception as e:
             self.logger.error(f"✗ Collection failed: {e}", exc_info=True)
             return 1
@@ -1073,20 +1089,20 @@ def main():
                        help='Enable verbose logging')
     parser.add_argument('--log-file', default='/var/log/derecho_collector.log',
                        help='Log file path (default: /var/log/derecho_collector.log)')
-    
+
     args = parser.parse_args()
-    
+
     # Setup logging
     setup_logging(
         log_file=args.log_file if not args.json_only else None,
         verbose=args.verbose
     )
-    
+
     logger = logging.getLogger(__name__)
     logger.info("=" * 60)
     logger.info("Derecho Status Collector - Starting")
     logger.info("=" * 60)
-    
+
     try:
         config = CollectorConfig('derecho')
         collector = DerechoCollector(
@@ -1095,13 +1111,13 @@ def main():
             json_only=args.json_only
         )
         exit_code = collector.run()
-        
+
         logger.info("=" * 60)
         logger.info(f"Derecho Status Collector - {'SUCCESS' if exit_code == 0 else 'FAILED'}")
         logger.info("=" * 60)
-        
+
         return exit_code
-        
+
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
         return 2
@@ -1130,14 +1146,14 @@ Runs every 5 minutes via cron.
 
 class CasperCollector:
     """Main Casper data collector."""
-    
+
     def __init__(self, config: CollectorConfig, dry_run: bool = False,
                  json_only: bool = False):
         self.config = config
         self.dry_run = dry_run
         self.json_only = json_only
         self.logger = logging.getLogger(__name__)
-        
+
         # Initialize clients
         self.pbs = PBSClient(config.pbs_host)
         self.api = SAMAPIClient(
@@ -1146,26 +1162,26 @@ class CasperCollector:
             config.api_password
         )
         self.login_collector = LoginNodeCollector(config.pbs_host)
-        
+
         # Load node type config
         self.node_type_config = config.get_node_type_config()
-    
+
     def collect(self) -> dict:
         """
         Collect all Casper metrics.
-        
+
         Returns:
             Complete data dict ready for API posting
         """
         data = {
             'timestamp': datetime.now().isoformat()
         }
-        
+
         # Collect node data (aggregate)
         try:
             self.logger.info("Collecting node data...")
             nodes_json = self.pbs.get_nodes_json()
-            
+
             # Aggregate stats
             node_stats = NodeParser.parse_nodes(nodes_json, 'casper')
             data.update({
@@ -1175,16 +1191,16 @@ class CasperCollector:
                 'cpu_utilization_percent': node_stats.get('cpu_utilization_percent'),
                 'memory_utilization_percent': node_stats.get('memory_utilization_percent'),
             })
-            
+
             # Node type breakdown
             data['node_types'] = NodeParser.parse_casper_node_types(
                 nodes_json, self.node_type_config
             )
-            
+
             self.logger.info(f"  Nodes: {data['compute_nodes_total']} total, "
                            f"{data['compute_nodes_available']} available")
             self.logger.info(f"  Node types: {len(data['node_types'])} types tracked")
-            
+
         except Exception as e:
             self.logger.error(f"Failed to collect node data: {e}")
             data.update({
@@ -1193,17 +1209,17 @@ class CasperCollector:
                 'compute_nodes_down': 0,
                 'node_types': []
             })
-        
+
         # Collect job data (same as Derecho)
         try:
             self.logger.info("Collecting job data...")
             jobs_json = self.pbs.get_jobs_json()
             job_stats = JobParser.parse_jobs(jobs_json)
             data.update(job_stats)
-            
+
             queue_summary = self.pbs.get_queue_summary()
             data['queues'] = QueueParser.parse_queues(queue_summary, jobs_json)
-            
+
             self.logger.info(f"  Jobs: {job_stats['running_jobs']} running, "
                            f"{job_stats['pending_jobs']} pending")
         except Exception as e:
@@ -1214,7 +1230,7 @@ class CasperCollector:
                 'active_users': 0,
                 'queues': []
             })
-        
+
         # Collect login node data (NO node_type field for Casper)
         try:
             self.logger.info("Collecting login node data...")
@@ -1227,7 +1243,7 @@ class CasperCollector:
         except Exception as e:
             self.logger.error(f"Failed to collect login node data: {e}")
             data['login_nodes'] = []
-        
+
         # Collect filesystem data (same as Derecho)
         try:
             self.logger.info("Collecting filesystem data...")
@@ -1240,25 +1256,25 @@ class CasperCollector:
         except Exception as e:
             self.logger.error(f"Failed to collect filesystem data: {e}")
             data['filesystems'] = []
-        
+
         return data
-    
+
     def run(self) -> int:
         """Execute collection and posting."""
         try:
             data = self.collect()
-            
+
             if self.json_only:
                 print(json.dumps(data, indent=2))
                 return 0
-            
+
             result = self.api.post_status('casper', data, dry_run=self.dry_run)
-            
+
             if not self.dry_run:
                 self.logger.info(f"✓ Success: status_id={result.get('status_id')}")
-            
+
             return 0
-            
+
         except Exception as e:
             self.logger.error(f"✗ Collection failed: {e}", exc_info=True)
             return 1
@@ -1298,15 +1314,15 @@ if __name__ == '__main__':
                 ▼                         ▼
        ┌────────────────┐       ┌────────────────┐
        │  PBS Commands  │       │  SSH Commands  │
-       └────────┬───────┘       └────────┬───────┘
-                │                        │
+       └────────┬───────┘       └───────┬────────┘
+                │                       │
     ┌───────────┼───────────┐           │
     │           │           │           │
     ▼           ▼           ▼           ▼
-┌───────┐  ┌──────┐  ┌──────────┐  ┌──────────┐
+┌────────┐  ┌──────┐  ┌──────────┐  ┌──────────┐
 │pbsnodes│  │qstat │  │qstat -Qa │  │ssh login │
-│-F json │  │-f -F │  │          │  │uptime    │
-│        │  │json  │  │          │  │who       │
+│-aj -F  │  │-f -F │  │          │  │uptime    │
+│json    │  │json  │  │          │  │who df    │
 └───┬────┘  └───┬──┘  └─────┬────┘  └────┬─────┘
     │           │           │            │
     ▼           ▼           ▼            ▼
@@ -1326,10 +1342,10 @@ if __name__ == '__main__':
         └──────────┬───────┘
                    │
                    ▼
-           ┌───────────────┐         ┌──────────────┐
-           │  Dry Run?     │────Yes──│ Log JSON     │
-           └───────┬───────┘         │ Exit 0       │
-                   │                 └──────────────┘
+           ┌───────────────┐         ┌──────────┐
+           │  Dry Run?     │────Yes──│ Log JSON │
+           └───────┬───────┘         │ Exit 0   │
+                   │                 └──────────┘
                    No
                    │
                    ▼
@@ -1358,7 +1374,7 @@ if __name__ == '__main__':
    - Initialize PBS/API/SSH clients
 
 2. **Node Data Collection (10-15 seconds)**
-   - Execute: `ssh derecho "pbsnodes -aSj -F json"`
+   - Execute: `ssh derecho "pbsnodes -aj -F json"`
    - Parse JSON response
    - Count nodes by state (free/job-busy/down/reserved)
    - Separate CPU vs GPU nodes (Derecho) or by node type (Casper)
@@ -1523,9 +1539,9 @@ def test_parse_derecho_nodes():
     """Test parsing Derecho pbsnodes JSON."""
     with open('tests/mock_data/pbsnodes_derecho.json') as f:
         mock_data = json.load(f)
-    
+
     result = NodeParser.parse_nodes(mock_data, 'derecho')
-    
+
     assert result['cpu_nodes_total'] == 2488
     assert result['gpu_nodes_total'] == 82
     assert result['cpu_utilization_percent'] > 0
@@ -1552,10 +1568,10 @@ def test_api_retry_logic(mock_post):
         Mock(status_code=503, raise_for_status=lambda: raise_error()),
         Mock(status_code=201, json=lambda: {'success': True})
     ]
-    
+
     client = SAMAPIClient('http://test', 'user', 'pass')
     result = client.post_status('derecho', {}, max_retries=3)
-    
+
     assert result['success'] == True
     assert mock_post.call_count == 3
 ```
@@ -1566,16 +1582,16 @@ def test_api_retry_logic(mock_post):
 
 ```bash
 # Set test credentials
-export SAM_API_URL=http://localhost:5050
-export SAM_API_USER=test_collector
-export SAM_API_PASSWORD=test_password
+export STATUS_API_URL=http://localhost:5050
+export STATUS_API_USER=test_collector
+export STATUS_API_PASSWORD=test_password
 
 # Run collector
 ./derecho/collector.py --verbose
 
 # Verify data in database
 mysql -u root -h 127.0.0.1 -proot system_status -e \
-  "SELECT status_id, timestamp, cpu_nodes_total, running_jobs 
+  "SELECT status_id, timestamp, cpu_nodes_total, running_jobs
    FROM derecho_status ORDER BY timestamp DESC LIMIT 1"
 ```
 
@@ -1702,29 +1718,29 @@ MAX_AGE=900  # 15 minutes (3 collection cycles)
 check_collector() {
     local name=$1
     local logfile="${LOG_DIR}/${name}_collector.log"
-    
+
     if [ ! -f "$logfile" ]; then
         echo "✗ ${name}: Log file not found"
         return 1
     fi
-    
+
     # Check last success
     last_success=$(grep "✓" "$logfile" | tail -1 | awk '{print $1, $2}')
     if [ -z "$last_success" ]; then
         echo "✗ ${name}: No successful collections found"
         return 1
     fi
-    
+
     # Check age
     last_epoch=$(date -d "$last_success" +%s 2>/dev/null)
     now_epoch=$(date +%s)
     age=$((now_epoch - last_epoch))
-    
+
     if [ $age -gt $MAX_AGE ]; then
         echo "✗ ${name}: Stale data (${age}s old, max ${MAX_AGE}s)"
         return 1
     fi
-    
+
     echo "✓ ${name}: Healthy (last success: ${age}s ago)"
     return 0
 }
@@ -1766,7 +1782,7 @@ make install
 
 # 5. Configure credentials
 cp .env.example .env
-vim .env  # Edit SAM_API_USER, SAM_API_PASSWORD, SAM_API_URL
+vim .env  # Edit STATUS_API_USER, STATUS_API_PASSWORD, STATUS_API_URL
 make config
 
 # 6. Test collectors
@@ -1787,9 +1803,9 @@ tail -f /var/log/derecho_collector.log
 
 ```bash
 # SAM API Configuration
-SAM_API_URL=https://sam.ucar.edu
-SAM_API_USER=derecho_collector
-SAM_API_PASSWORD=YOUR_SECURE_PASSWORD_HERE
+STATUS_API_URL=https://sam.ucar.edu
+STATUS_API_USER=derecho_collector
+STATUS_API_PASSWORD=YOUR_SECURE_PASSWORD_HERE
 
 # Optional: Override log locations
 DERECHO_LOG_FILE=/var/log/derecho_collector.log
@@ -1813,17 +1829,17 @@ login_nodes:
   - name: derecho2
     type: cpu
   - name: derecho3
-    type: cpu
+    type: gpu
   - name: derecho4
     type: cpu
   - name: derecho5
-    type: gpu
+    type: cpu
   - name: derecho6
-    type: gpu
+    type: cpu
   - name: derecho7
     type: gpu
   - name: derecho8
-    type: gpu
+    type: cpu
 
 filesystems:
   - glade
@@ -1920,7 +1936,7 @@ gpu-mi100:
 
 ```bash
 # Test PBS commands directly
-ssh derecho "pbsnodes -aSj -F json" | jq . | head -50
+ssh derecho "pbsnodes -aj -F json" | jq . | head -50
 
 # Test collector without posting
 ./derecho/collector.py --json-only | jq .
@@ -2044,7 +2060,7 @@ The following files are essential for implementing this architecture:
 
 ```bash
 # Node status (JSON)
-ssh derecho "pbsnodes -aSj -F json" > pbsnodes.json
+ssh derecho "pbsnodes -aj -F json" > pbsnodes.json
 
 # Job details (JSON)
 ssh derecho "qstat -f -F json" > qstat.json
