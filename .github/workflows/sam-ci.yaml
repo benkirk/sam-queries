@@ -60,7 +60,6 @@ jobs:
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
-        with:
           auto-activate-base: false
           activate-environment: ./conda-env/
           environment-file: conda-env.yaml
