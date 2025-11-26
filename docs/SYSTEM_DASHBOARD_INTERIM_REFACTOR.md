@@ -381,34 +381,34 @@ Create one file per macro in `partials/`:
 
 Execute tasks in this sequence for minimal disruption:
 
-### Phase A: Database & ORM (Foundation)
+### Phase A: Database & ORM (Foundation) - **DONE**
 1. Create SQL schema updates (`create_status_db.sql`)
 2. Create ORM models (`login_nodes.py`)
 3. Update model exports
 4. Run `setup_status_db.py` to create tables
 5. Verify tables exist in database
 
-### Phase B: Schemas (API Layer)
+### Phase B: Schemas (API Layer) - **DONE**
 1. Create `webui/schemas/status.py` with all schemas
 2. Update `webui/schemas/__init__.py` exports
 3. Refactor GET endpoints in `api/v1/status.py` to use schemas
 4. Test manually with existing data
 
-### Phase C: Login Nodes (New Data)
+### Phase C: Login Nodes (New Data) - **DONE**
 1. Update POST endpoints to accept login_nodes arrays
 2. Update mock data JSON with login_nodes
 3. Update ingest script to use new format
 4. Update blueprint to query login nodes
 5. Update HPC collectors guide documentation
 
-### Phase E: Testing (Validation)
+### Phase D: Testing (Validation) - **DONE**
 1. Create test fixtures in conftest.py
 2. Implement API endpoint tests
 3. Implement schema tests
 4. Implement integration tests
 5. Run full test suite: `cd tests && pytest -v api/ integration/`
 
-### Phase D: Templates (UI Layer)
+### Phase E: Templates (UI Layer)
 1. Create `partials/` directory and all macro files
 2. Create `fragments/` directory and reservations.html
 3. Create system-specific templates (derecho.html, casper.html, jupyterhub.html)
@@ -548,32 +548,19 @@ After implementation, validate with:
 - API accepts login_nodes arrays
 - Dashboard displays per-node tables
 
-✅ **Task 3 - Templates:**
-- Main dashboard reduced to ~100 lines
-- 10 reusable macros created
-- 3 system-specific templates
-- No code duplication
-- All tabs render correctly
-
-✅ **Task 4 - Tests:**
+✅ **Task 3 - Tests:**
 - 40+ API endpoint tests
 - 20+ schema tests
 - 10+ integration tests
 - All tests passing
 - >80% code coverage on new code
 
----
-
-## Rollback Plan
-
-If issues arise, rollback is straightforward:
-
-1. **Schemas:** Just don't import/use them - manual dicts still work
-2. **Login nodes:** Tables are optional - old aggregate fields remain
-3. **Templates:** Keep old dashboard.html as `dashboard.html.backup`
-4. **Tests:** Don't run new test files
-
-Tables and schemas are additive changes - won't break existing functionality.
+✅ **Task 4 - Templates:**
+- Main dashboard reduced to ~100 lines
+- 10 reusable macros created
+- 3 system-specific templates
+- No code duplication
+- All tabs render correctly
 
 ---
 
