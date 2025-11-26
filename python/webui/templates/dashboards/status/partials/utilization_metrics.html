@@ -1,6 +1,6 @@
-{% macro utilization_metrics(status, show_gpus=true) %}
+{% macro utilization_metrics(status, show_memory=true, show_gpus=true) %}
 <div class="row mb-4">
-    <div class="col-md-{{ '4' if show_gpus else '6' }}">
+    <div class="col-md-{{ '4' if show_memory and show_gpus else '6' }}">
         <div class="metric-card">
             <h6>CPU Utilization</h6>
             <div class="value">{{ (status.cpu_utilization_percent|default(0, true))|round(1) }}%</div>
@@ -16,7 +16,7 @@
         </div>
     </div>
     {% if show_gpus %}
-    <div class="col-md-4">
+    <div class="col-md-{{ '4' if show_memory else '6' }}">
         <div class="metric-card">
             <h6>GPU Utilization</h6>
             <div class="value">{{ (status.gpu_utilization_percent|default(0, true))|round(1) }}%</div>
@@ -32,6 +32,7 @@
         </div>
     </div>
     {% endif %}
+    {% if show_memory %}
     <div class="col-md-{{ '4' if show_gpus else '6' }}">
         <div class="metric-card">
             <h6>Memory Utilization</h6>
@@ -47,5 +48,6 @@
             {% endif %}
         </div>
     </div>
+    {% endif %}
 </div>
 {% endmacro %}
