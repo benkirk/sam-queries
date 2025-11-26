@@ -23,66 +23,6 @@ Current `/api/v1/status.py` uses manual dictionary construction. SAM project use
 - Consistent with project patterns
 - Easier to maintain and extend
 
-### Implementation
-
-**Create new schema file:** `python/webui/schemas/status.py`
-
-**Schemas to create (basic single-tier):**
-
-1. **DerechoStatusSchema** - Main system metrics
-2. **DerechoQueueStatusSchema** - Per-queue data
-3. **DerechoFilesystemStatusSchema** - Filesystem health
-4. **DerechoLoginNodeStatusSchema** - Per-login-node (new)
-5. **CasperStatusSchema** - Main system metrics
-6. **CasperNodeTypeStatusSchema** - Per-node-type
-7. **CasperQueueStatusSchema** - Per-queue data
-8. **CasperLoginNodeStatusSchema** - Per-login-node (new)
-9. **JupyterHubStatusSchema** - JupyterHub metrics
-10. **SystemOutageSchema** - Outages/degradations
-11. **ResourceReservationSchema** - Scheduled reservations
-
-**Pattern to follow:**
-```python
-from marshmallow import fields
-from webui.schemas import BaseSchema
-from system_status.models import DerechoStatus
-
-class DerechoStatusSchema(BaseSchema):
-    """Derecho system status serialization."""
-    class Meta(BaseSchema.Meta):
-        model = DerechoStatus
-        fields = (
-            'status_id', 'timestamp', 'created_at',
-            'cpu_login_available', 'cpu_login_user_count',
-            # ... all fields from model
-        )
-
-    # Timestamp auto-converts to ISO format via BaseSchema
-```
-
-**Update schema exports:** `python/webui/schemas/__init__.py`
-
-**Refactor API endpoints:** `python/webui/api/v1/status.py`
-
-Replace manual dict construction with:
-```python
-# Before (manual):
-result = {
-    'timestamp': status.timestamp.isoformat(),
-    'cpu_login_available': status.cpu_login_available,
-    # ... 30 more lines
-}
-
-# After (schema):
-from webui.schemas import DerechoStatusSchema
-result = DerechoStatusSchema().dump(status)
-```
-
-**Files to modify:**
-- `python/webui/schemas/status.py` (create new)
-- `python/webui/schemas/__init__.py` (add exports)
-- `python/webui/api/v1/status.py` (refactor all GET endpoints)
-
 ---
 
 ## Task 2: Implement Per-Login-Node Tracking
@@ -97,204 +37,88 @@ Current implementation tracks login nodes as aggregates (boolean flags or counts
 **Create two new tables:**
 
 **derecho_login_node_status:**
-```sql
-CREATE TABLE derecho_login_node_status (
-    login_node_id INT PRIMARY KEY AUTO_INCREMENT,
-    timestamp DATETIME NOT NULL,
-    node_name VARCHAR(64) NOT NULL,
-    node_type ENUM('cpu', 'gpu') NOT NULL,
-    available BOOLEAN NOT NULL DEFAULT TRUE,
-    degraded BOOLEAN NOT NULL DEFAULT FALSE,
-    user_count INT DEFAULT NULL,
-    load_1min FLOAT DEFAULT NULL,
-    load_5min FLOAT DEFAULT NULL,
-    load_15min FLOAT DEFAULT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_derecho_login_timestamp_name (timestamp, node_name),
-    INDEX ix_derecho_login_timestamp (timestamp),
-    INDEX ix_derecho_login_node_name (node_name)
-);
-```
 
 **casper_login_node_status:**
-```sql
-CREATE TABLE casper_login_node_status (
-    login_node_id INT PRIMARY KEY AUTO_INCREMENT,
-    timestamp DATETIME NOT NULL,
-    node_name VARCHAR(64) NOT NULL,
-    available BOOLEAN NOT NULL DEFAULT TRUE,
-    degraded BOOLEAN NOT NULL DEFAULT FALSE,
-    user_count INT DEFAULT NULL,
-    load_1min FLOAT DEFAULT NULL,
-    load_5min FLOAT DEFAULT NULL,
-    load_15min FLOAT DEFAULT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_casper_login_timestamp_name (timestamp, node_name),
-    INDEX ix_casper_login_timestamp (timestamp),
-    INDEX ix_casper_login_node_name (node_name)
-);
-```
 
-### ORM Models
+### Mock Data Updates
 
-**Create:** `python/system_status/models/login_nodes.py`
+**Update:** `tests/mock_data/status_mock_data.json`
 
-```python
-from sqlalchemy import Column, Integer, String, Float, Boolean, Enum, Index, UniqueConstraint
-from ..base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin
-
-class DerechoLoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin):
-    """Per-login-node metrics for Derecho (5-minute intervals)."""
-    __tablename__ = 'derecho_login_node_status'
-
-    __table_args__ = (
-        UniqueConstraint('timestamp', 'node_name', name='uq_derecho_login_timestamp_name'),
-        Index('ix_derecho_login_node_name', 'node_name'),
-    )
-
-    login_node_id = Column(Integer, primary_key=True, autoincrement=True)
-    node_name = Column(String(64), nullable=False, index=True)
-    node_type = Column(Enum('cpu', 'gpu', name='derecho_login_node_type'), nullable=False)
-
-    # Status fields from AvailabilityMixin: available, degraded
-
-    # Per-node metrics
-    user_count = Column(Integer, nullable=True)
-    load_1min = Column(Float, nullable=True)
-    load_5min = Column(Float, nullable=True)
-    load_15min = Column(Float, nullable=True)
-
-class CasperLoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin):
-    """Per-login-node metrics for Casper (5-minute intervals)."""
-    __tablename__ = 'casper_login_node_status'
-
-    __table_args__ = (
-        UniqueConstraint('timestamp', 'node_name', name='uq_casper_login_timestamp_name'),
-        Index('ix_casper_login_node_name', 'node_name'),
-    )
-
-    login_node_id = Column(Integer, primary_key=True, autoincrement=True)
-    node_name = Column(String(64), nullable=False, index=True)
-
-    # Status fields from AvailabilityMixin: available, degraded
-
-    # Per-node metrics
-    user_count = Column(Integer, nullable=True)
-    load_1min = Column(Float, nullable=True)
-    load_5min = Column(Float, nullable=True)
-    load_15min = Column(Float, nullable=True)
-```
-
-**Update:** `python/system_status/models/__init__.py`
-```python
-from .login_nodes import DerechoLoginNodeStatus, CasperLoginNodeStatus
-```
-
-**Update:** `python/system_status/__init__.py`
-```python
-from .models import (
-    # ... existing exports
-    DerechoLoginNodeStatus,
-    CasperLoginNodeStatus,
-)
-```
-
-### API Changes
-
-**Update POST endpoints** to accept login node arrays:
-
-**Derecho API (`/api/v1/status/derecho`):**
+Replace aggregate login fields with arrays:
 ```json
 {
-    "timestamp": "2025-11-25T14:30:00",
-    "cpu_nodes_total": 2488,
-    // ... existing fields ...
-
-    "login_nodes": [
-        {
-            "node_name": "derecho-login1",
-            "node_type": "cpu",
-            "available": true,
-            "user_count": 12,
-            "load_1min": 2.3,
-            "load_5min": 2.5,
-            "load_15min": 2.7
-        },
-        {
-            "node_name": "derecho-login2",
-            "node_type": "cpu",
-            "available": true,
-            "user_count": 15,
-            "load_1min": 3.1,
-            "load_5min": 3.2,
-            "load_15min": 3.0
-        }
-        // ... 6 more nodes
-    ]
+    "derecho": {
+        "timestamp": "2025-11-25T14:30:00",
+        "login_nodes": [
+            {"node_name": "derecho-login1", "node_type": "cpu", "available": true, "user_count": 12, "load_1min": 2.3},
+            {"node_name": "derecho-login2", "node_type": "cpu", "available": true, "user_count": 15, "load_1min": 3.1},
+            {"node_name": "derecho-login3", "node_type": "cpu", "available": true, "user_count": 8, "load_1min": 1.8},
+            {"node_name": "derecho-login4", "node_type": "cpu", "available": false, "user_count": 0, "load_1min": null},
+            {"node_name": "derecho-gpu1", "node_type": "gpu", "available": true, "user_count": 5, "load_1min": 0.9},
+            {"node_name": "derecho-gpu2", "node_type": "gpu", "available": true, "user_count": 7, "load_1min": 1.2},
+            {"node_name": "derecho-gpu3", "node_type": "gpu", "available": true, "user_count": 3, "load_1min": 0.5},
+            {"node_name": "derecho-gpu4", "node_type": "gpu", "available": true, "user_count": 4, "load_1min": 0.8}
+        ],
+        "cpu_nodes_total": 2488,
+        // ... rest of fields
+    },
+    "casper": {
+        "timestamp": "2025-11-25T14:30:00",
+        "login_nodes": [
+            {"node_name": "casper-login1", "available": true, "user_count": 38, "load_1min": 1.5},
+            {"node_name": "casper-login2", "available": true, "user_count": 40, "load_1min": 1.8}
+        ],
+        "compute_nodes_total": 260,
+        // ... rest of fields
+    }
 }
 ```
 
-**Casper API (`/api/v1/status/casper`):**
-```json
-{
-    "timestamp": "2025-11-25T14:30:00",
-    "compute_nodes_total": 260,
-    // ... existing fields ...
+---
 
-    "login_nodes": [
-        {
-            "node_name": "casper-login1",
-            "available": true,
-            "user_count": 38,
-            "load_1min": 1.5
-        },
-        {
-            "node_name": "casper-login2",
-            "available": true,
-            "user_count": 40,
-            "load_1min": 1.8
-        }
-    ]
-}
+## Task 3: Implement Comprehensive Tests
+
+### Test Files to Create
+
+**1. API Endpoint Tests:** `tests/api/test_status_endpoints.py` (~400 lines)
+
+**2. Schema Tests:** `tests/api/test_status_schemas.py` (~200 lines)
+
+**3. Integration Tests:** `tests/integration/test_status_flow.py` (~150 lines)
+
+---
+
+## Task 4: Split Dashboard Template into Modular Components
+
+### Rationale
+Current `dashboard.html` is 656 lines - hard to maintain. Split into:
+- Main container (100 lines)
+- System-specific files (80-120 lines each)
+- Reusable macros (20-40 lines each)
+
+### Directory Structure
+
+**Create directories:**
 ```
-
-**Update ingestion logic:**
-```python
-# In ingest_derecho() and ingest_casper()
-login_nodes = data.get('login_nodes', [])
-if login_nodes:
-    login_node_ids = []
-    for node_data in login_nodes:
-        node = DerechoLoginNodeStatus(
-            timestamp=timestamp,
-            node_name=node_data['node_name'],
-            node_type=node_data.get('node_type'),  # Derecho only
-            available=node_data.get('available', True),
-            degraded=node_data.get('degraded', False),
-            user_count=node_data.get('user_count'),
-            load_1min=node_data.get('load_1min'),
-            load_5min=node_data.get('load_5min'),
-            load_15min=node_data.get('load_15min'),
-        )
-        session.add(node)
-        session.flush()
-        login_node_ids.append(node.login_node_id)
-    result['login_node_ids'] = login_node_ids
+python/webui/templates/dashboards/status/
+├── dashboard.html              (main container)
+├── derecho.html                (Derecho tab content)
+├── casper.html                 (Casper tab content)
+├── jupyterhub.html             (JupyterHub tab content)
+├── partials/
+│   ├── system_header.html      (card header macro)
+│   ├── metric_card.html        (metric display macro)
+│   ├── login_nodes_table.html  (login node table macro - NEW)
+│   ├── node_status.html        (compute node status macro)
+│   ├── utilization_metrics.html (CPU/GPU/Memory bars)
+│   ├── job_statistics.html     (job stats cards)
+│   ├── queue_table.html        (queue table macro)
+│   ├── filesystem_table.html   (filesystem table macro)
+│   ├── nodetype_table.html     (Casper node types)
+│   └── no_data_message.html    (empty state macro)
+└── fragments/
+    └── reservations.html       (reservations tab - optional lazy load)
 ```
-
-**Update GET endpoints** to include login node arrays:
-```python
-# In get_derecho_latest()
-login_nodes = session.query(DerechoLoginNodeStatus).filter_by(
-    timestamp=status.timestamp
-).all()
-
-result['login_nodes'] = DerechoLoginNodeStatusSchema(many=True).dump(login_nodes)
-```
-
-**Keep aggregate fields** in DerechoStatus/CasperStatus for backward compatibility:
-- `cpu_login_available`, `gpu_login_available` - computed from login_nodes array
-- `login_nodes_available`, `login_nodes_total` - computed from login_nodes array
 
 ### Dashboard Blueprint Changes
 
@@ -332,285 +156,6 @@ def index():
             casper_login_nodes=casper_login_nodes,    # NEW
             # ... other data
         )
-```
-
-### Mock Data Updates
-
-**Update:** `tests/mock_data/status_mock_data.json`
-
-Replace aggregate login fields with arrays:
-```json
-{
-    "derecho": {
-        "timestamp": "2025-11-25T14:30:00",
-        "login_nodes": [
-            {"node_name": "derecho-login1", "node_type": "cpu", "available": true, "user_count": 12, "load_1min": 2.3},
-            {"node_name": "derecho-login2", "node_type": "cpu", "available": true, "user_count": 15, "load_1min": 3.1},
-            {"node_name": "derecho-login3", "node_type": "cpu", "available": true, "user_count": 8, "load_1min": 1.8},
-            {"node_name": "derecho-login4", "node_type": "cpu", "available": false, "user_count": 0, "load_1min": null},
-            {"node_name": "derecho-gpu1", "node_type": "gpu", "available": true, "user_count": 5, "load_1min": 0.9},
-            {"node_name": "derecho-gpu2", "node_type": "gpu", "available": true, "user_count": 7, "load_1min": 1.2},
-            {"node_name": "derecho-gpu3", "node_type": "gpu", "available": true, "user_count": 3, "load_1min": 0.5},
-            {"node_name": "derecho-gpu4", "node_type": "gpu", "available": true, "user_count": 4, "load_1min": 0.8}
-        ],
-        "cpu_nodes_total": 2488,
-        // ... rest of fields
-    },
-    "casper": {
-        "timestamp": "2025-11-25T14:30:00",
-        "login_nodes": [
-            {"node_name": "casper-login1", "available": true, "user_count": 38, "load_1min": 1.5},
-            {"node_name": "casper-login2", "available": true, "user_count": 40, "load_1min": 1.8}
-        ],
-        "compute_nodes_total": 260,
-        // ... rest of fields
-    }
-}
-```
-
-### Documentation Updates
-
-**Update:** `docs/HPC_DATA_COLLECTORS_GUIDE.md`
-
-Update API data format sections to show login_nodes arrays instead of aggregate fields.
-
-**Files to modify:**
-- `scripts/create_status_db.sql` (add CREATE TABLE statements)
-- `python/system_status/models/login_nodes.py` (create new)
-- `python/system_status/models/__init__.py` (export new models)
-- `python/system_status/__init__.py` (export new models)
-- `python/webui/api/v1/status.py` (update POST/GET endpoints)
-- `python/webui/dashboards/status/blueprint.py` (query login nodes)
-- `tests/mock_data/status_mock_data.json` (add login_nodes arrays)
-- `scripts/ingest_mock_status.py` (update to use new format)
-- `docs/HPC_DATA_COLLECTORS_GUIDE.md` (update API examples)
-
----
-
-## Task 4: Implement Comprehensive Tests
-
-### Test Files to Create
-
-**1. API Endpoint Tests:** `tests/api/test_status_endpoints.py` (~400 lines)
-
-**Test classes:**
-- `TestDerechoIngestion` - POST /api/v1/status/derecho
-- `TestCasperIngestion` - POST /api/v1/status/casper
-- `TestJupyterHubIngestion` - POST /api/v1/status/jupyterhub
-- `TestOutageReporting` - POST /api/v1/status/outage
-- `TestStatusRetrieval` - GET endpoints (latest status)
-
-**Test coverage:**
-- Authentication (unauthenticated should fail)
-- Authorization (requires MANAGE_SYSTEM_STATUS permission)
-- Data validation (missing required fields, invalid formats)
-- Timestamp parsing (ISO format, custom format, default to now)
-- Login nodes array handling (new)
-- Queue/filesystem/nodetype array handling
-- Response structure validation
-- Error handling (400, 401, 403, 404, 500)
-
-**Example tests:**
-```python
-class TestDerechoIngestion:
-    def test_ingest_derecho_success(self, auth_client, mock_status_data):
-        """Test successful Derecho status ingestion."""
-        response = auth_client.post(
-            '/api/v1/status/derecho',
-            json=mock_status_data['derecho']
-        )
-        assert response.status_code == 201
-        data = response.get_json()
-        assert data['success'] is True
-        assert 'status_id' in data
-        assert 'login_node_ids' in data  # NEW
-
-    def test_ingest_missing_login_nodes(self, auth_client):
-        """Test ingestion without login_nodes array (optional)."""
-        minimal_data = {'cpu_nodes_total': 2488, ...}
-        response = auth_client.post('/api/v1/status/derecho', json=minimal_data)
-        assert response.status_code == 201
-
-    def test_ingest_unauthenticated(self, client):
-        """POST requires authentication."""
-        response = client.post('/api/v1/status/derecho', json={})
-        assert response.status_code in [302, 401]
-```
-
-**2. Schema Tests:** `tests/api/test_status_schemas.py` (~200 lines)
-
-**Test classes:**
-- `TestDerechoSchemas` - All Derecho-related schemas
-- `TestCasperSchemas` - All Casper-related schemas
-- `TestJupyterHubSchemas` - JupyterHub schema
-- `TestOutageSchemas` - Outage and reservation schemas
-
-**Test coverage:**
-- Field presence validation
-- Type validation (datetime → ISO string, float → number)
-- Nested serialization (login_nodes, queues, filesystems)
-- Many=True serialization (arrays)
-- Missing data handling (None vs empty list)
-
-**Example tests:**
-```python
-from webui.schemas import DerechoStatusSchema, DerechoLoginNodeStatusSchema
-
-class TestDerechoSchemas:
-    def test_derecho_status_schema(self, session):
-        """Test DerechoStatus serialization."""
-        from system_status import DerechoStatus
-
-        status = session.query(DerechoStatus).first()
-        result = DerechoStatusSchema().dump(status)
-
-        # Validate field presence
-        assert 'status_id' in result
-        assert 'timestamp' in result
-        assert 'cpu_nodes_total' in result
-
-        # Validate types
-        assert isinstance(result['timestamp'], str)  # ISO format
-        assert isinstance(result['cpu_nodes_total'], int)
-
-    def test_login_node_schema_many(self, session):
-        """Test login nodes array serialization."""
-        from system_status import DerechoLoginNodeStatus
-
-        nodes = session.query(DerechoLoginNodeStatus).limit(5).all()
-        result = DerechoLoginNodeStatusSchema(many=True).dump(nodes)
-
-        assert isinstance(result, list)
-        assert len(result) <= 5
-        for node in result:
-            assert 'node_name' in node
-            assert 'available' in node
-```
-
-**3. Integration Tests:** `tests/integration/test_status_flow.py` (~150 lines)
-
-**Test classes:**
-- `TestStatusIngestionFlow` - POST → DB → GET flow
-- `TestDataRetention` - Cleanup script behavior
-- `TestConcurrentWrites` - Multiple simultaneous ingestions
-
-**Test coverage:**
-- End-to-end flow: POST data → verify DB storage → GET retrieval
-- Login nodes persist correctly
-- Timestamp-based queries work
-- Cleanup script deletes old data
-- Concurrent writes don't conflict
-
-**Example tests:**
-```python
-class TestStatusIngestionFlow:
-    def test_derecho_full_flow(self, auth_client, session):
-        """Test POST → Database → GET for Derecho."""
-        # Step 1: POST status data
-        post_data = {...}  # From mock_status_data.json
-        response = auth_client.post('/api/v1/status/derecho', json=post_data)
-        assert response.status_code == 201
-        status_id = response.get_json()['status_id']
-
-        # Step 2: Verify database storage
-        from system_status import DerechoStatus, DerechoLoginNodeStatus
-        status = session.query(DerechoStatus).get(status_id)
-        assert status is not None
-        assert status.cpu_nodes_total == post_data['cpu_nodes_total']
-
-        login_nodes = session.query(DerechoLoginNodeStatus).filter_by(
-            timestamp=status.timestamp
-        ).all()
-        assert len(login_nodes) == len(post_data['login_nodes'])
-
-        # Step 3: GET latest status
-        response = auth_client.get('/api/v1/status/derecho/latest')
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['status_id'] == status_id
-        assert 'login_nodes' in data
-        assert len(data['login_nodes']) == len(post_data['login_nodes'])
-```
-
-### Test Fixtures
-
-**Update:** `tests/api/conftest.py`
-
-Add status-specific fixtures:
-```python
-@pytest.fixture
-def mock_status_data():
-    """Load mock status data from JSON file."""
-    import json
-    with open('tests/mock_data/status_mock_data.json') as f:
-        return json.load(f)
-
-@pytest.fixture
-def status_session():
-    """System status database session."""
-    from system_status import create_status_engine, get_session
-    engine, SessionLocal = create_status_engine()
-    session = SessionLocal()
-    yield session
-    session.rollback()
-    session.close()
-```
-
-### Database Setup Script
-
-**Update:** `scripts/setup_status_db.py`
-
-Add creation of login_node_status tables:
-```python
-from system_status import (
-    DerechoStatus, DerechoLoginNodeStatus,  # Add new model
-    CasperStatus, CasperLoginNodeStatus,    # Add new model
-    # ... other models
-)
-
-# Tables will auto-create via Base.metadata.create_all()
-```
-
-**Files to create:**
-- `tests/api/test_status_endpoints.py` (~400 lines)
-- `tests/api/test_status_schemas.py` (~200 lines)
-- `tests/integration/test_status_flow.py` (~150 lines)
-
-**Files to modify:**
-- `tests/api/conftest.py` (add fixtures)
-
----
-
-## Task 3: Split Dashboard Template into Modular Components
-
-### Rationale
-Current `dashboard.html` is 656 lines - hard to maintain. Split into:
-- Main container (100 lines)
-- System-specific files (80-120 lines each)
-- Reusable macros (20-40 lines each)
-
-### Directory Structure
-
-**Create directories:**
-```
-python/webui/templates/dashboards/status/
-├── dashboard.html              (main container)
-├── derecho.html                (Derecho tab content)
-├── casper.html                 (Casper tab content)
-├── jupyterhub.html             (JupyterHub tab content)
-├── partials/
-│   ├── system_header.html      (card header macro)
-│   ├── metric_card.html        (metric display macro)
-│   ├── login_nodes_table.html  (login node table macro - NEW)
-│   ├── node_status.html        (compute node status macro)
-│   ├── utilization_metrics.html (CPU/GPU/Memory bars)
-│   ├── job_statistics.html     (job stats cards)
-│   ├── queue_table.html        (queue table macro)
-│   ├── filesystem_table.html   (filesystem table macro)
-│   ├── nodetype_table.html     (Casper node types)
-│   └── no_data_message.html    (empty state macro)
-└── fragments/
-    └── reservations.html       (reservations tab - optional lazy load)
 ```
 
 ### Main Dashboard Template
