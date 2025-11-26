@@ -356,6 +356,7 @@ def ingest_casper():
                     gpu_model=nt_data.get('gpu_model'),
                     gpus_per_node=nt_data.get('gpus_per_node'),
                     utilization_percent=nt_data.get('utilization_percent'),
+                    memory_utilization_percent=nt_data.get('memory_utilization_percent'),
                 )
                 session.add(nt_status)
                 session.flush()

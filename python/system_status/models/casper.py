@@ -94,6 +94,7 @@ class CasperNodeTypeStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
 
     # Utilization
     utilization_percent = Column(Float, nullable=True)
+    memory_utilization_percent = Column(Float, nullable=True)
 
 
 class CasperQueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):

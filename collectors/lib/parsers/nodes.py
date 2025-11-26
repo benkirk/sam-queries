@@ -273,10 +273,35 @@ class NodeParser:
                     'memory_gb_per_node': round(parse_memory(resources.get('mem', '0')) / (1024 * 1024), 2),
                     'gpus_per_node': int(resources.get('ngpus', 0)),
                     'gpu_model': resources.get('gpu_type', '').split(',')[0] if resources.get('gpu_type') else None,
+                    # Track actual resource usage for accurate utilization
+                    'total_cores': 0,
+                    'allocated_cores': 0,
+                    'total_gpus': 0,
+                    'allocated_gpus': 0,
+                    'total_memory_gb': 0.0,
+                    'allocated_memory_gb': 0.0,
                 }
 
             state = node_data.get('state', '').lower()
+            resources_avail = node_data.get('resources_available', {})
+            resources_assigned = node_data.get('resources_assigned', {})
+
             node_types[node_type]['nodes_total'] += 1
+
+            # Track actual resource totals and allocations
+            ncpus_avail = int(resources_avail.get('ncpus', 0))
+            ncpus_assigned = int(resources_assigned.get('ncpus', 0))
+            ngpus_avail = int(resources_avail.get('ngpus', 0))
+            ngpus_assigned = int(resources_assigned.get('ngpus', 0))
+            mem_avail_gb = parse_memory(resources_avail.get('mem', '0')) / (1024 * 1024)
+            mem_assigned_gb = parse_memory(resources_assigned.get('mem', '0')) / (1024 * 1024)
+
+            node_types[node_type]['total_cores'] += ncpus_avail
+            node_types[node_type]['allocated_cores'] += ncpus_assigned
+            node_types[node_type]['total_gpus'] += ngpus_avail
+            node_types[node_type]['allocated_gpus'] += ngpus_assigned
+            node_types[node_type]['total_memory_gb'] += mem_avail_gb
+            node_types[node_type]['allocated_memory_gb'] += mem_assigned_gb
 
             if 'down' in state or 'offline' in state:
                 node_types[node_type]['nodes_down'] += 1
@@ -285,13 +310,34 @@ class NodeParser:
             elif 'job-busy' in state or 'job-exclusive' in state:
                 node_types[node_type]['nodes_allocated'] += 1
 
-        # Calculate utilization per type
+        # Calculate utilization per type based on actual resource usage
         for nt_data in node_types.values():
-            if nt_data['nodes_total'] > 0:
-                allocated = nt_data['nodes_allocated']
-                total = nt_data['nodes_total']
-                nt_data['utilization_percent'] = round((allocated / total) * 100, 2)
+            # Use GPU utilization if GPUs are present, otherwise use CPU utilization
+            if nt_data['total_gpus'] > 0:
+                nt_data['utilization_percent'] = round(
+                    (nt_data['allocated_gpus'] / nt_data['total_gpus']) * 100, 2
+                )
+            elif nt_data['total_cores'] > 0:
+                nt_data['utilization_percent'] = round(
+                    (nt_data['allocated_cores'] / nt_data['total_cores']) * 100, 2
+                )
             else:
                 nt_data['utilization_percent'] = 0.0
+
+            # Calculate memory utilization for all node types
+            if nt_data['total_memory_gb'] > 0:
+                nt_data['memory_utilization_percent'] = round(
+                    (nt_data['allocated_memory_gb'] / nt_data['total_memory_gb']) * 100, 2
+                )
+            else:
+                nt_data['memory_utilization_percent'] = 0.0
+
+            # Clean up temporary tracking fields
+            del nt_data['total_cores']
+            del nt_data['allocated_cores']
+            del nt_data['total_gpus']
+            del nt_data['allocated_gpus']
+            del nt_data['total_memory_gb']
+            del nt_data['allocated_memory_gb']
 
         return list(node_types.values())

@@ -163,6 +163,7 @@ class CasperNodeTypeSchema(Schema):
     gpu_model = fields.Str(allow_none=True)
     gpus_per_node = fields.Int(allow_none=True)
     utilization_percent = fields.Float(allow_none=True)
+    memory_utilization_percent = fields.Float(allow_none=True)
     timestamp = fields.DateTime()
 
 

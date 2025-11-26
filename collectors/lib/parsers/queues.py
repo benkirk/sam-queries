@@ -42,7 +42,6 @@ class QueueParser:
             resources = job_data.get('Resource_List', {})
             ncpus = int(resources.get('ncpus', 0))
             ngpus = int(resources.get('ngpus', 0))
-            nodect = int(resources.get('nodect', 0))
 
             if queue not in queues:
                 queues[queue] = {
@@ -52,14 +51,24 @@ class QueueParser:
                     'active_users': set(),
                     'cores_allocated': 0,
                     'gpus_allocated': 0,
-                    'nodes_allocated': 0,
+                    'nodes_allocated': set(),  # Track unique nodes
                 }
 
             if state == 'R':  # Running
                 queues[queue]['running_jobs'] += 1
                 queues[queue]['cores_allocated'] += ncpus
                 queues[queue]['gpus_allocated'] += ngpus
-                queues[queue]['nodes_allocated'] += nodect
+
+                # Count unique nodes from exec_host
+                # Format: "node1/cpu+node2/cpu" or "node1/cpu*count"
+                exec_host = job_data.get('exec_host', '')
+                if exec_host:
+                    # Split by '+' for multi-node jobs
+                    for node_spec in exec_host.split('+'):
+                        # Extract node name (before '/')
+                        node_name = node_spec.split('/')[0]
+                        if node_name:
+                            queues[queue]['nodes_allocated'].add(node_name)
             elif state == 'Q':  # Queued
                 queues[queue]['pending_jobs'] += 1
 
@@ -70,6 +79,7 @@ class QueueParser:
         result = []
         for q_data in queues.values():
             q_data['active_users'] = len(q_data['active_users'])
+            q_data['nodes_allocated'] = len(q_data['nodes_allocated'])  # Count unique nodes
             result.append(q_data)
 
         return result
