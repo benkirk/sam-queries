@@ -29,21 +29,53 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="col-md-6">
+        </div>
+        {% endif %}
+
+        <!-- Compute Nodes by Type -->
+        <h6 class="mb-3"><i class="fas fa-server"></i> Compute Nodes</h6>
+        <div class="row mb-4">
+            <div class="col-md-4">
                 <div class="metric-card">
-                    <h6>Compute Nodes</h6>
-                    <div class="value">{{ casper_status.compute_nodes_available }} / {{ casper_status.compute_nodes_total }} Available</div>
-                    {% if casper_status.compute_nodes_down > 0 %}
-                    <div class="text-danger mt-2">{{ casper_status.compute_nodes_down }} nodes down</div>
+                    <h6>CPU Nodes</h6>
+                    <div class="value">{{ casper_status.cpu_nodes_available }} / {{ casper_status.cpu_nodes_total }} Available</div>
+                    {% if casper_status.cpu_nodes_down > 0 %}
+                    <div class="text-danger mt-2">{{ casper_status.cpu_nodes_down }} nodes down</div>
+                    {% endif %}
+                    {% if casper_status.cpu_nodes_reserved > 0 %}
+                    <div class="text-warning mt-1">{{ casper_status.cpu_nodes_reserved }} nodes reserved</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>GPU Nodes</h6>
+                    <div class="value">{{ casper_status.gpu_nodes_available }} / {{ casper_status.gpu_nodes_total }} Available</div>
+                    {% if casper_status.gpu_nodes_down > 0 %}
+                    <div class="text-danger mt-2">{{ casper_status.gpu_nodes_down }} nodes down</div>
+                    {% endif %}
+                    {% if casper_status.gpu_nodes_reserved > 0 %}
+                    <div class="text-warning mt-1">{{ casper_status.gpu_nodes_reserved }} nodes reserved</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>VIZ Nodes</h6>
+                    <div class="value">{{ casper_status.viz_nodes_available }} / {{ casper_status.viz_nodes_total }} Available</div>
+                    {% if casper_status.viz_nodes_down > 0 %}
+                    <div class="text-danger mt-2">{{ casper_status.viz_nodes_down }} nodes down</div>
+                    {% endif %}
+                    {% if casper_status.viz_nodes_reserved > 0 %}
+                    <div class="text-warning mt-1">{{ casper_status.viz_nodes_reserved }} nodes reserved</div>
                     {% endif %}
                 </div>
             </div>
         </div>
-        {% endif %}
 
         <!-- Utilization -->
         <h6 class="mb-3"><i class="fas fa-chart-bar"></i> Resource Utilization</h6>
-        {{ util.utilization_metrics(casper_status, show_gpus=true) }}
+        {{ util.utilization_metrics(casper_status, show_gpus=true, show_viz=true) }}
 
         <!-- Jobs -->
         <h6 class="mb-3"><i class="fas fa-tasks"></i> Job Statistics</h6>

@@ -270,12 +270,41 @@ def ingest_casper():
         # Create main status record
         casper_status = CasperStatus(
             timestamp=timestamp,
-            compute_nodes_total=data.get('compute_nodes_total', 0),
-            compute_nodes_available=data.get('compute_nodes_available', 0),
-            compute_nodes_down=data.get('compute_nodes_down', 0),
+            # Compute nodes - CPU
+            cpu_nodes_total=data.get('cpu_nodes_total', 0),
+            cpu_nodes_available=data.get('cpu_nodes_available', 0),
+            cpu_nodes_down=data.get('cpu_nodes_down', 0),
+            cpu_nodes_reserved=data.get('cpu_nodes_reserved', 0),
+            # Compute nodes - GPU
+            gpu_nodes_total=data.get('gpu_nodes_total', 0),
+            gpu_nodes_available=data.get('gpu_nodes_available', 0),
+            gpu_nodes_down=data.get('gpu_nodes_down', 0),
+            gpu_nodes_reserved=data.get('gpu_nodes_reserved', 0),
+            # Compute nodes - VIZ
+            viz_nodes_total=data.get('viz_nodes_total', 0),
+            viz_nodes_available=data.get('viz_nodes_available', 0),
+            viz_nodes_down=data.get('viz_nodes_down', 0),
+            viz_nodes_reserved=data.get('viz_nodes_reserved', 0),
+            # CPU utilization
+            cpu_cores_total=data.get('cpu_cores_total', 0),
+            cpu_cores_allocated=data.get('cpu_cores_allocated', 0),
+            cpu_cores_idle=data.get('cpu_cores_idle', 0),
             cpu_utilization_percent=data.get('cpu_utilization_percent'),
+            # GPU utilization
+            gpu_count_total=data.get('gpu_count_total', 0),
+            gpu_count_allocated=data.get('gpu_count_allocated', 0),
+            gpu_count_idle=data.get('gpu_count_idle', 0),
             gpu_utilization_percent=data.get('gpu_utilization_percent'),
+            # VIZ utilization
+            viz_count_total=data.get('viz_count_total', 0),
+            viz_count_allocated=data.get('viz_count_allocated', 0),
+            viz_count_idle=data.get('viz_count_idle', 0),
+            viz_utilization_percent=data.get('viz_utilization_percent'),
+            # Memory
+            memory_total_gb=data.get('memory_total_gb', 0.0),
+            memory_allocated_gb=data.get('memory_allocated_gb', 0.0),
             memory_utilization_percent=data.get('memory_utilization_percent'),
+            # Jobs
             running_jobs=data.get('running_jobs', 0),
             pending_jobs=data.get('pending_jobs', 0),
             active_users=data.get('active_users', 0),

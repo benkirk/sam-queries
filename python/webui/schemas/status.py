@@ -188,14 +188,45 @@ class CasperStatusSchema(Schema):
     status_id = fields.Int()
     timestamp = fields.DateTime()
 
-    # Aggregate Node Counts
-    compute_nodes_total = fields.Int(allow_none=True)
-    compute_nodes_available = fields.Int(allow_none=True)
-    compute_nodes_down = fields.Int(allow_none=True)
+    # CPU Compute Nodes
+    cpu_nodes_total = fields.Int(allow_none=True)
+    cpu_nodes_available = fields.Int(allow_none=True)
+    cpu_nodes_down = fields.Int(allow_none=True)
+    cpu_nodes_reserved = fields.Int(allow_none=True)
 
-    # Utilization
+    # GPU Compute Nodes
+    gpu_nodes_total = fields.Int(allow_none=True)
+    gpu_nodes_available = fields.Int(allow_none=True)
+    gpu_nodes_down = fields.Int(allow_none=True)
+    gpu_nodes_reserved = fields.Int(allow_none=True)
+
+    # VIZ Compute Nodes
+    viz_nodes_total = fields.Int(allow_none=True)
+    viz_nodes_available = fields.Int(allow_none=True)
+    viz_nodes_down = fields.Int(allow_none=True)
+    viz_nodes_reserved = fields.Int(allow_none=True)
+
+    # CPU Utilization
+    cpu_cores_total = fields.Int(allow_none=True)
+    cpu_cores_allocated = fields.Int(allow_none=True)
+    cpu_cores_idle = fields.Int(allow_none=True)
     cpu_utilization_percent = fields.Float(allow_none=True)
+
+    # GPU Utilization
+    gpu_count_total = fields.Int(allow_none=True)
+    gpu_count_allocated = fields.Int(allow_none=True)
+    gpu_count_idle = fields.Int(allow_none=True)
     gpu_utilization_percent = fields.Float(allow_none=True)
+
+    # VIZ Utilization
+    viz_count_total = fields.Int(allow_none=True)
+    viz_count_allocated = fields.Int(allow_none=True)
+    viz_count_idle = fields.Int(allow_none=True)
+    viz_utilization_percent = fields.Float(allow_none=True)
+
+    # Memory
+    memory_total_gb = fields.Float(allow_none=True)
+    memory_allocated_gb = fields.Float(allow_none=True)
     memory_utilization_percent = fields.Float(allow_none=True)
 
     # Jobs

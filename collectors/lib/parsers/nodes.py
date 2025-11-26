@@ -128,28 +128,29 @@ class NodeParser:
             'cpu_cores_total': 0,
             'cpu_cores_allocated': 0,
             'cpu_cores_idle': 0,
+            'gpu_nodes_total': 0,
+            'gpu_nodes_available': 0,
+            'gpu_nodes_down': 0,
+            'gpu_nodes_reserved': 0,
+            'gpu_count_total': 0,
+            'gpu_count_allocated': 0,
+            'gpu_count_idle': 0,
             'memory_total_gb': 0.0,
             'memory_allocated_gb': 0.0,
         }
 
-        # Add GPU fields for both systems
-        if system_type == 'derecho':
+        # Add VIZ fields for Casper
+        if system_type == 'casper':
             stats.update({
-                'gpu_nodes_total': 0,
-                'gpu_nodes_available': 0,
-                'gpu_nodes_down': 0,
-                'gpu_nodes_reserved': 0,
-                'gpu_count_total': 0,
-                'gpu_count_allocated': 0,
-                'gpu_count_idle': 0,
+                'viz_nodes_total': 0,
+                'viz_nodes_available': 0,
+                'viz_nodes_down': 0,
+                'viz_nodes_reserved': 0,
+                'viz_count_total': 0,
+                'viz_count_allocated': 0,
+                'viz_count_idle': 0,
             })
-        else:
-            # Casper doesn't track GPU nodes at system level, just GPU counts
-            stats.update({
-                'gpu_count_total': 0,
-                'gpu_count_allocated': 0,
-                'gpu_count_idle': 0,
-            })
+
 
         for node_name, node_data in nodes.items():
             state = node_data.get('state', '').lower()
@@ -159,13 +160,13 @@ class NodeParser:
             # Determine node category
             node_type = classify_node_type(node_name, node_data, system_type)
             is_gpu = node_type.startswith('gpu')
-
-            # For Derecho, categorize as cpu/gpu
-            # For Casper, everything non-GPU counts as cpu for aggregate stats
-            if system_type == 'derecho':
-                node_category = 'gpu' if is_gpu else 'cpu'
+            is_viz = node_type.startswith('viz')
+            if is_gpu:
+                node_category = 'gpu'
+            elif is_viz:
+                node_category = 'viz'
             else:
-                node_category = 'cpu'  # Aggregate all non-GPU as cpu for Casper
+                node_category = 'cpu'
 
             # Count nodes by state
             if 'down' in state or 'offline' in state:
@@ -199,6 +200,14 @@ class NodeParser:
                 stats['gpu_count_allocated'] += ngpus_allocated
                 stats['gpu_count_idle'] += (ngpus - ngpus_allocated)
 
+            # VIZ GPUs
+            if is_viz:
+                ngpus = int(resources.get('ngpus', 0))
+                ngpus_allocated = int(resources_assigned.get('ngpus', 0))
+                stats['viz_count_total'] += ngpus
+                stats['viz_count_allocated'] += ngpus_allocated
+                stats['viz_count_idle'] += (ngpus - ngpus_allocated)
+
         # Calculate utilization percentages
         if stats['cpu_cores_total'] > 0:
             stats['cpu_utilization_percent'] = round(
@@ -213,6 +222,13 @@ class NodeParser:
             )
         else:
             stats['gpu_utilization_percent'] = None  # Use None instead of 0.0 when no GPUs
+
+        if stats.get('viz_count_total', 0) > 0:
+            stats['viz_utilization_percent'] = round(
+                (stats['viz_count_allocated'] / stats['viz_count_total']) * 100, 2
+            )
+        else:
+            stats['viz_utilization_percent'] = None  # Use None instead of 0.0 when no VIZ GPUs
 
         if stats['memory_total_gb'] > 0:
             stats['memory_utilization_percent'] = round(

@@ -1,6 +1,9 @@
-{% macro utilization_metrics(status, show_memory=true, show_gpus=true) %}
+{% macro utilization_metrics(status, show_memory=true, show_gpus=true, show_viz=false) %}
+{# Calculate column width based on number of metrics shown #}
+{% set num_cols = 1 + (1 if show_gpus else 0) + (1 if show_viz else 0) + (1 if show_memory else 0) %}
+{% set col_width = 12 // num_cols %}
 <div class="row mb-4">
-    <div class="col-md-{{ '4' if show_memory and show_gpus else '6' }}">
+    <div class="col-md-{{ col_width }}">
         <div class="metric-card">
             <h6>CPU Utilization</h6>
             <div class="value">{{ (status.cpu_utilization_percent|default(0, true))|round(1) }}%</div>
@@ -16,7 +19,7 @@
         </div>
     </div>
     {% if show_gpus %}
-    <div class="col-md-{{ '4' if show_memory else '6' }}">
+    <div class="col-md-{{ col_width }}">
         <div class="metric-card">
             <h6>GPU Utilization</h6>
             <div class="value">{{ (status.gpu_utilization_percent|default(0, true))|round(1) }}%</div>
@@ -32,8 +35,25 @@
         </div>
     </div>
     {% endif %}
+    {% if show_viz %}
+    <div class="col-md-{{ col_width }}">
+        <div class="metric-card">
+            <h6>VIZ Utilization</h6>
+            <div class="value">{{ (status.viz_utilization_percent|default(0, true))|round(1) }}%</div>
+            <div class="progress mt-2">
+                <div class="progress-bar bg-{{ 'danger' if (status.viz_utilization_percent|default(0, true)) >= 90 else 'warning' if (status.viz_utilization_percent|default(0, true)) >= 75 else 'success' }}"
+                     style="width: {{ status.viz_utilization_percent|default(0, true) }}%"></div>
+            </div>
+            {% if status.viz_count_allocated is defined and status.viz_count_total is defined %}
+            <div class="text-muted small mt-1">
+                {{ status.viz_count_allocated }} / {{ status.viz_count_total }} VIZ GPUs
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
     {% if show_memory %}
-    <div class="col-md-{{ '4' if show_gpus else '6' }}">
+    <div class="col-md-{{ col_width }}">
         <div class="metric-card">
             <h6>Memory Utilization</h6>
             <div class="value">{{ (status.memory_utilization_percent|default(0, true))|round(1) }}%</div>

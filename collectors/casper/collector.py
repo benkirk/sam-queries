@@ -61,34 +61,89 @@ class CasperCollector:
             self.logger.info("Collecting node data...")
             nodes_json = self.pbs.get_nodes_json()
 
-            # Aggregate stats (for Casper, map to compute_nodes_*)
+            # Aggregate stats for all node types (CPU, GPU, VIZ)
             node_stats = NodeParser.parse_nodes(nodes_json, 'casper')
             data.update({
-                'compute_nodes_total': node_stats['cpu_nodes_total'],
-                'compute_nodes_available': node_stats['cpu_nodes_available'],
-                'compute_nodes_down': node_stats['cpu_nodes_down'],
-                'cpu_utilization_percent': node_stats.get('cpu_utilization_percent', 0.0),
+                # CPU nodes
+                'cpu_nodes_total': node_stats['cpu_nodes_total'],
+                'cpu_nodes_available': node_stats['cpu_nodes_available'],
+                'cpu_nodes_down': node_stats['cpu_nodes_down'],
+                'cpu_nodes_reserved': node_stats['cpu_nodes_reserved'],
+                'cpu_cores_total': node_stats['cpu_cores_total'],
+                'cpu_cores_allocated': node_stats['cpu_cores_allocated'],
+                'cpu_cores_idle': node_stats['cpu_cores_idle'],
+                'cpu_utilization_percent': node_stats.get('cpu_utilization_percent'),
+                # GPU nodes
+                'gpu_nodes_total': node_stats['gpu_nodes_total'],
+                'gpu_nodes_available': node_stats['gpu_nodes_available'],
+                'gpu_nodes_down': node_stats['gpu_nodes_down'],
+                'gpu_nodes_reserved': node_stats['gpu_nodes_reserved'],
+                'gpu_count_total': node_stats['gpu_count_total'],
+                'gpu_count_allocated': node_stats['gpu_count_allocated'],
+                'gpu_count_idle': node_stats['gpu_count_idle'],
                 'gpu_utilization_percent': node_stats.get('gpu_utilization_percent'),
-                'memory_utilization_percent': node_stats.get('memory_utilization_percent', 0.0),
+                # VIZ nodes
+                'viz_nodes_total': node_stats['viz_nodes_total'],
+                'viz_nodes_available': node_stats['viz_nodes_available'],
+                'viz_nodes_down': node_stats['viz_nodes_down'],
+                'viz_nodes_reserved': node_stats['viz_nodes_reserved'],
+                'viz_count_total': node_stats['viz_count_total'],
+                'viz_count_allocated': node_stats['viz_count_allocated'],
+                'viz_count_idle': node_stats['viz_count_idle'],
+                'viz_utilization_percent': node_stats.get('viz_utilization_percent'),
+                # Memory
+                'memory_total_gb': node_stats['memory_total_gb'],
+                'memory_allocated_gb': node_stats['memory_allocated_gb'],
+                'memory_utilization_percent': node_stats.get('memory_utilization_percent'),
             })
 
             # Node type breakdown
             data['node_types'] = NodeParser.parse_node_types(nodes_json, 'casper')
 
             self.logger.info(
-                f"  Nodes: {data['compute_nodes_total']} total, "
-                f"{data['compute_nodes_available']} available"
+                f"  CPU Nodes: {data['cpu_nodes_total']} total, "
+                f"{data['cpu_nodes_available']} available"
+            )
+            self.logger.info(
+                f"  GPU Nodes: {data['gpu_nodes_total']} total, "
+                f"{data['gpu_nodes_available']} available"
+            )
+            self.logger.info(
+                f"  VIZ Nodes: {data['viz_nodes_total']} total, "
+                f"{data['viz_nodes_available']} available"
             )
             self.logger.info(f"  Node types: {len(data['node_types'])} types tracked")
 
         except Exception as e:
             self.logger.error(f"Failed to collect node data: {e}")
             data.update({
-                'compute_nodes_total': 0,
-                'compute_nodes_available': 0,
-                'compute_nodes_down': 0,
-                'cpu_utilization_percent': 0.0,
-                'memory_utilization_percent': 0.0,
+                'cpu_nodes_total': 0,
+                'cpu_nodes_available': 0,
+                'cpu_nodes_down': 0,
+                'cpu_nodes_reserved': 0,
+                'cpu_cores_total': 0,
+                'cpu_cores_allocated': 0,
+                'cpu_cores_idle': 0,
+                'cpu_utilization_percent': None,
+                'gpu_nodes_total': 0,
+                'gpu_nodes_available': 0,
+                'gpu_nodes_down': 0,
+                'gpu_nodes_reserved': 0,
+                'gpu_count_total': 0,
+                'gpu_count_allocated': 0,
+                'gpu_count_idle': 0,
+                'gpu_utilization_percent': None,
+                'viz_nodes_total': 0,
+                'viz_nodes_available': 0,
+                'viz_nodes_down': 0,
+                'viz_nodes_reserved': 0,
+                'viz_count_total': 0,
+                'viz_count_allocated': 0,
+                'viz_count_idle': 0,
+                'viz_utilization_percent': None,
+                'memory_total_gb': 0.0,
+                'memory_allocated_gb': 0.0,
+                'memory_utilization_percent': None,
                 'node_types': []
             })
 
