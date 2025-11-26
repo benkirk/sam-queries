@@ -1,0 +1,66 @@
+{% import 'dashboards/status/partials/system_header.html' as header %}
+{% import 'dashboards/status/partials/login_nodes_table.html' as login %}
+{% import 'dashboards/status/partials/utilization_metrics.html' as util %}
+{% import 'dashboards/status/partials/job_statistics.html' as jobs %}
+{% import 'dashboards/status/partials/queue_table.html' as queues %}
+{% import 'dashboards/status/partials/nodetype_table.html' as nodetypes %}
+{% import 'dashboards/status/partials/no_data_message.html' as empty %}
+
+{% if casper_status %}
+<div class="card mb-3">
+    {{ header.system_header('<i class="fas fa-hdd"></i> Casper System Status', casper_status.timestamp) }}
+    <div class="card-body">
+        <!-- Login Nodes -->
+        <h6 class="mb-3"><i class="fas fa-desktop"></i> Login Nodes</h6>
+        {% if casper_login_nodes %}
+        {{ login.login_nodes_table(casper_login_nodes, has_node_type=false) }}
+        {% else %}
+        {# Fallback to old aggregate display #}
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="metric-card">
+                    <h6>Login Node Status</h6>
+                    <div class="value">
+                        {{ casper_status.login_nodes_available }} / {{ casper_status.login_nodes_total }} Available
+                    </div>
+                    {% if casper_status.login_total_users is not none %}
+                    <div class="text-muted mt-2">{{ casper_status.login_total_users }} total users</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="metric-card">
+                    <h6>Compute Nodes</h6>
+                    <div class="value">{{ casper_status.compute_nodes_available }} / {{ casper_status.compute_nodes_total }} Available</div>
+                    {% if casper_status.compute_nodes_down > 0 %}
+                    <div class="text-danger mt-2">{{ casper_status.compute_nodes_down }} nodes down</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Utilization -->
+        <h6 class="mb-3"><i class="fas fa-chart-bar"></i> Resource Utilization</h6>
+        {{ util.utilization_metrics(casper_status, show_gpus=true) }}
+
+        <!-- Jobs -->
+        <h6 class="mb-3"><i class="fas fa-tasks"></i> Job Statistics</h6>
+        {{ jobs.job_statistics(casper_status) }}
+
+        <!-- Node Types -->
+        {% if casper_node_types %}
+        <h6 class="mb-3"><i class="fas fa-server"></i> Node Type Status</h6>
+        {{ nodetypes.nodetype_table(casper_node_types) }}
+        {% endif %}
+
+        <!-- Queues -->
+        {% if casper_queues %}
+        <h6 class="mb-3 mt-4"><i class="fas fa-list"></i> Queue Status</h6>
+        {{ queues.queue_table(casper_queues, show_gpus=false) }}
+        {% endif %}
+    </div>
+</div>
+{% else %}
+{{ empty.no_data_message('No Casper status data available.') }}
+{% endif %}

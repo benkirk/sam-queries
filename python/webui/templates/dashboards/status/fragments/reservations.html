@@ -1,0 +1,24 @@
+<h5 class="mb-3"><i class="fas fa-calendar-alt"></i> Upcoming Maintenance &amp; Reservations</h5>
+{% for res in reservations %}
+<div class="card reservation-card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between">
+            <div>
+                <h6>
+                    <strong>{{ res.system_name|upper }}</strong> - {{ res.reservation_name }}
+                </h6>
+            </div>
+            <div class="text-muted">
+                {{ res.start_time.strftime('%Y-%m-%d %H:%M') }} - {{ res.end_time.strftime('%H:%M') }}
+            </div>
+        </div>
+        {% if res.description %}
+        <p class="mb-2">{{ res.description }}</p>
+        {% endif %}
+        <div class="text-muted small">
+            {% if res.node_count %}{{ res.node_count }} nodes{% endif %}
+            {% if res.partition %} - Partition: {{ res.partition }}{% endif %}
+        </div>
+    </div>
+</div>
+{% endfor %}

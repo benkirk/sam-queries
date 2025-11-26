@@ -1,0 +1,10 @@
+{% macro system_header(title, timestamp) %}
+<div class="card-header">
+    <h5>
+        {{ title|safe }}
+        <span class="float-right last-updated">
+            Last updated: {{ timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+        </span>
+    </h5>
+</div>
+{% endmacro %}

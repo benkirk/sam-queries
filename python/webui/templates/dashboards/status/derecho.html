@@ -1,0 +1,77 @@
+{% import 'dashboards/status/partials/system_header.html' as header %}
+{% import 'dashboards/status/partials/login_nodes_table.html' as login %}
+{% import 'dashboards/status/partials/node_status.html' as nodes %}
+{% import 'dashboards/status/partials/utilization_metrics.html' as util %}
+{% import 'dashboards/status/partials/job_statistics.html' as jobs %}
+{% import 'dashboards/status/partials/queue_table.html' as queues %}
+{% import 'dashboards/status/partials/filesystem_table.html' as fs %}
+{% import 'dashboards/status/partials/no_data_message.html' as empty %}
+
+{% if derecho_status %}
+<div class="card mb-3">
+    {{ header.system_header('<i class="fas fa-server"></i> Derecho System Status', derecho_status.timestamp) }}
+    <div class="card-body">
+        <!-- Login Nodes -->
+        <h6 class="mb-3"><i class="fas fa-desktop"></i> Login Nodes</h6>
+        {% if derecho_login_nodes %}
+        {{ login.login_nodes_table(derecho_login_nodes, has_node_type=true) }}
+        {% else %}
+        {# Fallback to old aggregate display #}
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="metric-card">
+                    <h6>CPU Login Nodes</h6>
+                    <div class="value">
+                        <span class="status-badge status-{{ 'online' if derecho_status.cpu_login_available else 'offline' }}">
+                            {{ 'Online' if derecho_status.cpu_login_available else 'Offline' }}
+                        </span>
+                    </div>
+                    {% if derecho_status.cpu_login_user_count is not none %}
+                    <div class="text-muted mt-2">{{ derecho_status.cpu_login_user_count }} users</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="metric-card">
+                    <h6>GPU Login Nodes</h6>
+                    <div class="value">
+                        <span class="status-badge status-{{ 'online' if derecho_status.gpu_login_available else 'offline' }}">
+                            {{ 'Online' if derecho_status.gpu_login_available else 'Offline' }}
+                        </span>
+                    </div>
+                    {% if derecho_status.gpu_login_user_count is not none %}
+                    <div class="text-muted mt-2">{{ derecho_status.gpu_login_user_count }} users</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Compute Nodes -->
+        <h6 class="mb-3"><i class="fas fa-server"></i> Compute Nodes</h6>
+        {{ nodes.node_status_table(derecho_status) }}
+
+        <!-- Utilization -->
+        <h6 class="mb-3"><i class="fas fa-chart-bar"></i> Resource Utilization</h6>
+        {{ util.utilization_metrics(derecho_status, show_gpus=true) }}
+
+        <!-- Jobs -->
+        <h6 class="mb-3"><i class="fas fa-tasks"></i> Job Statistics</h6>
+        {{ jobs.job_statistics(derecho_status) }}
+
+        <!-- Queues -->
+        {% if derecho_queues %}
+        <h6 class="mb-3"><i class="fas fa-list"></i> Queue Status</h6>
+        {{ queues.queue_table(derecho_queues, show_gpus=true) }}
+        {% endif %}
+
+        <!-- Filesystems -->
+        {% if derecho_filesystems %}
+        <h6 class="mb-3 mt-4"><i class="fas fa-database"></i> Filesystem Status</h6>
+        {{ fs.filesystem_table(derecho_filesystems) }}
+        {% endif %}
+    </div>
+</div>
+{% else %}
+{{ empty.no_data_message('No Derecho status data available.') }}
+{% endif %}

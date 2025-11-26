@@ -1,0 +1,48 @@
+{% macro login_nodes_table(login_nodes, has_node_type=false) %}
+{% if has_node_type %}
+    {# Derecho: Group by node type #}
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <h6 class="text-primary">CPU Login Nodes</h6>
+            {{ _render_login_table(login_nodes | selectattr('node_type', 'equalto', 'cpu') | list) }}
+        </div>
+        <div class="col-md-6">
+            <h6 class="text-primary">GPU Login Nodes</h6>
+            {{ _render_login_table(login_nodes | selectattr('node_type', 'equalto', 'gpu') | list) }}
+        </div>
+    </div>
+{% else %}
+    {# Casper: Single table #}
+    {{ _render_login_table(login_nodes) }}
+{% endif %}
+{% endmacro %}
+
+{% macro _render_login_table(nodes) %}
+<table class="table table-sm table-bordered">
+    <thead class="thead-light">
+        <tr>
+            <th>Node</th>
+            <th>Status</th>
+            <th>Users</th>
+            <th>Load (1min)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for node in nodes %}
+        <tr>
+            <td><code>{{ node.node_name }}</code></td>
+            <td>
+                <span class="status-badge status-{{ 'online' if node.available else 'offline' }}">
+                    {{ 'Online' if node.available else 'Offline' }}
+                </span>
+                {% if node.degraded %}
+                <span class="badge badge-warning">Degraded</span>
+                {% endif %}
+            </td>
+            <td>{{ node.user_count if node.user_count is not none else 'N/A' }}</td>
+            <td>{{ '%.2f'|format(node.load_1min) if node.load_1min is not none else 'N/A' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endmacro %}

@@ -1,0 +1,30 @@
+{% macro queue_table(queues, show_gpus=false) %}
+<div class="table-responsive">
+    <table class="table table-sm table-bordered queue-table">
+        <thead class="thead-light">
+            <tr>
+                <th>Queue</th>
+                <th>Running Jobs</th>
+                <th>Pending Jobs</th>
+                <th>Active Users</th>
+                <th>Cores Allocated</th>
+                {% if show_gpus %}<th>GPUs Allocated</th>{% endif %}
+                <th>Nodes Allocated</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for queue in queues %}
+            <tr>
+                <td><strong>{{ queue.queue_name }}</strong></td>
+                <td>{{ queue.running_jobs }}</td>
+                <td>{{ queue.pending_jobs }}</td>
+                <td>{{ queue.active_users }}</td>
+                <td>{{ '{:,}'.format(queue.cores_allocated) }}</td>
+                {% if show_gpus %}<td>{{ queue.gpus_allocated }}</td>{% endif %}
+                <td>{{ queue.nodes_allocated }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}

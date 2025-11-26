@@ -19,7 +19,8 @@ from system_status import (
     DerechoStatus, DerechoQueueStatus, DerechoFilesystemStatus,
     CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
     JupyterHubStatus,
-    SystemOutage, ResourceReservation
+    SystemOutage, ResourceReservation,
+    DerechoLoginNodeStatus, CasperLoginNodeStatus
 )
 
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
@@ -45,11 +46,15 @@ def index():
 
         derecho_queues = []
         derecho_filesystems = []
+        derecho_login_nodes = []
         if derecho_status:
             derecho_queues = session.query(DerechoQueueStatus).filter_by(
                 timestamp=derecho_status.timestamp
             ).all()
             derecho_filesystems = session.query(DerechoFilesystemStatus).filter_by(
+                timestamp=derecho_status.timestamp
+            ).all()
+            derecho_login_nodes = session.query(DerechoLoginNodeStatus).filter_by(
                 timestamp=derecho_status.timestamp
             ).all()
 
@@ -60,11 +65,15 @@ def index():
 
         casper_node_types = []
         casper_queues = []
+        casper_login_nodes = []
         if casper_status:
             casper_node_types = session.query(CasperNodeTypeStatus).filter_by(
                 timestamp=casper_status.timestamp
             ).all()
             casper_queues = session.query(CasperQueueStatus).filter_by(
+                timestamp=casper_status.timestamp
+            ).all()
+            casper_login_nodes = session.query(CasperLoginNodeStatus).filter_by(
                 timestamp=casper_status.timestamp
             ).all()
 
@@ -89,9 +98,11 @@ def index():
             derecho_status=derecho_status,
             derecho_queues=derecho_queues,
             derecho_filesystems=derecho_filesystems,
+            derecho_login_nodes=derecho_login_nodes,
             casper_status=casper_status,
             casper_node_types=casper_node_types,
             casper_queues=casper_queues,
+            casper_login_nodes=casper_login_nodes,
             jupyterhub_status=jupyterhub_status,
             outages=outages,
             reservations=reservations,
