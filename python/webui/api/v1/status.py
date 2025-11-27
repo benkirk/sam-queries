@@ -36,6 +36,8 @@ from system_status import (
     CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
     CasperLoginNodeStatus,
     JupyterHubStatus,
+    LoginNodeStatus,
+    QueueStatus,
     FilesystemStatus,
     SystemOutage, ResourceReservation
 )
@@ -45,6 +47,8 @@ from system_status.schemas.status import (
     CasperStatusSchema, CasperNodeTypeSchema, CasperQueueSchema,
     CasperLoginNodeSchema,
     JupyterHubStatusSchema,
+    LoginNodeSchema,
+    QueueSchema,
     SystemOutageSchema, ResourceReservationSchema,
 )
 
@@ -173,10 +177,11 @@ def ingest_derecho():
         if login_nodes:
             login_node_ids = []
             for node_data in login_nodes:
-                login_node = DerechoLoginNodeStatus(
+                login_node = LoginNodeStatus(
                     timestamp=timestamp,
                     node_name=node_data['node_name'],
                     node_type=node_data.get('node_type', 'cpu'),
+                    system_name='derecho',
                     available=node_data.get('available', True),
                     degraded=node_data.get('degraded', False),
                     user_count=node_data.get('user_count'),
@@ -194,9 +199,10 @@ def ingest_derecho():
         if queues:
             queue_ids = []
             for queue_data in queues:
-                queue_status = DerechoQueueStatus(
+                queue_status = QueueStatus(
                     timestamp=timestamp,
                     queue_name=queue_data['queue_name'],
+                    system_name='derecho',
                     running_jobs=queue_data.get('running_jobs', 0),
                     pending_jobs=queue_data.get('pending_jobs', 0),
                     held_jobs=queue_data.get('held_jobs', 0),
@@ -370,9 +376,11 @@ def ingest_casper():
         if login_nodes:
             login_node_ids = []
             for node_data in login_nodes:
-                login_node = CasperLoginNodeStatus(
+                login_node = LoginNodeStatus(
                     timestamp=timestamp,
                     node_name=node_data['node_name'],
+                    node_type='cpu',
+                    system_name='casper',
                     available=node_data.get('available', True),
                     degraded=node_data.get('degraded', False),
                     user_count=node_data.get('user_count'),
@@ -414,9 +422,10 @@ def ingest_casper():
         if queues:
             queue_ids = []
             for queue_data in queues:
-                queue_status = CasperQueueStatus(
+                queue_status = QueueStatus(
                     timestamp=timestamp,
                     queue_name=queue_data['queue_name'],
+                    system_name='casper',
                     running_jobs=queue_data.get('running_jobs', 0),
                     pending_jobs=queue_data.get('pending_jobs', 0),
                     held_jobs=queue_data.get('held_jobs', 0),
@@ -658,13 +667,15 @@ def get_derecho_latest():
             return jsonify({'message': 'No Derecho status data available'}), 404
 
         # Get login nodes for same timestamp
-        login_nodes = session.query(DerechoLoginNodeStatus).filter_by(
-            timestamp=status.timestamp
+        login_nodes = session.query(LoginNodeStatus).filter_by(
+            timestamp=status.timestamp,
+            system_name='derecho'
         ).all()
 
         # Get queues for same timestamp
-        queues = session.query(DerechoQueueStatus).filter_by(
-            timestamp=status.timestamp
+        queues = session.query(QueueStatus).filter_by(
+            timestamp=status.timestamp,
+            system_name='derecho'
         ).all()
 
         # Get filesystems for same timestamp (filter by system_name='derecho')
@@ -675,8 +686,8 @@ def get_derecho_latest():
 
         # Serialize with marshmallow schemas
         result = DerechoStatusSchema().dump(status)
-        result['login_nodes'] = DerechoLoginNodeSchema(many=True).dump(login_nodes)
-        result['queues'] = DerechoQueueSchema(many=True).dump(queues)
+        result['login_nodes'] = LoginNodeSchema(many=True).dump(login_nodes)
+        result['queues'] = QueueSchema(many=True).dump(queues)
         result['filesystems'] = FilesystemSchema(many=True).dump(filesystems)
 
         return jsonify(result), 200
@@ -705,8 +716,9 @@ def get_casper_latest():
             return jsonify({'message': 'No Casper status data available'}), 404
 
         # Get login nodes for same timestamp
-        login_nodes = session.query(CasperLoginNodeStatus).filter_by(
-            timestamp=status.timestamp
+        login_nodes = session.query(LoginNodeStatus).filter_by(
+            timestamp=status.timestamp,
+            system_name='casper'
         ).all()
 
         # Get node types for same timestamp
@@ -715,8 +727,9 @@ def get_casper_latest():
         ).all()
 
         # Get queues for same timestamp
-        queues = session.query(CasperQueueStatus).filter_by(
-            timestamp=status.timestamp
+        queues = session.query(QueueStatus).filter_by(
+            timestamp=status.timestamp,
+            system_name='casper'
         ).all()
 
         # Get filesystems for same timestamp (filter by system_name='casper')
@@ -727,9 +740,9 @@ def get_casper_latest():
 
         # Serialize with marshmallow schemas
         result = CasperStatusSchema().dump(status)
-        result['login_nodes'] = CasperLoginNodeSchema(many=True).dump(login_nodes)
+        result['login_nodes'] = LoginNodeSchema(many=True).dump(login_nodes)
         result['node_types'] = CasperNodeTypeSchema(many=True).dump(node_types)
-        result['queues'] = CasperQueueSchema(many=True).dump(queues)
+        result['queues'] = QueueSchema(many=True).dump(queues)
         result['filesystems'] = FilesystemSchema(many=True).dump(filesystems)
 
         return jsonify(result), 200

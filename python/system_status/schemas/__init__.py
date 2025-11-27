@@ -39,7 +39,9 @@ class BaseSchema(SQLAlchemyAutoSchema):
 from .status import (
     DerechoStatusSchema,
     DerechoQueueSchema,
+    LoginNodeSchema,
     FilesystemSchema,
+    QueueSchema,
     DerechoLoginNodeSchema,
     CasperStatusSchema,
     CasperNodeTypeSchema,
@@ -55,6 +57,8 @@ __all__ = [
     # System Status schemas
     'DerechoStatusSchema',
     'DerechoQueueSchema',
+    'FilesystemSchema',
+    'LoginNodeSchema',
     'FilesystemSchema',
     'DerechoLoginNodeSchema',
     'CasperStatusSchema',

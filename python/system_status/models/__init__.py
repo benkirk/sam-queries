@@ -6,8 +6,9 @@ from .derecho import DerechoStatus, DerechoQueueStatus
 from .casper import CasperStatus, CasperNodeTypeStatus, CasperQueueStatus
 from .jupyterhub import JupyterHubStatus
 from .outages import SystemOutage, ResourceReservation
-from .login_nodes import DerechoLoginNodeStatus, CasperLoginNodeStatus
+from .login_nodes import LoginNodeStatus, DerechoLoginNodeStatus, CasperLoginNodeStatus
 from .filesystems import FilesystemStatus
+from .queues import QueueStatus
 
 __all__ = [
     # Derecho
@@ -25,7 +26,9 @@ __all__ = [
     'JupyterHubStatus',
 
     # Common
+    'LoginNodeStatus',
     'FilesystemStatus',
+    'QueueStatus',
 
     # Support
     'SystemOutage',

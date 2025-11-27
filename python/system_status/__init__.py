@@ -11,6 +11,8 @@ from .models import (
     CasperLoginNodeStatus,
     JupyterHubStatus,
     FilesystemStatus,
+    LoginNodeStatus,
+    QueueStatus,
     SystemOutage, ResourceReservation
 )
 
@@ -35,6 +37,8 @@ __all__ = [
     'CasperLoginNodeStatus',
     'JupyterHubStatus',
     'FilesystemStatus',
+    'LoginNodeStatus',
+    'QueueStatus',
     'SystemOutage',
     'ResourceReservation',
 ]
