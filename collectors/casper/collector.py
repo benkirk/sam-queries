@@ -23,6 +23,7 @@ from parsers.nodes import NodeParser
 from parsers.jobs import JobParser
 from parsers.queues import QueueParser
 from parsers.filesystems import FilesystemParser
+from parsers.reservations import ReservationParser
 from ssh_utils import LoginNodeCollector
 
 
@@ -194,6 +195,19 @@ class CasperCollector:
         except Exception as e:
             self.logger.error(f"Failed to collect filesystem data: {e}")
             data['filesystems'] = []
+
+        # Collect reservation data
+        try:
+            self.logger.info("Collecting reservation data...")
+            rstat_output = self.pbs.get_reservations()
+            data['reservations'] = ReservationParser.parse_reservations(
+                rstat_output,
+                'casper'
+            )
+            self.logger.info(f"  Reservations: {len(data['reservations'])} active")
+        except Exception as e:
+            self.logger.error(f"Failed to collect reservation data: {e}")
+            data['reservations'] = []
 
         return data
 

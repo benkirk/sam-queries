@@ -109,6 +109,7 @@ def ingest_derecho():
         - login_nodes (optional): List of login node status dicts
         - queues (optional): List of queue status dicts
         - filesystems (optional): List of filesystem status dicts
+        - reservations (optional): List of reservation dicts
 
     Returns:
         JSON with success status and created record IDs
@@ -229,6 +230,47 @@ def ingest_derecho():
                 fs_ids.append(fs_status.fs_status_id)
             result['filesystem_ids'] = fs_ids
 
+        # Handle reservation status if provided
+        reservations = data.get('reservations', [])
+        if reservations:
+            from sqlalchemy import and_
+
+            reservation_ids = []
+            for resv_data in reservations:
+                # Upsert logic: check if reservation exists
+                existing = session.query(ResourceReservation).filter(
+                    and_(
+                        ResourceReservation.system_name == 'derecho',
+                        ResourceReservation.reservation_name == resv_data['reservation_name']
+                    )
+                ).first()
+
+                if existing:
+                    # Update existing reservation
+                    existing.description = resv_data.get('description')
+                    existing.start_time = datetime.fromisoformat(resv_data['start_time'])
+                    existing.end_time = datetime.fromisoformat(resv_data['end_time'])
+                    existing.node_count = resv_data.get('node_count')
+                    existing.partition = resv_data.get('partition')
+                    existing.updated_at = datetime.now()
+                    reservation_ids.append(existing.reservation_id)
+                else:
+                    # Insert new reservation
+                    resv = ResourceReservation(
+                        system_name='derecho',
+                        reservation_name=resv_data['reservation_name'],
+                        description=resv_data.get('description'),
+                        start_time=datetime.fromisoformat(resv_data['start_time']),
+                        end_time=datetime.fromisoformat(resv_data['end_time']),
+                        node_count=resv_data.get('node_count'),
+                        partition=resv_data.get('partition'),
+                    )
+                    session.add(resv)
+                    session.flush()
+                    reservation_ids.append(resv.reservation_id)
+
+            result['reservation_ids'] = reservation_ids
+
         session.commit()
         return jsonify(result), 201
 
@@ -254,6 +296,7 @@ def ingest_casper():
         - login_nodes (optional): List of login node status dicts
         - node_types (optional): List of node type status dicts
         - queues (optional): List of queue status dicts
+        - reservations (optional): List of reservation dicts
 
     Returns:
         JSON with success status and created record IDs
@@ -406,6 +449,47 @@ def ingest_casper():
                 session.flush()
                 fs_ids.append(fs_status.fs_status_id)
             result['filesystem_ids'] = fs_ids
+
+        # Handle reservation status if provided
+        reservations = data.get('reservations', [])
+        if reservations:
+            from sqlalchemy import and_
+
+            reservation_ids = []
+            for resv_data in reservations:
+                # Upsert logic: check if reservation exists
+                existing = session.query(ResourceReservation).filter(
+                    and_(
+                        ResourceReservation.system_name == 'casper',
+                        ResourceReservation.reservation_name == resv_data['reservation_name']
+                    )
+                ).first()
+
+                if existing:
+                    # Update existing reservation
+                    existing.description = resv_data.get('description')
+                    existing.start_time = datetime.fromisoformat(resv_data['start_time'])
+                    existing.end_time = datetime.fromisoformat(resv_data['end_time'])
+                    existing.node_count = resv_data.get('node_count')
+                    existing.partition = resv_data.get('partition')
+                    existing.updated_at = datetime.now()
+                    reservation_ids.append(existing.reservation_id)
+                else:
+                    # Insert new reservation
+                    resv = ResourceReservation(
+                        system_name='casper',
+                        reservation_name=resv_data['reservation_name'],
+                        description=resv_data.get('description'),
+                        start_time=datetime.fromisoformat(resv_data['start_time']),
+                        end_time=datetime.fromisoformat(resv_data['end_time']),
+                        node_count=resv_data.get('node_count'),
+                        partition=resv_data.get('partition'),
+                    )
+                    session.add(resv)
+                    session.flush()
+                    reservation_ids.append(resv.reservation_id)
+
+            result['reservation_ids'] = reservation_ids
 
         session.commit()
         return jsonify(result), 201
