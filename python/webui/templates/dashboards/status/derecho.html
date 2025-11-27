@@ -65,6 +65,34 @@
         {{ queues.queue_table(derecho_queues, show_gpus=true) }}
         {% endif %}
 
+        <!-- Reservations -->
+        {% set derecho_reservations = reservations|selectattr('system_name', 'equalto', 'derecho')|list %}
+        {% if derecho_reservations %}
+        <h6 class="mb-3 mt-4"><i class="fas fa-calendar-alt"></i> Upcoming Maintenance &amp; Reservations</h6>
+        {% for res in derecho_reservations %}
+        <div class="alert alert-warning mb-3" role="alert">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h6 class="alert-heading mb-2">
+                        <i class="fas fa-wrench"></i> {{ res.reservation_name }}
+                    </h6>
+                    {% if res.description %}
+                    <p class="mb-2">{{ res.description }}</p>
+                    {% endif %}
+                    <div class="small text-muted">
+                        {% if res.node_count %}{{ res.node_count }} nodes{% endif %}
+                        {% if res.partition %} - Partition: {{ res.partition }}{% endif %}
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div class="fw-bold">{{ res.start_time.strftime('%Y-%m-%d') }}</div>
+                    <div class="small">{{ res.start_time.strftime('%H:%M') }} - {{ res.end_time.strftime('%H:%M') }}</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
         <!-- Filesystems -->
         {% if derecho_filesystems %}
         <h6 class="mb-3 mt-4"><i class="fas fa-database"></i> Filesystem Status</h6>
