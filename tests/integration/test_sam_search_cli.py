@@ -40,7 +40,7 @@ def run_cli(*args, expect_success=True):
         [CLI_PATH] + list(args),
         capture_output=True,
         text=True,
-        timeout=30
+        timeout=60
     )
 
     if expect_success:

@@ -29,21 +29,53 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="col-md-6">
+        </div>
+        {% endif %}
+
+        <!-- Compute Nodes by Type -->
+        <h6 class="mb-3"><i class="fas fa-server"></i> Compute Nodes</h6>
+        <div class="row mb-4">
+            <div class="col-md-4">
                 <div class="metric-card">
-                    <h6>Compute Nodes</h6>
-                    <div class="value">{{ casper_status.compute_nodes_available }} / {{ casper_status.compute_nodes_total }} Available</div>
-                    {% if casper_status.compute_nodes_down > 0 %}
-                    <div class="text-danger mt-2">{{ casper_status.compute_nodes_down }} nodes down</div>
+                    <h6>CPU Nodes</h6>
+                    <div class="value">{{ casper_status.cpu_nodes_available }} / {{ casper_status.cpu_nodes_total }} Available</div>
+                    {% if casper_status.cpu_nodes_down > 0 %}
+                    <div class="text-danger mt-2">{{ casper_status.cpu_nodes_down }} nodes down</div>
+                    {% endif %}
+                    {% if casper_status.cpu_nodes_reserved > 0 %}
+                    <div class="text-warning mt-1">{{ casper_status.cpu_nodes_reserved }} nodes reserved</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>GPU Nodes</h6>
+                    <div class="value">{{ casper_status.gpu_nodes_available }} / {{ casper_status.gpu_nodes_total }} Available</div>
+                    {% if casper_status.gpu_nodes_down > 0 %}
+                    <div class="text-danger mt-2">{{ casper_status.gpu_nodes_down }} nodes down</div>
+                    {% endif %}
+                    {% if casper_status.gpu_nodes_reserved > 0 %}
+                    <div class="text-warning mt-1">{{ casper_status.gpu_nodes_reserved }} nodes reserved</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>VIZ Nodes</h6>
+                    <div class="value">{{ casper_status.viz_nodes_available }} / {{ casper_status.viz_nodes_total }} Available</div>
+                    {% if casper_status.viz_nodes_down > 0 %}
+                    <div class="text-danger mt-2">{{ casper_status.viz_nodes_down }} nodes down</div>
+                    {% endif %}
+                    {% if casper_status.viz_nodes_reserved > 0 %}
+                    <div class="text-warning mt-1">{{ casper_status.viz_nodes_reserved }} nodes reserved</div>
                     {% endif %}
                 </div>
             </div>
         </div>
-        {% endif %}
 
         <!-- Utilization -->
         <h6 class="mb-3"><i class="fas fa-chart-bar"></i> Resource Utilization</h6>
-        {{ util.utilization_metrics(casper_status, show_gpus=true) }}
+        {{ util.utilization_metrics(casper_status, show_gpus=true, show_viz=true) }}
 
         <!-- Jobs -->
         <h6 class="mb-3"><i class="fas fa-tasks"></i> Job Statistics</h6>
@@ -57,8 +89,36 @@
 
         <!-- Queues -->
         {% if casper_queues %}
-        <h6 class="mb-3 mt-4"><i class="fas fa-list"></i> Queue Status</h6>
-        {{ queues.queue_table(casper_queues, show_gpus=false) }}
+        <h6 class="mb-3"><i class="fas fa-list"></i> Queue Status</h6>
+        {{ queues.queue_table(casper_queues, show_gpus=true) }}
+        {% endif %}
+
+        <!-- Reservations -->
+        {% set casper_reservations = reservations|selectattr('system_name', 'equalto', 'casper')|list %}
+        {% if casper_reservations %}
+        <h6 class="mb-3 mt-4"><i class="fas fa-calendar-alt"></i> Upcoming Maintenance &amp; Reservations</h6>
+        {% for res in casper_reservations %}
+        <div class="alert alert-warning mb-3" role="alert">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h6 class="alert-heading mb-2">
+                        <i class="fas fa-wrench"></i> {{ res.reservation_name }}
+                    </h6>
+                    {% if res.description %}
+                    <p class="mb-2">{{ res.description }}</p>
+                    {% endif %}
+                    <div class="small text-muted">
+                        {% if res.node_count %}{{ res.node_count }} nodes{% endif %}
+                        {% if res.partition %} - Partition: {{ res.partition }}{% endif %}
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div class="fw-bold">{{ res.start_time.strftime('%Y-%m-%d') }}</div>
+                    <div class="small">{{ res.start_time.strftime('%H:%M') }} - {{ res.end_time.strftime('%H:%M') }}</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
         {% endif %}
 
         <!-- Filesystems -->

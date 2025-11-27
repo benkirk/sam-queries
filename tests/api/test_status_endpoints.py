@@ -204,12 +204,38 @@ class TestCasperPost:
     def test_post_casper_with_login_nodes(self, auth_client, status_session):
         """Test posting Casper status with login nodes array."""
         data = {
-            'compute_nodes_total': 260,
-            'compute_nodes_available': 185,
-            'compute_nodes_down': 3,
+            # CPU nodes
+            'cpu_nodes_total': 151,
+            'cpu_nodes_available': 135,
+            'cpu_nodes_down': 3,
+            'cpu_nodes_reserved': 10,
+            'cpu_cores_total': 9556,
+            'cpu_cores_allocated': 3200,
+            'cpu_cores_idle': 6356,
             'cpu_utilization_percent': 68.5,
+            # GPU nodes
+            'gpu_nodes_total': 22,
+            'gpu_nodes_available': 17,
+            'gpu_nodes_down': 2,
+            'gpu_nodes_reserved': 3,
+            'gpu_count_total': 102,
+            'gpu_count_allocated': 60,
+            'gpu_count_idle': 42,
             'gpu_utilization_percent': 82.3,
+            # VIZ nodes
+            'viz_nodes_total': 15,
+            'viz_nodes_available': 15,
+            'viz_nodes_down': 0,
+            'viz_nodes_reserved': 0,
+            'viz_count_total': 96,
+            'viz_count_allocated': 4,
+            'viz_count_idle': 92,
+            'viz_utilization_percent': 4.2,
+            # Memory
+            'memory_total_gb': 112413.0,
+            'memory_allocated_gb': 55826.0,
             'memory_utilization_percent': 71.2,
+            # Jobs
             'running_jobs': 456,
             'pending_jobs': 89,
             'active_users': 92,
@@ -357,12 +383,38 @@ class TestCasperGet:
         # Create main status
         status = CasperStatus(
             timestamp=timestamp,
-            compute_nodes_total=260,
-            compute_nodes_available=185,
-            compute_nodes_down=3,
+            # CPU nodes
+            cpu_nodes_total=151,
+            cpu_nodes_available=135,
+            cpu_nodes_down=3,
+            cpu_nodes_reserved=10,
+            cpu_cores_total=9556,
+            cpu_cores_allocated=3200,
+            cpu_cores_idle=6356,
             cpu_utilization_percent=68.5,
+            # GPU nodes
+            gpu_nodes_total=22,
+            gpu_nodes_available=17,
+            gpu_nodes_down=2,
+            gpu_nodes_reserved=3,
+            gpu_count_total=102,
+            gpu_count_allocated=60,
+            gpu_count_idle=42,
             gpu_utilization_percent=82.3,
+            # VIZ nodes
+            viz_nodes_total=15,
+            viz_nodes_available=15,
+            viz_nodes_down=0,
+            viz_nodes_reserved=0,
+            viz_count_total=96,
+            viz_count_allocated=4,
+            viz_count_idle=92,
+            viz_utilization_percent=4.2,
+            # Memory
+            memory_total_gb=112413.0,
+            memory_allocated_gb=55826.0,
             memory_utilization_percent=71.2,
+            # Jobs
             running_jobs=456,
             pending_jobs=89,
             active_users=92,
@@ -393,7 +445,9 @@ class TestCasperGet:
         data = response.get_json()
 
         # Check main status fields
-        assert data['compute_nodes_total'] == 260
+        assert data['cpu_nodes_total'] == 151
+        assert data['gpu_nodes_total'] == 22
+        assert data['viz_nodes_total'] == 15
         assert data['running_jobs'] == 456
 
         # Check login nodes array

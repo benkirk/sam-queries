@@ -159,11 +159,32 @@ def ingest_mock_data():
 
         casper_status = CasperStatus(
             timestamp=timestamp,
-            compute_nodes_total=casper_data['compute_nodes_total'],
-            compute_nodes_available=casper_data['compute_nodes_available'],
-            compute_nodes_down=casper_data['compute_nodes_down'],
+            cpu_nodes_total=casper_data['cpu_nodes_total'],
+            cpu_nodes_available=casper_data['cpu_nodes_available'],
+            cpu_nodes_down=casper_data['cpu_nodes_down'],
+            cpu_nodes_reserved=casper_data['cpu_nodes_reserved'],
+            gpu_nodes_total=casper_data['gpu_nodes_total'],
+            gpu_nodes_available=casper_data['gpu_nodes_available'],
+            gpu_nodes_down=casper_data['gpu_nodes_down'],
+            gpu_nodes_reserved=casper_data['gpu_nodes_reserved'],
+            viz_nodes_total=casper_data['viz_nodes_total'],
+            viz_nodes_available=casper_data['viz_nodes_available'],
+            viz_nodes_down=casper_data['viz_nodes_down'],
+            viz_nodes_reserved=casper_data['viz_nodes_reserved'],
+            cpu_cores_total=casper_data['cpu_cores_total'],
+            cpu_cores_allocated=casper_data['cpu_cores_allocated'],
+            cpu_cores_idle=casper_data['cpu_cores_idle'],
             cpu_utilization_percent=casper_data['cpu_utilization_percent'],
+            gpu_count_total=casper_data['gpu_count_total'],
+            gpu_count_allocated=casper_data['gpu_count_allocated'],
+            gpu_count_idle=casper_data['gpu_count_idle'],
             gpu_utilization_percent=casper_data['gpu_utilization_percent'],
+            viz_count_total=casper_data['viz_count_total'],
+            viz_count_allocated=casper_data['viz_count_allocated'],
+            viz_count_idle=casper_data['viz_count_idle'],
+            viz_utilization_percent=casper_data['viz_utilization_percent'],
+            memory_total_gb=casper_data['memory_total_gb'],
+            memory_allocated_gb=casper_data['memory_allocated_gb'],
             memory_utilization_percent=casper_data['memory_utilization_percent'],
             running_jobs=casper_data['running_jobs'],
             pending_jobs=casper_data['pending_jobs'],
@@ -269,18 +290,40 @@ def ingest_mock_data():
 
         # Reservations
         print("\n5. Ingesting reservations...")
-        for res_data in mock_data['reservations']:
+        # Make reservations upcoming by offsetting to future dates
+        # This ensures they appear in the dashboard (which filters for end_time >= now)
+        from datetime import timedelta
+        now = datetime.now()
+
+        for idx, res_data in enumerate(mock_data['reservations']):
+            # Parse original times to get time-of-day
+            orig_start = parse_timestamp(res_data['start_time'])
+            orig_end = parse_timestamp(res_data['end_time'])
+
+            # Calculate duration
+            duration = orig_end - orig_start
+
+            # Offset to future: first reservation is tomorrow, second is next week
+            days_offset = 1 if idx == 0 else 7
+            new_start = now.replace(
+                hour=orig_start.hour,
+                minute=orig_start.minute,
+                second=0,
+                microsecond=0
+            ) + timedelta(days=days_offset)
+            new_end = new_start + duration
+
             reservation = ResourceReservation(
                 system_name=res_data['system_name'],
                 reservation_name=res_data['reservation_name'],
                 description=res_data['description'],
-                start_time=parse_timestamp(res_data['start_time']),
-                end_time=parse_timestamp(res_data['end_time']),
+                start_time=new_start,
+                end_time=new_end,
                 node_count=res_data['node_count'],
                 partition=res_data['partition'],
             )
             session.add(reservation)
-            print(f"   ✓ Reservation: {res_data['reservation_name']}")
+            print(f"   ✓ Reservation: {res_data['reservation_name']} ({new_start.strftime('%Y-%m-%d %H:%M')})")
 
         # Commit all changes
         print("\nCommitting to database...")

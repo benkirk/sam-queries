@@ -1,0 +1,12 @@
+system_name: casper
+pbs_host: casper
+
+login_nodes:
+  - name: casper-login1
+  - name: casper-login2
+
+filesystems:
+  - /glade/u/home
+  - /glade/u/apps
+  - /glade/work
+  - /glade/campaign

@@ -9,7 +9,7 @@ set -e
 ssh derecho "qstat -Qa"
 
 # full listing of all compute nodes and status
-ssh derecho "pbsnodes -aSj -F json"
+ssh derecho "pbsnodes -aj -F json"
 
 # full details of running and queued jobs
 ssh derecho "qstat -f -F json"
@@ -32,7 +32,7 @@ ssh derecho "pbs_rstat -f"
 ssh casper "qstat -Qa"
 
 # full listing of all compute nodes and status
-ssh casper "pbsnodes -aSj -F json"
+ssh casper "pbsnodes -aj -F json"
 
 # full details of running and queued jobs
 ssh casper "qstat -f -F json"

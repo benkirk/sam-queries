@@ -1,0 +1,27 @@
+system_name: derecho
+pbs_host: derecho
+
+login_nodes:
+  - name: derecho1
+    type: cpu
+  - name: derecho2
+    type: cpu
+  - name: derecho3
+    type: gpu
+  - name: derecho4
+    type: cpu
+  - name: derecho5
+    type: cpu
+  - name: derecho6
+    type: cpu
+  - name: derecho7
+    type: gpu
+  - name: derecho8
+    type: cpu
+
+filesystems:
+  - /glade/u/home
+  - /glade/u/apps
+  - /glade/work
+  - /glade/campaign
+  - /glade/derecho/scratch
