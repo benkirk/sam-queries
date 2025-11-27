@@ -1,18 +1,24 @@
 {% macro job_statistics(status) %}
 <div class="row mb-4">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="metric-card">
             <h6>Running Jobs</h6>
             <div class="value">{{ status.running_jobs }}</div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="metric-card">
             <h6>Pending Jobs</h6>
             <div class="value">{{ status.pending_jobs }}</div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
+        <div class="metric-card">
+            <h6>Held Jobs</h6>
+            <div class="value">{{ status.held_jobs }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
         <div class="metric-card">
             <h6>Active Users</h6>
             <div class="value">{{ status.active_users }}</div>
