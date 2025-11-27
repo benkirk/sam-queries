@@ -1,5 +1,9 @@
 """
 SSH utilities for login node collection.
+
+Now uses parallel execution via ThreadPoolExecutor for significant speedup.
+Sequential: ~2-3s per node × 8 nodes = ~20s
+Parallel: ~2-3s total for all nodes
 """
 
 import logging
@@ -8,12 +12,14 @@ from typing import List, Dict
 
 try:
     from .exceptions import SSHError
+    from .parallel_ssh import ParallelSSHCollector
 except ImportError:
     from exceptions import SSHError
+    from parallel_ssh import ParallelSSHCollector
 
 
 class LoginNodeCollector:
-    """Collect login node metrics via SSH."""
+    """Collect login node metrics via SSH in parallel."""
 
     def __init__(self, base_host: str, timeout: int = 10):
         self.base_host = base_host
@@ -22,7 +28,7 @@ class LoginNodeCollector:
 
     def collect_login_node_data(self, login_nodes: List[dict]) -> List[dict]:
         """
-        Collect metrics from all login nodes.
+        Collect metrics from all login nodes in parallel.
 
         Args:
             login_nodes: List of dicts with 'name' and optionally 'type'
@@ -31,41 +37,68 @@ class LoginNodeCollector:
         Returns:
             List of login node status dicts
         """
-        results = []
+        # Create parallel collector
+        parallel_collector = ParallelSSHCollector(
+            self.base_host,
+            timeout=self.timeout,
+            max_workers=10
+        )
 
-        for node_info in login_nodes:
-            # Handle both dict and string formats
-            if isinstance(node_info, dict):
-                node_name = node_info['name']
-                node_type = node_info.get('type')
-            else:
-                node_name = node_info
-                node_type = None
+        # Run all node collections in parallel
+        return parallel_collector.run_parallel(
+            login_nodes,
+            self._collect_single_node_safe
+        )
 
-            try:
-                data = self._collect_single_node(node_name)
-                data['node_name'] = node_name
-                if node_type:
-                    data['node_type'] = node_type
-                results.append(data)
-                self.logger.debug(f"Collected from {node_name}: users={data['user_count']}, load={data['load_1min']}")
-            except Exception as e:
-                self.logger.warning(f"Failed to collect from {node_name}: {e}")
-                # Add degraded entry
-                entry = {
-                    'node_name': node_name,
-                    'available': False,
-                    'degraded': True,
-                    'user_count': None,
-                    'load_1min': None,
-                    'load_5min': None,
-                    'load_15min': None,
-                }
-                if node_type:
-                    entry['node_type'] = node_type
-                results.append(entry)
+    def _collect_single_node_safe(self, node_info: dict) -> dict:
+        """
+        Wrapper that handles errors and returns degraded entry on failure.
 
-        return results
+        This is called by the parallel executor for each node. It handles
+        exceptions gracefully and returns a degraded entry if collection fails.
+
+        Args:
+            node_info: Dict with 'name' and optionally 'type'
+
+        Returns:
+            Node status dict (success or degraded)
+        """
+        # Handle both dict and string formats
+        if isinstance(node_info, dict):
+            node_name = node_info['name']
+            node_type = node_info.get('type')
+        else:
+            node_name = node_info
+            node_type = None
+
+        try:
+            # Collect data from single node
+            data = self._collect_single_node(node_name)
+            data['node_name'] = node_name
+            if node_type:
+                data['node_type'] = node_type
+
+            self.logger.debug(
+                f"Collected from {node_name}: users={data['user_count']}, "
+                f"load={data['load_1min']}"
+            )
+            return data
+
+        except Exception as e:
+            self.logger.warning(f"Failed to collect from {node_name}: {e}")
+            # Return degraded entry
+            entry = {
+                'node_name': node_name,
+                'available': False,
+                'degraded': True,
+                'user_count': None,
+                'load_1min': None,
+                'load_5min': None,
+                'load_15min': None,
+            }
+            if node_type:
+                entry['node_type'] = node_type
+            return entry
 
     def _collect_single_node(self, node_name: str) -> dict:
         """Collect metrics from a single login node."""

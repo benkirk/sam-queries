@@ -6,5 +6,7 @@ login_nodes:
   - name: casper-login2
 
 filesystems:
-  - glade
-  - campaign
+  - /glade/u/home
+  - /glade/u/apps
+  - /glade/work
+  - /glade/campaign

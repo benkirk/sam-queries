@@ -20,6 +20,8 @@ login_nodes:
     type: cpu
 
 filesystems:
-  - glade
-  - campaign
-  - derecho_scratch
+  - /glade/u/home
+  - /glade/u/apps
+  - /glade/work
+  - /glade/campaign
+  - /glade/derecho/scratch

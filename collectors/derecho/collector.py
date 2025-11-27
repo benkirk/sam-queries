@@ -132,11 +132,9 @@ class DerechoCollector:
         # Collect filesystem data
         try:
             self.logger.info("Collecting filesystem data...")
-            # Use -h for human readable, then parse the output
-            df_cmd = "df -h /glade/u/home /glade/work /glade/campaign /glade/derecho/scratch"
-            df_output = self.pbs.run_command(df_cmd)
-            data['filesystems'] = FilesystemParser.parse_filesystems(
-                df_output, self.config.filesystems
+            data['filesystems'] = FilesystemParser.collect_and_parse(
+                self.pbs,
+                self.config.filesystems
             )
             self.logger.info(f"  Filesystems: {len(data['filesystems'])} tracked")
         except Exception as e:
