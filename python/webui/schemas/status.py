@@ -94,6 +94,7 @@ class DerechoQueueSchema(Schema):
     queue_name = fields.Str()
     running_jobs = fields.Int(allow_none=True)
     pending_jobs = fields.Int(allow_none=True)
+    held_jobs = fields.Int(allow_none=True)
     active_users = fields.Int(allow_none=True)
     cores_allocated = fields.Int(allow_none=True)
     gpus_allocated = fields.Int(allow_none=True)
@@ -143,6 +144,7 @@ class DerechoStatusSchema(Schema):
     # Jobs
     running_jobs = fields.Int(allow_none=True)
     pending_jobs = fields.Int(allow_none=True)
+    held_jobs = fields.Int(allow_none=True)
     active_users = fields.Int(allow_none=True)
 
 
@@ -173,6 +175,7 @@ class CasperQueueSchema(Schema):
     queue_name = fields.Str()
     running_jobs = fields.Int(allow_none=True)
     pending_jobs = fields.Int(allow_none=True)
+    held_jobs = fields.Int(allow_none=True)
     active_users = fields.Int(allow_none=True)
     cores_allocated = fields.Int(allow_none=True)
     nodes_allocated = fields.Int(allow_none=True)
@@ -233,6 +236,7 @@ class CasperStatusSchema(Schema):
     # Jobs
     running_jobs = fields.Int(allow_none=True)
     pending_jobs = fields.Int(allow_none=True)
+    held_jobs = fields.Int(allow_none=True)
     active_users = fields.Int(allow_none=True)
 
 

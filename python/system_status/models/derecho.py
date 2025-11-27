@@ -53,6 +53,7 @@ class DerechoStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     # Jobs
     running_jobs = Column(Integer, nullable=False, default=0)
     pending_jobs = Column(Integer, nullable=False, default=0)
+    held_jobs = Column(Integer, nullable=False, default=0)
     active_users = Column(Integer, nullable=False, default=0)
 
 
@@ -73,6 +74,7 @@ class DerechoQueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     # Queue Metrics
     running_jobs = Column(Integer, nullable=False, default=0)
     pending_jobs = Column(Integer, nullable=False, default=0)
+    held_jobs = Column(Integer, nullable=False, default=0)
     active_users = Column(Integer, nullable=False, default=0)
 
     # Resource Allocations

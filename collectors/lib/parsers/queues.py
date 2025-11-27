@@ -48,6 +48,7 @@ class QueueParser:
                     'queue_name': queue,
                     'running_jobs': 0,
                     'pending_jobs': 0,
+                    'held_jobs' : 0,
                     'active_users': set(),
                     'cores_allocated': 0,
                     'gpus_allocated': 0,
@@ -71,6 +72,9 @@ class QueueParser:
                             queues[queue]['nodes_allocated'].add(node_name)
             elif state == 'Q':  # Queued
                 queues[queue]['pending_jobs'] += 1
+
+            elif state == 'H':  # Held
+                queues[queue]['held_jobs'] += 1
 
             if user:
                 queues[queue]['active_users'].add(user)

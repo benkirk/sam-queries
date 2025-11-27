@@ -158,14 +158,14 @@ class CasperCollector:
             data['queues'] = QueueParser.parse_queues(queue_summary, jobs_json)
 
             self.logger.info(
-                f"  Jobs: {job_stats['running_jobs']} running, "
-                f"{job_stats['pending_jobs']} pending"
+                f"  Jobs: {job_stats['running_jobs']} running, {job_stats['pending_jobs']} pending, {job_stats['held_jobs']} held"
             )
         except Exception as e:
             self.logger.error(f"Failed to collect job data: {e}")
             data.update({
                 'running_jobs': 0,
                 'pending_jobs': 0,
+                'held_jobs': 0,
                 'active_users': 0,
                 'queues': []
             })

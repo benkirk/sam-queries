@@ -154,6 +154,7 @@ def ingest_derecho():
             # Jobs
             running_jobs=data.get('running_jobs', 0),
             pending_jobs=data.get('pending_jobs', 0),
+            held_jobs=data.get('held_jobs', 0),
             active_users=data.get('active_users', 0),
         )
         session.add(derecho_status)
@@ -197,6 +198,7 @@ def ingest_derecho():
                     queue_name=queue_data['queue_name'],
                     running_jobs=queue_data.get('running_jobs', 0),
                     pending_jobs=queue_data.get('pending_jobs', 0),
+                    held_jobs=queue_data.get('held_jobs', 0),
                     active_users=queue_data.get('active_users', 0),
                     cores_allocated=queue_data.get('cores_allocated', 0),
                     gpus_allocated=queue_data.get('gpus_allocated', 0),
@@ -307,6 +309,7 @@ def ingest_casper():
             # Jobs
             running_jobs=data.get('running_jobs', 0),
             pending_jobs=data.get('pending_jobs', 0),
+            held_jobs=data.get('held_jobs', 0),
             active_users=data.get('active_users', 0),
         )
         session.add(casper_status)
@@ -373,6 +376,7 @@ def ingest_casper():
                     queue_name=queue_data['queue_name'],
                     running_jobs=queue_data.get('running_jobs', 0),
                     pending_jobs=queue_data.get('pending_jobs', 0),
+                    held_jobs=queue_data.get('held_jobs', 0),
                     active_users=queue_data.get('active_users', 0),
                     cores_allocated=queue_data.get('cores_allocated', 0),
                     gpus_allocated=queue_data.get('gpus_allocated', 0),

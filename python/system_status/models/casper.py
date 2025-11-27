@@ -63,6 +63,7 @@ class CasperStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     # Jobs (Aggregate)
     running_jobs = Column(Integer, nullable=False, default=0)
     pending_jobs = Column(Integer, nullable=False, default=0)
+    held_jobs = Column(Integer, nullable=False, default=0)
     active_users = Column(Integer, nullable=False, default=0)
 
 
@@ -114,6 +115,7 @@ class CasperQueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     # Queue Metrics
     running_jobs = Column(Integer, nullable=False, default=0)
     pending_jobs = Column(Integer, nullable=False, default=0)
+    held_jobs = Column(Integer, nullable=False, default=0)
     active_users = Column(Integer, nullable=False, default=0)
 
     # Resource Allocations

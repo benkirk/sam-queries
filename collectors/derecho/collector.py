@@ -99,8 +99,7 @@ class DerechoCollector:
             job_stats = JobParser.parse_jobs(jobs_json)
             data.update(job_stats)
             self.logger.info(
-                f"  Jobs: {job_stats['running_jobs']} running, "
-                f"{job_stats['pending_jobs']} pending"
+                f"  Jobs: {job_stats['running_jobs']} running, {job_stats['pending_jobs']} pending, {job_stats['held_jobs']} held"
             )
 
             # Parse queues
@@ -112,6 +111,7 @@ class DerechoCollector:
             data.update({
                 'running_jobs': 0,
                 'pending_jobs': 0,
+                'held_jobs': 0,
                 'active_users': 0,
                 'queues': []
             })
