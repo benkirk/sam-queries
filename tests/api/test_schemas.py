@@ -13,7 +13,7 @@ import pytest
 from datetime import datetime
 from sam.core.users import User
 from sam.projects.projects import Project
-from webui.schemas import (
+from sam.schemas import (
     UserSchema, UserListSchema, UserSummarySchema,
     ProjectSchema, ProjectListSchema, ProjectSummarySchema
 )

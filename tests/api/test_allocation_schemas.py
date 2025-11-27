@@ -10,7 +10,7 @@ from sam.projects.projects import Project
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
 from sam.resources.resources import Resource
-from webui.schemas import (
+from sam.schemas import (
     ResourceSchema, ResourceSummarySchema, ResourceTypeSchema,
     AllocationSchema, AllocationWithUsageSchema,
     AccountSchema, AccountSummarySchema,

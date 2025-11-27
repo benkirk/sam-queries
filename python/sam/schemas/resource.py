@@ -4,7 +4,7 @@ Resource schemas for API serialization.
 Provides schemas for Resource and ResourceType models.
 
 Usage:
-    from webui.schemas import ResourceSchema, ResourceSummarySchema, ResourceTypeSchema
+    from sam.schemas import ResourceSchema, ResourceSummarySchema, ResourceTypeSchema
 
     # Full resource details
     resource_data = ResourceSchema().dump(resource)

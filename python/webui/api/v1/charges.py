@@ -13,7 +13,7 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required
 from webui.utils.rbac import require_permission, Permission
 from webui.extensions import db
-from webui.schemas import (
+from sam.schemas import (
     AllocationWithUsageSchema,
     CompChargeSummarySchema,
     DavChargeSummarySchema,

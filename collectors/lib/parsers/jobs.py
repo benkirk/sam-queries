@@ -27,6 +27,7 @@ class JobParser:
 
         running = 0
         pending = 0
+        held = 0
         users = set()
 
         for job_id, job_data in jobs.items():
@@ -46,10 +47,13 @@ class JobParser:
                 running += 1
             elif state == 'Q':  # Queued
                 pending += 1
+            elif state == 'H':  # Held
+                held += 1
             # Other states (H=held, E=exiting, etc.) not counted
 
         return {
             'running_jobs': running,
             'pending_jobs': pending,
+            'held_jobs': held,
             'active_users': len(users),
         }

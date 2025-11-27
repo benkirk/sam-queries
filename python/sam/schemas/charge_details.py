@@ -6,7 +6,7 @@ joined with activity and user data. These are used for detailed charge
 breakdowns in the charges/details endpoint.
 
 Usage:
-    from webui.schemas import HPCChargeDetailSchema, DiskChargeDetailSchema
+    from sam.schemas import HPCChargeDetailSchema, DiskChargeDetailSchema
 
     # Serialize charge records with activity data
     hpc_data = HPCChargeDetailSchema(many=True).dump(charge_tuples)

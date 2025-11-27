@@ -5,7 +5,7 @@ Provides schemas for Allocation and Account models, including allocation usage
 calculations matching the sam_search.py CLI output.
 
 Usage:
-    from webui.schemas import AllocationSchema, AllocationWithUsageSchema, AccountSchema
+    from sam.schemas import AllocationSchema, AllocationWithUsageSchema, AccountSchema
 
     # Basic allocation
     alloc_data = AllocationSchema().dump(allocation)

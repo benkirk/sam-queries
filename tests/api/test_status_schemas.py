@@ -19,7 +19,7 @@ from system_status import (
     FilesystemStatus,
     JupyterHubStatus, SystemOutage, ResourceReservation
 )
-from webui.schemas.status import (
+from system_status.schemas.status import (
     DerechoStatusSchema, DerechoLoginNodeSchema, DerechoQueueSchema, FilesystemSchema,
     CasperStatusSchema, CasperLoginNodeSchema, CasperNodeTypeSchema, CasperQueueSchema,
     JupyterHubStatusSchema, SystemOutageSchema, ResourceReservationSchema

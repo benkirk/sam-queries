@@ -101,6 +101,7 @@ def ingest_mock_data():
             memory_utilization_percent=derecho_data['memory_utilization_percent'],
             running_jobs=derecho_data['running_jobs'],
             pending_jobs=derecho_data['pending_jobs'],
+            held_jobs=derecho_data['held_jobs'],
             active_users=derecho_data['active_users'],
         )
         session.add(derecho_status)
@@ -129,6 +130,7 @@ def ingest_mock_data():
                 queue_name=queue_data['queue_name'],
                 running_jobs=queue_data['running_jobs'],
                 pending_jobs=queue_data['pending_jobs'],
+                held_jobs=queue_data['held_jobs'],
                 active_users=queue_data['active_users'],
                 cores_allocated=queue_data['cores_allocated'],
                 gpus_allocated=queue_data['gpus_allocated'],
@@ -188,6 +190,7 @@ def ingest_mock_data():
             memory_utilization_percent=casper_data['memory_utilization_percent'],
             running_jobs=casper_data['running_jobs'],
             pending_jobs=casper_data['pending_jobs'],
+            held_jobs=casper_data['held_jobs'],
             active_users=casper_data['active_users'],
         )
         session.add(casper_status)
@@ -233,6 +236,7 @@ def ingest_mock_data():
                 queue_name=queue_data['queue_name'],
                 running_jobs=queue_data['running_jobs'],
                 pending_jobs=queue_data['pending_jobs'],
+                held_jobs=queue_data['held_jobs'],
                 active_users=queue_data['active_users'],
                 cores_allocated=queue_data['cores_allocated'],
                 nodes_allocated=queue_data['nodes_allocated'],

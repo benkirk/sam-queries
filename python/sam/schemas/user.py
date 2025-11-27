@@ -7,7 +7,7 @@ Provides three levels of user serialization:
 - UserSummarySchema: Minimal fields for nested references
 
 Usage:
-    from webui.schemas import UserSchema, UserListSchema, UserSummarySchema
+    from sam.schemas import UserSchema, UserListSchema, UserSummarySchema
 
     # Full user details
     user_data = UserSchema().dump(user)

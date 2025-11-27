@@ -23,6 +23,7 @@ from parsers.nodes import NodeParser
 from parsers.jobs import JobParser
 from parsers.queues import QueueParser
 from parsers.filesystems import FilesystemParser
+from parsers.reservations import ReservationParser
 from ssh_utils import LoginNodeCollector
 
 
@@ -99,8 +100,7 @@ class DerechoCollector:
             job_stats = JobParser.parse_jobs(jobs_json)
             data.update(job_stats)
             self.logger.info(
-                f"  Jobs: {job_stats['running_jobs']} running, "
-                f"{job_stats['pending_jobs']} pending"
+                f"  Jobs: {job_stats['running_jobs']} running, {job_stats['pending_jobs']} pending, {job_stats['held_jobs']} held"
             )
 
             # Parse queues
@@ -112,6 +112,7 @@ class DerechoCollector:
             data.update({
                 'running_jobs': 0,
                 'pending_jobs': 0,
+                'held_jobs': 0,
                 'active_users': 0,
                 'queues': []
             })
@@ -140,6 +141,19 @@ class DerechoCollector:
         except Exception as e:
             self.logger.error(f"Failed to collect filesystem data: {e}")
             data['filesystems'] = []
+
+        # Collect reservation data
+        try:
+            self.logger.info("Collecting reservation data...")
+            rstat_output = self.pbs.get_reservations()
+            data['reservations'] = ReservationParser.parse_reservations(
+                rstat_output,
+                'derecho'
+            )
+            self.logger.info(f"  Reservations: {len(data['reservations'])} active")
+        except Exception as e:
+            self.logger.error(f"Failed to collect reservation data: {e}")
+            data['reservations'] = []
 
         return data
 

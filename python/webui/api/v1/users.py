@@ -14,7 +14,7 @@ from flask import Blueprint, jsonify, request, abort
 from flask_login import login_required, current_user
 from webui.utils.rbac import require_permission, Permission
 from webui.extensions import db
-from webui.schemas import UserSchema, UserListSchema, UserSummarySchema, ProjectListSchema
+from sam.schemas import UserSchema, UserListSchema, UserSummarySchema, ProjectListSchema
 from webui.api.helpers import register_error_handlers, get_user_or_404, serialize_projects_by_role
 
 bp = Blueprint('api_users', __name__)

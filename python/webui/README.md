@@ -152,7 +152,7 @@ Schemas follow a **three-tier strategy** for optimal performance:
 ### Quick Example
 
 ```python
-from webui.schemas import UserSchema, ProjectListSchema
+from sam.schemas import UserSchema, ProjectListSchema
 
 # Serialize single object
 user_data = UserSchema().dump(user)

@@ -5,7 +5,7 @@ Provides schemas for computational job records (CompJob) with proper
 datetime handling and computed fields.
 
 Usage:
-    from webui.schemas import CompJobSchema
+    from sam.schemas import CompJobSchema
 
     # Serialize job records
     jobs_data = CompJobSchema(many=True).dump(jobs)

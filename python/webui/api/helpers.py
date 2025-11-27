@@ -138,7 +138,7 @@ def serialize_projects_by_role(user, schema) -> Dict[str, Any]:
         dict with keys: led_projects, admin_projects, member_projects, total_projects
 
     Usage:
-        from webui.schemas import ProjectListSchema
+        from sam.schemas import ProjectListSchema
         schema = ProjectListSchema()
         data = serialize_projects_by_role(user, schema)
         return jsonify({'username': user.username, **data})
