@@ -116,7 +116,7 @@ The API uses marshmallow-sqlalchemy for declarative serialization, replacing man
 
 ### Schema Organization
 ```
-python/webui/schemas/
+python/sam.schemas/
 ├── __init__.py           # Base schema + exports
 ├── user.py               # User schemas (3 tiers)
 ├── project.py            # Project schemas (3 tiers)
@@ -184,7 +184,7 @@ Schemas follow a consistent pattern for optimal performance:
 
 ### Usage Examples
 ```python
-from webui.schemas import UserSchema, ProjectListSchema, AllocationWithUsageSchema
+from sam.schemas import UserSchema, ProjectListSchema, AllocationWithUsageSchema
 
 # Serialize single object
 user_data = UserSchema().dump(user)

@@ -39,7 +39,7 @@ from system_status import (
     FilesystemStatus,
     SystemOutage, ResourceReservation
 )
-from webui.schemas.status import (
+from system_status.schemas.status import (
     DerechoStatusSchema, DerechoQueueSchema, FilesystemSchema,
     DerechoLoginNodeSchema,
     CasperStatusSchema, CasperNodeTypeSchema, CasperQueueSchema,

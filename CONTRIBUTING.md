@@ -344,9 +344,9 @@ cd tests && pytest --cov=sam --cov-report=html
 
 #### Adding API Endpoints
 
-1. **Create Marshmallow schema** in `python/webui/schemas/`:
+1. **Create Marshmallow schema** in `python/sam.schemas/`:
    ```python
-   from webui.schemas import BaseSchema
+   from sam.schemas import BaseSchema
    from marshmallow import fields
 
    class NewModelSchema(BaseSchema):

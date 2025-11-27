@@ -8,7 +8,7 @@ Provides schemas for daily aggregated charge data from summary tables:
 - ArchiveChargeSummarySchema: Archive/HPSS charges
 
 Usage:
-    from webui.schemas import CompChargeSummarySchema, DiskChargeSummarySchema
+    from sam.schemas import CompChargeSummarySchema, DiskChargeSummarySchema
 
     # Serialize charge summaries
     comp_data = CompChargeSummarySchema(many=True).dump(comp_charges)

@@ -7,7 +7,7 @@ Provides three levels of project serialization:
 - ProjectSummarySchema: Minimal fields for nested references
 
 Usage:
-    from webui.schemas import ProjectSchema, ProjectListSchema, ProjectSummarySchema
+    from sam.schemas import ProjectSchema, ProjectListSchema, ProjectSummarySchema
 
     # Full project details
     project_data = ProjectSchema().dump(project)

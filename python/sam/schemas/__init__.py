@@ -5,7 +5,7 @@ This module provides the base schema infrastructure and exports all schema class
 for use in API endpoints. Following the "Base Schema I" pattern from marshmallow-sqlalchemy.
 
 Usage:
-    from webui.schemas import UserSchema, ProjectSchema
+    from sam.schemas import UserSchema, ProjectSchema
 
     # Serialize a single object
     user_data = UserSchema().dump(user)
@@ -15,7 +15,7 @@ Usage:
 """
 
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
-from ..extensions import db
+from webui.extensions import db
 
 
 class BaseSchema(SQLAlchemyAutoSchema):
@@ -58,19 +58,6 @@ from .charge_details import (
     DiskChargeDetailSchema,
     ArchiveChargeDetailSchema
 )
-from .status import (
-    DerechoStatusSchema,
-    DerechoQueueSchema,
-    FilesystemSchema,
-    DerechoLoginNodeSchema,
-    CasperStatusSchema,
-    CasperNodeTypeSchema,
-    CasperQueueSchema,
-    CasperLoginNodeSchema,
-    JupyterHubStatusSchema,
-    SystemOutageSchema,
-    ResourceReservationSchema,
-)
 
 __all__ = [
     'BaseSchema',
@@ -103,16 +90,4 @@ __all__ = [
     'DavChargeDetailSchema',
     'DiskChargeDetailSchema',
     'ArchiveChargeDetailSchema',
-    # System Status schemas
-    'DerechoStatusSchema',
-    'DerechoQueueSchema',
-    'FilesystemSchema',
-    'DerechoLoginNodeSchema',
-    'CasperStatusSchema',
-    'CasperNodeTypeSchema',
-    'CasperQueueSchema',
-    'CasperLoginNodeSchema',
-    'JupyterHubStatusSchema',
-    'SystemOutageSchema',
-    'ResourceReservationSchema',
 ]

@@ -9,7 +9,7 @@ from the main SAM database. We don't use the standard BaseSchema since
 these models don't use db.session.
 
 Usage:
-    from webui.schemas.status import DerechoStatusSchema
+    from sam.schemas.status import DerechoStatusSchema
 
     # Serialize status object
     status_data = DerechoStatusSchema().dump(status)
