@@ -130,7 +130,7 @@ The collectors intelligently infer node types from PBS `pbsnodes -aj -F json` ou
 
 **Derecho**:
 - CPU nodes: `ngpus` absent or 0
-- GPU nodes: `ngpus` > 0, `gpu_type` indicates A100/H100
+- GPU nodes: `ngpus` > 0, `gpu_type` indicates A100
 
 **Casper**:
 - Checks `Qlist` field for htc, largemem, nvgpu, vis queues
