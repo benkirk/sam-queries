@@ -5,258 +5,119 @@ Provides marshmallow schemas for all system_status database models,
 replacing manual JSON dictionary construction with type-safe serialization.
 
 Note: These schemas use the system_status database, which is separate
-from the main SAM database. We don't use the standard BaseSchema since
-these models don't use db.session.
-
-Usage:
-    from sam.schemas.status import DerechoStatusSchema
-
-    # Serialize status object
-    status_data = DerechoStatusSchema().dump(status)
-
-    # Serialize with login nodes
-    from system_status import get_session
-    session = get_session()
-    login_nodes = session.query(DerechoLoginNodeStatus).filter_by(
-        timestamp=status.timestamp
-    ).all()
-    status_data = DerechoStatusSchema().dump(status)
-    status_data['login_nodes'] = DerechoLoginNodeSchema(many=True).dump(login_nodes)
+from the main SAM database.
 """
 
 from marshmallow import Schema, fields
+from . import BaseSchema
+from system_status import *
 
 
 # ============================================================================
 # Common Schemas
 # ============================================================================
 
-class LoginNodeSchema(Schema):
+class LoginNodeSchema(BaseSchema):
     """
     Schema for individual login nodes.
 
     Returns per-node status including availability, user count, and load metrics.
     """
-    login_node_id = fields.Int()
-    node_name = fields.Str()
-    node_type = fields.Str()  # 'cpu' or 'gpu'
-    system_name = fields.Str()
-    available = fields.Bool()
-    degraded = fields.Bool()
-    user_count = fields.Int(allow_none=True)
-    load_1min = fields.Float(allow_none=True)
-    load_5min = fields.Float(allow_none=True)
-    load_15min = fields.Float(allow_none=True)
-    timestamp = fields.DateTime()
+    class Meta(BaseSchema.Meta):
+        model = LoginNodeStatus
+        load_instance = True
+        include_relationships = True
 
 
-class FilesystemSchema(Schema):
+class FilesystemSchema(BaseSchema):
     """Schema for filesystem status (common to all systems)."""
-    fs_status_id = fields.Int()
-    filesystem_name = fields.Str()
-    system_name = fields.Str(allow_none=True)
-    available = fields.Bool()
-    degraded = fields.Bool()
-    capacity_tb = fields.Float(allow_none=True)
-    used_tb = fields.Float(allow_none=True)
-    utilization_percent = fields.Float(allow_none=True)
-    timestamp = fields.DateTime()
+    class Meta(BaseSchema.Meta):
+        model = FilesystemStatus
+        load_instance = True
+        include_relationships = True
 
 
-class QueueSchema(Schema):
+class QueueSchema(BaseSchema):
     """Schema for Derecho queue status."""
-    queue_status_id = fields.Int()
-    queue_name = fields.Str()
-    system_name = fields.Str()
-    running_jobs = fields.Int(allow_none=True)
-    pending_jobs = fields.Int(allow_none=True)
-    held_jobs = fields.Int(allow_none=True)
-    active_users = fields.Int(allow_none=True)
-    cores_allocated = fields.Int(allow_none=True)
-    gpus_allocated = fields.Int(allow_none=True)
-    nodes_allocated = fields.Int(allow_none=True)
-    timestamp = fields.DateTime()
+    class Meta(BaseSchema.Meta):
+        model = QueueStatus
+        load_instance = True
+        include_relationships = True
 
 
 # ============================================================================
 # Derecho Schemas
 # ============================================================================
 
-class DerechoStatusSchema(Schema):
+class DerechoStatusSchema(BaseSchema):
     """
     Schema for Derecho system-level status.
 
     Main status record for Derecho HPC system including compute nodes,
     job statistics, and utilization metrics.
     """
-    status_id = fields.Int()
-    timestamp = fields.DateTime()
-
-    # CPU Compute Nodes
-    cpu_nodes_total = fields.Int(allow_none=True)
-    cpu_nodes_available = fields.Int(allow_none=True)
-    cpu_nodes_down = fields.Int(allow_none=True)
-    cpu_nodes_reserved = fields.Int(allow_none=True)
-
-    # GPU Compute Nodes
-    gpu_nodes_total = fields.Int(allow_none=True)
-    gpu_nodes_available = fields.Int(allow_none=True)
-    gpu_nodes_down = fields.Int(allow_none=True)
-    gpu_nodes_reserved = fields.Int(allow_none=True)
-
-    # CPU Utilization
-    cpu_cores_total = fields.Int(allow_none=True)
-    cpu_cores_allocated = fields.Int(allow_none=True)
-    cpu_cores_idle = fields.Int(allow_none=True)
-    cpu_utilization_percent = fields.Float(allow_none=True)
-
-    # GPU Utilization
-    gpu_count_total = fields.Int(allow_none=True)
-    gpu_count_allocated = fields.Int(allow_none=True)
-    gpu_count_idle = fields.Int(allow_none=True)
-    gpu_utilization_percent = fields.Float(allow_none=True)
-
-    # Memory
-    memory_total_gb = fields.Float(allow_none=True)
-    memory_allocated_gb = fields.Float(allow_none=True)
-    memory_utilization_percent = fields.Float(allow_none=True)
-
-    # Jobs
-    running_jobs = fields.Int(allow_none=True)
-    pending_jobs = fields.Int(allow_none=True)
-    held_jobs = fields.Int(allow_none=True)
-    active_users = fields.Int(allow_none=True)
+    class Meta(BaseSchema.Meta):
+        model = DerechoStatus
+        load_instance = True
+        include_relationships = True
 
 
 # ============================================================================
 # Casper Schemas
 # ============================================================================
 
-class CasperNodeTypeSchema(Schema):
+class CasperNodeTypeSchema(BaseSchema):
     """Schema for Casper node type breakdown."""
-    node_type_status_id = fields.Int()
-    node_type = fields.Str()
-    nodes_total = fields.Int(allow_none=True)
-    nodes_available = fields.Int(allow_none=True)
-    nodes_down = fields.Int(allow_none=True)
-    nodes_allocated = fields.Int(allow_none=True)
-    cores_per_node = fields.Int(allow_none=True)
-    memory_gb_per_node = fields.Int(allow_none=True)
-    gpu_model = fields.Str(allow_none=True)
-    gpus_per_node = fields.Int(allow_none=True)
-    utilization_percent = fields.Float(allow_none=True)
-    memory_utilization_percent = fields.Float(allow_none=True)
-    timestamp = fields.DateTime()
+    class Meta(BaseSchema.Meta):
+        model = CasperNodeTypeStatus
+        load_instance = True
+        include_relationships = True
 
 
-class CasperStatusSchema(Schema):
+class CasperStatusSchema(BaseSchema):
     """
     Schema for Casper system-level status.
 
     Main status record for Casper DAV system including nodes,
     jobs, and utilization.
     """
-    status_id = fields.Int()
-    timestamp = fields.DateTime()
-
-    # CPU Compute Nodes
-    cpu_nodes_total = fields.Int(allow_none=True)
-    cpu_nodes_available = fields.Int(allow_none=True)
-    cpu_nodes_down = fields.Int(allow_none=True)
-    cpu_nodes_reserved = fields.Int(allow_none=True)
-
-    # GPU Compute Nodes
-    gpu_nodes_total = fields.Int(allow_none=True)
-    gpu_nodes_available = fields.Int(allow_none=True)
-    gpu_nodes_down = fields.Int(allow_none=True)
-    gpu_nodes_reserved = fields.Int(allow_none=True)
-
-    # VIZ Compute Nodes
-    viz_nodes_total = fields.Int(allow_none=True)
-    viz_nodes_available = fields.Int(allow_none=True)
-    viz_nodes_down = fields.Int(allow_none=True)
-    viz_nodes_reserved = fields.Int(allow_none=True)
-
-    # CPU Utilization
-    cpu_cores_total = fields.Int(allow_none=True)
-    cpu_cores_allocated = fields.Int(allow_none=True)
-    cpu_cores_idle = fields.Int(allow_none=True)
-    cpu_utilization_percent = fields.Float(allow_none=True)
-
-    # GPU Utilization
-    gpu_count_total = fields.Int(allow_none=True)
-    gpu_count_allocated = fields.Int(allow_none=True)
-    gpu_count_idle = fields.Int(allow_none=True)
-    gpu_utilization_percent = fields.Float(allow_none=True)
-
-    # VIZ Utilization
-    viz_count_total = fields.Int(allow_none=True)
-    viz_count_allocated = fields.Int(allow_none=True)
-    viz_count_idle = fields.Int(allow_none=True)
-    viz_utilization_percent = fields.Float(allow_none=True)
-
-    # Memory
-    memory_total_gb = fields.Float(allow_none=True)
-    memory_allocated_gb = fields.Float(allow_none=True)
-    memory_utilization_percent = fields.Float(allow_none=True)
-
-    # Jobs
-    running_jobs = fields.Int(allow_none=True)
-    pending_jobs = fields.Int(allow_none=True)
-    held_jobs = fields.Int(allow_none=True)
-    active_users = fields.Int(allow_none=True)
+    class Meta(BaseSchema.Meta):
+        model = CasperStatus
+        load_instance = True
+        include_relationships = True
 
 
 # ============================================================================
 # JupyterHub Schema
 # ============================================================================
 
-class JupyterHubStatusSchema(Schema):
+class JupyterHubStatusSchema(BaseSchema):
     """
     Schema for JupyterHub status.
 
     Status for the JupyterHub/Casper JupyterHub service.
     """
-    status_id = fields.Int()
-    timestamp = fields.DateTime()
-    available = fields.Bool()
-
-    # User/Server Metrics
-    active_users = fields.Int(allow_none=True)
-    active_sessions = fields.Int(allow_none=True)
-    cpu_utilization_percent = fields.Float(allow_none=True)
-    memory_utilization_percent = fields.Float(allow_none=True)
+    class Meta(BaseSchema.Meta):
+        model = JupyterHubStatus
+        load_instance = True
+        include_relationships = True
 
 
 # ============================================================================
 # Support Schemas (Outages, Reservations)
 # ============================================================================
 
-class SystemOutageSchema(Schema):
+class SystemOutageSchema(BaseSchema):
     """Schema for system outages."""
-    outage_id = fields.Int()
-    system_name = fields.Str()
-    component = fields.Str(allow_none=True)
-    severity = fields.Str()  # 'critical', 'major', 'minor', 'maintenance'
-    status = fields.Str()  # 'investigating', 'identified', 'monitoring', 'resolved'
-    title = fields.Str()
-    description = fields.Str(allow_none=True)
-    start_time = fields.DateTime()
-    end_time = fields.DateTime(allow_none=True)
-    estimated_resolution = fields.DateTime(allow_none=True)
-    created_at = fields.DateTime()
-    updated_at = fields.DateTime(allow_none=True)
+    class Meta(BaseSchema.Meta):
+        model = SystemOutage
+        load_instance = True
+        include_relationships = True
 
 
-class ResourceReservationSchema(Schema):
+class ResourceReservationSchema(BaseSchema):
     """Schema for resource reservations."""
-    reservation_id = fields.Int()
-    system_name = fields.Str()
-    reservation_name = fields.Str()
-    description = fields.Str(allow_none=True)
-    start_time = fields.DateTime()
-    end_time = fields.DateTime()
-    node_count = fields.Int(allow_none=True)
-    partition = fields.Str(allow_none=True)
-    created_at = fields.DateTime()
-    updated_at = fields.DateTime(allow_none=True)
+    class Meta(BaseSchema.Meta):
+        model = ResourceReservation
+        load_instance = True
+        include_relationships = True

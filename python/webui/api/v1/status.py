@@ -120,39 +120,9 @@ def ingest_derecho():
         return jsonify({'error': str(e)}), 400
 
     try:
-        # Create main status record
-        derecho_status = DerechoStatus(
-            timestamp=timestamp,
-            # Compute nodes - CPU
-            cpu_nodes_total=data.get('cpu_nodes_total', 0),
-            cpu_nodes_available=data.get('cpu_nodes_available', 0),
-            cpu_nodes_down=data.get('cpu_nodes_down', 0),
-            cpu_nodes_reserved=data.get('cpu_nodes_reserved', 0),
-            # Compute nodes - GPU
-            gpu_nodes_total=data.get('gpu_nodes_total', 0),
-            gpu_nodes_available=data.get('gpu_nodes_available', 0),
-            gpu_nodes_down=data.get('gpu_nodes_down', 0),
-            gpu_nodes_reserved=data.get('gpu_nodes_reserved', 0),
-            # CPU utilization
-            cpu_cores_total=data.get('cpu_cores_total', 0),
-            cpu_cores_allocated=data.get('cpu_cores_allocated', 0),
-            cpu_cores_idle=data.get('cpu_cores_idle', 0),
-            cpu_utilization_percent=data.get('cpu_utilization_percent'),
-            # GPU utilization
-            gpu_count_total=data.get('gpu_count_total', 0),
-            gpu_count_allocated=data.get('gpu_count_allocated', 0),
-            gpu_count_idle=data.get('gpu_count_idle', 0),
-            gpu_utilization_percent=data.get('gpu_utilization_percent'),
-            # Memory
-            memory_total_gb=data.get('memory_total_gb', 0.0),
-            memory_allocated_gb=data.get('memory_allocated_gb', 0.0),
-            memory_utilization_percent=data.get('memory_utilization_percent'),
-            # Jobs
-            running_jobs=data.get('running_jobs', 0),
-            pending_jobs=data.get('pending_jobs', 0),
-            held_jobs=data.get('held_jobs', 0),
-            active_users=data.get('active_users', 0),
-        )
+        # Create main status record using schema
+        data['timestamp'] = timestamp
+        derecho_status = DerechoStatusSchema().load(data, session=db.session)
         db.session.add(derecho_status)
         db.session.flush()  # Get the ID
 
@@ -306,49 +276,9 @@ def ingest_casper():
         return jsonify({'error': str(e)}), 400
 
     try:
-        # Create main status record
-        casper_status = CasperStatus(
-            timestamp=timestamp,
-            # Compute nodes - CPU
-            cpu_nodes_total=data.get('cpu_nodes_total', 0),
-            cpu_nodes_available=data.get('cpu_nodes_available', 0),
-            cpu_nodes_down=data.get('cpu_nodes_down', 0),
-            cpu_nodes_reserved=data.get('cpu_nodes_reserved', 0),
-            # Compute nodes - GPU
-            gpu_nodes_total=data.get('gpu_nodes_total', 0),
-            gpu_nodes_available=data.get('gpu_nodes_available', 0),
-            gpu_nodes_down=data.get('gpu_nodes_down', 0),
-            gpu_nodes_reserved=data.get('gpu_nodes_reserved', 0),
-            # Compute nodes - VIZ
-            viz_nodes_total=data.get('viz_nodes_total', 0),
-            viz_nodes_available=data.get('viz_nodes_available', 0),
-            viz_nodes_down=data.get('viz_nodes_down', 0),
-            viz_nodes_reserved=data.get('viz_nodes_reserved', 0),
-            # CPU utilization
-            cpu_cores_total=data.get('cpu_cores_total', 0),
-            cpu_cores_allocated=data.get('cpu_cores_allocated', 0),
-            cpu_cores_idle=data.get('cpu_cores_idle', 0),
-            cpu_utilization_percent=data.get('cpu_utilization_percent'),
-            # GPU utilization
-            gpu_count_total=data.get('gpu_count_total', 0),
-            gpu_count_allocated=data.get('gpu_count_allocated', 0),
-            gpu_count_idle=data.get('gpu_count_idle', 0),
-            gpu_utilization_percent=data.get('gpu_utilization_percent'),
-            # VIZ utilization
-            viz_count_total=data.get('viz_count_total', 0),
-            viz_count_allocated=data.get('viz_count_allocated', 0),
-            viz_count_idle=data.get('viz_count_idle', 0),
-            viz_utilization_percent=data.get('viz_utilization_percent'),
-            # Memory
-            memory_total_gb=data.get('memory_total_gb', 0.0),
-            memory_allocated_gb=data.get('memory_allocated_gb', 0.0),
-            memory_utilization_percent=data.get('memory_utilization_percent'),
-            # Jobs
-            running_jobs=data.get('running_jobs', 0),
-            pending_jobs=data.get('pending_jobs', 0),
-            held_jobs=data.get('held_jobs', 0),
-            active_users=data.get('active_users', 0),
-        )
+        # Create main status record using schema
+        data['timestamp'] = timestamp
+        casper_status = CasperStatusSchema().load(data, session=db.session)
         db.session.add(casper_status)
         db.session.flush()
 
@@ -522,14 +452,9 @@ def ingest_jupyterhub():
         return jsonify({'error': str(e)}), 400
 
     try:
-        jupyterhub_status = JupyterHubStatus(
-            timestamp=timestamp,
-            available=data.get('available', True),
-            active_users=data.get('active_users', 0),
-            active_sessions=data.get('active_sessions', 0),
-            cpu_utilization_percent=data.get('cpu_utilization_percent'),
-            memory_utilization_percent=data.get('memory_utilization_percent'),
-        )
+        # Create main status record using schema
+        data['timestamp'] = timestamp
+        jupyterhub_status = JupyterHubStatusSchema().load(data, session=db.session)
         db.session.add(jupyterhub_status)
         db.session.commit()
 
@@ -597,16 +522,10 @@ def report_outage():
             except ValueError:
                 return jsonify({'error': 'Invalid estimated_resolution format'}), 400
 
-        outage = SystemOutage(
-            system_name=data['system_name'],
-            title=data['title'],
-            severity=data['severity'],
-            status=data.get('status', 'investigating'),
-            description=data.get('description'),
-            component=data.get('component'),
-            start_time=start_time,
-            estimated_resolution=estimated_resolution,
-        )
+        # Create outage record using schema
+        data['start_time'] = start_time
+        data['estimated_resolution'] = estimated_resolution
+        outage = SystemOutageSchema().load(data, session=db.session)
         db.session.add(outage)
         db.session.commit()
 
