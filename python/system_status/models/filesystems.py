@@ -12,6 +12,7 @@ class FilesystemStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessi
     Tracks glade, campaign, scratch filesystems across all HPC systems.
     Used by Derecho, Casper, and other systems.
     """
+    __bind_key__ = "system_status" # <-- database for connection, if not default
     __tablename__ = 'filesystem_status'
 
     __table_args__ = (

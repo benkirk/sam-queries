@@ -11,6 +11,7 @@ class DerechoStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     System-level Derecho metrics (5-minute intervals).
     Captures overall system health, compute resources, and utilization.
     """
+    __bind_key__ = "system_status" # <-- database for connection, if not default
     __tablename__ = 'derecho_status'
 
     __table_args__ = (

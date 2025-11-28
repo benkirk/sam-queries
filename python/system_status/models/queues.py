@@ -11,6 +11,7 @@ class QueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     Per-queue metrics (5-minute intervals).
     Tracks queues on multiple machines.
     """
+    __bind_key__ = "system_status" # <-- database for connection, if not default
     __tablename__ = 'queue_status'
 
     __table_args__ = (

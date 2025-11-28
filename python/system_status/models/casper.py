@@ -11,6 +11,7 @@ class CasperStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     Aggregate system metrics for Casper (5-minute intervals).
     Casper is a heterogeneous system with multiple node types.
     """
+    __bind_key__ = "system_status" # <-- database for connection, if not default
     __tablename__ = 'casper_status'
 
     __table_args__ = (
@@ -72,6 +73,7 @@ class CasperNodeTypeStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     Per-node-type breakdown for Casper (5-minute intervals).
     Tracks heterogeneous node types: standard, bigmem, gpu-mi100, gpu-v100, gpu-a100.
     """
+    __bind_key__ = "system_status" # <-- database for connection, if not default
     __tablename__ = 'casper_node_type_status'
 
     __table_args__ = (

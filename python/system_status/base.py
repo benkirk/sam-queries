@@ -10,10 +10,32 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, declarative_base, declared_attr, Session
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
+import os
 
 
 #-------------------------------------------------------------------------bm-
-StatusBase = declarative_base()
+def _get_status_base_class():
+    """
+    Get appropriate base class for system_status models.
+
+    Returns:
+        - Flask-SQLAlchemy's db.Model if FLASK_ACTIVE=1 (Flask context)
+        - SQLAlchemy's declarative_base() otherwise (CLI/standalone)
+    """
+    if os.environ.get('FLASK_ACTIVE') == '1':
+        try:
+            from webui.extensions import db
+            return db.Model
+        except ImportError:
+            # Fallback if webui not available
+            from sqlalchemy.orm import declarative_base
+            return declarative_base()
+    else:
+        # CLI/standalone context
+        from sqlalchemy.orm import declarative_base
+        return declarative_base()
+
+StatusBase = _get_status_base_class()
 
 # ============================================================================
 # Mixins - Common patterns for system status tracking

@@ -12,10 +12,32 @@ from sqlalchemy.orm import relationship, declarative_base, declared_attr, Sessio
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
+import os
 
 
 #-------------------------------------------------------------------------bm-
-Base = declarative_base()
+def _get_base_class():
+    """
+    Get appropriate base class for SAM models.
+
+    Returns:
+        - Flask-SQLAlchemy's db.Model if FLASK_ACTIVE=1 (Flask context)
+        - SQLAlchemy's declarative_base() otherwise (CLI/standalone)
+    """
+    if os.environ.get('FLASK_ACTIVE') == '1':
+        try:
+            from webui.extensions import db
+            return db.Model
+        except ImportError:
+            # Fallback if webui not available
+            from sqlalchemy.orm import declarative_base
+            return declarative_base()
+    else:
+        # CLI/standalone context
+        from sqlalchemy.orm import declarative_base
+        return declarative_base()
+
+Base = _get_base_class()
 
 # ============================================================================
 # Mixins - Common patterns extracted

@@ -41,6 +41,7 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
         ...     load_15min=3.0
         ... )
     """
+    __bind_key__ = "system_status" # <-- database for connection, if not default
     __tablename__ = 'login_node_status'
 
     # Primary key

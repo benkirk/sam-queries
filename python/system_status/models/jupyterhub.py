@@ -11,6 +11,7 @@ class JupyterHubStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     JupyterHub metrics (5-minute intervals).
     Placeholder implementation for Phase 1, full implementation in Phase 2+.
     """
+    __bind_key__ = "system_status" # <-- database for connection, if not default
     __tablename__ = 'jupyterhub_status'
 
     __table_args__ = (
