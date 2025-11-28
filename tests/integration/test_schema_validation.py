@@ -129,12 +129,19 @@ class TestSchemaAlignment:
 
     @pytest.fixture(scope='class')
     def table_models(self, all_mappers):
-        """Get only table models (exclude views)."""
+        """Get only table models (exclude views and multi-database binds)."""
         models = []
         for mapper in all_mappers:
             # Skip models that are views
             if mapper.persist_selectable.info.get('is_view', False):
                 continue
+
+            # Skip models that belong to other databases (system_status)
+            # These models have __bind_key__ set and should be tested separately
+            model_class = mapper.class_
+            if hasattr(model_class, '__bind_key__') and model_class.__bind_key__ != None:
+                continue
+
             models.append(mapper)
         return models
 
@@ -412,6 +419,11 @@ class TestModelCoverage:
 
             # Skip views
             if mapper.persist_selectable.info.get('is_view', False):
+                continue
+
+            # Skip models that belong to other databases (system_status)
+            model_class = mapper.class_
+            if hasattr(model_class, '__bind_key__') and model_class.__bind_key__ != None:
                 continue
 
             # Check if table exists

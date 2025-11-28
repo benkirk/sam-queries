@@ -14,14 +14,19 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'python'))
 
 from system_status import (
-    DerechoStatus, DerechoLoginNodeStatus, DerechoQueueStatus,
-    CasperStatus, CasperLoginNodeStatus, CasperNodeTypeStatus, CasperQueueStatus,
+    DerechoStatus,
+    LoginNodeStatus,
+    QueueStatus,
+    CasperStatus, CasperNodeTypeStatus,
     FilesystemStatus,
     JupyterHubStatus, SystemOutage, ResourceReservation
 )
 from system_status.schemas.status import (
-    DerechoStatusSchema, DerechoLoginNodeSchema, DerechoQueueSchema, FilesystemSchema,
-    CasperStatusSchema, CasperLoginNodeSchema, CasperNodeTypeSchema, CasperQueueSchema,
+    DerechoStatusSchema,
+    LoginNodeSchema,
+    QueueSchema,
+    FilesystemSchema,
+    CasperStatusSchema, CasperNodeTypeSchema,
     JupyterHubStatusSchema, SystemOutageSchema, ResourceReservationSchema
 )
 
@@ -71,13 +76,14 @@ class TestDerechoSchemas:
         assert result['timestamp'] == '2025-01-25T14:30:00'
 
     def test_derecho_login_node_schema(self):
-        """Test DerechoLoginNodeSchema serialization."""
+        """Test LoginNodeSchema serialization."""
         timestamp = datetime(2025, 1, 25, 14, 30, 0)
-        node = DerechoLoginNodeStatus(
+        node = LoginNodeStatus(
             login_node_id=1,
             timestamp=timestamp,
             node_name='derecho1',
             node_type='cpu',
+            system_name='derecho',
             available=True,
             degraded=False,
             user_count=12,
@@ -86,7 +92,7 @@ class TestDerechoSchemas:
             load_15min=2.8
         )
 
-        schema = DerechoLoginNodeSchema()
+        schema = LoginNodeSchema()
         result = schema.dump(node)
 
         assert result['login_node_id'] == 1
@@ -100,11 +106,12 @@ class TestDerechoSchemas:
         """Test serializing multiple login nodes."""
         timestamp = datetime(2025, 1, 25, 14, 30, 0)
         nodes = [
-            DerechoLoginNodeStatus(
+            LoginNodeStatus(
                 login_node_id=i,
                 timestamp=timestamp,
                 node_name=f'derecho{i}',
                 node_type='cpu' if i <= 4 else 'gpu',
+                system_name='derecho',
                 available=True,
                 degraded=False,
                 user_count=10 + i,
@@ -115,7 +122,7 @@ class TestDerechoSchemas:
             for i in range(1, 9)
         ]
 
-        schema = DerechoLoginNodeSchema(many=True)
+        schema = LoginNodeSchema(many=True)
         result = schema.dump(nodes)
 
         assert len(result) == 8
@@ -125,12 +132,13 @@ class TestDerechoSchemas:
         assert result[4]['node_type'] == 'gpu'
 
     def test_derecho_queue_schema(self):
-        """Test DerechoQueueSchema serialization."""
+        """Test QueueSchema serialization."""
         timestamp = datetime(2025, 1, 25, 14, 30, 0)
-        queue = DerechoQueueStatus(
+        queue = QueueStatus(
             queue_status_id=1,
             timestamp=timestamp,
             queue_name='main',
+            system_name='derecho',
             running_jobs=100,
             pending_jobs=20,
             active_users=30,
@@ -139,7 +147,7 @@ class TestDerechoSchemas:
             nodes_allocated=60
         )
 
-        schema = DerechoQueueSchema()
+        schema = QueueSchema()
         result = schema.dump(queue)
 
         assert result['queue_status_id'] == 1
@@ -226,12 +234,14 @@ class TestCasperSchemas:
         assert result['running_jobs'] == 456
 
     def test_casper_login_node_schema(self):
-        """Test CasperLoginNodeSchema serialization."""
+        """Test LoginNodeSchema serialization."""
         timestamp = datetime(2025, 1, 25, 14, 30, 0)
-        node = CasperLoginNodeStatus(
+        node = LoginNodeStatus(
             login_node_id=1,
             timestamp=timestamp,
             node_name='casper1',
+            node_type='cpu',
+            system_name='casper',
             available=True,
             degraded=False,
             user_count=39,
@@ -240,7 +250,7 @@ class TestCasperSchemas:
             load_15min=3.6
         )
 
-        schema = CasperLoginNodeSchema()
+        schema = LoginNodeSchema()
         result = schema.dump(node)
 
         assert result['login_node_id'] == 1

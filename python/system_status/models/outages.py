@@ -12,6 +12,7 @@ class SystemOutage(StatusBase, SessionMixin):
     Known outages and degradations.
     Tracks system issues with severity, status, and resolution information.
     """
+    __bind_key__ = "system_status" # <-- database for connection, if not default
     __tablename__ = 'system_outages'
 
     __table_args__ = (
@@ -57,6 +58,7 @@ class ResourceReservation(StatusBase, SessionMixin):
     """
     Scheduled reservations for maintenance, special allocations, etc.
     """
+    __bind_key__ = "system_status" # <-- database for connection, if not default
     __tablename__ = 'resource_reservations'
 
     __table_args__ = (

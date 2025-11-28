@@ -12,6 +12,7 @@ class FilesystemStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessi
     Tracks glade, campaign, scratch filesystems across all HPC systems.
     Used by Derecho, Casper, and other systems.
     """
+    __bind_key__ = "system_status" # <-- database for connection, if not default
     __tablename__ = 'filesystem_status'
 
     __table_args__ = (
@@ -20,7 +21,7 @@ class FilesystemStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessi
 
     fs_status_id = Column(Integer, primary_key=True, autoincrement=True)
     filesystem_name = Column(String(64), nullable=False, index=True)
-    system_name = Column(String(32), nullable=True, index=True, comment='System using this filesystem (derecho, casper, etc.)')
+    system_name = Column(String(32), nullable=False, index=True, comment='System using this filesystem (derecho, casper, etc.)')
 
     # Status inherited from AvailabilityMixin: available, degraded
 

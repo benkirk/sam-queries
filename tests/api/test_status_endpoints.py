@@ -15,8 +15,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'python'))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoLoginNodeStatus, DerechoQueueStatus,
-    CasperStatus, CasperLoginNodeStatus, CasperNodeTypeStatus, CasperQueueStatus,
+    DerechoStatus,
+    LoginNodeStatus,
+    QueueStatus,
+    CasperStatus, CasperNodeTypeStatus,
     FilesystemStatus,
     JupyterHubStatus, SystemOutage, ResourceReservation
 )
@@ -28,13 +30,11 @@ def status_session():
     engine, SessionLocal = create_status_engine()
     with get_session(SessionLocal) as session:
         # Clean up any existing test data
-        session.query(DerechoLoginNodeStatus).delete()
-        session.query(DerechoQueueStatus).delete()
+        session.query(LoginNodeStatus).delete()
+        session.query(QueueStatus).delete()
         session.query(FilesystemStatus).delete()
         session.query(DerechoStatus).delete()
-        session.query(CasperLoginNodeStatus).delete()
         session.query(CasperNodeTypeStatus).delete()
-        session.query(CasperQueueStatus).delete()
         session.query(CasperStatus).delete()
         session.query(JupyterHubStatus).delete()
         session.query(SystemOutage).delete()
@@ -283,7 +283,7 @@ class TestDerechoGet:
     def setup_derecho_data(self, status_session):
         """Create test data for Derecho GET tests."""
         # Clear existing data first
-        status_session.query(DerechoLoginNodeStatus).delete()
+        status_session.query(LoginNodeStatus).delete()
         status_session.query(DerechoStatus).delete()
         status_session.commit()
 
@@ -319,10 +319,11 @@ class TestDerechoGet:
 
         # Create login nodes
         for i in range(1, 3):
-            node = DerechoLoginNodeStatus(
+            node =LoginNodeStatus(
                 timestamp=timestamp,
                 node_name=f'derecho{i}',
                 node_type='cpu',
+                system_name='derecho',
                 available=True,
                 degraded=False,
                 user_count=10 + i,
@@ -356,7 +357,7 @@ class TestDerechoGet:
     def test_get_derecho_no_data(self, auth_client, status_session):
         """Test retrieving Derecho status when no data exists."""
         # Clear all data
-        status_session.query(DerechoLoginNodeStatus).delete()
+        status_session.query(LoginNodeStatus).delete()
         status_session.query(DerechoStatus).delete()
         status_session.commit()
 
@@ -374,7 +375,7 @@ class TestCasperGet:
     def setup_casper_data(self, status_session):
         """Create test data for Casper GET tests."""
         # Clear existing data first
-        status_session.query(CasperLoginNodeStatus).delete()
+        status_session.query(LoginNodeStatus).delete()
         status_session.query(CasperStatus).delete()
         status_session.commit()
 
@@ -423,9 +424,11 @@ class TestCasperGet:
 
         # Create login nodes
         for i in range(1, 3):
-            node = CasperLoginNodeStatus(
+            node = LoginNodeStatus(
                 timestamp=timestamp,
                 node_name=f'casper{i}',
+                node_type='cpu',
+                system_name='casper',
                 available=True,
                 degraded=False,
                 user_count=38 + i,

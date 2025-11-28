@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
+import os
+os.environ['FLASK_ACTIVE'] = '1'
+
 from flask import Flask, redirect, url_for
 from flask_login import LoginManager, current_user
 import sam.session
+import system_status.session
 
 from webui.extensions import db
 from webui.admin import admin_bp, init_admin
@@ -44,6 +48,9 @@ def create_app():
 
     # Flask-SQLAlchemy configuration
     app.config['SQLALCHEMY_DATABASE_URI'] = sam.session.connection_string
+    app.config['SQLALCHEMY_BINDS'] = {
+        'system_status': system_status.session.connection_string,
+    }
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Check if SSL is required (for remote servers)
@@ -66,9 +73,6 @@ def create_app():
 
     # Initialize db with app
     db.init_app(app)
-
-    # Make db.session available as app.Session for compatibility
-    #app.Session = lambda: db.session
 
     # Initialize Flask-Login
     login_manager = LoginManager()

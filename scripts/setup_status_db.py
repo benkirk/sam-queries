@@ -22,10 +22,10 @@ sys.path.insert(0, str(python_dir))
 
 from system_status import StatusBase, create_status_engine
 from system_status.models import (
-    DerechoStatus, DerechoQueueStatus,
-    DerechoLoginNodeStatus,
-    CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
-    CasperLoginNodeStatus,
+    DerechoStatus,
+    CasperStatus, CasperNodeTypeStatus,
+    LoginNodeStatus,
+    QueueStatus,
     FilesystemStatus,
     JupyterHubStatus,
     SystemOutage, ResourceReservation
@@ -75,28 +75,6 @@ def setup_database(drop_existing=False, yes=False):
     print("\nCreating tables...")
     StatusBase.metadata.create_all(engine)
     print("✓ Tables created successfully")
-
-    # List created tables
-    print("\n" + "=" * 80)
-    print("Created Tables:")
-    print("=" * 80)
-
-    tables = [
-        ("derecho_status", "System-level Derecho metrics"),
-        ("derecho_queue_status", "Per-queue Derecho metrics"),
-        ("derecho_filesystem_status", "Derecho filesystem health"),
-        ("derecho_login_node_status", "Individual Derecho login nodes"),
-        ("casper_status", "Aggregate Casper metrics"),
-        ("casper_node_type_status", "Per-node-type Casper breakdown"),
-        ("casper_queue_status", "Per-queue Casper metrics"),
-        ("casper_login_node_status", "Individual Casper login nodes"),
-        ("jupyterhub_status", "JupyterHub metrics"),
-        ("system_outages", "Known outages and degradations"),
-        ("resource_reservations", "Scheduled reservations"),
-    ]
-
-    for table_name, description in tables:
-        print(f"  ✓ {table_name:30s} - {description}")
 
     print("\n" + "=" * 80)
     print("Database setup complete!")

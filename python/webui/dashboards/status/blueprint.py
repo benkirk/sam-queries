@@ -16,12 +16,12 @@ sys.path.insert(0, str(python_dir))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoQueueStatus,
-    CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
+    DerechoStatus,
+    CasperStatus, CasperNodeTypeStatus,
     JupyterHubStatus,
     FilesystemStatus,
     SystemOutage, ResourceReservation,
-    DerechoLoginNodeStatus, CasperLoginNodeStatus
+    LoginNodeStatus, QueueStatus
 )
 
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
@@ -49,15 +49,17 @@ def index():
         derecho_filesystems = []
         derecho_login_nodes = []
         if derecho_status:
-            derecho_queues = session.query(DerechoQueueStatus).filter_by(
-                timestamp=derecho_status.timestamp
+            derecho_queues = session.query(QueueStatus).filter_by(
+                timestamp=derecho_status.timestamp,
+                system_name='derecho'
             ).all()
             derecho_filesystems = session.query(FilesystemStatus).filter_by(
                 timestamp=derecho_status.timestamp,
                 system_name='derecho'
             ).all()
-            derecho_login_nodes = session.query(DerechoLoginNodeStatus).filter_by(
-                timestamp=derecho_status.timestamp
+            derecho_login_nodes = session.query(LoginNodeStatus).filter_by(
+                timestamp=derecho_status.timestamp,
+                system_name='derecho'
             ).all()
 
         # Get latest Casper status
@@ -73,11 +75,13 @@ def index():
             casper_node_types = session.query(CasperNodeTypeStatus).filter_by(
                 timestamp=casper_status.timestamp
             ).all()
-            casper_queues = session.query(CasperQueueStatus).filter_by(
-                timestamp=casper_status.timestamp
+            casper_queues = session.query(QueueStatus).filter_by(
+                timestamp=casper_status.timestamp,
+                system_name='casper'
             ).all()
-            casper_login_nodes = session.query(CasperLoginNodeStatus).filter_by(
-                timestamp=casper_status.timestamp
+            casper_login_nodes = session.query(LoginNodeStatus).filter_by(
+                timestamp=casper_status.timestamp,
+                system_name='casper'
             ).all()
             casper_filesystems = session.query(FilesystemStatus).filter_by(
                 timestamp=casper_status.timestamp,
