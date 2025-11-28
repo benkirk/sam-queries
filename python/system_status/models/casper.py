@@ -96,29 +96,3 @@ class CasperNodeTypeStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     # Utilization
     utilization_percent = Column(Float, nullable=True)
     memory_utilization_percent = Column(Float, nullable=True)
-
-
-class CasperQueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
-    """
-    Per-queue metrics for Casper (5-minute intervals).
-    Tracks casper, gpudev, htc queues.
-    """
-    __tablename__ = 'casper_queue_status'
-
-    __table_args__ = (
-        UniqueConstraint('timestamp', 'queue_name', name='uq_casper_queue_timestamp_name'),
-    )
-
-    queue_status_id = Column(Integer, primary_key=True, autoincrement=True)
-    queue_name = Column(String(64), nullable=False, index=True)
-
-    # Queue Metrics
-    running_jobs = Column(Integer, nullable=False, default=0)
-    pending_jobs = Column(Integer, nullable=False, default=0)
-    held_jobs = Column(Integer, nullable=False, default=0)
-    active_users = Column(Integer, nullable=False, default=0)
-
-    # Resource Allocations
-    cores_allocated = Column(Integer, nullable=False, default=0)
-    gpus_allocated = Column(Integer, nullable=False, default=0)
-    nodes_allocated = Column(Integer, nullable=False, default=0)

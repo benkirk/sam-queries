@@ -28,45 +28,6 @@ from marshmallow import Schema, fields
 
 
 # ============================================================================
-# Login Node Schemas
-# ============================================================================
-
-class DerechoLoginNodeSchema(Schema):
-    """
-    Schema for individual Derecho login nodes.
-
-    Returns per-node status including availability, user count, and load metrics.
-    """
-    login_node_id = fields.Int()
-    node_name = fields.Str()
-    node_type = fields.Str()  # 'cpu' or 'gpu'
-    available = fields.Bool()
-    degraded = fields.Bool()
-    user_count = fields.Int(allow_none=True)
-    load_1min = fields.Float(allow_none=True)
-    load_5min = fields.Float(allow_none=True)
-    load_15min = fields.Float(allow_none=True)
-    timestamp = fields.DateTime()
-
-
-class CasperLoginNodeSchema(Schema):
-    """
-    Schema for individual Casper login nodes.
-
-    Returns per-node status including availability, user count, and load metrics.
-    """
-    login_node_id = fields.Int()
-    node_name = fields.Str()
-    available = fields.Bool()
-    degraded = fields.Bool()
-    user_count = fields.Int(allow_none=True)
-    load_1min = fields.Float(allow_none=True)
-    load_5min = fields.Float(allow_none=True)
-    load_15min = fields.Float(allow_none=True)
-    timestamp = fields.DateTime()
-
-
-# ============================================================================
 # Common Schemas
 # ============================================================================
 
@@ -120,20 +81,6 @@ class QueueSchema(Schema):
 # ============================================================================
 # Derecho Schemas
 # ============================================================================
-
-class DerechoQueueSchema(Schema):
-    """Schema for Derecho queue status."""
-    queue_status_id = fields.Int()
-    queue_name = fields.Str()
-    running_jobs = fields.Int(allow_none=True)
-    pending_jobs = fields.Int(allow_none=True)
-    held_jobs = fields.Int(allow_none=True)
-    active_users = fields.Int(allow_none=True)
-    cores_allocated = fields.Int(allow_none=True)
-    gpus_allocated = fields.Int(allow_none=True)
-    nodes_allocated = fields.Int(allow_none=True)
-    timestamp = fields.DateTime()
-
 
 class DerechoStatusSchema(Schema):
     """
@@ -199,19 +146,6 @@ class CasperNodeTypeSchema(Schema):
     gpus_per_node = fields.Int(allow_none=True)
     utilization_percent = fields.Float(allow_none=True)
     memory_utilization_percent = fields.Float(allow_none=True)
-    timestamp = fields.DateTime()
-
-
-class CasperQueueSchema(Schema):
-    """Schema for Casper queue status."""
-    queue_status_id = fields.Int()
-    queue_name = fields.Str()
-    running_jobs = fields.Int(allow_none=True)
-    pending_jobs = fields.Int(allow_none=True)
-    held_jobs = fields.Int(allow_none=True)
-    active_users = fields.Int(allow_none=True)
-    cores_allocated = fields.Int(allow_none=True)
-    nodes_allocated = fields.Int(allow_none=True)
     timestamp = fields.DateTime()
 
 
