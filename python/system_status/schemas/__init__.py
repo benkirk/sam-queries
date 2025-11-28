@@ -5,27 +5,29 @@ This module provides the base schema infrastructure and exports all schema class
 for use in API endpoints. Following the "Base Schema I" pattern from marshmallow-sqlalchemy.
 
 Usage:
-    from sam.schemas import UserSchema, ProjectSchema
+    from system_status.schemas import QueuesSchema
 
     # Serialize a single object
-    user_data = UserSchema().dump(user)
+    queue_data = QueueSchema().dump(queue)
 
     # Serialize multiple objects
-    users_data = UserSchema(many=True).dump(users)
+    queue_data = QueueSchema(many=True).dump(queues)
 """
 
+from marshmallow import EXCLUDE
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from webui.extensions import db
 
 
 class BaseSchema(SQLAlchemyAutoSchema):
     """
-    Base schema class for all SAM schemas.
+    Base schema class for all System Status schemas.
 
     Provides shared configuration:
     - Uses Flask-SQLAlchemy's db.session for all queries
     - load_instance=True: Load SQLAlchemy model instances
     - include_fk=True: Include foreign key fields in serialization
+    - unknown=EXCLUDE: Ignore unknown fields during deserialization
 
     All model-specific schemas should inherit from this class.
     """
@@ -33,6 +35,7 @@ class BaseSchema(SQLAlchemyAutoSchema):
         sqla_session = db.session
         load_instance = True
         include_fk = True
+        unknown = EXCLUDE
 
 
 # Import and export all schemas
