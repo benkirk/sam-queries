@@ -15,8 +15,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'python'))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoLoginNodeStatus,
-    CasperStatus, CasperLoginNodeStatus
+    DerechoStatus,
+    CasperStatus,
+    LoginNodeStatus
 )
 
 
@@ -26,9 +27,8 @@ def status_session():
     engine, SessionLocal = create_status_engine()
     with get_session(SessionLocal) as session:
         # Clean up any existing test data
-        session.query(DerechoLoginNodeStatus).delete()
+        session.query(LoginNodeStatus).delete()
         session.query(DerechoStatus).delete()
-        session.query(CasperLoginNodeStatus).delete()
         session.query(CasperStatus).delete()
         session.commit()
         yield session
@@ -141,7 +141,7 @@ class TestDerechoIntegration:
     def test_database_persistence(self, auth_client, status_session):
         """Verify data was persisted correctly in database."""
         # First, clear and post data
-        status_session.query(DerechoLoginNodeStatus).delete()
+        status_session.query(LoginNodeStatus).delete()
         status_session.query(DerechoStatus).delete()
         status_session.commit()
 
@@ -191,8 +191,9 @@ class TestDerechoIntegration:
         assert status.running_jobs == 1245
 
         # Query login nodes
-        login_nodes = status_session.query(DerechoLoginNodeStatus).filter_by(
-            timestamp=status.timestamp
+        login_nodes = status_session.query(LoginNodeStatus).filter_by(
+            timestamp=status.timestamp,
+            system_name='derecho'
         ).all()
 
         assert len(login_nodes) == 3
@@ -306,7 +307,7 @@ class TestMultipleSnapshots:
     def test_latest_returns_most_recent(self, auth_client, status_session):
         """Test that /latest endpoint returns most recent snapshot."""
         # Clear old data
-        status_session.query(DerechoLoginNodeStatus).delete()
+        status_session.query(LoginNodeStatus).delete()
         status_session.query(DerechoStatus).delete()
         status_session.commit()
 
