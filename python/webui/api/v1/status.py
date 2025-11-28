@@ -31,10 +31,8 @@ sys.path.insert(0, str(python_dir))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoQueueStatus,
-    DerechoLoginNodeStatus,
-    CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
-    CasperLoginNodeStatus,
+    DerechoStatus,
+    CasperStatus, CasperNodeTypeStatus,
     JupyterHubStatus,
     LoginNodeStatus,
     QueueStatus,
@@ -42,13 +40,13 @@ from system_status import (
     SystemOutage, ResourceReservation
 )
 from system_status.schemas.status import (
-    DerechoStatusSchema, DerechoQueueSchema, FilesystemSchema,
-    DerechoLoginNodeSchema,
-    CasperStatusSchema, CasperNodeTypeSchema, CasperQueueSchema,
-    CasperLoginNodeSchema,
+    DerechoStatusSchema,
+
+    CasperStatusSchema, CasperNodeTypeSchema,
     JupyterHubStatusSchema,
     LoginNodeSchema,
     QueueSchema,
+    FilesystemSchema,
     SystemOutageSchema, ResourceReservationSchema,
 )
 

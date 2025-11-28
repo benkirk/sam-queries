@@ -22,10 +22,8 @@ sys.path.insert(0, str(python_dir))
 
 from system_status import StatusBase, create_status_engine
 from system_status.models import (
-    DerechoStatus, DerechoQueueStatus,
-    DerechoLoginNodeStatus,
-    CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
-    CasperLoginNodeStatus,
+    DerechoStatus,
+    CasperStatus, CasperNodeTypeStatus,
     LoginNodeStatus,
     QueueStatus,
     FilesystemStatus,

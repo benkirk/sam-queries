@@ -23,12 +23,12 @@ sys.path.insert(0, str(python_dir))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoQueueStatus,
-    DerechoLoginNodeStatus,
-    CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
-    CasperLoginNodeStatus,
+    DerechoStatus,
+    CasperStatus, CasperNodeTypeStatus,
     FilesystemStatus,
     JupyterHubStatus,
+    LoginNodeStatus,
+    QueueStatus,
     SystemOutage, ResourceReservation
 )
 
@@ -109,10 +109,11 @@ def ingest_mock_data():
 
         # Derecho login nodes
         for node_data in derecho_data['login_nodes']:
-            login_node = DerechoLoginNodeStatus(
+            login_node = LoginNodeStatus(
                 timestamp=timestamp,
                 node_name=node_data['node_name'],
                 node_type=node_data['node_type'],
+                system_name='derecho',
                 available=node_data['available'],
                 degraded=node_data['degraded'],
                 user_count=node_data.get('user_count'),
@@ -125,9 +126,10 @@ def ingest_mock_data():
 
         # Derecho queues
         for queue_data in derecho_data['queues']:
-            queue_status = DerechoQueueStatus(
+            queue_status = QueueStatus(
                 timestamp=timestamp,
                 queue_name=queue_data['queue_name'],
+                system_name='derecho',
                 running_jobs=queue_data['running_jobs'],
                 pending_jobs=queue_data['pending_jobs'],
                 held_jobs=queue_data['held_jobs'],
@@ -198,9 +200,11 @@ def ingest_mock_data():
 
         # Casper login nodes
         for node_data in casper_data['login_nodes']:
-            login_node = CasperLoginNodeStatus(
+            login_node = LoginNodeStatus(
                 timestamp=timestamp,
                 node_name=node_data['node_name'],
+                node_type='cpu',
+                system_name='casper',
                 available=node_data['available'],
                 degraded=node_data['degraded'],
                 user_count=node_data.get('user_count'),
@@ -231,9 +235,10 @@ def ingest_mock_data():
 
         # Casper queues
         for queue_data in casper_data['queues']:
-            queue_status = CasperQueueStatus(
+            queue_status = QueueStatus(
                 timestamp=timestamp,
                 queue_name=queue_data['queue_name'],
+                system_name='casper',
                 running_jobs=queue_data['running_jobs'],
                 pending_jobs=queue_data['pending_jobs'],
                 held_jobs=queue_data['held_jobs'],

@@ -16,12 +16,11 @@ sys.path.insert(0, str(python_dir))
 
 from system_status import (
     create_status_engine, get_session,
-    DerechoStatus, DerechoQueueStatus,
-    CasperStatus, CasperNodeTypeStatus, CasperQueueStatus,
+    DerechoStatus,
+    CasperStatus, CasperNodeTypeStatus,
     JupyterHubStatus,
     FilesystemStatus,
     SystemOutage, ResourceReservation,
-    DerechoLoginNodeStatus, CasperLoginNodeStatus,
     LoginNodeStatus, QueueStatus
 )
 
