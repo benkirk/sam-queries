@@ -120,86 +120,27 @@ def ingest_derecho():
         return jsonify({'error': str(e)}), 400
 
     try:
-        # Create main status record using schema
+        # Schema loads EVERYTHING - main status + all nested objects (login_nodes, queues, filesystems)
+        # Nested objects are created and linked via ORM relationships automatically
         data['timestamp'] = timestamp
-        derecho_status = DerechoStatusSchema().load(data, session=db.session)
-        db.session.add(derecho_status)
-        db.session.flush()  # Get the ID
+        schema = DerechoStatusSchema()
+        schema.context = {'session': db.session}
+        derecho_status = schema.load(data)
 
+        # Add parent to session (cascades to all children automatically via relationships)
+        db.session.add(derecho_status)
+        db.session.flush()  # Get IDs for all objects
+
+        # Collect IDs from relationships for response
         result = {
             'success': True,
             'message': 'Derecho status ingested successfully',
             'status_id': derecho_status.status_id,
-            'timestamp': timestamp.isoformat()
+            'timestamp': timestamp.isoformat(),
+            'login_node_ids': [n.login_node_id for n in derecho_status.login_nodes],
+            'queue_ids': [q.queue_status_id for q in derecho_status.queues],
+            'filesystem_ids': [f.fs_status_id for f in derecho_status.filesystems],
         }
-
-        # Handle login nodes if provided
-        login_nodes = data.get('login_nodes', [])
-        if login_nodes:
-            login_node_ids = []
-            for node_data in login_nodes:
-                login_node = LoginNodeStatus(
-                    timestamp=timestamp,
-                    node_name=node_data['node_name'],
-                    node_type=node_data.get('node_type', 'cpu'),
-                    system_name='derecho',
-                    available=node_data.get('available', True),
-                    degraded=node_data.get('degraded', False),
-                    user_count=node_data.get('user_count'),
-                    load_1min=node_data.get('load_1min'),
-                    load_5min=node_data.get('load_5min'),
-                    load_15min=node_data.get('load_15min'),
-                )
-                db.session.add(login_node)
-                db.session.flush()
-                login_node_ids.append(login_node.login_node_id)
-            result['login_node_ids'] = login_node_ids
-
-        # Handle queue status if provided
-        queues = data.get('queues', [])
-        if queues:
-            queue_ids = []
-            for queue_data in queues:
-                queue_status = QueueStatus(
-                    timestamp=timestamp,
-                    queue_name=queue_data['queue_name'],
-                    system_name='derecho',
-                    running_jobs=queue_data.get('running_jobs', 0),
-                    pending_jobs=queue_data.get('pending_jobs', 0),
-                    held_jobs=queue_data.get('held_jobs', 0),
-                    active_users=queue_data.get('active_users', 0),
-                    cores_allocated=queue_data.get('cores_allocated', 0),
-                    gpus_allocated=queue_data.get('gpus_allocated', 0),
-                    nodes_allocated=queue_data.get('nodes_allocated', 0),
-                    cores_pending=queue_data.get('cores_pending', 0),
-                    gpus_pending=queue_data.get('gpus_pending', 0),
-                    cores_held=queue_data.get('cores_held', 0),
-                    gpus_held=queue_data.get('gpus_held', 0),
-                )
-                db.session.add(queue_status)
-                db.session.flush()
-                queue_ids.append(queue_status.queue_status_id)
-            result['queue_ids'] = queue_ids
-
-        # Handle filesystem status if provided
-        filesystems = data.get('filesystems', [])
-        if filesystems:
-            fs_ids = []
-            for fs_data in filesystems:
-                fs_status = FilesystemStatus(
-                    timestamp=timestamp,
-                    filesystem_name=fs_data['filesystem_name'],
-                    system_name='derecho',  # Tag with system name
-                    available=fs_data.get('available', True),
-                    degraded=fs_data.get('degraded', False),
-                    capacity_tb=fs_data.get('capacity_tb'),
-                    used_tb=fs_data.get('used_tb'),
-                    utilization_percent=fs_data.get('utilization_percent'),
-                )
-                db.session.add(fs_status)
-                db.session.flush()
-                fs_ids.append(fs_status.fs_status_id)
-            result['filesystem_ids'] = fs_ids
 
         # Handle reservation status if provided
         reservations = data.get('reservations', [])
@@ -280,110 +221,28 @@ def ingest_casper():
         return jsonify({'error': str(e)}), 400
 
     try:
-        # Create main status record using schema
+        # Schema loads EVERYTHING - main status + all nested objects (login_nodes, node_types, queues, filesystems)
+        # Nested objects are created and linked via ORM relationships automatically
         data['timestamp'] = timestamp
-        casper_status = CasperStatusSchema().load(data, session=db.session)
-        db.session.add(casper_status)
-        db.session.flush()
+        schema = CasperStatusSchema()
+        schema.context = {'session': db.session}
+        casper_status = schema.load(data)
 
+        # Add parent to session (cascades to all children automatically via relationships)
+        db.session.add(casper_status)
+        db.session.flush()  # Get IDs for all objects
+
+        # Collect IDs from relationships for response
         result = {
             'success': True,
             'message': 'Casper status ingested successfully',
             'status_id': casper_status.status_id,
-            'timestamp': timestamp.isoformat()
+            'timestamp': timestamp.isoformat(),
+            'login_node_ids': [n.login_node_id for n in casper_status.login_nodes],
+            'node_type_ids': [nt.node_type_status_id for nt in casper_status.node_types],
+            'queue_ids': [q.queue_status_id for q in casper_status.queues],
+            'filesystem_ids': [f.fs_status_id for f in casper_status.filesystems],
         }
-
-        # Handle login nodes if provided
-        login_nodes = data.get('login_nodes', [])
-        if login_nodes:
-            login_node_ids = []
-            for node_data in login_nodes:
-                login_node = LoginNodeStatus(
-                    timestamp=timestamp,
-                    node_name=node_data['node_name'],
-                    node_type='cpu',
-                    system_name='casper',
-                    available=node_data.get('available', True),
-                    degraded=node_data.get('degraded', False),
-                    user_count=node_data.get('user_count'),
-                    load_1min=node_data.get('load_1min'),
-                    load_5min=node_data.get('load_5min'),
-                    load_15min=node_data.get('load_15min'),
-                )
-                db.session.add(login_node)
-                db.session.flush()
-                login_node_ids.append(login_node.login_node_id)
-            result['login_node_ids'] = login_node_ids
-
-        # Handle node type status if provided
-        node_types = data.get('node_types', [])
-        if node_types:
-            nodetype_ids = []
-            for nt_data in node_types:
-                nt_status = CasperNodeTypeStatus(
-                    timestamp=timestamp,
-                    node_type=nt_data['node_type'],
-                    nodes_total=nt_data.get('nodes_total', 0),
-                    nodes_available=nt_data.get('nodes_available', 0),
-                    nodes_down=nt_data.get('nodes_down', 0),
-                    nodes_allocated=nt_data.get('nodes_allocated', 0),
-                    cores_per_node=nt_data.get('cores_per_node'),
-                    memory_gb_per_node=nt_data.get('memory_gb_per_node'),
-                    gpu_model=nt_data.get('gpu_model'),
-                    gpus_per_node=nt_data.get('gpus_per_node'),
-                    utilization_percent=nt_data.get('utilization_percent'),
-                    memory_utilization_percent=nt_data.get('memory_utilization_percent'),
-                )
-                db.session.add(nt_status)
-                db.session.flush()
-                nodetype_ids.append(nt_status.node_type_status_id)
-            result['node_type_ids'] = nodetype_ids
-
-        # Handle queue status if provided
-        queues = data.get('queues', [])
-        if queues:
-            queue_ids = []
-            for queue_data in queues:
-                queue_status = QueueStatus(
-                    timestamp=timestamp,
-                    queue_name=queue_data['queue_name'],
-                    system_name='casper',
-                    running_jobs=queue_data.get('running_jobs', 0),
-                    pending_jobs=queue_data.get('pending_jobs', 0),
-                    held_jobs=queue_data.get('held_jobs', 0),
-                    active_users=queue_data.get('active_users', 0),
-                    cores_allocated=queue_data.get('cores_allocated', 0),
-                    gpus_allocated=queue_data.get('gpus_allocated', 0),
-                    nodes_allocated=queue_data.get('nodes_allocated', 0),
-                    cores_pending=queue_data.get('cores_pending', 0),
-                    gpus_pending=queue_data.get('gpus_pending', 0),
-                    cores_held=queue_data.get('cores_held', 0),
-                    gpus_held=queue_data.get('gpus_held', 0),
-                )
-                db.session.add(queue_status)
-                db.session.flush()
-                queue_ids.append(queue_status.queue_status_id)
-            result['queue_ids'] = queue_ids
-
-        # Handle filesystem status if provided
-        filesystems = data.get('filesystems', [])
-        if filesystems:
-            fs_ids = []
-            for fs_data in filesystems:
-                fs_status = FilesystemStatus(
-                    timestamp=timestamp,
-                    filesystem_name=fs_data['filesystem_name'],
-                    system_name='casper',  # Tag with system name
-                    available=fs_data.get('available', True),
-                    degraded=fs_data.get('degraded', False),
-                    capacity_tb=fs_data.get('capacity_tb'),
-                    used_tb=fs_data.get('used_tb'),
-                    utilization_percent=fs_data.get('utilization_percent'),
-                )
-                db.session.add(fs_status)
-                db.session.flush()
-                fs_ids.append(fs_status.fs_status_id)
-            result['filesystem_ids'] = fs_ids
 
         # Handle reservation status if provided
         reservations = data.get('reservations', [])
@@ -561,7 +420,9 @@ def get_derecho_latest():
     GET /api/v1/status/derecho/latest - Get latest Derecho status.
 
     Returns:
-        JSON with latest Derecho system status including login nodes, queues, and filesystems
+        JSON with latest Derecho system status including login nodes, queues, and filesystems.
+
+    Nested objects are automatically loaded via ORM relationships with eager loading.
     """
     # Get latest main status
     status = db.session.query(DerechoStatus).order_by(
@@ -571,29 +432,9 @@ def get_derecho_latest():
     if not status:
         return jsonify({'message': 'No Derecho status data available'}), 404
 
-    # Get login nodes for same timestamp
-    login_nodes = db.session.query(LoginNodeStatus).filter_by(
-        timestamp=status.timestamp,
-        system_name='derecho'
-    ).all()
-
-    # Get queues for same timestamp
-    queues = db.session.query(QueueStatus).filter_by(
-        timestamp=status.timestamp,
-        system_name='derecho'
-    ).all()
-
-    # Get filesystems for same timestamp (filter by system_name='derecho')
-    filesystems = db.session.query(FilesystemStatus).filter_by(
-        timestamp=status.timestamp,
-        system_name='derecho'
-    ).all()
-
-    # Serialize with marshmallow schemas
+    # Schema automatically includes nested objects via ORM relationships!
+    # (login_nodes, queues, filesystems are eager-loaded via lazy='selectin')
     result = DerechoStatusSchema().dump(status)
-    result['login_nodes'] = LoginNodeSchema(many=True).dump(login_nodes)
-    result['queues'] = QueueSchema(many=True).dump(queues)
-    result['filesystems'] = FilesystemSchema(many=True).dump(filesystems)
 
     return jsonify(result), 200
 
@@ -605,7 +446,9 @@ def get_casper_latest():
     GET /api/v1/status/casper/latest - Get latest Casper status.
 
     Returns:
-        JSON with latest Casper system status including login nodes, node types, and queues
+        JSON with latest Casper system status including login nodes, node types, and queues.
+
+    Nested objects are automatically loaded via ORM relationships with eager loading.
     """
     # Get latest main status
     status = db.session.query(CasperStatus).order_by(
@@ -615,35 +458,9 @@ def get_casper_latest():
     if not status:
         return jsonify({'message': 'No Casper status data available'}), 404
 
-    # Get login nodes for same timestamp
-    login_nodes = db.session.query(LoginNodeStatus).filter_by(
-        timestamp=status.timestamp,
-        system_name='casper'
-    ).all()
-
-    # Get node types for same timestamp
-    node_types = db.session.query(CasperNodeTypeStatus).filter_by(
-        timestamp=status.timestamp
-    ).all()
-
-    # Get queues for same timestamp
-    queues = db.session.query(QueueStatus).filter_by(
-        timestamp=status.timestamp,
-        system_name='casper'
-    ).all()
-
-    # Get filesystems for same timestamp (filter by system_name='casper')
-    filesystems = db.session.query(FilesystemStatus).filter_by(
-        timestamp=status.timestamp,
-        system_name='casper'
-    ).all()
-
-    # Serialize with marshmallow schemas
+    # Schema automatically includes nested objects via ORM relationships!
+    # (login_nodes, node_types, queues, filesystems are eager-loaded via lazy='selectin')
     result = CasperStatusSchema().dump(status)
-    result['login_nodes'] = LoginNodeSchema(many=True).dump(login_nodes)
-    result['node_types'] = CasperNodeTypeSchema(many=True).dump(node_types)
-    result['queues'] = QueueSchema(many=True).dump(queues)
-    result['filesystems'] = FilesystemSchema(many=True).dump(filesystems)
 
     return jsonify(result), 200
 

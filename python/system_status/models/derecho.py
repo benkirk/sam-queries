@@ -3,6 +3,7 @@
 #-------------------------------------------------------------------------eh-
 
 from sqlalchemy import Column, Integer, String, Float, Boolean, Index, UniqueConstraint
+from sqlalchemy.orm import relationship
 from ..base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin
 
 
@@ -56,3 +57,22 @@ class DerechoStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     pending_jobs = Column(Integer, nullable=False, default=0)
     held_jobs = Column(Integer, nullable=False, default=0)
     active_users = Column(Integer, nullable=False, default=0)
+
+    # Relationships (children linked via foreign keys, eager loaded)
+    login_nodes = relationship('LoginNodeStatus',
+                               foreign_keys='LoginNodeStatus.derecho_status_id',
+                               back_populates='derecho_status',
+                               cascade='all, delete-orphan',
+                               lazy='selectin')
+
+    queues = relationship('QueueStatus',
+                          foreign_keys='QueueStatus.derecho_status_id',
+                          back_populates='derecho_status',
+                          cascade='all, delete-orphan',
+                          lazy='selectin')
+
+    filesystems = relationship('FilesystemStatus',
+                               foreign_keys='FilesystemStatus.derecho_status_id',
+                               back_populates='derecho_status',
+                               cascade='all, delete-orphan',
+                               lazy='selectin')

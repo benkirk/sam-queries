@@ -2,7 +2,8 @@
 # Casper Status Models
 #-------------------------------------------------------------------------eh-
 
-from sqlalchemy import Column, Integer, String, Float, Boolean, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Boolean, Index, UniqueConstraint, ForeignKey
+from sqlalchemy.orm import relationship
 from ..base import StatusBase, StatusSnapshotMixin, SessionMixin
 
 
@@ -67,6 +68,30 @@ class CasperStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     held_jobs = Column(Integer, nullable=False, default=0)
     active_users = Column(Integer, nullable=False, default=0)
 
+    # Relationships (children linked via foreign keys, eager loaded)
+    login_nodes = relationship('LoginNodeStatus',
+                               foreign_keys='LoginNodeStatus.casper_status_id',
+                               back_populates='casper_status',
+                               cascade='all, delete-orphan',
+                               lazy='selectin')
+
+    node_types = relationship('CasperNodeTypeStatus',
+                              back_populates='casper_status',
+                              cascade='all, delete-orphan',
+                              lazy='selectin')
+
+    queues = relationship('QueueStatus',
+                          foreign_keys='QueueStatus.casper_status_id',
+                          back_populates='casper_status',
+                          cascade='all, delete-orphan',
+                          lazy='selectin')
+
+    filesystems = relationship('FilesystemStatus',
+                               foreign_keys='FilesystemStatus.casper_status_id',
+                               back_populates='casper_status',
+                               cascade='all, delete-orphan',
+                               lazy='selectin')
+
 
 class CasperNodeTypeStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     """
@@ -81,6 +106,12 @@ class CasperNodeTypeStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     )
 
     node_type_status_id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Foreign key to parent Casper status record (not nullable - Casper-specific)
+    casper_status_id = Column(Integer, ForeignKey('casper_status.status_id', ondelete='CASCADE'),
+                              nullable=False, index=True,
+                              comment='FK to parent Casper status snapshot')
+
     node_type = Column(String(64), nullable=False, index=True)
 
     # Node Counts
@@ -98,3 +129,6 @@ class CasperNodeTypeStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     # Utilization
     utilization_percent = Column(Float, nullable=True)
     memory_utilization_percent = Column(Float, nullable=True)
+
+    # Relationship (back_populates to parent Casper status)
+    casper_status = relationship('CasperStatus', back_populates='node_types')

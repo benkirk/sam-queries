@@ -2,7 +2,8 @@
 # Filesystem Status Models (Common to all systems)
 #-------------------------------------------------------------------------eh-
 
-from sqlalchemy import Column, Integer, String, Float, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, UniqueConstraint, ForeignKey
+from sqlalchemy.orm import relationship
 from ..base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin
 
 
@@ -20,6 +21,15 @@ class FilesystemStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessi
     )
 
     fs_status_id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Foreign keys to parent status records (nullable - links to one or the other)
+    derecho_status_id = Column(Integer, ForeignKey('derecho_status.status_id', ondelete='CASCADE'),
+                               nullable=True, index=True,
+                               comment='FK to parent Derecho status snapshot')
+    casper_status_id = Column(Integer, ForeignKey('casper_status.status_id', ondelete='CASCADE'),
+                              nullable=True, index=True,
+                              comment='FK to parent Casper status snapshot')
+
     filesystem_name = Column(String(32), nullable=False, index=True)
     system_name = Column(String(32), nullable=False, index=True, comment='System using this filesystem (derecho, casper, etc.)')
 
@@ -29,3 +39,9 @@ class FilesystemStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessi
     capacity_tb = Column(Float, nullable=True)
     used_tb = Column(Float, nullable=True)
     utilization_percent = Column(Float, nullable=True)
+
+    # Relationships (back_populates to parent status records)
+    derecho_status = relationship('DerechoStatus', back_populates='filesystems',
+                                  foreign_keys=[derecho_status_id])
+    casper_status = relationship('CasperStatus', back_populates='filesystems',
+                                foreign_keys=[casper_status_id])

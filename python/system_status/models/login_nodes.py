@@ -5,7 +5,8 @@ Tracks individual login node status for Derecho and Casper systems.
 Each login node records availability, user load, and system metrics.
 """
 
-from sqlalchemy import Column, Integer, String, Float, Enum
+from sqlalchemy import Column, Integer, String, Float, Enum, ForeignKey
+from sqlalchemy.orm import relationship
 from ..base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin
 
 
@@ -47,6 +48,14 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
     # Primary key
     login_node_id = Column(Integer, primary_key=True, autoincrement=True)
 
+    # Foreign keys to parent status records (nullable - links to one or the other)
+    derecho_status_id = Column(Integer, ForeignKey('derecho_status.status_id', ondelete='CASCADE'),
+                               nullable=True, index=True,
+                               comment='FK to parent Derecho status snapshot')
+    casper_status_id = Column(Integer, ForeignKey('casper_status.status_id', ondelete='CASCADE'),
+                              nullable=True, index=True,
+                              comment='FK to parent Casper status snapshot')
+
     # Login node identification
     node_name = Column(String(32), nullable=False, index=True,
                       comment='Login node hostname (e.g., derecho1, derecho2)')
@@ -69,6 +78,12 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
     # Note: available, degraded inherited from AvailabilityMixin
     # Note: timestamp, created_at inherited from StatusSnapshotMixin
     # Note: session, get(), get_all() inherited from SessionMixin
+
+    # Relationships (back_populates to parent status records)
+    derecho_status = relationship('DerechoStatus', back_populates='login_nodes',
+                                  foreign_keys=[derecho_status_id])
+    casper_status = relationship('CasperStatus', back_populates='login_nodes',
+                                foreign_keys=[casper_status_id])
 
     def __repr__(self):
         return (f"<LoginNodeStatus(node_name='{self.node_name}', "
