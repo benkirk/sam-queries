@@ -8,7 +8,7 @@ Note: These schemas use the system_status database, which is separate
 from the main SAM database.
 """
 
-from marshmallow import Schema, fields
+from marshmallow import Schema, fields, post_load
 from . import BaseSchema
 from system_status import *
 
@@ -22,27 +22,51 @@ class LoginNodeSchema(BaseSchema):
     Schema for individual login nodes.
 
     Returns per-node status including availability, user count, and load metrics.
+
+    Note: timestamp, system_name, and node_type are injected by parent schema's
+    @post_load hook, so they're dump_only during deserialization.
     """
     class Meta(BaseSchema.Meta):
         model = LoginNodeStatus
         load_instance = True
         include_relationships = True
 
+    # These fields are injected by parent schema, not provided in JSON
+    timestamp = fields.DateTime(dump_only=True)
+    system_name = fields.String(dump_only=True)
+    node_type = fields.String(required=False, load_default='cpu')  # Optional with default
+
 
 class FilesystemSchema(BaseSchema):
-    """Schema for filesystem status (common to all systems)."""
+    """
+    Schema for filesystem status (common to all systems).
+
+    Note: timestamp and system_name are injected by parent schema's @post_load hook.
+    """
     class Meta(BaseSchema.Meta):
         model = FilesystemStatus
         load_instance = True
         include_relationships = True
 
+    # These fields are injected by parent schema, not provided in JSON
+    timestamp = fields.DateTime(dump_only=True)
+    system_name = fields.String(dump_only=True)
+
 
 class QueueSchema(BaseSchema):
-    """Schema for Derecho queue status."""
+    """
+    Schema for queue status.
+
+    Note: timestamp and system_name are injected by parent schema's @post_load hook.
+    """
     class Meta(BaseSchema.Meta):
         model = QueueStatus
         load_instance = True
         include_relationships = True
+
+    # These fields are injected by parent schema, not provided in JSON
+    timestamp = fields.DateTime(dump_only=True)
+    system_name = fields.String(dump_only=True)
 
 
 # ============================================================================
@@ -57,17 +81,42 @@ class DerechoStatusSchema(BaseSchema):
     job statistics, and utilization metrics.
 
     Nested objects (login_nodes, queues, filesystems) are automatically
-    dumped via ORM relationships, but must be manually linked during load.
+    loaded and linked via ORM relationships. The post_load hook just sets
+    timestamp and system_name for consistency.
     """
     class Meta(BaseSchema.Meta):
         model = DerechoStatus
         load_instance = True
         include_relationships = True
 
-    # Nested fields for dumping only (created manually in endpoint)
-    login_nodes = fields.Nested(LoginNodeSchema, many=True, dump_only=True)
-    queues = fields.Nested(QueueSchema, many=True, dump_only=True)
-    filesystems = fields.Nested(FilesystemSchema, many=True, dump_only=True)
+    # Nested fields for both loading and dumping
+    login_nodes = fields.Nested(LoginNodeSchema, many=True, required=False, load_default=[])
+    queues = fields.Nested(QueueSchema, many=True, required=False, load_default=[])
+    filesystems = fields.Nested(FilesystemSchema, many=True, required=False, load_default=[])
+
+    @post_load
+    def link_nested_objects(self, data, **kwargs):
+        """Set timestamp and system_name on nested objects for consistency."""
+        # data is a dict at this point (before instance creation)
+        # but nested items are already ORM instances
+        timestamp = data['timestamp']
+
+        # Set metadata on login nodes (FK will be set automatically by relationship)
+        for node in data.get('login_nodes', []):
+            node.timestamp = timestamp
+            node.system_name = 'derecho'
+
+        # Set metadata on queues (FK will be set automatically by relationship)
+        for queue in data.get('queues', []):
+            queue.timestamp = timestamp
+            queue.system_name = 'derecho'
+
+        # Set metadata on filesystems (FK will be set automatically by relationship)
+        for fs in data.get('filesystems', []):
+            fs.timestamp = timestamp
+            fs.system_name = 'derecho'
+
+        return data
 
 
 # ============================================================================
@@ -75,11 +124,21 @@ class DerechoStatusSchema(BaseSchema):
 # ============================================================================
 
 class CasperNodeTypeSchema(BaseSchema):
-    """Schema for Casper node type breakdown."""
+    """
+    Schema for Casper node type breakdown.
+
+    Note: timestamp is injected by parent schema's @post_load hook.
+    Foreign key relationship (casper_status_id) is set automatically by ORM.
+    """
     class Meta(BaseSchema.Meta):
         model = CasperNodeTypeStatus
         load_instance = True
         include_relationships = True
+
+    # These fields are injected/set automatically, not provided in JSON
+    timestamp = fields.DateTime(dump_only=True)
+    casper_status_id = fields.Integer(dump_only=True)
+    casper_status = fields.Nested('CasperStatusSchema', dump_only=True)
 
 
 class CasperStatusSchema(BaseSchema):
@@ -90,18 +149,47 @@ class CasperStatusSchema(BaseSchema):
     jobs, and utilization.
 
     Nested objects (login_nodes, node_types, queues, filesystems) are
-    automatically dumped via ORM relationships, but must be manually linked during load.
+    automatically loaded and linked via ORM relationships. The post_load hook
+    just sets timestamp and system_name for consistency.
     """
     class Meta(BaseSchema.Meta):
         model = CasperStatus
         load_instance = True
         include_relationships = True
 
-    # Nested fields for dumping only (created manually in endpoint)
-    login_nodes = fields.Nested(LoginNodeSchema, many=True, dump_only=True)
-    node_types = fields.Nested(CasperNodeTypeSchema, many=True, dump_only=True)
-    queues = fields.Nested(QueueSchema, many=True, dump_only=True)
-    filesystems = fields.Nested(FilesystemSchema, many=True, dump_only=True)
+    # Nested fields for both loading and dumping
+    login_nodes = fields.Nested(LoginNodeSchema, many=True, required=False, load_default=[])
+    node_types = fields.Nested(CasperNodeTypeSchema, many=True, required=False, load_default=[])
+    queues = fields.Nested(QueueSchema, many=True, required=False, load_default=[])
+    filesystems = fields.Nested(FilesystemSchema, many=True, required=False, load_default=[])
+
+    @post_load
+    def link_nested_objects(self, data, **kwargs):
+        """Set timestamp and system_name on nested objects for consistency."""
+        # data is a dict at this point (before instance creation)
+        # but nested items are already ORM instances
+        timestamp = data['timestamp']
+
+        # Set metadata on login nodes (FK will be set automatically by relationship)
+        for node in data.get('login_nodes', []):
+            node.timestamp = timestamp
+            node.system_name = 'casper'
+
+        # Set metadata on node types (FK will be set automatically by relationship)
+        for node_type in data.get('node_types', []):
+            node_type.timestamp = timestamp
+
+        # Set metadata on queues (FK will be set automatically by relationship)
+        for queue in data.get('queues', []):
+            queue.timestamp = timestamp
+            queue.system_name = 'casper'
+
+        # Set metadata on filesystems (FK will be set automatically by relationship)
+        for fs in data.get('filesystems', []):
+            fs.timestamp = timestamp
+            fs.system_name = 'casper'
+
+        return data
 
 
 # ============================================================================
