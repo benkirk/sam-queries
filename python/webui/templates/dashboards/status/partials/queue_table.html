@@ -1,28 +1,46 @@
 {% macro queue_table(queues, show_gpus=false) %}
 <div class="table-responsive">
     <table class="table table-sm table-bordered queue-table">
-        <thead class="thead-light">
+        <thead class="thead-dark">
             <tr>
                 <th>Queue</th>
-                <th>Running Jobs</th>
-                <th>Pending Jobs</th>
-                <th>Held Jobs</th>
-                <th>Active Users</th>
-                <th>Cores Allocated</th>
-                {% if show_gpus %}<th>GPUs Allocated</th>{% endif %}
-                <th>Nodes Allocated</th>
+                <th>Users</th>
+                <th colspan="3" style="text-align: center;">Jobs</th>
+                <th colspan="3"style="text-align: center;">Cores</th>
+                {% if show_gpus %}<th colspan="3" style="text-align: center;">GPUs</th>{% endif %}
+                <th>Nodes</th>
+            </tr>
+        </thead>
+        <thead class="thead-light">
+            <tr>
+                <th></th>
+                <th></th>
+                <th>Running</th>
+                <th>Pending</th>
+                <th>Held</th>
+                <th>Running</th>
+                <th>Pending</th>
+                <th>Held</th>
+                {% if show_gpus %}<th>Running</th>{% endif %}
+                {% if show_gpus %}<th>Pending</th>{% endif %}
+                {% if show_gpus %}<th>Held</th>{% endif %}
+                <th>Allocated</th>
             </tr>
         </thead>
         <tbody>
             {% for queue in queues %}
             <tr>
                 <td><strong>{{ queue.queue_name }}</strong></td>
+                <td>{{ queue.active_users }}</td>
                 <td>{{ queue.running_jobs }}</td>
                 <td>{{ queue.pending_jobs }}</td>
                 <td>{{ queue.held_jobs }}</td>
-                <td>{{ queue.active_users }}</td>
                 <td>{{ '{:,}'.format(queue.cores_allocated) }}</td>
+                <td>{{ '{:,}'.format(queue.cores_pending) }}</td>
+                <td>{{ '{:,}'.format(queue.cores_held) }}</td>
                 {% if show_gpus %}<td>{{ queue.gpus_allocated }}</td>{% endif %}
+                {% if show_gpus %}<td>{{ queue.gpus_pending }}</td>{% endif %}
+                {% if show_gpus %}<td>{{ queue.gpus_held }}</td>{% endif %}
                 <td>{{ queue.nodes_allocated }}</td>
             </tr>
             {% endfor %}

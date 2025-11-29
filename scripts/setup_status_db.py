@@ -6,10 +6,11 @@ Creates all tables for the system_status database using SQLAlchemy ORM models.
 This script should be run after creating the database with create_status_db.sql.
 
 Usage:
-    python scripts/setup_status_db.py [--drop-existing]
+    python scripts/setup_status_db.py [--drop]
 
 Options:
-    --drop-existing    Drop existing tables before creating (DANGEROUS!)
+    --drop, --drop-existing    Drop existing tables before creating (DANGEROUS!)
+    -y, --yes                  Skip confirmation prompts
 """
 
 import sys
@@ -89,7 +90,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='Setup system_status database tables')
-    parser.add_argument('--drop-existing', action='store_true',
+    parser.add_argument('--drop', '--drop-existing', dest='drop_existing', action='store_true',
                        help='Drop existing tables before creating (DANGEROUS!)')
     parser.add_argument('--yes', '-y', action='store_true',
                        help='Skip confirmation prompts')

@@ -51,10 +51,11 @@ def classify_node_type(node_name: str, node_data: dict, system_type: str) -> str
     """
     resources = node_data.get('resources_available', {})
     qlist = resources.get('Qlist', '').lower()
+    ncpus = int(resources.get('ncpus', 0))
     ngpus = int(resources.get('ngpus', 0))
-    gpu_type = resources.get('gpu_type', '').lower()
     cpu_type = resources.get('cpu_type', '').lower()
-    mem_mb = parse_memory(resources.get('mem', '0mb')) / 1024
+    gpu_type = resources.get('gpu_type', '').lower()
+    mem_gb = parse_memory(resources.get('mem', '0gb')) / (1024 * 1024)
 
     if system_type == 'derecho':
         # Derecho: CPU vs GPU nodes
@@ -71,13 +72,13 @@ def classify_node_type(node_name: str, node_data: dict, system_type: str) -> str
             # GPU node - determine type from gpu_type field
             # (most-to-least specific)
             if 'mi300a' in gpu_type:
-                return 'gpu-mi300a'
+                return f'gpu-mi300a-{ngpus}way'
             elif 'h100' in gpu_type:
-                return 'gpu-h100'
+                return f'gpu-h100-{ngpus}way'
             elif 'a100' in gpu_type:
-                return 'gpu-a100'
+                return f'gpu-a100-{ngpus}way'
             elif 'v100' in gpu_type:
-                return 'gpu-v100'
+                return f'gpu-v100-{ngpus}way'
             elif 'l40' in gpu_type:
                 return 'viz-l40'
             elif 'gp100' in gpu_type:
@@ -85,13 +86,13 @@ def classify_node_type(node_name: str, node_data: dict, system_type: str) -> str
             else:
                 return 'gpu'
         elif 'largemem' in qlist:
-            return 'largemem'
+            return f'largemem-{ncpus}core'
         elif 'jhublogin' in qlist:
             return 'jhublogin'
         elif 'gdex' in qlist:
             return 'gdex'
         elif 'htc' in qlist:
-            return 'htc'
+            return f'htc-{ncpus}core'
         else:
             # Standard compute node
             return 'standard'

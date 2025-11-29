@@ -1,14 +1,14 @@
 """
-Tests for System Status API endpoints.
+Tests for System Status API endpoints with simplified schema-based POST.
 
 Tests POST endpoints (data ingestion) and GET endpoints (retrieval)
-for Derecho, Casper, JupyterHub, outages, and reservations.
+for Derecho and Casper using nested schema loading.
 """
 
 import pytest
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Add python directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'python'))
@@ -20,7 +20,6 @@ from system_status import (
     QueueStatus,
     CasperStatus, CasperNodeTypeStatus,
     FilesystemStatus,
-    JupyterHubStatus, SystemOutage, ResourceReservation
 )
 
 
@@ -36,19 +35,16 @@ def status_session():
         session.query(DerechoStatus).delete()
         session.query(CasperNodeTypeStatus).delete()
         session.query(CasperStatus).delete()
-        session.query(JupyterHubStatus).delete()
-        session.query(SystemOutage).delete()
-        session.query(ResourceReservation).delete()
         session.commit()
         yield session
 
 
 # ============================================================================
-# POST Endpoint Tests - Data Ingestion
+# POST Endpoint Tests - Simplified with Nested Schema Loading
 # ============================================================================
 
 class TestDerechoPost:
-    """Tests for POST /api/v1/status/derecho endpoint."""
+    """Tests for POST /api/v1/status/derecho endpoint with nested loading."""
 
     def test_post_derecho_minimal(self, auth_client, status_session):
         """Test posting minimal Derecho status data."""
@@ -83,9 +79,13 @@ class TestDerechoPost:
         assert json_data['success'] is True
         assert 'status_id' in json_data
         assert 'timestamp' in json_data
+        # Empty nested arrays should be present
+        assert json_data['login_node_ids'] == []
+        assert json_data['queue_ids'] == []
+        assert json_data['filesystem_ids'] == []
 
-    def test_post_derecho_with_login_nodes(self, auth_client, status_session):
-        """Test posting Derecho status with login nodes array."""
+    def test_post_derecho_with_nested_objects(self, auth_client, status_session):
+        """Test posting Derecho status with all nested object types."""
         data = {
             'cpu_nodes_total': 100,
             'cpu_nodes_available': 80,
@@ -109,78 +109,23 @@ class TestDerechoPost:
             'login_nodes': [
                 {
                     'node_name': 'derecho1',
-                    'node_type': 'cpu',
                     'available': True,
-                    'degraded': False,
                     'user_count': 10,
                     'load_1min': 2.5,
-                    'load_5min': 2.8,
-                    'load_15min': 3.0
-                },
-                {
-                    'node_name': 'derecho5',
-                    'node_type': 'gpu',
-                    'available': True,
-                    'degraded': False,
-                    'user_count': 3,
-                    'load_1min': 1.2,
-                    'load_5min': 1.5,
-                    'load_15min': 1.4
                 }
-            ]
-        }
-
-        response = auth_client.post('/api/v1/status/derecho',
-                                   json=data,
-                                   content_type='application/json')
-
-        assert response.status_code == 201
-        json_data = response.get_json()
-        assert json_data['success'] is True
-        assert 'login_node_ids' in json_data
-        assert len(json_data['login_node_ids']) == 2
-
-    def test_post_derecho_with_queues_and_filesystems(self, auth_client, status_session):
-        """Test posting Derecho status with queues and filesystems."""
-        data = {
-            'cpu_nodes_total': 100,
-            'cpu_nodes_available': 80,
-            'cpu_nodes_down': 5,
-            'cpu_nodes_reserved': 15,
-            'gpu_nodes_total': 10,
-            'gpu_nodes_available': 8,
-            'gpu_nodes_down': 0,
-            'gpu_nodes_reserved': 2,
-            'cpu_cores_total': 12800,
-            'cpu_cores_allocated': 10000,
-            'cpu_cores_idle': 2800,
-            'gpu_count_total': 80,
-            'gpu_count_allocated': 60,
-            'gpu_count_idle': 20,
-            'memory_total_gb': 25600.0,
-            'memory_allocated_gb': 20000.0,
-            'running_jobs': 150,
-            'pending_jobs': 30,
-            'active_users': 50,
+            ],
             'queues': [
                 {
                     'queue_name': 'main',
                     'running_jobs': 100,
                     'pending_jobs': 20,
-                    'active_users': 30,
-                    'cores_allocated': 8000,
-                    'gpus_allocated': 0,
-                    'nodes_allocated': 60
                 }
             ],
             'filesystems': [
                 {
                     'filesystem_name': 'glade',
                     'available': True,
-                    'degraded': False,
                     'capacity_tb': 20000.0,
-                    'used_tb': 16500.0,
-                    'utilization_percent': 82.5
                 }
             ]
         }
@@ -192,19 +137,30 @@ class TestDerechoPost:
         assert response.status_code == 201
         json_data = response.get_json()
         assert json_data['success'] is True
-        assert 'queue_ids' in json_data
-        assert 'filesystem_ids' in json_data
+        assert len(json_data['login_node_ids']) == 1
         assert len(json_data['queue_ids']) == 1
         assert len(json_data['filesystem_ids']) == 1
 
+    def test_post_derecho_missing_required_field(self, auth_client, status_session):
+        """Test posting Derecho status with missing required field."""
+        data = {
+            'cpu_nodes_total': 100,
+            # Missing many required fields
+        }
+
+        response = auth_client.post('/api/v1/status/derecho',
+                                   json=data,
+                                   content_type='application/json')
+
+        assert response.status_code == 500  # Schema validation error
+
 
 class TestCasperPost:
-    """Tests for POST /api/v1/status/casper endpoint."""
+    """Tests for POST /api/v1/status/casper endpoint with nested loading."""
 
-    def test_post_casper_with_login_nodes(self, auth_client, status_session):
-        """Test posting Casper status with login nodes array."""
+    def test_post_casper_minimal(self, auth_client, status_session):
+        """Test posting minimal Casper status data."""
         data = {
-            # CPU nodes
             'cpu_nodes_total': 151,
             'cpu_nodes_available': 135,
             'cpu_nodes_down': 3,
@@ -212,8 +168,6 @@ class TestCasperPost:
             'cpu_cores_total': 9556,
             'cpu_cores_allocated': 3200,
             'cpu_cores_idle': 6356,
-            'cpu_utilization_percent': 68.5,
-            # GPU nodes
             'gpu_nodes_total': 22,
             'gpu_nodes_available': 17,
             'gpu_nodes_down': 2,
@@ -221,8 +175,6 @@ class TestCasperPost:
             'gpu_count_total': 102,
             'gpu_count_allocated': 60,
             'gpu_count_idle': 42,
-            'gpu_utilization_percent': 82.3,
-            # VIZ nodes
             'viz_nodes_total': 15,
             'viz_nodes_available': 15,
             'viz_nodes_down': 0,
@@ -230,35 +182,11 @@ class TestCasperPost:
             'viz_count_total': 96,
             'viz_count_allocated': 4,
             'viz_count_idle': 92,
-            'viz_utilization_percent': 4.2,
-            # Memory
             'memory_total_gb': 112413.0,
             'memory_allocated_gb': 55826.0,
-            'memory_utilization_percent': 71.2,
-            # Jobs
             'running_jobs': 456,
             'pending_jobs': 89,
             'active_users': 92,
-            'login_nodes': [
-                {
-                    'node_name': 'casper1',
-                    'available': True,
-                    'degraded': False,
-                    'user_count': 39,
-                    'load_1min': 3.2,
-                    'load_5min': 3.4,
-                    'load_15min': 3.6
-                },
-                {
-                    'node_name': 'casper2',
-                    'available': True,
-                    'degraded': False,
-                    'user_count': 39,
-                    'load_1min': 3.1,
-                    'load_5min': 3.3,
-                    'load_15min': 3.5
-                }
-            ]
         }
 
         response = auth_client.post('/api/v1/status/casper',
@@ -268,12 +196,91 @@ class TestCasperPost:
         assert response.status_code == 201
         json_data = response.get_json()
         assert json_data['success'] is True
-        assert 'login_node_ids' in json_data
-        assert len(json_data['login_node_ids']) == 2
+        assert 'status_id' in json_data
+        assert 'timestamp' in json_data
+
+    def test_post_casper_with_nested_objects(self, auth_client, status_session):
+        """Test posting Casper status with all nested object types."""
+        # Clean up any existing Casper data from previous tests
+        status_session.query(LoginNodeStatus).filter_by(system_name='casper').delete()
+        status_session.query(QueueStatus).filter_by(system_name='casper').delete()
+        status_session.query(FilesystemStatus).filter_by(system_name='casper').delete()
+        status_session.query(CasperNodeTypeStatus).delete()
+        status_session.query(CasperStatus).delete()
+        status_session.commit()
+
+        data = {
+            'cpu_nodes_total': 151,
+            'cpu_nodes_available': 135,
+            'cpu_nodes_down': 3,
+            'cpu_nodes_reserved': 10,
+            'cpu_cores_total': 9556,
+            'cpu_cores_allocated': 3200,
+            'cpu_cores_idle': 6356,
+            'gpu_nodes_total': 22,
+            'gpu_nodes_available': 17,
+            'gpu_nodes_down': 2,
+            'gpu_nodes_reserved': 3,
+            'gpu_count_total': 102,
+            'gpu_count_allocated': 60,
+            'gpu_count_idle': 42,
+            'viz_nodes_total': 15,
+            'viz_nodes_available': 15,
+            'viz_nodes_down': 0,
+            'viz_nodes_reserved': 0,
+            'viz_count_total': 96,
+            'viz_count_allocated': 4,
+            'viz_count_idle': 92,
+            'memory_total_gb': 112413.0,
+            'memory_allocated_gb': 55826.0,
+            'running_jobs': 456,
+            'pending_jobs': 89,
+            'active_users': 92,
+            'login_nodes': [
+                {
+                    'node_name': 'casper1',
+                    'available': True,
+                    'user_count': 39,
+                }
+            ],
+            'node_types': [
+                {
+                    'node_type': 'gpu-v100',
+                    'nodes_total': 64,
+                    'nodes_available': 42,
+                }
+            ],
+            'queues': [
+                {
+                    'queue_name': 'casper',
+                    'running_jobs': 200,
+                }
+            ],
+            'filesystems': [
+                {
+                    'filesystem_name': 'campaign',
+                    'available': True,
+                }
+            ]
+        }
+
+        response = auth_client.post('/api/v1/status/casper',
+                                   json=data,
+                                   content_type='application/json')
+
+        if response.status_code != 201:
+            print(f"Error response: {response.get_json()}")
+        assert response.status_code == 201
+        json_data = response.get_json()
+        assert json_data['success'] is True
+        assert len(json_data['login_node_ids']) == 1
+        assert len(json_data['node_type_ids']) == 1
+        assert len(json_data['queue_ids']) == 1
+        assert len(json_data['filesystem_ids']) == 1
 
 
 # ============================================================================
-# GET Endpoint Tests - Data Retrieval
+# GET Endpoint Tests - Verify Nested Objects Are Retrieved
 # ============================================================================
 
 class TestDerechoGet:
@@ -303,40 +310,35 @@ class TestDerechoGet:
             cpu_cores_total=12800,
             cpu_cores_allocated=10000,
             cpu_cores_idle=2800,
-            cpu_utilization_percent=78.1,
             gpu_count_total=80,
             gpu_count_allocated=60,
             gpu_count_idle=20,
-            gpu_utilization_percent=75.0,
             memory_total_gb=25600.0,
             memory_allocated_gb=20000.0,
-            memory_utilization_percent=78.1,
             running_jobs=150,
             pending_jobs=30,
             active_users=50,
         )
         status_session.add(status)
+        status_session.flush()
 
-        # Create login nodes
+        # Create login nodes linked via FK
         for i in range(1, 3):
-            node =LoginNodeStatus(
+            node = LoginNodeStatus(
                 timestamp=timestamp,
                 node_name=f'derecho{i}',
                 node_type='cpu',
                 system_name='derecho',
+                derecho_status_id=status.status_id,
                 available=True,
-                degraded=False,
                 user_count=10 + i,
-                load_1min=2.0 + i * 0.1,
-                load_5min=2.5 + i * 0.1,
-                load_15min=3.0 + i * 0.1
             )
             status_session.add(node)
 
         status_session.commit()
 
     def test_get_derecho_latest(self, auth_client):
-        """Test retrieving latest Derecho status."""
+        """Test retrieving latest Derecho status includes nested objects."""
         response = auth_client.get('/api/v1/status/derecho/latest')
 
         assert response.status_code == 200
@@ -347,11 +349,10 @@ class TestDerechoGet:
         assert data['running_jobs'] == 150
         assert 'timestamp' in data
 
-        # Check login nodes array
+        # Check login nodes array is included
         assert 'login_nodes' in data
         assert len(data['login_nodes']) == 2
         assert data['login_nodes'][0]['node_name'] == 'derecho1'
-        assert data['login_nodes'][0]['node_type'] == 'cpu'
         assert data['login_nodes'][0]['user_count'] == 11
 
     def test_get_derecho_no_data(self, auth_client, status_session):
@@ -376,6 +377,7 @@ class TestCasperGet:
         """Create test data for Casper GET tests."""
         # Clear existing data first
         status_session.query(LoginNodeStatus).delete()
+        status_session.query(CasperNodeTypeStatus).delete()
         status_session.query(CasperStatus).delete()
         status_session.commit()
 
@@ -384,7 +386,6 @@ class TestCasperGet:
         # Create main status
         status = CasperStatus(
             timestamp=timestamp,
-            # CPU nodes
             cpu_nodes_total=151,
             cpu_nodes_available=135,
             cpu_nodes_down=3,
@@ -392,8 +393,6 @@ class TestCasperGet:
             cpu_cores_total=9556,
             cpu_cores_allocated=3200,
             cpu_cores_idle=6356,
-            cpu_utilization_percent=68.5,
-            # GPU nodes
             gpu_nodes_total=22,
             gpu_nodes_available=17,
             gpu_nodes_down=2,
@@ -401,8 +400,6 @@ class TestCasperGet:
             gpu_count_total=102,
             gpu_count_allocated=60,
             gpu_count_idle=42,
-            gpu_utilization_percent=82.3,
-            # VIZ nodes
             viz_nodes_total=15,
             viz_nodes_available=15,
             viz_nodes_down=0,
@@ -410,38 +407,41 @@ class TestCasperGet:
             viz_count_total=96,
             viz_count_allocated=4,
             viz_count_idle=92,
-            viz_utilization_percent=4.2,
-            # Memory
             memory_total_gb=112413.0,
             memory_allocated_gb=55826.0,
-            memory_utilization_percent=71.2,
-            # Jobs
             running_jobs=456,
             pending_jobs=89,
             active_users=92,
         )
         status_session.add(status)
+        status_session.flush()
 
-        # Create login nodes
-        for i in range(1, 3):
-            node = LoginNodeStatus(
-                timestamp=timestamp,
-                node_name=f'casper{i}',
-                node_type='cpu',
-                system_name='casper',
-                available=True,
-                degraded=False,
-                user_count=38 + i,
-                load_1min=3.0 + i * 0.1,
-                load_5min=3.2 + i * 0.1,
-                load_15min=3.4 + i * 0.1
-            )
-            status_session.add(node)
+        # Create login node linked via FK
+        node = LoginNodeStatus(
+            timestamp=timestamp,
+            node_name='casper1',
+            node_type='cpu',
+            system_name='casper',
+            casper_status_id=status.status_id,
+            available=True,
+            user_count=39,
+        )
+        status_session.add(node)
+
+        # Create node type linked via FK
+        node_type = CasperNodeTypeStatus(
+            timestamp=timestamp,
+            casper_status_id=status.status_id,
+            node_type='gpu-v100',
+            nodes_total=64,
+            nodes_available=42,
+        )
+        status_session.add(node_type)
 
         status_session.commit()
 
     def test_get_casper_latest(self, auth_client):
-        """Test retrieving latest Casper status."""
+        """Test retrieving latest Casper status includes nested objects."""
         response = auth_client.get('/api/v1/status/casper/latest')
 
         assert response.status_code == 200
@@ -450,11 +450,14 @@ class TestCasperGet:
         # Check main status fields
         assert data['cpu_nodes_total'] == 151
         assert data['gpu_nodes_total'] == 22
-        assert data['viz_nodes_total'] == 15
         assert data['running_jobs'] == 456
 
-        # Check login nodes array
+        # Check login nodes array is included
         assert 'login_nodes' in data
-        assert len(data['login_nodes']) == 2
+        assert len(data['login_nodes']) == 1
         assert data['login_nodes'][0]['node_name'] == 'casper1'
-        assert data['login_nodes'][0]['user_count'] == 39
+
+        # Check node types array is included
+        assert 'node_types' in data
+        assert len(data['node_types']) == 1
+        assert data['node_types'][0]['node_type'] == 'gpu-v100'

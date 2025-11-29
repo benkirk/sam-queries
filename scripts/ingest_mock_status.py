@@ -104,10 +104,9 @@ def ingest_mock_data():
             held_jobs=derecho_data['held_jobs'],
             active_users=derecho_data['active_users'],
         )
-        session.add(derecho_status)
         print(f"   ✓ Derecho main status")
 
-        # Derecho login nodes
+        # Derecho login nodes - add via relationship so FK is set automatically
         for node_data in derecho_data['login_nodes']:
             login_node = LoginNodeStatus(
                 timestamp=timestamp,
@@ -121,10 +120,10 @@ def ingest_mock_data():
                 load_5min=node_data.get('load_5min'),
                 load_15min=node_data.get('load_15min'),
             )
-            session.add(login_node)
+            derecho_status.login_nodes.append(login_node)  # FK set via relationship
             print(f"   ✓ Derecho login node: {node_data['node_name']} ({node_data['node_type']})")
 
-        # Derecho queues
+        # Derecho queues - add via relationship so FK is set automatically
         for queue_data in derecho_data['queues']:
             queue_status = QueueStatus(
                 timestamp=timestamp,
@@ -138,10 +137,10 @@ def ingest_mock_data():
                 gpus_allocated=queue_data['gpus_allocated'],
                 nodes_allocated=queue_data['nodes_allocated'],
             )
-            session.add(queue_status)
+            derecho_status.queues.append(queue_status)  # FK set via relationship
             print(f"   ✓ Derecho queue: {queue_data['queue_name']}")
 
-        # Derecho filesystems
+        # Derecho filesystems - add via relationship so FK is set automatically
         for fs_data in derecho_data['filesystems']:
             fs_status = FilesystemStatus(
                 timestamp=timestamp,
@@ -153,8 +152,11 @@ def ingest_mock_data():
                 used_tb=fs_data['used_tb'],
                 utilization_percent=fs_data['utilization_percent'],
             )
-            session.add(fs_status)
+            derecho_status.filesystems.append(fs_status)  # FK set via relationship
             print(f"   ✓ Derecho filesystem: {fs_data['filesystem_name']}")
+
+        # Add derecho_status to session (cascades to all children)
+        session.add(derecho_status)
 
         # Casper
         print("\n2. Ingesting Casper status...")
@@ -195,10 +197,9 @@ def ingest_mock_data():
             held_jobs=casper_data['held_jobs'],
             active_users=casper_data['active_users'],
         )
-        session.add(casper_status)
         print(f"   ✓ Casper main status")
 
-        # Casper login nodes
+        # Casper login nodes - add via relationship so FK is set automatically
         for node_data in casper_data['login_nodes']:
             login_node = LoginNodeStatus(
                 timestamp=timestamp,
@@ -212,10 +213,10 @@ def ingest_mock_data():
                 load_5min=node_data.get('load_5min'),
                 load_15min=node_data.get('load_15min'),
             )
-            session.add(login_node)
+            casper_status.login_nodes.append(login_node)  # FK set via relationship
             print(f"   ✓ Casper login node: {node_data['node_name']}")
 
-        # Casper node types
+        # Casper node types - add via relationship so FK is set automatically
         for nt_data in casper_data['node_types']:
             nt_status = CasperNodeTypeStatus(
                 timestamp=timestamp,
@@ -230,10 +231,10 @@ def ingest_mock_data():
                 gpus_per_node=nt_data['gpus_per_node'],
                 utilization_percent=nt_data['utilization_percent'],
             )
-            session.add(nt_status)
+            casper_status.node_types.append(nt_status)  # FK set via relationship
             print(f"   ✓ Casper node type: {nt_data['node_type']}")
 
-        # Casper queues
+        # Casper queues - add via relationship so FK is set automatically
         for queue_data in casper_data['queues']:
             queue_status = QueueStatus(
                 timestamp=timestamp,
@@ -246,10 +247,10 @@ def ingest_mock_data():
                 cores_allocated=queue_data['cores_allocated'],
                 nodes_allocated=queue_data['nodes_allocated'],
             )
-            session.add(queue_status)
+            casper_status.queues.append(queue_status)  # FK set via relationship
             print(f"   ✓ Casper queue: {queue_data['queue_name']}")
 
-        # Casper filesystems
+        # Casper filesystems - add via relationship so FK is set automatically
         if 'filesystems' in casper_data:
             for fs_data in casper_data['filesystems']:
                 fs_status = FilesystemStatus(
@@ -262,8 +263,11 @@ def ingest_mock_data():
                     used_tb=fs_data['used_tb'],
                     utilization_percent=fs_data['utilization_percent'],
                 )
-                session.add(fs_status)
+                casper_status.filesystems.append(fs_status)  # FK set via relationship
                 print(f"   ✓ Casper filesystem: {fs_data['filesystem_name']}")
+
+        # Add casper_status to session (cascades to all children)
+        session.add(casper_status)
 
         # JupyterHub
         print("\n3. Ingesting JupyterHub status...")
