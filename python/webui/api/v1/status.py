@@ -86,6 +86,113 @@ def _validate_timestamp(data):
             raise ValueError(f"Invalid timestamp format: {timestamp_str}. Use ISO format or 'YYYY-MM-DD HH:MM:SS'")
 
 
+def _handle_reservations(reservations_data, system_name):
+    """
+    Upsert reservations for a given system.
+
+    Args:
+        reservations_data: List of reservation dicts from the request
+        system_name: Name of the system ('derecho' or 'casper')
+
+    Returns:
+        A list of upserted reservation IDs.
+    """
+    from sqlalchemy import and_
+
+    reservation_ids = []
+    for resv_data in reservations_data:
+        # Upsert logic: check if reservation exists
+        existing = db.session.query(ResourceReservation).filter(
+            and_(
+                ResourceReservation.system_name == system_name,
+                ResourceReservation.reservation_name == resv_data['reservation_name']
+            )
+        ).first()
+
+        if existing:
+            # Update existing reservation
+            existing.description = resv_data.get('description')
+            existing.start_time = datetime.fromisoformat(resv_data['start_time'])
+            existing.end_time = datetime.fromisoformat(resv_data['end_time'])
+            existing.node_count = resv_data.get('node_count')
+            existing.partition = resv_data.get('partition')
+            existing.updated_at = datetime.now()
+            reservation_ids.append(existing.reservation_id)
+        else:
+            # Insert new reservation
+            resv = ResourceReservation(
+                system_name=system_name,
+                reservation_name=resv_data['reservation_name'],
+                description=resv_data.get('description'),
+                start_time=datetime.fromisoformat(resv_data['start_time']),
+                end_time=datetime.fromisoformat(resv_data['end_time']),
+                node_count=resv_data.get('node_count'),
+                partition=resv_data.get('partition'),
+            )
+            db.session.add(resv)
+            db.session.flush()
+            reservation_ids.append(resv.reservation_id)
+    return reservation_ids
+
+
+def _ingest_system_status(system_name, StatusSchema, id_mappers):
+    """
+    Generic helper to ingest system status for Derecho and Casper.
+
+    Args:
+        system_name (str): The name of the system (e.g., 'derecho').
+        StatusSchema (marshmallow.Schema): The schema for the system status.
+        id_mappers (dict): A mapping to extract IDs from nested objects.
+
+    Returns:
+        Flask Response: JSON response with success or error.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'JSON body required'}), 400
+
+    try:
+        timestamp = _validate_timestamp(data)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    try:
+        # Extract reservations before loading (handled separately due to upsert logic)
+        reservations = data.pop('reservations', [])
+
+        # Schema loads EVERYTHING - main status + all nested objects
+        data['timestamp'] = timestamp
+        schema = StatusSchema()
+        schema.context = {'session': db.session}
+        status_object = schema.load(data)
+
+        # Add to session - all nested objects are already linked
+        db.session.add(status_object)
+        db.session.flush()  # Get IDs for all objects
+
+        # Collect IDs from relationships for response
+        result = {
+            'success': True,
+            'message': f'{system_name.capitalize()} status ingested successfully',
+            'status_id': status_object.status_id,
+            'timestamp': timestamp.isoformat(),
+        }
+        for result_key, (object_list_attr, id_attr) in id_mappers.items():
+            if hasattr(status_object, object_list_attr):
+                result[result_key] = [getattr(obj, id_attr) for obj in getattr(status_object, object_list_attr)]
+
+        # Handle reservation status if provided
+        if reservations:
+            result['reservation_ids'] = _handle_reservations(reservations, system_name)
+
+        db.session.commit()
+        return jsonify(result), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+
+
 # ============================================================================
 # POST Endpoints - Data Ingestion
 # ============================================================================
@@ -110,86 +217,16 @@ def ingest_derecho():
     Returns:
         JSON with success status and created record IDs
     """
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'JSON body required'}), 400
-
-    try:
-        timestamp = _validate_timestamp(data)
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-
-    try:
-        # Extract reservations before loading (handled separately due to upsert logic)
-        reservations = data.pop('reservations', [])
-
-        # Schema loads EVERYTHING - main status + all nested objects
-        data['timestamp'] = timestamp
-        schema = DerechoStatusSchema()
-        schema.context = {'session': db.session}
-        derecho_status = schema.load(data)
-
-        # Add to session - all nested objects are already linked
-        db.session.add(derecho_status)
-        db.session.flush()  # Get IDs for all objects
-
-        # Collect IDs from relationships for response
-        result = {
-            'success': True,
-            'message': 'Derecho status ingested successfully',
-            'status_id': derecho_status.status_id,
-            'timestamp': timestamp.isoformat(),
-            'login_node_ids': [n.login_node_id for n in derecho_status.login_nodes],
-            'queue_ids': [q.queue_status_id for q in derecho_status.queues],
-            'filesystem_ids': [f.fs_status_id for f in derecho_status.filesystems],
-        }
-
-        # Handle reservation status if provided (upsert logic requires manual handling)
-        if reservations:
-            from sqlalchemy import and_
-
-            reservation_ids = []
-            for resv_data in reservations:
-                # Upsert logic: check if reservation exists
-                existing = db.session.query(ResourceReservation).filter(
-                    and_(
-                        ResourceReservation.system_name == 'derecho',
-                        ResourceReservation.reservation_name == resv_data['reservation_name']
-                    )
-                ).first()
-
-                if existing:
-                    # Update existing reservation
-                    existing.description = resv_data.get('description')
-                    existing.start_time = datetime.fromisoformat(resv_data['start_time'])
-                    existing.end_time = datetime.fromisoformat(resv_data['end_time'])
-                    existing.node_count = resv_data.get('node_count')
-                    existing.partition = resv_data.get('partition')
-                    existing.updated_at = datetime.now()
-                    reservation_ids.append(existing.reservation_id)
-                else:
-                    # Insert new reservation
-                    resv = ResourceReservation(
-                        system_name='derecho',
-                        reservation_name=resv_data['reservation_name'],
-                        description=resv_data.get('description'),
-                        start_time=datetime.fromisoformat(resv_data['start_time']),
-                        end_time=datetime.fromisoformat(resv_data['end_time']),
-                        node_count=resv_data.get('node_count'),
-                        partition=resv_data.get('partition'),
-                    )
-                    db.session.add(resv)
-                    db.session.flush()
-                    reservation_ids.append(resv.reservation_id)
-
-            result['reservation_ids'] = reservation_ids
-
-        db.session.commit()
-        return jsonify(result), 201
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': f'Database error: {str(e)}'}), 500
+    id_mappers = {
+        'login_node_ids': ('login_nodes', 'login_node_id'),
+        'queue_ids': ('queues', 'queue_status_id'),
+        'filesystem_ids': ('filesystems', 'fs_status_id'),
+    }
+    return _ingest_system_status(
+        system_name='derecho',
+        StatusSchema=DerechoStatusSchema,
+        id_mappers=id_mappers
+    )
 
 
 @bp.route('/casper', methods=['POST'])
@@ -212,87 +249,17 @@ def ingest_casper():
     Returns:
         JSON with success status and created record IDs
     """
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'JSON body required'}), 400
-
-    try:
-        timestamp = _validate_timestamp(data)
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-
-    try:
-        # Extract reservations before loading (handled separately due to upsert logic)
-        reservations = data.pop('reservations', [])
-
-        # Schema loads EVERYTHING - main status + all nested objects
-        data['timestamp'] = timestamp
-        schema = CasperStatusSchema()
-        schema.context = {'session': db.session}
-        casper_status = schema.load(data)
-
-        # Add to session - all nested objects are already linked
-        db.session.add(casper_status)
-        db.session.flush()  # Get IDs for all objects
-
-        # Collect IDs from relationships for response
-        result = {
-            'success': True,
-            'message': 'Casper status ingested successfully',
-            'status_id': casper_status.status_id,
-            'timestamp': timestamp.isoformat(),
-            'login_node_ids': [n.login_node_id for n in casper_status.login_nodes],
-            'node_type_ids': [nt.node_type_status_id for nt in casper_status.node_types],
-            'queue_ids': [q.queue_status_id for q in casper_status.queues],
-            'filesystem_ids': [f.fs_status_id for f in casper_status.filesystems],
-        }
-
-        # Handle reservation status if provided (upsert logic requires manual handling)
-        if reservations:
-            from sqlalchemy import and_
-
-            reservation_ids = []
-            for resv_data in reservations:
-                # Upsert logic: check if reservation exists
-                existing = db.session.query(ResourceReservation).filter(
-                    and_(
-                        ResourceReservation.system_name == 'casper',
-                        ResourceReservation.reservation_name == resv_data['reservation_name']
-                    )
-                ).first()
-
-                if existing:
-                    # Update existing reservation
-                    existing.description = resv_data.get('description')
-                    existing.start_time = datetime.fromisoformat(resv_data['start_time'])
-                    existing.end_time = datetime.fromisoformat(resv_data['end_time'])
-                    existing.node_count = resv_data.get('node_count')
-                    existing.partition = resv_data.get('partition')
-                    existing.updated_at = datetime.now()
-                    reservation_ids.append(existing.reservation_id)
-                else:
-                    # Insert new reservation
-                    resv = ResourceReservation(
-                        system_name='casper',
-                        reservation_name=resv_data['reservation_name'],
-                        description=resv_data.get('description'),
-                        start_time=datetime.fromisoformat(resv_data['start_time']),
-                        end_time=datetime.fromisoformat(resv_data['end_time']),
-                        node_count=resv_data.get('node_count'),
-                        partition=resv_data.get('partition'),
-                    )
-                    db.session.add(resv)
-                    db.session.flush()
-                    reservation_ids.append(resv.reservation_id)
-
-            result['reservation_ids'] = reservation_ids
-
-        db.session.commit()
-        return jsonify(result), 201
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': f'Database error: {str(e)}'}), 500
+    id_mappers = {
+        'login_node_ids': ('login_nodes', 'login_node_id'),
+        'node_type_ids': ('node_types', 'node_type_status_id'),
+        'queue_ids': ('queues', 'queue_status_id'),
+        'filesystem_ids': ('filesystems', 'fs_status_id'),
+    }
+    return _ingest_system_status(
+        system_name='casper',
+        StatusSchema=CasperStatusSchema,
+        id_mappers=id_mappers
+    )
 
 
 @bp.route('/jupyterhub', methods=['POST'])
