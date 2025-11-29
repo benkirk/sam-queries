@@ -53,6 +53,10 @@ class QueueParser:
                     'cores_allocated': 0,
                     'gpus_allocated': 0,
                     'nodes_allocated': set(),  # Track unique nodes
+                    'cores_pending' : 0,
+                    'gpus_pending' : 0,
+                    'cores_held' : 0,
+                    'gpus_held' : 0,
                 }
 
             if state == 'R':  # Running
@@ -72,9 +76,13 @@ class QueueParser:
                             queues[queue]['nodes_allocated'].add(node_name)
             elif state == 'Q':  # Queued
                 queues[queue]['pending_jobs'] += 1
+                queues[queue]['cores_pending'] += ncpus
+                queues[queue]['gpus_pending'] += ngpus
 
             elif state == 'H':  # Held
                 queues[queue]['held_jobs'] += 1
+                queues[queue]['cores_held'] += ncpus
+                queues[queue]['gpus_held'] += ngpus
 
             if user:
                 queues[queue]['active_users'].add(user)

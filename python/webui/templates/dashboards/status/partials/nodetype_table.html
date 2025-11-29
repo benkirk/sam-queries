@@ -4,11 +4,11 @@
         <thead class="thead-light">
             <tr>
                 <th>Node Type</th>
+                <th>Specs</th>
                 <th>Total</th>
                 <th>Available</th>
                 <th>Down</th>
                 <th>Allocated</th>
-                <th>Specs</th>
                 <th>Utilization</th>
             </tr>
         </thead>
@@ -16,10 +16,6 @@
             {% for nt in node_types %}
             <tr>
                 <td><strong>{{ nt.node_type }}</strong></td>
-                <td>{{ nt.nodes_total }}</td>
-                <td class="text-success">{{ nt.nodes_available }}</td>
-                <td class="text-danger">{{ nt.nodes_down }}</td>
-                <td class="text-warning">{{ nt.nodes_allocated }}</td>
                 <td>
                     <small>
                         {{ nt.cores_per_node }} cores,
@@ -27,6 +23,10 @@
                         {% if nt.gpu_model %}<br>{{ nt.gpus_per_node }}x {{ nt.gpu_model }}{% endif %}
                     </small>
                 </td>
+                <td>{{ nt.nodes_total }}</td>
+                <td class="text-success">{{ nt.nodes_available }}</td>
+                <td class="text-danger">{{ nt.nodes_down }}</td>
+                <td class="text-warning">{{ nt.nodes_allocated }}</td>
                 <td>
                     {% if nt.utilization_percent is not none %}
                     <div class="mb-1">

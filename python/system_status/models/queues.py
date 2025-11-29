@@ -19,7 +19,7 @@ class QueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     )
 
     queue_status_id = Column(Integer, primary_key=True, autoincrement=True)
-    queue_name = Column(String(64), nullable=False, index=True)
+    queue_name = Column(String(32), nullable=False, index=True)
     system_name = Column(String(32), nullable=False, index=True, comment='System to which ths queue belongs (derecho, casper, etc.)')
 
     # Queue Metrics
@@ -32,3 +32,11 @@ class QueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     cores_allocated = Column(Integer, nullable=False, default=0)
     gpus_allocated = Column(Integer, nullable=False, default=0)
     nodes_allocated = Column(Integer, nullable=False, default=0)
+
+    # Resources Pending
+    cores_pending = Column(Integer, nullable=False, default=0)
+    gpus_pending = Column(Integer, nullable=False, default=0)
+
+    # Resources Held
+    cores_held = Column(Integer, nullable=False, default=0)
+    gpus_held = Column(Integer, nullable=False, default=0)

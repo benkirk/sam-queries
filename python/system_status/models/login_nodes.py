@@ -48,7 +48,7 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
     login_node_id = Column(Integer, primary_key=True, autoincrement=True)
 
     # Login node identification
-    node_name = Column(String(50), nullable=False, index=True,
+    node_name = Column(String(32), nullable=False, index=True,
                       comment='Login node hostname (e.g., derecho1, derecho2)')
     node_type = Column(Enum('cpu', 'gpu', 'data-access', name='login_node_type'),
                       nullable=False,

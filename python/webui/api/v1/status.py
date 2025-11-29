@@ -171,6 +171,10 @@ def ingest_derecho():
                     cores_allocated=queue_data.get('cores_allocated', 0),
                     gpus_allocated=queue_data.get('gpus_allocated', 0),
                     nodes_allocated=queue_data.get('nodes_allocated', 0),
+                    cores_pending=queue_data.get('cores_pending', 0),
+                    gpus_pending=queue_data.get('gpus_pending', 0),
+                    cores_held=queue_data.get('cores_held', 0),
+                    gpus_held=queue_data.get('gpus_held', 0),
                 )
                 db.session.add(queue_status)
                 db.session.flush()
@@ -351,6 +355,10 @@ def ingest_casper():
                     cores_allocated=queue_data.get('cores_allocated', 0),
                     gpus_allocated=queue_data.get('gpus_allocated', 0),
                     nodes_allocated=queue_data.get('nodes_allocated', 0),
+                    cores_pending=queue_data.get('cores_pending', 0),
+                    gpus_pending=queue_data.get('gpus_pending', 0),
+                    cores_held=queue_data.get('cores_held', 0),
+                    gpus_held=queue_data.get('gpus_held', 0),
                 )
                 db.session.add(queue_status)
                 db.session.flush()

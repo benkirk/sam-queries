@@ -20,7 +20,7 @@ class FilesystemStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessi
     )
 
     fs_status_id = Column(Integer, primary_key=True, autoincrement=True)
-    filesystem_name = Column(String(64), nullable=False, index=True)
+    filesystem_name = Column(String(32), nullable=False, index=True)
     system_name = Column(String(32), nullable=False, index=True, comment='System using this filesystem (derecho, casper, etc.)')
 
     # Status inherited from AvailabilityMixin: available, degraded
