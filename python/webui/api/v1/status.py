@@ -120,12 +120,62 @@ def ingest_derecho():
         return jsonify({'error': str(e)}), 400
 
     try:
-        # Schema loads EVERYTHING - main status + all nested objects (login_nodes, queues, filesystems)
-        # Nested objects are created and linked via ORM relationships automatically
+        # Schema loads main status only (nested objects created manually below)
         data['timestamp'] = timestamp
         schema = DerechoStatusSchema()
         schema.context = {'session': db.session}
+
+        # Extract nested data before loading
+        login_nodes_data = data.pop('login_nodes', [])
+        queues_data = data.pop('queues', [])
+        filesystems_data = data.pop('filesystems', [])
+
+        # Load main status record
         derecho_status = schema.load(data)
+
+        # Manually create and link nested objects via relationships (FK set automatically)
+        for node_dict in login_nodes_data:
+            login_node = LoginNodeStatus(
+                timestamp=timestamp,
+                node_name=node_dict['node_name'],
+                node_type=node_dict.get('node_type', 'cpu'),
+                system_name='derecho',
+                available=node_dict['available'],
+                degraded=node_dict.get('degraded', False),
+                user_count=node_dict.get('user_count'),
+                load_1min=node_dict.get('load_1min'),
+                load_5min=node_dict.get('load_5min'),
+                load_15min=node_dict.get('load_15min'),
+            )
+            derecho_status.login_nodes.append(login_node)
+
+        for queue_dict in queues_data:
+            queue = QueueStatus(
+                timestamp=timestamp,
+                queue_name=queue_dict['queue_name'],
+                system_name='derecho',
+                running_jobs=queue_dict.get('running_jobs', 0),
+                pending_jobs=queue_dict.get('pending_jobs', 0),
+                held_jobs=queue_dict.get('held_jobs', 0),
+                active_users=queue_dict.get('active_users', 0),
+                cores_allocated=queue_dict.get('cores_allocated', 0),
+                gpus_allocated=queue_dict.get('gpus_allocated', 0),
+                nodes_allocated=queue_dict.get('nodes_allocated', 0),
+            )
+            derecho_status.queues.append(queue)
+
+        for fs_dict in filesystems_data:
+            filesystem = FilesystemStatus(
+                timestamp=timestamp,
+                filesystem_name=fs_dict['filesystem_name'],
+                system_name='derecho',
+                available=fs_dict['available'],
+                degraded=fs_dict.get('degraded', False),
+                capacity_tb=fs_dict.get('capacity_tb'),
+                used_tb=fs_dict.get('used_tb'),
+                utilization_percent=fs_dict.get('utilization_percent'),
+            )
+            derecho_status.filesystems.append(filesystem)
 
         # Add parent to session (cascades to all children automatically via relationships)
         db.session.add(derecho_status)
@@ -221,12 +271,79 @@ def ingest_casper():
         return jsonify({'error': str(e)}), 400
 
     try:
-        # Schema loads EVERYTHING - main status + all nested objects (login_nodes, node_types, queues, filesystems)
-        # Nested objects are created and linked via ORM relationships automatically
+        # Schema loads main status only (nested objects created manually below)
         data['timestamp'] = timestamp
         schema = CasperStatusSchema()
         schema.context = {'session': db.session}
+
+        # Extract nested data before loading
+        login_nodes_data = data.pop('login_nodes', [])
+        node_types_data = data.pop('node_types', [])
+        queues_data = data.pop('queues', [])
+        filesystems_data = data.pop('filesystems', [])
+
+        # Load main status record
         casper_status = schema.load(data)
+
+        # Manually create and link nested objects via relationships (FK set automatically)
+        for node_dict in login_nodes_data:
+            login_node = LoginNodeStatus(
+                timestamp=timestamp,
+                node_name=node_dict['node_name'],
+                node_type=node_dict.get('node_type', 'cpu'),
+                system_name='casper',
+                available=node_dict['available'],
+                degraded=node_dict.get('degraded', False),
+                user_count=node_dict.get('user_count'),
+                load_1min=node_dict.get('load_1min'),
+                load_5min=node_dict.get('load_5min'),
+                load_15min=node_dict.get('load_15min'),
+            )
+            casper_status.login_nodes.append(login_node)
+
+        for nt_dict in node_types_data:
+            node_type = CasperNodeTypeStatus(
+                timestamp=timestamp,
+                node_type=nt_dict['node_type'],
+                nodes_total=nt_dict['nodes_total'],
+                nodes_available=nt_dict['nodes_available'],
+                nodes_down=nt_dict.get('nodes_down', 0),
+                nodes_allocated=nt_dict.get('nodes_allocated', 0),
+                cores_per_node=nt_dict.get('cores_per_node'),
+                memory_gb_per_node=nt_dict.get('memory_gb_per_node'),
+                gpu_model=nt_dict.get('gpu_model'),
+                gpus_per_node=nt_dict.get('gpus_per_node', 0),
+                utilization_percent=nt_dict.get('utilization_percent'),
+                memory_utilization_percent=nt_dict.get('memory_utilization_percent'),
+            )
+            casper_status.node_types.append(node_type)
+
+        for queue_dict in queues_data:
+            queue = QueueStatus(
+                timestamp=timestamp,
+                queue_name=queue_dict['queue_name'],
+                system_name='casper',
+                running_jobs=queue_dict.get('running_jobs', 0),
+                pending_jobs=queue_dict.get('pending_jobs', 0),
+                held_jobs=queue_dict.get('held_jobs', 0),
+                active_users=queue_dict.get('active_users', 0),
+                cores_allocated=queue_dict.get('cores_allocated', 0),
+                nodes_allocated=queue_dict.get('nodes_allocated', 0),
+            )
+            casper_status.queues.append(queue)
+
+        for fs_dict in filesystems_data:
+            filesystem = FilesystemStatus(
+                timestamp=timestamp,
+                filesystem_name=fs_dict['filesystem_name'],
+                system_name='casper',
+                available=fs_dict['available'],
+                degraded=fs_dict.get('degraded', False),
+                capacity_tb=fs_dict.get('capacity_tb'),
+                used_tb=fs_dict.get('used_tb'),
+                utilization_percent=fs_dict.get('utilization_percent'),
+            )
+            casper_status.filesystems.append(filesystem)
 
         # Add parent to session (cascades to all children automatically via relationships)
         db.session.add(casper_status)
