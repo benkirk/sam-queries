@@ -30,6 +30,7 @@ class LoginNodeSchema(BaseSchema):
         model = LoginNodeStatus
         load_instance = True
         include_relationships = True
+        exclude = ('derecho_status', 'casper_status')  # Exclude back-references
 
     # These fields are injected by parent schema, not provided in JSON
     timestamp = fields.DateTime(dump_only=True)
@@ -47,6 +48,7 @@ class FilesystemSchema(BaseSchema):
         model = FilesystemStatus
         load_instance = True
         include_relationships = True
+        exclude = ('derecho_status', 'casper_status')  # Exclude back-references
 
     # These fields are injected by parent schema, not provided in JSON
     timestamp = fields.DateTime(dump_only=True)
@@ -63,6 +65,7 @@ class QueueSchema(BaseSchema):
         model = QueueStatus
         load_instance = True
         include_relationships = True
+        exclude = ('derecho_status', 'casper_status')  # Exclude back-references
 
     # These fields are injected by parent schema, not provided in JSON
     timestamp = fields.DateTime(dump_only=True)
@@ -134,11 +137,11 @@ class CasperNodeTypeSchema(BaseSchema):
         model = CasperNodeTypeStatus
         load_instance = True
         include_relationships = True
+        exclude = ('casper_status',)  # Exclude back-reference to prevent circular serialization
 
     # These fields are injected/set automatically, not provided in JSON
     timestamp = fields.DateTime(dump_only=True)
     casper_status_id = fields.Integer(dump_only=True)
-    casper_status = fields.Nested('CasperStatusSchema', dump_only=True)
 
 
 class CasperStatusSchema(BaseSchema):

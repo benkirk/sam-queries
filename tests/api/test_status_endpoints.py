@@ -201,6 +201,14 @@ class TestCasperPost:
 
     def test_post_casper_with_nested_objects(self, auth_client, status_session):
         """Test posting Casper status with all nested object types."""
+        # Clean up any existing Casper data from previous tests
+        status_session.query(LoginNodeStatus).filter_by(system_name='casper').delete()
+        status_session.query(QueueStatus).filter_by(system_name='casper').delete()
+        status_session.query(FilesystemStatus).filter_by(system_name='casper').delete()
+        status_session.query(CasperNodeTypeStatus).delete()
+        status_session.query(CasperStatus).delete()
+        status_session.commit()
+
         data = {
             'cpu_nodes_total': 151,
             'cpu_nodes_available': 135,
@@ -250,7 +258,7 @@ class TestCasperPost:
             ],
             'filesystems': [
                 {
-                    'filesystem_name': 'glade',
+                    'filesystem_name': 'campaign',
                     'available': True,
                 }
             ]
@@ -260,6 +268,8 @@ class TestCasperPost:
                                    json=data,
                                    content_type='application/json')
 
+        if response.status_code != 201:
+            print(f"Error response: {response.get_json()}")
         assert response.status_code == 201
         json_data = response.get_json()
         assert json_data['success'] is True
