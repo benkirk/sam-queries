@@ -292,6 +292,7 @@ class SystemStatusCLI:
         table.add_column("Queue", style="cyan")
         table.add_column("Running Jobs", justify="right")
         table.add_column("Pending Jobs", justify="right")
+        table.add_column("Held Jobs", justify="right")
         table.add_column("Cores Alloc", justify="right")
         if show_gpus:
             table.add_column("GPUs Alloc", justify="right")
@@ -301,6 +302,7 @@ class SystemStatusCLI:
                 q.queue_name,
                 str(q.running_jobs),
                 str(q.pending_jobs),
+                str(q.held_jobs),
                 f"{q.cores_allocated:,}"
             ]
             if show_gpus:
