@@ -1,53 +1,70 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
-# Simple while-loop runner for HPC collectors
-# Runs Derecho and Casper collectors every 5 minutes
+# Loop-runner for HPC collectors, aligned to 5-minute intervals
 #
 
-# Determine script directory
+set -e
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Configuration
-INTERVAL=300  # 5 minutes in seconds
+INTERVAL=300    # 5 minutes
+TIMEOUT="2m"    # timeout for each collector
 LOG_DIR="${SCRIPT_DIR}/logs"
 
-# Create log directory
 mkdir -p "$LOG_DIR"
 
-echo "============================================================"
-echo "HPC Status Collectors - Starting"
-echo "Interval: ${INTERVAL}s ($(($INTERVAL / 60)) minutes)"
-echo "Log directory: $LOG_DIR"
-echo "============================================================"
-echo ""
+# Define collectors as "name:relative_path"
+COLLECTORS=(
+    "Derecho:derecho/collector.py"
+    "Casper:casper/collector.py"
+)
 
-# Trap Ctrl+C
-trap 'echo ""; echo "Shutting down collectors..."; exit 0' INT TERM
+cat <<EOF
+============================================================
+HPC Status Collectors - Starting
+Interval: ${INTERVAL}s ($(($INTERVAL / 60)) minutes)
+Timeout: ${TIMEOUT}
+Log directory: $LOG_DIR
+============================================================
 
-# Main collection loop
+EOF
+
 while true; do
-    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$TIMESTAMP] Running collectors..."
+    loop_start=$(date +%s)
+    next_run=$(( loop_start + INTERVAL ))
 
-    # Run Derecho collector
-    echo "  - Derecho..."
-    if ./derecho/collector.py --log-file="$LOG_DIR/derecho.log" > /dev/null 2>&1; then
-        echo "    ✓ Derecho completed"
+    echo "==== Collection started at $(date) ===="
+
+    # Collector loop
+    for entry in "${COLLECTORS[@]}"; do
+        IFS=":" read -r NAME COLLECTOR <<< "$entry"
+        LOGFILE="${LOG_DIR}/${NAME}.log"
+
+        echo "  - ${NAME}..."
+
+        if timeout "${TIMEOUT}" "./${COLLECTOR}" --log-file="${LOGFILE}" > /dev/null 2>&1; then
+            echo "    ✓ ${NAME} completed"
+        else
+            status=$?
+            if [[ $status -eq 124 ]]; then
+                echo "    ✗ ${NAME} TIMED OUT after ${TIMEOUT}"
+            else
+                echo "    ✗ ${NAME} failed (see ${LOGFILE})"
+            fi
+        fi
+    done
+
+    # Sleep remainder of interval
+    now=$(date +%s)
+    sleep_time=$(( next_run - now ))
+
+    if (( sleep_time > 0 )); then
+        echo "  Sleeping for ${sleep_time}s until next interval..."
+        sleep "${sleep_time}"
     else
-        echo "    ✗ Derecho failed (see $LOG_DIR/derecho.log)"
+        echo "  Collectors overran the interval — starting next cycle immediately."
     fi
 
-    # Run Casper collector
-    echo "  - Casper..."
-    if ./casper/collector.py --log-file="$LOG_DIR/casper.log" > /dev/null 2>&1; then
-        echo "    ✓ Casper completed"
-    else
-        echo "    ✗ Casper failed (see $LOG_DIR/casper.log)"
-    fi
-
-    echo "  Done! Sleeping for ${INTERVAL}s..."
     echo ""
-
-    sleep "$INTERVAL"
 done
