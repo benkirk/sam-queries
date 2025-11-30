@@ -1,0 +1,62 @@
+  <!-- The wrapper exists because: -->
+
+  <!-- 1. project_card.html defines a Jinja2 macro (render_project_card) -->
+  <!-- 2. Macros can't be rendered directly - they must be called -->
+  <!-- 3. Flask's render_template() renders a template file, not a macro -->
+
+  <!-- So the wrapper is a thin shim that: -->
+  <!-- - Imports the macro -->
+  <!-- - Calls it with the right parameters -->
+  <!-- - Returns HTML output -->
+
+  <!-- Alternative Solution: Eliminate the Wrapper -->
+
+  <!-- We could refactor to avoid the wrapper entirely by changing the blueprint endpoint: -->
+
+  <!-- # Current approach (uses wrapper) -->
+  <!-- return render_template( -->
+  <!--     'dashboards/user/fragments/project_card_wrapper.html', -->
+  <!--     project_data=project_data, -->
+  <!--     user=current_user, -->
+  <!--     usage_warning_threshold=USAGE_WARNING_THRESHOLD, -->
+  <!--     usage_critical_threshold=USAGE_CRITICAL_THRESHOLD -->
+  <!-- ) -->
+
+  <!-- # Alternative: Call macro directly -->
+  <!-- from flask import render_template_string -->
+  <!-- from jinja2 import Template -->
+
+  <!-- # Load the template and get the macro -->
+  <!-- template = app.jinja_env.get_template('dashboards/user/partials/project_card.html') -->
+  <!-- macro = template.module.render_project_card -->
+
+  <!-- # Call the macro -->
+  <!-- html = macro( -->
+  <!--     project_data=project_data, -->
+  <!--     loop_index=0, -->
+  <!--     user=current_user, -->
+  <!--     usage_warning_threshold=USAGE_WARNING_THRESHOLD, -->
+  <!--     usage_critical_threshold=USAGE_CRITICAL_THRESHOLD, -->
+  <!--     is_expanded=True -->
+  <!-- ) -->
+  <!-- return html -->
+
+  <!-- My Recommendation -->
+
+  <!-- Keep the wrapper because: -->
+
+  <!-- 1. Simple and clear - It's only 8 lines and obvious what it does -->
+  <!-- 2. Follows Jinja2 patterns - This is a standard approach for macro reuse -->
+  <!-- 3. Easier to maintain - Template changes don't require Python code changes -->
+  <!-- 4. Testable - The wrapper can be rendered/tested like any template -->
+
+{% from 'dashboards/user/partials/project_card.html' import render_project_card with context %}
+
+{{ render_project_card(
+    project_data,
+    0,
+    user,
+    usage_warning_threshold,
+    usage_critical_threshold,
+    is_expanded=true
+) }}

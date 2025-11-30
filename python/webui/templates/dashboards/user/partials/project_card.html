@@ -1,0 +1,188 @@
+{% macro render_project_card(project_data, loop_index, user, usage_warning_threshold, usage_critical_threshold, is_expanded=false) %}
+    {% set project = project_data.project %}
+    {% set resources = project_data.resources %}
+    {% set card_id = 'project-' ~ loop_index %}
+
+    <div class="card project-card mb-3">
+        <div class="card-header" data-toggle="collapse" data-target="#{{ card_id }}" aria-expanded="{{ 'true' if is_expanded else 'false' }}" style="cursor: pointer;">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0">
+                        <i class="fas fa-folder-open text-primary"></i>
+                        <strong>{{ project.projcode }}</strong> - {{ project.title or 'Untitled Project' }}
+                    </h5>
+                </div>
+                <div>
+                    {# Show user's role on this project #}
+                    {% if project.lead and project.lead.user_id == user.user_id %}
+                        <span class="badge badge-primary"><i class="fas fa-star"></i> Lead</span>
+                    {% elif project.admin and project.admin.user_id == user.user_id %}
+                        <span class="badge badge-info"><i class="fas fa-user-shield"></i> Admin</span>
+                    {% endif %}
+                    {# Show usage warning if any resource exceeds thresholds #}
+                    {% set max_usage = resources | map(attribute='percent_used') | max | default(0) %}
+                    {% if max_usage >= usage_critical_threshold %}
+                        <span class="badge badge-danger" title="Resource usage above {{ usage_critical_threshold }}%">
+                            <i class="fas fa-exclamation-circle"></i> {{ max_usage | round(0) | int }}% used
+                        </span>
+                    {% elif max_usage >= usage_warning_threshold %}
+                        <span class="badge badge-warning" title="Resource usage above {{ usage_warning_threshold }}%">
+                            <i class="fas fa-exclamation-triangle"></i> {{ max_usage | round(0) | int }}% used
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div id="{{ card_id }}" class="collapse{{ ' show' if is_expanded else '' }}">
+            <div class="card-body">
+                <!-- Project Info -->
+                <div class="project-stats-box mb-3">
+                    <h6><i class="fas fa-info-circle"></i> Project Information</h6>
+                    <div class="stat-item">
+                        <span class="stat-label">Lead:</span>
+                        <span class="stat-value">{{ project.lead.display_name if project.lead else 'N/A' }}</span>
+                    </div>
+                    {% if project.admin and project.admin.user_id != project.lead.user_id %}
+                    <div class="stat-item">
+                        <span class="stat-label">Admin:</span>
+                        <span class="stat-value">{{ project.admin.display_name }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="stat-item">
+                        <span class="stat-label">Type:</span>
+                        <span class="stat-value">{{ project.allocation_type.allocation_type if project.allocation_type else 'N/A' }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Panel:</span>
+                        <span class="stat-value">{{ project.allocation_type.panel.panel_name if project.allocation_type.panel else 'N/A' }}</span>
+                    </div>
+                    <!-- Contracts -->
+                    {% if project.contracts %}
+                    <div class="stat-item">
+                      <span class="stat-label">Contracts:</span>
+                      <span class="stat-value">
+                        <ul>
+                          {% for pc in project.contracts %}
+                              {% set label = pc.contract %}
+                              <li>{{ label }}</li>
+                          {% endfor %}
+                        </ul>
+                      </span>
+                    </div>
+                    {% endif %}
+                    <!-- Project directories list -->
+                    {% if project.active_directories %}
+                    <div class="stat-item">
+                      <span class="stat-label">Directories:</span>
+                      <span class="stat-value">
+                        <ul>
+                          {% for dir in project.active_directories %}
+                              <li>{{ dir }}</li>
+                          {% endfor %}
+                        </ul>
+                      </span>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Resources Section -->
+                {% if resources %}
+                <div class="mt-3">
+                    <h6 class="mb-2"><i class="fas fa-server"></i> Resources:</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-hover">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th>Resource</th>
+                                    <th>Start Date</th>
+                                    <th>End Date</th>
+                                    <th>Allocated</th>
+                                    <th>Used</th>
+                                    <th>Remaining</th>
+                                    <th style="width: 200px;">Usage</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for resource in resources %}
+                                    {% set percent = resource.percent_used | round(1) %}
+                                    {% if percent >= 90 %}
+                                        {% set progress_class = 'bg-danger' %}
+                                    {% elif percent >= 75 %}
+                                        {% set progress_class = 'bg-warning' %}
+                                    {% else %}
+                                        {% set progress_class = 'bg-success' %}
+                                    {% endif %}
+
+                                    <tr class="resource-row" style="cursor: pointer;"
+                                        onclick="location.href='{{ url_for('user_dashboard.resource_details', projcode=project.projcode, resource=resource.resource_name) }}'">
+                                        <td><strong>{{ resource.resource_name }}</strong></td>
+                                        <td>{{ resource.start_date.strftime('%Y-%m-%d') if resource.start_date else 'N/A' }}</td>
+                                        <td>{{ resource.end_date.strftime('%Y-%m-%d') if resource.end_date else 'N/A' }}</td>
+                                        <td class="text-primary">{{ '{:,.0f}'.format(resource.allocated) }}</td>
+                                        <td class="text-warning">{{ '{:,.0f}'.format(resource.used) }}</td>
+                                        <td class="text-success">{{ '{:,.0f}'.format(resource.remaining) }}</td>
+                                        <td>
+                                            <div class="progress" style="height: 20px;">
+                                                <div class="progress-bar {{ progress_class }}"
+                                                     role="progressbar"
+                                                     style="width: {{ [0, [percent, 100] | min] | max }}%"
+                                                     aria-valuenow="{{ percent }}"
+                                                     aria-valuemin="0"
+                                                     aria-valuemax="100">
+                                                    {{ percent }}%
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Members Section (Lazy Loaded) -->
+                <div class="mt-3">
+                    <h6 class="mb-2">
+                        <i class="fas fa-users"></i> Project Members
+                        <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#members-{{ card_id }}" aria-expanded="false">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </h6>
+                    <div id="members-{{ card_id }}" class="collapse">
+                        <div class="members-container p-3 bg-light rounded"
+                             data-load-url="{{ url_for('user_dashboard.members_fragment', projcode=project.projcode) }}"
+                             data-loaded="false">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                <span class="sr-only">Loading members...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Project Tree Section (Lazy Loaded) -->
+                {% if project_data.has_children or project.parent_project_id %}
+                <div class="mt-3">
+                    <h6 class="mb-2">
+                        <i class="fas fa-sitemap"></i> Project Hierarchy
+                        <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#tree-{{ card_id }}" aria-expanded="false">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </h6>
+                    <div id="tree-{{ card_id }}" class="collapse">
+                        <div class="tree-container p-3 bg-light rounded"
+                             data-load-url="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode) }}"
+                             data-loaded="false">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                <span class="sr-only">Loading tree...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+{% endmacro %}

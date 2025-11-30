@@ -394,9 +394,24 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
 def search_projects_by_title(session: Session, search_term: str) -> List[Project]:
     """Search projects by title."""
     return session.query(Project)\
-        .filter(Project.title.like(f"%{search_term}%"))\
-        .filter(Project.active == True)\
+        .filter(Project.title.ilike(f"%{search_term}%"))\
         .all()
+
+
+def search_projects_by_code_or_title(session: Session, search_term: str, active: Optional[bool] = None) -> List[Project]:
+    """Search projects by project code or title, optionally filtered by active status."""
+    # Ensure search_term is case-insensitive for projcode and title
+    like_search_term = f"%{search_term}%"
+    query = session.query(Project)\
+        .filter(
+            or_(
+                Project.projcode.ilike(like_search_term),
+                Project.title.ilike(like_search_term)
+            )
+        )
+    if active is not None:
+        query = query.filter(Project.active == active)
+    return query.all()
 
 
 # ============================================================================
@@ -1433,6 +1448,85 @@ def get_user_project_access(session: Session, username: str) -> List[Dict]:
 # Dashboard Query Helpers
 # ============================================================================
 
+def _build_project_resources_data(project: Project) -> List[Dict]:
+    """
+    Helper function to build resource usage data for a project.
+
+    Extracts resource allocation and usage information from a project's
+    detailed allocation usage data.
+
+    Args:
+        project: Project object
+
+    Returns:
+        List of resource dictionaries with usage details
+    """
+    resources = []
+    usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
+
+    for resource_name, usage in usage_data.items():
+        resources.append({
+            'resource_name': resource_name,
+            'allocated': usage.get('allocated', 0.0),
+            'used': usage.get('used', 0.0),
+            'remaining': usage.get('remaining', 0.0),
+            'percent_used': usage.get('percent_used', 0.0),
+            'charges_by_type': usage.get('charges_by_type', {}),
+            'adjustments': usage.get('adjustments', 0.0),
+            'status': usage.get('status', 'Unknown'),
+            'start_date': usage.get('start_date'),
+            'end_date': usage.get('end_date')
+        })
+
+    return resources
+
+
+def get_project_dashboard_data(session: Session, projcode: str) -> Optional[Dict]:
+    """
+    Get dashboard data for a single project.
+
+    Used for admin project search functionality and as a helper for
+    get_user_dashboard_data().
+
+    Args:
+        session: SQLAlchemy session
+        projcode: Project code to fetch data for
+
+    Returns:
+        Dictionary with structure:
+        {
+            'project': Project object,
+            'resources': List[Dict],  # From get_detailed_allocation_usage()
+            'has_children': bool
+        }
+        Returns None if project not found.
+
+    Example:
+        >>> data = get_project_dashboard_data(session, 'SCSG0001')
+        >>> if data:
+        ...     proj = data['project']
+        ...     print(f"{proj.projcode}: {len(data['resources'])} resources")
+    """
+    # Get project with relationships eagerly loaded
+    project = session.query(Project)\
+        .options(
+            joinedload(Project.lead),
+            joinedload(Project.admin),
+            joinedload(Project.allocation_type).joinedload(AllocationType.panel)
+        )\
+        .filter(Project.projcode == projcode)\
+        .first()
+
+    if not project:
+        return None
+
+    return {
+        'project': project,
+        'resources': _build_project_resources_data(project),
+        'has_children': project.has_children if hasattr(project, 'has_children') else False
+    }
+
+
 def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
     """
     Get all dashboard data for a user in one optimized query set.
@@ -1485,30 +1579,12 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
     # Get active projects
     projects = user.active_projects
 
-    # Build project data with resource usage
+    # Build project data using helper function to avoid code duplication
     project_data_list = []
     for project in projects:
-        # Get allocation usage for all resources
-        resources = []
-        usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
-
-        for resource_name, usage in usage_data.items():
-            resources.append({
-                'resource_name': resource_name,
-                'allocated': usage.get('allocated', 0.0),
-                'used': usage.get('used', 0.0),
-                'remaining': usage.get('remaining', 0.0),
-                'percent_used': usage.get('percent_used', 0.0),
-                'charges_by_type': usage.get('charges_by_type', {}),
-                'adjustments': usage.get('adjustments', 0.0),
-                'status': usage.get('status', 'Unknown'),
-                'start_date': usage.get('start_date'),
-                'end_date': usage.get('end_date')
-            })
-
         project_data_list.append({
             'project': project,
-            'resources': resources,
+            'resources': _build_project_resources_data(project),
             'has_children': project.has_children if hasattr(project, 'has_children') else False
         })
 
@@ -1706,7 +1782,7 @@ def search_users_by_pattern(
 
     if exclude_user_ids:
         query = query.filter(~User.user_id.in_(exclude_user_ids))
-    
+
     if active_only:
         query = query.filter(User.active == True)
 
