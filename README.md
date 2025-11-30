@@ -63,7 +63,7 @@ EOF
 chmod 600 .env
 
 # 3. Try the CLI tool
-./python/sam_search.py user <your_username>
+./src/sam_search.py user <your_username>
 
 # 4. Run tests to verify setup
 cd tests && pytest -v
@@ -110,7 +110,7 @@ For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 4. **Verify installation**
    ```bash
    # Test CLI
-   ./python/sam_search.py user --search "a%" | head -10
+   ./src/sam_search.py user --search "a%" | head -10
 
    # Run test suite
    cd tests && pytest -v
@@ -128,25 +128,25 @@ The `sam_search.py` CLI provides access to SAM data:
 
 ```bash
 # Find a user
-./python/sam_search.py user benkirk
+./src/sam_search.py user benkirk
 
 # List user's projects with allocations
-./python/sam_search.py user benkirk --list-projects --verbose
+./src/sam_search.py user benkirk --list-projects --verbose
 
 # Search for users (SQL wildcards)
-./python/sam_search.py user --search "ben%"
+./src/sam_search.py user --search "ben%"
 
 # Find a project
-./python/sam_search.py project SCSG0001 --list-users
+./src/sam_search.py project SCSG0001 --list-users
 
 # Find projects expiring soon (next 32 days)
-./python/sam_search.py project --upcoming-expirations
+./src/sam_search.py project --upcoming-expirations
 
 # Find recently expired projects (last 90 days)
-./python/sam_search.py project --recent-expirations --list-users
+./src/sam_search.py project --recent-expirations --list-users
 
 # Find users with no active projects
-./python/sam_search.py user --abandoned
+./src/sam_search.py user --abandoned
 ```
 
 **Exit codes:** `0` = success, `1` = not found, `2` = error, `130` = interrupted
@@ -204,7 +204,7 @@ For detailed ORM documentation, see **[CLAUDE.md](CLAUDE.md)**.
 Launch the Flask web interface:
 
 ```bash
-cd python/webui
+cd src/webapp
 python run.py
 ```
 
@@ -216,7 +216,7 @@ Features:
 - Role-based access control (admin, facility_manager, project_lead, user, analyst)
 - Bootstrap 4 interface
 
-For detailed Web UI documentation, see **[python/webui/README.md](python/webui/README.md)**.
+For detailed Web UI documentation, see **[src/webapp/README.md](src/webapp/README.md)**.
 
 ### REST API
 
@@ -273,7 +273,7 @@ curl -b cookies.txt http://localhost:5050/api/v1/accounts/12345/balance
 }
 ```
 
-For complete API documentation, see **[python/webui/README.md](python/webui/README.md#rest-api)**.
+For complete API documentation, see **[src/webapp/README.md](src/webapp/README.md#rest-api)**.
 
 ---
 
@@ -292,7 +292,7 @@ sam-queries/
 │   ├── SYSTEM_DASHBOARD_PLAN.md # System status dashboard implementation plan
 │   └── HPC_DATA_COLLECTORS_GUIDE.md # Guide for implementing HPC data collectors
 │
-├── python/
+├── src/
 │   ├── sam/                     # SQLAlchemy ORM models (SAM database)
 │   │   ├── __init__.py          # Main exports
 │   │   ├── base.py              # Base classes, mixins
@@ -323,7 +323,7 @@ sam-queries/
 │   │
 │   ├── sam_search.py            # CLI tool for user/project searches
 │   │
-│   └── webui/                   # Flask web application
+│   └── webapp/                   # Flask web application
 │       ├── README.md            # Web UI documentation
 │       ├── run.py               # Development server
 │       ├── auth/                # Authentication (providers, models, blueprint)
@@ -397,7 +397,7 @@ sam-queries/
 ### User Documentation
 - **[README.md](README.md)** - This file (overview and quick start)
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Comprehensive setup and development guide
-- **[python/webui/README.md](python/webui/README.md)** - Web UI and REST API documentation
+- **[src/webapp/README.md](src/webapp/README.md)** - Web UI and REST API documentation
 - **[tests/docs/README.md](tests/docs/README.md)** - Testing guide and best practices
 
 ### Technical Reference
@@ -411,7 +411,7 @@ sam-queries/
   - Development workflow
 
 ### API Documentation
-- **REST API endpoints** - See [python/webui/README.md](python/webui/README.md#rest-api)
+- **REST API endpoints** - See [src/webapp/README.md](src/webapp/README.md#rest-api)
 - **Marshmallow schemas** - See [CLAUDE.md](CLAUDE.md#marshmallow-sqlalchemy-schemas)
 - **ORM models** - See [CLAUDE.md](CLAUDE.md#key-orm-models)
 
@@ -521,7 +521,7 @@ For complete development guide, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 ### Finding User Information
 ```bash
 # CLI
-./python/sam_search.py user benkirk --list-projects
+./src/sam_search.py user benkirk --list-projects
 
 # Python
 from sam import User
@@ -535,7 +535,7 @@ curl -b cookies.txt http://localhost:5050/api/v1/users/benkirk
 ### Monitoring Allocation Expirations
 ```bash
 # CLI
-./python/sam_search.py project --upcoming-expirations
+./src/sam_search.py project --upcoming-expirations
 
 # Python
 from sam.queries import get_projects_by_allocation_end_date
@@ -548,7 +548,7 @@ curl -b cookies.txt "http://localhost:5050/api/v1/projects/expiring?days=30"
 ### Checking Allocation Balances
 ```bash
 # CLI
-./python/sam_search.py project SCSG0001 --verbose
+./src/sam_search.py project SCSG0001 --verbose
 
 # Python
 usage = project.get_detailed_allocation_usage(session, allocation)
@@ -670,7 +670,7 @@ Copyright (c) 2025 NCAR CISL
 2. **Common Questions:**
    - Setup issues → [CONTRIBUTING.md](CONTRIBUTING.md#troubleshooting)
    - ORM patterns → [CLAUDE.md](CLAUDE.md#key-orm-models)
-   - API usage → [python/webui/README.md](python/webui/README.md#rest-api)
+   - API usage → [src/webapp/README.md](src/webapp/README.md#rest-api)
    - Testing → [tests/docs/README.md](tests/docs/README.md)
 
 3. **Support:**

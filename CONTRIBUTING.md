@@ -21,7 +21,7 @@ make conda-env
 # 2. Create .env with your credentials (see Configuration section below)
 
 # 3. Try the CLI
-./python/sam_search.py user <your_username>
+./src/sam_search.py user <your_username>
 
 # 4. Run tests
 cd tests && pytest -v
@@ -122,7 +122,7 @@ At this point, you should be able to use the CLI and run read-only tests:
 source etc/config_env.sh
 
 # Test database connection
-./python/sam_search.py user --search "a%" | head -20
+./src/sam_search.py user --search "a%" | head -20
 
 # Run tests (most will pass with read-only access)
 cd tests && pytest -v
@@ -199,31 +199,31 @@ The `sam_search.py` CLI provides quick access to user and project information:
 
 ```bash
 # Search for a user (replace with actual username in your database)
-./python/sam_search.py user bruceb
+./src/sam_search.py user bruceb
 
 # List user's projects
-./python/sam_search.py user bruceb --list-projects
+./src/sam_search.py user bruceb --list-projects
 
 # Search for users matching a pattern (SQL wildcards)
-./python/sam_search.py user --search "b%"
+./src/sam_search.py user --search "b%"
 
 # Search for a project
-./python/sam_search.py project UCSU0092 --verbose
+./src/sam_search.py project UCSU0092 --verbose
 
 # Pattern search for projects
-./python/sam_search.py project --search "UCSU%"
+./src/sam_search.py project --search "UCSU%"
 
 # Find projects expiring soon (within 32 days)
-./python/sam_search.py project --upcoming-expirations
+./src/sam_search.py project --upcoming-expirations
 
 # Find projects that recently expired
-./python/sam_search.py project --recent-expirations --list-users
+./src/sam_search.py project --recent-expirations --list-users
 
 # Find users without active projects
-./python/sam_search.py user --abandoned
+./src/sam_search.py user --abandoned
 
 # Search including inactive projects
-./python/sam_search.py --inactive-projects user bruceb --list-projects
+./src/sam_search.py --inactive-projects user bruceb --list-projects
 ```
 
 **Exit codes:**
@@ -237,7 +237,7 @@ The `sam_search.py` CLI provides quick access to user and project information:
 Launch the Flask web interface:
 
 ```bash
-./python/webui/run.py
+./src/webapp/run.py
 ```
 
 Access at `http://127.0.0.1:5050`
@@ -344,7 +344,7 @@ cd tests && pytest --cov=sam --cov-report=html
 
 #### Adding API Endpoints
 
-1. **Create Marshmallow schema** in `python/sam.schemas/`:
+1. **Create Marshmallow schema** in `src/sam.schemas/`:
    ```python
    from sam.schemas import BaseSchema
    from marshmallow import fields
@@ -357,7 +357,7 @@ cd tests && pytest --cov=sam --cov-report=html
        name = fields.Str()
    ```
 
-2. **Add endpoint** in `python/webui/api/`:
+2. **Add endpoint** in `src/webapp/api/`:
    ```python
    @bp.route('/newmodels/<int:id>')
    def get_newmodel(id):
@@ -371,13 +371,13 @@ cd tests && pytest --cov=sam --cov-report=html
 
 #### Adding CLI Features
 
-1. **Add functionality** to `python/sam_search.py`
+1. **Add functionality** to `src/sam_search.py`
 
 2. **Create integration tests** in `tests/test_sam_search_cli.py`:
    ```python
    def test_new_cli_feature():
        result = subprocess.run(
-           ['./python/sam_search.py', 'newfeature', '--arg'],
+           ['./src/sam_search.py', 'newfeature', '--arg'],
            capture_output=True, text=True
        )
        assert result.returncode == 0
@@ -386,7 +386,7 @@ cd tests && pytest --cov=sam --cov-report=html
 
 3. **Test manually**:
    ```bash
-   ./python/sam_search.py newfeature --help
+   ./src/sam_search.py newfeature --help
    ```
 
 4. **Run CLI test suite**:
@@ -528,7 +528,7 @@ class Account(Base):
 
 **"ModuleNotFoundError: No module named 'sam'"**
 - Activate conda environment: `source etc/config_env.sh`
-- Check PYTHONPATH is set: `echo $PYTHONPATH` (should include `/path/to/sam-queries/python`)
+- Check PYTHONPATH is set: `echo $PYTHONPATH` (should include `/path/to/sam-queries/src`)
 
 ### Database Connection Issues
 
@@ -572,7 +572,7 @@ class Account(Base):
 
 **CLI output is truncated**
 - This is normal - use `--verbose` flag for full details
-- Or redirect to file: `./python/sam_search.py ... > output.txt`
+- Or redirect to file: `./src/sam_search.py ... > output.txt`
 
 ## Getting Help
 
@@ -601,7 +601,7 @@ class Account(Base):
 
 ```
 sam-queries/
-├── python/
+├── src/
 │   ├── sam/                  # ORM models
 │   │   ├── __init__.py      # Main exports
 │   │   ├── base.py          # Base classes, mixins
@@ -614,7 +614,7 @@ sam-queries/
 │   │   ├── integration/     # XRAS integration
 │   │   └── security/        # Roles, API credentials
 │   ├── sam_search.py        # CLI tool
-│   └── webui/               # Flask web application
+│   └── webapp/               # Flask web application
 │       ├── api/             # REST API blueprints
 │       ├── schemas/         # Marshmallow schemas
 │       └── run.py           # Application entry point

@@ -223,7 +223,7 @@ Options:
 ./derecho/collector.py --json-only | jq .
 
 # Test posting to local API server
-# (Start dev server first: ../../utils/run-webui-dbg.sh)
+# (Start dev server first: ../../utils/run-webapp-dbg.sh)
 ./derecho/collector.py --verbose
 ```
 

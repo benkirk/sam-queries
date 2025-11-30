@@ -9,10 +9,10 @@ Implements a complete Role-Based Access Control (RBAC) system for managing proje
 - **System-level override**: Users with EDIT_PROJECT_MEMBERS permission (admin, facility_manager) can manage any project's membership
 
 ### New Files
-- `python/webui/utils/project_permissions.py` - Authorization helpers:
+- `src/webapp/utils/project_permissions.py` - Authorization helpers:
   - `can_manage_project_members(user, project)`
   - `can_change_admin(user, project)`
-- `python/webui/templates/user/fragments/member_modals.html` - Bootstrap modals for add member, remove confirmation, and admin change dialogs
+- `src/webapp/templates/user/fragments/member_modals.html` - Bootstrap modals for add member, remove confirmation, and admin change dialogs
 
 ### Backend Changes
 - **queries/__init__.py**: Added 5 new functions:

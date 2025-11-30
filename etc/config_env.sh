@@ -28,7 +28,7 @@ make --silent -C ${ROOT_DIR} ${ENV_NAME}
 conda activate ${ENV_DIR}
 
 # fully specify a new PYTHONPATH
-export PYTHONPATH="${ROOT_DIR}/python:"
+export PYTHONPATH="${ROOT_DIR}/src:"
 
 source ${ROOT_DIR}/.env || { echo "no top-level .env found!"; exit 1; }
 

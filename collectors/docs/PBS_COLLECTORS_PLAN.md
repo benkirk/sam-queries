@@ -2030,21 +2030,21 @@ grep "status_id" /var/log/derecho_collector.log | tail -10
 
 The following files are essential for implementing this architecture:
 
-1. **`/Users/benkirk/codes/sam-queries/python/webui/api/v1/status.py`**
+1. **`/Users/benkirk/codes/sam-queries/src/webapp/api/v1/status.py`**
    - **Reason**: Defines exact API data format and requirements
    - **Key info**: POST endpoint schemas, required/optional fields, error handling
    - **Lines of interest**: 97-238 (Derecho POST), 240-382 (Casper POST)
 
-2. **`/Users/benkirk/codes/sam-queries/python/system_status/models/derecho.py`**
+2. **`/Users/benkirk/codes/sam-queries/src/system_status/models/derecho.py`**
    - **Reason**: Database schema for Derecho status
    - **Key info**: Field names, data types, nullable constraints
    - **Must match**: All fields in POST endpoint
 
-3. **`/Users/benkirk/codes/sam-queries/python/system_status/models/casper.py`**
+3. **`/Users/benkirk/codes/sam-queries/src/system_status/models/casper.py`**
    - **Reason**: Database schema for Casper status
    - **Key info**: Node type structure, aggregate vs detailed metrics
 
-4. **`/Users/benkirk/codes/sam-queries/python/system_status/models/login_nodes.py`**
+4. **`/Users/benkirk/codes/sam-queries/src/system_status/models/login_nodes.py`**
    - **Reason**: Login node schema differences (Derecho has node_type, Casper doesn't)
    - **Critical**: Don't send node_type for Casper login nodes
 

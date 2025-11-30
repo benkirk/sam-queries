@@ -2,9 +2,9 @@ Lets continue @docs/SYSTEM_DASHBOARD_PLAN.md.  Phase 1 is done but I
 would like to refactor a couple items.  You can compare the current
 branch to main to see exactly what has been committed.
 
-(1) The new APIs in @python/webui/api/v1/status.py seem to do manual
+(1) The new APIs in @src/webapp/api/v1/status.py seem to do manual
 serialization. The existing SAM models make use of marshmallow
-serialization, see python/webui/schemas.  Would it make sense for
+serialization, see src/webapp/schemas.  Would it make sense for
 these new APIs to do the same?
 
 (2) For the mock data (@tests/mock_data/status_mock_data.json) and
@@ -18,12 +18,12 @@ should be updated in @docs/HPC_DATA_COLLECTORS_GUIDE.md as well.  **It
 is OK to change the API without regard to backwards compatibility,
 this has not been deployed.**
 
-(3) the file @python/webui/templates/dashboards/status/dashboard.html
+(3) the file @src/webapp/templates/dashboards/status/dashboard.html
 is already quite busy, lets consider splitting where each of Derecho,
 Casper, JupyterHub get their own file.
 
 (4) finally, the @docs/SYSTEM_DASHBOARD_PLAN.md mentions several tests
 wgicg have not yet been implemented.  Lets implement those.
 
-You may start the development server with ./utils/run-webui-dbg.sh,
+You may start the development server with ./utils/run-webapp-dbg.sh,
 just please kill it when you are done (to free up port 5050 for me).

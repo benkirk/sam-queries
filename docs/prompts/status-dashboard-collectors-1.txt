@@ -1,5 +1,5 @@
 considering the needs of the POST APls in
-@python/webui/api/v1/status.py, lets update the
+@src/webapp/api/v1/status.py, lets update the
 @docs/HPC_DATA_COLLECTORS_GUIDE.md to create a collectors
 implementation plan. The problem at the moment is it is incomplete and
 assumes slurm.
