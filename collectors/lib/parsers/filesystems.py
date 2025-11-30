@@ -148,9 +148,11 @@ delimiter. Each filesystem is queried for space and inode usage.
             # Flexible parsing based on expected `df` output format.
             # Handles `filesystem size used avail use% mounted_on`
             # We care about size, used, and use%
-            use_pct = int(parts[-2].replace('%', ''))
+            use_pct = float(parts[-2].replace('%', ''))
             used_tib = float(parts[-4].replace('TiB', '').replace('TB', ''))
             size_tib = float(parts[-5].replace('TiB', '').replace('TB', ''))
+            if size_tib > 0.:
+                use_pct = used_tib / size_tib * 100.
         except (ValueError, IndexError) as e:
             raise ValueError(f"Failed to parse numeric fields from df: {e} in '{' '.join(parts)}'")
 
@@ -160,7 +162,7 @@ delimiter. Each filesystem is queried for space and inode usage.
             'degraded': use_pct > 90,
             'capacity_tb': round(size_tib, 2),
             'used_tb': round(used_tib, 2),
-            'utilization_percent': float(use_pct),
+            'utilization_percent': round(use_pct, 2),
         }
 
     @staticmethod
@@ -178,9 +180,11 @@ delimiter. Each filesystem is queried for space and inode usage.
         try:
             # Flexible parsing for `df -i`
             # Handles `filesystem inodes iused ifree iuse% mounted_on`
-            use_pct = int(parts[-2].replace('%', ''))
+            use_pct = float(parts[-2].replace('%', ''))
             used_inodes = int(parts[-4])
             capacity_inodes = int(parts[-5])
+            if capacity_inodes > 0:
+                use_pct = float(used_inodes) / float(capacity_inodes) * 100.
         except (ValueError, IndexError) as e:
             raise ValueError(f"Failed to parse numeric fields from df -i: {e} in '{' '.join(parts)}'")
 

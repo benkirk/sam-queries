@@ -19,8 +19,8 @@
                     <tr>
                         <th>Filesystem</th>
                         <th>Status</th>
-                        <th>Capacity (TB)</th>
-                        <th>Used (TB)</th>
+                        <th>Used (TiB)</th>
+                        <th>Capacity (TiB)</th>
                         <th>Utilization</th>
                     </tr>
                 </thead>
@@ -34,15 +34,15 @@
                             </span>
                         </td>
                         <td>
-                            {% if fs.capacity_tb is not none %}
-                                {{ '{:,.0f}'.format(fs.capacity_tb) }}
+                            {% if fs.used_tb is not none %}
+                                {{ '{:,.0f}'.format(fs.used_tb) }}
                             {% else %}
                                 N/A
                             {% endif %}
                         </td>
                         <td>
-                            {% if fs.used_tb is not none %}
-                                {{ '{:,.0f}'.format(fs.used_tb) }}
+                            {% if fs.capacity_tb is not none %}
+                                {{ '{:,.0f}'.format(fs.capacity_tb) }}
                             {% else %}
                                 N/A
                             {% endif %}
@@ -72,8 +72,8 @@
                     <tr>
                         <th>Filesystem</th>
                         <th>Status</th>
-                        <th>Capacity (Inodes)</th>
                         <th>Used (Inodes)</th>
+                        <th>Capacity (Inodes)</th>
                         <th>Utilization</th>
                     </tr>
                 </thead>
@@ -87,15 +87,15 @@
                             </span>
                         </td>
                         <td>
-                            {% if fs.capacity_inodes is not none %}
-                                {{ '{:,.0f}'.format(fs.capacity_inodes) }}
+                            {% if fs.used_inodes is not none %}
+                                {{ '{:,.0f}'.format(fs.used_inodes) }}
                             {% else %}
                                 N/A
                             {% endif %}
                         </td>
                         <td>
-                            {% if fs.used_inodes is not none %}
-                                {{ '{:,.0f}'.format(fs.used_inodes) }}
+                            {% if fs.capacity_inodes is not none %}
+                                {{ '{:,.0f}'.format(fs.capacity_inodes) }}
                             {% else %}
                                 N/A
                             {% endif %}
