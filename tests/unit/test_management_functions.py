@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'python'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from sam.manage import add_user_to_project, remove_user_from_project, change_project_admin
 from sam.projects.projects import Project

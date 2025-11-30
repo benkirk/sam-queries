@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'python'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from webapp.utils.project_permissions import (
     can_manage_project_members,

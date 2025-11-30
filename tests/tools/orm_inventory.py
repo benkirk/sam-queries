@@ -16,7 +16,7 @@ from collections import defaultdict
 from typing import Dict, List, Set, Tuple
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / 'python'))
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import class_mapper
