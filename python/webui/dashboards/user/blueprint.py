@@ -7,14 +7,15 @@ Refactored to use server-side rendering with direct ORM queries instead of
 JavaScript API calls for improved performance and simplicity.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, session
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify
 from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
 
 from webui.extensions import db
 from sam.queries import (
     get_user_dashboard_data, get_resource_detail_data, get_users_on_project,
-    get_user_breakdown_for_project, get_jobs_for_project, find_project_by_code
+    get_user_breakdown_for_project, get_jobs_for_project, find_project_by_code,
+    get_project_dashboard_data, search_projects_by_code_or_title
 )
 from sam.projects.projects import Project
 from webui.auth.models import AuthUser
@@ -333,6 +334,76 @@ def jobs_fragment(projcode, resource):
         resource=resource,
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d')
+    )
+
+
+@bp.route('/project-search')
+@login_required
+@require_permission(Permission.VIEW_PROJECTS)
+def project_search():
+    """
+    Project search endpoint for admin functionality.
+
+    Query parameters:
+        search (str): Search term for projcode or title
+        active (bool): Filter by active status (optional)
+
+    Returns:
+        JSON with matching projects or HTML project card fragment
+    """
+    search_term = request.args.get('search', '').strip()
+    active_filter = request.args.get('active')
+
+    if not search_term:
+        return jsonify({'error': 'Search term required'}), 400
+
+    # Parse active filter
+    active = None
+    if active_filter is not None:
+        active = active_filter.lower() in ('true', '1', 'yes')
+
+    # Search for projects
+    projects = search_projects_by_code_or_title(db.session, search_term, active=active)
+
+    if not projects:
+        return jsonify({'projects': [], 'total': 0})
+
+    # Format results for autocomplete
+    results = []
+    for project in projects[:10]:  # Limit to 10 results
+        results.append({
+            'projcode': project.projcode,
+            'title': project.title or 'Untitled Project',
+            'active': project.active,
+            'lead': project.lead.display_name if project.lead else 'N/A'
+        })
+
+    return jsonify({'projects': results, 'total': len(projects)})
+
+
+@bp.route('/project-card/<projcode>')
+@login_required
+@require_permission(Permission.VIEW_PROJECTS)
+def project_card(projcode):
+    """
+    Get HTML fragment for a single project card (for admin project search).
+
+    Returns:
+        HTML project card fragment (calls the render_project_card macro)
+    """
+    # Get project data using the new helper function
+    project_data = get_project_dashboard_data(db.session, projcode)
+
+    if not project_data:
+        return '<div class="alert alert-warning">Project not found</div>'
+
+    # Render a wrapper template that calls the macro
+    return render_template(
+        'dashboards/user/fragments/project_card_wrapper.html',
+        project_data=project_data,
+        user=current_user,
+        usage_warning_threshold=USAGE_WARNING_THRESHOLD,
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
     )
 
 
