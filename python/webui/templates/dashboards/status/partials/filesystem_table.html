@@ -1,41 +1,122 @@
 {% macro filesystem_table(filesystems) %}
 <div class="table-responsive">
-    <table class="table table-sm table-bordered filesystem-table">
-        <thead class="thead-light">
-            <tr>
-                <th>Filesystem</th>
-                <th>Status</th>
-                <th>Capacity (TB)</th>
-                <th>Used (TB)</th>
-                <th>Utilization</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for fs in filesystems %}
-            <tr>
-                <td><strong>{{ fs.filesystem_name }}</strong></td>
-                <td>
-                    <span class="status-badge status-{{ fs.status_name }}">
-                        {{ fs.status_name|capitalize }}
-                    </span>
-                </td>
-                <td>{{ '{:,.1f}'.format(fs.capacity_tb) if fs.capacity_tb else 'N/A' }}</td>
-                <td>{{ '{:,.1f}'.format(fs.used_tb) if fs.used_tb else 'N/A' }}</td>
-                <td>
-                    {% if fs.utilization_percent is not none %}
-                    <div class="progress" style="height: 20px;">
-                        <div class="progress-bar bg-{{ 'danger' if fs.utilization_percent >= 90 else 'warning' if fs.utilization_percent >= 75 else 'success' }}"
-                             style="width: {{ fs.utilization_percent }}%">
-                            {{ fs.utilization_percent|round(1) }}%
-                        </div>
-                    </div>
-                    {% else %}
-                    N/A
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <!-- Tab navigation -->
+    <ul class="nav nav-tabs" id="filesystemTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="capacity-tab" data-toggle="tab" href="#capacity" role="tab" aria-controls="capacity" aria-selected="true">Capacity</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="inodes-tab" data-toggle="tab" href="#inodes" role="tab" aria-controls="inodes" aria-selected="false">Inodes</a>
+        </li>
+    </ul>
+
+    <!-- Tab content -->
+    <div class="tab-content" id="filesystemTabContent">
+        <!-- Capacity Tab Pane -->
+        <div class="tab-pane fade show active" id="capacity" role="tabpanel" aria-labelledby="capacity-tab">
+            <table class="table table-sm table-bordered filesystem-table">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Filesystem</th>
+                        <th>Status</th>
+                        <th>Capacity (TB)</th>
+                        <th>Used (TB)</th>
+                        <th>Utilization</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fs in filesystems %}
+                    <tr>
+                        <td><strong>{{ fs.filesystem_name }}</strong></td>
+                        <td>
+                            <span class="status-badge status-{{ fs.status_name }}">
+                                {{ fs.status_name|capitalize }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if fs.capacity_tb is not none %}
+                                {{ '{:,.0f}'.format(fs.capacity_tb) }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if fs.used_tb is not none %}
+                                {{ '{:,.0f}'.format(fs.used_tb) }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if fs.utilization_percent is not none %}
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-{{ 'danger' if fs.utilization_percent >= 90 else 'warning' if fs.utilization_percent >= 75 else 'success' }}"
+                                     style="width: {{ fs.utilization_percent }}%">
+                                    {{ fs.utilization_percent|round(1) }}%
+                                </div>
+                            </div>
+                            {% else %}
+                            N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Inodes Tab Pane -->
+        <div class="tab-pane fade" id="inodes" role="tabpanel" aria-labelledby="inodes-tab">
+            <table class="table table-sm table-bordered filesystem-table">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Filesystem</th>
+                        <th>Status</th>
+                        <th>Capacity (Inodes)</th>
+                        <th>Used (Inodes)</th>
+                        <th>Utilization</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fs in filesystems %}
+                    <tr>
+                        <td><strong>{{ fs.filesystem_name }}</strong></td>
+                        <td>
+                            <span class="status-badge status-{{ fs.status_name }}">
+                                {{ fs.status_name|capitalize }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if fs.capacity_inodes is not none %}
+                                {{ '{:,.0f}'.format(fs.capacity_inodes) }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if fs.used_inodes is not none %}
+                                {{ '{:,.0f}'.format(fs.used_inodes) }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if fs.inodes_utilization_percent is not none %}
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-{{ 'danger' if fs.inodes_utilization_percent >= 90 else 'warning' if fs.inodes_utilization_percent >= 75 else 'success' }}"
+                                     style="width: {{ fs.inodes_utilization_percent }}%">
+                                    {{ fs.inodes_utilization_percent|round(1) }}%
+                                </div>
+                            </div>
+                            {% else %}
+                            N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endmacro %}
