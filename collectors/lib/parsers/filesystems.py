@@ -14,7 +14,7 @@ class FilesystemParser:
     Parse df output for filesystem status.
 
     Uses BLOCKSIZE=TiB environment variable to get sizes directly in TiB,
-    eliminating complex unit conversion logic.
+eliminating complex unit conversion logic.
     """
 
     def __init__(self):
@@ -26,54 +26,29 @@ class FilesystemParser:
         Collect filesystem metrics via SSH and parse results.
 
         Runs a single SSH command with multiple df calls, separated by '---'
-        delimiter. Each filesystem is queried with BLOCKSIZE=TiB for direct
-        TiB output.
+delimiter. Each filesystem is queried for space and inode usage.
 
         Args:
             ssh_runner: Object with run_command(cmd) method (e.g., PBSClient)
             mount_paths: List of mount paths to check (e.g., ['/glade/u/home', ...])
 
         Returns:
-            List of filesystem status dicts with keys:
-                - filesystem_name: Mount path (str)
-                - available: Whether filesystem is accessible (bool)
-                - degraded: Whether filesystem is >90% full (bool)
-                - capacity_tb: Total capacity in TiB (float)
-                - used_tb: Used space in TiB (float)
-                - utilization_percent: Usage percentage (float)
-
-        Example:
-            >>> from pbs_client import PBSClient
-            >>> pbs = PBSClient('derecho')
-            >>> paths = ['/glade/work', '/glade/campaign']
-            >>> FilesystemParser.collect_and_parse(pbs, paths)
-            [
-                {
-                    'filesystem_name': '/glade/work',
-                    'available': True,
-                    'degraded': False,
-                    'capacity_tb': 500.5,
-                    'used_tb': 250.2,
-                    'utilization_percent': 50.0
-                },
-                ...
-            ]
+            List of filesystem status dicts with keys for space and inode usage.
         """
         logger = logging.getLogger(__name__)
 
-        # Build command: BLOCKSIZE=TiB df path1; echo '---'; BLOCKSIZE=TiB df path2; ...
+        # Build command:
+        # BLOCKSIZE=TiB df path1; echo '~~~'; df -i path1; echo '---'; ...
         df_commands = []
         for path in mount_paths:
-            df_commands.append(f'BLOCKSIZE=TiB df {path}')
+            df_commands.append(f'BLOCKSIZE=TiB df {path}; echo "~~~"; df -i {path}')
 
-        # Join with delimiter
         full_command = '; echo "---"; '.join(df_commands)
 
         try:
             output = ssh_runner.run_command(full_command)
         except Exception as e:
             logger.error(f"Failed to run df commands: {e}")
-            # Return all filesystems as unavailable
             return [
                 {
                     'filesystem_name': path,
@@ -82,11 +57,13 @@ class FilesystemParser:
                     'capacity_tb': None,
                     'used_tb': None,
                     'utilization_percent': None,
+                    'capacity_inodes': None,
+                    'used_inodes': None,
+                    'inodes_utilization_percent': None,
                 }
                 for path in mount_paths
             ]
 
-        # Parse each df block
         filesystems = []
         blocks = output.split('---')
 
@@ -97,15 +74,50 @@ class FilesystemParser:
             mount_path = mount_paths[i]
 
             try:
-                fs_data = FilesystemParser._parse_df_block(block.strip(), mount_path)
+                if '~~~' not in block:
+                    logger.warning(f"Delimiter '~~~' not found in df output block for {mount_path}. Skipping inode metrics.")
+                    space_block = block
+                    inode_block = None
+                else:
+                    space_block, inode_block = block.split('~~~', 1)
+
+                fs_data = FilesystemParser._parse_df_block(space_block.strip(), mount_path)
+
+                if inode_block:
+                    try:
+                        inode_data = FilesystemParser._parse_df_inode_block(inode_block.strip())
+                        fs_data.update(inode_data)
+                    except Exception as e:
+                        logger.warning(f"Could not parse inode data for {mount_path}: {e}")
+                        fs_data.update({
+                            'capacity_inodes': None,
+                            'used_inodes': None,
+                            'inodes_utilization_percent': None,
+                        })
+                else:
+                    fs_data.update({
+                        'capacity_inodes': None,
+                        'used_inodes': None,
+                        'inodes_utilization_percent': None,
+                    })
+
+
                 filesystems.append(fs_data)
-                logger.debug(
-                    f"Parsed {mount_path}: {fs_data['used_tb']:.1f}TiB / "
-                    f"{fs_data['capacity_tb']:.1f}TiB ({fs_data['utilization_percent']}%)"
+
+                debug_msg = (
+                    f"Parsed {mount_path}: "
+                    f"{fs_data.get('used_tb', 0):.1f}TiB / {fs_data.get('capacity_tb', 0):.1f}TiB "
+                    f"({fs_data.get('utilization_percent', 'N/A')}%)"
                 )
+                if 'capacity_inodes' in fs_data and fs_data['capacity_inodes'] is not None:
+                    debug_msg += (
+                        f" | Inodes: {fs_data.get('used_inodes', 0):.0f} / {fs_data.get('capacity_inodes', 0):.0f} "
+                        f"({fs_data.get('inodes_utilization_percent', 'N/A')}%)"
+                    )
+                logger.debug(debug_msg)
+
             except Exception as e:
                 logger.warning(f"Failed to parse {mount_path}: {e}")
-                # Add degraded entry
                 filesystems.append({
                     'filesystem_name': mount_path,
                     'available': False,
@@ -113,6 +125,9 @@ class FilesystemParser:
                     'capacity_tb': None,
                     'used_tb': None,
                     'utilization_percent': None,
+                    'capacity_inodes': None,
+                    'used_inodes': None,
+                    'inodes_utilization_percent': None,
                 })
 
         return filesystems
@@ -121,50 +136,56 @@ class FilesystemParser:
     def _parse_df_block(df_output: str, mount_path: str) -> dict:
         """
         Parse single df output block (already in TiB).
-
-        df output with BLOCKSIZE=TiB produces:
-            Filesystem      1T-blocks  Used Available Use% Mounted on
-            /dev/mapper/vg  500.5      250.2 250.3    50%  /glade/work
-
-        All sizes are already in TiB as floats - no conversion needed!
-
-        Args:
-            df_output: Single df command output (with header)
-            mount_path: Mount path being queried
-
-        Returns:
-            Filesystem status dict
-
-        Raises:
-            ValueError: If output format is invalid
         """
         lines = df_output.strip().split('\n')
-
         if len(lines) < 2:
             raise ValueError(f"Invalid df output: expected at least 2 lines, got {len(lines)}")
 
-        # Parse data line (skip header line)
-        # Format: Filesystem 1T-blocks Used Available Use% Mounted
-        parts = lines[1].split()
-
-        if len(parts) < 6:
-            raise ValueError(f"Incomplete df output: expected 6+ fields, got {len(parts)}")
+        # Skip header, parse first data line
+        parts = lines[-1].split()
 
         try:
-            # Columns: [0]=Filesystem [1]=1T-blocks [2]=Used [3]=Available [4]=Use% [5]=Mounted
-            # Note: BLOCKSIZE=TiB may still add 'TiB' suffix on some systems, so strip it
-            size_tib = float(parts[1].replace('TiB', '').replace('TB', ''))
-            used_tib = float(parts[2].replace('TiB', '').replace('TB', ''))
-            use_pct_str = parts[4].replace('%', '')
-            use_pct = int(use_pct_str)
+            # Flexible parsing based on expected `df` output format.
+            # Handles `filesystem size used avail use% mounted_on`
+            # We care about size, used, and use%
+            use_pct = int(parts[-2].replace('%', ''))
+            used_tib = float(parts[-4].replace('TiB', '').replace('TB', ''))
+            size_tib = float(parts[-5].replace('TiB', '').replace('TB', ''))
         except (ValueError, IndexError) as e:
-            raise ValueError(f"Failed to parse numeric fields: {e}")
+            raise ValueError(f"Failed to parse numeric fields from df: {e} in '{' '.join(parts)}'")
 
         return {
-            'filesystem_name': mount_path,  # Use path directly as name
+            'filesystem_name': mount_path,
             'available': True,
-            'degraded': use_pct > 90,  # Mark degraded if >90% full
+            'degraded': use_pct > 90,
             'capacity_tb': round(size_tib, 2),
             'used_tb': round(used_tib, 2),
             'utilization_percent': float(use_pct),
+        }
+
+    @staticmethod
+    def _parse_df_inode_block(df_output: str) -> dict:
+        """
+        Parse single df -i output block.
+        """
+        lines = df_output.strip().split('\n')
+        if len(lines) < 2:
+            raise ValueError(f"Invalid df -i output: expected at least 2 lines, got {len(lines)}")
+
+        # Skip header, parse first data line
+        parts = lines[-1].split()
+
+        try:
+            # Flexible parsing for `df -i`
+            # Handles `filesystem inodes iused ifree iuse% mounted_on`
+            use_pct = int(parts[-2].replace('%', ''))
+            used_inodes = int(parts[-4])
+            capacity_inodes = int(parts[-5])
+        except (ValueError, IndexError) as e:
+            raise ValueError(f"Failed to parse numeric fields from df -i: {e} in '{' '.join(parts)}'")
+
+        return {
+            'capacity_inodes': float(capacity_inodes),
+            'used_inodes': float(used_inodes),
+            'inodes_utilization_percent': float(use_pct),
         }

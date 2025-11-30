@@ -40,6 +40,11 @@ class FilesystemStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessi
     used_tb = Column(Float, nullable=True)
     utilization_percent = Column(Float, nullable=True)
 
+    # Inode Capacity
+    capacity_inodes = Column(Float, nullable=True)
+    used_inodes = Column(Float, nullable=True)
+    inodes_utilization_percent = Column(Float, nullable=True)
+
     # Relationships (back_populates to parent status records)
     derecho_status = relationship('DerechoStatus', back_populates='filesystems',
                                   foreign_keys=[derecho_status_id])
