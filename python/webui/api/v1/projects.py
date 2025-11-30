@@ -156,15 +156,26 @@ def list_projects():
     from sam.queries import search_projects_by_code_or_title, get_active_projects
     from sam.projects.projects import Project
 
+    total = 0
+    projects = []
+
     # Build query based on filters
     if search:
-        projects = search_projects_by_code_or_title(db.session, search)
+        projects_list = search_projects_by_code_or_title(db.session, search, active=active)
+        total = len(projects_list)
+        start = (page - 1) * per_page
+        end = start + per_page
+        projects = projects_list[start:end]
     elif facility:
+        # This branch remains unpaginated as in the original implementation
+        # and its active status depends on how get_active_projects internally filters.
         projects = get_active_projects(db.session, facility_name=facility)
+        total = len(projects)
     else:
         query = db.session.query(Project)
         if active is not None:
             query = query.filter(Project.active == active)
+        total = query.count()
         projects = query.limit(per_page).offset((page - 1) * per_page).all()
 
     # Serialize projects using ProjectListSchema
@@ -174,7 +185,7 @@ def list_projects():
         'projects': projects_data,
         'page': page,
         'per_page': per_page,
-        'total': len(projects_data)
+        'total': total
     })
 
 

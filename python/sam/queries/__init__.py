@@ -395,23 +395,23 @@ def search_projects_by_title(session: Session, search_term: str) -> List[Project
     """Search projects by title."""
     return session.query(Project)\
         .filter(Project.title.ilike(f"%{search_term}%"))\
-        .filter(Project.active == True)\
         .all()
 
 
-def search_projects_by_code_or_title(session: Session, search_term: str) -> List[Project]:
-    """Search projects by project code or title."""
+def search_projects_by_code_or_title(session: Session, search_term: str, active: Optional[bool] = None) -> List[Project]:
+    """Search projects by project code or title, optionally filtered by active status."""
     # Ensure search_term is case-insensitive for projcode and title
     like_search_term = f"%{search_term}%"
-    return session.query(Project)\
+    query = session.query(Project)\
         .filter(
             or_(
                 Project.projcode.ilike(like_search_term),
                 Project.title.ilike(like_search_term)
             )
-        )\
-        .filter(Project.active == True)\
-        .all()
+        )
+    if active is not None:
+        query = query.filter(Project.active == active)
+    return query.all()
 
 
 # ============================================================================
@@ -1721,7 +1721,7 @@ def search_users_by_pattern(
 
     if exclude_user_ids:
         query = query.filter(~User.user_id.in_(exclude_user_ids))
-    
+
     if active_only:
         query = query.filter(User.active == True)
 
