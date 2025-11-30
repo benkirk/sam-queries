@@ -153,12 +153,12 @@ def list_projects():
     active = request.args.get('active', type=lambda v: v.lower() == 'true')
     facility = request.args.get('facility', '')
 
-    from sam.queries import search_projects_by_title, get_active_projects
+    from sam.queries import search_projects_by_code_or_title, get_active_projects
     from sam.projects.projects import Project
 
     # Build query based on filters
     if search:
-        projects = search_projects_by_title(db.session, search)
+        projects = search_projects_by_code_or_title(db.session, search)
     elif facility:
         projects = get_active_projects(db.session, facility_name=facility)
     else:

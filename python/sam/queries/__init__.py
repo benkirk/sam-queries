@@ -394,7 +394,22 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
 def search_projects_by_title(session: Session, search_term: str) -> List[Project]:
     """Search projects by title."""
     return session.query(Project)\
-        .filter(Project.title.like(f"%{search_term}%"))\
+        .filter(Project.title.ilike(f"%{search_term}%"))\
+        .filter(Project.active == True)\
+        .all()
+
+
+def search_projects_by_code_or_title(session: Session, search_term: str) -> List[Project]:
+    """Search projects by project code or title."""
+    # Ensure search_term is case-insensitive for projcode and title
+    like_search_term = f"%{search_term}%"
+    return session.query(Project)\
+        .filter(
+            or_(
+                Project.projcode.ilike(like_search_term),
+                Project.title.ilike(like_search_term)
+            )
+        )\
         .filter(Project.active == True)\
         .all()
 
