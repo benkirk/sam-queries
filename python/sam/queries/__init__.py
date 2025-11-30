@@ -1671,7 +1671,8 @@ def search_users_by_pattern(
     session: Session,
     pattern: str,
     limit: int = 50,
-    exclude_user_ids: Optional[List[int]] = None
+    exclude_user_ids: Optional[List[int]] = None,
+    active_only: bool = False
 ) -> List[User]:
     """
     Search users by username, first name, last name, or email for autocomplete.
@@ -1681,6 +1682,7 @@ def search_users_by_pattern(
         pattern: Search pattern (will be wrapped with % for LIKE)
         limit: Maximum results to return (default 50)
         exclude_user_ids: Optional list of user IDs to exclude from results
+        active_only: If True, only return active users
 
     Returns:
         List of User objects matching the pattern
@@ -1704,6 +1706,9 @@ def search_users_by_pattern(
 
     if exclude_user_ids:
         query = query.filter(~User.user_id.in_(exclude_user_ids))
+    
+    if active_only:
+        query = query.filter(User.active == True)
 
     return query.order_by(User.last_name, User.first_name, User.username).limit(limit).all()
 

@@ -32,7 +32,7 @@ $(document).ready(function() {
             return;
         }
 
-        fetch(`/api/v1/users/search?q=${encodeURIComponent(query)}`)
+        fetch(`/api/v1/users/search?q=${encodeURIComponent(query)}&active_only=true`)
             .then(response => {
                 if (!response.ok) throw new Error('Search failed');
                 return response.json();
