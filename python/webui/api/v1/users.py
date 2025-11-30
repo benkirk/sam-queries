@@ -168,6 +168,7 @@ def search_users():
         q (str): Search query (minimum 2 characters, required)
         projcode (str): Optional project code to exclude existing members
         limit (int): Maximum results to return (default: 20, max: 50)
+        active_only (bool): If true, only return active users (default: false)
 
     Returns:
         JSON array of matching users with username, display_name, email
@@ -181,6 +182,7 @@ def search_users():
         return jsonify([])
 
     limit = min(request.args.get('limit', 20, type=int), 50)
+    active_only = request.args.get('active_only', 'false').lower() == 'true'
 
     # Get existing members to exclude if projcode provided
     exclude_ids = None
@@ -190,7 +192,13 @@ def search_users():
         if project:
             exclude_ids = get_project_member_user_ids(db.session, project.project_id)
 
-    users = search_users_by_pattern(db.session, query, limit=limit, exclude_user_ids=exclude_ids)
+    users = search_users_by_pattern(
+        db.session,
+        query,
+        limit=limit,
+        exclude_user_ids=exclude_ids,
+        active_only=active_only
+    )
 
     return jsonify([
         {

@@ -7,7 +7,12 @@
 <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
     <li class="nav-item">
         <a class="nav-link active" id="account-statements-tab" data-toggle="tab" href="#account-statements" role="tab">
-            <i class="fas fa-file-invoice-dollar"></i> My Accounts
+            <i class="fas fa-file-invoice-dollar"></i>
+            {% if session.impersonator_id %}
+                {{ user.username }}'s Accounts
+            {% else %}
+                My Accounts
+            {% endif %}
         </a>
     </li>
     <li class="nav-item">
@@ -15,13 +20,19 @@
             <i class="fas fa-user-circle"></i> User Information
         </a>
     </li>
+    {% if has_permission(Permission.IMPERSONATE_USERS) and not session.impersonator_id %}
+    <li class="nav-item">
+        <a class="nav-link" id="admin-actions-tab" data-toggle="tab" href="#admin-actions" role="tab">
+            <i class="fas fa-user-shield"></i> Admin
+        </a>
+    </li>
+    {% endif %}
 </ul>
 
 <!-- Tab Content -->
 <div class="tab-content" id="dashboardTabContent">
     <!-- My Accounts Tab -->
     <div class="tab-pane fade show active" id="account-statements" role="tabpanel">
-
         <!-- Projects Section -->
         <div id="projects-section">
             <!-- Summary Header -->
@@ -264,6 +275,40 @@
         </div>
     </div>
     <!-- End User Information Tab -->
+
+    <!-- Admin Actions Tab -->
+    {% if has_permission(Permission.IMPERSONATE_USERS) %}
+    <div class="tab-pane fade" id="admin-actions" role="tabpanel">
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-user-secret"></i> Impersonate User</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="impersonateUserForm" method="POST" action="{{ url_for('user_dashboard.impersonate') }}">
+                            <div class="form-group">
+                                <label for="userSearchImpersonate">Search for a user to impersonate</label>
+                                <input type="text" class="form-control" id="userSearchImpersonate" placeholder="Start typing a username, first, or last name..." autocomplete="off">
+                                <input type="hidden" id="selectedUsernameImpersonate" name="username">
+                                <div id="userSearchResultsImpersonate" class="list-group mt-2" style="display:none; max-height: 200px; overflow-y: auto;"></div>
+                            </div>
+                            <div id="selectedUserDisplayImpersonate" class="alert alert-info" style="display:none;">
+                                <i class="fas fa-user-check"></i>
+                                <strong id="selectedUserNameImpersonate"></strong>
+                                <small id="selectedUserEmailImpersonate" class="text-muted ml-2"></small>
+                            </div>
+                            <button type="submit" class="btn btn-primary" id="impersonateSubmitBtn" disabled>
+                                <i class="fas fa-user-secret"></i> Impersonate
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    <!-- End Admin Actions Tab -->
 </div>
 <!-- End Tab Content -->
 
@@ -271,3 +316,8 @@
 {% include 'dashboards/user/fragments/member_modals.html' %}
 
 {% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/impersonation.js') }}"></script>
+{% endblock %}
+

@@ -7,8 +7,8 @@ Refactored to use server-side rendering with direct ORM queries instead of
 JavaScript API calls for improved performance and simplicity.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for
-from flask_login import login_required, current_user
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session
+from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
 
 from webui.extensions import db
@@ -17,8 +17,12 @@ from sam.queries import (
     get_user_breakdown_for_project, get_jobs_for_project, find_project_by_code
 )
 from sam.projects.projects import Project
+from webui.auth.models import AuthUser
+from sam.core.users import User
 from webui.utils.charts import generate_usage_timeseries_matplotlib
 from webui.utils.project_permissions import can_manage_project_members, can_change_admin
+from webui.utils.rbac import require_permission, Permission
+
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/user')
 
@@ -37,16 +41,88 @@ def index():
     Shows user's projects and their allocation spending.
     Data is loaded server-side using direct ORM queries for improved performance.
     """
+    impersonator_id = session.get('impersonator_id')
+    
+    if impersonator_id:
+        # When impersonating, current_user is the impersonated user.
+        user_to_display = current_user
+    else:
+        user_to_display = current_user
+
     # Fetch all dashboard data using optimized query helper
-    dashboard_data = get_user_dashboard_data(db.session, current_user.user_id)
+    dashboard_data = get_user_dashboard_data(db.session, user_to_display.user_id)
 
     return render_template(
         'dashboards/user/dashboard.html',
-        user=current_user,
+        user=user_to_display,
         dashboard_data=dashboard_data,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
-        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
+        impersonator_id=impersonator_id
     )
+
+
+@bp.route('/impersonate', methods=['POST'])
+@login_required
+@require_permission(Permission.IMPERSONATE_USERS)
+def impersonate():
+    """
+    Allows an admin to impersonate another user.
+    """
+    username = request.form.get('username')
+    impersonator_id = current_user.user_id
+
+    sam_user_to_impersonate = db.session.query(User).filter_by(username=username).first()
+
+    if not sam_user_to_impersonate:
+        flash(f'User "{username}" not found', 'error')
+        return redirect(url_for('user_dashboard.index'))
+
+    user_to_impersonate = AuthUser(sam_user_to_impersonate)
+
+    # Prevent impersonating other admins unless you are a super-admin
+    if user_to_impersonate.has_role('admin') and not current_user.has_role('admin'):
+         flash('You do not have permission to impersonate an administrator.', 'danger')
+         return redirect(url_for('user_dashboard.index'))
+
+    # Store current user in session to be able to go back
+    session['impersonator_id'] = impersonator_id
+
+    # Log in as the other user
+    login_user(user_to_impersonate)
+
+    flash(f'You are now impersonating {user_to_impersonate.display_name}', 'success')
+    return redirect(url_for('user_dashboard.index'))
+
+
+@bp.route('/stop_impersonating')
+@login_required
+def stop_impersonating():
+    """
+    Stops impersonating and returns to the original user.
+    """
+    impersonator_id = session.get('impersonator_id')
+
+    if not impersonator_id:
+        flash('You are not currently impersonating anyone', 'warning')
+        return redirect(url_for('user_dashboard.index'))
+
+    sam_impersonator = db.session.query(User).filter_by(user_id=impersonator_id).first()
+
+    if not sam_impersonator:
+        flash('Could not find original user to restore session', 'error')
+        # Clear the impersonation session key and send to login
+        session.pop('impersonator_id', None)
+        return redirect(url_for('auth.login'))
+
+    impersonator = AuthUser(sam_impersonator)
+
+    # Log back in as the original user
+    login_user(impersonator)
+    session.pop('impersonator_id', None)
+
+    flash('You have stopped impersonating and returned to your account', 'success')
+    return redirect(url_for('user_dashboard.index'))
 
 
 @bp.route('/resource-details')
