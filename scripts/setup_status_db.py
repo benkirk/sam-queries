@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 
 # Add python directory to path
-python_dir = Path(__file__).parent.parent / 'python'
+python_dir = Path(__file__).parent.parent / 'src'
 sys.path.insert(0, str(python_dir))
 
 from system_status import StatusBase, create_status_engine

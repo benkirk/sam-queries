@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Add python directory to path
-python_dir = Path(__file__).parent.parent / 'python'
+python_dir = Path(__file__).parent.parent / 'src'
 sys.path.insert(0, str(python_dir))
 
 from system_status import create_status_engine, get_session
