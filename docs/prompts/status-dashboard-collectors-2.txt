@@ -13,7 +13,7 @@ hard-coding conf files.
 ssh to casper and derecho both work so you can run relevant commands
 for testing.
 
-You can start the development web server via "utils/run-webui-dbg.sh"
+You can start the development web server via "utils/run-webapp-dbg.sh"
 which will disable auth for testing purposes, allowing testing the API
 aspects, and then checking the dashboard on
 http://127.0.0.1:5050/status/.

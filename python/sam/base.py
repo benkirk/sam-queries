@@ -26,10 +26,10 @@ def _get_base_class():
     """
     if os.environ.get('FLASK_ACTIVE') == '1':
         try:
-            from webui.extensions import db
+            from webapp.extensions import db
             return db.Model
         except ImportError:
-            # Fallback if webui not available
+            # Fallback if webapp not available
             from sqlalchemy.orm import declarative_base
             return declarative_base()
     else:

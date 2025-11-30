@@ -15,7 +15,7 @@ Usage:
 """
 
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
-from webui.extensions import db
+from webapp.extensions import db
 
 
 class BaseSchema(SQLAlchemyAutoSchema):

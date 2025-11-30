@@ -11,7 +11,7 @@ SCRIPTDIR="$(cd "$(dirname "$(realpath "${SCRIPT_PATH}")")" >/dev/null 2>&1 && p
 #----------------------------------------------------------------------------
 source ${SCRIPTDIR}/../.env
 
-exe=$(realpath ${SCRIPTDIR}/../python/webui/run.py)
+exe=$(realpath ${SCRIPTDIR}/../python/webapp/run.py)
 
 DISABLE_AUTH=1 \
   DEV_AUTO_LOGIN_USER=benkirk \

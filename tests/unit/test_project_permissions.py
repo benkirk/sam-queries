@@ -1,7 +1,7 @@
 """
 Tests for project-level permission utilities.
 
-Tests the permission functions in webui.utils.project_permissions module
+Tests the permission functions in webapp.utils.project_permissions module
 that combine project-level roles (Lead, Admin, Member) with system-wide
 RBAC permissions.
 """
@@ -14,7 +14,7 @@ from unittest.mock import Mock
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'python'))
 
-from webui.utils.project_permissions import (
+from webapp.utils.project_permissions import (
     can_manage_project_members,
     can_change_admin,
     can_view_project_members,

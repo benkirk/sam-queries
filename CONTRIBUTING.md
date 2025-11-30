@@ -237,7 +237,7 @@ The `sam_search.py` CLI provides quick access to user and project information:
 Launch the Flask web interface:
 
 ```bash
-./python/webui/run.py
+./python/webapp/run.py
 ```
 
 Access at `http://127.0.0.1:5050`
@@ -357,7 +357,7 @@ cd tests && pytest --cov=sam --cov-report=html
        name = fields.Str()
    ```
 
-2. **Add endpoint** in `python/webui/api/`:
+2. **Add endpoint** in `python/webapp/api/`:
    ```python
    @bp.route('/newmodels/<int:id>')
    def get_newmodel(id):
@@ -614,7 +614,7 @@ sam-queries/
 │   │   ├── integration/     # XRAS integration
 │   │   └── security/        # Roles, API credentials
 │   ├── sam_search.py        # CLI tool
-│   └── webui/               # Flask web application
+│   └── webapp/               # Flask web application
 │       ├── api/             # REST API blueprints
 │       ├── schemas/         # Marshmallow schemas
 │       └── run.py           # Application entry point

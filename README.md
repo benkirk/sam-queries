@@ -204,7 +204,7 @@ For detailed ORM documentation, see **[CLAUDE.md](CLAUDE.md)**.
 Launch the Flask web interface:
 
 ```bash
-cd python/webui
+cd python/webapp
 python run.py
 ```
 
@@ -216,7 +216,7 @@ Features:
 - Role-based access control (admin, facility_manager, project_lead, user, analyst)
 - Bootstrap 4 interface
 
-For detailed Web UI documentation, see **[python/webui/README.md](python/webui/README.md)**.
+For detailed Web UI documentation, see **[python/webapp/README.md](python/webapp/README.md)**.
 
 ### REST API
 
@@ -273,7 +273,7 @@ curl -b cookies.txt http://localhost:5050/api/v1/accounts/12345/balance
 }
 ```
 
-For complete API documentation, see **[python/webui/README.md](python/webui/README.md#rest-api)**.
+For complete API documentation, see **[python/webapp/README.md](python/webapp/README.md#rest-api)**.
 
 ---
 
@@ -323,7 +323,7 @@ sam-queries/
 │   │
 │   ├── sam_search.py            # CLI tool for user/project searches
 │   │
-│   └── webui/                   # Flask web application
+│   └── webapp/                   # Flask web application
 │       ├── README.md            # Web UI documentation
 │       ├── run.py               # Development server
 │       ├── auth/                # Authentication (providers, models, blueprint)
@@ -397,7 +397,7 @@ sam-queries/
 ### User Documentation
 - **[README.md](README.md)** - This file (overview and quick start)
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Comprehensive setup and development guide
-- **[python/webui/README.md](python/webui/README.md)** - Web UI and REST API documentation
+- **[python/webapp/README.md](python/webapp/README.md)** - Web UI and REST API documentation
 - **[tests/docs/README.md](tests/docs/README.md)** - Testing guide and best practices
 
 ### Technical Reference
@@ -411,7 +411,7 @@ sam-queries/
   - Development workflow
 
 ### API Documentation
-- **REST API endpoints** - See [python/webui/README.md](python/webui/README.md#rest-api)
+- **REST API endpoints** - See [python/webapp/README.md](python/webapp/README.md#rest-api)
 - **Marshmallow schemas** - See [CLAUDE.md](CLAUDE.md#marshmallow-sqlalchemy-schemas)
 - **ORM models** - See [CLAUDE.md](CLAUDE.md#key-orm-models)
 
@@ -670,7 +670,7 @@ Copyright (c) 2025 NCAR CISL
 2. **Common Questions:**
    - Setup issues → [CONTRIBUTING.md](CONTRIBUTING.md#troubleshooting)
    - ORM patterns → [CLAUDE.md](CLAUDE.md#key-orm-models)
-   - API usage → [python/webui/README.md](python/webui/README.md#rest-api)
+   - API usage → [python/webapp/README.md](python/webapp/README.md#rest-api)
    - Testing → [tests/docs/README.md](tests/docs/README.md)
 
 3. **Support:**

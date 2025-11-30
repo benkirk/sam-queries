@@ -2030,7 +2030,7 @@ grep "status_id" /var/log/derecho_collector.log | tail -10
 
 The following files are essential for implementing this architecture:
 
-1. **`/Users/benkirk/codes/sam-queries/python/webui/api/v1/status.py`**
+1. **`/Users/benkirk/codes/sam-queries/python/webapp/api/v1/status.py`**
    - **Reason**: Defines exact API data format and requirements
    - **Key info**: POST endpoint schemas, required/optional fields, error handling
    - **Lines of interest**: 97-238 (Derecho POST), 240-382 (Casper POST)

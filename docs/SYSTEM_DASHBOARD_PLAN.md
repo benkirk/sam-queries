@@ -173,7 +173,7 @@ python/system_status/
 - Faster initial load, simpler architecture
 - No JavaScript required for display
 
-**Dashboard Blueprint** (`python/webui/dashboards/status/blueprint.py`):
+**Dashboard Blueprint** (`python/webapp/dashboards/status/blueprint.py`):
 ```python
 @bp.route('/')
 @login_required
@@ -289,9 +289,9 @@ All time-series tables indexed for fast queries:
 ### Phase 1B: API Layer (Days 3-4)
 
 4. **API implementation**:
-   - Create `python/webui/api/v1/status.py` (all POST/GET endpoints)
-   - Add `Permission.MANAGE_SYSTEM_STATUS` to `python/webui/utils/rbac.py`
-   - Register blueprint in `python/webui/run.py`
+   - Create `python/webapp/api/v1/status.py` (all POST/GET endpoints)
+   - Add `Permission.MANAGE_SYSTEM_STATUS` to `python/webapp/utils/rbac.py`
+   - Register blueprint in `python/webapp/run.py`
 
 5. **Testing infrastructure**:
    - Create mock data: `tests/mock_data/status_mock_data.json`
@@ -759,27 +759,27 @@ CREATE TABLE alert_history (
    - **Why**: Connection factory pattern - establish how to replicate for status DB
    - **Key patterns**: Environment variable loading, SSL config, pooling
 
-2. **`python/webui/api/v1/projects.py`** (lines 421-483, 521-573)
+2. **`python/webapp/api/v1/projects.py`** (lines 421-483, 521-573)
    - **Why**: POST endpoint patterns - add_member() shows complete flow
    - **Key patterns**: Validation, authorization, error handling, response format
 
-3. **`python/webui/dashboards/user/blueprint.py`** (all)
+3. **`python/webapp/dashboards/user/blueprint.py`** (all)
    - **Why**: Dashboard route patterns - understand blueprint structure
    - **Key patterns**: Route definitions, template rendering, session passing
 
-4. **`python/webui/templates/dashboards/user/dashboard.html`** (all)
+4. **`python/webapp/templates/dashboards/user/dashboard.html`** (all)
    - **Why**: Tabbed interface implementation - see tab navigation structure
    - **Key patterns**: Bootstrap tabs, lazy loading, collapsible cards
 
-5. **`python/webui/static/js/lazy-loading.js`** (all 27 lines)
+5. **`python/webapp/static/js/lazy-loading.js`** (all 27 lines)
    - **Why**: Fragment loading pattern - understand auto-loading mechanism
    - **Key patterns**: Event listeners, data attributes, fetch/insert
 
 ### Additional Reference Files
 
 6. **`python/sam/summaries/comp_summaries.py`** - Time-series aggregation pattern
-7. **`python/webui/api/helpers.py`** - Response wrappers and error handling
-8. **`python/webui/utils/rbac.py`** - Permission system and decorators
+7. **`python/webapp/api/helpers.py`** - Response wrappers and error handling
+8. **`python/webapp/utils/rbac.py`** - Permission system and decorators
 9. **`python/sam/projects/projects.py`** (lines 306-441) - Query aggregation pattern
 10. **`tests/integration/test_schema_validation.py`** - Schema validation approach
 
