@@ -10,7 +10,7 @@ This plan implements a comprehensive system status dashboard for HPC resources (
 
 **Key Technical Decisions:**
 - **Database**: Separate MySQL database `system_status` on same SAM_DB_SERVER
-- **ORM Location**: New `python/system_status/` tree (parallel to `sam/`)
+- **ORM Location**: New `src/system_status/` tree (parallel to `sam/`)
 - **Data Granularity**: 5-minute intervals, 7-day retention
 - **Rendering**: Server-side with Jinja2 (matches user dashboard pattern)
 - **Refresh**: Meta refresh every 5 minutes
@@ -120,9 +120,9 @@ The system is ready for:
 
 ### ORM Structure
 
-**New Directory**: `python/system_status/` (parallel to `sam/`)
+**New Directory**: `src/system_status/` (parallel to `sam/`)
 ```
-python/system_status/
+src/system_status/
 ├── __init__.py
 ├── base.py                    # Base classes, mixins
 ├── session/
@@ -173,7 +173,7 @@ python/system_status/
 - Faster initial load, simpler architecture
 - No JavaScript required for display
 
-**Dashboard Blueprint** (`python/webapp/dashboards/status/blueprint.py`):
+**Dashboard Blueprint** (`src/webapp/dashboards/status/blueprint.py`):
 ```python
 @bp.route('/')
 @login_required
@@ -277,7 +277,7 @@ All time-series tables indexed for fast queries:
    - Create `system_status` database on MySQL server
 
 2. **ORM implementation**:
-   - Create `python/system_status/` directory structure
+   - Create `src/system_status/` directory structure
    - Implement base classes and mixins (`base.py`)
    - Create session factory (`session/__init__.py`)
    - Implement all model classes (derecho, casper, jupyterhub, outages)
@@ -289,9 +289,9 @@ All time-series tables indexed for fast queries:
 ### Phase 1B: API Layer (Days 3-4)
 
 4. **API implementation**:
-   - Create `python/webapp/api/v1/status.py` (all POST/GET endpoints)
-   - Add `Permission.MANAGE_SYSTEM_STATUS` to `python/webapp/utils/rbac.py`
-   - Register blueprint in `python/webapp/run.py`
+   - Create `src/webapp/api/v1/status.py` (all POST/GET endpoints)
+   - Add `Permission.MANAGE_SYSTEM_STATUS` to `src/webapp/utils/rbac.py`
+   - Register blueprint in `src/webapp/run.py`
 
 5. **Testing infrastructure**:
    - Create mock data: `tests/mock_data/status_mock_data.json`
@@ -755,32 +755,32 @@ CREATE TABLE alert_history (
 
 ### Top 5 Files to Read Before Implementation
 
-1. **`python/sam/session/__init__.py`** (lines 1-68)
+1. **`src/sam/session/__init__.py`** (lines 1-68)
    - **Why**: Connection factory pattern - establish how to replicate for status DB
    - **Key patterns**: Environment variable loading, SSL config, pooling
 
-2. **`python/webapp/api/v1/projects.py`** (lines 421-483, 521-573)
+2. **`src/webapp/api/v1/projects.py`** (lines 421-483, 521-573)
    - **Why**: POST endpoint patterns - add_member() shows complete flow
    - **Key patterns**: Validation, authorization, error handling, response format
 
-3. **`python/webapp/dashboards/user/blueprint.py`** (all)
+3. **`src/webapp/dashboards/user/blueprint.py`** (all)
    - **Why**: Dashboard route patterns - understand blueprint structure
    - **Key patterns**: Route definitions, template rendering, session passing
 
-4. **`python/webapp/templates/dashboards/user/dashboard.html`** (all)
+4. **`src/webapp/templates/dashboards/user/dashboard.html`** (all)
    - **Why**: Tabbed interface implementation - see tab navigation structure
    - **Key patterns**: Bootstrap tabs, lazy loading, collapsible cards
 
-5. **`python/webapp/static/js/lazy-loading.js`** (all 27 lines)
+5. **`src/webapp/static/js/lazy-loading.js`** (all 27 lines)
    - **Why**: Fragment loading pattern - understand auto-loading mechanism
    - **Key patterns**: Event listeners, data attributes, fetch/insert
 
 ### Additional Reference Files
 
-6. **`python/sam/summaries/comp_summaries.py`** - Time-series aggregation pattern
-7. **`python/webapp/api/helpers.py`** - Response wrappers and error handling
-8. **`python/webapp/utils/rbac.py`** - Permission system and decorators
-9. **`python/sam/projects/projects.py`** (lines 306-441) - Query aggregation pattern
+6. **`src/sam/summaries/comp_summaries.py`** - Time-series aggregation pattern
+7. **`src/webapp/api/helpers.py`** - Response wrappers and error handling
+8. **`src/webapp/utils/rbac.py`** - Permission system and decorators
+9. **`src/sam/projects/projects.py`** (lines 306-441) - Query aggregation pattern
 10. **`tests/integration/test_schema_validation.py`** - Schema validation approach
 
 ---
@@ -876,7 +876,7 @@ All required libraries already present in SAM project.
 ### Phase 1 Complete When:
 
 1. ✅ Separate `system_status` MySQL database created and accessible
-2. ✅ All ORM models defined and tested in `python/system_status/`
+2. ✅ All ORM models defined and tested in `src/system_status/`
 3. ✅ POST APIs successfully ingest mock data for all three systems
 4. ✅ GET APIs return latest status correctly formatted
 5. ✅ Status dashboard renders with 3 tabs

@@ -24,7 +24,7 @@ The SAM Web UI is a Flask-based web application for managing the Service Allocat
 ### Directory Structure
 
 ```
-python/webapp/
+src/webapp/
 ├── __init__.py                 # Package init
 ├── run.py                      # Application factory and dev server
 ├── extensions.py               # Flask extension instances
@@ -275,7 +275,7 @@ def index(self):
 ### Planned Structure
 
 ```
-python/webapp/
+src/webapp/
 └── api/
     ├── __init__.py
     └── v1/
@@ -401,7 +401,7 @@ WHERE r.name = 'project_lead' AND u.username = 'test_lead';
 
 ### Test Login
 
-1. Start the dev server: `python python/webapp/run.py`
+1. Start the dev server: `python src/webapp/run.py`
 2. Navigate to `http://localhost:5050`
 3. Login with any SAM username and any password
 4. Check which admin views are accessible based on roles

@@ -144,7 +144,7 @@ class ReservationParser:
 
 ### Phase 2: Update API Endpoint
 
-**File**: `/Users/benkirk/codes/sam-queries/python/webapp/api/v1/status.py` (MODIFY)
+**File**: `/Users/benkirk/codes/sam-queries/src/webapp/api/v1/status.py` (MODIFY)
 
 **Changes Required**:
 
@@ -521,7 +521,7 @@ if reservations:
    - Test with sample PBS output
 
 3. **Update API endpoints**
-   - File: `python/webapp/api/v1/status.py`
+   - File: `src/webapp/api/v1/status.py`
    - Add reservation handling to `ingest_derecho()`
    - Add reservation handling to `ingest_casper()`
    - Test with curl/Postman

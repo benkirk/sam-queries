@@ -6,7 +6,7 @@ I've implemented a comprehensive Flask-based web UI for your SAM database with a
 
 ## New Components Added
 
-### 1. Authentication System (`python/webapp/auth/`)
+### 1. Authentication System (`src/webapp/auth/`)
 
 **Files Created:**
 - `auth/models.py` - `AuthUser` wrapper for Flask-Login integration
@@ -27,7 +27,7 @@ user = provider.authenticate('username', 'any-password')
 # Returns SAM User object if user exists and is active
 ```
 
-### 2. Role-Based Access Control (`python/webapp/utils/rbac.py`)
+### 2. Role-Based Access Control (`src/webapp/utils/rbac.py`)
 
 **Features:**
 - **Permission Enum**: 20+ granular permissions (VIEW_USERS, EDIT_PROJECTS, etc.)
@@ -62,7 +62,7 @@ class UserAdmin(SAMModelView):
 {% endif %}
 ```
 
-### 3. Authentication Blueprint (`python/webapp/auth/blueprint.py`)
+### 3. Authentication Blueprint (`src/webapp/auth/blueprint.py`)
 
 **Routes:**
 - `GET/POST /auth/login` - Login page and handler
@@ -99,7 +99,7 @@ class UserAdmin(SAMModelView):
 - Return JSON responses
 - Include error handlers for 401/403
 
-### 5. Updated Core Application (`python/webapp/run.py`)
+### 5. Updated Core Application (`src/webapp/run.py`)
 
 **Enhancements:**
 - Flask-Login initialization
@@ -124,7 +124,7 @@ class UserAdmin(SAMModelView):
 ## Directory Structure Created
 
 ```
-python/webapp/
+src/webapp/
 ├── README.md                   # Quick start guide
 ├── DESIGN.md                   # Detailed architecture docs
 ├── requirements.txt            # Dependencies
@@ -163,7 +163,7 @@ python/webapp/
 ### 1. Install Dependencies
 
 ```bash
-cd python/webapp
+cd src/webapp
 pip install -r requirements.txt
 ```
 
@@ -188,7 +188,7 @@ WHERE r.name = 'admin' AND u.username = 'your_username';
 ### 3. Run Development Server
 
 ```bash
-python python/webapp/run.py
+python src/webapp/run.py
 ```
 
 ### 4. Access the Application

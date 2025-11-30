@@ -278,7 +278,7 @@ repos:
         name: Regenerate schema diagrams
         entry: make diagrams
         language: system
-        files: ^python/sam/.*\.py$
+        files: ^src/sam/.*\.py$
         pass_filenames: false
 ```
 
@@ -298,7 +298,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'python/sam/**/*.py'
+      - 'src/sam/**/*.py'
 
 jobs:
   diagrams:

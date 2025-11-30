@@ -17,7 +17,7 @@ Flask-based web administration interface for the Service Allocation Management (
 ### 1. Install Dependencies
 
 ```bash
-cd python/webapp
+cd src/webapp
 pip install -r requirements.txt
 ```
 
@@ -36,7 +36,7 @@ SAM_DB_PASSWORD=your-password
 
 **For Read-Only Database (Development):**
 
-Edit `python/webapp/run.py` and add your username to the `DEV_ROLE_MAPPING`:
+Edit `src/webapp/run.py` and add your username to the `DEV_ROLE_MAPPING`:
 
 ```python
 app.config['DEV_ROLE_MAPPING'] = {
@@ -90,7 +90,7 @@ The stub authenticator accepts any password for existing, active, non-locked use
 ## Project Structure
 
 ```
-python/webapp/
+src/webapp/
 ├── README.md                   # This file
 ├── DESIGN.md                   # Detailed design documentation
 ├── requirements.txt            # Python dependencies

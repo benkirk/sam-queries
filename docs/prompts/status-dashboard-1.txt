@@ -1,6 +1,6 @@
 Lets plan a system status dashboard to go alongside the existing
-initial user dashboard at python/webapp/dashboards
-python/webapp/templates/dashboards, refactoring for commonality as
+initial user dashboard at src/webapp/dashboards
+src/webapp/templates/dashboards, refactoring for commonality as
 necessary.
 
 The initial system status dashboard should be a similar tabbed
@@ -16,7 +16,7 @@ Derecho is logically a CPU- and GPU- partition as described here
 https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/#derecho-hardware
 
 Phase 2 and beyond will pursue: - Flask Side Data consumers for each
-resource defined in python/webapp/dashboards/status, with any new POST APIs required defined at python/webapp/api/v1,
+resource defined in src/webapp/dashboards/status, with any new POST APIs required defined at src/webapp/api/v1,
 
 Ideally we will be able to show historical usage for the past <= 7
 days using lightweight SVG matplotlib or similar.  This implies a

@@ -4,7 +4,7 @@ This guide shows how to test the authentication and RBAC system with a read-only
 
 ## Step 1: Configure Dev Roles
 
-Edit `python/webapp/run.py` around line 27-37 and add your SAM username:
+Edit `src/webapp/run.py` around line 27-37 and add your SAM username:
 
 ```python
 app.config['DEV_ROLE_MAPPING'] = {
@@ -15,7 +15,7 @@ app.config['DEV_ROLE_MAPPING'] = {
 ## Step 2: Start the Server
 
 ```bash
-cd python/webapp
+cd src/webapp
 python run.py
 ```
 

@@ -1,6 +1,6 @@
 # WebUI Refactoring Plan
 
-This document outlines prioritized opportunities for simplification and refactoring to improve code maintainability in the `python/webapp` module.
+This document outlines prioritized opportunities for simplification and refactoring to improve code maintainability in the `src/webapp` module.
 
 **Estimated Total Impact**: ~350+ lines of duplicated code can be consolidated
 **Last Updated**: 2025-11-21
@@ -570,7 +570,7 @@ def require_project_access(f):
 
 ### Files to Modify
 
-#### WebUI Module (`python/webapp/`)
+#### WebUI Module (`src/webapp/`)
 | File | Phase | Changes |
 |------|-------|---------|
 | `api/v1/users.py` | 1, 3 | Use helpers, split endpoint |
@@ -580,7 +580,7 @@ def require_project_access(f):
 | `schemas/charges.py` | 2 | Inheritance refactor |
 | `schemas/allocation.py` | 2 | Use `Project.get_detailed_allocation_usage()` |
 
-#### SAM Core Module (`python/sam/`)
+#### SAM Core Module (`src/sam/`)
 | File | Phase | Changes |
 |------|-------|---------|
 | `queries/__init__.py` | 2 | Add any missing charge query utilities (if needed) |

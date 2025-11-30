@@ -408,9 +408,9 @@ def project_card(projcode):
 
 
 # Note: Member management API endpoints have been moved to /api/v1/projects/
-# See python/webapp/api/v1/projects.py for:
+# See src/webapp/api/v1/projects.py for:
 #   POST /api/v1/projects/<projcode>/members - Add member
 #   DELETE /api/v1/projects/<projcode>/members/<username> - Remove member
 #   PUT /api/v1/projects/<projcode>/admin - Change admin
-# See python/webapp/api/v1/users.py for:
+# See src/webapp/api/v1/users.py for:
 #   GET /api/v1/users/search - Search users

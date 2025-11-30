@@ -28,7 +28,7 @@ session = Session(engine)
 
 ```
 sam-queries/
-├── python/sam/              # ORM models (organized by domain)
+├── src/sam/              # ORM models (organized by domain)
 │   ├── base.py              # Base classes, mixins
 │   ├── core/                # Users, organizations, groups
 │   ├── resources/           # Resources, machines, facilities, charging
@@ -39,7 +39,7 @@ sam-queries/
 │   ├── integration/         # XRAS integration (tables + views)
 │   ├── security/            # Roles, API credentials, access control
 │   └── operational.py       # Synchronizers, tasks, products
-├── python/sam_search.py     # CLI tool for user/project searches
+├── src/sam_search.py     # CLI tool for user/project searches
 └── tests/                   # Comprehensive test suite
     ├── test_basic_read.py           # Basic ORM queries
     ├── test_crud_operations.py      # Create/update/delete
@@ -116,7 +116,7 @@ The API uses marshmallow-sqlalchemy for declarative serialization, replacing man
 
 ### Schema Organization
 ```
-python/sam.schemas/
+src/sam.schemas/
 ├── __init__.py           # Base schema + exports
 ├── user.py               # User schemas (3 tiers)
 ├── project.py            # Project schemas (3 tiers)
@@ -518,26 +518,26 @@ cd tests && pytest --cov=sam --cov-report=html
 ### Usage Examples
 ```bash
 # Find user
-./python/sam_search.py user benkirk
-./python/sam_search.py user benkirk --list-projects --verbose
+./src/sam_search.py user benkirk
+./src/sam_search.py user benkirk --list-projects --verbose
 
 # Pattern search
-./python/sam_search.py user --search "ben%"
-./python/sam_search.py project --search "SCSG%"
+./src/sam_search.py user --search "ben%"
+./src/sam_search.py project --search "SCSG%"
 
 # Special searches
-./python/sam_search.py user --abandoned
-./python/sam_search.py user --has-active-project
+./src/sam_search.py user --abandoned
+./src/sam_search.py user --has-active-project
 
 # Project lookup
-./python/sam_search.py project SCSG0001 --list-users --verbose
+./src/sam_search.py project SCSG0001 --list-users --verbose
 
 # Expirations
-./python/sam_search.py project --upcoming-expirations --list-users
-./python/sam_search.py project --recent-expirations --list-users
+./src/sam_search.py project --upcoming-expirations --list-users
+./src/sam_search.py project --recent-expirations --list-users
 
 # Global flags
-./python/sam_search.py --inactive-projects user benkirk --list-projects
+./src/sam_search.py --inactive-projects user benkirk --list-projects
 ```
 
 ### Exit Codes
@@ -658,9 +658,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 5. Schema validation tests will catch future drift
 
 ### Adding CLI Features
-1. Add functionality to `python/sam_search.py`
+1. Add functionality to `src/sam_search.py`
 2. Create integration tests in `tests/integration/test_sam_search_cli.py`
-3. Test manually: `./python/sam_search.py <command>`
+3. Test manually: `./src/sam_search.py <command>`
 4. Run test suite: `cd tests && pytest integration/test_sam_search_cli.py`
 
 ---
@@ -692,8 +692,8 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ```bash
 # Most common commands (see full details in respective sections above)
 cd tests && pytest -v                                # Run all tests
-./python/sam_search.py user benkirk --list-projects  # User lookup
-./python/sam_search.py project SCSG0001 --list-users # Project lookup
+./src/sam_search.py user benkirk --list-projects  # User lookup
+./src/sam_search.py project SCSG0001 --list-users # Project lookup
 git log --oneline -10                                 # Recent commits
 ```
 
