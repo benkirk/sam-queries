@@ -36,11 +36,21 @@ class DerechoCollector(BaseCollector):
         except Exception as e:
             self.logger.error(f"Failed to collect node data: {e}", exc_info=True)
             data.update({
-                'cpu_nodes_total': 0, 'cpu_nodes_available': 0, 'cpu_nodes_down': 0,
-                'cpu_nodes_reserved': 0, 'gpu_nodes_total': 0, 'gpu_nodes_available': 0,
-                'gpu_nodes_down': 0, 'gpu_nodes_reserved': 0, 'cpu_cores_total': 0,
-                'cpu_cores_allocated': 0, 'cpu_cores_idle': 0, 'gpu_count_total': 0,
-                'gpu_count_allocated': 0, 'gpu_count_idle': 0, 'memory_total_gb': 0.0,
+                'cpu_nodes_total': 0,
+                'cpu_nodes_available': 0,
+                'cpu_nodes_down': 0,
+                'cpu_nodes_reserved': 0,
+                'gpu_nodes_total': 0,
+                'gpu_nodes_available': 0,
+                'gpu_nodes_down': 0,
+                'gpu_nodes_reserved': 0,
+                'cpu_cores_total': 0,
+                'cpu_cores_allocated': 0,
+                'cpu_cores_idle': 0,
+                'gpu_count_total': 0,
+                'gpu_count_allocated': 0,
+                'gpu_count_idle': 0,
+                'memory_total_gb': 0.0,
                 'memory_allocated_gb': 0.0,
             })
 
