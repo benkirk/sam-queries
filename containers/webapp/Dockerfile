@@ -23,23 +23,18 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=bind,source=.,destination=/project_src \
-    git clone /project_src /tmp/src \
-    && cd /tmp/src \
+    git clone /project_src /app \
+    && cd /app \
     && git lfs pull \
     && ls -ltrh containers/sam-sql-dev/backups/* \
     && pip install .[test]
 
-# WORKDIR /app
-# COPY src/ .
-# RUN find . -ls
-# ENV PYTHONPATH=/app:
-
 RUN echo "Creatning default .env" && \
-    <<'FILE1' cat > .env && \
+    <<'FILE1' cat > /app/.env && \
     echo "Done"
 #-------------------------
 # local container instance
-LOCAL_SAM_DB_SERVER=127.0.0.1
+LOCAL_SAM_DB_SERVER=host.docker.internal #127.0.0.1
 LOCAL_SAM_DB_USERNAME=root
 LOCAL_SAM_DB_PASSWORD=root
 SAM_DB_SERVER=${LOCAL_SAM_DB_SERVER}
@@ -49,10 +44,18 @@ SAM_DB_REQUIRE_SSL=false
 
 #-------------------------
 # system status database
-STATUS_DB_SERVER=127.0.0.1
+STATUS_DB_SERVER=host.docker.internal #127.0.0.1
 STATUS_DB_USERNAME=root
 STATUS_DB_PASSWORD=root
 FILE1
+
+
+WORKDIR /app
+# COPY src/ .
+RUN pytest -v
+
+# ENV PYTHONPATH=/app:
+
 
 #RUN ./casper/collector.py --verbose
 #CMD ["sh", "collector_loop.sh"]
