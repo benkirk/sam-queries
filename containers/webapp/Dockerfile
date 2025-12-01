@@ -30,7 +30,7 @@ RUN --mount=type=bind,source=.,destination=/project_src \
     && pip install .[test]
 
 RUN echo "Creatning default .env" && \
-    <<'FILE1' cat > /app/.env && \
+    <<'FILE1' cat > /.env && \
     echo "Done"
 #-------------------------
 # local container instance
