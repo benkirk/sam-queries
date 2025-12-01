@@ -7,6 +7,7 @@ Endpoint tested:
     GET /api/v1/users/search - Search users for autocomplete
 """
 
+import os
 import pytest
 
 
@@ -15,6 +16,8 @@ class TestUserSearchEndpoint:
 
     def test_search_unauthenticated(self, client):
         """Unauthenticated request returns 302 (redirect) or 401."""
+        if os.getenv('DISABLE_AUTH') == '1':
+            pytest.skip("Auth disabled in dev environment")
         response = client.get('/api/v1/users/search?q=ben')
         assert response.status_code in [302, 401]
 
