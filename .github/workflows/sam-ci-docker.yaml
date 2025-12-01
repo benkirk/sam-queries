@@ -17,14 +17,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install MySQL Client
+        run: |
+          sudo apt-get install -y mysql-client
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           lfs: true
-      - name: Show default Docker version
-        run: docker --version
 
-      - name: (Optional) Install latest Docker
+      # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
+      # https://docs.docker.com/build/buildkit/dockerfile-release-notes/?utm_source=chatgpt.com#1190
+      - name: Install latest Docker
         uses: docker/setup-docker-action@v4
         with:
           docker-ce-version: latest   # or pin a version like "29.0.3"
@@ -74,10 +78,16 @@ jobs:
       #     docker compose exec -T webapp python scripts/ingest_mock_status.py
       #     docker compose exec -T webapp python scripts/test_status_db.py
 
+
       - name: Show container logs (for debugging)
         if: failure()
         run: |
           docker compose logs --tail=100
+
+      - name: Show MySQL databases
+        run: |
+          mysql -h 127.0.0.1 -proot -uroot system_status -e "SHOW tables;"
+          mysql -h 127.0.0.1 -proot -uroot sam -e "SHOW tables;"
 
       - name: Run pytest inside webapp container
         run: |
