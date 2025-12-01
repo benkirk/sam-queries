@@ -7,10 +7,10 @@ name = "samuel-collectors"
 version = "0.1.0"
 description = "Data collectors for SAM system (Derecho, Casper)"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = { text = "NCAR/CISL internal use" }
 authors = [
-  { name = "NCAR/CISL", email = "csgg@ucar.edu" },
+  { name = "NCAR/CISL", email = "csg@ucar.edu" },
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

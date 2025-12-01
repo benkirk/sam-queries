@@ -2,33 +2,27 @@ name: sam_sql
 channels:
   - conda-forge
 dependencies:
-  - conda-tree
-  - cryptography
-  - ipykernel
-  - jupyterlab
-  - matplotlib
+  - python
   - mysql
   - mysql-connector-python
-  - nbconvert
-  - pandas
   - pip
-  - pymysql
-  - sqlalchemy
-  - sqlite
-  - tqdm
-  - pip:
-      - dotenv
-      - flask-admin[sqlalchemy-with-utils,s3,export]
-      - flask-caching
-      - flask-cors
-      - flask-limiter
-      - flask-login
-      - marshmallow
-      - marshmallow-sqlalchemy
-      - pipdeptree
-      - pytest
-      - pytest-benchmark
-      - pytest-cov
-      - pytest-sugar
-      - pytest-timeout
-      - pytest-xdist
+#  - pip:
+#      - dotenv
+#      - flask-admin[sqlalchemy-with-utils,export]
+#      - flask-caching
+#      - flask-cors
+#      - flask-limiter
+#      - flask-login
+#      - marshmallow
+#      - marshmallow-sqlalchemy
+#      - pipdeptree
+#      - pymysql
+#      - pytest
+#      - pytest-benchmark
+#      - pytest-cov
+#      - pytest-sugar
+#      - pytest-timeout
+#      - pytest-xdist
+#      - rich
+#      - sqlalchemy
+#      - tqdm

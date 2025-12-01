@@ -6,7 +6,7 @@ import os
 import yaml
 import logging
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 try:
     from .exceptions import ConfigError
@@ -30,12 +30,9 @@ class CollectorConfig:
     def _load_env(self):
         """Load environment variables from .env file."""
         # Look for .env in parent directory
-        env_file = os.path.join(
-            os.path.dirname(__file__), '..', '.env'
-        )
-        if os.path.exists(env_file):
-            load_dotenv(env_file)
-            self.logger.debug(f"Loaded environment from {env_file}")
+        env_file=find_dotenv()
+        load_dotenv(env_file)
+        self.logger.debug(f"Loaded environment from {env_file}")
 
         self.api_url = os.getenv('STATUS_API_URL', 'http://localhost:5050')
         self.api_user = os.getenv('STATUS_API_USER', 'collector')
