@@ -86,9 +86,9 @@ jobs:
 
       - name: Show MySQL databases
         run: |
-          mysql -h 127.0.0.1 -proot -uroot system_status -e "SHOW tables;"
-          mysql -h 127.0.0.1 -proot -uroot sam -e "SHOW tables;"
-          mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT * from tables_dictionary;"
+          mysql -h 127.0.0.1 -proot -uroot system_status --table -e "SHOW tables;"
+          mysql -h 127.0.0.1 -proot -uroot sam --table -e "SHOW tables;"
+          mysql -h 127.0.0.1 -proot -uroot sam --table -e "SELECT * from tables_dictionary;"
 
       - name: Run pytest inside webapp container
         run: |
