@@ -19,6 +19,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y \
                rsync git git-lfs \
+    && pip install --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=bind,source=.,destination=/project_src \
@@ -26,7 +27,8 @@ RUN --mount=type=bind,source=.,destination=/project_src \
     && cd /tmp/src \
     && git ls-files \
     && git lfs pull \
-    && ls -ltrh containers/sam-sql-dev/backups/*
+    && ls -ltrh containers/sam-sql-dev/backups/* \
+    && pip install .
 
 # WORKDIR /app
 # COPY src/ .

@@ -45,8 +45,9 @@ test = [
     "pytest",
     "pytest-cov",
     "pytest-timeout",
+    "pytest-fixture-config"
 ]
-dev = ["samuel[test]", "jupyter", "pandas"]
+dev = ["samuel[test]", "jupyterlab", "pandas"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
