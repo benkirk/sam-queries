@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "samuel-collectors"
+version = "0.1.0"
+description = "Data collectors for SAM system (Derecho, Casper)"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "NCAR/CISL internal use" }
+authors = [
+  { name = "NCAR/CISL", email = "csgg@ucar.edu" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Private :: Do Not Upload"
+]
+
+dependencies = [
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "PyYAML>=6.0"
+]
+
+[project.scripts]
+sam-collector-casper = "casper.collector:main"
+sam-collector-derecho = "derecho.collector:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
