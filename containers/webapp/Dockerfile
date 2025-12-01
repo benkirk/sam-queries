@@ -25,10 +25,9 @@ RUN apt-get update \
 RUN --mount=type=bind,source=.,destination=/project_src \
     git clone /project_src /tmp/src \
     && cd /tmp/src \
-    && git ls-files \
     && git lfs pull \
     && ls -ltrh containers/sam-sql-dev/backups/* \
-    && pip install .
+    && pip install .[test]
 
 # WORKDIR /app
 # COPY src/ .
