@@ -12,6 +12,17 @@ services:
       - "5050:5050"
     networks:
       - sam-network
+    # Important: watch the current directory, re-syncing as needed based on source changes
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /code
+          ignore:
+            - "*~"
+            - __pycache__/
+            - "*.pyc"
+            - .git/
 
   mysql:
     container_name: samuel-mysql
