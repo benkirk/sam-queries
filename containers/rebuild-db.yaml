@@ -3,7 +3,6 @@
 services:
   mysql:
     volumes:
-      # CI: Mount backup file from repository or artifacts
+      # Mount backup file from repository or artifacts
+      - samuel-mysql-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
-      # No persistent volume - MySQL will use ephemeral storage
-      # This ensures fresh database initialization every time
