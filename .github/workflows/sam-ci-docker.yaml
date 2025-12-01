@@ -21,6 +21,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           lfs: true
+      - name: Show default Docker version
+        run: docker --version
+
+      - name: (Optional) Install latest Docker
+        uses: docker/setup-docker-action@v4
+        with:
+          docker-ce-version: latest   # or pin a version like "29.0.3"
+
+      - name: Show Docker version after install
+        run: docker --version
 
       # - name: Set up Docker Buildx
       #   uses: docker/setup-buildx-action@v3 # This configures Buildx, doesn't install Docker
