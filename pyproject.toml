@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "samuel"
+version = "0.1.0"
+description = "Service Allocation Management (SAM) System - ORM and Webapp"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "NCAR/CISL internal use" }
+authors = [
+  { name = "NCAR/CISL", email = "csg@ucar.edu" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Framework :: Flask",
+    "Private :: Do Not Upload"
+]
+
+dependencies = [
+    "sqlalchemy",
+    "pymysql",
+    "python-dotenv",
+    "pyyaml",
+    "flask",
+    "flask-login",
+    "flask-sqlalchemy",
+    "flask-admin",
+    "gunicorn",
+    "marshmallow-sqlalchemy",
+    "matplotlib",
+    "rich",
+    "tqdm",
+    "requests",
+]
+
+[project.scripts]
+sam-search = "sam_search:main"
+sam-status = "system_status:main"
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-timeout",
+    "pytest-fixture-config"
+]
+dev = ["samuel[test]", "jupyterlab", "pandas"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

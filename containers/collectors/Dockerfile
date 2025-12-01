@@ -1,13 +1,15 @@
 FROM python:3
 
+RUN apt-get update && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /collectors
 COPY collectors/ .
 RUN find . -ls \
+    && python --version \
     && pip install -r requirements.txt \
-    && echo "done2"
+    && echo "done"
 
-RUN ./casper/collector.py --verbose
-CMD ["sh", "collector_loop.sh"]
+CMD ["/collectors/run_collectors.sh"]
 
 #-------------------------------------------------------------------------------
 # emacs cruft follows

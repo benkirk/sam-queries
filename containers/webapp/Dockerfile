@@ -1,0 +1,68 @@
+# FROM condaforge/miniforge3
+
+# COPY conda-env.yaml .
+# RUN pwd \
+#     && conda update --name base -c conda-forge conda \
+#     && conda env update --name base --file conda-env.yaml \
+#     && conda clean --all -f -y
+
+# # RUN pwd \
+# #     && conda update -n base -c conda-forge conda \
+# #     && conda env create --name conda-env --file conda-env.yaml \
+# #     && conda activate conda-env \
+# #     && conda-tree deptree --small \
+# #     && conda clean --all -f -y
+
+FROM python:3
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y \
+               rsync git git-lfs \
+    && pip install --upgrade pip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN --mount=type=bind,source=.,destination=/project_src \
+    git clone /project_src /app \
+    && cd /app \
+    && git lfs pull \
+    && ls -ltrh containers/sam-sql-dev/backups/* \
+    && pip install .[test]
+
+RUN echo "Creatning default .env" && \
+    <<'FILE1' cat > /app/.env && \
+    echo "Done"
+#-------------------------
+# local container instance
+LOCAL_SAM_DB_SERVER=host.docker.internal #127.0.0.1
+LOCAL_SAM_DB_USERNAME=root
+LOCAL_SAM_DB_PASSWORD=root
+SAM_DB_SERVER=${LOCAL_SAM_DB_SERVER}
+SAM_DB_USERNAME=${LOCAL_SAM_DB_USERNAME}
+SAM_DB_PASSWORD=${LOCAL_SAM_DB_PASSWORD}
+SAM_DB_REQUIRE_SSL=false
+
+#-------------------------
+# system status database
+STATUS_DB_SERVER=host.docker.internal #127.0.0.1
+STATUS_DB_USERNAME=root
+STATUS_DB_PASSWORD=root
+FILE1
+
+
+WORKDIR /app
+# COPY src/ .
+RUN pytest -v
+
+# ENV PYTHONPATH=/app:
+
+
+#RUN ./casper/collector.py --verbose
+#CMD ["sh", "collector_loop.sh"]
+
+#-------------------------------------------------------------------------------
+# emacs cruft follows
+#-------------------------------------------------------------------------------
+# Local Variables:
+# mode: sh
+# End:

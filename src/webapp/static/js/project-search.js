@@ -79,7 +79,7 @@
         const activeOnlyCheckbox = document.getElementById('activeProjectsOnly');
 
         // Build URL with query parameters
-        let url = `/user/project-search?search=${encodeURIComponent(searchTerm)}`;
+        let url = `/api/v1/projects?search=${encodeURIComponent(searchTerm)}&per_page=10`;
         if (activeOnlyCheckbox && activeOnlyCheckbox.checked) {
             url += '&active=true';
         }
@@ -116,16 +116,18 @@
                 : '<span class="badge badge-secondary ml-2">Inactive</span>';
 
             html += `
-                <a href="#" class="list-group-item list-group-item-action ${activeClass}"
-                   data-projcode="${project.projcode}"
-                   data-title="${project.title}"
-                   data-lead="${project.lead}">
-                    <div>
-                        <strong>${project.projcode}</strong>${activeBadge}
-                    </div>
-                    <small class="text-muted">${project.title}</small>
-                    ${project.lead ? `<br><small class="text-muted">Lead: ${project.lead}</small>` : ''}
-                </a>
+                            <a href="#" class="list-group-item list-group-item-action ${activeClass}"
+                               data-projcode="${project.projcode}"
+                               data-title="${project.title}"
+                               data-lead-name="${project.lead_name}"
+                               data-lead-username="${project.lead_username}">
+                                <div>
+                                    <strong>${project.projcode}</strong>${activeBadge}
+                                </div>
+                                <small class="text-muted">${project.title}</small>
+                                ${project.lead_name ? `<br><small class="text-muted">Lead: ${project.lead_name}</small>` : ''}
+                            </a>
+
             `;
         });
 
@@ -139,7 +141,7 @@
                 selectProject(
                     this.dataset.projcode,
                     this.dataset.title,
-                    this.dataset.lead
+                    this.dataset.leadName
                 );
             });
         });
@@ -148,7 +150,7 @@
     /**
      * Select a project from search results
      */
-    function selectProject(projcode, title, lead) {
+    function selectProject(projcode, title, leadName) {
         const searchInput = document.getElementById('projectSearchInput');
         const searchResults = document.getElementById('projectSearchResults');
         const selectedProjectDisplay = document.getElementById('selectedProjectDisplay');
@@ -162,8 +164,8 @@
 
         // Update display
         selectedProjectName.textContent = `${projcode} - ${title}`;
-        if (lead && selectedProjectLead) {
-            selectedProjectLead.textContent = `Lead: ${lead}`;
+        if (leadName && selectedProjectLead) {
+            selectedProjectLead.textContent = `Lead: ${leadName}`;
         }
 
         // Show selected project display

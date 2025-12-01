@@ -337,49 +337,6 @@ def jobs_fragment(projcode, resource):
     )
 
 
-@bp.route('/project-search')
-@login_required
-@require_permission(Permission.VIEW_PROJECTS)
-def project_search():
-    """
-    Project search endpoint for admin functionality.
-
-    Query parameters:
-        search (str): Search term for projcode or title
-        active (bool): Filter by active status (optional)
-
-    Returns:
-        JSON with matching projects or HTML project card fragment
-    """
-    search_term = request.args.get('search', '').strip()
-    active_filter = request.args.get('active')
-
-    if not search_term:
-        return jsonify({'error': 'Search term required'}), 400
-
-    # Parse active filter
-    active = None
-    if active_filter is not None:
-        active = active_filter.lower() in ('true', '1', 'yes')
-
-    # Search for projects
-    projects = search_projects_by_code_or_title(db.session, search_term, active=active)
-
-    if not projects:
-        return jsonify({'projects': [], 'total': 0})
-
-    # Format results for autocomplete
-    results = []
-    for project in projects[:10]:  # Limit to 10 results
-        results.append({
-            'projcode': project.projcode,
-            'title': project.title or 'Untitled Project',
-            'active': project.active,
-            'lead': project.lead.display_name if project.lead else 'N/A'
-        })
-
-    return jsonify({'projects': results, 'total': len(projects)})
-
 
 @bp.route('/project-card/<projcode>')
 @login_required
