@@ -20,20 +20,21 @@ classifiers = [
 ]
 
 dependencies = [
-    "sqlalchemy",
-    "pymysql",
-    "python-dotenv",
-    "pyyaml",
+    "cryptography",
     "flask",
+    "flask-admin",
     "flask-login",
     "flask-sqlalchemy",
-    "flask-admin",
     "gunicorn",
     "marshmallow-sqlalchemy",
     "matplotlib",
-    "rich",
-    "tqdm",
+    "pymysql",
+    "python-dotenv",
+    "pyyaml",
     "requests",
+    "rich",
+    "sqlalchemy",
+    "tqdm",
 ]
 
 [project.scripts]

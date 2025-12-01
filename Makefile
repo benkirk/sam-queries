@@ -21,7 +21,7 @@ distclean:
 	chmod +x $@
 	git add $@ $<
 
-%: %.yaml
+%: %.yaml pyproject.toml
 	[ -d $@ ] && mv $@ $@.old && rm -rf $@.old &
 	$(config_env) && conda env create --file $< --prefix $@
 	$(config_env) && conda activate ./$@ && conda list
