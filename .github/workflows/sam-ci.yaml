@@ -27,9 +27,9 @@ jobs:
           sudo apt-get install -y mysql-client
 
       - name: Checkout code
-          uses: actions/checkout@v4
-          with:
-            lfs: true
+        uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: List Source Tree
         run: |
