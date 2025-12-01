@@ -19,10 +19,11 @@ services:
           path: .
           target: /code
           ignore:
-            - "*~"
+            - containers/
             - __pycache__/
             - "*.pyc"
             - .git/
+            - "*~"
 
   mysql:
     container_name: samuel-mysql
@@ -34,7 +35,7 @@ services:
       # Persistent storage
       - samuel-mysql-data:/var/lib/mysql
       # Mount backup for auto-restore (override this in CI)
-      - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
+      #- ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
     healthcheck:
       # Check if MySQL is ready AND restore is complete
       test: |
