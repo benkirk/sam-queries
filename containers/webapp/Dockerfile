@@ -1,23 +1,37 @@
-FROM condaforge/miniforge3
+# FROM condaforge/miniforge3
 
-COPY conda-env.yaml .
-RUN pwd \
-    && conda update --name base -c conda-forge conda \
-    && conda env update --name base --file conda-env.yaml \
-    && conda clean --all -f -y
-
+# COPY conda-env.yaml .
 # RUN pwd \
-#     && conda update -n base -c conda-forge conda \
-#     && conda env create --name conda-env --file conda-env.yaml \
-#     && conda activate conda-env \
-#     && conda-tree deptree --small \
+#     && conda update --name base -c conda-forge conda \
+#     && conda env update --name base --file conda-env.yaml \
 #     && conda clean --all -f -y
 
+# # RUN pwd \
+# #     && conda update -n base -c conda-forge conda \
+# #     && conda env create --name conda-env --file conda-env.yaml \
+# #     && conda activate conda-env \
+# #     && conda-tree deptree --small \
+# #     && conda clean --all -f -y
 
-WORKDIR /app
-COPY src/ .
-RUN find . -ls
-ENV PYTHONPATH=/app:
+FROM python:3
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y \
+               rsync git git-lfs \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN --mount=type=bind,source=.,destination=/project_src \
+    git clone /project_src /tmp/src \
+    && cd /tmp/src \
+    && git ls-files \
+    && git lfs pull \
+    && ls -ltrh containers/sam-sql-dev/backups/*
+
+# WORKDIR /app
+# COPY src/ .
+# RUN find . -ls
+# ENV PYTHONPATH=/app:
 
 RUN echo "Creatning default .env" && \
     <<'FILE1' cat > .env && \
