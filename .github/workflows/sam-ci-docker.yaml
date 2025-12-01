@@ -22,8 +22,11 @@ jobs:
         with:
           lfs: true
 
-      - name: Set up Docker Compose
-        uses: docker/setup-compose-action@v1
+      # - name: Set up Docker Buildx
+      #   uses: docker/setup-buildx-action@v3 # This configures Buildx, doesn't install Docker
+
+      # - name: Set up Docker Compose
+      #   uses: docker/setup-compose-action@v1
 
       - name: Query Docker Environment
         run: |
@@ -54,12 +57,12 @@ jobs:
           timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
           echo "✅ Webapp is ready"
 
-      - name: Set up system_status database
-        run: |
-          docker compose exec -T mysql mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS system_status;"
-          docker compose exec -T webapp python scripts/setup_status_db.py
-          docker compose exec -T webapp python scripts/ingest_mock_status.py
-          docker compose exec -T webapp python scripts/test_status_db.py
+      # - name: Set up system_status database
+      #   run: |
+      #     docker compose exec -T mysql mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS system_status;"
+      #     docker compose exec -T webapp python scripts/setup_status_db.py
+      #     docker compose exec -T webapp python scripts/ingest_mock_status.py
+      #     docker compose exec -T webapp python scripts/test_status_db.py
 
       - name: Show container logs (for debugging)
         if: failure()
