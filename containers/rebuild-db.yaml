@@ -1,7 +1,9 @@
 # Docker Compose override for CI environments
-# Usage: docker compose -f docker-compose.ci.yaml up
+# Usage: docker compose -f compose.yaml -f containers/rebuild-db.yaml up
 services:
   mysql:
     volumes:
       # CI: Mount backup file from repository or artifacts
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
+      # No persistent volume - MySQL will use ephemeral storage
+      # This ensures fresh database initialization every time
