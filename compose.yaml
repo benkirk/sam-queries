@@ -1,26 +1,27 @@
 services:
 
   webapp:
+    container_name: samuel-webapp
     build:
       context: .
       dockerfile: containers/webapp/Dockerfile
     depends_on:
       mysql:
         condition: service_healthy
+    ports:
+      - "5050:5050"
     networks:
       - sam-network
 
   mysql:
-    image: mysql:9
     container_name: samuel-mysql
+    image: mysql:9
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: sam
-    ports:
-      - "3306:3306"
     volumes:
       # Persistent storage
-      #- samuel-mysql-data:/var/lib/mysql
+      - samuel-mysql-data:/var/lib/mysql
       # Mount backup for auto-restore (override this in CI)
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
     healthcheck:
@@ -32,6 +33,8 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
+    ports:
+      - "3306:3306"
     networks:
       - sam-network
 

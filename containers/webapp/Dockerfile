@@ -22,19 +22,12 @@ RUN apt-get update \
     && pip install --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN --mount=type=bind,source=.,destination=/project_src \
-    git clone /project_src /app \
-    && cd /app \
-    && git lfs pull \
-    && ls -ltrh containers/sam-sql-dev/backups/* \
-    && pip install .[test]
-
 RUN echo "Creatning default .env" && \
     <<'FILE1' cat > /.env && \
     echo "Done"
 #-------------------------
 # local container instance
-LOCAL_SAM_DB_SERVER=host.docker.internal #127.0.0.1
+LOCAL_SAM_DB_SERVER=mysql
 LOCAL_SAM_DB_USERNAME=root
 LOCAL_SAM_DB_PASSWORD=root
 SAM_DB_SERVER=${LOCAL_SAM_DB_SERVER}
@@ -44,21 +37,28 @@ SAM_DB_REQUIRE_SSL=false
 
 #-------------------------
 # system status database
-STATUS_DB_SERVER=host.docker.internal #127.0.0.1
+STATUS_DB_SERVER=mysql
 STATUS_DB_USERNAME=root
 STATUS_DB_PASSWORD=root
 FILE1
 
+# RUN --mount=type=bind,source=.,destination=/code \
+#     git clone /project_src /app \
+#     && cd /app \
+#     && git lfs pull \
+#     && ls -ltrh containers/sam-sql-dev/backups/* \
+#     && pip install .[test]
 
-WORKDIR /app
-# COPY src/ .
-RUN pytest -v
+WORKDIR /code
+COPY --exclude=conda-env/ --exclude=.*/ . .
+RUN pip install -e ".[test]"
 
-# ENV PYTHONPATH=/app:
+#RUN pytest -v
+ENV DISABLE_AUTH=1
+ENV DEV_AUTO_LOGIN_USER=benkirk
+ENV FLASK_DEBUG=1
 
-
-#RUN ./casper/collector.py --verbose
-#CMD ["sh", "collector_loop.sh"]
+CMD ["python3", "./src/webapp/run.py"]
 
 #-------------------------------------------------------------------------------
 # emacs cruft follows
