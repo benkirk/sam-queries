@@ -17,6 +17,8 @@ class TestAddMemberEndpoint:
 
     def test_add_member_unauthenticated(self, client):
         """Unauthenticated request returns 302 (redirect) or 401."""
+        if os.getenv('DISABLE_AUTH') == '1':
+            pytest.skip("Auth disabled in dev environment")
         response = client.post(
             '/api/v1/projects/SCSG0001/members',
             json={'username': 'testuser'}
@@ -126,6 +128,8 @@ class TestRemoveMemberEndpoint:
 
     def test_remove_member_unauthenticated(self, client):
         """Unauthenticated request returns 302 (redirect) or 401."""
+        if os.getenv('DISABLE_AUTH') == '1':
+            pytest.skip("Auth disabled in dev environment")
         response = client.delete('/api/v1/projects/SCSG0001/members/testuser')
         assert response.status_code in [302, 401]
 
@@ -157,6 +161,8 @@ class TestChangeAdminEndpoint:
 
     def test_change_admin_unauthenticated(self, client):
         """Unauthenticated request returns 302 (redirect) or 401."""
+        if os.getenv('DISABLE_AUTH') == '1':
+            pytest.skip("Auth disabled in dev environment")
         response = client.put(
             '/api/v1/projects/SCSG0001/admin',
             json={'admin_username': 'testuser'}
