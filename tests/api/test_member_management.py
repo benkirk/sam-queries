@@ -9,6 +9,7 @@ Endpoints tested:
     PUT    /api/v1/projects/<projcode>/admin - Change admin
 """
 
+import os
 import pytest
 
 
