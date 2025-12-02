@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "samuel"
 version = "0.1.0"
-description = "Service Allocation Management (SAM) System - ORM and Webapp"
+description = "Systems Accounting Manager (SAM) System - ORM and Webapp"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "NCAR/CISL internal use" }

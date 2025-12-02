@@ -2,7 +2,7 @@
 
 ## Overview
 
-The SAM Web UI is a Flask-based web application for managing the Service Allocation Management (SAM) database. It provides:
+The SAM Web UI is a Flask-based web application for managing the Systems Accounting Manager (SAM) database. It provides:
 
 - **Flask-Admin Interface**: CRUD operations for all SAM database tables
 - **Authentication**: Pluggable authentication (currently stub for development)

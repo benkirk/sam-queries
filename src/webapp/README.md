@@ -1,6 +1,6 @@
 # SAM Web UI
 
-Flask-based web administration interface for the Service Allocation Management (SAM) database.
+Flask-based web administration interface for the Systems Accounting Manager (SAM) database.
 
 ## Features
 
