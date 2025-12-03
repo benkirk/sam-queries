@@ -1,0 +1,8 @@
+# Docker Compose override for CI environments
+# Usage: docker compose -f compose.yaml -f containers/rebuild-db.yaml up
+services:
+  mysql:
+    volumes:
+      # Mount backup file from repository or artifacts
+      - samuel-mysql-data:/var/lib/mysql
+      - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro

@@ -1,0 +1,63 @@
+services:
+
+  webapp:
+    container_name: samuel-webapp
+    build:
+      context: .
+      dockerfile: containers/webapp/Dockerfile
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "5050:5050"
+    networks:
+      - sam-network
+    # Development: Disable Python bytecode caching to avoid stale .pyc issues
+    # when adding new files/functions. Remove for production deployment.
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    # Important: watch the current directory, re-syncing as needed based on source changes
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /code
+          ignore:
+            - containers/
+            - __pycache__/
+            - "*.pyc"
+            - .git/
+            - "*~"
+
+  mysql:
+    container_name: samuel-mysql
+    image: mysql:9
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sam
+    volumes:
+      # Persistent storage
+      - samuel-mysql-data:/var/lib/mysql
+      # Mount backup for auto-restore (override this in CI)
+      #- ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
+    healthcheck:
+      # Check if MySQL is ready AND restore is complete
+      test: |
+        mysqladmin ping -h localhost -u root -proot &&
+        mysql -h localhost -u root -proot sam -e "SELECT COUNT(*) FROM users" > /dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    ports:
+      - "3306:3306"
+    networks:
+      - sam-network
+
+networks:
+  sam-network:
+    driver: bridge
+
+volumes:
+  samuel-mysql-data:

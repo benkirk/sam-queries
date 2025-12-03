@@ -18,6 +18,7 @@ mkdir -p "$LOG_DIR"
 COLLECTORS=(
     "Derecho:derecho/collector.py"
     "Casper:casper/collector.py"
+    "JupyterHub:jupyterhub/collector.py"
 )
 
 cat <<EOF

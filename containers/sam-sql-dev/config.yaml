@@ -14,7 +14,7 @@ local:
   user: root
   password: root
   database: sam
-  docker_container: local-sam-mysql    # must match the running docker MySQL container name
+  docker_container: samuel-mysql    # must match the running docker MySQL container name
 
 settings:
   # --- Sampling behavior ---

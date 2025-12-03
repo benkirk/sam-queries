@@ -1,8 +1,10 @@
-# full bash login shell requied for our complex make rules
-SHELL := /bin/bash --login
+.ONESHELL:
+SHELL := /bin/bash
+
+CONDA_ROOT := $(shell conda info --base)
 
 # common way to inialize enviromnent across various types of systems
-config_env := module load conda >/dev/null 2>&1 || true
+config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
 clean:
 	rm *~
@@ -21,12 +23,14 @@ distclean:
 	chmod +x $@
 	git add $@ $<
 
-%: %.yaml
+%: %.yaml pyproject.toml
 	[ -d $@ ] && mv $@ $@.old && rm -rf $@.old &
-	$(config_env) && conda env create --file $< --prefix $@
-	$(config_env) && conda activate ./$@ && conda list
-	$(config_env) && conda activate ./$@ && conda-tree deptree --small 2>/dev/null || true
-	$(config_env) && conda activate ./$@ && pipdeptree --all 2>/dev/null || true
+	$(config-env)
+	conda env create --file $< --prefix $@
+	conda activate ./$@ && conda list
+	conda activate ./$@ && conda-tree deptree --small 2>/dev/null || true
+	conda activate ./$@ && pipdeptree --all 2>/dev/null || true
+	pip install -e ".[test]"
 
 solve-%: %.yaml
 	$(config_env) && conda env create --file $< --prefix $@ --dry-run
@@ -49,7 +53,7 @@ check:
 
 # this rule invokes emacs on each source file to remove trailing whitespace.
 trim-whitepace:
-	for file in $$(git ls-files); do \
+	for file in $$(git ls-files | grep -v "sql/queries/from_dave/"); do \
           echo $$file ; \
           echo emacs -batch $$file --eval '(delete-trailing-whitespace)' -f save-buffer 2>/dev/null ; \
         done

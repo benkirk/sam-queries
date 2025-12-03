@@ -62,7 +62,7 @@
         <!-- Queues -->
         {% if derecho_queues %}
         <h6 class="mb-3"><i class="fas fa-list"></i> Queue Status</h6>
-        {{ queues.queue_table(derecho_queues, show_gpus=true) }}
+        {{ queues.queue_table(derecho_queues, show_gpus=true, system='derecho') }}
         {% endif %}
 
         <!-- Reservations -->

@@ -39,11 +39,11 @@ class MyAdminIndexView(AdminIndexView):
         # Get expiration counts - use default facilities like the CLI
         default_facilities = ['UNIV', 'WNA']
 
-        # Upcoming expirations (next 30 days)
+        # Upcoming expirations (next 31 days)
         upcoming_expirations = get_projects_by_allocation_end_date(
             session,
             start_date=datetime.now(),
-            end_date=datetime.now() + timedelta(days=30),
+            end_date=datetime.now() + timedelta(days=31),
             facility_names=default_facilities
         )
         upcoming_count = len(upcoming_expirations)

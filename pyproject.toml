@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "samuel"
 version = "0.1.0"
-description = "Service Allocation Management (SAM) System - ORM and Webapp"
+description = "Systems Accounting Manager (SAM) System - ORM and Webapp"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = { text = "NCAR/CISL internal use" }
 authors = [
   { name = "NCAR/CISL", email = "csg@ucar.edu" },
@@ -20,20 +20,21 @@ classifiers = [
 ]
 
 dependencies = [
-    "sqlalchemy",
-    "pymysql",
-    "python-dotenv",
-    "pyyaml",
+    "cryptography",
     "flask",
+    "flask-admin",
     "flask-login",
     "flask-sqlalchemy",
-    "flask-admin",
     "gunicorn",
     "marshmallow-sqlalchemy",
     "matplotlib",
-    "rich",
-    "tqdm",
+    "pymysql",
+    "python-dotenv",
+    "pyyaml",
     "requests",
+    "rich",
+    "sqlalchemy",
+    "tqdm",
 ]
 
 [project.scripts]
@@ -45,7 +46,6 @@ test = [
     "pytest",
     "pytest-cov",
     "pytest-timeout",
-    "pytest-fixture-config"
 ]
 dev = ["samuel[test]", "jupyterlab", "pandas"]
 

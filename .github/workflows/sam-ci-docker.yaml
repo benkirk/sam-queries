@@ -1,0 +1,100 @@
+name: SAM Database CI (Docker-only)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: Run Test Suite (Docker)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install MySQL Client
+        run: |
+          sudo apt-get install -y mysql-client
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
+      # https://docs.docker.com/build/buildkit/dockerfile-release-notes/?utm_source=chatgpt.com#1190
+      - name: Install latest Docker
+        uses: docker/setup-docker-action@v4
+        with:
+          docker-ce-version: latest   # or pin a version like "29.0.3"
+
+      - name: Show Docker version after install
+        run: docker --version
+
+      # - name: Set up Docker Buildx
+      #   uses: docker/setup-buildx-action@v3 # This configures Buildx, doesn't install Docker
+
+      # - name: Set up Docker Compose
+      #   uses: docker/setup-compose-action@v1
+
+      - name: Query Docker Environment
+        run: |
+          docker --version
+          docker compose --version
+
+      - name: Verify MySQL backup file exists
+        run: |
+          if [ ! -f containers/sam-sql-dev/backups/sam-obfuscated.sql.xz ]; then
+            echo "❌ Backup file not found: containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+            echo "Please ensure backup is committed or use artifacts"
+            exit 1
+          fi
+          ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
+
+      - name: Build and start services
+        run: |
+          docker compose -f compose.yaml -f containers/rebuild-db.yaml build
+          docker compose -f compose.yaml -f containers/rebuild-db.yaml up -d
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for MySQL to be healthy..."
+          timeout 120 bash -c 'until docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot --silent; do sleep 2; done'
+          echo "✅ MySQL is healthy"
+
+          echo "Waiting for webapp to be ready..."
+          timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
+          echo "✅ Webapp is ready"
+
+      # - name: Set up system_status database
+      #   run: |
+      #     docker compose exec -T mysql mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS system_status;"
+      #     docker compose exec -T webapp python scripts/setup_status_db.py
+      #     docker compose exec -T webapp python scripts/ingest_mock_status.py
+      #     docker compose exec -T webapp python scripts/test_status_db.py
+
+
+      - name: Show container logs (for debugging)
+        if: failure()
+        run: |
+          docker compose logs --tail=100
+
+      - name: Show MySQL databases
+        run: |
+          mysql -h 127.0.0.1 -proot -uroot system_status --table -e "SHOW tables;"
+          mysql -h 127.0.0.1 -proot -uroot sam --table -e "SHOW tables;"
+          mysql -h 127.0.0.1 -proot -uroot sam --table -e "SELECT * from tables_dictionary;"
+
+      - name: Run pytest inside webapp container
+        run: |
+          docker compose exec -T webapp pytest -v
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose -f compose.yaml -f containers/rebuild-db.yaml down -v

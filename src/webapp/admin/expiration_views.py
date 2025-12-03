@@ -35,7 +35,7 @@ class ProjectExpirationView(BaseView):
     # Preset time ranges for quick access
     UPCOMING_PRESETS = {
         '7days': 7,
-        '30days': 30,
+        '31days': 31,
         '60days': 60
     }
 
@@ -239,8 +239,8 @@ class ProjectExpirationView(BaseView):
         all_facilities = self._get_all_facilities(session)
 
         # Process time_range filter only for upcoming tab
-        # Default to 30 days for upcoming expirations
-        days = 30
+        # Default to 31 days for upcoming expirations
+        days = 31
         if active_tab == 'upcoming' and filters['time_range']:
             if filters['time_range'] in self.UPCOMING_PRESETS:
                 days = self.UPCOMING_PRESETS[filters['time_range']]
@@ -295,8 +295,8 @@ class ProjectExpirationView(BaseView):
         export_type = request.args.get('export_type', 'upcoming')
 
         # Process time_range filter only for upcoming exports
-        # Default to 30 days for upcoming expirations
-        days = 30
+        # Default to 31 days for upcoming expirations
+        days = 31
         if export_type == 'upcoming' and filters['time_range']:
             if filters['time_range'] in self.UPCOMING_PRESETS:
                 days = self.UPCOMING_PRESETS[filters['time_range']]

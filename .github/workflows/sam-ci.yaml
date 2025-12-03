@@ -16,14 +16,15 @@ jobs:
     defaults:
       run:
         shell: bash -el {0}
+
     name: Run Test Suite
     runs-on: ubuntu-latest
 
-    # defaults:
-    #   run:
-    #     working-directory: containers/sam-sql-dev
-
     steps:
+      - name: Install MySQL Client
+        run: |
+          sudo apt-get install -y mysql-client
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -47,26 +48,7 @@ jobs:
           docker buildx inspect
           docker buildx du
 
-      - name: Verify MySQL backup file exists
-        run: |
-          if [ ! -f containers/sam-sql-dev/backups/sam-obfuscated.sql.xz ]; then
-            echo "❌ Backup file not found: containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
-            echo "Please ensure backup is committed or use artifacts"
-            exit 1
-          fi
-          ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
-
-      - name: Start MySQL with backup restore
-        run: |
-          make -C containers/sam-sql-dev db-up
-
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          auto-activate-base: false
-          activate-environment: ./conda-env/
-          environment-file: conda-env.yaml
-
-      - name: Set Up Runtime Environment
+      - name: Set Up CI Auth Credentials
         run: |
           cat << EOF > .env && cat .env
           #-------------------------
@@ -84,40 +66,39 @@ jobs:
           STATUS_DB_PASSWORD=root
           STATUS_DB_SERVER=127.0.0.1
           EOF
-          make conda-env
-          #source etc/config_env.sh
 
-      - name: Interrogate Environment
+      - name: Verify MySQL backup file exists
         run: |
-          conda list
-          df -h
-          cat /etc/os-release 2>/dev/null || true
-          uname -a
-          nvidia-smi 2>/dev/null || true
-          free -g
-          lscpu
-          echo && echo && echo
-          echo '----------------------------------------------------------------'
-          which python3
-          echo "CONDA_PREFIX=${CONDA_PREFIX}"
-          echo "PYTHONPATH=${PYTHONPATH}"
-          python3 --version
+          if [ ! -f containers/sam-sql-dev/backups/sam-obfuscated.sql.xz ]; then
+            echo "❌ Backup file not found: containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+            echo "Please ensure backup is committed or use artifacts"
+            exit 1
+          fi
+          ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
+
+      - name: Start MySQL with backup restore
+        run: |
+          make -C containers/sam-sql-dev db-up
+
+      - name: Set up Python
+        uses: actions/setup-python@v5 # Use the setup-python action
+        with:
+          python-version: '3.x' # Specify the Python version you need (e.g., '3.9', '3.10', '3.11')
+          cache: 'pip' # Enable dependency caching for pip
+
+      - name: Install Project
+        run: pip install -e ".[test]"
 
       - name: Add System Status MySQL Database
         run: |
           mysql -h 127.0.0.1 -proot -uroot < scripts/create_status_db.sql
-          python scripts/setup_status_db.py
+          python scripts/setup_status_db.py --drop --yes
           python scripts/ingest_mock_status.py
           python scripts/test_status_db.py
 
-      - name: Run simple CLI test
-        run: |
-          pwd
-          ls
-
       - name: Run Test Suite
         run: |
-          make check
+          pytest -v # Example: Run your tests (assuming pytest is in requirements.txt)
 
       # - name: Cleanup
       #   if: always()

@@ -11,7 +11,7 @@ docker:
 
 clone:
 	@python3 bootstrap_clone.py
-	@docker exec local-sam-mysql sh -c 'mysql -uroot -proot -e "USE sam; TRUNCATE TABLE api_credentials;"'
+	@docker compose -f ../../compose.yaml exec -T mysql  sh -c 'mysql -uroot -proot -e "USE sam; TRUNCATE TABLE api_credentials;"'
 
 clean:
 	rm -rf dump/
@@ -20,14 +20,11 @@ clean:
 backups/%.sql.xz:
 	mkdir -p $$(dirname $@)
 	rm -f $@
-	docker exec local-sam-mysql sh -c 'exec mysqldump --all-databases --lock-all-tables --triggers --routines --events -uroot -p"root"' | xz > $@
+	docker compose -f ../../compose.yaml exec -T mysql sh -c 'exec mysqldump --all-databases --lock-all-tables --triggers --routines --events -uroot -p"root"' | xz > $@
 
 bootstrap:
 	@echo "Starting clean: removing container and volume (persistent storage)..."
 	@$(MAKE) clean >/dev/null
-	@docker volume rm local-sam-mysql-vol >/dev/null 2>&1 || true
-	@echo "Creatng a new docker container with empty storage..."
-	@$(MAKE) docker
 	@echo "Creating a local, subsetted database..."
 	@$(MAKE) clone
 	@echo "Backing up subsetted database..."

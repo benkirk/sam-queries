@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 #----------------------------------------------------------------------------
 # Determine the directory containing this script, compatible with bash and zsh
 if [ -n "${BASH_SOURCE[0]}" ]; then
@@ -9,7 +11,7 @@ else
 fi
 SCRIPTDIR="$(cd "$(dirname "$(realpath "${SCRIPT_PATH}")")" >/dev/null 2>&1 && pwd)"
 #----------------------------------------------------------------------------
-source ${SCRIPTDIR}/../.env
+source ${SCRIPTDIR}/../etc/config_env.sh
 
 exe=$(realpath ${SCRIPTDIR}/../src/webapp/run.py)
 
