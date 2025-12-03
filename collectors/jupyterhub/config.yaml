@@ -1,0 +1,8 @@
+system_name: jupyterhub
+pbs_host: casper
+
+# JupyterHub doesn't have traditional login nodes, but we track sessions
+login_nodes: []
+
+# No filesystems tracked for JupyterHub
+filesystems: []
