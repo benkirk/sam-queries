@@ -1,0 +1,208 @@
+{% extends 'dashboards/base.html' %}
+
+{% block title %}Node Type History - {{ node_type }} - SAM{% endblock %}
+
+{% block content %}
+<div class="back-link mb-3">
+    <a href="{{ url_for('status_dashboard.index') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Status Dashboard
+    </a>
+</div>
+
+<div class="page-header">
+    <h1>
+        <i class="fas fa-chart-line"></i> Node Type History
+    </h1>
+    <p class="text-muted">
+        System: <strong>{{ system|upper }}</strong> | Node Type: <strong>{{ node_type }}</strong>
+    </p>
+</div>
+
+<!-- Time Range Selector -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-calendar"></i> Time Range
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('status_dashboard.nodetype_history', system=system, node_type=node_type) }}" class="form-inline">
+            <label for="days" class="mr-2">Show Last:</label>
+            <select id="days" name="days" class="form-control form-control-sm mr-3">
+                <option value="1" {% if days == 1 %}selected{% endif %}>24 Hours</option>
+                <option value="3" {% if days == 3 %}selected{% endif %}>3 Days</option>
+                <option value="7" {% if days == 7 %}selected{% endif %}>7 Days</option>
+                <option value="14" {% if days == 14 %}selected{% endif %}>14 Days</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>30 Days</option>
+            </select>
+
+            <button type="submit" class="btn btn-sm btn-primary">
+                <i class="fas fa-sync"></i> Update Range
+            </button>
+        </form>
+        <small class="text-muted mt-2 d-block">
+            Showing data from {{ start_date.strftime('%Y-%m-%d %H:%M') }} to {{ end_date.strftime('%Y-%m-%d %H:%M') }}
+        </small>
+    </div>
+</div>
+
+<!-- Current Status Card -->
+{% if latest_status %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-info-circle"></i> Current Status
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Hardware Specs</h6>
+                    <div class="text-muted">
+                        <small>
+                            {{ latest_status.cores_per_node }} cores<br>
+                            {{ latest_status.memory_gb_per_node }} GB RAM
+                            {% if latest_status.gpu_model %}<br>{{ latest_status.gpus_per_node }}x {{ latest_status.gpu_model }}{% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="metric-card">
+                    <h6>Total Nodes</h6>
+                    <div class="value">{{ latest_status.nodes_total }}</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="metric-card">
+                    <h6>Available</h6>
+                    <div class="value text-success">{{ latest_status.nodes_available }}</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="metric-card">
+                    <h6>Allocated</h6>
+                    <div class="value text-warning">{{ latest_status.nodes_allocated }}</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="metric-card">
+                    <h6>Down</h6>
+                    <div class="value text-danger">{{ latest_status.nodes_down }}</div>
+                </div>
+            </div>
+        </div>
+        {% if latest_status.utilization_percent is not none %}
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <h6>{{ 'GPU' if latest_status.gpu_model else 'CPU' }} Utilization</h6>
+                <div class="progress" style="height: 24px;">
+                    {% set percent = latest_status.utilization_percent | round(1) %}
+                    {% if percent >= 90 %}
+                        {% set progress_class = 'bg-danger' %}
+                    {% elif percent >= 75 %}
+                        {% set progress_class = 'bg-warning' %}
+                    {% else %}
+                        {% set progress_class = 'bg-success' %}
+                    {% endif %}
+                    <div class="progress-bar {{ progress_class }}"
+                         style="width: {{ percent }}%">
+                        {{ percent }}%
+                    </div>
+                </div>
+            </div>
+            {% if latest_status.memory_utilization_percent is not none %}
+            <div class="col-md-6">
+                <h6>Memory Utilization</h6>
+                <div class="progress" style="height: 24px;">
+                    {% set mem_percent = latest_status.memory_utilization_percent | round(1) %}
+                    {% if mem_percent >= 90 %}
+                        {% set mem_progress_class = 'bg-danger' %}
+                    {% elif mem_percent >= 75 %}
+                        {% set mem_progress_class = 'bg-warning' %}
+                    {% else %}
+                        {% set mem_progress_class = 'bg-info' %}
+                    {% endif %}
+                    <div class="progress-bar {{ mem_progress_class }}"
+                         style="width: {{ mem_percent }}%">
+                        {{ mem_percent }}%
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- History Chart Card -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-chart-area"></i> Historical Trends
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="chart-container">
+            <center>
+                {{ chart_svg | safe }}
+            </center>
+        </div>
+        {% if history_data %}
+        <div class="text-muted mt-3">
+            <small>
+                <i class="fas fa-info-circle"></i>
+                Showing {{ history_data|length }} data points collected at 5-minute intervals
+            </small>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Statistics Summary Card -->
+{% if history_data %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-calculator"></i> Statistics Summary
+        </h5>
+    </div>
+    <div class="card-body">
+        {% set total_nodes_avg = (history_data | map(attribute='nodes_total') | sum) / (history_data | length) %}
+        {% set available_nodes_avg = (history_data | map(attribute='nodes_available') | sum) / (history_data | length) %}
+        {% set down_nodes_avg = (history_data | map(attribute='nodes_down') | sum) / (history_data | length) %}
+        {% set allocated_nodes_avg = (history_data | map(attribute='nodes_allocated') | sum) / (history_data | length) %}
+
+        <div class="row">
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Avg Total Nodes</h6>
+                    <div class="value">{{ total_nodes_avg | round(1) }}</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Avg Available</h6>
+                    <div class="value text-success">{{ available_nodes_avg | round(1) }}</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Avg Allocated</h6>
+                    <div class="value text-warning">{{ allocated_nodes_avg | round(1) }}</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Avg Down</h6>
+                    <div class="value text-danger">{{ down_nodes_avg | round(1) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

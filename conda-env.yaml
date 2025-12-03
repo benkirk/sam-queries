@@ -5,6 +5,7 @@ dependencies:
   - python
   - mysql
   - mysql-connector-python
+  - coreutils
   - pip
 #  - pip:
 #      - dotenv

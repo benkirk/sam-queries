@@ -6,8 +6,9 @@
 <div class="card mb-3">
     {{ header.system_header('<i class="fas fa-book"></i> JupyterHub Status', jupyterhub_status.timestamp) }}
     <div class="card-body">
+        <!-- Service Status -->
         <div class="row">
-            <div class="col-md-4">
+            <div class="col-md-12">
                 <div class="metric-card">
                     <h6>Service Status</h6>
                     <div class="value">
@@ -15,45 +16,108 @@
                             {{ 'Online' if jupyterhub_status.available else 'Offline' }}
                         </span>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="metric-card">
-                    <h6>Active Users</h6>
-                    <div class="value">{{ jupyterhub_status.active_users }}</div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="metric-card">
-                    <h6>Active Sessions</h6>
-                    <div class="value">{{ jupyterhub_status.active_sessions }}</div>
+                    <div class="text-muted small mt-2">
+                        {{ jupyterhub_status.active_users or 0 }} active user{{ 's' if jupyterhub_status.active_users != 1 else '' }},
+                        {{ jupyterhub_status.active_sessions or 0 }} active session{{ 's' if jupyterhub_status.active_sessions != 1 else '' }}
+                    </div>
                 </div>
             </div>
         </div>
 
-        <h6 class="mb-3 mt-4"><i class="fas fa-chart-bar"></i> Resource Utilization</h6>
-        <div class="row">
-            <div class="col-md-6">
+        <div class="row mt-3">
+            <div class="col-md-3">
                 <div class="metric-card">
-                    <h6>CPU Utilization</h6>
-                    <div class="value">{{ jupyterhub_status.cpu_utilization_percent|round(1) }}%</div>
-                    <div class="progress mt-2">
-                        <div class="progress-bar bg-{{ 'danger' if jupyterhub_status.cpu_utilization_percent >= 90 else 'warning' if jupyterhub_status.cpu_utilization_percent >= 75 else 'success' }}"
-                             style="width: {{ jupyterhub_status.cpu_utilization_percent }}%"></div>
-                    </div>
+                    <h6>Casper Login Jobs</h6>
+                    <div class="value text-success">{{ jupyterhub_status.casper_login_jobs or 0 }}</div>
                 </div>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-3">
                 <div class="metric-card">
-                    <h6>Memory Utilization</h6>
-                    <div class="value">{{ jupyterhub_status.memory_utilization_percent|round(1) }}%</div>
-                    <div class="progress mt-2">
-                        <div class="progress-bar bg-{{ 'danger' if jupyterhub_status.memory_utilization_percent >= 90 else 'warning' if jupyterhub_status.memory_utilization_percent >= 75 else 'success' }}"
-                             style="width: {{ jupyterhub_status.memory_utilization_percent }}%"></div>
-                    </div>
+                    <h6>Casper Batch Jobs</h6>
+                    <div class="value text-info">{{ jupyterhub_status.casper_batch_jobs or 0 }}</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Derecho Batch Jobs</h6>
+                    <div class="value text-info">{{ jupyterhub_status.derecho_batch_jobs or 0 }}</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Broken Jobs</h6>
+                    <div class="value text-warning">{{ jupyterhub_status.jobs_suspended or 0 }}</div>
                 </div>
             </div>
         </div>
+
+        <!-- Casper JupyterHub Login Session Nodes -->
+        {% if jupyterhub_status.nodes and jupyterhub_status.nodes|length > 0 %}
+        <h6 class="mb-3 mt-4"><i class="fas fa-list"></i> Casper JupyterHub Login Session Nodes</h6>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>Node</th>
+                        <th>State</th>
+                        <th>Jobs</th>
+                        <th>CPUs</th>
+                        <th>Memory</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for node in jupyterhub_status.nodes|sort(attribute='name') %}
+                    <tr>
+                        <td><code>{{ node.name }}</code></td>
+                        <td>
+                            <span class="badge bg-{{ 'success' if node.state == 'free' else 'warning' if node.state == 'job-busy' else 'danger' }}">
+                                {{ node.state }}
+                            </span>
+                        </td>
+                        <td>({{ node.jobs_running }})</td>
+                        <td>
+                            <small>{{ node.cpus_used }}/{{ node.cpus_total }}</small>
+                            <div class="progress" style="height: 8px; width: 60px;">
+                                <div class="progress-bar bg-{{ 'danger' if (node.cpus_used / node.cpus_total * 100) >= 90 else 'warning' if (node.cpus_used / node.cpus_total * 100) >= 75 else 'success' }}"
+                                     style="width: {{ (node.cpus_used / node.cpus_total * 100)|round }}%"></div>
+                            </div>
+                        </td>
+                        <td>
+                            <small>{{ node.memory_used_gb }}/{{ node.memory_total_gb }}GB</small>
+                            <div class="progress" style="height: 8px; width: 60px;">
+                                <div class="progress-bar bg-{{ 'danger' if (node.memory_used_gb / node.memory_total_gb * 100) >= 90 else 'warning' if (node.memory_used_gb / node.memory_total_gb * 100) >= 75 else 'success' }}"
+                                     style="width: {{ (node.memory_used_gb / node.memory_total_gb * 100)|round }}%"></div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Node Status -->
+        <h6 class="mb-3 mt-4"><i class="fas fa-server"></i> Node Status</h6>
+        <div class="row">
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>Free Nodes</h6>
+                    <div class="value text-success">{{ jupyterhub_status.nodes_free or 0 }}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>Busy Nodes</h6>
+                    <div class="value text-warning">{{ jupyterhub_status.nodes_busy or 0 }}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>Down Nodes</h6>
+                    <div class="value text-danger">{{ jupyterhub_status.nodes_down or 0 }}</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% else %}
