@@ -12,6 +12,11 @@ services:
       - "5050:5050"
     networks:
       - sam-network
+    # Development: Disable Python bytecode caching to avoid stale .pyc issues
+    # when adding new files/functions. Remove for production deployment.
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
     # Important: watch the current directory, re-syncing as needed based on source changes
     develop:
       watch:
