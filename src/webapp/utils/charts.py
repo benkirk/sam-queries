@@ -144,3 +144,71 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict], node_type: st
     plt.close(fig)
 
     return svg_io.getvalue()
+
+
+def generate_queue_history_matplotlib(history_data: List[Dict], queue_name: str, system_name: str) -> str:
+    """
+    Generate queue history chart showing job flow and resource demand over time.
+
+    Args:
+        history_data: List of dicts with timestamp, job counts, resources
+        queue_name: Name of the queue (for title)
+        system_name: System name (for title)
+
+    Returns:
+        SVG string ready for template rendering
+    """
+    if not history_data:
+        return '<div class="text-center text-muted">No history data available for this queue</div>'
+
+    # Extract data
+    timestamps = [d['timestamp'] for d in history_data]
+    running_jobs = [d.get('running_jobs', 0) for d in history_data]
+    pending_jobs = [d.get('pending_jobs', 0) for d in history_data]
+    held_jobs = [d.get('held_jobs', 0) for d in history_data]
+    active_users = [d.get('active_users', 0) for d in history_data]
+
+    cores_allocated = [d.get('cores_allocated', 0) for d in history_data]
+    cores_pending = [d.get('cores_pending', 0) for d in history_data]
+    gpus_allocated = [d.get('gpus_allocated', 0) for d in history_data]
+    gpus_pending = [d.get('gpus_pending', 0) for d in history_data]
+
+    # Determine if this queue uses GPUs
+    has_gpus = any(gpus_allocated) or any(gpus_pending)
+
+    # Create figure with subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+
+    # Plot 1: Job Flow
+    ax1.plot(timestamps, running_jobs, 'g-', linewidth=2, label='Running', marker='o', markersize=3)
+    ax1.plot(timestamps, pending_jobs, 'orange', linewidth=2, label='Pending', marker='o', markersize=3)
+    ax1.plot(timestamps, held_jobs, 'r-', linewidth=2, label='Held', marker='o', markersize=3)
+    ax1.plot(timestamps, active_users, 'b--', linewidth=1.5, label='Active Users', marker='s', markersize=2)
+
+    ax1.set_ylabel('Count', fontsize=11)
+    ax1.set_title(f'{system_name.upper()} - {queue_name} Queue Activity', fontsize=13, fontweight='bold')
+    ax1.legend(loc='best', fontsize=10)
+    ax1.grid(True, alpha=0.3)
+
+    # Plot 2: Resource Demand
+    ax2.plot(timestamps, cores_allocated, 'g-', linewidth=2, label='Cores Running', marker='o', markersize=3)
+    ax2.plot(timestamps, cores_pending, 'orange', linewidth=2, label='Cores Pending', marker='o', markersize=3)
+
+    if has_gpus:
+        ax2.plot(timestamps, gpus_allocated, 'b-', linewidth=2, label='GPUs Running', marker='s', markersize=3)
+        ax2.plot(timestamps, gpus_pending, 'c-', linewidth=2, label='GPUs Pending', marker='s', markersize=3)
+
+    ax2.set_ylabel('Resources', fontsize=11)
+    ax2.set_xlabel('Time', fontsize=11)
+    ax2.legend(loc='best', fontsize=10)
+    ax2.grid(True, alpha=0.3)
+
+    # Format dates on x-axis
+    fig.autofmt_xdate()
+
+    # Render to SVG
+    svg_io = StringIO()
+    fig.savefig(svg_io, format='svg', bbox_inches='tight')
+    plt.close(fig)
+
+    return svg_io.getvalue()

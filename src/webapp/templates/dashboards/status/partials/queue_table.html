@@ -1,4 +1,4 @@
-{% macro queue_table(queues, show_gpus=false) %}
+{% macro queue_table(queues, show_gpus=false, system='derecho') %}
 <div class="table-responsive">
     <table class="table table-sm table-bordered queue-table">
         <thead class="thead-dark">
@@ -29,7 +29,7 @@
         </thead>
         <tbody>
             {% for queue in queues %}
-            <tr>
+            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.queue_history', system=system, queue_name=queue.queue_name) }}';" style="cursor: pointer;" title="Click to view history for {{ queue.queue_name }}">
                 <td><strong>{{ queue.queue_name }}</strong></td>
                 <td>{{ queue.active_users }}</td>
                 <td>{{ queue.running_jobs }}</td>
@@ -47,4 +47,10 @@
         </tbody>
     </table>
 </div>
+
+<style>
+.clickable-row:hover {
+    background-color: #f8f9fa;
+}
+</style>
 {% endmacro %}

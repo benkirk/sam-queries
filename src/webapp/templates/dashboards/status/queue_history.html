@@ -1,0 +1,102 @@
+{% extends 'dashboards/base.html' %}
+
+{% block title %}Queue History - {{ queue_name }} ({{ system|upper }}) - SAM{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('status_dashboard.index') }}">System Status</a></li>
+        <li class="breadcrumb-item active">{{ system|upper }} - {{ queue_name }} Queue History</li>
+    </ol>
+</nav>
+
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-list"></i> {{ queue_name }} Queue History ({{ system|upper }})</h2>
+</div>
+
+<!-- Current Status Card -->
+{% if latest_status %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-clock"></i> Current Status</h5>
+        <small class="text-muted">Last Updated: {{ latest_status.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Running Jobs</h6>
+                    <div class="value text-success">{{ latest_status.running_jobs }}</div>
+                    <small class="text-muted">{{ latest_status.cores_allocated }} cores</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Pending Jobs</h6>
+                    <div class="value text-warning">{{ latest_status.pending_jobs }}</div>
+                    <small class="text-muted">{{ latest_status.cores_pending }} cores</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Held Jobs</h6>
+                    <div class="value text-danger">{{ latest_status.held_jobs }}</div>
+                    <small class="text-muted">{{ latest_status.cores_held }} cores</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <h6>Active Users</h6>
+                    <div class="value text-info">{{ latest_status.active_users }}</div>
+                    {% if latest_status.gpus_allocated > 0 %}
+                    <small class="text-muted">{{ latest_status.gpus_allocated }} GPUs allocated</small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Historical Chart -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-chart-line"></i> Historical Trends</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('status_dashboard.queue_history', system=system, queue_name=queue_name) }}" class="form-inline">
+            <label for="days" class="mr-2">Show Last:</label>
+            <select id="days" name="days" class="form-control form-control-sm mr-3">
+                <option value="1" {% if days == 1 %}selected{% endif %}>1 Day</option>
+                <option value="7" {% if days == 7 %}selected{% endif %}>7 Days</option>
+                <option value="14" {% if days == 14 %}selected{% endif %}>14 Days</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>30 Days</option>
+            </select>
+            <button type="submit" class="btn btn-primary btn-sm">Update</button>
+        </form>
+
+        <hr>
+
+        {% if chart_svg %}
+        <div class="chart-container">
+            {{ chart_svg|safe }}
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+            <i class="fas fa-chart-line fa-3x mb-3"></i>
+            <p>No historical data available for the selected time period.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Back Button -->
+<div class="mb-4">
+    <a href="{{ url_for('status_dashboard.index') }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Status Dashboard
+    </a>
+</div>
+
+{% endblock %}
