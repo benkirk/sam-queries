@@ -102,6 +102,11 @@ jobs:
           timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sam; import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
           echo "✅ Webapp is ready"
 
+      - name: Show running containers
+        run: |
+          cd "${INSTALL_DIR}"
+          docker compose ps
+
       - name: Show container logs (on failure)
         if: failure()
         run: |
