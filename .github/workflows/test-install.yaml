@@ -15,31 +15,29 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Test "curl | bash" style installation
-        env:
-          # Determine the repository URL to clone from
-          # - For PRs: use the source repository of the PR (handles forks)
-          # - For Pushes: use the current repository
-          TARGET_REPO: >-
-            ${{
-              github.event_name == 'pull_request' && 
-              github.event.pull_request.head.repo.clone_url || 
-              github.server_url ~ '/' ~ github.repository 
-            }}
-          
-          # Determine the branch to clone
-          TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          # Fallback for TARGET_REPO if the expression above had issues or is empty
-          if [[ -z "$TARGET_REPO" ]]; then
-             TARGET_REPO="${{ github.server_url }}/${{ github.repository }}"
+          # ---------------------------------------------------------
+          # Determine Repo and Branch to test
+          # ---------------------------------------------------------
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # For PRs, use the head repo url (handles forks)
+            TARGET_REPO="${{ github.event.pull_request.head.repo.clone_url }}"
+            TARGET_BRANCH="${{ github.head_ref }}"
+          else
+            # For pushes, use the current repository
+            TARGET_REPO="${{ github.server_url }}/${{ github.repository }}"
+            TARGET_BRANCH="${{ github.ref_name }}"
           fi
-          
+
           echo "Testing install logic with:"
           echo "  Repo:   $TARGET_REPO"
           echo "  Branch: $TARGET_BRANCH"
           
           INSTALL_DIR="$HOME/test-install-target"
           
+          # ---------------------------------------------------------
+          # Execute Install Script
+          # ---------------------------------------------------------
           # Simulate remote execution by piping the local script file.
           # We pass arguments to verify the script correctly handles them
           # and to point it to the code version corresponding to this CI run.
@@ -48,6 +46,9 @@ jobs:
             --repo "$TARGET_REPO" \
             --branch "$TARGET_BRANCH"
           
+          # ---------------------------------------------------------
+          # Verify Results
+          # ---------------------------------------------------------
           echo "--- Verifying Installation ---"
           if [[ ! -d "$INSTALL_DIR" ]]; then
              echo "::error::Installation directory was not created."
