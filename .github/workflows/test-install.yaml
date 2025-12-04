@@ -41,7 +41,7 @@ jobs:
           echo "Testing install logic with:"
           echo "  Repo:   $TARGET_REPO"
           echo "  Branch: $TARGET_BRANCH"
-          
+
           # ---------------------------------------------------------
           # Execute Install Script
           # ---------------------------------------------------------
@@ -52,7 +52,7 @@ jobs:
             --dir "$INSTALL_DIR" \
             --repo "$TARGET_REPO" \
             --branch "$TARGET_BRANCH"
-          
+
           # ---------------------------------------------------------
           # Verify Results
           # ---------------------------------------------------------
@@ -61,17 +61,17 @@ jobs:
              echo "::error::Installation directory was not created."
              exit 1
           fi
-          
+
           if [[ ! -d "$INSTALL_DIR/.git" ]]; then
              echo "::error::Git repository not initialized in target."
              exit 1
           fi
-          
-          if [[ ! -f "$INSTALL_DIR/docker-compose.yaml" ]]; then
-             echo "::error::docker-compose.yaml missing in install dir."
+
+          if [[ ! -f "$INSTALL_DIR/compose.yaml" ]]; then
+             echo "::error::compose.yaml missing in install dir."
              exit 1
           fi
-          
+
           if [[ ! -f "$INSTALL_DIR/.env" ]]; then
              echo "::error::.env file was not created (setup step failed)."
              exit 1
@@ -89,7 +89,7 @@ jobs:
       - name: Wait for services to be healthy
         run: |
           cd "$INSTALL_DIR"
-          
+
           echo "Waiting for MySQL to be healthy..."
           timeout 120 bash -c 'until docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot --silent; do sleep 2; done'
           echo "✅ MySQL is healthy"
