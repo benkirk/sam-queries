@@ -10,6 +10,8 @@ on:
 jobs:
   test-piped-install:
     runs-on: ubuntu-latest
+    env:
+      INSTALL_DIR: "${{ runner.temp }}/test-install-target"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -38,8 +40,6 @@ jobs:
           echo "Testing install logic with:"
           echo "  Repo:   $TARGET_REPO"
           echo "  Branch: $TARGET_BRANCH"
-          
-          INSTALL_DIR="$HOME/test-install-target"
           
           # ---------------------------------------------------------
           # Execute Install Script
@@ -80,7 +80,6 @@ jobs:
 
       - name: Start Services
         run: |
-          INSTALL_DIR="$HOME/test-install-target"
           cd "$INSTALL_DIR"
           echo "Starting services in $INSTALL_DIR..."
           docker compose build
@@ -88,7 +87,6 @@ jobs:
 
       - name: Wait for services to be healthy
         run: |
-          INSTALL_DIR="$HOME/test-install-target"
           cd "$INSTALL_DIR"
           
           echo "Waiting for MySQL to be healthy..."
@@ -102,7 +100,6 @@ jobs:
       - name: Show container logs (on failure)
         if: failure()
         run: |
-          INSTALL_DIR="$HOME/test-install-target"
           if [ -d "$INSTALL_DIR" ]; then
             cd "$INSTALL_DIR"
             docker compose logs --tail=100
@@ -111,7 +108,6 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          INSTALL_DIR="$HOME/test-install-target"
           if [ -d "$INSTALL_DIR" ]; then
             cd "$INSTALL_DIR"
             docker compose down -v
