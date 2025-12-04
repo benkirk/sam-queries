@@ -13,6 +13,7 @@ from .models import (
     QueueStatus,
     SystemOutage, ResourceReservation
 )
+from .cli import main
 
 __all__ = [
     # Base
@@ -35,4 +36,7 @@ __all__ = [
     'QueueStatus',
     'SystemOutage',
     'ResourceReservation',
+
+    # CLI
+    'main',
 ]
