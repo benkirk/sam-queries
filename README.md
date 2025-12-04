@@ -284,13 +284,43 @@ sam-queries/
 ├── README.md                    # This file
 ├── CONTRIBUTING.md              # Detailed setup and contribution guide
 ├── CLAUDE.md                    # Comprehensive technical reference
+├── install.sh                   # Quick installation script
 ├── Makefile                     # Build automation (conda-env, etc.)
 ├── conda-env.yaml              # Conda environment specification
 ├── .env                         # Database credentials (you create this)
 │
+├── bin/
+│   └── sam_search               # Bash wrapper for sam_search.py
+│
+├── collectors/                  # Data collectors for system status
+│   ├── run_collectors.sh        # Driver script for all collectors
+│   ├── casper/                  # Casper HPC collectors
+│   ├── derecho/                 # Derecho HPC collectors
+│   ├── jupyterhub/              # JupyterHub collectors
+│   └── lib/                     # Shared collector library code
+│
+├── containers/
+│   ├── sam-sql-dev/             # Docker container for local MySQL
+│   ├── collectors/              # Container for running collectors
+│   └── webapp/                  # Container for the web application
+│
 ├── docs/                        # Project documentation
 │   ├── SYSTEM_DASHBOARD_PLAN.md # System status dashboard implementation plan
 │   └── HPC_DATA_COLLECTORS_GUIDE.md # Guide for implementing HPC data collectors
+│
+├── etc/
+│   └── config_env.sh            # Environment configuration script
+│
+├── scripts/                     # Utility scripts
+│   ├── setup_status_db.py       # Create system_status database tables
+│   ├── test_status_db.py        # Test system_status database connection
+│   ├── cleanup_status_data.py   # Clean up old status snapshots (7-day retention)
+│   ├── ingest_mock_status.py    # Ingest mock status data for testing
+│   └── create_status_db.sql     # SQL script for database creation
+│
+├── sql/                         # SQL utilities and queries
+│   ├── driver.sh                # Helper script for running SQL queries
+│   └── queries/                 # Collection of SQL queries
 │
 ├── src/
 │   ├── sam/                     # SQLAlchemy ORM models (SAM database)
@@ -311,83 +341,33 @@ sam-queries/
 │   │   ├── __init__.py          # Main exports
 │   │   ├── base.py              # Base classes, mixins for status models
 │   │   ├── session/             # Database session management
-│   │   │   └── __init__.py      # Session factory for system_status DB
 │   │   ├── models/              # Status tracking models
-│   │   │   ├── __init__.py      # Model exports
-│   │   │   ├── derecho.py       # Derecho HPC status (3 tables)
-│   │   │   ├── casper.py        # Casper HPC status (3 tables)
-│   │   │   ├── jupyterhub.py    # JupyterHub status
-│   │   │   └── outages.py       # System outages and reservations
 │   │   └── queries/             # Status query functions
-│   │       └── __init__.py      # Common status queries
 │   │
 │   ├── sam_search.py            # CLI tool for user/project searches
 │   │
 │   └── webapp/                   # Flask web application
-│       ├── README.md            # Web UI documentation
 │       ├── run.py               # Development server
-│       ├── auth/                # Authentication (providers, models, blueprint)
+│       ├── auth/                # Authentication
 │       ├── admin/               # Flask-Admin interface
 │       ├── dashboards/          # Dashboard blueprints
-│       │   ├── user/            # User dashboard
-│       │   └── status/          # System status dashboard
-│       │       └── blueprint.py # Status dashboard routes
 │       ├── api/                 # REST API v1 endpoints
-│       │   └── v1/
-│       │       ├── status.py    # System status API endpoints
-│       │       └── ...          # Other API endpoints
 │       ├── schemas/             # Marshmallow-SQLAlchemy schemas
 │       ├── utils/               # RBAC, utilities
 │       └── templates/           # Jinja2 templates
-│           └── dashboards/
-│               ├── user/        # User dashboard templates
-│               └── status/      # Status dashboard templates
-│                   └── dashboard.html # Main status dashboard
-│
-├── scripts/                     # Utility scripts
-│   ├── setup_status_db.py       # Create system_status database tables
-│   ├── test_status_db.py        # Test system_status database connection
-│   ├── cleanup_status_data.py   # Clean up old status snapshots (7-day retention)
-│   ├── ingest_mock_status.py    # Ingest mock status data for testing
-│   └── create_status_db.sql     # SQL script for database creation
 │
 ├── tests/                       # Comprehensive test suite (209 tests)
 │   ├── pytest.ini               # Pytest configuration
 │   ├── conftest.py              # Shared fixtures
 │   ├── unit/                    # Unit tests
-│   │   ├── test_basic_read.py   # Basic ORM queries
-│   │   ├── test_crud_operations.py # Create/update/delete
-│   │   └── test_new_models.py   # New model tests
 │   ├── integration/             # Integration tests
-│   │   ├── test_schema_validation.py # Schema drift detection
-│   │   ├── test_sam_search_cli.py # CLI integration tests
-│   │   └── test_views.py        # Database views
 │   ├── api/                     # API/schema tests
-│   │   ├── test_schemas.py      # Marshmallow schema tests
-│   │   └── test_allocation_schemas.py # Allocation schemas
-│   ├── mock_data/               # Test data
-│   │   └── status_mock_data.json # Mock system status data
-│   ├── tools/                   # Utility scripts
-│   ├── fixtures/                # Shared test configuration
-│   └── docs/                    # Test documentation
-│       ├── README.md            # Testing guide
-│       ├── TEST_RESULTS_SUMMARY.md # Test results
-│       └── CURRENT_PLAN.md      # Improvement history
+│   └── mock_data/               # Test data
 │
-├── containers/
-│   └── sam-sql-dev/             # Docker container for local MySQL
-│       ├── README.md            # Container documentation
-│       ├── docker_start.sh      # Start local database
-│       └── bootstrap_clone.py   # Clone production data subset
-│
-├── bin/
-│   └── sam_search               # Bash wrapper for sam_search.py
-│
-├── etc/
-│   └── config_env.sh            # Environment configuration script
-│
-└── sql/                         # SQL utilities and queries
-    └── queries/                 # Example SQL queries
+└── utils/                       # Miscellaneous utilities
+    ├── run-webui-dbg.sh         # Debug launcher for Web UI
+    ├── sample_collector_commands.sh # Examples for running collectors
+    └── split_classes.py         # Code maintenance tools
 ```
 
 ---
