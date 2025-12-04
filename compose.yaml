@@ -1,5 +1,7 @@
 services:
 
+  #------------------------------------
+  # Webapp container:
   webapp:
     container_name: samuel-webapp
     build:
@@ -30,21 +32,24 @@ services:
             - .git/
             - "*~"
 
+  #------------------------------------
+  # MySQL container:
   mysql:
     container_name: samuel-mysql
     image: mysql:9
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: sam
+      #MYSQL_DATABASE: sam
+    command: ["/bin/bash", "/docker-init.sh"]
     volumes:
-      # Persistent storage
       - samuel-mysql-data:/var/lib/mysql
-      # Mount backup for auto-restore (override this in CI)
-      #- ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/docker-entrypoint-initdb.d/backup.sql.xz:ro
+      - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
+      - ./containers/sam-sql-dev/docker-init.sh:/docker-init.sh:ro
+
     healthcheck:
       # Check if MySQL is ready AND restore is complete
       test: |
-        mysqladmin ping -h localhost -u root -proot &&
+        mysqladmin ping -h localhost -u root -proot
         mysql -h localhost -u root -proot sam -e "SELECT COUNT(*) FROM users" > /dev/null 2>&1
       interval: 10s
       timeout: 5s
@@ -54,6 +59,25 @@ services:
       - "3306:3306"
     networks:
       - sam-network
+
+
+  # #------------------------------------
+  # # Restore Service:
+  # restore-mysql-db:
+  #   image: mysql:9
+  #   volumes:
+  #     - samuel-mysql-data:/var/lib/mysql
+  #     - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
+  #   entrypoint: /bin/sh -c "
+  #     if [ -d /var/lib/mysql/mysql ]; then
+  #       echo 'Existing DB detected — skipping restore';
+  #       exit 0;
+  #     fi
+  #     echo 'Restoring MySQL backup...';
+  #     apk add --no-cache xz mysql-client;
+  #     xzcat /backup.sql.xz | mysql -h mysql -uroot -proot;
+  #     echo 'Restore complete'
+  #   "
 
 networks:
   sam-network:
