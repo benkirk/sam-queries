@@ -2,9 +2,9 @@ name: Test Install Script
 
 on:
   push:
-    branches: [ "main", "self-install" ]
+    branches: [main]
   pull_request:
-    branches: [ "main", "self-install" ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
