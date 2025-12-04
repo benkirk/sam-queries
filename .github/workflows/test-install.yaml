@@ -10,9 +10,10 @@ on:
 jobs:
   test-piped-install:
     runs-on: ubuntu-latest
-    env:
-      INSTALL_DIR: "${{ runner.temp }}/test-install-target"
     steps:
+      - name: Setup Environment
+        run: echo "INSTALL_DIR=${{ runner.temp }}/test-install-target" >> $GITHUB_ENV
+
       - name: Checkout code
         uses: actions/checkout@v4
 
