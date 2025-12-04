@@ -26,6 +26,10 @@ TARGET_DIR="${SAMQ_HOME:-$HOME/codes3/sam-queries-foo}"
 # --------------------------------------------
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -r|--repo)
+            REPO_URL="$2"
+            shift 2
+            ;;
         -b|--branch)
             REPO_BRANCH="$2"
             shift 2
@@ -39,6 +43,7 @@ while [[ $# -gt 0 ]]; do
 Usage: $0 [options]
 
 Options:
+  -r, --repo <url>          Specify the repository URL (default: ${REPO_URL})
   -b, --branch <branch>     Specify the git branch to clone (default: ${REPO_BRANCH})
   -d, --dir <directory>     Specify the installation directory (default: ${TARGET_DIR})
   -h, --help                Show this help message
