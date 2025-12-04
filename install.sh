@@ -9,6 +9,37 @@ REPO_BRANCH="${REPO_BRANCH:-self-install}"
 TARGET_DIR="${SAMQ_HOME:-$HOME/codes3/sam-queries-foo}"
 
 # --------------------------------------------
+# Command-line arguments
+# --------------------------------------------
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -b|--branch)
+            REPO_BRANCH="$2"
+            shift 2
+            ;;
+        -d|--dir)
+            TARGET_DIR="$2"
+            shift 2
+            ;;
+        -h|--help)
+            cat <<EOF
+Usage: $0 [options]
+
+Options:
+  -b, --branch <branch>     Specify the git branch to clone (default: ${REPO_BRANCH})
+  -d, --dir <directory>     Specify the installation directory (default: ${TARGET_DIR})
+  -h, --help                Show this help message
+EOF
+            exit 0
+            ;;
+        *)
+            # Unknown option
+            shift
+            ;;
+    esac
+done
+
+# --------------------------------------------
 # Helpers
 # --------------------------------------------
 abort() {
