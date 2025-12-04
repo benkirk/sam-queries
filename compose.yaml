@@ -39,13 +39,11 @@ services:
     image: mysql:9
     environment:
       MYSQL_ROOT_PASSWORD: root
-      #MYSQL_DATABASE: sam
     command: ["/bin/bash", "/docker-init.sh"]
     volumes:
       - samuel-mysql-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
       - ./containers/sam-sql-dev/docker-init.sh:/docker-init.sh:ro
-
     healthcheck:
       # Check if MySQL is ready AND restore is complete
       test: |
@@ -59,25 +57,6 @@ services:
       - "3306:3306"
     networks:
       - sam-network
-
-
-  # #------------------------------------
-  # # Restore Service:
-  # restore-mysql-db:
-  #   image: mysql:9
-  #   volumes:
-  #     - samuel-mysql-data:/var/lib/mysql
-  #     - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
-  #   entrypoint: /bin/sh -c "
-  #     if [ -d /var/lib/mysql/mysql ]; then
-  #       echo 'Existing DB detected — skipping restore';
-  #       exit 0;
-  #     fi
-  #     echo 'Restoring MySQL backup...';
-  #     apk add --no-cache xz mysql-client;
-  #     xzcat /backup.sql.xz | mysql -h mysql -uroot -proot;
-  #     echo 'Restore complete'
-  #   "
 
 networks:
   sam-network:
