@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
-set -euo pipefail
+
+# --------------------------------------------
+# Bootstrap (detect piped execution for `set -u` workaround)
+# --------------------------------------------
+# If run piped (e.g. `curl ... | bash`), stdin is not a TTY.
+# In this case, disable `set -u` to prevent issues with potentially unset variables
+# in a non-interactive shell environment. For direct execution, `set -u` remains active.
+if [[ -t 0 ]]; then
+    # Interactive execution: enable strict error checking
+    set -euo pipefail
+else
+    # Piped execution: disable `set -u` for robustness
+    set -eo pipefail
+fi
 
 # --------------------------------------------
 # Config
@@ -76,6 +89,11 @@ need_cmd git-lfs
 need_cmd docker
 docker info >/dev/null 2>&1 || abort "Docker daemon not running."
 check_docker_compose_version
+
+# Check for curl or wget, required for remote fetching
+if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    abort "Neither 'curl' nor 'wget' found. One is required for remote operations."
+fi
 
 # --------------------------------------------
 # Clone or update repo
