@@ -35,10 +35,11 @@ dependencies = [
     "rich",
     "sqlalchemy",
     "tqdm",
+    "click",
 ]
 
 [project.scripts]
-sam-search = "sam_search:main"
+sam-search = "sam_search_cli:cli"
 sam-status = "system_status:main"
 
 [project.optional-dependencies]

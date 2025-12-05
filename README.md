@@ -26,11 +26,12 @@ This repository provides tools to interact with SAM data programmatically, repla
 - Automated schema validation to prevent drift
 - Test coverage for all major models
 
-### CLI Tool (`sam_search.py`)
+### CLI Tool (`sam_search_cli.py`)
 - User and project lookups by username or project code
 - Pattern matching with SQL wildcards
 - Track upcoming and expired allocations
 - Proper exit codes for automation
+- Built with [Click](https://click.palletsprojects.com/)
 
 ### Web UI (Flask-Admin)
 - Admin dashboard with CRUD operations for SAM tables
@@ -63,7 +64,7 @@ EOF
 chmod 600 .env
 
 # 3. Try the CLI tool
-./src/sam_search.py user <your_username>
+./src/sam_search_cli.py user <your_username>
 
 # 4. Run tests to verify setup
 cd tests && pytest -v
@@ -110,8 +111,7 @@ For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 4. **Verify installation**
    ```bash
    # Test CLI
-   ./src/sam_search.py user --search "a%" | head -10
-
+   ./src/sam_search_cli.py user --search "a%" | head -10
    # Run test suite
    cd tests && pytest -v
    ```
@@ -124,29 +124,29 @@ For full setup guide including local development database, see **[CONTRIBUTING.m
 
 ### CLI Tool
 
-The `sam_search.py` CLI provides access to SAM data:
+The `sam_search_cli.py` CLI provides access to SAM data:
 
 ```bash
 # Find a user
-./src/sam_search.py user benkirk
+./src/sam_search_cli.py user benkirk
 
 # List user's projects with allocations
-./src/sam_search.py user benkirk --list-projects --verbose
+./src/sam_search_cli.py user benkirk --list-projects --verbose
 
 # Search for users (SQL wildcards)
-./src/sam_search.py user --search "ben%"
+./src/sam_search_cli.py user --search "ben%"
 
 # Find a project
-./src/sam_search.py project SCSG0001 --list-users
+./src/sam_search_cli.py project SCSG0001 --list-users
 
 # Find projects expiring soon (next 32 days)
-./src/sam_search.py project --upcoming-expirations
+./src/sam_search_cli.py project --upcoming-expirations
 
 # Find recently expired projects (last 90 days)
-./src/sam_search.py project --recent-expirations --list-users
+./src/sam_search_cli.py project --recent-expirations --list-users
 
 # Find users with no active projects
-./src/sam_search.py user --abandoned
+./src/sam_search_cli.py user --abandoned
 ```
 
 **Exit codes:** `0` = success, `1` = not found, `2` = error, `130` = interrupted
@@ -344,7 +344,7 @@ sam-queries/
 │   │   ├── models/              # Status tracking models
 │   │   └── queries/             # Status query functions
 │   │
-│   ├── sam_search.py            # CLI tool for user/project searches
+│   ├── sam_search_cli.py        # CLI tool for user/project searches (built with Click)
 │   │
 │   └── webapp/                   # Flask web application
 │       ├── run.py               # Development server
@@ -501,7 +501,7 @@ For complete development guide, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 ### Finding User Information
 ```bash
 # CLI
-./src/sam_search.py user benkirk --list-projects
+./src/sam_search_cli.py user benkirk --list-projects
 
 # Python
 from sam import User
@@ -515,7 +515,7 @@ curl -b cookies.txt http://localhost:5050/api/v1/users/benkirk
 ### Monitoring Allocation Expirations
 ```bash
 # CLI
-./src/sam_search.py project --upcoming-expirations
+./src/sam_search_cli.py project --upcoming-expirations
 
 # Python
 from sam.queries import get_projects_by_allocation_end_date
@@ -528,7 +528,7 @@ curl -b cookies.txt "http://localhost:5050/api/v1/projects/expiring?days=30"
 ### Checking Allocation Balances
 ```bash
 # CLI
-./src/sam_search.py project SCSG0001 --verbose
+./src/sam_search_cli.py project SCSG0001 --verbose
 
 # Python
 usage = project.get_detailed_allocation_usage(session, allocation)
@@ -593,6 +593,10 @@ with open('expiring_report.csv', 'w') as f:
 **ModuleNotFoundError**
 - Activate conda environment: `source etc/config_env.sh`
 - Check PYTHONPATH: `echo $PYTHONPATH`
+
+**Click command not found/recognized**
+- Ensure `click` is installed in your environment (`pip install click` or `conda install click`)
+- Verify your `PATH` includes the directory where `sam_search_cli.py` is located if you are trying to run it directly without `./src/` prefix.
 
 ### Test Failures
 
