@@ -1,15 +1,17 @@
-"""
-pytest configuration and fixtures for SAM ORM tests
-"""
+#-------------------------------------------------------------------------bh-
+# pytest configuration and fixtures for SAM ORM tests
+#-------------------------------------------------------------------------eh-
 
 import pytest
 import sys
 import os
 from pathlib import Path
 
-# CRITICAL: Set test database environment variable BEFORE any imports
-# This ensures system_status tests use test database, not production
+# CRITICAL: Set environment variables BEFORE any imports that might define models
+# This ensures system_status models use Flask-SQLAlchemy's db.Model
+# and use the test database.
 os.environ['STATUS_DB_NAME'] = 'system_status_test'
+os.environ['FLASK_ACTIVE'] = '1'
 
 # Add project root and src to path for imports
 PROJ_ROOT = Path(__file__).parent.parent
@@ -49,12 +51,11 @@ def test_databases():
     """
     from sqlalchemy import create_engine, text
     import os
+    from webapp.run import create_app
+    from webapp.extensions import db
+    import system_status.session
 
-    # CRITICAL: Set environment variable BEFORE any system_status imports
-    # This must happen before system_status.session module initialization
-    os.environ['STATUS_DB_NAME'] = 'system_status_test'
-
-    # Get connection parameters
+    # Get connection parameters from already set environment variables
     db_server = os.getenv('STATUS_DB_SERVER', os.getenv('SAM_DB_SERVER', '127.0.0.1'))
     db_user = os.getenv('SAM_DB_USERNAME', 'root')
     db_password = os.getenv('SAM_DB_PASSWORD', 'root')
@@ -68,8 +69,17 @@ def test_databases():
         conn.execute(text("DROP DATABASE IF EXISTS system_status_test"))
         conn.execute(text("CREATE DATABASE system_status_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
 
-    # Initialize system_status schema using ORM models
-    _initialize_status_schema(db_server, db_user, db_password)
+    # Now that the environment variable is set and session is imported,
+    # system_status.session.connection_string will be correct.
+    # Create a minimal Flask app to use its db object for schema creation
+    # This is necessary because system_status models use Flask-SQLAlchemy's db.Model
+    # and its __bind_key__ functionality.
+    temp_app = create_app()
+
+    with temp_app.app_context():
+        # db.create_all() will now correctly use the updated connection_string
+        # for 'system_status' bind, as create_app sets it from system_status.session
+        db.create_all()
 
     yield {'system_status': 'system_status_test'}
 
@@ -79,19 +89,9 @@ def test_databases():
 
     # Restore original environment
     os.environ.pop('STATUS_DB_NAME', None)
+    os.environ.pop('FLASK_ACTIVE', None) # Clean up env var
     engine.dispose()
 
-
-def _initialize_status_schema(server, user, password):
-    """Initialize system_status test database schema from ORM models."""
-    from sqlalchemy import create_engine
-    # Import system_status.models to register all models with metadata
-    import system_status.models
-    from system_status.base import StatusBase
-
-    engine = create_engine(f"mysql+pymysql://{user}:{password}@{server}/system_status_test")
-    StatusBase.metadata.create_all(engine)
-    engine.dispose()
 
 
 @pytest.fixture
