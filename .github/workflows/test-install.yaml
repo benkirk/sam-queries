@@ -1,0 +1,125 @@
+name: Test Install Script
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  test-piped-install:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Environment
+        run: echo "INSTALL_DIR=${{ runner.temp }}/test-install-target" >> ${GITHUB_ENV}
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Ensure latest Docker for compatibility
+      - name: Install latest Docker
+        uses: docker/setup-docker-action@v4
+        with:
+          docker-ce-version: latest
+
+      - name: Test "curl | bash" style installation
+        run: |
+          # ---------------------------------------------------------
+          # Determine Repo and Branch to test
+          # ---------------------------------------------------------
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # For PRs, use the head repo url (handles forks)
+            TARGET_REPO="${{ github.event.pull_request.head.repo.clone_url }}"
+            TARGET_BRANCH="${{ github.head_ref }}"
+          else
+            # For pushes, use the current repository
+            TARGET_REPO="${{ github.server_url }}/${{ github.repository }}"
+            TARGET_BRANCH="${{ github.ref_name }}"
+          fi
+
+          echo "Testing install logic with:"
+          echo "  Repo:   ${TARGET_REPO}"
+          echo "  Branch: ${TARGET_BRANCH}"
+
+          # ---------------------------------------------------------
+          # Execute Install Script
+          # ---------------------------------------------------------
+          # Simulate remote execution by piping the local script file.
+          # We pass arguments to verify the script correctly handles them
+          # and to point it to the code version corresponding to this CI run.
+          cat install.sh | bash -s -- \
+            --dir "${INSTALL_DIR}" \
+            --repo "${TARGET_REPO}" \
+            --branch "${TARGET_BRANCH}"
+
+          # ---------------------------------------------------------
+          # Verify Results
+          # ---------------------------------------------------------
+          echo "--- Verifying Installation ---"
+          if [[ ! -d "${INSTALL_DIR}" ]]; then
+             echo "::error::Installation directory was not created."
+             exit 1
+          fi
+
+          if [[ ! -d "${INSTALL_DIR}/.git" ]]; then
+             echo "::error::Git repository not initialized in target."
+             exit 1
+          fi
+
+          if [[ ! -f "${INSTALL_DIR}/compose.yaml" ]]; then
+             echo "::error::compose.yaml missing in install dir."
+             exit 1
+          fi
+
+          if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
+             echo "::error::.env file was not created (setup step failed)."
+             exit 1
+          fi
+
+          echo "✅ Installation verified successfully at ${INSTALL_DIR}"
+
+      - name: Start Services
+        run: |
+          cd "${INSTALL_DIR}"
+          echo "Starting services in ${INSTALL_DIR}..."
+          docker compose build
+          docker compose up -d
+
+      - name: Wait for services to be healthy
+        run: |
+          cd "${INSTALL_DIR}"
+
+          echo "Waiting for MySQL to be healthy..."
+          timeout 120 bash -c 'until docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot --silent; do sleep 2; done'
+          echo "✅ MySQL is healthy"
+
+          echo "Waiting for webapp to be ready..."
+          timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sam; import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
+          echo "✅ Webapp is ready"
+
+      - name: Show running containers
+        run: |
+          cd "${INSTALL_DIR}"
+          docker compose ps
+
+      - name: Show container logs (on failure)
+        if: failure()
+        run: |
+          if [ -d "${INSTALL_DIR}" ]; then
+            cd "${INSTALL_DIR}"
+            docker compose logs --tail=100
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ -d "${INSTALL_DIR}" ]; then
+            cd "${INSTALL_DIR}"
+            docker compose logs --tail=100
+            docker compose down -v
+          fi

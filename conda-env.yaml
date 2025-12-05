@@ -7,23 +7,5 @@ dependencies:
   - mysql-connector-python
   - coreutils
   - pip
-#  - pip:
-#      - dotenv
-#      - flask-admin[sqlalchemy-with-utils,export]
-#      - flask-caching
-#      - flask-cors
-#      - flask-limiter
-#      - flask-login
-#      - marshmallow
-#      - marshmallow-sqlalchemy
-#      - pipdeptree
-#      - pymysql
-#      - pytest
-#      - pytest-benchmark
-#      - pytest-cov
-#      - pytest-sugar
-#      - pytest-timeout
-#      - pytest-xdist
-#      - rich
-#      - sqlalchemy
-#      - tqdm
+  - pip:
+      - pipdeptree

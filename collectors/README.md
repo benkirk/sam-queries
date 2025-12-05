@@ -57,16 +57,19 @@ cp .env.example .env
 collectors/
 ├── README.md                    # This file
 ├── requirements.txt             # Python dependencies
+├── pyproject.toml               # Python project configuration
 ├── .env                         # API credentials (create from .env.example)
 ├── .env.example                 # Credential template
 ├── run_collectors.sh            # Simple while-loop runner
 │
 ├── lib/                         # Shared library (90% code reuse)
+│   ├── base_collector.py        # Abstract base collector class
 │   ├── pbs_client.py            # PBS command execution
 │   ├── api_client.py            # SAM API client with retry logic
 │   ├── config.py                # Configuration management
 │   ├── logging_utils.py         # Logging setup
 │   ├── ssh_utils.py             # SSH operations for login nodes
+│   ├── parallel_ssh.py          # Parallel SSH execution
 │   ├── exceptions.py            # Custom exceptions
 │   └── parsers/                 # Data parsing modules
 │       ├── nodes.py             # Intelligent node type classification
@@ -82,12 +85,17 @@ collectors/
 │   ├── collector.py             # Main executable
 │   └── config.yaml              # Casper configuration
 │
+├── jupyterhub/                  # JupyterHub-specific
+│   ├── collector.py             # Main executable
+│   └── config.yaml              # JupyterHub configuration
+│
 ├── logs/                        # Log files (created automatically)
 │   ├── derecho.log
 │   └── casper.log
 │
 └── docs/                        # Documentation
-    └── PBS_COLLECTORS_PLAN.md  # Original implementation plan
+    ├── PBS_COLLECTORS_PLAN.md   # Original implementation plan
+    └── PBS_COLLECTORS_ADD_RESERVATIONS_PLAN.md # Reservation tracking plan
 ```
 
 ## Collector Output

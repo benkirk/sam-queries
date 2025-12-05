@@ -1,17 +1,15 @@
 # full bash login shell requied for our complex make rules
 #SHELL := /bin/bash --login
 
+COMPOSE_FILE := ../../compose.yaml
 
 .PHONY: all docker clone clean bootstrap db-up db-test db-down db-restart
 
-all: docker clone
-
-docker:
-	@./docker_start.sh
+all: clone
 
 clone:
 	@python3 bootstrap_clone.py
-	@docker compose -f ../../compose.yaml exec -T mysql  sh -c 'mysql -uroot -proot -e "USE sam; TRUNCATE TABLE api_credentials;"'
+	@docker compose -f $(COMPOSE_FILE) exec -T mysql  sh -c 'mysql -uroot -proot -e "USE sam; TRUNCATE TABLE api_credentials;"'
 
 clean:
 	rm -rf dump/
@@ -20,7 +18,7 @@ clean:
 backups/%.sql.xz:
 	mkdir -p $$(dirname $@)
 	rm -f $@
-	docker compose -f ../../compose.yaml exec -T mysql sh -c 'exec mysqldump --all-databases --lock-all-tables --triggers --routines --events -uroot -p"root"' | xz > $@
+	docker compose -f $(COMPOSE_FILE) exec -T mysql sh -c 'exec mysqldump --all-databases --lock-all-tables --triggers --routines --events -uroot -p"root"' | xz > $@
 
 bootstrap:
 	@echo "Starting clean: removing container and volume (persistent storage)..."
@@ -35,9 +33,9 @@ bootstrap:
 	@$(MAKE) backups/sam-obfuscated.sql.xz
 
 db-up:
-	docker compose -f docker-compose.yaml -f docker-compose.ci.yaml up -d
+	docker compose -f $(COMPOSE_FILE) up -d mysql
 	@echo "Waiting for healthy status..."
-	@timeout 300 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 5; done'
+	@timeout 300 bash -c 'until docker compose -f $(COMPOSE_FILE) ps | grep -q "healthy"; do sleep 5; done'
 	@echo "✅ MySQL ready!"
 
 db-test: db-up
@@ -45,7 +43,7 @@ db-test: db-up
 	source ../../etc/config_env.sh && python3 test_username_anonymization.py
 
 db-down:
-	docker compose -f docker-compose.yaml -f docker-compose.ci.yaml down -v
+	docker compose -f $(COMPOSE_FILE) down -v
 
 db-restart:
 	@$(MAKE) db-down

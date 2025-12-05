@@ -58,8 +58,8 @@ jobs:
 
       - name: Build and start services
         run: |
-          docker compose -f compose.yaml -f containers/rebuild-db.yaml build
-          docker compose -f compose.yaml -f containers/rebuild-db.yaml up -d
+          docker compose build
+          docker compose up -d
 
       - name: Wait for services to be healthy
         run: |
@@ -97,4 +97,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker compose -f compose.yaml -f containers/rebuild-db.yaml down -v
+          docker compose down -v

@@ -27,10 +27,9 @@ distclean:
 	[ -d $@ ] && mv $@ $@.old && rm -rf $@.old &
 	$(config-env)
 	conda env create --file $< --prefix $@
-	conda activate ./$@ && conda list
-	conda activate ./$@ && conda-tree deptree --small 2>/dev/null || true
-	conda activate ./$@ && pipdeptree --all 2>/dev/null || true
+	conda activate ./$@
 	pip install -e ".[test]"
+	pipdeptree --all 2>/dev/null || true
 
 solve-%: %.yaml
 	$(config_env) && conda env create --file $< --prefix $@ --dry-run
@@ -50,10 +49,3 @@ fixperms:
 check:
 	$(config_env) && source etc/config_env.sh && python3 tests/tools/orm_inventory.py
 	$(config_env) && source etc/config_env.sh && python3 -m pytest -v
-
-# this rule invokes emacs on each source file to remove trailing whitespace.
-trim-whitepace:
-	for file in $$(git ls-files | grep -v "sql/queries/from_dave/"); do \
-          echo $$file ; \
-          echo emacs -batch $$file --eval '(delete-trailing-whitespace)' -f save-buffer 2>/dev/null ; \
-        done
