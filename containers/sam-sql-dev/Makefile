@@ -15,7 +15,7 @@ clean:
 	rm -rf dump/
 	docker rm -f local-sam-mysql || true
 
-backups/%.sql.xz:
+%.sql.xz:
 	mkdir -p $$(dirname $@)
 	rm -f $@
 	docker compose -f $(COMPOSE_FILE) exec -T mysql sh -c 'exec mysqldump --all-databases --lock-all-tables --triggers --routines --events -uroot -p"root"' | xz > $@
