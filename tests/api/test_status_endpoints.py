@@ -1,11 +1,27 @@
 """
 Tests for System Status API endpoints with simplified schema-based POST.
 
-NOTE: These tests are currently skipped due to Flask-SQLAlchemy database binding
-complexity with test databases. The core database functionality is tested in
-integration/test_status_flow.py using direct session access.
+CURRENTLY SKIPPED: These tests require refactoring to properly handle Flask-SQLAlchemy
+session management in test context.
 
-TODO: Fix Flask-SQLAlchemy SQLALCHEMY_BINDS configuration for test databases.
+ISSUE: These tests mix two incompatible patterns:
+1. HTTP requests to Flask app (which uses Flask-SQLAlchemy's db.session)
+2. Direct database queries via status_session fixture (separate transaction)
+
+This creates conflicts where:
+- Flask app commits to database via db.session
+- Test fixture tries to rollback via status_session
+- The two sessions are unaware of each other's transactions
+
+SOLUTIONS (choose one):
+1. **Pure HTTP testing**: Remove all direct DB access, verify only via GET endpoints
+2. **Flask app context**: Use Flask's app context and db.session within tests
+3. **Disable transaction rollback**: Let tests commit and clean up manually (not ideal)
+
+WORKAROUND: Core database functionality is tested in integration/test_status_flow.py
+using direct session access without the Flask layer.
+
+TODO: Refactor to use solution #1 (pure HTTP testing) for proper isolation.
 """
 
 import pytest
@@ -28,12 +44,12 @@ from system_status import (
 # ============================================================================
 # POST Endpoint Tests - Simplified with Nested Schema Loading
 # ============================================================================
+pytestmark = pytest.mark.skip(reason="Flask-SQLAlchemy session conflicts - requires refactoring")
 
-@pytest.mark.skip(reason="Flask-SQLAlchemy database binding issue with test databases")
 class TestDerechoPost:
     """Tests for POST /api/v1/status/derecho endpoint with nested loading."""
 
-    def test_post_derecho_minimal(self, auth_client, status_session):
+    def test_post_derecho_minimal(self, auth_client):
         """Test posting minimal Derecho status data."""
         data = {
             'cpu_nodes_total': 100,
@@ -71,7 +87,7 @@ class TestDerechoPost:
         assert json_data['queue_ids'] == []
         assert json_data['filesystem_ids'] == []
 
-    def test_post_derecho_with_nested_objects(self, auth_client, status_session):
+    def test_post_derecho_with_nested_objects(self, auth_client):
         """Test posting Derecho status with all nested object types."""
         data = {
             'cpu_nodes_total': 100,
@@ -128,7 +144,7 @@ class TestDerechoPost:
         assert len(json_data['queue_ids']) == 1
         assert len(json_data['filesystem_ids']) == 1
 
-    def test_post_derecho_missing_required_field(self, auth_client, status_session):
+    def test_post_derecho_missing_required_field(self, auth_client):
         """Test posting Derecho status with missing required field."""
         data = {
             'cpu_nodes_total': 100,
@@ -142,11 +158,10 @@ class TestDerechoPost:
         assert response.status_code == 500  # Schema validation error
 
 
-@pytest.mark.skip(reason="Flask-SQLAlchemy database binding issue with test databases")
 class TestCasperPost:
     """Tests for POST /api/v1/status/casper endpoint with nested loading."""
 
-    def test_post_casper_minimal(self, auth_client, status_session):
+    def test_post_casper_minimal(self, auth_client):
         """Test posting minimal Casper status data."""
         data = {
             'cpu_nodes_total': 151,
@@ -187,7 +202,7 @@ class TestCasperPost:
         assert 'status_id' in json_data
         assert 'timestamp' in json_data
 
-    def test_post_casper_with_nested_objects(self, auth_client, status_session):
+    def test_post_casper_with_nested_objects(self, auth_client):
         """Test posting Casper status with all nested object types."""
         # Clean up any existing Casper data from previous tests
         status_session.query(LoginNodeStatus).filter_by(system_name='casper').delete()
@@ -271,12 +286,11 @@ class TestCasperPost:
 # GET Endpoint Tests - Verify Nested Objects Are Retrieved
 # ============================================================================
 
-@pytest.mark.skip(reason="Flask-SQLAlchemy database binding issue with test databases")
 class TestDerechoGet:
     """Tests for GET /api/v1/status/derecho/latest endpoint."""
 
     @pytest.fixture(autouse=True)
-    def setup_derecho_data(self, status_session):
+    def setup_derecho_data(self):
         """Create test data for Derecho GET tests."""
         timestamp = datetime.now()
 
@@ -339,7 +353,7 @@ class TestDerechoGet:
         assert data['login_nodes'][0]['node_name'] == 'derecho1'
         assert data['login_nodes'][0]['user_count'] == 11
 
-    def test_get_derecho_no_data(self, auth_client, status_session):
+    def test_get_derecho_no_data(self, auth_client):
         """Test retrieving Derecho status when no data exists."""
         # Clear all data
         status_session.query(LoginNodeStatus).delete()
@@ -353,12 +367,11 @@ class TestDerechoGet:
         assert 'message' in data
 
 
-@pytest.mark.skip(reason="Flask-SQLAlchemy database binding issue with test databases")
 class TestCasperGet:
     """Tests for GET /api/v1/status/casper/latest endpoint."""
 
     @pytest.fixture(autouse=True)
-    def setup_casper_data(self, status_session):
+    def setup_casper_data(self):
         """Create test data for Casper GET tests."""
         # Clear existing data first
         status_session.query(LoginNodeStatus).delete()

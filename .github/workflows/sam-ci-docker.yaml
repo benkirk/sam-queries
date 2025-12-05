@@ -98,8 +98,9 @@ jobs:
           "
 
       - name: Run pytest with coverage
+        id: pytest
         run: |
-          docker compose exec -T webapp bash -c "cd /app && pytest tests/ --cov=src --cov-report=term-missing --cov-report=html"
+          docker compose exec -T webapp bash -c "cd /app && pytest tests/ --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=80"
 
       - name: Copy coverage report from container
         if: always()
@@ -119,6 +120,13 @@ jobs:
         run: |
           echo "📊 Coverage report available in GitHub Actions artifacts"
           echo "Download 'coverage-report-html' to view detailed line-by-line coverage"
+          echo ""
+          echo "ℹ️  Coverage threshold: 80% minimum required"
+          if [ "${{ steps.pytest.outcome }}" == "failure" ]; then
+            echo "❌ Coverage threshold not met or tests failed"
+          else
+            echo "✅ Coverage threshold met and all tests passed"
+          fi
 
       - name: Cleanup
         if: always()

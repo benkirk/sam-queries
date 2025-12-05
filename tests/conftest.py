@@ -194,17 +194,26 @@ def app(test_databases):
 
     Uses session scope so the app is created once per test session.
     Configures app for testing mode with CSRF disabled and test database for system_status.
-    STATUS_DB_NAME is set at module level, so no need to override here.
+    Rebuilds system_status connection string to use test database.
     """
     import os
     from webapp.run import create_app
+    import system_status.session
 
     # Configure for testing
     os.environ['FLASK_ENV'] = 'testing'
 
+    # CRITICAL: Reinitialize system_status connection string with test database
+    # The module may have been imported before STATUS_DB_NAME was set
+    system_status.session.init_status_db_defaults()
+
     app = create_app()
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False
+
+    # Verify the app is using test database
+    assert 'system_status_test' in app.config['SQLALCHEMY_BINDS']['system_status'], \
+        f"Flask app not using test database: {app.config['SQLALCHEMY_BINDS']['system_status']}"
 
     return app
 
