@@ -29,21 +29,21 @@
                 <div class="metric-card">
                     <h6>Running Jobs</h6>
                     <div class="value text-success">{{ latest_status.running_jobs }}</div>
-                    <small class="text-muted">{{ latest_status.cores_allocated }} cores</small>
+                    <small class="text-muted">{{ '{:,}'.format(latest_status.cores_allocated) }} cores</small>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="metric-card">
                     <h6>Pending Jobs</h6>
                     <div class="value text-warning">{{ latest_status.pending_jobs }}</div>
-                    <small class="text-muted">{{ latest_status.cores_pending }} cores</small>
+                    <small class="text-muted">{{ '{:,}'.format(latest_status.cores_pending) }} cores</small>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="metric-card">
                     <h6>Held Jobs</h6>
                     <div class="value text-danger">{{ latest_status.held_jobs }}</div>
-                    <small class="text-muted">{{ latest_status.cores_held }} cores</small>
+                    <small class="text-muted">{{ '{:,}'.format(latest_status.cores_held) }} cores</small>
                 </div>
             </div>
             <div class="col-md-3">
