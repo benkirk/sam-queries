@@ -1344,7 +1344,7 @@ def get_user_breakdown_for_project(session, projcode: str,
         ...     resource='Derecho'
         ... )
         >>> for user in users:
-        ...     print(f"{user['username']}: {user['jobs']} jobs, {user['charges']:.2f} charges")
+        ...     print(f"{user['username']}: {user['jobs']} jobs, {user['charges']} charges")
     """
     from sqlalchemy import func as sql_func
 
@@ -1381,6 +1381,143 @@ def get_user_breakdown_for_project(session, projcode: str,
         }
         for row in results
     ]
+
+
+def get_raw_charge_summaries_for_accounts(
+    session: Session,
+    account_ids: List[int],
+    start_date: datetime,
+    end_date: datetime,
+    resource_type: Optional[str] = None
+) -> Dict[str, List[any]]:
+    """
+    Get raw charge summaries for a list of accounts across all charge types.
+
+    Args:
+        session: SQLAlchemy session.
+        account_ids: List of account IDs to query.
+        start_date: Start date for the charge data.
+        end_date: End date for the charge data.
+        resource_type: Optional filter by resource type ('HPC', 'DAV', 'DISK', 'ARCHIVE').
+                       If None, all applicable resource types are included.
+
+    Returns:
+        A dictionary where keys are charge type strings (comp, dav, disk, archive)
+        and values are lists of raw summary objects.
+    """
+    charge_data = {
+        'comp': [],
+        'dav': [],
+        'disk': [],
+        'archive': [],
+    }
+
+    charge_models = {
+        'comp': CompChargeSummary,
+        'dav': DavChargeSummary,
+        'disk': DiskChargeSummary,
+        'archive': ArchiveChargeSummary,
+    }
+
+    resource_type_map = {
+        'HPC': ['comp'],
+        'DAV': ['dav'],
+        'DISK': ['disk'],
+        'ARCHIVE': ['archive'],
+        None: ['comp', 'dav', 'disk', 'archive']
+    }
+
+    charge_types_to_query = resource_type_map.get(resource_type, [])
+    
+    # For HPC, DAV, or None, include comp charges. This logic needs to be careful.
+    # If resource_type is DAV, it should only include DavChargeSummary
+    if resource_type == 'DAV':
+        charge_types_to_query = ['dav']
+    # If resource_type is HPC, it should only include CompChargeSummary
+    elif resource_type == 'HPC':
+        charge_types_to_query = ['comp']
+
+
+    for charge_type_key, model in charge_models.items():
+        if charge_type_key in charge_types_to_query:
+            data = session.query(model).filter(
+                model.account_id.in_(account_ids),
+                model.activity_date >= start_date,
+                model.activity_date <= end_date
+            ).all()
+            charge_data[charge_type_key] = data
+
+    return charge_data
+
+
+def get_daily_charge_trends_for_accounts(
+    session: Session,
+    account_ids: List[int],
+    start_date: datetime,
+    end_date: datetime,
+    resource_type: Optional[str] = None
+) -> Dict[str, Dict[str, float]]:
+    """
+    Get daily charge trends for a list of accounts across all charge types.
+
+    Args:
+        session: SQLAlchemy session.
+        account_ids: List of account IDs to query.
+        start_date: Start date for the charge data.
+        end_date: End date for the charge data.
+        resource_type: Optional filter by resource type ('HPC', 'DAV', 'DISK', 'ARCHIVE').
+                       If None, all applicable resource types are included.
+
+    Returns:
+        A dictionary where keys are date strings (YYYY-MM-DD) and values are
+        dictionaries containing charge totals for each type (comp, dav, disk, archive).
+        Example: {'2024-01-01': {'comp': 100.0, 'dav': 10.0, 'disk': 0.0, 'archive': 0.0}}
+    """
+    daily_data = {}
+
+    charge_models = {
+        'comp': CompChargeSummary,
+        'dav': DavChargeSummary,
+        'disk': DiskChargeSummary,
+        'archive': ArchiveChargeSummary,
+    }
+
+    resource_type_map = {
+        'HPC': ['comp'],  # HPC charges are covered by comp
+        'DAV': ['comp', 'dav'], # dav charges are their own, and also count under general comp charges
+        'DISK': ['disk'],
+        'ARCHIVE': ['archive'],
+        None: ['comp', 'dav', 'disk', 'archive'] # Default to all
+    }
+
+    # Determine which charge types to query based on resource_type filter
+    charge_types_to_query = resource_type_map.get(resource_type, [])
+    # For HPC, DAV, or None, include comp charges.
+    # If resource_type is DAV, it should only include CompChargeSummary and DavChargeSummary
+    if resource_type == 'DAV':
+        charge_types_to_query = ['comp', 'dav']
+    # If resource_type is HPC, it should only include CompChargeSummary
+    elif resource_type == 'HPC':
+        charge_types_to_query = ['comp']
+
+    for charge_type_key, model in charge_models.items():
+        if charge_type_key in charge_types_to_query:
+            data = session.query(
+                model.activity_date,
+                func.sum(model.charges).label('total_charges')
+            ).filter(
+                model.account_id.in_(account_ids),
+                model.activity_date >= start_date,
+                model.activity_date <= end_date
+            ).group_by(model.activity_date).all()
+
+            for date, charges in data:
+                date_str = date.strftime('%Y-%m-%d')
+                if date_str not in daily_data:
+                    daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+                daily_data[date_str][charge_type_key] += float(charges or 0.0) # Use += for multiple types contributing to 'comp'
+
+    return daily_data
 
 
 # ============================================================================

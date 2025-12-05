@@ -15,7 +15,6 @@ Usage:
     disk_data = DiskChargeSummarySchema(many=True).dump(disk_charges)
 """
 
-from marshmallow import fields
 from . import BaseSchema
 from sam.summaries.comp_summaries import CompChargeSummary
 from sam.summaries.dav_summaries import DavChargeSummary
@@ -23,79 +22,61 @@ from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
 
 
-class CompChargeSummarySchema(BaseSchema):
+class ChargeSummaryBaseSchema(BaseSchema):
+    """
+    Base schema for all charge summaries.
+    """
+    class Meta(BaseSchema.Meta):
+        fields = ('activity_date', 'account_id', 'user_id', 'charges')
+
+
+class ComputeChargeSummaryBaseSchema(ChargeSummaryBaseSchema):
+    """
+    Base schema for computational (HPC/DAV) charge summaries.
+    """
+    class Meta(ChargeSummaryBaseSchema.Meta):
+        fields = ChargeSummaryBaseSchema.Meta.fields + ('num_jobs', 'core_hours')
+
+
+class StorageChargeSummaryBaseSchema(ChargeSummaryBaseSchema):
+    """
+    Base schema for storage (Disk/Archive) charge summaries.
+    """
+    class Meta(ChargeSummaryBaseSchema.Meta):
+        fields = ChargeSummaryBaseSchema.Meta.fields + ('number_of_files', 'bytes', 'terabyte_years')
+
+
+class CompChargeSummarySchema(ComputeChargeSummaryBaseSchema):
     """
     Schema for HPC computational charge summaries.
-
-    Daily aggregated charges for HPC resources (Derecho, etc.).
     """
-    class Meta(BaseSchema.Meta):
+    class Meta(ComputeChargeSummaryBaseSchema.Meta):
         model = CompChargeSummary
-        fields = (
-            'charge_summary_id',
-            'activity_date',
-            'account_id',
-            'user_id',
-            'num_jobs',
-            'core_hours',
-            'charges',
-        )
+        fields = ComputeChargeSummaryBaseSchema.Meta.fields + ('charge_summary_id',)
 
 
-class DavChargeSummarySchema(BaseSchema):
+class DavChargeSummarySchema(ComputeChargeSummaryBaseSchema):
     """
     Schema for DAV (Data Analysis and Visualization) charge summaries.
-
-    Daily aggregated charges for DAV resources (Casper, etc.).
     """
-    class Meta(BaseSchema.Meta):
+    class Meta(ComputeChargeSummaryBaseSchema.Meta):
         model = DavChargeSummary
-        fields = (
-            'dav_charge_summary_id',
-            'activity_date',
-            'account_id',
-            'user_id',
-            'num_jobs',
-            'core_hours',
-            'charges',
-        )
+        fields = ComputeChargeSummaryBaseSchema.Meta.fields + ('dav_charge_summary_id',)
 
 
-class DiskChargeSummarySchema(BaseSchema):
+class DiskChargeSummarySchema(StorageChargeSummaryBaseSchema):
     """
     Schema for disk storage charge summaries.
-
-    Daily aggregated charges for DISK resources (Stratus, Campaign Store, GLADE).
     """
-    class Meta(BaseSchema.Meta):
+    class Meta(StorageChargeSummaryBaseSchema.Meta):
         model = DiskChargeSummary
-        fields = (
-            'disk_charge_summary_id',
-            'activity_date',
-            'account_id',
-            'user_id',
-            'number_of_files',
-            'bytes',
-            'terabyte_years',
-            'charges',
-        )
+        fields = StorageChargeSummaryBaseSchema.Meta.fields + ('disk_charge_summary_id',)
 
 
-class ArchiveChargeSummarySchema(BaseSchema):
+class ArchiveChargeSummarySchema(StorageChargeSummaryBaseSchema):
     """
     Schema for archive/HPSS charge summaries.
-
-    Daily aggregated charges for ARCHIVE resources (HPSS).
     """
-    class Meta(BaseSchema.Meta):
+    class Meta(StorageChargeSummaryBaseSchema.Meta):
         model = ArchiveChargeSummary
-        fields = (
-            'archive_charge_summary_id',
-            'activity_date',
-            'account_id',
-            'user_id',
-            'number_of_files',
-            'bytes',
-            'terabyte_years',
-            'charges',
-        )
+        fields = StorageChargeSummaryBaseSchema.Meta.fields + ('archive_charge_summary_id',)
