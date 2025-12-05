@@ -93,7 +93,7 @@ def get_project_or_404(session, projcode: str) -> Tuple[Optional[Any], Optional[
         if error:
             return error
     """
-    from sam.queries import find_project_by_code
+    from sam.queries.lookups import find_project_by_code
 
     project = find_project_by_code(session, projcode)
     if not project:
@@ -118,7 +118,7 @@ def get_user_or_404(session, username: str) -> Tuple[Optional[Any], Optional[Tup
         if error:
             return error
     """
-    from sam.queries import find_user_by_username
+    from sam.queries.lookups import find_user_by_username
 
     user = find_user_by_username(session, username)
     if not user:

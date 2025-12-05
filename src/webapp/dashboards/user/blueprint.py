@@ -12,11 +12,11 @@ from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
 
 from webapp.extensions import db
-from sam.queries import (
-    get_user_dashboard_data, get_resource_detail_data, get_users_on_project,
-    get_user_breakdown_for_project, get_jobs_for_project, find_project_by_code,
-    get_project_dashboard_data, search_projects_by_code_or_title
-)
+from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
+from sam.queries.users import get_users_on_project
+from sam.queries.charges import get_jobs_for_project, get_user_breakdown_for_project
+from sam.queries.lookups import find_project_by_code
+from sam.queries.projects import search_projects_by_code_or_title
 from sam.projects.projects import Project
 from webapp.auth.models import AuthUser
 from sam.core.users import User
@@ -240,8 +240,6 @@ def tree_fragment(projcode):
     Returns:
         HTML tree structure (no full page layout)
     """
-    from sam.queries import find_project_by_code
-
     project = find_project_by_code(db.session, projcode)
 
     if not project:
@@ -303,7 +301,6 @@ def jobs_fragment(projcode, resource):
     per_page = 50
 
     # Get all jobs to calculate total count
-    from sam.queries import get_jobs_for_project
     all_jobs = get_jobs_for_project(
         db.session,
         projcode,

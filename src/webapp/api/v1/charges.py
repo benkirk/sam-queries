@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 from sam.summaries.archive_summaries import *
 from sam.integration.xras_views import *
 
-from sam.queries import get_daily_charge_trends_for_accounts, get_raw_charge_summaries_for_accounts
+from sam.queries.charges import get_daily_charge_trends_for_accounts, get_raw_charge_summaries_for_accounts
 
 bp = Blueprint('api_charges', __name__)
 register_error_handlers(bp)

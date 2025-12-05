@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from tqdm import tqdm
 
 from sam import Project, Allocation, User, Facility
-from sam.queries import get_projects_by_allocation_end_date, get_projects_with_expired_allocations
+from sam.queries.expirations import get_projects_by_allocation_end_date, get_projects_with_expired_allocations
 
 
 class ProjectExpirationView(BaseView):

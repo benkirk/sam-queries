@@ -13,7 +13,7 @@ Available providers:
 from abc import ABC, abstractmethod
 from typing import Optional
 from sam.core.users import User
-from sam.queries import find_user_by_username
+from sam.queries.lookups import find_user_by_username
 
 
 class AuthProvider(ABC):

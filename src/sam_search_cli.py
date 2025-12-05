@@ -21,7 +21,7 @@ from rich.tree import Tree
 
 from sam import User, Project
 # Import specific queries used in the original script
-from sam.queries import (
+from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
     get_projects_with_expired_allocations
 )
