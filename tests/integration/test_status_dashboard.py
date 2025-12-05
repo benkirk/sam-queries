@@ -13,26 +13,10 @@ from datetime import datetime, timedelta
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from system_status import (
-    create_status_engine, get_session,
     DerechoStatus,
     CasperStatus, CasperNodeTypeStatus,
     QueueStatus, LoginNodeStatus
 )
-
-
-@pytest.fixture(scope='module')
-def status_session():
-    """Create a system_status database session for testing."""
-    engine, SessionLocal = create_status_engine()
-    with get_session(SessionLocal) as session:
-        # Clean up any existing test data
-        session.query(LoginNodeStatus).delete()
-        session.query(QueueStatus).delete()
-        session.query(CasperNodeTypeStatus).delete()
-        session.query(DerechoStatus).delete()
-        session.query(CasperStatus).delete()
-        session.commit()
-        yield session
 
 
 def seed_data(session):
