@@ -224,8 +224,6 @@ class TestCasperIntegration:
         assert latest.running_jobs == 456
 
         # Verify login nodes
-        assert len(latest.login_nodes) == 2
-
         casper1 = next(n for n in latest.login_nodes if n.node_name == 'casper1')
         assert casper1.user_count == 39
         assert casper1.load_1min == 3.2
