@@ -18,8 +18,8 @@ fi
 # Config
 # --------------------------------------------
 REPO_URL="https://github.com/benkirk/sam-queries.git"
-REPO_BRANCH="${REPO_BRANCH:-self-install}"
-TARGET_DIR="${SAMQ_HOME:-$HOME/codes3/sam-queries-foo}"
+REPO_BRANCH="${REPO_BRANCH:-main}"
+TARGET_DIR="${SAMQ_HOME:-${HOME}/codes/project_samuel/${REPO_BRANCH}}"
 
 # --------------------------------------------
 # Command-line arguments
