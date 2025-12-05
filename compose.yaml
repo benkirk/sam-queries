@@ -19,6 +19,10 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      - DISABLE_AUTH=1
+      - DEV_AUTO_LOGIN_USER=benkirk
+      - FLASK_DEBUG=1
+
     # Important: watch the current directory, re-syncing as needed based on source changes
     develop:
       watch:
@@ -34,7 +38,7 @@ services:
     healthcheck:
       test: |
         python -c "import sam; import sys; sys.exit(0)"
-        /code/bin/sam_search user csgteam > /dev/null 2>&1
+        python3 src/sam_search.py user csgteam > /dev/null 2>&1
       interval: 15s
       timeout: 5s
       retries: 10
