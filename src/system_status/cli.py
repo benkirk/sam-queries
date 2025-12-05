@@ -143,6 +143,7 @@ class SystemStatusCLI:
 
         self._display_header("JupyterHub", status.timestamp)
 
+        # Service Status & Users
         status_text = Text("● Online", style="green") if status.available else Text("● Offline", style="red")
         
         table = Table(title="JupyterHub Service", title_style="bold magenta", show_header=False)
@@ -152,8 +153,72 @@ class SystemStatusCLI:
         table.add_row("Active Users", str(status.active_users))
         table.add_row("Active Sessions", str(status.active_sessions))
         self.console.print(table)
+        
+        # Job Breakdown
+        job_table = Table(title="Job Breakdown", title_style="bold magenta")
+        job_table.add_column("Type", style="cyan")
+        job_table.add_column("Count", justify="right")
+        
+        job_table.add_row("Casper Login Jobs", str(status.casper_login_jobs or 0))
+        job_table.add_row("Casper Batch Jobs", str(status.casper_batch_jobs or 0))
+        job_table.add_row("Derecho Batch Jobs", str(status.derecho_batch_jobs or 0))
+        job_table.add_row("Broken Jobs", f"[yellow]{status.jobs_suspended or 0}[/yellow]")
+        self.console.print(job_table)
 
-        self._display_utilization(status, show_gpus=False)
+        # Node Status Summary
+        node_summary = Table(title="Node Status Summary", title_style="bold magenta")
+        node_summary.add_column("State", style="cyan")
+        node_summary.add_column("Count", justify="right")
+        
+        node_summary.add_row("Free Nodes", f"[green]{status.nodes_free or 0}[/green]")
+        node_summary.add_row("Busy Nodes", f"[yellow]{status.nodes_busy or 0}[/yellow]")
+        node_summary.add_row("Down Nodes", f"[red]{status.nodes_down or 0}[/red]")
+        self.console.print(node_summary)
+
+        # Individual Node List
+        if status.nodes:
+            self.console.print("\n[bold magenta]Casper JupyterHub Login Session Nodes[/bold magenta]")
+            node_table = Table(show_header=True, box=None)
+            node_table.add_column("Node", style="cyan")
+            node_table.add_column("State")
+            node_table.add_column("Jobs", justify="right")
+            node_table.add_column("CPU Use", justify="right")
+            node_table.add_column("Mem Use", justify="right")
+            
+            # Sort by name
+            sorted_nodes = sorted(status.nodes, key=lambda x: x.get('name', ''))
+            
+            for node in sorted_nodes:
+                name = node.get('name', 'N/A')
+                state = node.get('state', 'unknown')
+                
+                # State styling
+                if state == 'free':
+                    state_style = "green"
+                elif state == 'job-busy':
+                    state_style = "yellow"
+                else:
+                    state_style = "red"
+                
+                jobs = str(node.get('jobs_running', 0))
+                
+                # CPU
+                cpus_used = node.get('cpus_used', 0)
+                cpus_total = node.get('cpus_total', 0)
+                
+                # Mem
+                mem_used = node.get('memory_used_gb', 0)
+                mem_total = node.get('memory_total_gb', 0)
+                
+                node_table.add_row(
+                    name,
+                    Text(state, style=state_style),
+                    jobs,
+                    f"{cpus_used}/{cpus_total}",
+                    f"{mem_used}/{mem_total}G"
+                )
+            self.console.print(node_table)
+
         return 0
 
     # ========================================================================
