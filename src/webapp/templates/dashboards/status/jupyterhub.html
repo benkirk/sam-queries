@@ -51,8 +51,31 @@
             </div>
         </div>
 
-        <!-- Casper JupyterHub Login Session Nodes -->
         {% if jupyterhub_status.nodes and jupyterhub_status.nodes|length > 0 %}
+        <!-- Node Status -->
+        <h6 class="mb-3 mt-4"><i class="fas fa-server"></i> Node Status</h6>
+        <div class="row">
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>Free Nodes</h6>
+                    <div class="value text-success">{{ jupyterhub_status.nodes_free or 0 }}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>Busy Nodes</h6>
+                    <div class="value text-warning">{{ jupyterhub_status.nodes_busy or 0 }}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <h6>Down Nodes</h6>
+                    <div class="value text-danger">{{ jupyterhub_status.nodes_down or 0 }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Casper JupyterHub Login Session Nodes -->
         <h6 class="mb-3 mt-4"><i class="fas fa-list"></i> Casper JupyterHub Login Session Nodes</h6>
         <div class="table-responsive">
             <table class="table table-sm table-striped">
@@ -93,29 +116,6 @@
                     {% endfor %}
                 </tbody>
             </table>
-        </div>
-
-        <!-- Node Status -->
-        <h6 class="mb-3 mt-4"><i class="fas fa-server"></i> Node Status</h6>
-        <div class="row">
-            <div class="col-md-4">
-                <div class="metric-card">
-                    <h6>Free Nodes</h6>
-                    <div class="value text-success">{{ jupyterhub_status.nodes_free or 0 }}</div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="metric-card">
-                    <h6>Busy Nodes</h6>
-                    <div class="value text-warning">{{ jupyterhub_status.nodes_busy or 0 }}</div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="metric-card">
-                    <h6>Down Nodes</h6>
-                    <div class="value text-danger">{{ jupyterhub_status.nodes_down or 0 }}</div>
-                </div>
-            </div>
         </div>
         {% endif %}
     </div>
