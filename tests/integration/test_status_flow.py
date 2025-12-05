@@ -27,6 +27,10 @@ class TestDerechoIntegration:
 
     def test_create_and_query_derecho_with_login_nodes(self, status_session):
         """Test creating Derecho status with login nodes and querying it back."""
+        # Cleanup any existing data from other tests to ensure 'latest' is ours
+        status_session.query(DerechoStatus).delete()
+        status_session.flush()
+
         timestamp = datetime(2025, 1, 25, 14, 30, 0)
 
         # Create main Derecho status
@@ -140,6 +144,10 @@ class TestCasperIntegration:
 
     def test_create_and_query_casper_with_login_nodes(self, status_session):
         """Test creating Casper status with login nodes and querying it back."""
+        # Cleanup any existing data from other tests to ensure 'latest' is ours
+        status_session.query(CasperStatus).delete()
+        status_session.flush()
+
         timestamp = datetime(2025, 1, 25, 14, 30, 0)
 
         # Create main Casper status
@@ -224,6 +232,8 @@ class TestCasperIntegration:
         assert latest.running_jobs == 456
 
         # Verify login nodes
+        assert len(latest.login_nodes) == 2
+
         casper1 = next(n for n in latest.login_nodes if n.node_name == 'casper1')
         assert casper1.user_count == 39
         assert casper1.load_1min == 3.2
