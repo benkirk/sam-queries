@@ -1,7 +1,7 @@
 """
 Test Allocation, Account, Resource, and Charge schemas.
 
-Tests the complex schemas with usage calculations that match sam_search.py output.
+Tests the complex schemas with usage calculations that match sam_search_cli.py output.
 """
 
 import pytest
@@ -305,11 +305,11 @@ class TestChargeSummarySchemas:
 
 
 class TestSchemaIntegration:
-    """Test schema integration matching sam_search.py output."""
+    """Test schema integration matching sam_search_cli.py output."""
 
     def test_project_allocation_usage_matches_cli(self, session, test_project):
         """
-        Test that AllocationWithUsageSchema output matches sam_search.py format.
+        Test that AllocationWithUsageSchema output matches sam_search_cli.py format.
 
         This validates that the API will return the same data structure as the CLI.
         """
@@ -342,9 +342,9 @@ class TestSchemaIntegration:
 
         # Should have at least one allocation with usage
         if allocations_with_usage:
-            # Each allocation should have the key fields from sam_search.py output
+            # Each allocation should have the key fields from sam_search_cli.py output
             for alloc in allocations_with_usage:
-                # Matches sam_search.py verbose output structure
+                # Matches sam_search_cli.py verbose output structure
                 assert 'allocation_id' in alloc
                 assert 'amount' in alloc  # allocated
                 assert 'used' in alloc
