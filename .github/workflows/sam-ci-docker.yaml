@@ -100,12 +100,12 @@ jobs:
       - name: Run pytest with coverage
         id: pytest
         run: |
-          docker compose exec -T webapp bash -c "cd /app && pytest tests/ --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=80"
+          docker compose exec -T webapp bash -c "cd /code && pytest tests/ --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=80"
 
       - name: Copy coverage report from container
         if: always()
         run: |
-          docker compose cp webapp:/app/htmlcov ./htmlcov || echo "No coverage report generated"
+          docker compose cp webapp:/code/htmlcov ./htmlcov || echo "No coverage report generated"
 
       - name: Upload coverage HTML report
         uses: actions/upload-artifact@v4
