@@ -1,18 +1,3 @@
-# FROM condaforge/miniforge3
-
-# COPY conda-env.yaml .
-# RUN pwd \
-#     && conda update --name base -c conda-forge conda \
-#     && conda env update --name base --file conda-env.yaml \
-#     && conda clean --all -f -y
-
-# # RUN pwd \
-# #     && conda update -n base -c conda-forge conda \
-# #     && conda env create --name conda-env --file conda-env.yaml \
-# #     && conda activate conda-env \
-# #     && conda-tree deptree --small \
-# #     && conda clean --all -f -y
-
 FROM python:3
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -42,21 +27,9 @@ STATUS_DB_USERNAME=root
 STATUS_DB_PASSWORD=root
 FILE1
 
-# RUN --mount=type=bind,source=.,destination=/code \
-#     git clone /project_src /app \
-#     && cd /app \
-#     && git lfs pull \
-#     && ls -ltrh containers/sam-sql-dev/backups/* \
-#     && pip install .[test]
-
 WORKDIR /code
 COPY --exclude=conda-env/ --exclude=.*/ . .
 RUN pip install -e ".[test]"
-
-#RUN pytest -v
-ENV DISABLE_AUTH=1
-ENV DEV_AUTO_LOGIN_USER=benkirk
-ENV FLASK_DEBUG=1
 
 CMD ["python3", "./src/webapp/run.py"]
 

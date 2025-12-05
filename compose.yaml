@@ -36,7 +36,9 @@ services:
             - .git/
             - "*~"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import sam; import sys; sys.exit(0)\" && sam-search user csgteam"]
+      test: |
+        python -c "import sam; import sys; sys.exit(0)"
+        sam-search user csgteam
       interval: 10s
       timeout: 5s
       retries: 10
