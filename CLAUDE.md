@@ -40,13 +40,19 @@ sam-queries/
 │   ├── security/            # Roles, API credentials, access control
 │   └── operational.py       # Synchronizers, tasks, products
 ├── src/sam_search.py     # CLI tool for user/project searches
+├── src/webapp/           # Flask web application
+├── compose.yaml          # Docker Compose config (preferred way to run webapp)
 └── tests/                   # Comprehensive test suite
-    ├── test_basic_read.py           # Basic ORM queries
-    ├── test_crud_operations.py      # Create/update/delete
-    ├── test_new_models.py           # 7 new models (51 tests)
-    ├── test_views.py                # Database views
-    ├── test_schema_validation.py    # Schema drift detection (18 tests)
-    └── test_sam_search_cli.py       # CLI integration tests (44 tests)
+    ├── unit/
+    │   ├── test_basic_read.py           # Basic ORM queries
+    │   ├── test_crud_operations.py      # Create/update/delete
+    │   ├── test_new_models.py           # 7 new models (51 tests)
+    │   ├── test_query_functions.py      # Query functions (41 tests) ⭐ NEW
+    │   └── test_sam_search_cli.py       # CLI integration tests (44 tests)
+    ├── integration/
+    │   ├── test_schema_validation.py    # Schema drift detection (18 tests)
+    │   └── test_views.py                # Database views
+    └── api/                 # API endpoint tests
 ```
 
 ---
@@ -205,7 +211,7 @@ allocation_data = schema.dump(allocation)
 ### Key Schemas
 
 #### AllocationWithUsageSchema ⭐
-**Most important schema** - calculates allocation balances matching sam_search.py output.
+**Most important schema** - calculates allocation balances matching sam-search CLI output.
 
 **Calculated Fields**:
 - `used`: Total charges from summary tables
@@ -462,82 +468,70 @@ for project in user.all_projects:
 ## Testing
 
 ### Current Status
-- **172 tests passed, 10 skipped, 0 failed**
-- **Execution time**: ~50 seconds
-- **Schema coverage**: 94% (91/97 tables have ORM models)
+- **380 tests passed, 16 skipped, 2 xpassed**
+- **Code coverage**: 77.47% (target modules: charges 90%, dashboard 79%, allocations 76%)
+- **Execution time**: ~32 seconds (parallel, no coverage) or ~97 seconds (with coverage)
+- **Parallel execution**: pytest-xdist with auto worker detection
 
 ### Test Execution
 ```bash
-# Run all tests
-cd tests && pytest -v
+# Fast iteration (parallel, no coverage)
+pytest tests/ --no-cov  # 32 seconds
 
-# Run specific test file
-cd tests && pytest integration/test_schema_validation.py -v
+# Full validation (with coverage)
+pytest tests/  # 97 seconds, generates coverage report
 
-# Run with coverage (if needed)
-cd tests && pytest --cov=sam --cov-report=html
+# Specific test file
+pytest tests/unit/test_query_functions.py -v
+
+# Force serial execution
+pytest tests/ -n 1
 ```
 
-### Test Files
-1. **test_basic_read.py** (26 tests): Basic queries, relationships
-2. **test_crud_operations.py** (17 tests): Create, update, delete, transactions
-3. **test_new_models.py** (51 tests): Factor, Formula, ApiCredentials, RoleApiCredentials, ProjectCode, FosAoi, ResponsibleParty
-4. **test_views.py** (24 tests): XRAS views, read-only enforcement
-5. **test_schema_validation.py** (18 tests): Automated schema drift detection ⭐ KEY
-6. **test_sam_search_cli.py** (44 tests): CLI integration tests
+### Key Test Files
+1. **test_query_functions.py** (41 tests): Query function coverage ⭐ NEW
+   - Charge aggregations (charges.py: 38% → 90%)
+   - Dashboard queries (dashboard.py: 28% → 79%)
+   - Allocation lookups (allocations.py: 41% → 76%)
+   - Statistics & project searches
+2. **test_schema_validation.py** (18 tests): Schema drift detection ⭐
+3. **test_sam_search_cli.py** (44 tests): CLI integration
+4. **test_new_models.py** (51 tests): Security, charging, project models
+5. **test_basic_read.py** (26 tests): ORM queries, relationships
+6. **test_views.py** (24 tests): XRAS views, read-only enforcement
 
-### Schema Validation Tests ⭐
-**Purpose**: Prevent XrasResourceRepositoryKeyResource-style bugs where ORM models don't match database schema.
-
-**What's validated**:
-- ✅ All ORM tables exist in database
-- ✅ All ORM columns exist in database
-- ✅ Type compatibility (SQLAlchemy → MySQL)
-- ✅ Primary key validation
-- ✅ Foreign key checks
-- ✅ Coverage metrics (94% of DB tables have ORM)
-
-**Already caught**: DavActivity composite primary key mismatch!
-
-### Test Priorities
-**High Value (Implemented)**:
-- ✅ Schema validation - Prevents ORM/DB drift
-- ✅ CLI integration - Tests user-facing interface
-- ✅ New model tests - Validates recent additions
-- ✅ Basic CRUD - Core functionality coverage
-
-**Future Considerations (Optional)**:
-- ⚠️ Relationship tests - Deep relationship validation (medium-high effort)
-- ⚠️ Performance tests - Query optimization (if needed)
-- ⚠️ Load tests - Concurrent operations (if needed)
+### Parallel Execution (pytest-xdist)
+- **Worker isolation**: Each worker gets unique database (system_status_test_gw0, etc.)
+- **Auto-detection**: Uses all CPU cores by default (`-n auto`)
+- **Coverage caveat**: Parallel execution doesn't speed up coverage runs
 
 ---
 
-## CLI Tool: sam_search.py
+## CLI Tool: sam-search
 
 ### Usage Examples
 ```bash
 # Find user
-./src/sam_search.py user benkirk
-./src/sam_search.py user benkirk --list-projects --verbose
+sam-search user benkirk
+sam-search user benkirk --list-projects --verbose
 
 # Pattern search
-./src/sam_search.py user --search "ben%"
-./src/sam_search.py project --search "SCSG%"
+sam-search user --search "ben%"
+sam-search project --search "SCSG%"
 
 # Special searches
-./src/sam_search.py user --abandoned
-./src/sam_search.py user --has-active-project
+sam-search user --abandoned
+sam-search user --has-active-project
 
 # Project lookup
-./src/sam_search.py project SCSG0001 --list-users --verbose
+sam-search project SCSG0001 --list-users --verbose
 
 # Expirations
-./src/sam_search.py project --upcoming-expirations --list-users
-./src/sam_search.py project --recent-expirations --list-users
+sam-search project --upcoming-expirations --list-users
+sam-search project --recent-expirations --list-users
 
 # Global flags
-./src/sam_search.py --inactive-projects user benkirk --list-projects
+sam-search --inactive-projects user benkirk --list-projects
 ```
 
 ### Exit Codes
@@ -619,13 +613,13 @@ for project, allocation, resource_name, days_since in expired:
 ## Git Workflow
 
 ### Recent Commits
-1. **df4d317**: Admin functionality (#13)
-2. **2fc2595**: Schema validation tests + DavActivity PK fix
-3. Previous: New models (Factor, Formula, ApiCredentials, etc.) + 51 tests
+1. **aa83b9b**: Enable parallel test execution with pytest-xdist (3x faster)
+2. **c92972b**: Add targeted tests for query functions (+41 tests, +5% coverage)
+3. **df4d317**: Admin functionality (#13)
 
 ### Branches
-- **Current**: `testing`
-- **Main branch**: (not set - check before PRs)
+- **Current**: `more_tests`
+- **Main branch**: `main`
 
 ### Commit Guidelines
 - Use detailed commit messages with markdown formatting
@@ -642,12 +636,21 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## Development Workflow
 
+### Running the Web Application
+```bash
+# Preferred method: Docker Compose
+docker compose up
+
+# Access at http://localhost:5050
+# Auth disabled by default (DEV_AUTO_LOGIN_USER=benkirk)
+```
+
 ### Adding New ORM Models
 1. Create model in appropriate domain module
 2. Add to `sam/__init__.py` imports
 3. Create comprehensive tests in `tests/unit/test_new_models.py`
-4. Run schema validation: `cd tests && pytest integration/test_schema_validation.py`
-5. Verify all tests pass: `cd tests && pytest -v`
+4. Run schema validation: `pytest tests/integration/test_schema_validation.py`
+5. Verify all tests pass: `pytest tests/ --no-cov` (fast)
 6. Commit with detailed message
 
 ### Fixing Schema Mismatches
@@ -656,12 +659,6 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 3. Update ORM to match database (database is source of truth)
 4. Run tests to verify fix
 5. Schema validation tests will catch future drift
-
-### Adding CLI Features
-1. Add functionality to `src/sam_search.py`
-2. Create integration tests in `tests/integration/test_sam_search_cli.py`
-3. Test manually: `./src/sam_search.py <command>`
-4. Run test suite: `cd tests && pytest integration/test_sam_search_cli.py`
 
 ---
 
@@ -690,11 +687,16 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ## Quick Reference
 
 ```bash
-# Most common commands (see full details in respective sections above)
-cd tests && pytest -v                                # Run all tests
-./src/sam_search.py user benkirk --list-projects  # User lookup
-./src/sam_search.py project SCSG0001 --list-users # Project lookup
-git log --oneline -10                                 # Recent commits
+# Web application
+docker compose up                                  # Start webapp (http://localhost:5050)
+
+# Testing
+pytest tests/ --no-cov                            # Fast tests (32s, parallel)
+pytest tests/                                     # Full tests with coverage (97s)
+
+# CLI
+sam-search user benkirk --list-projects  # User lookup
+sam-search project SCSG0001 --list-users # Project lookup
 ```
 
 ---
@@ -716,16 +718,16 @@ git log --oneline -10                                 # Recent commits
 ✅ **DO** use schema validation tests before committing model changes
 ✅ **DO** check actual database schema when in doubt
 ✅ **DO** use bidirectional relationships with back_populates
-✅ **DO** write integration tests for CLI features
+✅ **DO** write tests for query functions (see test_query_functions.py)
 ✅ **DO** use proper exit codes (0, 1, 2, 130)
-✅ **DO** keep tests fast (<1 minute for full suite)
-✅ **DO** update CLAUDE.md when learning new patterns
+✅ **DO** run `pytest tests/ --no-cov` for fast iteration (32s vs 97s)
 ✅ **DO** use `allocation.is_active` for hybrid property behavior (works in Python and SQL)
 ✅ **DO** unpack query result tuples properly when using `get_projects_by_allocation_end_date()`
 
 ---
 
-*Last Updated: 2025-11-13*
-*Current Branch: readme*
-*Test Status: 172 passed, 10 skipped, 0 failed*
-*Schema Coverage: 94% (91/97 tables)*
+*Last Updated: 2025-12-06*
+*Current Branch: more_tests*
+*Test Status: 380 passed, 16 skipped, 2 xpassed*
+*Code Coverage: 77.47% (charges 90%, dashboard 79%, allocations 76%)*
+*Parallel Execution: 32s (no coverage) / 97s (with coverage)*
