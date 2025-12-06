@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from sam.core.users import User
 from sam.projects.projects import Project
-from sam.accounting.accounts import Account
+from sam.projects.contracts import Contract, ContractSource, ProjectContract
+from sam.accounting.accounts import Account, AccountUser
 from sam.accounting.allocations import AllocationType
 from sam.resources.resources import Resource
 from sam.summaries.comp_summaries import CompChargeSummary
@@ -96,7 +97,10 @@ def get_project_dashboard_data(session: Session, projcode: str) -> Optional[Dict
         .options(
             joinedload(Project.lead),
             joinedload(Project.admin),
-            joinedload(Project.allocation_type).joinedload(AllocationType.panel)
+            joinedload(Project.allocation_type).joinedload(AllocationType.panel),
+            joinedload(Project.area_of_interest),
+            selectinload(Project.contracts).joinedload(ProjectContract.contract).joinedload(Contract.contract_source),
+            selectinload(Project.directories)
         )\
         .filter(Project.projcode == projcode)\
         .first()
@@ -148,7 +152,30 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
         .options(
             selectinload(User.email_addresses),
             joinedload(User.led_projects).joinedload(Project.lead),
-            joinedload(User.admin_projects).joinedload(Project.admin)
+            joinedload(User.led_projects).joinedload(Project.area_of_interest),
+            joinedload(User.led_projects).selectinload(Project.contracts).joinedload(ProjectContract.contract).joinedload(Contract.contract_source),
+            joinedload(User.led_projects).selectinload(Project.directories),
+            
+            joinedload(User.admin_projects).joinedload(Project.admin),
+            joinedload(User.admin_projects).joinedload(Project.area_of_interest),
+            joinedload(User.admin_projects).selectinload(Project.contracts).joinedload(ProjectContract.contract).joinedload(Contract.contract_source),
+            joinedload(User.admin_projects).selectinload(Project.directories),
+
+            # Optimize the active_projects path (via accounts)
+            selectinload(User.accounts)
+                .joinedload(AccountUser.account)
+                .joinedload(Account.project)
+                .joinedload(Project.area_of_interest),
+            selectinload(User.accounts)
+                .joinedload(AccountUser.account)
+                .joinedload(Account.project)
+                .selectinload(Project.contracts)
+                .joinedload(ProjectContract.contract)
+                .joinedload(Contract.contract_source),
+            selectinload(User.accounts)
+                .joinedload(AccountUser.account)
+                .joinedload(Account.project)
+                .selectinload(Project.directories)
         )\
         .filter(User.user_id == user_id)\
         .first()
