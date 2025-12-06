@@ -11,3 +11,4 @@ collectors/logs/
 
 # skip linting reports in CI
 megalinter-reports/
+.coverage
