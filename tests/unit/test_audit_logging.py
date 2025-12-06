@@ -167,15 +167,42 @@ def test_audit_excludes_api_credentials(audit_log_file):
 def test_audit_fallback_to_temp_directory():
     """Test fallback to temp directory when log path is not writable."""
     from webapp.audit.logger import ensure_log_directory
+    import os
 
     # Try to create log in non-existent/non-writable path
+    # - but this will succeed as root, careful with CI!!
     bad_path = '/nonexistent/path/audit.log'
+
+    # If we CAN write to the directory, skip (likely running as root)
+    can_write = False
+
+    try:
+        os.makedirs(os.path.dirname(bad_path), exist_ok=True)
+        # Try to open for writing
+        with open(bad_path, 'w'):
+            can_write = True
+    except Exception:
+        pass
+
+    if can_write:
+        pytest.skip("Test skipped because running as root allows writing to bad_path.")
+
     fallback_path = ensure_log_directory(bad_path)
 
-    # Should fall back to temp directory
-    #assert 'temp' in fallback_path.lower() or '/tmp' in fallback_path or 'T' in fallback_path
+    # 1. ensure fallback path is not the same
+    assert fallback_path != bad_path
 
-    assert True
+    # 2. ensure fallback_path itself is writable
+    writable = True
+    try:
+        with open(fallback_path, "w") as f:
+            f.write("test")
+        os.remove(fallback_path)  # cleanup
+    except Exception:
+        writable = False
+
+    assert writable, f"Fallback path '{fallback_path}' is not writable"
+
 
 def test_audit_event_handler_initialization():
     """Test audit event handlers can be initialized without errors."""
