@@ -95,6 +95,5 @@ addopts = [
     "--cov-report=term-missing:skip-covered",
     "--cov-report=html",
     "--cov-fail-under=70",
-    # NOTE: -n auto disabled due to session-scoped fixture conflicts
-    # Can be enabled manually with: pytest tests/ -n auto (without --cov)
+    "-n auto",  # Parallel execution (3x faster without --cov, same speed with --cov)
 ]
