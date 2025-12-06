@@ -13,6 +13,13 @@ from pathlib import Path
 @pytest.fixture
 def audit_log_file():
     """Create temporary audit log file for testing in writable directory."""
+    from webapp.audit.logger import reset_audit_logger
+    from webapp.audit.events import reset_audit_events
+
+    # Reset logger and events before test
+    reset_audit_logger()
+    reset_audit_events()
+
     # Use temp directory to ensure it's writable
     temp_dir = tempfile.gettempdir()
     log_path = os.path.join(temp_dir, f'test_audit_{os.getpid()}.log')
@@ -24,6 +31,9 @@ def audit_log_file():
     yield log_path
 
     # Cleanup
+    reset_audit_logger()
+    reset_audit_events()
+
     if os.path.exists(log_path):
         os.unlink(log_path)
 
@@ -66,13 +76,18 @@ def read_audit_log(log_path):
 def test_audit_logger_creation(audit_log_file):
     """Test audit logger can be created and writes to file."""
     from webapp.audit.logger import get_audit_logger
+    import logging
 
     logger = get_audit_logger(audit_log_file)
     logger.info("Test message")
 
+    # Force flush to disk
+    for handler in logger.handlers:
+        handler.flush()
+
     # Verify log entry (may be in fallback location)
     logs = read_audit_log(audit_log_file)
-    assert len(logs) >= 1
+    assert len(logs) >= 1, f"Expected at least 1 log entry, found {len(logs)}. Checked paths: {audit_log_file}"
     assert any("Test message" in log for log in logs)
 
 
