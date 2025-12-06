@@ -114,8 +114,8 @@ class TestAddUserToProject:
         if not other_user:
             pytest.skip("No available user found to add")
 
-        start = datetime(2025, 1, 1)
-        end = datetime(2025, 12, 31)
+        start = datetime(2100, 1, 1)
+        end = datetime(2100, 12, 31)
 
         add_user_to_project(
             session,

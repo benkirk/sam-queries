@@ -31,7 +31,7 @@ class TestDerechoIntegration:
         status_session.query(DerechoStatus).delete()
         status_session.flush()
 
-        timestamp = datetime(2025, 1, 25, 14, 30, 0)
+        timestamp = datetime(2100, 1, 25, 14, 30, 0)
 
         # Create main Derecho status
         derecho = DerechoStatus(
@@ -148,7 +148,7 @@ class TestCasperIntegration:
         status_session.query(CasperStatus).delete()
         status_session.flush()
 
-        timestamp = datetime(2025, 1, 25, 14, 30, 0)
+        timestamp = datetime(2100, 1, 25, 14, 30, 0)
 
         # Create main Casper status
         casper = CasperStatus(
@@ -247,7 +247,7 @@ class TestMultipleSnapshots:
         # Create three snapshots with different timestamps
         for i, hour in enumerate([10, 12, 14]):
             derecho = DerechoStatus(
-                timestamp=datetime(2025, 1, 25, hour, 0, 0),
+                timestamp=datetime(2100, 1, 25, hour, 0, 0),
                 cpu_nodes_total=100 + i,  # Different values to distinguish
                 cpu_nodes_available=80,
                 cpu_nodes_down=5,
