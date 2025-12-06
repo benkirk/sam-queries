@@ -480,8 +480,13 @@ def add_member(projcode):
 
     try:
         add_user_to_project(db.session, project.project_id, user.user_id, start_date, end_date)
+        db.session.commit()
     except ValueError as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to add member: {str(e)}'}), 500
 
     return jsonify({
         'success': True,
@@ -520,8 +525,13 @@ def remove_member(projcode, username):
 
     try:
         remove_user_from_project(db.session, project.project_id, user.user_id)
+        db.session.commit()
     except ValueError as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to remove member: {str(e)}'}), 500
 
     return jsonify({
         'success': True,
@@ -562,8 +572,13 @@ def update_admin(projcode):
 
         try:
             change_project_admin(db.session, project.project_id, new_admin.user_id)
+            db.session.commit()
         except ValueError as e:
+            db.session.rollback()
             return jsonify({'error': str(e)}), 400
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': f'Failed to change admin: {str(e)}'}), 500
 
         return jsonify({
             'success': True,
@@ -576,7 +591,13 @@ def update_admin(projcode):
         })
     else:
         # Clear admin
-        change_project_admin(db.session, project.project_id, None)
+        try:
+            change_project_admin(db.session, project.project_id, None)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': f'Failed to clear admin: {str(e)}'}), 500
+
         return jsonify({
             'success': True,
             'message': 'Cleared project admin',

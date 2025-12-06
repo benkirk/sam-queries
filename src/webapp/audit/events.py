@@ -11,6 +11,10 @@ from sqlalchemy import inspect
 from .logger import get_audit_logger
 
 
+# Global flag to prevent double-registration in parallel testing
+_AUDIT_EVENTS_REGISTERED = False
+
+
 def init_audit_events(app, db, excluded_metadata, logfile_path):
     """
     Initialize SQLAlchemy event handlers for audit logging.
@@ -21,6 +25,12 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
         excluded_metadata: List of SQLAlchemy metadata objects to exclude (e.g., StatusBase.metadata)
         logfile_path: Path to audit log file
     """
+    global _AUDIT_EVENTS_REGISTERED
+
+    # Prevent double-registration (important for parallel testing)
+    if _AUDIT_EVENTS_REGISTERED:
+        return
+
     logger = get_audit_logger(logfile_path)
 
     # Convert to set for efficient lookups
@@ -173,3 +183,17 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
         except Exception as e:
             # Log error but don't break application
             print(f"AUDIT ERROR: {e}", file=sys.stderr)
+
+    # Mark as registered
+    _AUDIT_EVENTS_REGISTERED = True
+
+
+def reset_audit_events():
+    """
+    Reset audit event registration flag.
+
+    This is primarily for testing purposes where multiple tests
+    might need to reinitialize audit events.
+    """
+    global _AUDIT_EVENTS_REGISTERED
+    _AUDIT_EVENTS_REGISTERED = False

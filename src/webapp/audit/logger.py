@@ -78,3 +78,17 @@ def get_audit_logger(logfile_path):
         logger.addHandler(handler)
 
     return logger
+
+
+def reset_audit_logger():
+    """
+    Reset audit logger by removing all handlers.
+
+    This is primarily for testing purposes where multiple tests
+    might need to configure the logger with different settings.
+    """
+    logger = logging.getLogger("model_audit")
+    # Remove all handlers
+    for handler in logger.handlers[:]:
+        handler.close()
+        logger.removeHandler(handler)
