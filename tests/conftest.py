@@ -7,11 +7,23 @@ import sys
 import os
 from pathlib import Path
 
-# CRITICAL: Set environment variables BEFORE any imports that might define models
-# This ensures system_status models use Flask-SQLAlchemy's db.Model
-# and use the test database.
-os.environ['STATUS_DB_NAME'] = 'system_status_test'
-os.environ['FLASK_ACTIVE'] = '1'
+
+def pytest_configure(config):
+    """
+    Set up worker-specific environment variables for pytest-xdist.
+
+    This hook runs before test collection, ensuring each worker gets
+    unique database names before any modules import configuration.
+    """
+    worker_id = getattr(config, 'workerinput', {}).get('workerid', 'master')
+
+    if worker_id == 'master':
+        db_name = 'system_status_test'
+    else:
+        db_name = f'system_status_test_{worker_id}'
+
+    os.environ['STATUS_DB_NAME'] = db_name
+    os.environ['FLASK_ACTIVE'] = '1'
 
 # Add project root and src to path for imports
 PROJ_ROOT = Path(__file__).parent.parent
@@ -27,6 +39,35 @@ from fixtures.test_config import (
 
 
 @pytest.fixture(scope='session')
+def worker_id(request):
+    """
+    Get the pytest-xdist worker ID.
+
+    Returns 'master' when running without xdist, or 'gw0', 'gw1', etc.
+    when running with parallel workers via pytest-xdist.
+    """
+    if hasattr(request.config, 'workerinput'):
+        return request.config.workerinput['workerid']
+    return 'master'
+
+
+@pytest.fixture(scope='session')
+def worker_db_name(worker_id):
+    """
+    Generate unique database name for this worker.
+
+    For pytest-xdist compatibility, each worker gets its own database:
+    - master -> system_status_test
+    - gw0 -> system_status_test_gw0
+    - gw1 -> system_status_test_gw1
+    etc.
+    """
+    if worker_id == 'master':
+        return 'system_status_test'
+    return f'system_status_test_{worker_id}'
+
+
+@pytest.fixture(scope='session')
 def engine():
     """Create SAM database engine for entire test session (uses production backup data)."""
     return create_test_engine()
@@ -39,7 +80,7 @@ def SessionFactory(engine):
 
 
 @pytest.fixture(scope='session', autouse=True)
-def test_databases():
+def test_databases(worker_db_name):
     """
     Create temporary test database for system_status.
 
@@ -48,12 +89,17 @@ def test_databases():
 
     IMPORTANT: This fixture is autouse=True and session-scoped so it runs BEFORE
     any imports and sets STATUS_DB_NAME environment variable early.
+
+    pytest-xdist compatible: Each worker gets a unique database name via worker_db_name.
     """
     from sqlalchemy import create_engine, text
     import os
     from webapp.run import create_app
     from webapp.extensions import db
     import system_status.session
+
+    # Set worker-specific database name in environment
+    os.environ['STATUS_DB_NAME'] = worker_db_name
 
     # Get connection parameters from already set environment variables
     db_server = os.getenv('STATUS_DB_SERVER', os.getenv('SAM_DB_SERVER', '127.0.0.1'))
@@ -65,9 +111,9 @@ def test_databases():
     engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
 
     with engine.connect() as conn:
-        # Drop and recreate system_status test database only
-        conn.execute(text("DROP DATABASE IF EXISTS system_status_test"))
-        conn.execute(text("CREATE DATABASE system_status_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+        # Drop and recreate worker-specific test database
+        conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
+        conn.execute(text(f"CREATE DATABASE {worker_db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
 
     # Now that the environment variable is set and session is imported,
     # system_status.session.connection_string will be correct.
@@ -81,11 +127,11 @@ def test_databases():
         # for 'system_status' bind, as create_app sets it from system_status.session
         db.create_all()
 
-    yield {'system_status': 'system_status_test'}
+    yield {'system_status': worker_db_name}
 
-    # Cleanup: Drop test database
+    # Cleanup: Drop worker-specific test database
     with engine.connect() as conn:
-        conn.execute(text("DROP DATABASE IF EXISTS system_status_test"))
+        conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
 
     # Restore original environment
     os.environ.pop('STATUS_DB_NAME', None)
@@ -158,18 +204,19 @@ def test_resource(session):
 
 
 @pytest.fixture(scope='function')
-def status_session(test_databases):
+def status_session(test_databases, worker_db_name):
     """
     Provide system_status test session with transaction rollback.
 
     Each test gets a fresh session that automatically rolls back changes.
+    pytest-xdist compatible: Uses worker-specific database name.
     """
     import os
     from system_status.session import create_status_engine
 
     # Override database name for this session
     original_db = os.getenv('STATUS_DB_NAME', 'system_status')
-    os.environ['STATUS_DB_NAME'] = 'system_status_test'
+    os.environ['STATUS_DB_NAME'] = worker_db_name
 
     try:
         engine, SessionLocal = create_status_engine()
@@ -188,13 +235,14 @@ def status_session(test_databases):
 
 
 @pytest.fixture(scope='session')
-def app(test_databases):
+def app(test_databases, worker_db_name):
     """
     Create Flask app for testing.
 
     Uses session scope so the app is created once per test session.
     Configures app for testing mode with CSRF disabled and test database for system_status.
     Rebuilds system_status connection string to use test database.
+    pytest-xdist compatible: Uses worker-specific database name.
     """
     import os
     from webapp.run import create_app
@@ -211,9 +259,9 @@ def app(test_databases):
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False
 
-    # Verify the app is using test database
-    assert 'system_status_test' in app.config['SQLALCHEMY_BINDS']['system_status'], \
-        f"Flask app not using test database: {app.config['SQLALCHEMY_BINDS']['system_status']}"
+    # Verify the app is using worker-specific test database
+    assert worker_db_name in app.config['SQLALCHEMY_BINDS']['system_status'], \
+        f"Flask app not using test database '{worker_db_name}': {app.config['SQLALCHEMY_BINDS']['system_status']}"
 
     return app
 

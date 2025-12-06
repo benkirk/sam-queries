@@ -6,9 +6,9 @@
 
 This repository provides:
 - **Python ORM models** (SQLAlchemy 2.0) for the SAM database
-- **CLI tool** (`sam_search.py`) for quick user/project lookups
+- **CLI tool** (`sam-search`) for quick user/project lookups
 - **REST API** (Flask) for programmatic access to SAM data
-- **Comprehensive test suite** with schema validation
+- **Comprehensive test suite** with schema validation (380+ tests, 77.47% coverage)
 
 ## Quick Start for Impatient Users
 
@@ -21,10 +21,10 @@ make conda-env
 # 2. Create .env with your credentials (see Configuration section below)
 
 # 3. Try the CLI
-./src/sam_search.py user <your_username>
+sam-search user <your_username>
 
-# 4. Run tests
-cd tests && pytest -v
+# 4. Run tests (fast iteration)
+pytest tests/ --no-cov
 ```
 
 For local development with write access, continue to the full setup guide below.
@@ -122,15 +122,16 @@ At this point, you should be able to use the CLI and run read-only tests:
 source etc/config_env.sh
 
 # Test database connection
-./src/sam_search.py user --search "a%" | head -20
+sam-search user --search "a%" | head -20
 
-# Run tests (most will pass with read-only access)
-cd tests && pytest -v
+# Run tests (fast, most will pass with read-only access)
+pytest tests/ --no-cov
 ```
 
 **Expected results:**
 - CLI should display user information
-- Tests: ~200 passed, ~10 skipped (CRUD tests skipped without local DB)
+- Tests: ~360+ passed, ~20 skipped (CRUD tests skipped without local DB)
+- Execution time: ~32 seconds (parallel without coverage)
 
 #### Step 4: Local Development Database (Optional)
 
@@ -195,35 +196,35 @@ Should show:
 
 ### CLI Tool
 
-The `sam_search.py` CLI provides quick access to user and project information:
+The `sam-search` CLI provides quick access to user and project information:
 
 ```bash
 # Search for a user (replace with actual username in your database)
-./src/sam_search.py user bruceb
+sam-search user bruceb
 
 # List user's projects
-./src/sam_search.py user bruceb --list-projects
+sam-search user bruceb --list-projects
 
 # Search for users matching a pattern (SQL wildcards)
-./src/sam_search.py user --search "b%"
+sam-search user --search "b%"
 
 # Search for a project
-./src/sam_search.py project UCSU0092 --verbose
+sam-search project UCSU0092 --verbose
 
 # Pattern search for projects
-./src/sam_search.py project --search "UCSU%"
+sam-search project --search "UCSU%"
 
 # Find projects expiring soon (within 32 days)
-./src/sam_search.py project --upcoming-expirations
+sam-search project --upcoming-expirations
 
 # Find projects that recently expired
-./src/sam_search.py project --recent-expirations --list-users
+sam-search project --recent-expirations --list-users
 
 # Find users without active projects
-./src/sam_search.py user --abandoned
+sam-search user --abandoned
 
 # Search including inactive projects
-./src/sam_search.py --inactive-projects user bruceb --list-projects
+sam-search --inactive-projects user bruceb --list-projects
 ```
 
 **Exit codes:**
@@ -234,13 +235,19 @@ The `sam_search.py` CLI provides quick access to user and project information:
 
 ### Web UI
 
-Launch the Flask web interface:
+Launch the Flask web interface (preferred method using Docker Compose):
 
 ```bash
-./src/webapp/run.py
+docker compose up
 ```
 
-Access at `http://127.0.0.1:5050`
+Access at `http://localhost:5050`
+
+Alternatively, run directly (requires database configuration):
+```bash
+cd src/webapp
+python run.py
+```
 
 **Features:**
 - Browse users, projects, allocations
@@ -282,20 +289,24 @@ All responses are JSON formatted using Marshmallow-SQLAlchemy schemas.
 ### Running Tests
 
 ```bash
-# Run all tests
-cd tests && pytest -v
+# Run all tests (fast, parallel without coverage) - recommended for development
+pytest tests/ --no-cov
+
+# Run with coverage report
+pytest tests/
 
 # Run specific test file
-cd tests && pytest integration/test_schema_validation.py -v
+pytest tests/integration/test_schema_validation.py -v
 
 # Run tests matching a pattern
-cd tests && pytest -k "user" -v
+pytest tests/ -k "user" -v
 
-# Run with coverage
-cd tests && pytest --cov=sam --cov-report=html
+# Generate HTML coverage report
+pytest tests/ --cov-report=html
 ```
 
 **Test categories:**
+- **Query functions** (`test_query_functions.py`) - Targeted query function testing
 - **Schema validation** (`test_schema_validation.py`) - Ensures ORM matches database
 - **Basic queries** (`test_basic_read.py`) - Tests core ORM functionality
 - **CRUD operations** (`test_crud_operations.py`) - Create/update/delete (requires local DB)
@@ -304,14 +315,16 @@ cd tests && pytest --cov=sam --cov-report=html
 - **Views** (`test_views.py`) - Database view queries
 
 **Expected results with read-only access:**
-- ~190 passed
+- ~360+ passed
 - ~20 skipped (CRUD tests)
 - 0 failed
+- Execution time: ~32 seconds (parallel without coverage)
 
 **With local database:**
-- ~200 passed
-- ~10 skipped
+- 380+ passed
+- ~16 skipped
 - 0 failed
+- Execution time: ~32 seconds (parallel without coverage), ~97 seconds (with coverage)
 
 ### Adding New Features
 
@@ -371,13 +384,13 @@ cd tests && pytest --cov=sam --cov-report=html
 
 #### Adding CLI Features
 
-1. **Add functionality** to `src/sam_search.py`
+1. **Add functionality** to `src/sam_search_cli.py`
 
-2. **Create integration tests** in `tests/test_sam_search_cli.py`:
+2. **Create integration tests** in `tests/unit/test_sam_search_cli.py`:
    ```python
    def test_new_cli_feature():
        result = subprocess.run(
-           ['./src/sam_search.py', 'newfeature', '--arg'],
+           ['sam-search', 'newfeature', '--arg'],
            capture_output=True, text=True
        )
        assert result.returncode == 0
@@ -386,12 +399,12 @@ cd tests && pytest --cov=sam --cov-report=html
 
 3. **Test manually**:
    ```bash
-   ./src/sam_search.py newfeature --help
+   sam-search newfeature --help
    ```
 
 4. **Run CLI test suite**:
    ```bash
-   cd tests && pytest integration/test_sam_search_cli.py -v
+   pytest tests/unit/test_sam_search_cli.py -v
    ```
 
 ## Code Style & Best Practices
@@ -471,7 +484,8 @@ class Account(Base):
 - Use bidirectional relationships with `back_populates`
 - Write integration tests for CLI features
 - Use proper exit codes (0=success, 1=not found, 2=error, 130=interrupt)
-- Keep tests fast (full suite should run in ~1 minute)
+- Use `pytest tests/ --no-cov` for fast iteration (~32 seconds)
+- Run with coverage before final commit (~97 seconds)
 
 ## Testing Philosophy
 
@@ -500,12 +514,16 @@ class Account(Base):
 
 3. **Ensure all tests pass**:
    ```bash
-   cd tests && pytest -v
+   # Fast check
+   pytest tests/ --no-cov
+
+   # Full validation with coverage
+   pytest tests/
    ```
 
 4. **Run schema validation** (if you modified ORM):
    ```bash
-   cd tests && pytest integration/test_schema_validation.py -v
+   pytest tests/integration/test_schema_validation.py -v
    ```
 
 5. **Submit a pull request** with:
@@ -565,6 +583,11 @@ class Account(Base):
 
 ### CLI Issues
 
+**"sam-search: command not found"**
+- Ensure package is installed: `pip install -e .` from project root
+- Check that conda environment is activated
+- Verify installation: `which sam-search`
+
 **CLI returns "User not found" for known users**
 - Check which database you're connected to: `echo $SAM_DB_SERVER`
 - Local database may not have all users (subsetted data)
@@ -572,7 +595,7 @@ class Account(Base):
 
 **CLI output is truncated**
 - This is normal - use `--verbose` flag for full details
-- Or redirect to file: `./src/sam_search.py ... > output.txt`
+- Or redirect to file: `sam-search ... > output.txt`
 
 ## Getting Help
 
@@ -613,7 +636,7 @@ sam-queries/
 │   │   ├── summaries/       # Charge summaries
 │   │   ├── integration/     # XRAS integration
 │   │   └── security/        # Roles, API credentials
-│   ├── sam_search.py        # CLI tool
+│   ├── sam_search_cli.py    # CLI tool (invoked as `sam-search`)
 │   └── webapp/               # Flask web application
 │       ├── api/             # REST API blueprints
 │       ├── schemas/         # Marshmallow schemas

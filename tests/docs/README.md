@@ -1,30 +1,36 @@
 # SAM Test Suite
 
-**Status**: 209 tests passed, 10 skipped (~52 seconds)
+**Status**: 380 tests passed, 16 skipped (~32 seconds without coverage, ~97 seconds with coverage)
 
-Comprehensive test suite for SAM ORM models, CLI tools, and API schemas.
+Comprehensive test suite for SAM ORM models, CLI tools, API schemas, and query functions.
+
+**Code Coverage**: 77.47% overall (charges 90%, dashboard 79%, allocations 76%)
 
 ---
 
 ## Quick Start
 
 ```bash
-# Run all tests
-cd tests && pytest -v
+# Run all tests (fast, parallel without coverage) - recommended for development
+pytest tests/ --no-cov
+
+# Run with coverage report
+pytest tests/
 
 # Run specific category
-cd tests && pytest unit/ -v
-cd tests && pytest integration/ -v
-cd tests && pytest api/ -v
+pytest tests/unit/ -v
+pytest tests/integration/ -v
+pytest tests/api/ -v
 
 # Run specific file
-cd tests && pytest integration/test_schema_validation.py -v
+pytest tests/integration/test_schema_validation.py -v
 
 # Run tests matching pattern
-cd tests && pytest -k "user" -v
+pytest tests/ -k "user" -v
 
-# Run with coverage
-cd tests && pytest --cov=sam --cov-report=html
+# Generate HTML coverage report
+pytest tests/ --cov-report=html
+open htmlcov/index.html
 ```
 
 ---
@@ -33,17 +39,17 @@ cd tests && pytest --cov=sam --cov-report=html
 
 ```
 tests/
-├── pytest.ini          # Configuration, markers, timeouts
-├── conftest.py         # Shared fixtures (test_user, test_project, etc.)
-├── unit/               # Unit tests (35 tests)
+├── conftest.py         # Shared fixtures with pytest-xdist support
+├── unit/               # Unit tests (130+ tests)
 │   ├── test_basic_read.py
 │   ├── test_crud_operations.py
-│   └── test_new_models.py
-├── integration/        # Integration tests (160 tests)
-│   ├── test_schema_validation.py
-│   ├── test_sam_search_cli.py
-│   └── test_views.py
-└── api/                # API/schema tests (28 tests)
+│   ├── test_new_models.py
+│   ├── test_query_functions.py     # Query function coverage (41 tests)
+│   └── test_sam_search_cli.py      # CLI integration (44 tests)
+├── integration/        # Integration tests (42 tests)
+│   ├── test_schema_validation.py   # Schema drift detection (18 tests)
+│   └── test_views.py                # Database views (24 tests)
+└── api/                # API/schema tests (208+ tests)
     ├── test_schemas.py
     └── test_allocation_schemas.py
 ```
@@ -57,18 +63,25 @@ tests/
   - Parameterized count tests (9 models)
   - Parameterized primary key tests (9 models)
 - **test_crud_operations.py** - Create, update, delete, transactions
-- **test_new_models.py** - Factor, Formula, ApiCredentials, ProjectCode, etc.
+- **test_new_models.py** - Factor, Formula, ApiCredentials, ProjectCode, etc. (51 tests)
+- **test_query_functions.py** - Targeted query function testing (41 tests)
+  - Charge aggregations (charges.py: 38% → 90% coverage)
+  - Dashboard queries (dashboard.py: 28% → 79% coverage)
+  - Allocation lookups (allocations.py: 41% → 76% coverage)
+  - Statistics & project searches
+- **test_sam_search_cli.py** - End-to-end CLI testing (44 tests)
+  - User/project searches with `sam-search` command
+  - Pattern matching
+  - Exit codes and error handling
 
 ### Integration Tests (`integration/`)
-- **test_schema_validation.py** - Automated ORM/database drift detection
+- **test_schema_validation.py** - Automated ORM/database drift detection (18 tests)
   - Validates all tables exist
   - Validates all columns match
   - Validates primary keys and foreign keys
-- **test_sam_search_cli.py** - End-to-end CLI testing (44 tests)
-  - User/project searches
-  - Pattern matching
-  - Exit codes and error handling
-- **test_views.py** - Database views (XRAS integration, read-only enforcement)
+- **test_views.py** - Database views (24 tests)
+  - XRAS integration views
+  - Read-only enforcement
 
 ### API Tests (`api/`)
 - **test_schemas.py** - Marshmallow schema serialization
@@ -85,7 +98,7 @@ tests/
 ## Key Features
 
 ### 1. Shared Fixtures (`conftest.py`)
-Reusable test data eliminates duplication:
+Reusable test data eliminates duplication, with pytest-xdist support for parallel execution:
 
 ```python
 def test_example(test_user, test_project):
@@ -101,6 +114,8 @@ Available fixtures:
 - `test_project` - Project 'SCSG0001'
 - `test_allocation` - Active allocation from test_project
 - `test_resource` - Resource 'Derecho'
+- `worker_id` - pytest-xdist worker ID ('master', 'gw0', 'gw1', etc.)
+- `worker_db_name` - Worker-specific database name for isolation
 
 ### 2. Parameterized Tests
 Reduces code duplication:
@@ -148,45 +163,69 @@ All tests timeout after 300 seconds (configured in pytest.ini).
 
 ### Run Tests Before Committing
 ```bash
-cd tests && pytest -v
+# Fast check (32 seconds, parallel without coverage)
+pytest tests/ --no-cov
+
+# Full validation with coverage (97 seconds)
+pytest tests/
 ```
 
 ### Check Schema Drift (After ORM Changes)
 ```bash
-cd tests && pytest integration/test_schema_validation.py -v
+pytest tests/integration/test_schema_validation.py -v
 ```
 
 ### Test CLI Changes
 ```bash
-cd tests && pytest integration/test_sam_search_cli.py -v
+pytest tests/unit/test_sam_search_cli.py -v
+```
+
+### Test Query Functions
+```bash
+pytest tests/unit/test_query_functions.py -v
 ```
 
 ### Generate Coverage Report
 ```bash
-cd tests && pytest --cov=sam --cov-report=html
+pytest tests/ --cov-report=html
 open htmlcov/index.html
 ```
 
-### Parallel Execution (Faster)
+### Parallel Execution
+Parallel execution is enabled by default via `-n auto` in pyproject.toml.
+
 ```bash
-cd tests && pytest -n auto -v
+# Disable parallel (force serial)
+pytest tests/ -n 1
+
+# Explicitly set worker count
+pytest tests/ -n 4
 ```
+
+**Note**: Parallel execution speeds up tests without coverage (~32s vs ~98s serial), but coverage runs take the same time with or without parallelization (~97s).
 
 ---
 
 ## Test Results
 
 **With Local Development Database:**
-- 209 passed, 10 skipped
-- Execution time: ~52 seconds
+- 380+ passed, ~16 skipped
+- Execution time: ~32 seconds (parallel without coverage), ~97 seconds (with coverage)
+- Code coverage: 77.47% overall
 
 **With Read-Only Database:**
-- ~190 passed, ~20 skipped (CRUD tests skip without write access)
+- ~360+ passed, ~20 skipped (CRUD tests skip without write access)
+- Execution time: Similar to local database
 
 **Skipped Tests:**
 - View tests that require specific data
 - Relationship tests that require foreign keys
 - CRUD tests without write access
+
+**Key Coverage Improvements:**
+- sam/queries/charges.py: 38% → 90%
+- sam/queries/dashboard.py: 28% → 79%
+- sam/queries/allocations.py: 41% → 76%
 
 ---
 
@@ -257,6 +296,6 @@ conda install pytest-xdist
 - **Phase 1** (2025-11-13): Initial test suite (172 tests)
 - **Phase 2** (2025-11-14): Added fixtures, parameterization, pytest.ini
 - **Phase 3** (2025-11-14): Directory reorganization, plugins configuration
-- **Current** (2025-11-14): 209 tests, professional structure
-
-For detailed improvement history, see [CURRENT_PLAN.md](CURRENT_PLAN.md).
+- **Phase 4** (2025-12-06): Added targeted query function tests (380 tests, 77.47% coverage)
+- **Phase 5** (2025-12-06): Enabled parallel execution with pytest-xdist (3x speedup)
+- **Current** (2025-12-06): 380+ tests, comprehensive coverage, parallel execution

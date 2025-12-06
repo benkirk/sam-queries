@@ -107,12 +107,26 @@ jobs:
           cd "${INSTALL_DIR}"
           docker compose ps
 
+      - name: Create test database for system_status
+        run: |
+          cd "${INSTALL_DIR}"
+          docker compose exec -T mysql mysql -u root -proot -e "
+            DROP DATABASE IF EXISTS system_status_test;
+            CREATE DATABASE system_status_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          "
+
+      - name: Run pytest in parallel without coverage
+        id: pytest
+        run: |
+          cd "${INSTALL_DIR}"
+          docker compose exec -T webapp bash -c "cd /code && pytest tests/ -n auto"
+
       - name: Show container logs (on failure)
         if: failure()
         run: |
           if [ -d "${INSTALL_DIR}" ]; then
             cd "${INSTALL_DIR}"
-            docker compose logs --tail=100
+            docker compose logs --tail=300
           fi
 
       - name: Cleanup
@@ -120,6 +134,6 @@ jobs:
         run: |
           if [ -d "${INSTALL_DIR}" ]; then
             cd "${INSTALL_DIR}"
-            docker compose logs --tail=100
+            docker compose logs --tail=300
             docker compose down -v
           fi

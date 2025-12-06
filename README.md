@@ -26,12 +26,13 @@ This repository provides tools to interact with SAM data programmatically, repla
 - Automated schema validation to prevent drift
 - Test coverage for all major models
 
-### CLI Tool (`sam_search_cli.py`)
+### CLI Tool (`sam-search`)
 - User and project lookups by username or project code
 - Pattern matching with SQL wildcards
 - Track upcoming and expired allocations
 - Proper exit codes for automation
 - Built with [Click](https://click.palletsprojects.com/)
+- Installed as `sam-search` command via pyproject.toml entry point
 
 ### Web UI (Flask-Admin)
 - Admin dashboard with CRUD operations for SAM tables
@@ -64,10 +65,10 @@ EOF
 chmod 600 .env
 
 # 3. Try the CLI tool
-./src/sam_search_cli.py user <your_username>
+sam-search user <your_username>
 
 # 4. Run tests to verify setup
-cd tests && pytest -v
+pytest tests/ --no-cov
 ```
 
 For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
@@ -111,9 +112,9 @@ For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 4. **Verify installation**
    ```bash
    # Test CLI
-   ./src/sam_search_cli.py user --search "a%" | head -10
-   # Run test suite
-   cd tests && pytest -v
+   sam-search user --search "a%" | head -10
+   # Run test suite (fast, without coverage)
+   pytest tests/ --no-cov
    ```
 
 For full setup guide including local development database, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
@@ -124,29 +125,29 @@ For full setup guide including local development database, see **[CONTRIBUTING.m
 
 ### CLI Tool
 
-The `sam_search_cli.py` CLI provides access to SAM data:
+The `sam-search` CLI provides access to SAM data:
 
 ```bash
 # Find a user
-./src/sam_search_cli.py user benkirk
+sam-search user benkirk
 
 # List user's projects with allocations
-./src/sam_search_cli.py user benkirk --list-projects --verbose
+sam-search user benkirk --list-projects --verbose
 
 # Search for users (SQL wildcards)
-./src/sam_search_cli.py user --search "ben%"
+sam-search user --search "ben%"
 
 # Find a project
-./src/sam_search_cli.py project SCSG0001 --list-users
+sam-search project SCSG0001 --list-users
 
 # Find projects expiring soon (next 32 days)
-./src/sam_search_cli.py project --upcoming-expirations
+sam-search project --upcoming-expirations
 
 # Find recently expired projects (last 90 days)
-./src/sam_search_cli.py project --recent-expirations --list-users
+sam-search project --recent-expirations --list-users
 
 # Find users with no active projects
-./src/sam_search_cli.py user --abandoned
+sam-search user --abandoned
 ```
 
 **Exit codes:** `0` = success, `1` = not found, `2` = error, `130` = interrupted
@@ -201,14 +202,19 @@ For detailed ORM documentation, see **[CLAUDE.md](CLAUDE.md)**.
 
 ### Web UI
 
-Launch the Flask web interface:
+Launch the Flask web interface (preferred method using Docker Compose):
 
+```bash
+docker compose up
+```
+
+Access at `http://localhost:5050`
+
+Alternatively, run directly (requires database configuration):
 ```bash
 cd src/webapp
 python run.py
 ```
-
-Access at `http://localhost:5050`
 
 Features:
 - Dashboard with statistics and expiration monitoring
@@ -399,8 +405,9 @@ sam-queries/
 
 ## Testing
 
-The project includes a test suite with 200+ tests covering:
+The project includes a comprehensive test suite with 380+ tests covering:
 
+- Query functions - Targeted query function testing (41 tests)
 - Schema validation - Prevents ORM/database drift (18 tests)
 - Basic queries - Core ORM functionality (26 tests)
 - CRUD operations - Create/update/delete (17 tests)
@@ -408,33 +415,41 @@ The project includes a test suite with 200+ tests covering:
 - API schemas - Marshmallow serialization (multiple tests)
 - Database views - XRAS integration views (24 tests)
 - New models - Recent model additions (51 tests)
+- Code coverage: 77.47% overall (charges 90%, dashboard 79%, allocations 76%)
 
 **Run all tests:**
 ```bash
-cd tests && pytest -v
+# Fast iteration (parallel, no coverage) - recommended for development
+pytest tests/ --no-cov
+
+# Full validation with coverage report
+pytest tests/
 ```
 
 **Test specific areas:**
 ```bash
 # Schema validation
-cd tests && pytest integration/test_schema_validation.py -v
+pytest tests/integration/test_schema_validation.py -v
 
 # CLI integration
-cd tests && pytest integration/test_sam_search_cli.py -v
+pytest tests/unit/test_sam_search_cli.py -v
+
+# Query functions
+pytest tests/unit/test_query_functions.py -v
 
 # Marshmallow schemas
-cd tests && pytest api/test_schemas.py -v
+pytest tests/api/test_schemas.py -v
 
 # Run by category
-cd tests && pytest unit/ -v          # Unit tests
-cd tests && pytest integration/ -v   # Integration tests
-cd tests && pytest api/ -v           # API tests
+pytest tests/unit/ -v          # Unit tests
+pytest tests/integration/ -v   # Integration tests
+pytest tests/api/ -v           # API tests
 ```
 
 **Expected results:**
-- With read-only database: ~190 passed, ~20 skipped (CRUD tests)
-- With local development database: 209 passed, 10 skipped
-- Execution time: ~52 seconds
+- With read-only database: ~360+ passed, ~20 skipped (CRUD tests)
+- With local development database: 380+ passed, ~16 skipped
+- Execution time: ~32 seconds (parallel without coverage), ~97 seconds (with coverage)
 
 For detailed testing documentation, see **[tests/docs/README.md](tests/docs/README.md)**.
 
@@ -464,7 +479,11 @@ Before submitting changes:
 
 4. **Run tests before committing:**
    ```bash
-   cd tests && pytest -v
+   # Fast check (32 seconds)
+   pytest tests/ --no-cov
+
+   # Full validation with coverage (97 seconds)
+   pytest tests/
    ```
 
 5. **Submit pull request** with:
@@ -483,7 +502,8 @@ Before submitting changes:
 - Run full test suite before committing
 - Add tests for new features
 - Use integration tests for CLI features
-- Keep tests fast (<1 minute for full suite)
+- Use `pytest tests/ --no-cov` for fast iteration (32s)
+- Run with coverage before final commit (97s)
 
 **Code style:**
 - Follow existing patterns in codebase
@@ -501,7 +521,7 @@ For complete development guide, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 ### Finding User Information
 ```bash
 # CLI
-./src/sam_search_cli.py user benkirk --list-projects
+sam-search user benkirk --list-projects
 
 # Python
 from sam import User
@@ -515,7 +535,7 @@ curl -b cookies.txt http://localhost:5050/api/v1/users/benkirk
 ### Monitoring Allocation Expirations
 ```bash
 # CLI
-./src/sam_search_cli.py project --upcoming-expirations
+sam-search project --upcoming-expirations
 
 # Python
 from sam.queries import get_projects_by_allocation_end_date
@@ -528,10 +548,10 @@ curl -b cookies.txt "http://localhost:5050/api/v1/projects/expiring?days=30"
 ### Checking Allocation Balances
 ```bash
 # CLI
-./src/sam_search_cli.py project SCSG0001 --verbose
+sam-search project SCSG0001 --verbose
 
 # Python
-usage = project.get_detailed_allocation_usage(session, allocation)
+usage = project.get_detailed_allocation_usage()
 print(f"Used: {usage['used']}, Remaining: {usage['remaining']}")
 
 # API
@@ -594,9 +614,9 @@ with open('expiring_report.csv', 'w') as f:
 - Activate conda environment: `source etc/config_env.sh`
 - Check PYTHONPATH: `echo $PYTHONPATH`
 
-**Click command not found/recognized**
-- Ensure `click` is installed in your environment (`pip install click` or `conda install click`)
-- Verify your `PATH` includes the directory where `sam_search_cli.py` is located if you are trying to run it directly without `./src/` prefix.
+**"sam-search: command not found"**
+- Ensure package is installed: `pip install -e .` from project root
+- Check that conda environment is activated
 
 ### Test Failures
 
@@ -621,7 +641,10 @@ For additional troubleshooting, see **[CONTRIBUTING.md](CONTRIBUTING.md#troubles
 - **Flask-Admin** - Admin interface with CRUD operations
 - **Flask-Login** - Session-based authentication
 - **Marshmallow-SQLAlchemy** - JSON serialization schemas
-- **pytest** - Comprehensive test framework
+- **pytest** - Comprehensive test framework (380+ tests, 77.47% coverage)
+- **pytest-xdist** - Parallel test execution (3x speedup)
+- **Click** - CLI framework for sam-search command
+- **Docker Compose** - Containerized development environment
 - **Conda** - Isolated environment management
 
 ---

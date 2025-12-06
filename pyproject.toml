@@ -47,6 +47,7 @@ test = [
     "pytest",
     "pytest-cov",
     "pytest-timeout",
+    "pytest-xdist",
 ]
 dev = ["samuel[test]", "jupyterlab", "pandas"]
 
@@ -94,4 +95,5 @@ addopts = [
     "--cov-report=term-missing:skip-covered",
     "--cov-report=html",
     "--cov-fail-under=70",
+    "-n auto",  # Parallel execution (3x faster without --cov, same speed with --cov)
 ]

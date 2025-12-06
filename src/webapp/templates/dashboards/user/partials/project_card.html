@@ -40,6 +40,16 @@
                 <div class="project-stats-box mb-3">
                     <h6><i class="fas fa-info-circle"></i> Project Information</h6>
                     <div class="stat-item">
+                        <span class="stat-label">Status:</span>
+                        <span class="stat-value">
+                            {% if project.active %}
+                                <span class="text-success font-weight-bold">Active</span>
+                            {% else %}
+                                <span class="text-danger font-weight-bold">Inactive</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="stat-item">
                         <span class="stat-label">Lead:</span>
                         <span class="stat-value">{{ project.lead.display_name if project.lead else 'N/A' }}</span>
                     </div>
@@ -50,38 +60,48 @@
                     </div>
                     {% endif %}
                     <div class="stat-item">
+                        <span class="stat-label">GID:</span>
+                        <span class="stat-value">{{ project.unix_gid or 'N/A' }}</span>
+                    </div>
+                    <div class="stat-item">
                         <span class="stat-label">Type:</span>
                         <span class="stat-value">{{ project.allocation_type.allocation_type if project.allocation_type else 'N/A' }}</span>
                     </div>
                     <div class="stat-item">
                         <span class="stat-label">Panel:</span>
-                        <span class="stat-value">{{ project.allocation_type.panel.panel_name if project.allocation_type.panel else 'N/A' }}</span>
+                        <span class="stat-value">{{ project.allocation_type.panel.panel_name if project.allocation_type and project.allocation_type.panel else 'N/A' }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Area:</span>
+                        <span class="stat-value">{{ project.area_of_interest.area_of_interest if project.area_of_interest else 'N/A' }}</span>
                     </div>
                     <!-- Contracts -->
                     {% if project.contracts %}
-                    <div class="stat-item">
-                      <span class="stat-label">Contracts:</span>
-                      <span class="stat-value">
-                        <ul>
-                          {% for pc in project.contracts %}
-                              {% set label = pc.contract %}
-                              <li>{{ label }}</li>
-                          {% endfor %}
-                        </ul>
-                      </span>
+                    <div class="stat-item mt-2">
+                      <span class="stat-label d-block mb-1">Contracts:</span>
+                      <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
+                        {% for pc in project.contracts %}
+                            <div class="mb-1">
+                                <span class="badge badge-light border">{{ pc.contract.contract_source.contract_source }}</span>
+                                <strong>{{ pc.contract.contract_number }}</strong>
+                                <span class="text-muted">- {{ pc.contract.title }}</span>
+                            </div>
+                        {% endfor %}
+                      </div>
                     </div>
                     {% endif %}
                     <!-- Project directories list -->
                     {% if project.active_directories %}
-                    <div class="stat-item">
-                      <span class="stat-label">Directories:</span>
-                      <span class="stat-value">
-                        <ul>
-                          {% for dir in project.active_directories %}
-                              <li>{{ dir }}</li>
-                          {% endfor %}
-                        </ul>
-                      </span>
+                    <div class="stat-item mt-2">
+                      <span class="stat-label d-block mb-1">Directories:</span>
+                      <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
+                        {% for dir in project.active_directories %}
+                            <div class="mb-1">
+                                <i class="fas fa-folder text-warning mr-1"></i>
+                                <code>{{ dir }}</code>
+                            </div>
+                        {% endfor %}
+                      </div>
                     </div>
                     {% endif %}
                 </div>
