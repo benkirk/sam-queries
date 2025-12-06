@@ -11,4 +11,7 @@ collectors/logs/
 
 # skip linting reports in CI
 megalinter-reports/
+
+# pytest cruft
 .coverage
+.coverage.*
