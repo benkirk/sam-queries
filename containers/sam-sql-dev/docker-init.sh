@@ -48,6 +48,15 @@ done
 msg "Restoring backup.sql.xz into fresh database..."
 if xzcat /backup.sql.xz | mysql --socket=/var/run/mysqld/mysqld.sock -uroot 2>&1; then
     msg "Restore completed successfully!"
+
+    # Analyze tables to update statistics immediately after bulk insert
+    # (mysqlcheck is not available in minimal images, so we generate SQL manually)
+    msg "Updating table statistics (ANALYZE)..."
+    mysql --socket=/var/run/mysqld/mysqld.sock -uroot --skip-column-names -e \
+        "SELECT CONCAT('ANALYZE TABLE \`', table_schema, '\`.\`', table_name, '\`;') \
+         FROM information_schema.tables \
+         WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys');" \
+        | mysql --socket=/var/run/mysqld/mysqld.sock -uroot
 else
     exitcode=$?
     msg "ERROR: Restore failed with exit code $exitcode"

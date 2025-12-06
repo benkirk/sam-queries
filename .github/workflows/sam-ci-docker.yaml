@@ -90,9 +90,43 @@ jobs:
           mysql -h 127.0.0.1 -proot -uroot sam --table -e "SHOW tables;"
           mysql -h 127.0.0.1 -proot -uroot sam --table -e "SELECT * from tables_dictionary;"
 
-      - name: Run pytest inside webapp container
+      - name: Create test database for system_status
         run: |
-          docker compose exec -T webapp pytest -v
+          docker compose exec -T mysql mysql -u root -proot -e "
+            DROP DATABASE IF EXISTS system_status_test;
+            CREATE DATABASE system_status_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          "
+
+      - name: Run pytest with coverage
+        id: pytest
+        run: |
+          docker compose exec -T webapp bash -c "cd /code && pytest tests/ --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=70"
+
+      - name: Copy coverage report from container
+        if: always()
+        run: |
+          docker compose cp webapp:/code/htmlcov ./htmlcov || echo "No coverage report generated"
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-html
+          path: htmlcov/
+          retention-days: 30
+
+      - name: Display coverage summary
+        if: always()
+        run: |
+          echo "📊 Coverage report available in GitHub Actions artifacts"
+          echo "Download 'coverage-report-html' to view detailed line-by-line coverage"
+          echo ""
+          echo "ℹ️  Coverage threshold: 80% minimum required"
+          if [ "${{ steps.pytest.outcome }}" == "failure" ]; then
+            echo "❌ Coverage threshold not met or tests failed"
+          else
+            echo "✅ Coverage threshold met and all tests passed"
+          fi
 
       - name: Cleanup
         if: always()

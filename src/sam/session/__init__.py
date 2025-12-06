@@ -18,7 +18,7 @@ def init_sam_db_defaults():
     username = os.environ['SAM_DB_USERNAME']
     password = os.environ['SAM_DB_PASSWORD']
     server = os.environ['SAM_DB_SERVER']
-    database = 'sam'
+    database = os.getenv('SAM_DB_NAME', 'sam')
 
     print(f'{username}:$SAM_DB_PASSWORD@{server}/{database}')
 

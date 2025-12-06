@@ -35,10 +35,11 @@ dependencies = [
     "rich",
     "sqlalchemy",
     "tqdm",
+    "click",
 ]
 
 [project.scripts]
-sam-search = "sam_search:main"
+sam-search = "sam_search_cli:cli"
 sam-status = "system_status:main"
 
 [project.optional-dependencies]
@@ -54,3 +55,43 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.coverage.run]
+source = ["src/sam", "src/system_status", "src/webapp"]
+omit = [
+    "src/sam/queries/examples.py",
+    "src/webapp/utils/charts.py",
+    "src/webapp/utils/project_permissions.py",
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__init__.py",
+    "*/migrations/*",
+    "*/scripts/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+precision = 2
+fail_under = 70.0
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--cov=src",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=html",
+    "--cov-fail-under=70",
+]

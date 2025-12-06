@@ -18,7 +18,7 @@ def init_status_db_defaults():
     username = os.environ['STATUS_DB_USERNAME']
     password = os.environ['STATUS_DB_PASSWORD']
     server = os.environ['STATUS_DB_SERVER']
-    database = 'system_status'
+    database = os.getenv('STATUS_DB_NAME', 'system_status')
 
     print(f'{username}:$STATUS_DB_PASSWORD@{server}/{database}')
 

@@ -26,7 +26,10 @@ from sam.schemas import (
 )
 from webapp.api.helpers import register_error_handlers, get_project_or_404, parse_date_range
 from datetime import datetime, timedelta
-from sqlalchemy import func
+from sam.summaries.archive_summaries import *
+from sam.integration.xras_views import *
+
+from sam.queries.charges import get_daily_charge_trends_for_accounts, get_raw_charge_summaries_for_accounts
 
 bp = Blueprint('api_charges', __name__)
 register_error_handlers(bp)
@@ -102,74 +105,13 @@ def get_project_charges(projcode):
 
     # If group_by=date, return time series aggregated by date
     if group_by == 'date':
-        daily_data = {}
-
-        # Query comp charges aggregated by date
-        if resource_type in ['HPC', 'DAV', None]:
-            comp_data = db.session.query(
-                CompChargeSummary.activity_date,
-                func.sum(CompChargeSummary.charges).label('total_charges')
-            ).filter(
-                CompChargeSummary.account_id.in_(account_ids),
-                CompChargeSummary.activity_date >= start_date,
-                CompChargeSummary.activity_date <= end_date
-            ).group_by(CompChargeSummary.activity_date).all()
-
-            for date, charges in comp_data:
-                date_str = date.strftime('%Y-%m-%d')
-                if date_str not in daily_data:
-                    daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-                daily_data[date_str]['comp'] = float(charges or 0.0)
-
-            # Query dav charges
-            dav_data = db.session.query(
-                DavChargeSummary.activity_date,
-                func.sum(DavChargeSummary.charges).label('total_charges')
-            ).filter(
-                DavChargeSummary.account_id.in_(account_ids),
-                DavChargeSummary.activity_date >= start_date,
-                DavChargeSummary.activity_date <= end_date
-            ).group_by(DavChargeSummary.activity_date).all()
-
-            for date, charges in dav_data:
-                date_str = date.strftime('%Y-%m-%d')
-                if date_str not in daily_data:
-                    daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-                daily_data[date_str]['dav'] = float(charges or 0.0)
-
-        # Query disk charges
-        if resource_type in ['DISK', None]:
-            disk_data = db.session.query(
-                DiskChargeSummary.activity_date,
-                func.sum(DiskChargeSummary.charges).label('total_charges')
-            ).filter(
-                DiskChargeSummary.account_id.in_(account_ids),
-                DiskChargeSummary.activity_date >= start_date,
-                DiskChargeSummary.activity_date <= end_date
-            ).group_by(DiskChargeSummary.activity_date).all()
-
-            for date, charges in disk_data:
-                date_str = date.strftime('%Y-%m-%d')
-                if date_str not in daily_data:
-                    daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-                daily_data[date_str]['disk'] = float(charges or 0.0)
-
-        # Query archive charges
-        if resource_type in ['ARCHIVE', None]:
-            archive_data = db.session.query(
-                ArchiveChargeSummary.activity_date,
-                func.sum(ArchiveChargeSummary.charges).label('total_charges')
-            ).filter(
-                ArchiveChargeSummary.account_id.in_(account_ids),
-                ArchiveChargeSummary.activity_date >= start_date,
-                ArchiveChargeSummary.activity_date <= end_date
-            ).group_by(ArchiveChargeSummary.activity_date).all()
-
-            for date, charges in archive_data:
-                date_str = date.strftime('%Y-%m-%d')
-                if date_str not in daily_data:
-                    daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
-                daily_data[date_str]['archive'] = float(charges or 0.0)
+        daily_data = get_daily_charge_trends_for_accounts(
+            db.session,
+            account_ids=account_ids,
+            start_date=start_date,
+            end_date=end_date,
+            resource_type=resource_type
+        )
 
         # Convert to sorted list for charting
         sorted_data = sorted([
@@ -187,39 +129,23 @@ def get_project_charges(projcode):
         })
 
     # Otherwise, return raw charge summaries
-    comp_charges = db.session.query(CompChargeSummary).filter(
-        CompChargeSummary.account_id.in_(account_ids),
-        CompChargeSummary.activity_date >= start_date,
-        CompChargeSummary.activity_date <= end_date
-    ).all()
-
-    dav_charges = db.session.query(DavChargeSummary).filter(
-        DavChargeSummary.account_id.in_(account_ids),
-        DavChargeSummary.activity_date >= start_date,
-        DavChargeSummary.activity_date <= end_date
-    ).all()
-
-    disk_charges = db.session.query(DiskChargeSummary).filter(
-        DiskChargeSummary.account_id.in_(account_ids),
-        DiskChargeSummary.activity_date >= start_date,
-        DiskChargeSummary.activity_date <= end_date
-    ).all()
-
-    archive_charges = db.session.query(ArchiveChargeSummary).filter(
-        ArchiveChargeSummary.account_id.in_(account_ids),
-        ArchiveChargeSummary.activity_date >= start_date,
-        ArchiveChargeSummary.activity_date <= end_date
-    ).all()
+    raw_charges_data = get_raw_charge_summaries_for_accounts(
+        db.session,
+        account_ids=account_ids,
+        start_date=start_date,
+        end_date=end_date,
+        resource_type=resource_type
+    )
 
     return jsonify({
         'projcode': projcode,
         'start_date': start_date.isoformat(),
         'end_date': end_date.isoformat(),
         'charges': {
-            'comp': CompChargeSummarySchema(many=True).dump(comp_charges),
-            'dav': DavChargeSummarySchema(many=True).dump(dav_charges),
-            'disk': DiskChargeSummarySchema(many=True).dump(disk_charges),
-            'archive': ArchiveChargeSummarySchema(many=True).dump(archive_charges)
+            'comp': CompChargeSummarySchema(many=True).dump(raw_charges_data.get('comp', [])),
+            'dav': DavChargeSummarySchema(many=True).dump(raw_charges_data.get('dav', [])),
+            'disk': DiskChargeSummarySchema(many=True).dump(raw_charges_data.get('disk', [])),
+            'archive': ArchiveChargeSummarySchema(many=True).dump(raw_charges_data.get('archive', []))
         }
     })
 

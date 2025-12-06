@@ -5,7 +5,7 @@ from flask import redirect, url_for, request
 
 from sam.core.users import User
 from sam.projects.projects import Project, Resource
-from sam.queries import get_projects_by_allocation_end_date, get_projects_with_expired_allocations
+from sam.queries.expirations import get_projects_by_allocation_end_date, get_projects_with_expired_allocations
 
 
 class MyAdminIndexView(AdminIndexView):

@@ -15,15 +15,8 @@ from webapp.utils.charts import generate_nodetype_history_matplotlib, generate_q
 python_dir = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(python_dir))
 
-from system_status import (
-    create_status_engine, get_session,
-    DerechoStatus,
-    CasperStatus, CasperNodeTypeStatus,
-    JupyterHubStatus,
-    FilesystemStatus,
-    SystemOutage, ResourceReservation,
-    LoginNodeStatus, QueueStatus
-)
+from system_status import create_status_engine, get_session
+from system_status import queries as status_queries
 
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
 
@@ -42,67 +35,37 @@ def index():
     session = SessionLocal(expire_on_commit=False)
     try:
         # Get latest Derecho status
-        derecho_status = session.query(DerechoStatus).order_by(
-            DerechoStatus.timestamp.desc()
-        ).first()
+        derecho_status = status_queries.get_latest_derecho_status(session)
 
         derecho_queues = []
         derecho_filesystems = []
         derecho_login_nodes = []
         if derecho_status:
-            derecho_queues = session.query(QueueStatus).filter_by(
-                timestamp=derecho_status.timestamp,
-                system_name='derecho'
-            ).all()
-            derecho_filesystems = session.query(FilesystemStatus).filter_by(
-                timestamp=derecho_status.timestamp,
-                system_name='derecho'
-            ).all()
-            derecho_login_nodes = session.query(LoginNodeStatus).filter_by(
-                timestamp=derecho_status.timestamp,
-                system_name='derecho'
-            ).all()
+            derecho_queues = status_queries.get_latest_derecho_queues(session, derecho_status.timestamp)
+            derecho_filesystems = status_queries.get_latest_derecho_filesystems(session, derecho_status.timestamp)
+            derecho_login_nodes = status_queries.get_latest_derecho_login_nodes(session, derecho_status.timestamp)
 
         # Get latest Casper status
-        casper_status = session.query(CasperStatus).order_by(
-            CasperStatus.timestamp.desc()
-        ).first()
+        casper_status = status_queries.get_latest_casper_status(session)
 
         casper_node_types = []
         casper_queues = []
         casper_login_nodes = []
         casper_filesystems = []
         if casper_status:
-            casper_node_types = session.query(CasperNodeTypeStatus).filter_by(
-                timestamp=casper_status.timestamp
-            ).all()
-            casper_queues = session.query(QueueStatus).filter_by(
-                timestamp=casper_status.timestamp,
-                system_name='casper'
-            ).all()
-            casper_login_nodes = session.query(LoginNodeStatus).filter_by(
-                timestamp=casper_status.timestamp,
-                system_name='casper'
-            ).all()
-            casper_filesystems = session.query(FilesystemStatus).filter_by(
-                timestamp=casper_status.timestamp,
-                system_name='casper'
-            ).all()
+            casper_node_types = status_queries.get_latest_casper_node_types(session, casper_status.timestamp)
+            casper_queues = status_queries.get_latest_casper_queues(session, casper_status.timestamp)
+            casper_login_nodes = status_queries.get_latest_casper_login_nodes(session, casper_status.timestamp)
+            casper_filesystems = status_queries.get_latest_casper_filesystems(session, casper_status.timestamp)
 
         # Get latest JupyterHub status
-        jupyterhub_status = session.query(JupyterHubStatus).order_by(
-            JupyterHubStatus.timestamp.desc()
-        ).first()
+        jupyterhub_status = status_queries.get_latest_jupyterhub_status(session)
 
         # Get active outages
-        outages = session.query(SystemOutage).filter(
-            SystemOutage.status != 'resolved'
-        ).order_by(SystemOutage.start_time.desc()).all()
+        outages = status_queries.get_active_outages(session)
 
         # Get upcoming reservations
-        reservations = session.query(ResourceReservation).filter(
-            ResourceReservation.end_time >= datetime.now()
-        ).order_by(ResourceReservation.start_time).all()
+        reservations = status_queries.get_upcoming_reservations(session)
 
         return render_template(
             'dashboards/status/dashboard.html',
@@ -146,30 +109,14 @@ def nodetype_history(system, node_type):
     try:
         if system.lower() == 'casper':
             # Query Casper node type history
-            history_records = session.query(CasperNodeTypeStatus).filter(
-                CasperNodeTypeStatus.node_type == node_type,
-                CasperNodeTypeStatus.timestamp >= start_date,
-                CasperNodeTypeStatus.timestamp <= end_date
-            ).order_by(CasperNodeTypeStatus.timestamp).all()
-
-            # Convert to dictionaries
-            history_data = [
-                {
-                    'timestamp': record.timestamp,
-                    'nodes_total': record.nodes_total,
-                    'nodes_available': record.nodes_available,
-                    'nodes_down': record.nodes_down,
-                    'nodes_allocated': record.nodes_allocated,
-                    'utilization_percent': record.utilization_percent,
-                    'memory_utilization_percent': record.memory_utilization_percent,
-                }
-                for record in history_records
-            ]
+            history_data = status_queries.get_casper_nodetype_history(
+                session, node_type, start_date, end_date
+            )
 
             # Get latest record for current status
-            latest_status = session.query(CasperNodeTypeStatus).filter(
-                CasperNodeTypeStatus.node_type == node_type
-            ).order_by(CasperNodeTypeStatus.timestamp.desc()).first()
+            latest_status = status_queries.get_latest_casper_nodetype_status(
+                session, node_type
+            )
 
         else:
             flash(f'System {system} not yet supported for node type history', 'warning')
@@ -215,34 +162,14 @@ def queue_history(system, queue_name):
 
     try:
         # Query queue history
-        history_records = session.query(QueueStatus).filter(
-            QueueStatus.queue_name == queue_name,
-            QueueStatus.system_name == system,
-            QueueStatus.timestamp >= start_date,
-            QueueStatus.timestamp <= end_date
-        ).order_by(QueueStatus.timestamp).all()
-
-        # Convert to dictionaries
-        history_data = [
-            {
-                'timestamp': record.timestamp,
-                'running_jobs': record.running_jobs,
-                'pending_jobs': record.pending_jobs,
-                'held_jobs': record.held_jobs,
-                'active_users': record.active_users,
-                'cores_allocated': record.cores_allocated,
-                'cores_pending': record.cores_pending,
-                'gpus_allocated': record.gpus_allocated,
-                'gpus_pending': record.gpus_pending,
-            }
-            for record in history_records
-        ]
+        history_data = status_queries.get_queue_history(
+            session, system, queue_name, start_date, end_date
+        )
 
         # Get latest record for current status
-        latest_status = session.query(QueueStatus).filter(
-            QueueStatus.queue_name == queue_name,
-            QueueStatus.system_name == system
-        ).order_by(QueueStatus.timestamp.desc()).first()
+        latest_status = status_queries.get_latest_queue_status(
+            session, system, queue_name
+        )
 
         # Generate chart
         chart_svg = generate_queue_history_matplotlib(history_data, queue_name, system)

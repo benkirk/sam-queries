@@ -173,7 +173,7 @@ def search_users():
     Returns:
         JSON array of matching users with username, display_name, email
     """
-    from sam.queries import search_users_by_pattern, get_project_member_user_ids
+    from sam.queries.users import search_users_by_pattern, get_project_member_user_ids
     from sam.projects.projects import Project
 
     query = request.args.get('q', '').strip()
@@ -233,7 +233,8 @@ def list_users():
     active = request.args.get('active', type=lambda v: v.lower() == 'true')
     locked = request.args.get('locked', type=lambda v: v.lower() == 'true')
 
-    from sam.queries import find_users_by_name, get_active_users
+    from sam.queries.lookups import find_users_by_name
+    from sam.queries.users import get_active_users
     from sam.core.users import User
 
     # Build query

@@ -153,7 +153,7 @@ def list_projects():
     active = request.args.get('active', type=lambda v: v.lower() == 'true')
     facility = request.args.get('facility', '')
 
-    from sam.queries import search_projects_by_code_or_title, get_active_projects
+    from sam.queries.projects import search_projects_by_code_or_title, get_active_projects
     from sam.projects.projects import Project
 
     total = 0
@@ -340,7 +340,7 @@ def get_expiring_projects():
     Returns:
         JSON with expiring projects including days_remaining and allocation dates
     """
-    from sam.queries import get_projects_expiring_soon
+    from sam.queries.expirations import get_projects_expiring_soon
 
     # Parse filter parameters using common helper
     filters = _parse_project_filter_params()
@@ -390,7 +390,7 @@ def get_recently_expired_projects():
         GET /api/v1/projects/recently_expired?min_days=90&max_days=180&facility_names=UNIV
         Returns projects with allocations that expired 90-180 days ago for UNIV facility
     """
-    from sam.queries import get_projects_with_expired_allocations
+    from sam.queries.expirations import get_projects_with_expired_allocations
 
     # Parse filter parameters using common helper
     filters = _parse_project_filter_params()

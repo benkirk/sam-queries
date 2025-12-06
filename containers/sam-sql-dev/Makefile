@@ -12,10 +12,9 @@ clone:
 	@docker compose -f $(COMPOSE_FILE) exec -T mysql  sh -c 'mysql -uroot -proot -e "USE sam; TRUNCATE TABLE api_credentials;"'
 
 clean:
-	rm -rf dump/
-	docker rm -f local-sam-mysql || true
+	rm -rf dump/ *.sql.xz *~
 
-backups/%.sql.xz:
+%.sql.xz:
 	mkdir -p $$(dirname $@)
 	rm -f $@
 	docker compose -f $(COMPOSE_FILE) exec -T mysql sh -c 'exec mysqldump --all-databases --lock-all-tables --triggers --routines --events -uroot -p"root"' | xz > $@

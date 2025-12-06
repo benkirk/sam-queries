@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 # Example Usage
 # ============================================================================
 
-def example_usage():
+def example_usage():  # pragma: no cover
     from sam.session import create_sam_engine, get_session
 
     """Demonstrate usage of the query functions."""

@@ -18,8 +18,8 @@ fi
 # Config
 # --------------------------------------------
 REPO_URL="https://github.com/benkirk/sam-queries.git"
-REPO_BRANCH="${REPO_BRANCH:-self-install}"
-TARGET_DIR="${SAMQ_HOME:-$HOME/codes3/sam-queries-foo}"
+REPO_BRANCH="${REPO_BRANCH:-main}"
+TARGET_DIR="${SAMQ_HOME:-${HOME}/codes/project_samuel/${REPO_BRANCH}}"
 
 # --------------------------------------------
 # Command-line arguments
@@ -130,7 +130,11 @@ if [[ ! -f "${TARGET_DIR}/.env" ]]; then
     cp "${TARGET_DIR}/.env.example" "${TARGET_DIR}/.env" 2>/dev/null || true
 fi
 
-echo "Install complete."
-echo "To start services:"
-echo "  cd \"${TARGET_DIR}\""
-echo "  docker compose up --watch"
+cat <<EOF
+Install complete.
+To start services"
+  cd \"${TARGET_DIR}\""
+  docker compose up --watch
+
+Once all services are up, connect to http://127.0.0.1:5050/user/
+EOF
