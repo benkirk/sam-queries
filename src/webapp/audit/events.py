@@ -79,7 +79,7 @@ def init_audit_events(app, db, logfile_path):
         if obj.__class__.__name__ in EXCLUDED_MODELS:
             return False
 
-        # Skip objects bound to system_status database
+        # Skip objects bound to excluded database
         if hasattr(obj, "__bind_key__") and obj.__bind_key__ in EXCLUDED_BINDS:
             return False
 
