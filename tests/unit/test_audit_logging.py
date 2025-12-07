@@ -149,7 +149,7 @@ def test_audit_excludes_api_credentials(audit_log_file):
         class FakeDB:
             pass
 
-        init_audit_events(FakeApp(), FakeDB(), [StatusBase.metadata], audit_log_file)
+        init_audit_events(FakeApp(), FakeDB(), audit_log_file)
 
         # Create API credentials
         creds = ApiCredentials(
@@ -220,7 +220,7 @@ def test_audit_event_handler_initialization():
         pass
 
     # This should complete without errors
-    init_audit_events(FakeApp(), FakeDB(), [StatusBase.metadata], log_path)
+    init_audit_events(FakeApp(), FakeDB(), log_path)
 
     # Test passes if no exception raised
     assert True

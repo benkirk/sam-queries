@@ -12,15 +12,13 @@ from .events import init_audit_events
 audit_bp = Blueprint("audit", __name__)
 
 
-def init_audit(app, db, excluded_metadata=None, logfile_path=None):
+def init_audit(app, db, logfile_path=None):
     """
     Attach audit logging to Flask application.
 
     Args:
         app: Flask application instance
         db: Flask-SQLAlchemy instance
-        excluded_metadata: List of SQLAlchemy metadata objects to exclude
-                          (e.g., [StatusBase.metadata] for system_status database)
         logfile_path: Path to audit log file (default: /var/log/sam/model_audit.log)
 
     Example:
@@ -30,7 +28,6 @@ def init_audit(app, db, excluded_metadata=None, logfile_path=None):
         init_audit(
             app,
             db,
-            excluded_metadata=[StatusBase.metadata],
             logfile_path='/var/log/sam/model_audit.log'
         )
     """
@@ -39,7 +36,7 @@ def init_audit(app, db, excluded_metadata=None, logfile_path=None):
         logfile_path = app.config.get('AUDIT_LOG_PATH', '/var/log/sam/model_audit.log')
 
     # Initialize SQLAlchemy event handlers
-    init_audit_events(app, db, excluded_metadata, logfile_path)
+    init_audit_events(app, db, logfile_path)
 
     # Register blueprint
     app.register_blueprint(audit_bp)

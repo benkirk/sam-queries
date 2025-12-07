@@ -78,15 +78,12 @@ def create_app():
     # AUDIT LOGGING INITIALIZATION
     # =========================================================================
     # Track INSERT/UPDATE/DELETE operations on SAM database models
-    # Excludes: system_status database, ApiCredentials model
+    # Excludes: system_status database, ApiCredentials model - see audit/events.py
     if app.config.get('AUDIT_ENABLED', True):
         from webapp.audit import init_audit
-        from system_status.base import StatusBase
-
         init_audit(
             app=app,
             db=db,
-            excluded_metadata=[StatusBase.metadata],
             logfile_path=app.config.get('AUDIT_LOG_PATH', '/var/log/sam/model_audit.log')
         )
     # =========================================================================

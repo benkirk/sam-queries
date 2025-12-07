@@ -14,7 +14,7 @@ from .logger import get_audit_logger
 _AUDIT_EVENTS_REGISTERED = False
 
 
-def init_audit_events(app, db, excluded_metadata, logfile_path):
+def init_audit_events(app, db, logfile_path):
     """
     Initialize SQLAlchemy event handlers for audit logging.
 
@@ -24,7 +24,6 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
     Args:
         app: Flask application instance
         db: Flask-SQLAlchemy instance
-        excluded_metadata: List of SQLAlchemy metadata objects to exclude (e.g., StatusBase.metadata)
         logfile_path: Path to audit log file
     """
     global _AUDIT_EVENTS_REGISTERED
@@ -35,23 +34,11 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
 
     logger = get_audit_logger(logfile_path)
 
-    # Convert to set for efficient lookups
-    EXCLUDED_METADATA = set(excluded_metadata or [])
-
     # Security-sensitive models to exclude
     EXCLUDED_MODELS = {'ApiCredentials'}
 
-    def get_sam_engine():
-        """
-        Get the SAM database engine.
-
-        We define this as a function so it's called at runtime when needed,
-        rather than at initialization time when app context might not be available.
-
-        Returns:
-            Engine: The default SQLAlchemy engine (SAM database)
-        """
-        return db.engine
+    # Excluded Binds
+    EXCLUDED_BINDS = {'system_status'}
 
     def responsible_user():
         """
@@ -88,12 +75,12 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
         if not hasattr(obj, "__table__"):
             return False
 
-        # Skip excluded metadata (e.g., system_status database)
-        if obj.__table__.metadata in EXCLUDED_METADATA:
-            return False
-
         # Skip security-sensitive models
         if obj.__class__.__name__ in EXCLUDED_MODELS:
+            return False
+
+        # Skip objects bound to system_status database
+        if hasattr(obj, "__bind_key__") and obj.__bind_key__ in EXCLUDED_BINDS:
             return False
 
         return True
@@ -159,12 +146,6 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
             instances: Instances being flushed (unused)
         """
         try:
-            # Only process if this session is using the SAM engine
-            # This filters out system_status and other bind sessions
-            sam_engine = get_sam_engine()
-            #if session.bind != sam_engine:
-            #    return
-
             user = responsible_user()
 
             # Track INSERT operations
@@ -172,9 +153,8 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
                 if should_track(obj):
                     model_name = obj.__class__.__name__
                     pk = get_primary_key(obj)
-
                     logger.info(
-                        f"user={user} action=INSERT model={model_name} pk={pk}"
+                        f"user={user} action=INSERT model={model_name} pk={pk} obj={obj}"
                     )
 
             # Track UPDATE operations
@@ -183,7 +163,6 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
                     model_name = obj.__class__.__name__
                     pk = get_primary_key(obj)
                     changes = diff_for_object(obj)
-
                     if changes:
                         logger.info(
                             f"user={user} action=UPDATE model={model_name} "
@@ -195,9 +174,8 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
                 if should_track(obj):
                     model_name = obj.__class__.__name__
                     pk = get_primary_key(obj)
-
                     logger.info(
-                        f"user={user} action=DELETE model={model_name} pk={pk}"
+                        f"user={user} action=DELETE model={model_name} pk={pk} obj={obj}"
                     )
 
         except Exception as e:
