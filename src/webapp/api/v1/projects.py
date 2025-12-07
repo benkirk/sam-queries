@@ -443,7 +443,7 @@ def add_member(projcode):
     Returns:
         JSON with success status and member info
     """
-    from sam.manage import add_user_to_project
+    from sam.manage import add_user_to_project, management_transaction
     from sam.core.users import User
     from webapp.utils.project_permissions import can_manage_project_members
 
@@ -479,13 +479,11 @@ def add_member(projcode):
         return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
 
     try:
-        add_user_to_project(db.session, project.project_id, user.user_id, start_date, end_date)
-        db.session.commit()
+        with management_transaction(db.session):
+            add_user_to_project(db.session, project.project_id, user.user_id, start_date, end_date)
     except ValueError as e:
-        db.session.rollback()
         return jsonify({'error': str(e)}), 400
     except Exception as e:
-        db.session.rollback()
         return jsonify({'error': f'Failed to add member: {str(e)}'}), 500
 
     return jsonify({
@@ -508,7 +506,7 @@ def remove_member(projcode, username):
     Returns:
         JSON with success status
     """
-    from sam.manage import remove_user_from_project
+    from sam.manage import remove_user_from_project, management_transaction
     from sam.core.users import User
     from webapp.utils.project_permissions import can_manage_project_members
 
@@ -524,13 +522,11 @@ def remove_member(projcode, username):
         return jsonify({'error': f'User "{username}" not found'}), 404
 
     try:
-        remove_user_from_project(db.session, project.project_id, user.user_id)
-        db.session.commit()
+        with management_transaction(db.session):
+            remove_user_from_project(db.session, project.project_id, user.user_id)
     except ValueError as e:
-        db.session.rollback()
         return jsonify({'error': str(e)}), 400
     except Exception as e:
-        db.session.rollback()
         return jsonify({'error': f'Failed to remove member: {str(e)}'}), 500
 
     return jsonify({
@@ -551,7 +547,7 @@ def update_admin(projcode):
     Returns:
         JSON with success status and new admin info
     """
-    from sam.manage import change_project_admin
+    from sam.manage import change_project_admin, management_transaction
     from sam.core.users import User
     from webapp.utils.project_permissions import can_change_admin
 
@@ -571,13 +567,11 @@ def update_admin(projcode):
             return jsonify({'error': f'User "{admin_username}" not found'}), 404
 
         try:
-            change_project_admin(db.session, project.project_id, new_admin.user_id)
-            db.session.commit()
+            with management_transaction(db.session):
+                change_project_admin(db.session, project.project_id, new_admin.user_id)
         except ValueError as e:
-            db.session.rollback()
             return jsonify({'error': str(e)}), 400
         except Exception as e:
-            db.session.rollback()
             return jsonify({'error': f'Failed to change admin: {str(e)}'}), 500
 
         return jsonify({
@@ -592,10 +586,9 @@ def update_admin(projcode):
     else:
         # Clear admin
         try:
-            change_project_admin(db.session, project.project_id, None)
-            db.session.commit()
+            with management_transaction(db.session):
+                change_project_admin(db.session, project.project_id, None)
         except Exception as e:
-            db.session.rollback()
             return jsonify({'error': f'Failed to clear admin: {str(e)}'}), 500
 
         return jsonify({
