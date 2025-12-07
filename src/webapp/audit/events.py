@@ -19,6 +19,9 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
     """
     Initialize SQLAlchemy event handlers for audit logging.
 
+    Registers event listeners on the default database engine only (not bind targets).
+    This ensures only SAM database changes are tracked, not system_status or other binds.
+
     Args:
         app: Flask application instance
         db: Flask-SQLAlchemy instance
@@ -38,6 +41,18 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
 
     # Security-sensitive models to exclude
     EXCLUDED_MODELS = {'ApiCredentials'}
+
+    def get_sam_engine():
+        """
+        Get the SAM database engine.
+
+        We define this as a function so it's called at runtime when needed,
+        rather than at initialization time when app context might not be available.
+
+        Returns:
+            Engine: The default SQLAlchemy engine (SAM database)
+        """
+        return db.engine
 
     def responsible_user():
         """
@@ -132,12 +147,12 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
 
         return changes
 
-    @event.listens_for(Session, "before_flush")
     def before_flush(session, flush_context, instances):
         """
         Event handler triggered before database flush.
 
         Captures INSERT, UPDATE, DELETE operations and logs them.
+        Only triggers for sessions using the SAM database engine.
 
         Args:
             session: SQLAlchemy session
@@ -145,6 +160,12 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
             instances: Instances being flushed (unused)
         """
         try:
+            # Only process if this session is using the SAM engine
+            # This filters out system_status and other bind sessions
+            sam_engine = get_sam_engine()
+            if session.bind != sam_engine:
+                return
+
             user = responsible_user()
 
             # Track INSERT operations
@@ -183,6 +204,10 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
         except Exception as e:
             # Log error but don't break application
             print(f"AUDIT ERROR: {e}", file=sys.stderr)
+
+    # Register the event listener on ALL sessions
+    # We filter by engine inside the handler for better control
+    event.listen(Session, "before_flush", before_flush)
 
     # Mark as registered
     _AUDIT_EVENTS_REGISTERED = True
