@@ -3,7 +3,6 @@ SQLAlchemy event handlers for audit logging.
 
 Registers before_flush event listener to track INSERT, UPDATE, DELETE operations.
 """
-import sys
 from datetime import datetime
 from sqlalchemy import event
 from sqlalchemy.orm import Session
@@ -163,8 +162,8 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
             # Only process if this session is using the SAM engine
             # This filters out system_status and other bind sessions
             sam_engine = get_sam_engine()
-            if session.bind != sam_engine:
-                return
+            #if session.bind != sam_engine:
+            #    return
 
             user = responsible_user()
 
@@ -203,6 +202,7 @@ def init_audit_events(app, db, excluded_metadata, logfile_path):
 
         except Exception as e:
             # Log error but don't break application
+            import sys
             print(f"AUDIT ERROR: {e}", file=sys.stderr)
 
     # Register the event listener on ALL sessions

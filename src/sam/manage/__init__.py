@@ -117,11 +117,15 @@ def remove_user_from_project(session: Session, project_id: int, user_id: int) ->
         Account.project_id == project_id
     ).subquery()
 
-    # Remove from all accounts
-    session.query(AccountUser).filter(
+    # Remove from all accounts (ORM-style to trigger audit events)
+    # Load objects first so they appear in session.deleted
+    account_users = session.query(AccountUser).filter(
         AccountUser.account_id.in_(select(account_ids)),
         AccountUser.user_id == user_id
-    ).delete(synchronize_session=False)
+    ).all()
+
+    for account_user in account_users:
+        session.delete(account_user)
 
     # Clear admin role if they had it
     if project.project_admin_user_id == user_id:
