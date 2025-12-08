@@ -72,9 +72,27 @@
                         <span class="stat-value">{{ project.allocation_type.panel.panel_name if project.allocation_type and project.allocation_type.panel else 'N/A' }}</span>
                     </div>
                     <div class="stat-item">
+                        <span class="stat-label">Facility:</span>
+                        <span class="stat-value">{{ project.allocation_type.panel.facility.facility_name if project.allocation_type and project.allocation_type.panel and project.allocation_type.panel.facility else 'N/A' }}</span>
+                    </div>
+                    <div class="stat-item">
                         <span class="stat-label">Area:</span>
                         <span class="stat-value">{{ project.area_of_interest.area_of_interest if project.area_of_interest else 'N/A' }}</span>
                     </div>
+                    <!-- Organizations -->
+                    {% if project.organizations %}
+                    <div class="stat-item mt-2">
+                      <span class="stat-label d-block mb-1">Organizations:</span>
+                      <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
+                        {% for po in project.organizations %}
+                            <div class="mb-1">
+                                <span class="badge badge-light border">{{ po.organization.acronym }}</span>
+                                <span class="text-muted">{{ po.organization.name }}</span>
+                            </div>
+                        {% endfor %}
+                      </div>
+                    </div>
+                    {% endif %}
                     <!-- Contracts -->
                     {% if project.contracts %}
                     <div class="stat-item mt-2">
