@@ -79,7 +79,7 @@ docker-up: ## Start docker containers
 	@echo "✅ Containers ready!"
 
 docker-down: ## Stop docker containers
-	docker compose down -v
+	docker compose down
 
 docker-restart: ## Restart docker containers
 	@$(MAKE) docker-down
