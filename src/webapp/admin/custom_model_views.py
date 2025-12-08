@@ -52,7 +52,11 @@ class UserAdmin(SAMModelView):
 
     @property
     def can_delete(self):
-        return self._check_permission('DELETE_USERS')
+        # almost never would we want to delete a record through the UI, even as a site admin.
+        # SAM records are generally deactivated but retained.  If absolutely necessary itels
+        # can be deleted via raw DB access.
+        return False
+        #return self._check_permission('DELETE_USERS')
 
 
 # Project Management
