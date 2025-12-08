@@ -30,6 +30,7 @@ jobs:
         run: |
           make help
           make conda-env
+          cp .env.example .env
 
       # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
       # https://docs.docker.com/build/buildkit/dockerfile-release-notes/?utm_source=chatgpt.com#1190
@@ -47,74 +48,22 @@ jobs:
         run: |
           make docker-up
 
-      # - name: Verify MySQL backup file exists
-      #   run: |
-      #     if [ ! -f containers/sam-sql-dev/backups/sam-obfuscated.sql.xz ]; then
-      #       echo "❌ Backup file not found: containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
-      #       echo "Please ensure backup is committed or use artifacts"
-      #       exit 1
-      #     fi
-      #     ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
+      - name: Run sam-search CLI tool
+        run: |
+          sam-search --inactive-projects user benkirk --list-projects --verbose
+          sam-search project SCSG0001 --verbose --list-users
 
-      # - name: Build and start services
-      #   run: |
-      #     docker compose build
-      #     docker compose up -d
+      - name: Run sam-status CLI tool
+        run: |
+          sam-status derecho
+          sam-status casper
+          sam-status jupyterhub
 
-      # - name: Wait for services to be healthy
-      #   run: |
-      #     echo "Waiting for MySQL to be healthy..."
-      #     timeout 120 bash -c 'until docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot --silent; do sleep 2; done'
-      #     echo "✅ MySQL is healthy"
+      - name: Test Suite (from Makefile)
+        run: |
+          make check
 
-      #     echo "Waiting for webapp to be ready..."
-      #     timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
-      #     echo "✅ Webapp is ready"
-
-
-      # - name: Show container logs (for debugging)
-      #   if: failure()
-      #   run: |
-      #     docker compose logs --tail=100
-
-      # - name: Show MySQL databases
-      #   run: |
-      #     mysql -h 127.0.0.1 -proot -uroot system_status --table -e "SHOW tables;"
-      #     mysql -h 127.0.0.1 -proot -uroot sam --table -e "SHOW tables;"
-      #     mysql -h 127.0.0.1 -proot -uroot sam --table -e "SELECT * from tables_dictionary;"
-
-      # - name: Run pytest with coverage
-      #   id: pytest
-      #   run: |
-      #     docker compose exec -T webapp bash -c "cd /code && pytest tests/ --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=70"
-
-      # - name: Copy coverage report from container
-      #   if: always()
-      #   run: |
-      #     docker compose cp webapp:/code/htmlcov ./htmlcov || echo "No coverage report generated"
-
-      # - name: Upload coverage HTML report
-      #   uses: actions/upload-artifact@v4
-      #   if: always()
-      #   with:
-      #     name: coverage-report-html
-      #     path: htmlcov/
-      #     retention-days: 30
-
-      # - name: Display coverage summary
-      #   if: always()
-      #   run: |
-      #     echo "📊 Coverage report available in GitHub Actions artifacts"
-      #     echo "Download 'coverage-report-html' to view detailed line-by-line coverage"
-      #     echo ""
-      #     echo "ℹ️  Coverage threshold: 80% minimum required"
-      #     if [ "${{ steps.pytest.outcome }}" == "failure" ]; then
-      #       echo "❌ Coverage threshold not met or tests failed"
-      #     else
-      #       echo "✅ Coverage threshold met and all tests passed"
-      #     fi
-
-      # - name: Cleanup
-      #   if: always()
-      #   run: |
-      #     docker compose down -v
+      - name: Cleanup
+        if: always()
+        run: |
+          make docker-down
