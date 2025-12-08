@@ -22,7 +22,7 @@ class TestJupyterHubCLI(unittest.TestCase):
 
         # Mock Status Object
         mock_status = MagicMock()
-        mock_status.timestamp.strftime.return_value = "2025-01-01 12:00:00"
+        mock_status.timestamp.strftime.return_value = "2100-01-01 12:00:00"
         mock_status.available = True
         mock_status.active_users = 10
         mock_status.active_sessions = 5

@@ -14,6 +14,8 @@ services:
       - "5050:5050"
     networks:
       - sam-network
+    volumes:
+      - ./logs:/var/log/sam
     # Development: Disable Python bytecode caching to avoid stale .pyc issues
     # when adding new files/functions. Remove for production deployment.
     environment:
@@ -22,6 +24,8 @@ services:
       - DISABLE_AUTH=1
       - DEV_AUTO_LOGIN_USER=benkirk
       - FLASK_DEBUG=1
+      - AUDIT_ENABLED=1
+      - AUDIT_LOG_PATH=/var/log/sam/model_audit.log
 
     # Important: watch the current directory, re-syncing as needed based on source changes
     develop:

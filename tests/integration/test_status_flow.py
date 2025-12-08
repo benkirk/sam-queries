@@ -31,7 +31,7 @@ class TestDerechoIntegration:
         status_session.query(DerechoStatus).delete()
         status_session.flush()
 
-        timestamp = datetime(2025, 1, 25, 14, 30, 0)
+        timestamp = datetime(2100, 1, 25, 14, 30, 0)
 
         # Create main Derecho status
         derecho = DerechoStatus(
@@ -148,7 +148,7 @@ class TestCasperIntegration:
         status_session.query(CasperStatus).delete()
         status_session.flush()
 
-        timestamp = datetime(2025, 1, 25, 14, 30, 0)
+        timestamp = datetime(2100, 1, 25, 14, 30, 0)
 
         # Create main Casper status
         casper = CasperStatus(
@@ -244,10 +244,13 @@ class TestMultipleSnapshots:
 
     def test_latest_returns_most_recent(self, status_session):
         """Test that latest query returns most recent snapshot."""
+
+        TESTYEAR = 2150
+
         # Create three snapshots with different timestamps
         for i, hour in enumerate([10, 12, 14]):
             derecho = DerechoStatus(
-                timestamp=datetime(2025, 1, 25, hour, 0, 0),
+                timestamp=datetime(TESTYEAR, 1, 25, hour, 0, 0),
                 cpu_nodes_total=100 + i,  # Different values to distinguish
                 cpu_nodes_available=80,
                 cpu_nodes_down=5,
@@ -273,9 +276,12 @@ class TestMultipleSnapshots:
         status_session.flush()
 
         # Query for latest
-        latest = status_session.query(DerechoStatus).order_by(
-            DerechoStatus.timestamp.desc()
-        ).first()
+        latest = status_session.query(DerechoStatus)\
+                               .filter(DerechoStatus.timestamp <= datetime(TESTYEAR, 12, 31))\
+                               .filter(DerechoStatus.timestamp >= datetime(TESTYEAR,  1,  1))\
+                               .order_by(
+                                   DerechoStatus.timestamp.desc()
+                               ).first()
 
         # Should get the 14:00 snapshot (i=2)
         assert latest.cpu_nodes_total == 102  # 100 + 2
@@ -283,9 +289,12 @@ class TestMultipleSnapshots:
         assert latest.timestamp.hour == 14
 
         # Verify all three exist
-        all_snapshots = status_session.query(DerechoStatus).order_by(
-            DerechoStatus.timestamp.asc()
-        ).all()
+        all_snapshots = status_session.query(DerechoStatus)\
+                                      .filter(DerechoStatus.timestamp <= datetime(TESTYEAR, 12, 31))\
+                                      .filter(DerechoStatus.timestamp >= datetime(TESTYEAR,  1,  1))\
+                                      .order_by(
+                                          DerechoStatus.timestamp.asc()
+                                      ).all()
         assert len(all_snapshots) == 3
         assert all_snapshots[0].timestamp.hour == 10
         assert all_snapshots[1].timestamp.hour == 12

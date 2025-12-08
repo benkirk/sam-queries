@@ -4,6 +4,7 @@ __pycache__/
 conda-env/
 containers/sam-sql-dev/dump/
 collectors/logs/
+logs/
 *.egg-info/
 
 # auth config:

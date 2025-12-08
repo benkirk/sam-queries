@@ -14,6 +14,15 @@ from sqlalchemy import select
 
 from sam.accounting.accounts import Account, AccountUser
 from sam.projects.projects import Project
+from .transaction import management_transaction
+
+
+__all__ = [
+    'add_user_to_project',
+    'remove_user_from_project',
+    'change_project_admin',
+    'management_transaction',
+]
 
 
 def add_user_to_project(
@@ -28,6 +37,9 @@ def add_user_to_project(
 
     This adds the user to every account (resource) associated with the project,
     enabling them to use all resources the project has access to.
+
+    NOTE: This function does NOT commit the session. The caller is responsible
+    for calling session.commit() or session.flush() as appropriate.
 
     Args:
         session: SQLAlchemy session
@@ -67,7 +79,9 @@ def add_user_to_project(
             )
             session.add(account_user)
 
-    session.commit()
+    # Flush to assign IDs but do not commit
+    # Caller is responsible for committing
+    session.flush()
 
 
 def remove_user_from_project(session: Session, project_id: int, user_id: int) -> None:
@@ -76,6 +90,9 @@ def remove_user_from_project(session: Session, project_id: int, user_id: int) ->
 
     Also clears the admin role if the user being removed is the project admin.
     Cannot remove the project lead.
+
+    NOTE: This function does NOT commit the session. The caller is responsible
+    for calling session.commit() or session.flush() as appropriate.
 
     Args:
         session: SQLAlchemy session
@@ -100,17 +117,23 @@ def remove_user_from_project(session: Session, project_id: int, user_id: int) ->
         Account.project_id == project_id
     ).subquery()
 
-    # Remove from all accounts
-    session.query(AccountUser).filter(
+    # Remove from all accounts (ORM-style to trigger audit events)
+    # Load objects first so they appear in session.deleted
+    account_users = session.query(AccountUser).filter(
         AccountUser.account_id.in_(select(account_ids)),
         AccountUser.user_id == user_id
-    ).delete(synchronize_session=False)
+    ).all()
+
+    for account_user in account_users:
+        session.delete(account_user)
 
     # Clear admin role if they had it
     if project.project_admin_user_id == user_id:
         project.project_admin_user_id = None
 
-    session.commit()
+    # Flush changes but do not commit
+    # Caller is responsible for committing
+    session.flush()
 
 
 def change_project_admin(
@@ -122,6 +145,9 @@ def change_project_admin(
     Change the project admin to a different user.
 
     The new admin must already be a member of the project (unless clearing admin).
+
+    NOTE: This function does NOT commit the session. The caller is responsible
+    for calling session.commit() or session.flush() as appropriate.
 
     Args:
         session: SQLAlchemy session
@@ -148,4 +174,7 @@ def change_project_admin(
             raise ValueError("User must be a project member before becoming admin")
 
     project.project_admin_user_id = new_admin_user_id
-    session.commit()
+
+    # Flush changes but do not commit
+    # Caller is responsible for committing
+    session.flush()

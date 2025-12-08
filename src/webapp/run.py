@@ -74,6 +74,20 @@ def create_app():
     # Initialize db with app
     db.init_app(app)
 
+    # =========================================================================
+    # AUDIT LOGGING INITIALIZATION
+    # =========================================================================
+    # Track INSERT/UPDATE/DELETE operations on SAM database models
+    # Excludes: system_status database, ApiCredentials model - see audit/events.py
+    if app.config.get('AUDIT_ENABLED', True):
+        from webapp.audit import init_audit
+        init_audit(
+            app=app,
+            db=db,
+            logfile_path=app.config.get('AUDIT_LOG_PATH', '/var/log/sam/model_audit.log')
+        )
+    # =========================================================================
+
     # Initialize Flask-Login
     login_manager = LoginManager()
     login_manager.init_app(app)

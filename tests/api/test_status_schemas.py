@@ -29,7 +29,7 @@ class TestDerechoSchemaLoading:
     def test_derecho_schema_minimal(self):
         """Test loading minimal Derecho status without nested objects."""
         data = {
-            'timestamp': datetime(2025, 1, 25, 14, 30, 0),
+            'timestamp': datetime(2100, 1, 25, 14, 30, 0),
             'cpu_nodes_total': 100,
             'cpu_nodes_available': 80,
             'cpu_nodes_down': 5,
@@ -56,7 +56,7 @@ class TestDerechoSchemaLoading:
 
         assert status.cpu_nodes_total == 100
         assert status.running_jobs == 150
-        assert status.timestamp == datetime(2025, 1, 25, 14, 30, 0)
+        assert status.timestamp == datetime(2100, 1, 25, 14, 30, 0)
         assert status.login_nodes == []
         assert status.queues == []
         assert status.filesystems == []
@@ -64,7 +64,7 @@ class TestDerechoSchemaLoading:
     def test_derecho_schema_with_login_nodes(self):
         """Test loading Derecho status with nested login nodes."""
         data = {
-            'timestamp': datetime(2025, 1, 25, 14, 30, 0),
+            'timestamp': datetime(2100, 1, 25, 14, 30, 0),
             'cpu_nodes_total': 100,
             'cpu_nodes_available': 80,
             'cpu_nodes_down': 5,
@@ -107,7 +107,7 @@ class TestDerechoSchemaLoading:
 
         assert len(status.login_nodes) == 2
         # Verify timestamp and system_name were injected
-        assert status.login_nodes[0].timestamp == datetime(2025, 1, 25, 14, 30, 0)
+        assert status.login_nodes[0].timestamp == datetime(2100, 1, 25, 14, 30, 0)
         assert status.login_nodes[0].system_name == 'derecho'
         assert status.login_nodes[0].node_name == 'derecho1'
         assert status.login_nodes[1].node_name == 'derecho5'
@@ -115,7 +115,7 @@ class TestDerechoSchemaLoading:
     def test_derecho_schema_with_all_nested_objects(self):
         """Test loading Derecho status with all nested object types."""
         data = {
-            'timestamp': datetime(2025, 1, 25, 14, 30, 0),
+            'timestamp': datetime(2100, 1, 25, 14, 30, 0),
             'cpu_nodes_total': 100,
             'cpu_nodes_available': 80,
             'cpu_nodes_down': 5,
@@ -154,9 +154,9 @@ class TestDerechoSchemaLoading:
         assert len(status.filesystems) == 1
 
         # Verify all nested objects got timestamp and system_name
-        assert status.queues[0].timestamp == datetime(2025, 1, 25, 14, 30, 0)
+        assert status.queues[0].timestamp == datetime(2100, 1, 25, 14, 30, 0)
         assert status.queues[0].system_name == 'derecho'
-        assert status.filesystems[0].timestamp == datetime(2025, 1, 25, 14, 30, 0)
+        assert status.filesystems[0].timestamp == datetime(2100, 1, 25, 14, 30, 0)
         assert status.filesystems[0].system_name == 'derecho'
 
 
@@ -166,7 +166,7 @@ class TestCasperSchemaLoading:
     def test_casper_schema_minimal(self):
         """Test loading minimal Casper status without nested objects."""
         data = {
-            'timestamp': datetime(2025, 1, 25, 14, 30, 0),
+            'timestamp': datetime(2100, 1, 25, 14, 30, 0),
             'cpu_nodes_total': 151,
             'cpu_nodes_available': 135,
             'cpu_nodes_down': 3,
@@ -206,7 +206,7 @@ class TestCasperSchemaLoading:
     def test_casper_schema_with_node_types(self):
         """Test loading Casper status with nested node types."""
         data = {
-            'timestamp': datetime(2025, 1, 25, 14, 30, 0),
+            'timestamp': datetime(2100, 1, 25, 14, 30, 0),
             'cpu_nodes_total': 151,
             'cpu_nodes_available': 135,
             'cpu_nodes_down': 3,
@@ -258,14 +258,14 @@ class TestCasperSchemaLoading:
 
         assert len(status.node_types) == 2
         # Verify timestamp was injected
-        assert status.node_types[0].timestamp == datetime(2025, 1, 25, 14, 30, 0)
+        assert status.node_types[0].timestamp == datetime(2100, 1, 25, 14, 30, 0)
         assert status.node_types[0].node_type == 'gpu-v100'
         assert status.node_types[1].node_type == 'viz-l40'
 
     def test_casper_schema_with_all_nested_objects(self):
         """Test loading Casper status with all nested object types."""
         data = {
-            'timestamp': datetime(2025, 1, 25, 14, 30, 0),
+            'timestamp': datetime(2100, 1, 25, 14, 30, 0),
             'cpu_nodes_total': 151,
             'cpu_nodes_available': 135,
             'cpu_nodes_down': 3,
@@ -316,7 +316,7 @@ class TestCasperSchemaLoading:
 
         # Verify all nested objects got timestamp and system_name (except node_types which only get timestamp)
         assert status.login_nodes[0].system_name == 'casper'
-        assert status.node_types[0].timestamp == datetime(2025, 1, 25, 14, 30, 0)
+        assert status.node_types[0].timestamp == datetime(2100, 1, 25, 14, 30, 0)
         assert status.queues[0].system_name == 'casper'
         assert status.filesystems[0].system_name == 'casper'
 
@@ -328,7 +328,7 @@ class TestSchemaSerialization:
         """Test that dumping Derecho status includes nested objects."""
         from system_status import DerechoStatus, LoginNodeStatus
 
-        timestamp = datetime(2025, 1, 25, 14, 30, 0)
+        timestamp = datetime(2100, 1, 25, 14, 30, 0)
         status = DerechoStatus(
             timestamp=timestamp,
             cpu_nodes_total=100,
