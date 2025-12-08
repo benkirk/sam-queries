@@ -25,10 +25,10 @@ distclean:
 
 %: %.yaml pyproject.toml
 	[ -d $@ ] && mv $@ $@.old && rm -rf $@.old &
-	$(config-env)
-	conda env create --file $< --prefix $@
-	conda activate ./$@
-	pip install -e ".[test]"
+	$(config_env) &&\
+	conda env create --file $< --prefix $@ &&\
+	conda activate ./$@ &&\
+	pip install -e ".[test]" &&\
 	pipdeptree --all 2>/dev/null || true
 
 solve-%: %.yaml
