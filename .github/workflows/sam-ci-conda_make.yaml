@@ -26,11 +26,16 @@ jobs:
         with:
           lfs: true
 
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: ./conda-env/
+          environment-file: conda-env.yaml
+
       - name: Build Conda Environment
         run: |
           make help
-          make conda-env
           cp .env.example .env
+          pip install -e ".[test]"
 
       # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
       # https://docs.docker.com/build/buildkit/dockerfile-release-notes/?utm_source=chatgpt.com#1190
@@ -50,13 +55,11 @@ jobs:
 
       - name: Run sam-search CLI tool
         run: |
-          conda activate ./conda-env
           sam-search --inactive-projects user benkirk --list-projects --verbose
           sam-search project SCSG0001 --verbose --list-users
 
       - name: Run sam-status CLI tool
         run: |
-          conda activate ./conda-env
           sam-status derecho
           sam-status casper
           sam-status jupyterhub
