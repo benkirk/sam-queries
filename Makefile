@@ -5,7 +5,7 @@ CONDA_ROOT := $(shell conda info --base)
 # Common way to initialize environment across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
-.PHONY: help clean clobber distclean fixperms check
+.PHONY: help clean clobber distclean fixperms check docker-up docker-down docker-restart
 
 # -------------------------------------------------------------------
 # Default target: help
@@ -71,3 +71,16 @@ fixperms: ## Fix file permissions for .env
 check: ## Run tests
 	$(config_env) && source etc/config_env.sh && python3 tests/tools/orm_inventory.py
 	$(config_env) && source etc/config_env.sh && python3 -m pytest -v -n auto
+
+docker-up: ## Start docker containers
+	@docker compose up -d
+	@echo "Waiting for healthy status..."
+	@timeout 300 bash -c 'until docker compose -f ps | grep -q "healthy"; do sleep 5; done'
+	@echo "✅ Containers ready!"
+
+docker-down: ## Stop docker containers
+	docker compose down -v
+
+docker-restart: ## Restart docker containers
+	@$(MAKE) docker-down
+	@$(MAKE) docker-up
