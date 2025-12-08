@@ -75,7 +75,7 @@ check: ## Run tests
 docker-up: ## Start docker containers
 	@docker compose up -d
 	@echo "Waiting for healthy status..."
-	@timeout 300 bash -c 'until docker compose -f ps | grep -q "healthy"; do sleep 5; done'
+	@timeout 300 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 5; done'
 	@echo "✅ Containers ready!"
 
 docker-down: ## Stop docker containers
