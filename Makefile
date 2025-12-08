@@ -1,40 +1,61 @@
 .ONESHELL:
 SHELL := /bin/bash
-
 CONDA_ROOT := $(shell conda info --base)
 
-# common way to inialize enviromnent across various types of systems
+# Common way to initialize environment across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
-clean:
+.PHONY: help clean clobber distclean fixperms check
+
+# -------------------------------------------------------------------
+# Default target: help
+# -------------------------------------------------------------------
+help: ## Show this help message
+	@echo ""
+	@echo "SAM Queries - Makefile Help"
+	@echo "============================"
+	@echo ""
+	@echo "Available targets:"
+	@echo ""
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Pattern rules:"
+	@echo "  make <name>              Create conda environment from <name>.yaml"
+	@echo "  make solve-<name>        Dry-run solve for <name>.yaml (no install)"
+	@echo ""
+	@echo "Example:"
+	@echo "  make conda-env           Create conda environment from conda-env.yaml"
+	@echo ""
+
+clean: ## Remove temporary files (*~)
 	rm *~
 
-clobber:
+clobber: ## Git clean except .env and conda-env/
 	git clean -xdf --exclude ".env" --exclude "conda-env/"
 
-distclean:
+distclean: ## Clean everything including conda-env/
 	$(MAKE) clobber
 	rm -rf conda-env/
 
-
-%.py : %.ipynb Makefile
+%.py : %.ipynb Makefile ## Convert Jupyter notebook to Python script
 	jupyter nbconvert --clear-output $<
 	jupyter nbconvert --to=python $< >/dev/null
 	chmod +x $@
 	git add $@ $<
 
-%: %.yaml pyproject.toml
-	[ -d $@ ] && mv $@ $@.old && rm -rf $@.old &
-	$(config_env) &&\
-	conda env create --file $< --prefix $@ &&\
-	conda activate ./$@ &&\
-	pip install -e ".[test]" &&\
+%: %.yaml pyproject.toml ## Create conda environment from YAML file
+	[ -d $@ ] && mv $@ $@.old && rm -rf $@.old & \
+	$(config_env) && \
+	conda env create --file $< --prefix $@ && \
+	conda activate ./$@ && \
+	pip install -e ".[test]" && \
 	pipdeptree --all 2>/dev/null || true
 
-solve-%: %.yaml
+solve-%: %.yaml ## Dry-run solve for conda environment
 	$(config_env) && conda env create --file $< --prefix $@ --dry-run
 
-fixperms:
+fixperms: ## Fix file permissions for .env
 	for file in .env; do \
 	  setfacl --remove-all $${file} ; \
 	  for group in csgteam csg hdt nusd hsg; do \
@@ -46,6 +67,7 @@ fixperms:
 	  done ;\
 	  getfacl $${file} ;\
 	done
-check:
+
+check: ## Run tests
 	$(config_env) && source etc/config_env.sh && python3 tests/tools/orm_inventory.py
 	$(config_env) && source etc/config_env.sh && python3 -m pytest -v
