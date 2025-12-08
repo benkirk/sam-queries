@@ -31,17 +31,21 @@ jobs:
           make help
           make conda-env
 
-      # # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
-      # # https://docs.docker.com/build/buildkit/dockerfile-release-notes/?utm_source=chatgpt.com#1190
-      # - name: Install latest Docker
-      #   uses: docker/setup-docker-action@v4
-      #   with:
-      #     docker-ce-version: latest   # or pin a version like "29.0.3"
+      # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
+      # https://docs.docker.com/build/buildkit/dockerfile-release-notes/?utm_source=chatgpt.com#1190
+      - name: Install latest Docker
+        uses: docker/setup-docker-action@v4
+        with:
+          docker-ce-version: latest   # or pin a version like "29.0.3"
 
-      # - name: Query Docker Environment
-      #   run: |
-      #     docker --version
-      #     docker compose --version
+      - name: Query Docker Environment
+        run: |
+          docker --version
+          docker compose --version
+
+      - name: Start Containers
+        run: |
+          make docker-up
 
       # - name: Verify MySQL backup file exists
       #   run: |
