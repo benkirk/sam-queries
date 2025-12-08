@@ -19,10 +19,10 @@ load_dotenv(find_dotenv())
 
 # Build connection string from environment variables
 # Falls back to local Docker defaults if not set in .env
-username = os.getenv('SAM_DB_USERNAME', 'root')
-password = os.getenv('SAM_DB_PASSWORD', 'root')
-server = os.getenv('SAM_DB_SERVER', '127.0.0.1')
-port = os.getenv('SAM_DB_PORT', '3306')
+username = os.getenv('LOCAL_SAM_DB_USERNAME', 'root')
+password = os.getenv('LOCAL_SAM_DB_PASSWORD', 'root')
+server = os.getenv('LOCAL_SAM_DB_SERVER', '127.0.0.1')
+port = os.getenv('LOCAL_SAM_DB_PORT', '3306')
 database = 'sam'
 
 # Use pymysql driver (consistent with test suite requirements)
