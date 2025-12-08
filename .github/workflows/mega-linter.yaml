@@ -48,9 +48,9 @@ jobs:
       # Git Checkout
       - name: Checkout Code
         uses: actions/checkout@v4
-        # with:
-        #   token: ${{ secrets.PAT || secrets.BENKIRK_GITHUB_TOKEN }}
-
+        with:
+          #token: ${{ secrets.PAT || secrets.BENKIRK_GITHUB_TOKEN }}
+          lfs: true
           # If you use VALIDATE_ALL_CODEBASE = true, you can remove this line to
           # improve performance
           fetch-depth: 0
