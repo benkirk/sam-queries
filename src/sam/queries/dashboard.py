@@ -52,6 +52,13 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
     usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
 
     for resource_name, usage in usage_data.items():
+        end_date = usage.get('end_date')
+
+        # Calculate days until expiration
+        days_until_expiration = None
+        if end_date:
+            days_until_expiration = (end_date - datetime.now()).days
+
         resources.append({
             'resource_name': resource_name,
             'allocated': usage.get('allocated', 0.0),
@@ -62,7 +69,8 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
             'adjustments': usage.get('adjustments', 0.0),
             'status': usage.get('status', 'Unknown'),
             'start_date': usage.get('start_date'),
-            'end_date': usage.get('end_date')
+            'end_date': end_date,
+            'days_until_expiration': days_until_expiration
         })
 
     return resources
