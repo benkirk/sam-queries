@@ -32,7 +32,7 @@ def init_admin(app):
     # Initialize Admin
     admin = Admin(
         app,
-        name='SAM Admin',
+        name='SAM Database',
         theme=Bootstrap4Theme(swatch="lumen", fluid=True),
         index_view=MyAdminIndexView(),
         url='/admin'
