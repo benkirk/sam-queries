@@ -70,4 +70,4 @@ fixperms: ## Fix file permissions for .env
 
 check: ## Run tests
 	$(config_env) && source etc/config_env.sh && python3 tests/tools/orm_inventory.py
-	$(config_env) && source etc/config_env.sh && python3 -m pytest -v
+	$(config_env) && source etc/config_env.sh && python3 -m pytest -v -n auto
