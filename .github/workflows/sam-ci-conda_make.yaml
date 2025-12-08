@@ -50,11 +50,13 @@ jobs:
 
       - name: Run sam-search CLI tool
         run: |
+          source etc/config_env.sh
           sam-search --inactive-projects user benkirk --list-projects --verbose
           sam-search project SCSG0001 --verbose --list-users
 
       - name: Run sam-status CLI tool
         run: |
+          source etc/config_env.sh
           sam-status derecho
           sam-status casper
           sam-status jupyterhub
