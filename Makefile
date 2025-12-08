@@ -12,20 +12,20 @@ config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/p
 # -------------------------------------------------------------------
 help: ## Show this help message
 	@echo ""
-	@echo "SAM Queries - Makefile Help"
-	@echo "============================"
+	@echo -e "\033[1;36mSAM Queries - Makefile Help\033[0m"
+	@echo -e "\033[1;36m============================\033[0m"
 	@echo ""
-	@echo "Available targets:"
+	@echo -e "\033[1mAvailable targets:\033[0m"
 	@echo ""
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[32m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
-	@echo "Pattern rules:"
-	@echo "  make <name>              Create conda environment from <name>.yaml"
-	@echo "  make solve-<name>        Dry-run solve for <name>.yaml (no install)"
+	@echo -e "\033[1mPattern rules:\033[0m"
+	@echo -e "  \033[32mmake <name>\033[0m              Create conda environment from <name>.yaml"
+	@echo -e "  \033[32mmake solve-<name>\033[0m        Dry-run solve for <name>.yaml (no install)"
 	@echo ""
-	@echo "Example:"
-	@echo "  make conda-env           Create conda environment from conda-env.yaml"
+	@echo -e "\033[1mExample:\033[0m"
+	@echo -e "  \033[33mmake conda-env\033[0m           Create conda environment from conda-env.yaml"
 	@echo ""
 
 clean: ## Remove temporary files (*~)
