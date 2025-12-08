@@ -64,9 +64,10 @@ jobs:
           sam-status casper
           sam-status jupyterhub
 
-      - name: Test Suite (from Makefile)
+      - name: Test Suite
         run: |
-          make check
+          python3 tests/tools/orm_inventory.py
+          pytest -v -n auto
 
       - name: Cleanup
         if: always()
