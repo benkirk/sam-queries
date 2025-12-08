@@ -7,7 +7,8 @@
     {% set days_groups = {} %}
     {% for resource in resources %}
         {% set days = resource.days_until_expiration %}
-        {% if days is not none and days <= 60 %}
+        {# Show all expired allocations (days < 0) and upcoming expirations up to 60 days #}
+        {% if days is not none and (days < 0 or days <= 60) %}
             {% if days not in days_groups %}
                 {% set _ = days_groups.update({days: []}) %}
             {% endif %}
