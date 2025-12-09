@@ -386,7 +386,6 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                     if (now - most_recent_alloc.end_date) < timedelta(days=365):
                         query_alloc = most_recent_alloc
 
-
             if not query_alloc:
                 continue
 
