@@ -52,27 +52,6 @@ class AuthUser(UserMixin):
         """Return False - authenticated users are not anonymous."""
         return False
 
-    # Convenience properties to access SAM User attributes
-    @property
-    def user_id(self):
-        return self.sam_user.user_id
-
-    @property
-    def username(self):
-        return self.sam_user.username
-
-    @property
-    def full_name(self):
-        return self.sam_user.full_name
-
-    @property
-    def display_name(self):
-        return self.sam_user.display_name
-
-    @property
-    def primary_email(self):
-        return self.sam_user.primary_email
-
     @property
     def roles(self):
         """
@@ -107,3 +86,16 @@ class AuthUser(UserMixin):
 
     def __repr__(self):
         return f"<AuthUser(username='{self.username}', roles={self.roles})>"
+
+    # any other attributes delegated to the SAM User object
+    def __getattr__(self, name):
+        """
+        Delegate attribute access to the wrapped sam_user object.
+
+        This allows AuthUser to expose all properties and methods from
+        the SAM User model without explicitly defining them.
+
+        Explicit properties defined above (username, full_name, etc.)
+        take precedence over this delegation.
+        """
+        return getattr(self.sam_user, name)

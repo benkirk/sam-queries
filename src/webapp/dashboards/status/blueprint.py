@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from webapp.extensions import db
-from webapp.utils.charts import generate_nodetype_history_matplotlib, generate_queue_history_matplotlib
+from ..charts import generate_nodetype_history_matplotlib, generate_queue_history_matplotlib
 
 # Add system_status to path
 python_dir = Path(__file__).parent.parent.parent.parent

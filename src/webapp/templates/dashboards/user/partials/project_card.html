@@ -3,6 +3,19 @@
     {% set resources = project_data.resources %}
     {% set card_id = 'project-' ~ loop_index %}
 
+    {# Calculate expiration status from resources #}
+    {% set days_groups = {} %}
+    {% for resource in resources %}
+        {% set days = resource.days_until_expiration %}
+        {# Show all expired allocations (days < 0) and upcoming expirations up to 60 days #}
+        {% if days is not none and (days < 0 or days <= 60) %}
+            {% if days not in days_groups %}
+                {% set _ = days_groups.update({days: []}) %}
+            {% endif %}
+            {% set _ = days_groups[days].append(resource.resource_name) %}
+        {% endif %}
+    {% endfor %}
+
     <div class="card project-card mb-3">
         <div class="card-header" data-toggle="collapse" data-target="#{{ card_id }}" aria-expanded="{{ 'true' if is_expanded else 'false' }}" style="cursor: pointer;">
             <div class="d-flex justify-content-between align-items-center">
@@ -10,6 +23,43 @@
                     <h5 class="mb-0">
                         <i class="fas fa-folder-open text-primary"></i>
                         <strong>{{ project.projcode }}</strong> - {{ project.title or 'Untitled Project' }}
+
+                        {# Expiration badges - calculated from resources #}
+                        {% for days, resource_names in days_groups.items()|sort %}
+                            {% set resource_list = resource_names|join(', ') %}
+                            {% set count = resource_names|length %}
+                            {% if days <= 0 %}
+                                {# Expired #}
+                                <span class="badge badge-secondary ml-2" title="Expired {{ days|abs }} days ago ({{ resource_list }})">
+                                    <i class="fas fa-times-circle"></i>
+                                    {{ days|abs }}d ago{% if count > 1 %} ({{ count }}){% endif %}
+                                </span>
+                            {% elif days <= 7 %}
+                                {# Critical: 7 days or less #}
+                                <span class="badge badge-danger ml-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                    <i class="fas fa-exclamation-circle"></i>
+                                    {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
+                                </span>
+                            {% elif days <= 14 %}
+                                {# Warning: 8-14 days #}
+                                <span class="badge badge-warning ml-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
+                                </span>
+                            {% elif days <= 30 %}
+                                {# Info: 15-30 days #}
+                                <span class="badge badge-info ml-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                    <i class="fas fa-calendar"></i>
+                                    {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
+                                </span>
+                            {% else %}
+                                {# Light info: 31-60 days #}
+                                <span class="badge badge-light ml-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                    <i class="fas fa-calendar"></i>
+                                    {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
+                                </span>
+                            {% endif %}
+                        {% endfor %}
                     </h5>
                 </div>
                 <div>
@@ -72,9 +122,27 @@
                         <span class="stat-value">{{ project.allocation_type.panel.panel_name if project.allocation_type and project.allocation_type.panel else 'N/A' }}</span>
                     </div>
                     <div class="stat-item">
+                        <span class="stat-label">Facility:</span>
+                        <span class="stat-value">{{ project.allocation_type.panel.facility.facility_name if project.allocation_type and project.allocation_type.panel and project.allocation_type.panel.facility else 'N/A' }}</span>
+                    </div>
+                    <div class="stat-item">
                         <span class="stat-label">Area:</span>
                         <span class="stat-value">{{ project.area_of_interest.area_of_interest if project.area_of_interest else 'N/A' }}</span>
                     </div>
+                    <!-- Organizations -->
+                    {% if project.organizations %}
+                    <div class="stat-item mt-2">
+                      <span class="stat-label d-block mb-1">Organizations:</span>
+                      <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
+                        {% for po in project.organizations %}
+                            <div class="mb-1">
+                                <span class="badge badge-light border">{{ po.organization.acronym }}</span>
+                                <span class="text-muted">{{ po.organization.name }}</span>
+                            </div>
+                        {% endfor %}
+                      </div>
+                    </div>
+                    {% endif %}
                     <!-- Contracts -->
                     {% if project.contracts %}
                     <div class="stat-item mt-2">
@@ -97,8 +165,8 @@
                       <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
                         {% for dir in project.active_directories %}
                             <div class="mb-1">
-                                <i class="fas fa-folder text-warning mr-1"></i>
-                                <code>{{ dir }}</code>
+                                <span class="fas fa-folder text-warning mr-1"></span>
+                                <span><code>{{ dir }}</code></span>
                             </div>
                         {% endfor %}
                       </div>
@@ -134,14 +202,18 @@
                                         {% set progress_class = 'bg-success' %}
                                     {% endif %}
 
-                                    <tr class="resource-row" style="cursor: pointer;"
+                                    {# Check if resource is expired #}
+                                    {% set is_expired = resource.days_until_expiration is not none and resource.days_until_expiration < 0 %}
+                                    {% set row_class = 'text-muted' if is_expired else '' %}
+
+                                    <tr class="resource-row {{ row_class }}" style="cursor: pointer;{% if is_expired %} opacity: 0.6;{% endif %}"
                                         onclick="location.href='{{ url_for('user_dashboard.resource_details', projcode=project.projcode, resource=resource.resource_name) }}'">
                                         <td><strong>{{ resource.resource_name }}</strong></td>
                                         <td>{{ resource.start_date.strftime('%Y-%m-%d') if resource.start_date else 'N/A' }}</td>
                                         <td>{{ resource.end_date.strftime('%Y-%m-%d') if resource.end_date else 'N/A' }}</td>
-                                        <td class="text-primary">{{ '{:,.0f}'.format(resource.allocated) }}</td>
-                                        <td class="text-warning">{{ '{:,.0f}'.format(resource.used) }}</td>
-                                        <td class="text-success">{{ '{:,.0f}'.format(resource.remaining) }}</td>
+                                        <td class="{% if not is_expired %}text-primary{% endif %}">{{ '{:,.0f}'.format(resource.allocated) }}</td>
+                                        <td class="{% if not is_expired %}text-warning{% endif %}">{{ '{:,.0f}'.format(resource.used) }}</td>
+                                        <td class="{% if not is_expired %}text-success{% endif %}">{{ '{:,.0f}'.format(resource.remaining) }}</td>
                                         <td>
                                             <div class="progress" style="height: 20px;">
                                                 <div class="progress-bar {{ progress_class }}"

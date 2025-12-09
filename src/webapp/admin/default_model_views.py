@@ -16,11 +16,27 @@ class SAMModelView(ModelView):
     # Flask Admin exposes edit/delete by default, but suppresses view.
     # Let's turn that on.
     can_view_details = True
-    #can_delete = False
+
+    # Control edit/create/delete via properties
+    @property
+    def can_edit(self):
+        return self._check_permission('EDIT_USERS')
+
+    @property
+    def can_create(self):
+        return self._check_permission('CREATE_USERS')
+
+    @property
+    def can_delete(self):
+        # almost never would we want to delete a record through the UI, even as a site admin.
+        # SAM records are generally deactivated but retained.  If absolutely necessary itels
+        # can be deleted via raw DB access.
+        return False
+        #return self._check_permission('DELETE_USERS')
 
     #can_set_page_size = True
     #page_size_options = (10, 25, 50, 100)
-    #page_size = 50
+    page_size = 100
 
     def is_accessible(self):
         """
@@ -400,6 +416,10 @@ class UserResourceHomeDefaultAdmin(SAMModelView):
 
 # UserResourceShell Admin View
 class UserResourceShellDefaultAdmin(SAMModelView):
+    pass
+
+# WallclockExemption Admin View
+class WallclockExemptionDefaultAdmin(SAMModelView):
     pass
 
 # XrasActionView Admin View

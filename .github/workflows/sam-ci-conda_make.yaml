@@ -1,0 +1,75 @@
+name: SAM Database CI (Make/Conda Installation)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: Run Test Suite (Docker)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install MySQL Client
+        run: |
+          sudo apt-get install -y mysql-client
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: ./conda-env/
+          environment-file: conda-env.yaml
+
+      - name: Build Conda Environment
+        run: |
+          make help
+          cp .env.example .env
+          pip install -e ".[test]"
+
+      # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
+      # https://docs.docker.com/build/buildkit/dockerfile-release-notes/?utm_source=chatgpt.com#1190
+      - name: Install latest Docker
+        uses: docker/setup-docker-action@v4
+        with:
+          docker-ce-version: latest   # or pin a version like "29.0.3"
+
+      - name: Query Docker Environment
+        run: |
+          docker --version
+          docker compose --version
+
+      - name: Start Containers
+        run: |
+          make docker-up
+
+      - name: Run sam-search CLI tool
+        run: |
+          sam-search --inactive-projects user benkirk --list-projects --verbose
+          sam-search project SCSG0001 --verbose --list-users
+
+      - name: Run sam-status CLI tool
+        run: |
+          sam-status derecho
+          sam-status casper
+          sam-status jupyterhub
+
+      - name: Test Suite
+        run: |
+          python3 tests/tools/orm_inventory.py
+          pytest -v -n auto
+
+      - name: Cleanup
+        if: always()
+        run: |
+          make docker-down

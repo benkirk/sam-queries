@@ -1,0 +1,213 @@
+<div class="row">
+    <!-- Impersonate User Section -->
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5><i class="fas fa-user-secret"></i> Impersonate User</h5>
+            </div>
+            <div class="card-body">
+                <form id="impersonateUserForm" method="POST" action="{{ url_for('user_dashboard.impersonate') }}">
+                    <div class="form-group">
+                        <label for="userSearchImpersonate">Search for a user to impersonate</label>
+                        <input type="text" class="form-control" id="userSearchImpersonate" placeholder="Start typing a username, first, or last name..." autocomplete="off">
+                        <input type="hidden" id="selectedUsernameImpersonate" name="username">
+                        <div id="userSearchResultsImpersonate" class="list-group mt-2" style="display:none; max-height: 200px; overflow-y: auto;"></div>
+                    </div>
+                    <div id="selectedUserDisplayImpersonate" class="alert alert-info" style="display:none;">
+                        <i class="fas fa-user-check"></i>
+                        <strong id="selectedUserNameImpersonate"></strong>
+                        <small id="selectedUserEmailImpersonate" class="text-muted ml-2"></small>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="impersonateSubmitBtn" disabled>
+                        <i class="fas fa-user-secret"></i> Impersonate
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Projects Section -->
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5><i class="fas fa-search"></i> Search Projects</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label for="projectSearchInput">Search by project code or title</label>
+                    <input type="text" class="form-control" id="projectSearchInput"
+                           placeholder="Start typing a project code or title..." autocomplete="off">
+                    <div id="projectSearchResults" class="list-group mt-2"
+                         style="display:none; max-height: 200px; overflow-y: auto;"></div>
+                </div>
+                <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="activeProjectsOnly" checked>
+                    <label class="form-check-label" for="activeProjectsOnly">
+                        Active projects only
+                    </label>
+                </div>
+                <div id="selectedProjectDisplay" class="alert alert-info" style="display:none;">
+                    <i class="fas fa-folder-open"></i>
+                    <strong id="selectedProjectName"></strong>
+                    <br><small id="selectedProjectLead" class="text-muted"></small>
+                    <input type="hidden" id="selectedProjectCode">
+                </div>
+                <button type="button" class="btn btn-primary" id="viewProjectBtn" disabled>
+                    <i class="fas fa-eye"></i> View Project
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Project Card Display Area -->
+<div class="row">
+    <div class="col-12">
+        <div id="projectCardContainer"></div>
+    </div>
+</div>
+
+<!-- Expirations Section -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header" style="cursor: pointer;"
+                 data-toggle="collapse" data-target="#expirations-section">
+                <h5 class="mb-0">
+                    <i class="fas fa-calendar-exclamation"></i> Project Expirations
+                    <i class="fas fa-chevron-down float-right"></i>
+                </h5>
+            </div>
+            <div id="expirations-section" class="collapse">
+                <div class="card-body">
+                    <!-- Filters Form -->
+                    <form id="expirations-filters-form" class="mb-3">
+                        <div class="row">
+                            <!-- Facilities checkboxes -->
+                            <div class="col-md-4">
+                                <label><strong>Facilities</strong></label>
+                                <div class="form-group">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input facility-filter"
+                                               id="fac-csl" name="facilities" value="ASD">
+                                        <label class="form-check-label" for="fac-csl">ASD</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input facility-filter"
+                                               id="fac-csl" name="facilities" value="CSL">
+                                        <label class="form-check-label" for="fac-csl">CSL</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input facility-filter"
+                                               id="fac-csl" name="facilities" value="CISL">
+                                        <label class="form-check-label" for="fac-csl">CISL</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input facility-filter"
+                                               id="fac-csl" name="facilities" value="NCAR">
+                                        <label class="form-check-label" for="fac-csl">NCAR</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input facility-filter"
+                                               id="fac-univ" name="facilities" value="UNIV" checked>
+                                        <label class="form-check-label" for="fac-univ">UNIV</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input facility-filter"
+                                               id="fac-wna" name="facilities" value="WNA" checked>
+                                        <label class="form-check-label" for="fac-wna">WNA</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input facility-filter"
+                                               id="fac-csl" name="facilities" value="XSEDE">
+                                        <label class="form-check-label" for="fac-csl">XSEDE</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Resource filter -->
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="resource-filter"><strong>Resource (optional)</strong></label>
+                                    <input type="text" class="form-control" id="resource-filter"
+                                           placeholder="e.g., Derecho, GLADE">
+                                    <small class="form-text text-muted">Leave blank for all</small>
+                                </div>
+                            </div>
+
+                            <!-- Time range -->
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="time-range-filter"><strong>Time Range</strong></label>
+                                    <select class="form-control" id="time-range-filter">
+                                        <option value="7days">Next 7 days</option>
+                                        <option value="31days" selected>Next 31 days</option>
+                                        <option value="60days">Next 60 days</option>
+                                    </select>
+                                    <small class="form-text text-muted">For upcoming</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-12">
+                                <button type="button" id="apply-expirations-filters" class="btn btn-primary">
+                                    <i class="fas fa-search"></i> Apply Filters
+                                </button>
+                                <button type="button" id="export-expirations-csv" class="btn btn-success">
+                                    <i class="fas fa-download"></i> Export CSV
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Sub-tabs -->
+                    <ul class="nav nav-pills mb-3" id="expirations-tabs" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" id="upcoming-tab" data-toggle="pill"
+                               href="#exp-upcoming" role="tab" data-view="upcoming">
+                                <i class="fas fa-calendar-alt"></i> Upcoming
+                                <span class="badge badge-light" id="upcoming-count">-</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="expired-tab" data-toggle="pill"
+                               href="#exp-expired" role="tab" data-view="expired">
+                                <i class="fas fa-exclamation-triangle"></i> Expired
+                                <span class="badge badge-light" id="expired-count">-</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="abandoned-tab" data-toggle="pill"
+                               href="#exp-abandoned" role="tab" data-view="abandoned">
+                                <i class="fas fa-user-slash"></i> Abandoned Users
+                                <span class="badge badge-light" id="abandoned-count">-</span>
+                            </a>
+                        </li>
+                    </ul>
+
+                    <!-- Tab content containers -->
+                    <div class="tab-content" id="expirations-tab-content">
+                        <div class="tab-pane fade show active" id="exp-upcoming" role="tabpanel">
+                            <div id="upcoming-container" class="expirations-container">
+                                <div class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="sr-only">Loading...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="exp-expired" role="tabpanel">
+                            <div id="expired-container" class="expirations-container"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="exp-abandoned" role="tabpanel">
+                            <div id="abandoned-container" class="expirations-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

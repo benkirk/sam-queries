@@ -102,9 +102,9 @@ def test_databases(worker_db_name):
     os.environ['STATUS_DB_NAME'] = worker_db_name
 
     # Get connection parameters from already set environment variables
-    db_server = os.getenv('STATUS_DB_SERVER', os.getenv('SAM_DB_SERVER', '127.0.0.1'))
-    db_user = os.getenv('SAM_DB_USERNAME', 'root')
-    db_password = os.getenv('SAM_DB_PASSWORD', 'root')
+    db_server = os.getenv('STATUS_DB_SERVER', os.getenv('LOCAL_SAM_DB_SERVER', '127.0.0.1'))
+    db_user = os.getenv('LOCAL_SAM_DB_USERNAME', 'root')
+    db_password = os.getenv('LOCAL_SAM_DB_PASSWORD', 'root')
 
     # Connect to MySQL server (no database specified)
     server_url = f"mysql+pymysql://{db_user}:{db_password}@{db_server}"

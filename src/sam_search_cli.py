@@ -49,7 +49,7 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
     ctx.verbose = verbose
     ctx.inactive_projects = inactive_projects
     ctx.inactive_users = inactive_users
-    
+
     # Initialize database connection
     try:
         from sam.session import create_sam_engine
@@ -63,7 +63,7 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
 @cli.result_callback()
 def process_result(result, **kwargs):
     """Cleanup session after command execution"""
-    # This might not run if the command fails with an exception, 
+    # This might not run if the command fails with an exception,
     # but the OS will clean up the socket/connection anyway.
     pass
 
@@ -74,7 +74,7 @@ def process_result(result, **kwargs):
 
 def _display_user(ctx: Context, user: User, list_projects: bool = False):
     """Display user information."""
-    
+
     # Create a grid table for key-value pairs
     grid = Table(show_header=False, box=None, padding=(0, 2))
     grid.add_column("Field", style="cyan bold")
@@ -103,7 +103,7 @@ def _display_user(ctx: Context, user: User, list_projects: bool = False):
     status_text.append("  ")
     status_text.append("Accessible: ", style="bold")
     status_text.append("Yes", style="green") if user.is_accessible else status_text.append("No", style="red")
-    
+
     grid.add_row("Status", status_text)
 
     if ctx.verbose:
@@ -169,49 +169,29 @@ def _display_user_projects(ctx: Context, user: User):
     table.add_column("Status")
 
     for i, project in enumerate(projects, 1):
-        # Determine role logic (simple approximation if exact role object isn't easily grabbed without more queries, 
-        # but normally we'd check UserProject association. 
+        # Determine role logic (simple approximation if exact role object isn't easily grabbed without more queries,
+        # but normally we'd check UserProject association.
         # Here we check if lead/admin match for simplicity as per original script logic which didn't show role explicitly in list).
         # We'll just show status and standard info.
-        
+
         status_style = "green" if project.active else "red"
         status_str = "Active" if project.active else "Inactive"
-        
+
         role = "Member"
         if project.lead == user:
             role = "Lead"
         elif project.admin == user:
             role = "Admin"
-            
+
         table.add_row(str(i), project.projcode, project.title, role, f"[{status_style}]{status_str}[/]")
 
     ctx.console.print(table)
-    
-    # If the original script called _display_project for each one, we can do that too, 
-    # but a summary table is usually better for "list projects". 
-    # However, the original script did full detail print. 
-    # Let's stick to the summary table for readability in the new "Rich" version 
-    # unless verbose is on, or if the user expects full details. 
-    # The original script did: 
-    # print(f"{i}. {project.projcode}")
-    # self._display_project(project)
-    
-    # Let's see if we should preserve the full dump behavior. 
-    # Users might want to see allocations for all projects.
-    # A summary table is cleaner. Let's output the table, and if verbose is on, maybe detail them?
-    # Actually, the instruction says "Maintain all original functionality". 
-    # The original printed full details for every project in the loop. 
-    # Let's compromise: Print the summary table, and then if VERBOSE is true, print full details.
-    # OR, strictly follow the original: print details for each.
-    # Printing full details for 10 projects is spammy. 
-    # I will stick to the TABLE for the list, as it's a "Reimplementation" using Rich, implying UI improvement.
-    # If the user wants full details for a specific project, they can query it.
-    pass
+    return
 
 
 def _display_project(ctx: Context, project: Project, extra_title_info: str = "", list_users: bool = False):
     """Display project information."""
-    
+
     # Header Grid
     grid = Table(show_header=False, box=None, padding=(0, 2))
     grid.add_column("Field", style="cyan bold")
@@ -227,17 +207,29 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
     if project.admin and project.admin != project.lead:
         grid.add_row("Admin", f"{project.admin.display_name} ({project.admin.username}) <{project.admin.primary_email or 'N/A'}>")
 
-    grid.add_row("Type", project.allocation_type.allocation_type)
-    if project.allocation_type.panel:
-        grid.add_row("Panel", project.allocation_type.panel.panel_name)
-
     if project.area_of_interest:
         grid.add_row("Area", project.area_of_interest.area_of_interest)
+
+    grid.add_row("Type", project.allocation_type.allocation_type)
+
+    if project.allocation_type.panel:
+        grid.add_row("Panel", project.allocation_type.panel.panel_name)
+        if project.allocation_type.panel.facility:
+            grid.add_row("Facility", project.allocation_type.panel.facility.facility_name)
+
+    if project.organizations:
+        orgs = []
+        for po in project.organizations:
+            if True:
+                org = po.organization
+                orgs.append(f"- {org.name} ({org.acronym})")
+        if orgs:
+            grid.add_row(f"Organizations", "\n".join(orgs))
 
     if project.contracts:
         contracts = []
         for pc in project.contracts:
-            contracts.append(f"{pc.contract.contract_source.contract_source} {str(pc.contract.contract_number)} {pc.contract.title}")
+            contracts.append(f"- {pc.contract.contract_source.contract_source} {str(pc.contract.contract_number)} {pc.contract.title}")
         grid.add_row("Contracts", "\n".join(contracts))
 
     if project.charging_exempt:
@@ -251,7 +243,7 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
     try:
         usage = project.get_detailed_allocation_usage()
         allocations = project.get_all_allocations_by_resource()
-        
+
         if usage:
             alloc_table = Table(title="Allocations & Usage", box=box.SIMPLE, show_header=True)
             alloc_table.add_column("Resource", style="cyan")
@@ -265,11 +257,11 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
             for resource_name, alloc in allocations.items():
                 if resource_name in usage:
                     resource_usage = usage[resource_name]
-                    
+
                     start_str = alloc.start_date.strftime("%Y-%m-%d")
                     end_str = alloc.end_date.strftime("%Y-%m-%d") if alloc.end_date else "N/A"
                     date_range = f"{start_str}\n{end_str}"
-                    
+
                     pct = resource_usage['percent_used']
                     pct_style = "green"
                     if pct > 80: pct_style = "yellow"
@@ -285,7 +277,7 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
                         f"[{pct_style}]{pct:,.1f}%[/]"
                     )
             ctx.console.print(alloc_table)
-            
+
     except Exception as e:
          ctx.console.print(f"Warning: Could not fetch allocations: {e}", style="yellow")
 
@@ -310,18 +302,8 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
             abstract = project.abstract
             if len(abstract) > 500:
                 abstract = abstract[:500] + "..."
-            
-            ctx.console.print(Panel(abstract, title="Abstract", border_style="dim", expand=False))
 
-        # Organizations
-        if project.organizations:
-            orgs = []
-            for po in project.organizations:
-                if po.is_currently_active:
-                    org = po.organization
-                    orgs.append(f"{org.name} ({org.acronym})")
-            if orgs:
-                ctx.console.print(f"[bold]Organizations:[/]\n" + "\n".join([f"  - {o}" for o in orgs]))
+            ctx.console.print(Panel(abstract, title="Abstract", border_style="dim", expand=False))
 
         # Tree info
         if project.parent:
@@ -345,14 +327,14 @@ def _display_project_users(ctx: Context, project: Project):
 
     count = len(users)
     plural = "s" if count > 1 else ""
-    
+
     ctx.console.print(f"\n[bold]{count} Active user{plural} for {project.projcode}:[/]")
 
     table = Table(box=box.SIMPLE)
     table.add_column("#", style="dim", width=4)
     table.add_column("Username", style="green")
     table.add_column("Name")
-    
+
     if ctx.verbose:
         table.add_column("Email")
         table.add_column("UID")
@@ -382,8 +364,8 @@ def _display_project_users(ctx: Context, project: Project):
 @pass_context
 def user(ctx: Context, username, search, abandoned, has_active_project, list_projects, limit, verbose):
     """
-    Search for users. 
-    
+    Search for users.
+
     You must provide either a username, --search PATTERN, --abandoned, or --has-active-project.
     """
     # Enforce mutual exclusivity
@@ -403,7 +385,7 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
             if not user:
                 ctx.console.print(f"❌ User not found: {username}", style="bold red")
                 sys.exit(1)
-            
+
             _display_user(ctx, user, list_projects)
         except Exception as e:
             ctx.console.print(f"❌ Error searching for user: {e}", style="bold red", err=True)
@@ -414,14 +396,14 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
         active_users = User.get_active_users(ctx.session)
         ctx.console.print(f"Examining {len(active_users):,} 'active' users listed in SAM")
         abandoned_users = set()
-        
+
         for user in track(active_users, description=" --> determining abandoned users..."):
             if len(user.active_projects) == 0:
                 abandoned_users.add(user)
-                
+
         if abandoned_users:
             ctx.console.print(f"Found {len(abandoned_users):,} abandoned_users", style="bold yellow")
-            
+
             table = Table(show_header=False, box=None)
             table.add_column("User")
             for user in sorted(abandoned_users, key=lambda u: u.username):
@@ -432,14 +414,14 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
         # Users with active projects
         active_users = User.get_active_users(ctx.session)
         users_with_projects = set()
-        
+
         for user in track(active_users, description="Determining users with at least one active project..."):
             if len(user.active_projects) > 0:
                 users_with_projects.add(user)
-                
+
         if users_with_projects:
             ctx.console.print(f"Found {len(users_with_projects)} users with at least one active project.", style="green")
-            
+
             if ctx.verbose:
                  for user in sorted(users_with_projects, key=lambda u: u.username):
                     _display_user(ctx, user)
@@ -473,12 +455,12 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
             table.add_column("#", style="dim")
             table.add_column("Username", style="green")
             table.add_column("Name")
-            
+
             if ctx.verbose:
                 table.add_column("ID")
                 table.add_column("Email")
                 table.add_column("Active")
-                
+
             for i, user in enumerate(users, 1):
                 row = [str(i), user.username, user.display_name]
                 if ctx.verbose:
@@ -486,7 +468,7 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
                     row.append(user.primary_email or 'N/A')
                     row.append("✓" if user.is_accessible else "✗")
                 table.add_row(*row)
-            
+
             ctx.console.print(table)
 
         except Exception as e:
@@ -509,8 +491,8 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
 @pass_context
 def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, list_users, limit, verbose):
     """
-    Search for projects. 
-    
+    Search for projects.
+
     You must provide either a project code, --search PATTERN, --upcoming-expirations, or --recent-expirations.
     """
     inputs = [bool(projcode), bool(search), upcoming_expirations, recent_expirations]
@@ -553,12 +535,12 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
             if list_users:
                 all_users.update(proj.roster)
             expiring_projects.add(proj.projcode)
-            
+
             if ctx.verbose:
                 _display_project(ctx, proj, f" - {days} since expiration", list_users=list_users)
             else:
                 ctx.console.print(f"  {proj.projcode} - {days} days since expiration")
-        
+
         if list_users:
             for user in track(all_users, description="Determining abandoned users..."):
                 user_projects = set()

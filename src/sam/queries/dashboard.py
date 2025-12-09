@@ -18,11 +18,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from sam.core.users import User
+from sam.core.organizations import Organization, ProjectOrganization
 from sam.projects.projects import Project
 from sam.projects.contracts import Contract, ContractSource, ProjectContract
 from sam.accounting.accounts import Account, AccountUser
 from sam.accounting.allocations import AllocationType
 from sam.resources.resources import Resource
+from sam.resources.facilities import Facility, Panel
 from sam.summaries.comp_summaries import CompChargeSummary
 from sam.summaries.dav_summaries import DavChargeSummary
 from sam.summaries.disk_summaries import DiskChargeSummary
@@ -50,6 +52,13 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
     usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
 
     for resource_name, usage in usage_data.items():
+        end_date = usage.get('end_date')
+
+        # Calculate days until expiration
+        days_until_expiration = None
+        if end_date:
+            days_until_expiration = (end_date - datetime.now()).days
+
         resources.append({
             'resource_name': resource_name,
             'allocated': usage.get('allocated', 0.0),
@@ -60,7 +69,8 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
             'adjustments': usage.get('adjustments', 0.0),
             'status': usage.get('status', 'Unknown'),
             'start_date': usage.get('start_date'),
-            'end_date': usage.get('end_date')
+            'end_date': end_date,
+            'days_until_expiration': days_until_expiration
         })
 
     return resources
@@ -97,9 +107,10 @@ def get_project_dashboard_data(session: Session, projcode: str) -> Optional[Dict
         .options(
             joinedload(Project.lead),
             joinedload(Project.admin),
-            joinedload(Project.allocation_type).joinedload(AllocationType.panel),
+            joinedload(Project.allocation_type).joinedload(AllocationType.panel).joinedload(Panel.facility),
             joinedload(Project.area_of_interest),
             selectinload(Project.contracts).joinedload(ProjectContract.contract).joinedload(Contract.contract_source),
+            selectinload(Project.organizations).joinedload(ProjectOrganization.organization),
             selectinload(Project.directories)
         )\
         .filter(Project.projcode == projcode)\
@@ -152,16 +163,26 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
         .options(
             selectinload(User.email_addresses),
             joinedload(User.led_projects).joinedload(Project.lead),
+            joinedload(User.led_projects).joinedload(Project.allocation_type).joinedload(AllocationType.panel).joinedload(Panel.facility),
             joinedload(User.led_projects).joinedload(Project.area_of_interest),
             joinedload(User.led_projects).selectinload(Project.contracts).joinedload(ProjectContract.contract).joinedload(Contract.contract_source),
+            joinedload(User.led_projects).selectinload(Project.organizations).joinedload(ProjectOrganization.organization),
             joinedload(User.led_projects).selectinload(Project.directories),
-            
+
             joinedload(User.admin_projects).joinedload(Project.admin),
+            joinedload(User.admin_projects).joinedload(Project.allocation_type).joinedload(AllocationType.panel).joinedload(Panel.facility),
             joinedload(User.admin_projects).joinedload(Project.area_of_interest),
             joinedload(User.admin_projects).selectinload(Project.contracts).joinedload(ProjectContract.contract).joinedload(Contract.contract_source),
+            joinedload(User.admin_projects).selectinload(Project.organizations).joinedload(ProjectOrganization.organization),
             joinedload(User.admin_projects).selectinload(Project.directories),
 
             # Optimize the active_projects path (via accounts)
+            selectinload(User.accounts)
+                .joinedload(AccountUser.account)
+                .joinedload(Account.project)
+                .joinedload(Project.allocation_type)
+                .joinedload(AllocationType.panel)
+                .joinedload(Panel.facility),
             selectinload(User.accounts)
                 .joinedload(AccountUser.account)
                 .joinedload(Account.project)
@@ -172,6 +193,11 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
                 .selectinload(Project.contracts)
                 .joinedload(ProjectContract.contract)
                 .joinedload(Contract.contract_source),
+            selectinload(User.accounts)
+                .joinedload(AccountUser.account)
+                .joinedload(Account.project)
+                .selectinload(Project.organizations)
+                .joinedload(ProjectOrganization.organization),
             selectinload(User.accounts)
                 .joinedload(AccountUser.account)
                 .joinedload(Account.project)

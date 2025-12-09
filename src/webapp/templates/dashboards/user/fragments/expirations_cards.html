@@ -1,0 +1,27 @@
+{% from 'dashboards/user/partials/project_card.html' import render_project_card with context %}
+
+{% if projects_data %}
+    <div class="row">
+        {% for project_data in projects_data %}
+            <div class="col-12">
+                {{ render_project_card(
+                    project_data,
+                    loop.index0,
+                    user,
+                    usage_warning_threshold,
+                    usage_critical_threshold,
+                    is_expanded=false
+                ) }}
+            </div>
+        {% endfor %}
+    </div>
+
+    <div class="text-muted text-center mt-3">
+        <small>Showing {{ projects_data|length }} project{{ 's' if projects_data|length != 1 else '' }}</small>
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        No {{ view_type }} expirations found with current filters.
+    </div>
+{% endif %}
