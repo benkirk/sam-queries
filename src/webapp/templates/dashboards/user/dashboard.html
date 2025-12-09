@@ -89,6 +89,14 @@
                                 <td>{{ user.display_name }}</td>
                             </tr>
                             <tr>
+                                <th>UID:</th>
+                                <td>{{ user.unix_uid or 'N/A' }}</td>
+                            </tr>
+                            <tr>
+                                <th>Primary GID:</th>
+                                <td>{{ user.primary_gid or 'N/A' }}</td>
+                            </tr>
+                            <tr>
                                 <th>Email:</th>
                                 <td>{{ user.primary_email or 'N/A' }}</td>
                             </tr>
@@ -120,4 +128,3 @@
 <script src="{{ url_for('static', filename='js/project-search.js') }}"></script>
 <script src="{{ url_for('static', filename='js/expirations.js') }}"></script>
 {% endblock %}
-

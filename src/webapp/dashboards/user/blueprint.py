@@ -24,9 +24,9 @@ from sam.queries.expirations import get_projects_by_allocation_end_date, get_pro
 from sam.projects.projects import Project
 from webapp.auth.models import AuthUser
 from sam.core.users import User
-from webapp.utils.charts import generate_usage_timeseries_matplotlib
 from webapp.utils.project_permissions import can_manage_project_members, can_change_admin
 from webapp.utils.rbac import require_permission, Permission
+from ..charts import generate_usage_timeseries_matplotlib
 
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/user')
