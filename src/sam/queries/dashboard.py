@@ -213,8 +213,6 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
             'total_projects': 0
         }
 
-    print(f"{user}, {user.unix_uid}")
-
     # Get active projects
     projects = user.active_projects
 
