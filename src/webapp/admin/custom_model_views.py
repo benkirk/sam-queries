@@ -37,26 +37,6 @@ class UserAdmin(SAMModelView):
                           'active', 'locked', 'charging_exempt', 'upid',
                           'unix_uid', 'creation_time')
 
-    def is_accessible(self):
-        """Check if user has VIEW_USERS permission."""
-        return self._is_acccessible(Permission.VIEW_USERS)
-
-    # Control edit/create/delete via properties
-    @property
-    def can_edit(self):
-        return self._check_permission('EDIT_USERS')
-
-    @property
-    def can_create(self):
-        return self._check_permission('CREATE_USERS')
-
-    @property
-    def can_delete(self):
-        # almost never would we want to delete a record through the UI, even as a site admin.
-        # SAM records are generally deactivated but retained.  If absolutely necessary itels
-        # can be deleted via raw DB access.
-        return False
-        #return self._check_permission('DELETE_USERS')
 
 
 # Project Management

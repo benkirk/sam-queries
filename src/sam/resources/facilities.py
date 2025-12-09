@@ -57,6 +57,11 @@ class FacilityResource(Base):
     facility = relationship('Facility', back_populates='facility_resources')
     resource = relationship('Resource', back_populates='facility_resources')
 
+    def __str__(self):
+        return f"<{self.facility.facility_name}/{self.resource.resource_name}>"
+
+    def __repr__(self):
+        return f"<FacilityResource(id={self.facility_resource_id}>"
 
 #----------------------------------------------------------------------------
 class Panel(Base, TimestampMixin, ActiveFlagMixin):
@@ -138,15 +143,11 @@ class ProjectCode(Base):
     mnemonic_code = relationship('MnemonicCode', back_populates='project_codes')
 
     def __str__(self):
-        return f"{self.facility_id}/{self.mnemonic_code_id} ({self.digits} digits)"
+        return f"<{self.facility.code}/{self.mnemonic_code.code}/{self.digits} digits>"
 
     def __repr__(self):
         return f"<ProjectCode(facility_id={self.facility_id}, mnemonic_code_id={self.mnemonic_code_id}, digits={self.digits})>"
 
-
-# ============================================================================
-# Project Area of Interest
-# ============================================================================
 
 
 #-------------------------------------------------------------------------em-

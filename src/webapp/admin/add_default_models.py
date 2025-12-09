@@ -11,6 +11,7 @@ from sam.core.groups import *
 from sam.core.organizations import *
 from sam.core.users import *
 from sam.integration.xras import *
+from sam.operational import *
 from sam.projects.areas import *
 from sam.projects.contracts import *
 from sam.projects.projects import *
@@ -121,6 +122,7 @@ def add_default_views(app,admin):
     admin.add_view(UserOrganizationDefaultAdmin(UserOrganization, db.session, name='UserOrganization', endpoint='default_views/user_organization', category='Everything'))
     admin.add_view(UserResourceHomeDefaultAdmin(UserResourceHome, db.session, name='UserResourceHome', endpoint='default_views/user_resource_home', category='Everything'))
     admin.add_view(UserResourceShellDefaultAdmin(UserResourceShell, db.session, name='UserResourceShell', endpoint='default_views/user_resource_shell', category='Everything'))
+    admin.add_view(WallclockExemptionDefaultAdmin(WallclockExemption, db.session, name='WallclockExemption', endpoint='default_views/wallclock_exemption', category='Everything'))
     admin.add_view(XrasActionViewDefaultAdmin(XrasActionView, db.session, name='XrasActionView', endpoint='default_views/xras_action_view', category='Everything'))
     admin.add_view(XrasAllocationViewDefaultAdmin(XrasAllocationView, db.session, name='XrasAllocationView', endpoint='default_views/xras_allocation_view', category='Everything'))
     admin.add_view(XrasHpcAllocationAmountViewDefaultAdmin(XrasHpcAllocationAmountView, db.session, name='XrasHpcAllocationAmountView', endpoint='default_views/xras_hpc_allocation_amount_view', category='Everything'))
