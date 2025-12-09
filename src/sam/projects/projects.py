@@ -366,26 +366,25 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             resource_type = account.resource.resource_type.resource_type if account.resource.resource_type else 'UNKNOWN'
 
             # Find active allocation, or most recent if none are active
-            active_alloc = None
-            most_recent_alloc = None
             query_alloc = None
             for alloc in account.allocations:
                 if alloc.is_active_at(now):
-                    active_alloc = alloc
-                    query_alloc = active_alloc
+                    query_alloc = alloc
                     break
 
             # No active allocation found - find the most recent one (latest end_date)
-            if not active_alloc:
+            if not query_alloc:
                 if account.allocations:
                     most_recent_alloc = max(account.allocations,
                                             key=lambda a: a.end_date if a.end_date else datetime.max
                                             )
-                    # FIXME: apply date threshold, only query 'most_recent_alloc'
+                    # Apply date threshold, only query 'most_recent_alloc'
                     # if it has expired within the past 1 year
                     if (now - most_recent_alloc.end_date) < timedelta(days=365):
                         query_alloc = most_recent_alloc
 
+            # OK, if we still don't have an allocation to query
+            # then simply skip this account
             if not query_alloc:
                 continue
 
@@ -418,7 +417,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             days_remaining = None
             days_total = None
             if query_alloc.end_date:
-                days_remaining = max(0, (query_alloc.end_date - now).days)
+                days_remaining = (query_alloc.end_date - now).days
                 days_total = (query_alloc.end_date - query_alloc.start_date).days
 
             # Get job statistics (primarily for HPC/DAV)

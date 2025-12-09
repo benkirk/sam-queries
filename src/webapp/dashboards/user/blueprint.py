@@ -475,7 +475,9 @@ def expirations_fragment():
             resource_name=resource
         )
 
-    elif view_type == 'expired':
+    # get expired project details - necessary for both
+    #
+    elif view_type == 'expired' or view_type == 'abandoned':
         results = get_projects_with_expired_allocations(
             db.session,
             max_days_expired=90,
@@ -484,20 +486,14 @@ def expirations_fragment():
             resource_name=resource
         )
 
-    elif view_type == 'abandoned':
-        expired_results = get_projects_with_expired_allocations(
-            db.session,
-            max_days_expired=90,
-            min_days_expired=365,
-            facility_names=facilities,
-            resource_name=resource
-        )
-        abandoned_users = _get_abandoned_users_data(expired_results)
+        if view_type == 'abandoned':
+            abandoned_users = _get_abandoned_users_data(results)
 
-        return render_template(
-            'dashboards/user/fragments/abandoned_users_table.html',
-            abandoned_users=abandoned_users
+            return render_template(
+                'dashboards/user/fragments/abandoned_users_table.html',
+                abandoned_users=abandoned_users
         )
+
     else:
         return '<div class="alert alert-danger">Invalid view type</div>'
 
