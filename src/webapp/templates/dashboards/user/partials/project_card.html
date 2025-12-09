@@ -165,8 +165,8 @@
                       <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
                         {% for dir in project.active_directories %}
                             <div class="mb-1">
-                                <i class="fas fa-folder text-warning mr-1"></i>
-                                <code>{{ dir }}</code>
+                                <span class="fas fa-folder text-warning mr-1"></span>
+                                <span><code>{{ dir }}</code></span>
                             </div>
                         {% endfor %}
                       </div>
@@ -202,14 +202,18 @@
                                         {% set progress_class = 'bg-success' %}
                                     {% endif %}
 
-                                    <tr class="resource-row" style="cursor: pointer;"
+                                    {# Check if resource is expired #}
+                                    {% set is_expired = resource.days_until_expiration is not none and resource.days_until_expiration < 0 %}
+                                    {% set row_class = 'text-muted' if is_expired else '' %}
+
+                                    <tr class="resource-row {{ row_class }}" style="cursor: pointer;{% if is_expired %} opacity: 0.6;{% endif %}"
                                         onclick="location.href='{{ url_for('user_dashboard.resource_details', projcode=project.projcode, resource=resource.resource_name) }}'">
                                         <td><strong>{{ resource.resource_name }}</strong></td>
                                         <td>{{ resource.start_date.strftime('%Y-%m-%d') if resource.start_date else 'N/A' }}</td>
                                         <td>{{ resource.end_date.strftime('%Y-%m-%d') if resource.end_date else 'N/A' }}</td>
-                                        <td class="text-primary">{{ '{:,.0f}'.format(resource.allocated) }}</td>
-                                        <td class="text-warning">{{ '{:,.0f}'.format(resource.used) }}</td>
-                                        <td class="text-success">{{ '{:,.0f}'.format(resource.remaining) }}</td>
+                                        <td class="{% if not is_expired %}text-primary{% endif %}">{{ '{:,.0f}'.format(resource.allocated) }}</td>
+                                        <td class="{% if not is_expired %}text-warning{% endif %}">{{ '{:,.0f}'.format(resource.used) }}</td>
+                                        <td class="{% if not is_expired %}text-success{% endif %}">{{ '{:,.0f}'.format(resource.remaining) }}</td>
                                         <td>
                                             <div class="progress" style="height: 20px;">
                                                 <div class="progress-bar {{ progress_class }}"
