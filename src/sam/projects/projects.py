@@ -14,6 +14,7 @@ from ..summaries.hpc_summaries import *
 
 from sqlalchemy.orm import joinedload
 
+from datetime import timedelta
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
 class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
@@ -364,21 +365,36 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             resource = account.resource.resource_name
             resource_type = account.resource.resource_type.resource_type if account.resource.resource_type else 'UNKNOWN'
 
-            # Find active allocation
+            # Find active allocation, or most recent if none are active
             active_alloc = None
+            most_recent_alloc = None
+            query_alloc = None
             for alloc in account.allocations:
                 if alloc.is_active_at(now):
                     active_alloc = alloc
+                    query_alloc = active_alloc
                     break
 
+            # No active allocation found - find the most recent one (latest end_date)
             if not active_alloc:
+                if account.allocations:
+                    most_recent_alloc = max(account.allocations,
+                                            key=lambda a: a.end_date if a.end_date else datetime.max
+                                            )
+                    # FIXME: apply date threshold, only query 'most_recent_alloc'
+                    # if it has expired within the past 1 year
+                    if (now - most_recent_alloc.end_date) < timedelta(days=365):
+                        query_alloc = most_recent_alloc
+
+
+            if not query_alloc:
                 continue
 
             # Determine which charge tables to query based on resource type
             charges_by_type = self._get_charges_by_resource_type(account.account_id,
                                                                  resource_type,
-                                                                 active_alloc.start_date,
-                                                                 active_alloc.end_date or now
+                                                                 query_alloc.start_date,
+                                                                 query_alloc.end_date or now
                                                                  )
 
             # Calculate adjustment total
@@ -386,35 +402,35 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             if include_adjustments:
                 adjustments = self.session.query(func.coalesce(func.sum(ChargeAdjustment.amount), 0)
                                                  ).filter(ChargeAdjustment.account_id == account.account_id,
-                                                          ChargeAdjustment.adjustment_date >= active_alloc.start_date,
-                                                          ChargeAdjustment.adjustment_date <= (active_alloc.end_date or now)
+                                                          ChargeAdjustment.adjustment_date >= query_alloc.start_date,
+                                                          ChargeAdjustment.adjustment_date <= (query_alloc.end_date or now)
                                                           ).scalar()
                 adjustments = float(adjustments)
 
             # Calculate totals
-            allocated = float(active_alloc.amount)
+            allocated = float(query_alloc.amount)
             total_charges = sum(charges_by_type.values())
             effective_used = total_charges + adjustments
             remaining = allocated - effective_used
             percent_used = (effective_used / allocated * 100) if allocated > 0 else 0
 
             # Calculate time metrics
-            days_elapsed = (now - active_alloc.start_date).days
+            days_elapsed = (now - query_alloc.start_date).days
             days_remaining = None
             days_total = None
-            if active_alloc.end_date:
-                days_remaining = max(0, (active_alloc.end_date - now).days)
-                days_total = (active_alloc.end_date - active_alloc.start_date).days
+            if query_alloc.end_date:
+                days_remaining = max(0, (query_alloc.end_date - now).days)
+                days_total = (query_alloc.end_date - query_alloc.start_date).days
 
             # Get job statistics (primarily for HPC/DAV)
             total_jobs, total_core_hours = self._get_job_statistics(account.account_id,
                                                                     resource_type,
-                                                                    active_alloc.start_date,
-                                                                    active_alloc.end_date or now
+                                                                    query_alloc.start_date,
+                                                                    query_alloc.end_date or now
                                                                     )
 
             result = {
-                'allocation_id': active_alloc.allocation_id,
+                'allocation_id': query_alloc.allocation_id,
                 'account_id': account.account_id,
                 'resource_type': resource_type,
                 'allocated': allocated,
@@ -422,8 +438,8 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                 'remaining': remaining,
                 'percent_used': percent_used,
                 'charges_by_type': charges_by_type,
-                'start_date': active_alloc.start_date,
-                'end_date': active_alloc.end_date,
+                'start_date': query_alloc.start_date,
+                'end_date': query_alloc.end_date,
                 'days_elapsed': days_elapsed,
                 'days_remaining': days_remaining,
                 'days_total': days_total,
