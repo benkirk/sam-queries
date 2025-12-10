@@ -45,7 +45,7 @@ class ManualTask(Base):
     data = Column(Text, nullable=False)
     delete_on_clear = Column(Boolean, nullable=False, default=False)
 
-    products = relationship('Product', back_populates='manual_task')
+    products = relationship('Product', back_populates='manual_task', cascade='all, delete-orphan')
 
 
 #----------------------------------------------------------------------------

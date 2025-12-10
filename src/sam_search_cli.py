@@ -8,7 +8,7 @@ Reimplemented using Click and Rich.
 
 import sys
 import click
-from typing import Optional, List
+from typing import Optional, List, Union, Dict
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from rich.console import Console
@@ -25,6 +25,7 @@ from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
     get_projects_with_expired_allocations
 )
+from sam.queries.allocations import get_allocation_summary, get_allocation_summary_with_usage
 
 
 class Context:
@@ -602,6 +603,263 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
         except Exception as e:
             ctx.console.print(f"❌ Error searching for projects: {e}", style="bold red", err=True)
             sys.exit(2)
+
+
+# ========================================================================
+# Allocation Commands
+# ========================================================================
+
+def _parse_comma_list(value: Optional[str]) -> Optional[Union[str, List[str]]]:
+    """
+    Parse a comma-separated string into a list, or return as-is.
+
+    Returns:
+        - None if value is None
+        - "TOTAL" if value is "TOTAL"
+        - List of strings if comma-separated
+        - Single string otherwise
+    """
+    if value is None or value == "TOTAL":
+        return value
+
+    # Check if contains comma
+    if ',' in value:
+        # Split and strip whitespace
+        return [v.strip() for v in value.split(',') if v.strip()]
+
+    return value
+
+
+@cli.command()
+@click.option('--resource', metavar='NAME', help='Resource name(s) to filter/group (comma-separated for multiple, or TOTAL to sum across)')
+@click.option('--facility', metavar='NAME', help='Facility name(s) to filter/group (comma-separated for multiple, or TOTAL to sum across)')
+@click.option('--allocation-type', metavar='TYPE', help='Allocation type(s) to filter/group (comma-separated for multiple, or TOTAL to sum across)')
+@click.option('--project', metavar='CODE', help='Project code(s) to filter/group (comma-separated for multiple, or TOTAL to sum across)')
+@click.option('--total-resources', is_flag=True, help='Sum across all resources (equivalent to --resource TOTAL)')
+@click.option('--total-facilities', is_flag=True, help='Sum across all facilities (equivalent to --facility TOTAL)')
+@click.option('--total-types', is_flag=True, help='Sum across all allocation types (equivalent to --allocation-type TOTAL)')
+@click.option('--total-projects', is_flag=True, help='Sum across all projects (equivalent to --project TOTAL)')
+@click.option('--active-at', metavar='DATE', help='Check allocations active at this date (YYYY-MM-DD). Default: today')
+@click.option('--inactive', is_flag=True, help='Include inactive allocations (ignore dates)')
+@click.option('--show-usage', is_flag=True, help='Include usage information (total used, percent used)')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information including averages')
+@pass_context
+def allocations(ctx: Context, resource, facility, allocation_type, project,
+                total_resources, total_facilities, total_types, total_projects,
+                active_at, inactive, show_usage, verbose):
+    """
+    Query allocation summaries with flexible grouping and filtering.
+
+    By default, results are grouped by all dimensions (resource, facility, type, project).
+    Use specific values to filter to one item, or use TOTAL/--total-* to sum across a dimension.
+    You can specify multiple values as comma-separated lists (e.g., --resource Derecho,Casper).
+
+    Examples:
+        # All active allocations grouped by everything
+        sam-search allocations
+
+        # All Derecho allocations grouped by facility and type
+        sam-search allocations --resource Derecho
+
+        # Multiple resources
+        sam-search allocations --resource Derecho,Casper --allocation-type Small,Classroom --total-projects
+
+        # Total allocation amount for Exploratory projects on Casper GPU
+        sam-search allocations --resource "Casper GPU" --allocation-type Exploratory --total-projects
+
+        # Allocations that were active 6 months ago
+        sam-search allocations --active-at 2024-06-15
+
+        # All allocations for a specific project
+        sam-search allocations --project SCSG0001
+    """
+    if verbose:
+        ctx.verbose = True
+
+    # Handle --total-* flags by converting to "TOTAL" string
+    if total_resources:
+        resource = "TOTAL"
+    if total_facilities:
+        facility = "TOTAL"
+    if total_types:
+        allocation_type = "TOTAL"
+    if total_projects:
+        project = "TOTAL"
+
+    # Parse comma-separated values
+    resource = _parse_comma_list(resource)
+    facility = _parse_comma_list(facility)
+    allocation_type = _parse_comma_list(allocation_type)
+    project = _parse_comma_list(project)
+
+    # Parse active_at date if provided
+    active_at_date = None
+    if active_at:
+        try:
+            active_at_date = datetime.strptime(active_at, "%Y-%m-%d")
+        except ValueError:
+            ctx.console.print(f"❌ Invalid date format: {active_at}. Use YYYY-MM-DD", style="bold red")
+            sys.exit(1)
+
+    # Query allocations
+    try:
+        if show_usage:
+            results = get_allocation_summary_with_usage(
+                ctx.session,
+                resource_name=resource,
+                facility_name=facility,
+                allocation_type=allocation_type,
+                projcode=project,
+                active_only=not inactive,
+                active_at=active_at_date
+            )
+        else:
+            results = get_allocation_summary(
+                ctx.session,
+                resource_name=resource,
+                facility_name=facility,
+                allocation_type=allocation_type,
+                projcode=project,
+                active_only=not inactive,
+                active_at=active_at_date
+            )
+
+        if not results:
+            ctx.console.print("No allocations found matching criteria.", style="yellow")
+            return
+
+        # Display results
+        _display_allocation_summary(ctx, results, show_usage=show_usage)
+
+    except Exception as e:
+        ctx.console.print(f"❌ Error querying allocations: {e}", style="bold red", err=True)
+        if ctx.verbose:
+            import traceback
+            ctx.console.print(traceback.format_exc(), style="dim")
+        sys.exit(2)
+
+
+def _display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bool = False):
+    """Display allocation summary results in a table."""
+    if not results:
+        return
+
+    # Determine which columns to show based on first result
+    sample = results[0]
+    has_resource = 'resource' in sample
+    has_facility = 'facility' in sample
+    has_type = 'allocation_type' in sample
+    has_project = 'projcode' in sample
+    has_usage = 'total_used' in sample
+
+    # Check if all rows have count=1 (useful for date column decision)
+    all_single_allocations = all(row['count'] == 1 for row in results)
+    show_dates = ctx.verbose and all_single_allocations and not show_usage
+
+    # Build table
+    table = Table(title="Allocation Summary", box=box.SIMPLE_HEAD, show_header=True)
+
+    if has_resource:
+        table.add_column("Resource", style="cyan")
+    if has_facility:
+        table.add_column("Facility", style="magenta")
+    if has_type:
+        table.add_column("Type", style="yellow")
+    if has_project:
+        table.add_column("Project", style="green")
+
+    # Conditional columns based on mode
+    if show_usage:
+        # Usage mode: show allocated, used, remaining, % used
+        table.add_column("Allocated", justify="right", style="bold blue")
+        table.add_column("Used", justify="right", style="yellow")
+        table.add_column("Remaining", justify="right", style="green")
+        table.add_column("% Used", justify="right", style="magenta")
+        if ctx.verbose:
+            table.add_column("Count", justify="right", style="dim")
+    elif show_dates:
+        # Dates mode: show dates for single allocations
+        table.add_column("Begin Date", justify="right", style="dim")
+        table.add_column("End Date", justify="right", style="dim")
+        table.add_column("Total Amount", justify="right", style="bold blue")
+    else:
+        # Standard mode: show counts and amounts
+        table.add_column("Count", justify="right", style="bold")
+        table.add_column("Total Amount", justify="right", style="bold blue")
+        if ctx.verbose:
+            table.add_column("Avg Amount", justify="right", style="dim")
+
+    # Add rows
+    total_count = 0
+    total_amount = 0.0
+    total_used = 0.0
+
+    for row in results:
+        table_row = []
+
+        if has_resource:
+            table_row.append(row['resource'])
+        if has_facility:
+            table_row.append(row['facility'])
+        if has_type:
+            table_row.append(row['allocation_type'])
+        if has_project:
+            table_row.append(row['projcode'])
+
+        count = row['count']
+        amount = row['total_amount']
+        total_count += count
+        total_amount += amount
+
+        # Show different columns based on mode
+        if show_usage:
+            used = row.get('total_used', 0.0)
+            allocated = row.get('total_allocated', amount)
+            remaining = allocated - used
+            pct = row.get('percent_used', 0.0)
+            total_used += used
+
+            # Color code percent used
+            pct_style = "green"
+            if pct > 80: pct_style = "yellow"
+            if pct > 100: pct_style = "red bold"
+
+            table_row.extend([
+                f"{allocated:,.0f}",
+                f"{used:,.0f}",
+                f"{remaining:,.0f}",
+                f"[{pct_style}]{pct:,.1f}%[/]"
+            ])
+            if ctx.verbose:
+                table_row.append(str(count))
+
+        elif show_dates:
+            # Dates mode for single allocations
+            start_str = row['start_date'].strftime("%Y-%m-%d") if row.get('start_date') else "N/A"
+            end_str = row['end_date'].strftime("%Y-%m-%d") if row.get('end_date') else "N/A"
+            table_row.extend([start_str, end_str, f"{amount:,.0f}"])
+        else:
+            # Standard mode
+            table_row.append(str(count))
+            table_row.append(f"{amount:,.0f}")
+            if ctx.verbose:
+                table_row.append(f"{row['avg_amount']:,.0f}")
+
+        table.add_row(*table_row)
+
+    ctx.console.print(table)
+
+    # Print totals
+    if show_usage:
+        total_remaining = total_amount - total_used
+        total_pct = (total_used / total_amount * 100) if total_amount > 0 else 0
+        ctx.console.print(f"\n[bold]Grand Total:[/] {total_count:,} allocations")
+        ctx.console.print(f"  Allocated: {total_amount:,.0f}")
+        ctx.console.print(f"  Used: {total_used:,.0f}")
+        ctx.console.print(f"  Remaining: {total_remaining:,.0f}")
+        ctx.console.print(f"  Percent Used: {total_pct:.1f}%")
+    else:
+        ctx.console.print(f"\n[bold]Grand Total:[/] {total_count:,} allocations, {total_amount:,.0f} total allocation units")
 
 
 if __name__ == '__main__':

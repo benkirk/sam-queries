@@ -94,6 +94,8 @@ from .allocations import (
     get_allocations_by_type,
     get_allocations_by_resource,
     get_allocation_summary_by_facility,
+    get_allocation_summary,
+    get_allocation_summary_with_usage,
 )
 
 # Statistics
@@ -159,6 +161,8 @@ __all__ = [
     'get_allocations_by_type',
     'get_allocations_by_resource',
     'get_allocation_summary_by_facility',
+    'get_allocation_summary',
+    'get_allocation_summary_with_usage',
     # Statistics
     'get_user_statistics',
     'get_project_statistics',

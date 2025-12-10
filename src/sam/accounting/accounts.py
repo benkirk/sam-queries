@@ -39,10 +39,10 @@ class Account(Base, SoftDeleteMixin):
     creation_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
     modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
-    allocations = relationship('Allocation', back_populates='account')
+    allocations = relationship('Allocation', back_populates='account', cascade='all, delete-orphan')
     archive_charge_summaries = relationship('ArchiveChargeSummary', back_populates='account')
     archive_charges = relationship('ArchiveCharge', back_populates='account')
-    charge_adjustments = relationship('ChargeAdjustment', back_populates='account')
+    charge_adjustments = relationship('ChargeAdjustment', back_populates='account', cascade='all, delete-orphan')
     comp_charge_summaries = relationship('CompChargeSummary', back_populates='account')
     dav_charge_summaries = relationship('DavChargeSummary', back_populates='account')
     dav_charges = relationship('DavCharge', back_populates='account')
@@ -52,8 +52,8 @@ class Account(Base, SoftDeleteMixin):
     hpc_charges = relationship('HPCCharge', back_populates='account')
     project = relationship('Project', back_populates='accounts')
     resource = relationship('Resource', back_populates='accounts')
-    users = relationship('AccountUser', back_populates='account', lazy='selectin')
-    responsible_parties = relationship('ResponsibleParty', back_populates='account')
+    users = relationship('AccountUser', back_populates='account', lazy='selectin', cascade='all')
+    responsible_parties = relationship('ResponsibleParty', back_populates='account', cascade='all, delete-orphan')
 
     @classmethod
     def get_by_project_and_resource(cls, session, project_id: int, resource_id: int,

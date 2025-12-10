@@ -148,6 +148,21 @@ sam-search project --recent-expirations --list-users
 
 # Find users with no active projects
 sam-search user --abandoned
+
+# Query allocation summaries with flexible grouping
+sam-search allocations --resource Derecho --total-facilities --total-types --total-projects
+
+# Multiple resources and allocation types
+sam-search allocations --resource Derecho,Casper --allocation-type Small,Classroom --total-projects
+
+# Allocations for specific projects
+sam-search allocations --project SCSG0001,SCSG0002
+
+# Historical query - what was allocated 6 months ago?
+sam-search allocations --active-at 2024-06-15 --resource Derecho
+
+# Total allocations by facility only
+sam-search allocations --total-resources --total-types --total-projects --verbose
 ```
 
 **Exit codes:** `0` = success, `1` = not found, `2` = error, `130` = interrupted
@@ -196,6 +211,38 @@ expiring = get_projects_by_allocation_end_date(
 # Returns tuples of (project, allocation, resource_name, days_remaining)
 for project, allocation, resource_name, days_remaining in expiring:
     print(f"{project.projcode}: {resource_name} expires in {days_remaining} days")
+
+# Query allocation summaries with flexible grouping
+from sam.queries.allocations import get_allocation_summary
+
+# Get all Derecho allocations by facility and type
+results = get_allocation_summary(
+    session,
+    resource_name='Derecho',
+    facility_name=None,  # Group by facility
+    allocation_type=None,  # Group by type
+    projcode='TOTAL'  # Sum across all projects
+)
+
+for row in results:
+    print(f"{row['resource']} - {row['facility']} - {row['allocation_type']}: "
+          f"{row['count']} allocations, {row['total_amount']:,.0f} total")
+
+# Multiple resources with filtering
+results = get_allocation_summary(
+    session,
+    resource_name=['Derecho', 'Casper'],  # Multiple resources
+    allocation_type=['Small', 'Classroom'],  # Multiple types
+    projcode='TOTAL'
+)
+
+# Historical query - what was allocated on a specific date?
+from datetime import datetime
+results = get_allocation_summary(
+    session,
+    resource_name='Derecho',
+    active_at=datetime(2024, 6, 15)
+)
 ```
 
 For detailed ORM documentation, see **[CLAUDE.md](CLAUDE.md)**.
@@ -405,13 +452,13 @@ sam-queries/
 
 ## Testing
 
-The project includes a comprehensive test suite with 380+ tests covering:
+The project includes a comprehensive test suite with 397+ tests covering:
 
 - Query functions - Targeted query function testing (41 tests)
 - Schema validation - Prevents ORM/database drift (18 tests)
 - Basic queries - Core ORM functionality (26 tests)
 - CRUD operations - Create/update/delete (17 tests)
-- CLI integration - End-to-end CLI testing (44 tests)
+- CLI integration - End-to-end CLI testing (61 tests)
 - API schemas - Marshmallow serialization (multiple tests)
 - Database views - XRAS integration views (24 tests)
 - New models - Recent model additions (51 tests)

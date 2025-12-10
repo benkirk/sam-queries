@@ -29,6 +29,7 @@ from sam.summaries.dav_summaries import DavChargeSummary
 from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
 from sam.activity.computational import CompActivityChargeView
+from sam.accounting.adjustments import ChargeAdjustment
 
 
 # ============================================================================
