@@ -13,10 +13,11 @@ Functions:
     get_allocations_by_type: Get allocations of a specific type
     get_allocations_by_resource: Get allocations for a specific resource
     get_allocation_summary_by_facility: Get summary statistics by facility
+    get_allocation_summary: Get flexible allocation summaries with grouping and filtering
 """
 
 from datetime import datetime
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Union
 
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
@@ -241,3 +242,172 @@ def get_allocation_summary_by_facility(
         }
         for r in results
     ]
+
+
+def get_allocation_summary(
+    session: Session,
+    resource_name: Optional[Union[str, List[str]]] = None,
+    facility_name: Optional[Union[str, List[str]]] = None,
+    allocation_type: Optional[Union[str, List[str]]] = None,
+    projcode: Optional[Union[str, List[str]]] = None,
+    active_only: bool = True,
+    active_at: Optional[datetime] = None
+) -> List[Dict]:
+    """
+    Get allocation summary statistics with flexible grouping.
+
+    Args:
+        resource_name: None=group by resource, "TOTAL"=sum across, string=filter to one, list=filter to multiple
+        facility_name: None=group by facility, "TOTAL"=sum across, string=filter to one, list=filter to multiple
+        allocation_type: None=group by type, "TOTAL"=sum across, string=filter to one, list=filter to multiple
+        projcode: None=group by project, "TOTAL"=sum across, string=filter to one, list=filter to multiple
+        active_only: If True, filter to allocations active at specified date
+        active_at: Date to check for active status. If None and active_only=True, uses datetime.now()
+                   Useful for historical queries like "what was allocated on 2024-06-15?"
+
+    Returns:
+        List of dicts with keys depending on grouping:
+        - Grouped fields (resource, facility, allocation_type, projcode) included when not "TOTAL"
+        - count: Number of allocations
+        - total_amount: Sum of allocation amounts
+        - avg_amount: Average allocation amount
+
+    Examples:
+        # All active Derecho allocations grouped by facility and type
+        >>> get_allocation_summary(session, resource_name="Derecho")
+
+        # Total amount allocated to Exploratory projects on Casper (sum across all projects)
+        >>> get_allocation_summary(session, resource_name="Casper GPU",
+        ...                        allocation_type="Exploratory", projcode="TOTAL")
+
+        # Multiple resources
+        >>> get_allocation_summary(session, resource_name=["Derecho", "Casper"],
+        ...                        allocation_type=["Small", "Classroom"], projcode="TOTAL")
+
+        # What allocations were active 6 months ago?
+        >>> from datetime import datetime, timedelta
+        >>> past_date = datetime.now() - timedelta(days=180)
+        >>> get_allocation_summary(session, active_at=past_date)
+    """
+    # Determine what fields to group by and what to filter
+    group_by_fields = []
+    select_fields = []
+
+    # Resource handling
+    if resource_name != "TOTAL":
+        select_fields.append(Resource.resource_name)
+        # Group by resource if: None (all), single value, or list (multiple)
+        if resource_name is None or isinstance(resource_name, (str, list)):
+            group_by_fields.append(Resource.resource_name)
+
+    # Facility handling
+    if facility_name != "TOTAL":
+        select_fields.append(Facility.facility_name)
+        # Group by facility if: None (all), single value, or list (multiple)
+        if facility_name is None or isinstance(facility_name, (str, list)):
+            group_by_fields.append(Facility.facility_name)
+
+    # Allocation type handling
+    if allocation_type != "TOTAL":
+        select_fields.append(AllocationType.allocation_type)
+        # Group by type if: None (all), single value, or list (multiple)
+        if allocation_type is None or isinstance(allocation_type, (str, list)):
+            group_by_fields.append(AllocationType.allocation_type)
+
+    # Project code handling
+    if projcode != "TOTAL":
+        select_fields.append(Project.projcode)
+        # Group by project if: None (all), single value, or list (multiple)
+        if projcode is None or isinstance(projcode, (str, list)):
+            group_by_fields.append(Project.projcode)
+
+    # Add aggregation fields
+    select_fields.extend([
+        func.count(Allocation.allocation_id).label('count'),
+        func.sum(Allocation.amount).label('total_amount'),
+        func.avg(Allocation.amount).label('avg_amount')
+    ])
+
+    # Build the query
+    query = session.query(*select_fields)\
+        .join(Account, Allocation.account_id == Account.account_id)\
+        .join(Project, Account.project_id == Project.project_id)\
+        .join(Resource, Account.resource_id == Resource.resource_id)\
+        .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+        .join(Panel, AllocationType.panel_id == Panel.panel_id)\
+        .join(Facility, Panel.facility_id == Facility.facility_id)\
+        .filter(Allocation.deleted == False)
+
+    # Apply specific filters
+    if resource_name and resource_name != "TOTAL":
+        if isinstance(resource_name, list):
+            query = query.filter(Resource.resource_name.in_(resource_name))
+        else:
+            query = query.filter(Resource.resource_name == resource_name)
+
+    if facility_name and facility_name != "TOTAL":
+        if isinstance(facility_name, list):
+            query = query.filter(Facility.facility_name.in_(facility_name))
+        else:
+            query = query.filter(Facility.facility_name == facility_name)
+
+    if allocation_type and allocation_type != "TOTAL":
+        if isinstance(allocation_type, list):
+            query = query.filter(AllocationType.allocation_type.in_(allocation_type))
+        else:
+            query = query.filter(AllocationType.allocation_type == allocation_type)
+
+    if projcode and projcode != "TOTAL":
+        if isinstance(projcode, list):
+            query = query.filter(Project.projcode.in_(projcode))
+        else:
+            query = query.filter(Project.projcode == projcode)
+
+    # Apply active_only filter
+    if active_only:
+        check_date = active_at if active_at is not None else datetime.now()
+        query = query.filter(
+            Allocation.start_date <= check_date,
+            or_(
+                Allocation.end_date.is_(None),
+                Allocation.end_date >= check_date
+            )
+        )
+
+    # Group by appropriate fields
+    if group_by_fields:
+        query = query.group_by(*group_by_fields)
+
+    results = query.all()
+
+    # Build return list
+    output = []
+    for row in results:
+        item = {}
+        idx = 0
+
+        # Add grouped/filtered fields
+        if resource_name != "TOTAL":
+            item['resource'] = row[idx]
+            idx += 1
+
+        if facility_name != "TOTAL":
+            item['facility'] = row[idx]
+            idx += 1
+
+        if allocation_type != "TOTAL":
+            item['allocation_type'] = row[idx]
+            idx += 1
+
+        if projcode != "TOTAL":
+            item['projcode'] = row[idx]
+            idx += 1
+
+        # Add aggregations
+        item['count'] = row[idx]
+        item['total_amount'] = float(row[idx + 1]) if row[idx + 1] else 0.0
+        item['avg_amount'] = float(row[idx + 2]) if row[idx + 2] else 0.0
+
+        output.append(item)
+
+    return output

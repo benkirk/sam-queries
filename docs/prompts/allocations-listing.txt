@@ -1,0 +1,8 @@
+I want to create a "mega" query function in src/sam/queries/allocations.py. It should return active allocations as defined elsewhere in the file - end dates later than now, or no end date.
+
+By default the function should return all allocations, grouped by Resource->Facility->AllocationType->ProjectCode.  But each of these shoudl be an optional input parameter, defaulting to "None" meaning all, indvidually, or "TOTAL" - meaning summed. Calling with any of these None returns all groups accordingly.  Calling with a valid input limits the result to that one input.  Calling with an input of "TOTAL" sums across all types or something like that, So for example Resource=Casper GPU AllocationType=Small ProjectCode=TOTAL would give the number of allocations and total amount for all active Casper GPU allocations of Small type
+
+
+Ultimately I will want to use this to create a @src/sam_search_cli.py "sam-search allocations" subcommand that can handle a number of queries - like "show me all the university allocations on Derecho grouped by type; or show me how many Casper GPU allocations are on Casper of Exploratory type, etc...
+
+Lets discuss.

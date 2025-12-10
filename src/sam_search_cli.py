@@ -8,7 +8,7 @@ Reimplemented using Click and Rich.
 
 import sys
 import click
-from typing import Optional, List
+from typing import Optional, List, Union
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from rich.console import Console
@@ -25,6 +25,7 @@ from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
     get_projects_with_expired_allocations
 )
+from sam.queries.allocations import get_allocation_summary
 
 
 class Context:
@@ -602,6 +603,193 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
         except Exception as e:
             ctx.console.print(f"❌ Error searching for projects: {e}", style="bold red", err=True)
             sys.exit(2)
+
+
+# ========================================================================
+# Allocation Commands
+# ========================================================================
+
+def _parse_comma_list(value: Optional[str]) -> Optional[Union[str, List[str]]]:
+    """
+    Parse a comma-separated string into a list, or return as-is.
+
+    Returns:
+        - None if value is None
+        - "TOTAL" if value is "TOTAL"
+        - List of strings if comma-separated
+        - Single string otherwise
+    """
+    if value is None or value == "TOTAL":
+        return value
+
+    # Check if contains comma
+    if ',' in value:
+        # Split and strip whitespace
+        return [v.strip() for v in value.split(',') if v.strip()]
+
+    return value
+
+
+@cli.command()
+@click.option('--resource', metavar='NAME', help='Resource name(s) to filter/group (comma-separated for multiple, or TOTAL to sum across)')
+@click.option('--facility', metavar='NAME', help='Facility name(s) to filter/group (comma-separated for multiple, or TOTAL to sum across)')
+@click.option('--allocation-type', metavar='TYPE', help='Allocation type(s) to filter/group (comma-separated for multiple, or TOTAL to sum across)')
+@click.option('--project', metavar='CODE', help='Project code(s) to filter/group (comma-separated for multiple, or TOTAL to sum across)')
+@click.option('--total-resources', is_flag=True, help='Sum across all resources (equivalent to --resource TOTAL)')
+@click.option('--total-facilities', is_flag=True, help='Sum across all facilities (equivalent to --facility TOTAL)')
+@click.option('--total-types', is_flag=True, help='Sum across all allocation types (equivalent to --allocation-type TOTAL)')
+@click.option('--total-projects', is_flag=True, help='Sum across all projects (equivalent to --project TOTAL)')
+@click.option('--active-at', metavar='DATE', help='Check allocations active at this date (YYYY-MM-DD). Default: today')
+@click.option('--inactive', is_flag=True, help='Include inactive allocations (ignore dates)')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information including averages')
+@pass_context
+def allocations(ctx: Context, resource, facility, allocation_type, project,
+                total_resources, total_facilities, total_types, total_projects,
+                active_at, inactive, verbose):
+    """
+    Query allocation summaries with flexible grouping and filtering.
+
+    By default, results are grouped by all dimensions (resource, facility, type, project).
+    Use specific values to filter to one item, or use TOTAL/--total-* to sum across a dimension.
+    You can specify multiple values as comma-separated lists (e.g., --resource Derecho,Casper).
+
+    Examples:
+        # All active allocations grouped by everything
+        sam-search allocations
+
+        # All Derecho allocations grouped by facility and type
+        sam-search allocations --resource Derecho
+
+        # Multiple resources
+        sam-search allocations --resource Derecho,Casper --allocation-type Small,Classroom --total-projects
+
+        # Total allocation amount for Exploratory projects on Casper GPU
+        sam-search allocations --resource "Casper GPU" --allocation-type Exploratory --total-projects
+
+        # Allocations that were active 6 months ago
+        sam-search allocations --active-at 2024-06-15
+
+        # All allocations for a specific project
+        sam-search allocations --project SCSG0001
+    """
+    if verbose:
+        ctx.verbose = True
+
+    # Handle --total-* flags by converting to "TOTAL" string
+    if total_resources:
+        resource = "TOTAL"
+    if total_facilities:
+        facility = "TOTAL"
+    if total_types:
+        allocation_type = "TOTAL"
+    if total_projects:
+        project = "TOTAL"
+
+    # Parse comma-separated values
+    resource = _parse_comma_list(resource)
+    facility = _parse_comma_list(facility)
+    allocation_type = _parse_comma_list(allocation_type)
+    project = _parse_comma_list(project)
+
+    # Parse active_at date if provided
+    active_at_date = None
+    if active_at:
+        try:
+            active_at_date = datetime.strptime(active_at, "%Y-%m-%d")
+        except ValueError:
+            ctx.console.print(f"❌ Invalid date format: {active_at}. Use YYYY-MM-DD", style="bold red")
+            sys.exit(1)
+
+    # Query allocations
+    try:
+        results = get_allocation_summary(
+            ctx.session,
+            resource_name=resource,
+            facility_name=facility,
+            allocation_type=allocation_type,
+            projcode=project,
+            active_only=not inactive,
+            active_at=active_at_date
+        )
+
+        if not results:
+            ctx.console.print("No allocations found matching criteria.", style="yellow")
+            return
+
+        # Display results
+        _display_allocation_summary(ctx, results)
+
+    except Exception as e:
+        ctx.console.print(f"❌ Error querying allocations: {e}", style="bold red", err=True)
+        if ctx.verbose:
+            import traceback
+            ctx.console.print(traceback.format_exc(), style="dim")
+        sys.exit(2)
+
+
+def _display_allocation_summary(ctx: Context, results: List[Dict]):
+    """Display allocation summary results in a table."""
+    if not results:
+        return
+
+    # Determine which columns to show based on first result
+    sample = results[0]
+    has_resource = 'resource' in sample
+    has_facility = 'facility' in sample
+    has_type = 'allocation_type' in sample
+    has_project = 'projcode' in sample
+
+    # Build table
+    table = Table(title="Allocation Summary", box=box.SIMPLE_HEAD, show_header=True)
+
+    if has_resource:
+        table.add_column("Resource", style="cyan")
+    if has_facility:
+        table.add_column("Facility", style="magenta")
+    if has_type:
+        table.add_column("Type", style="yellow")
+    if has_project:
+        table.add_column("Project", style="green")
+
+    table.add_column("Count", justify="right", style="bold")
+    table.add_column("Total Amount", justify="right", style="bold blue")
+
+    if ctx.verbose:
+        table.add_column("Avg Amount", justify="right", style="dim")
+
+    # Add rows
+    total_count = 0
+    total_amount = 0.0
+
+    for row in results:
+        table_row = []
+
+        if has_resource:
+            table_row.append(row['resource'])
+        if has_facility:
+            table_row.append(row['facility'])
+        if has_type:
+            table_row.append(row['allocation_type'])
+        if has_project:
+            table_row.append(row['projcode'])
+
+        count = row['count']
+        amount = row['total_amount']
+        total_count += count
+        total_amount += amount
+
+        table_row.append(str(count))
+        table_row.append(f"{amount:,.0f}")
+
+        if ctx.verbose:
+            table_row.append(f"{row['avg_amount']:,.0f}")
+
+        table.add_row(*table_row)
+
+    ctx.console.print(table)
+
+    # Print totals
+    ctx.console.print(f"\n[bold]Grand Total:[/] {total_count:,} allocations, {total_amount:,.0f} total allocation units")
 
 
 if __name__ == '__main__':
