@@ -8,7 +8,7 @@ Reimplemented using Click and Rich.
 
 import sys
 import click
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Dict
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from rich.console import Console
