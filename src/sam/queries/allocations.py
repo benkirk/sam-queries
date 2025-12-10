@@ -468,7 +468,9 @@ def get_allocation_summary_with_usage(
         query = session.query(
             Allocation,
             Resource.resource_name,
-            ResourceType.resource_type
+            ResourceType.resource_type,
+            Project,
+            Account
         ).join(Account, Allocation.account_id == Account.account_id)\
          .join(Project, Account.project_id == Project.project_id)\
          .join(Resource, Account.resource_id == Resource.resource_id)\
@@ -504,68 +506,37 @@ def get_allocation_summary_with_usage(
         total_used = 0.0
         charges_by_type_total = {}
 
-        for alloc, res_name, res_type in allocations:
+        for alloc, res_name, res_type, project, account in allocations:
             # Use the end_date from allocation, or current date if None
             end_date = alloc.end_date if alloc.end_date else check_date
+            start_date = alloc.start_date
 
-            # Calculate charges for this allocation - same logic as Project._get_charges_by_resource_type()
-            charges = {}
+            # Check if we should use hierarchical charging
+            # Mimic logic from Project.get_detailed_allocation_usage
+            is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
+            use_hierarchy = is_tree_valid  # Always default to hierarchical if structure exists
 
-            # HPC & DAV resources - may have computational charges and/or DAV charges
-            if res_type in ('HPC', 'DAV'):
-                comp = session.query(
-                    func.coalesce(func.sum(CompChargeSummary.charges), 0)
-                ).filter(
-                    CompChargeSummary.account_id == alloc.account_id,
-                    CompChargeSummary.activity_date >= alloc.start_date,
-                    CompChargeSummary.activity_date <= end_date
-                ).scalar()
-                if comp:
-                    charges['comp'] = float(comp)
+            # Calculate charges
+            if use_hierarchy:
+                charges = project.get_subtree_charges(account.resource_id,
+                                                      res_type,
+                                                      start_date,
+                                                      end_date)
+            else:
+                charges = project.get_charges_by_resource_type(alloc.account_id,
+                                                               res_type,
+                                                               start_date,
+                                                               end_date)
 
-                dav = session.query(
-                    func.coalesce(func.sum(DavChargeSummary.charges), 0)
-                ).filter(
-                    DavChargeSummary.account_id == alloc.account_id,
-                    DavChargeSummary.activity_date >= alloc.start_date,
-                    DavChargeSummary.activity_date <= end_date
-                ).scalar()
-                if dav:
-                    charges['dav'] = float(dav)
-
-            # DISK resources
-            elif res_type == 'DISK':
-                disk = session.query(
-                    func.coalesce(func.sum(DiskChargeSummary.charges), 0)
-                ).filter(
-                    DiskChargeSummary.account_id == alloc.account_id,
-                    DiskChargeSummary.activity_date >= alloc.start_date,
-                    DiskChargeSummary.activity_date <= end_date
-                ).scalar()
-                if disk:
-                    charges['disk'] = float(disk)
-
-            # ARCHIVE resources
-            elif res_type == 'ARCHIVE':
-                archive = session.query(
-                    func.coalesce(func.sum(ArchiveChargeSummary.charges), 0)
-                ).filter(
-                    ArchiveChargeSummary.account_id == alloc.account_id,
-                    ArchiveChargeSummary.activity_date >= alloc.start_date,
-                    ArchiveChargeSummary.activity_date <= end_date
-                ).scalar()
-                if archive:
-                    charges['archive'] = float(archive)
-
-            # Add charge adjustments (same logic as Project.get_detailed_allocation_usage())
-            adjustments = session.query(
-                func.coalesce(func.sum(ChargeAdjustment.amount), 0)
-            ).filter(
-                ChargeAdjustment.account_id == alloc.account_id,
-                ChargeAdjustment.adjustment_date >= alloc.start_date,
-                ChargeAdjustment.adjustment_date <= end_date
-            ).scalar()
-            adjustment_amount = float(adjustments) if adjustments else 0.0
+            # Calculate adjustments
+            if use_hierarchy:
+                adjustment_amount = project.get_subtree_adjustments(account.resource_id,
+                                                                    start_date,
+                                                                    end_date)
+            else:
+                adjustment_amount = project.get_adjustments(alloc.account_id,
+                                                            start_date,
+                                                            end_date)
 
             # Accumulate charges
             for charge_type, amount in charges.items():

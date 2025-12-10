@@ -16,5 +16,5 @@ source ${SCRIPTDIR}/../etc/config_env.sh \
 
 #----------------------------------------------------------------------------
 python3 \
-    ${ROOT_DIR}/src/sam_search.py \
+    ${ROOT_DIR}/src/sam_search_cli.py \
     "${@}"

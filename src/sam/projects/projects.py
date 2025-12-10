@@ -373,42 +373,27 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
             # Determine usage (Charges)
             if use_hierarchy:
-                charges_by_type = self._get_subtree_charges(account.resource_id,
-                                                            resource_type,
-                                                            start_date,
-                                                            end_date)
+                charges_by_type = self.get_subtree_charges(account.resource_id,
+                                                           resource_type,
+                                                           start_date,
+                                                           end_date)
             else:
-                charges_by_type = self._get_charges_by_resource_type(account.account_id,
-                                                                     resource_type,
-                                                                     start_date,
-                                                                     end_date)
+                charges_by_type = self.get_charges_by_resource_type(account.account_id,
+                                                                    resource_type,
+                                                                    start_date,
+                                                                    end_date)
 
             # Calculate adjustment total
             adjustments = 0.0
             if include_adjustments:
-                adj_query = self.session.query(func.coalesce(func.sum(ChargeAdjustment.amount), 0))
-
                 if use_hierarchy:
-                    # Join through Account -> Project to filter by subtree
-                    adj_query = adj_query.join(Account, ChargeAdjustment.account_id == Account.account_id)\
-                        .join(Project, Account.project_id == Project.project_id)\
-                        .filter(
-                            Project.tree_root == self.tree_root,
-                            Project.tree_left >= self.tree_left,
-                            Project.tree_right <= self.tree_right,
-                            Account.resource_id == account.resource_id
-                        )
+                    adjustments = self.get_subtree_adjustments(account.resource_id,
+                                                               start_date,
+                                                               end_date)
                 else:
-                    # Simple filter by account
-                    adj_query = adj_query.filter(ChargeAdjustment.account_id == account.account_id)
-
-                # Date range filter applies to both
-                adj_val = adj_query.filter(
-                    ChargeAdjustment.adjustment_date >= start_date,
-                    ChargeAdjustment.adjustment_date <= end_date
-                ).scalar()
-
-                adjustments = float(adj_val)
+                    adjustments = self.get_adjustments(account.account_id,
+                                                       start_date,
+                                                       end_date)
 
             # Calculate totals
             allocated = float(query_alloc.amount)
@@ -427,15 +412,15 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
             # Get job statistics (primarily for HPC/DAV)
             if use_hierarchy:
-                total_jobs, total_core_hours = self._get_subtree_job_statistics(account.resource_id,
-                                                                                resource_type,
-                                                                                start_date,
-                                                                                end_date)
+                total_jobs, total_core_hours = self.get_subtree_job_statistics(account.resource_id,
+                                                                               resource_type,
+                                                                               start_date,
+                                                                               end_date)
             else:
-                total_jobs, total_core_hours = self._get_job_statistics(account.account_id,
-                                                                        resource_type,
-                                                                        start_date,
-                                                                        end_date)
+                total_jobs, total_core_hours = self.get_job_statistics(account.account_id,
+                                                                       resource_type,
+                                                                       start_date,
+                                                                       end_date)
 
             result = {
                 'allocation_id': query_alloc.allocation_id,
@@ -466,11 +451,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         return results
 
 
-    def _get_charges_by_resource_type(self,
-                                      account_id: int,
-                                      resource_type: str,
-                                      start_date: datetime,
-                                      end_date: datetime) -> Dict[str, float]:
+    def get_charges_by_resource_type(self,
+                                     account_id: int,
+                                     resource_type: str,
+                                     start_date: datetime,
+                                     end_date: datetime) -> Dict[str, float]:
         """
         Query appropriate charge summary tables based on resource type (Single Account).
 
@@ -522,11 +507,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         return charges
 
 
-    def _get_subtree_charges(self,
-                             resource_id: int,
-                             resource_type: str,
-                             start_date: datetime,
-                             end_date: datetime) -> Dict[str, float]:
+    def get_subtree_charges(self,
+                            resource_id: int,
+                            resource_type: str,
+                            start_date: datetime,
+                            end_date: datetime) -> Dict[str, float]:
         """
         Aggregate charges for this project AND all descendants (subtree) on a specific resource.
         """
@@ -564,11 +549,44 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         return charges
 
 
-    def _get_job_statistics(self,
-                            account_id: int,
-                            resource_type: str,
-                            start_date: datetime,
-                            end_date: datetime) -> tuple[Optional[int], Optional[float]]:
+    def get_adjustments(self,
+                        account_id: int,
+                        start_date: datetime,
+                        end_date: datetime) -> float:
+        """Get total charge adjustments for a single account."""
+        adj_val = self.session.query(func.coalesce(func.sum(ChargeAdjustment.amount), 0))\
+            .filter(
+                ChargeAdjustment.account_id == account_id,
+                ChargeAdjustment.adjustment_date >= start_date,
+                ChargeAdjustment.adjustment_date <= end_date
+            ).scalar()
+        return float(adj_val)
+
+
+    def get_subtree_adjustments(self,
+                                resource_id: int,
+                                start_date: datetime,
+                                end_date: datetime) -> float:
+        """Get total charge adjustments for the project subtree on a resource."""
+        adj_val = self.session.query(func.coalesce(func.sum(ChargeAdjustment.amount), 0))\
+            .join(Account, ChargeAdjustment.account_id == Account.account_id)\
+            .join(Project, Account.project_id == Project.project_id)\
+            .filter(
+                Project.tree_root == self.tree_root,
+                Project.tree_left >= self.tree_left,
+                Project.tree_right <= self.tree_right,
+                Account.resource_id == resource_id,
+                ChargeAdjustment.adjustment_date >= start_date,
+                ChargeAdjustment.adjustment_date <= end_date
+            ).scalar()
+        return float(adj_val)
+
+
+    def get_job_statistics(self,
+                           account_id: int,
+                           resource_type: str,
+                           start_date: datetime,
+                           end_date: datetime) -> tuple[Optional[int], Optional[float]]:
         """
         Get job count and core hours for computational resources (Single Account).
 
@@ -591,11 +609,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         return int(stats.jobs), float(stats.hours)
 
 
-    def _get_subtree_job_statistics(self,
-                                    resource_id: int,
-                                    resource_type: str,
-                                    start_date: datetime,
-                                    end_date: datetime) -> tuple[Optional[int], Optional[float]]:
+    def get_subtree_job_statistics(self,
+                                   resource_id: int,
+                                   resource_type: str,
+                                   start_date: datetime,
+                                   end_date: datetime) -> tuple[Optional[int], Optional[float]]:
         """
         Get job count and core hours for computational resources (Subtree Aggregation).
         """
