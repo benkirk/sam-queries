@@ -271,6 +271,8 @@ def get_allocation_summary(
         - count: Number of allocations
         - total_amount: Sum of allocation amounts
         - avg_amount: Average allocation amount
+        - start_date: Earliest start date (datetime or None)
+        - end_date: Latest end date (datetime or None)
 
     Examples:
         # All active Derecho allocations grouped by facility and type
@@ -325,7 +327,9 @@ def get_allocation_summary(
     select_fields.extend([
         func.count(Allocation.allocation_id).label('count'),
         func.sum(Allocation.amount).label('total_amount'),
-        func.avg(Allocation.amount).label('avg_amount')
+        func.avg(Allocation.amount).label('avg_amount'),
+        func.min(Allocation.start_date).label('start_date'),
+        func.max(Allocation.end_date).label('end_date')
     ])
 
     # Build the query
@@ -407,6 +411,8 @@ def get_allocation_summary(
         item['count'] = row[idx]
         item['total_amount'] = float(row[idx + 1]) if row[idx + 1] else 0.0
         item['avg_amount'] = float(row[idx + 2]) if row[idx + 2] else 0.0
+        item['start_date'] = row[idx + 3]  # datetime object or None
+        item['end_date'] = row[idx + 4]    # datetime object or None
 
         output.append(item)
 

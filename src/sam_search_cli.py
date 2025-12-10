@@ -739,6 +739,10 @@ def _display_allocation_summary(ctx: Context, results: List[Dict]):
     has_type = 'allocation_type' in sample
     has_project = 'projcode' in sample
 
+    # Check if all rows have count=1 (useful for date column decision)
+    all_single_allocations = all(row['count'] == 1 for row in results)
+    show_dates = ctx.verbose and all_single_allocations
+
     # Build table
     table = Table(title="Allocation Summary", box=box.SIMPLE_HEAD, show_header=True)
 
@@ -751,11 +755,16 @@ def _display_allocation_summary(ctx: Context, results: List[Dict]):
     if has_project:
         table.add_column("Project", style="green")
 
-    table.add_column("Count", justify="right", style="bold")
-    table.add_column("Total Amount", justify="right", style="bold blue")
-
-    if ctx.verbose:
-        table.add_column("Avg Amount", justify="right", style="dim")
+    # When showing dates, replace Count/Avg with date columns
+    if show_dates:
+        table.add_column("Begin Date", justify="right", style="dim")
+        table.add_column("End Date", justify="right", style="dim")
+        table.add_column("Total Amount", justify="right", style="bold blue")
+    else:
+        table.add_column("Count", justify="right", style="bold")
+        table.add_column("Total Amount", justify="right", style="bold blue")
+        if ctx.verbose:
+            table.add_column("Avg Amount", justify="right", style="dim")
 
     # Add rows
     total_count = 0
@@ -778,11 +787,16 @@ def _display_allocation_summary(ctx: Context, results: List[Dict]):
         total_count += count
         total_amount += amount
 
-        table_row.append(str(count))
-        table_row.append(f"{amount:,.0f}")
-
-        if ctx.verbose:
-            table_row.append(f"{row['avg_amount']:,.0f}")
+        # Show dates when in verbose mode with single allocations
+        if show_dates:
+            start_str = row['start_date'].strftime("%Y-%m-%d") if row.get('start_date') else "N/A"
+            end_str = row['end_date'].strftime("%Y-%m-%d") if row.get('end_date') else "N/A"
+            table_row.extend([start_str, end_str, f"{amount:,.0f}"])
+        else:
+            table_row.append(str(count))
+            table_row.append(f"{amount:,.0f}")
+            if ctx.verbose:
+                table_row.append(f"{row['avg_amount']:,.0f}")
 
         table.add_row(*table_row)
 
