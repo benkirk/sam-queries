@@ -16,9 +16,9 @@ class Facility(Base, TimestampMixin, ActiveFlagMixin):
     description = Column(String(255), nullable=False)
     fair_share_percentage = Column(Float)
 
-    panels = relationship('Panel', back_populates='facility')
+    panels = relationship('Panel', back_populates='facility', cascade='save-update, merge')
     facility_resources = relationship('FacilityResource', back_populates='facility')
-    project_codes = relationship('ProjectCode', back_populates='facility')
+    project_codes = relationship('ProjectCode', back_populates='facility', cascade='all')
 
     def __str__(self):
         return f"{self.facility_name} - {self.code}"
@@ -78,8 +78,8 @@ class Panel(Base, TimestampMixin, ActiveFlagMixin):
     facility_id = Column(Integer, ForeignKey('facility.facility_id'), nullable=False)
 
     facility = relationship('Facility', back_populates='panels')
-    allocation_types = relationship('AllocationType', back_populates='panel')
-    panel_sessions = relationship('PanelSession', back_populates='panel')
+    allocation_types = relationship('AllocationType', back_populates='panel', cascade='save-update, merge')
+    panel_sessions = relationship('PanelSession', back_populates='panel', cascade='save-update, merge')
 
     def __str__(self):
         return f"{self.panel_name}"

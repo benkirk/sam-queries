@@ -40,9 +40,9 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
     end_date = Column(DateTime)
 
     account = relationship('Account', back_populates='allocations')
-    children = relationship('Allocation', remote_side=[parent_allocation_id], back_populates='parent')
+    children = relationship('Allocation', back_populates='parent', cascade='all')
     parent = relationship('Allocation', remote_side=[allocation_id], back_populates='children')
-    transactions = relationship('AllocationTransaction', back_populates='allocation')
+    transactions = relationship('AllocationTransaction', back_populates='allocation', cascade='all, delete-orphan')
     # xras_allocation = relationship('XrasAllocation', back_populates='local_allocation', uselist=False)  # DEPRECATED - XRAS views don't support relationships
 
     def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
@@ -114,7 +114,7 @@ class AllocationTransaction(Base):
 
     allocation = relationship('Allocation', back_populates='transactions')
     related_transaction = relationship('AllocationTransaction', remote_side=[allocation_transaction_id], back_populates='related_transactions')
-    related_transactions = relationship('AllocationTransaction', remote_side=[related_transaction_id], back_populates='related_transaction')
+    related_transactions = relationship('AllocationTransaction', back_populates='related_transaction')
     user = relationship('User', back_populates='allocation_transactions')
 
 

@@ -32,8 +32,8 @@ class AdhocGroup(Base, ActiveFlagMixin):
     pdb_modified_time = Column(TIMESTAMP)
     idms_sync_token = Column(String(64))
 
-    tags = relationship('AdhocGroupTag', back_populates='group')
-    system_accounts = relationship('AdhocSystemAccountEntry', back_populates='group')
+    tags = relationship('AdhocGroupTag', back_populates='group', cascade='all, delete-orphan')
+    system_accounts = relationship('AdhocSystemAccountEntry', back_populates='group', cascade='all, delete-orphan')
 
     @classmethod
     def get_by_name(cls, session, group_name: str) -> Optional['AdhocGroup']:
