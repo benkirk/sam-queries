@@ -25,9 +25,14 @@ from sqlalchemy.orm import Session
 from sam.core.users import User
 from sam.projects.projects import Project
 from sam.accounting.allocations import Allocation, AllocationTransaction, AllocationType
-from sam.resources.resources import Resource
+from sam.resources.resources import Resource, ResourceType
 from sam.resources.facilities import Facility, Panel
 from sam.accounting.accounts import Account
+from sam.accounting.adjustments import ChargeAdjustment
+from sam.summaries.comp_summaries import CompChargeSummary
+from sam.summaries.dav_summaries import DavChargeSummary
+from sam.summaries.disk_summaries import DiskChargeSummary
+from sam.summaries.archive_summaries import ArchiveChargeSummary
 
 
 # ============================================================================
@@ -417,3 +422,165 @@ def get_allocation_summary(
         output.append(item)
 
     return output
+
+
+def get_allocation_summary_with_usage(
+    session: Session,
+    resource_name: Optional[Union[str, List[str]]] = None,
+    facility_name: Optional[Union[str, List[str]]] = None,
+    allocation_type: Optional[Union[str, List[str]]] = None,
+    projcode: Optional[Union[str, List[str]]] = None,
+    active_only: bool = True,
+    active_at: Optional[datetime] = None
+) -> List[Dict]:
+    """
+    Get allocation summary statistics with usage information.
+
+    This extends get_allocation_summary() by calculating actual usage for each group.
+    For aggregated results (count > 1), sums charges across all allocations in the group.
+
+    Args:
+        Same as get_allocation_summary()
+
+    Returns:
+        List of dicts with same keys as get_allocation_summary() plus:
+        - total_used: Total charges across all allocations in this group
+        - total_allocated: Total allocation amounts in this group
+        - percent_used: (total_used / total_allocated) * 100
+        - charges_by_type: Breakdown of charges by type (comp, dav, disk, archive)
+
+    Example:
+        >>> results = get_allocation_summary_with_usage(session, resource_name="Derecho")
+        >>> for r in results:
+        ...     print(f"{r['facility']}: {r['percent_used']:.1f}% used")
+    """
+    # First get the basic summary
+    summary = get_allocation_summary(
+        session, resource_name, facility_name, allocation_type, projcode,
+        active_only, active_at
+    )
+
+    check_date = active_at if active_at is not None else datetime.now()
+
+    # Now enrich with usage data
+    for item in summary:
+        # Build query to find matching allocations
+        query = session.query(
+            Allocation,
+            Resource.resource_name,
+            ResourceType.resource_type
+        ).join(Account, Allocation.account_id == Account.account_id)\
+         .join(Project, Account.project_id == Project.project_id)\
+         .join(Resource, Account.resource_id == Resource.resource_id)\
+         .join(ResourceType, Resource.resource_type_id == ResourceType.resource_type_id)\
+         .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+         .join(Panel, AllocationType.panel_id == Panel.panel_id)\
+         .join(Facility, Panel.facility_id == Facility.facility_id)\
+         .filter(Allocation.deleted == False)
+
+        # Apply filters based on what's in this summary item
+        if 'resource' in item:
+            query = query.filter(Resource.resource_name == item['resource'])
+        if 'facility' in item:
+            query = query.filter(Facility.facility_name == item['facility'])
+        if 'allocation_type' in item:
+            query = query.filter(AllocationType.allocation_type == item['allocation_type'])
+        if 'projcode' in item:
+            query = query.filter(Project.projcode == item['projcode'])
+
+        # Apply active_only filter
+        if active_only:
+            query = query.filter(
+                Allocation.start_date <= check_date,
+                or_(
+                    Allocation.end_date.is_(None),
+                    Allocation.end_date >= check_date
+                )
+            )
+
+        allocations = query.all()
+
+        # Calculate total usage across all allocations in this group
+        total_used = 0.0
+        charges_by_type_total = {}
+
+        for alloc, res_name, res_type in allocations:
+            # Use the end_date from allocation, or current date if None
+            end_date = alloc.end_date if alloc.end_date else check_date
+
+            # Calculate charges for this allocation - same logic as Project._get_charges_by_resource_type()
+            charges = {}
+
+            # HPC & DAV resources - may have computational charges and/or DAV charges
+            if res_type in ('HPC', 'DAV'):
+                comp = session.query(
+                    func.coalesce(func.sum(CompChargeSummary.charges), 0)
+                ).filter(
+                    CompChargeSummary.account_id == alloc.account_id,
+                    CompChargeSummary.activity_date >= alloc.start_date,
+                    CompChargeSummary.activity_date <= end_date
+                ).scalar()
+                if comp:
+                    charges['comp'] = float(comp)
+
+                dav = session.query(
+                    func.coalesce(func.sum(DavChargeSummary.charges), 0)
+                ).filter(
+                    DavChargeSummary.account_id == alloc.account_id,
+                    DavChargeSummary.activity_date >= alloc.start_date,
+                    DavChargeSummary.activity_date <= end_date
+                ).scalar()
+                if dav:
+                    charges['dav'] = float(dav)
+
+            # DISK resources
+            elif res_type == 'DISK':
+                disk = session.query(
+                    func.coalesce(func.sum(DiskChargeSummary.charges), 0)
+                ).filter(
+                    DiskChargeSummary.account_id == alloc.account_id,
+                    DiskChargeSummary.activity_date >= alloc.start_date,
+                    DiskChargeSummary.activity_date <= end_date
+                ).scalar()
+                if disk:
+                    charges['disk'] = float(disk)
+
+            # ARCHIVE resources
+            elif res_type == 'ARCHIVE':
+                archive = session.query(
+                    func.coalesce(func.sum(ArchiveChargeSummary.charges), 0)
+                ).filter(
+                    ArchiveChargeSummary.account_id == alloc.account_id,
+                    ArchiveChargeSummary.activity_date >= alloc.start_date,
+                    ArchiveChargeSummary.activity_date <= end_date
+                ).scalar()
+                if archive:
+                    charges['archive'] = float(archive)
+
+            # Add charge adjustments (same logic as Project.get_detailed_allocation_usage())
+            adjustments = session.query(
+                func.coalesce(func.sum(ChargeAdjustment.amount), 0)
+            ).filter(
+                ChargeAdjustment.account_id == alloc.account_id,
+                ChargeAdjustment.adjustment_date >= alloc.start_date,
+                ChargeAdjustment.adjustment_date <= end_date
+            ).scalar()
+            adjustment_amount = float(adjustments) if adjustments else 0.0
+
+            # Accumulate charges
+            for charge_type, amount in charges.items():
+                charges_by_type_total[charge_type] = charges_by_type_total.get(charge_type, 0.0) + amount
+                total_used += amount
+
+            # Add adjustments to total_used (they affect the balance)
+            total_used += adjustment_amount
+            if adjustment_amount != 0:
+                charges_by_type_total['adjustments'] = charges_by_type_total.get('adjustments', 0.0) + adjustment_amount
+
+        # Add usage fields to item
+        item['total_used'] = total_used
+        item['total_allocated'] = item['total_amount']  # Alias for clarity
+        item['percent_used'] = (total_used / item['total_allocated'] * 100) if item['total_allocated'] > 0 else 0
+        item['charges_by_type'] = charges_by_type_total
+
+    return summary
