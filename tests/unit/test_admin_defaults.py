@@ -38,14 +38,14 @@ class TestSoftDeleteFiltering:
             # Create view for Allocation (has SoftDeleteMixin)
             view = SAMModelView(Allocation, session, name='Allocations')
 
-            # Get query should filter deleted=False
+            # Get query should filter out deleted=True records
             query = view.get_query()
 
-            # Verify query has filter for deleted=False
-            # All results should have deleted=False
+            # Verify query excludes deleted=True records
+            # Results should have deleted=False or deleted=NULL
             for allocation in query.limit(100):
-                assert allocation.deleted == False, \
-                    f"Allocation {allocation.allocation_id} is deleted but appeared in query"
+                assert allocation.deleted != True, \
+                    f"Allocation {allocation.allocation_id} is deleted (True) but appeared in query"
 
     def test_allocation_count_matches_query(self, app, session):
         """Test that count query matches filtered query."""
@@ -69,10 +69,10 @@ class TestSoftDeleteFiltering:
 
             query = view.get_query()
 
-            # All results should have deleted=False
+            # All results should have deleted != True (False or NULL)
             for account in query.limit(100):
-                assert account.deleted == False, \
-                    f"Account {account.account_id} is deleted but appeared in query"
+                assert account.deleted != True, \
+                    f"Account {account.account_id} is deleted (True) but appeared in query"
 
     def test_disable_auto_hide_deleted(self, app, session):
         """Test that auto_hide_deleted can be disabled."""

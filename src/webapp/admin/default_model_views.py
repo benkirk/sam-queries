@@ -103,12 +103,17 @@ class SAMModelView(ModelView):
 
         Phase 1 Enhancement: Auto-hide deleted records for models with SoftDeleteMixin.
         Can be disabled per-view by setting auto_hide_deleted = False.
+
+        Note: Handles NULL values in deleted column (treats NULL as "not deleted").
         """
         query = super().get_query()
 
         # Auto-hide soft-deleted records
+        # Filter for deleted != True (includes both False and NULL)
         if self.auto_hide_deleted and hasattr(self.model, 'deleted'):
-            query = query.filter_by(deleted=False)
+            query = query.filter(
+                (self.model.deleted == False) | (self.model.deleted.is_(None))
+            )
 
         # Auto-hide inactive records (opt-in)
         if self.auto_hide_inactive and hasattr(self.model, 'active'):
@@ -126,7 +131,9 @@ class SAMModelView(ModelView):
 
         # Match the same filtering as get_query()
         if self.auto_hide_deleted and hasattr(self.model, 'deleted'):
-            query = query.filter_by(deleted=False)
+            query = query.filter(
+                (self.model.deleted == False) | (self.model.deleted.is_(None))
+            )
 
         if self.auto_hide_inactive and hasattr(self.model, 'active'):
             query = query.filter_by(active=True)
