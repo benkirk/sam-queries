@@ -306,16 +306,56 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
 
             ctx.console.print(Panel(abstract, title="Abstract", border_style="dim", expand=False))
 
-        # Tree info
-        if project.parent:
-            ctx.console.print(f"Parent Project: {project.parent.projcode}")
+        # Tree info - show entire tree from root
+        if project.parent or project.get_children():
+            # Get the root of the project tree
+            root = project.get_root() if hasattr(project, 'get_root') else project
+            current_projcode = project.projcode
 
-        children = project.get_children()
-        if children:
-            tree = Tree(f"[bold]Child Projects ({len(children)}):[/]")
-            for child in children:
-                tree.add(f"{child.projcode} - {child.title}")
-            ctx.console.print(tree)
+            def build_tree_node(node, parent_tree, current_projcode):
+                """Recursively build tree with sorted children, inactive status, and current highlight."""
+                # Sort children alphabetically by projcode
+                sorted_children = sorted(node.get_children(), key=lambda c: c.projcode)
+
+                for child in sorted_children:
+                    is_current = child.projcode == current_projcode
+
+                    # Format child node with inactive status and current highlight
+                    if is_current:
+                        # Current project - highlighted in yellow
+                        if hasattr(child, 'active') and not child.active:
+                            label = f"[bold yellow]→ {child.projcode} - {child.title}[/bold yellow] [dim italic](Inactive)[/dim italic]"
+                        else:
+                            label = f"[bold yellow]→ {child.projcode} - {child.title}[/bold yellow]"
+                    elif hasattr(child, 'active') and not child.active:
+                        # Inactive project - muted gray
+                        label = f"[dim]{child.projcode} - {child.title} [italic](Inactive)[/italic][/dim]"
+                    else:
+                        # Active project - normal display
+                        label = f"{child.projcode} - {child.title}"
+
+                    child_node = parent_tree.add(label)
+
+                    # Recursively add grandchildren
+                    if child.get_children():
+                        build_tree_node(child, child_node, current_projcode)
+
+            # Build tree starting from root
+            is_current_root = root.projcode == current_projcode
+            if is_current_root:
+                if hasattr(root, 'active') and not root.active:
+                    root_label = f"[bold yellow]→ {root.projcode} - {root.title}[/bold yellow] [dim italic](Inactive)[/dim italic]"
+                else:
+                    root_label = f"[bold yellow]→ {root.projcode} - {root.title}[/bold yellow]"
+            else:
+                if hasattr(root, 'active') and not root.active:
+                    root_label = f"[dim]{root.projcode} - {root.title} [italic](Inactive)[/italic][/dim]"
+                else:
+                    root_label = f"{root.projcode} - {root.title}"
+
+            tree = Tree(root_label)
+            build_tree_node(root, tree, current_projcode)
+            ctx.console.print(Panel(tree, title="Project Hierarchy", border_style="blue", expand=False))
 
 
 def _display_project_users(ctx: Context, project: Project):
