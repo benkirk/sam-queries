@@ -262,19 +262,31 @@ def tree_fragment(projcode):
     # Render tree structure recursively
     def render_tree_node(node, current_projcode, level=0):
         is_current = node.projcode == current_projcode
-        style = 'background: #fff3cd; font-weight: bold; border-left-color: #ffc107;' if is_current else ''
+        is_active = node.active if hasattr(node, 'active') else True
+
+        # Build style and classes
+        style_parts = []
+        if is_current:
+            style_parts.append('background: #fff3cd; font-weight: bold; border-left-color: #ffc107;')
+        if not is_active:
+            style_parts.append('color: #6c757d; opacity: 0.6;')
+
+        style = ' '.join(style_parts)
         icon = '<i class="fas fa-arrow-right text-warning mr-1"></i>' if is_current else ''
+        inactive_badge = ' <span class="badge badge-secondary badge-sm">Inactive</span>' if not is_active else ''
 
         html = f'<li style="{style}">{icon}<strong>{node.projcode}</strong>'
 
         if node.title:
             html += f' - {node.title}'
 
+        html += inactive_badge
+
         # Recursively render children
         children = node.children if hasattr(node, 'children') and node.children else []
         if children:
             html += '<ul class="tree-list">'
-            for child in children:
+            for child in sorted(children, key=lambda c: c.projcode):
                 html += render_tree_node(child, current_projcode, level + 1)
             html += '</ul>'
 

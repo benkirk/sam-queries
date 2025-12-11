@@ -6,11 +6,9 @@ from ..base import *
 from ..accounting.accounts import *
 from ..accounting.adjustments import *
 from ..resources.resources import *
-from ..summaries.archive_summaries import *
 from ..summaries.comp_summaries import *
 from ..summaries.dav_summaries import *
-from ..summaries.disk_summaries import *
-from ..summaries.hpc_summaries import *
+from ..accounting.calculator import calculate_charges, get_charge_models_for_resource
 
 from sqlalchemy.orm import joinedload
 
@@ -462,49 +460,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         Returns:
             Dict of charge type to amount, e.g., {'comp': 1000.0, 'disk': 50.0}
         """
-        charges = {}
-
-        # HPC & DAV resources
-        # - may have computational charges,
-        # - may have dav charges.
-        # (Because Casper is a DAV resource but can have computational charges
-        if resource_type == 'HPC' or resource_type == 'DAV':
-            comp = self.session.query(func.coalesce(func.sum(CompChargeSummary.charges), 0)
-                                      ).filter(CompChargeSummary.account_id == account_id,
-                                               CompChargeSummary.activity_date >= start_date,
-                                               CompChargeSummary.activity_date <= end_date
-                                               ).scalar()
-            if comp:
-                charges['comp'] = float(comp)
-
-            # HPC might also have DAV charges on same resource
-            dav = self.session.query(func.coalesce(func.sum(DavChargeSummary.charges), 0)
-                                     ).filter(DavChargeSummary.account_id == account_id,
-                                              DavChargeSummary.activity_date >= start_date,
-                                              DavChargeSummary.activity_date <= end_date
-                                              ).scalar()
-            if dav:
-                charges['dav'] = float(dav)
-
-        # Disk resources
-        elif resource_type == 'DISK':
-            disk = self.session.query(func.coalesce(func.sum(DiskChargeSummary.charges), 0)
-                                      ).filter(DiskChargeSummary.account_id == account_id,
-                                               DiskChargeSummary.activity_date >= start_date,
-                                               DiskChargeSummary.activity_date <= end_date
-                                               ).scalar()
-            charges['disk'] = float(disk)
-
-        # Archive resources
-        elif resource_type == 'ARCHIVE':
-            archive = self.session.query(func.coalesce(func.sum(ArchiveChargeSummary.charges), 0)
-                                         ).filter(ArchiveChargeSummary.account_id == account_id,
-                                                  ArchiveChargeSummary.activity_date >= start_date,
-                                                  ArchiveChargeSummary.activity_date <= end_date
-                                                  ).scalar()
-            charges['archive'] = float(archive)
-
-        return charges
+        return calculate_charges(self.session, [account_id], start_date, end_date, resource_type)
 
 
     def get_subtree_charges(self,
@@ -516,10 +472,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         Aggregate charges for this project AND all descendants (subtree) on a specific resource.
         """
         charges = {}
+        models = get_charge_models_for_resource(resource_type)
 
-        # Helper to query a specific model over the subtree
-        def query_subtree_sum(ModelClass):
-            return self.session.query(func.coalesce(func.sum(ModelClass.charges), 0))\
+        for key, ModelClass in models.items():
+            val = self.session.query(func.coalesce(func.sum(ModelClass.charges), 0))\
                 .join(Account, ModelClass.account_id == Account.account_id)\
                 .join(Project, Account.project_id == Project.project_id)\
                 .filter(
@@ -531,20 +487,8 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                     ModelClass.activity_date <= end_date
                 ).scalar()
 
-        if resource_type in ('HPC', 'DAV'):
-            comp = query_subtree_sum(CompChargeSummary)
-            if comp: charges['comp'] = float(comp)
-
-            dav = query_subtree_sum(DavChargeSummary)
-            if dav: charges['dav'] = float(dav)
-
-        elif resource_type == 'DISK':
-            disk = query_subtree_sum(DiskChargeSummary)
-            if disk: charges['disk'] = float(disk)
-
-        elif resource_type == 'ARCHIVE':
-            archive = query_subtree_sum(ArchiveChargeSummary)
-            if archive: charges['archive'] = float(archive)
+            if val:
+                charges[key] = float(val)
 
         return charges
 
