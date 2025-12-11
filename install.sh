@@ -95,11 +95,6 @@ need_cmd docker
 docker info >/dev/null 2>&1 || abort "Docker daemon not running."
 check_docker_compose_version
 
-# Check for curl or wget, required for remote fetching
-if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-    abort "Neither 'curl' nor 'wget' found. One is required for remote operations."
-fi
-
 # --------------------------------------------
 # Clone or update repo
 # --------------------------------------------
