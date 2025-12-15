@@ -94,6 +94,9 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict], node_type: st
     if not history_data:
         return '<div class="text-center text-muted">No history data available for this node type</div>'
 
+    import matplotlib.cm as cm
+    colors = cm.tab10.colors
+
     # Extract data
     timestamps = [d['timestamp'] for d in history_data]
     nodes_total = [d.get('nodes_total', 0) for d in history_data]
@@ -104,30 +107,33 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict], node_type: st
     memory_utilization = [d.get('memory_utilization_percent') for d in history_data]
 
     # Create figure with subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
 
     # Plot 1: Node Availability
-    ax1.plot(timestamps, nodes_total, 'k-', linewidth=2, label='Total', marker='o', markersize=3)
-    ax1.plot(timestamps, nodes_available, 'g-', linewidth=2, label='Available', marker='o', markersize=3)
-    ax1.plot(timestamps, nodes_allocated, 'orange', linewidth=2, label='Allocated', marker='o', markersize=3)
-    ax1.plot(timestamps, nodes_down, 'r-', linewidth=2, label='Down', marker='o', markersize=3)
+    #ax1.plot(timestamps, nodes_total, 'k-', linewidth=2, label='Total', marker='o', markersize=3)
+    #ax1.plot(timestamps, nodes_available, 'g-', linewidth=2, label='Available', marker='o', markersize=3)
+    #ax1.plot(timestamps, nodes_allocated, 'orange', linewidth=2, label='Allocated', marker='o', markersize=3)
+    #ax1.plot(timestamps, nodes_down, 'r-', linewidth=2, label='Down', marker='o', markersize=3)
+    ax1.stackplot(timestamps, nodes_down, nodes_allocated, nodes_available,
+                  labels=['Down', 'Fully Allocated', 'Resources Available'],
+                  colors=['C3', 'C0', 'C9'])
 
     ax1.set_ylabel('Number of Nodes', fontsize=11)
     ax1.set_title(f'{node_type} - Node Availability Over Time', fontsize=13, fontweight='bold')
-    ax1.legend(loc='best', fontsize=10)
-    ax1.grid(True, alpha=0.3)
+    ax1.legend(loc=2, fontsize=10)
+    ax1.grid(True, alpha=0.3,color='grey')
 
     # Plot 2: Utilization Percentages
     if any(u is not None for u in utilization):
         # Filter out None values for plotting
         util_times = [timestamps[i] for i, u in enumerate(utilization) if u is not None]
         util_vals = [u for u in utilization if u is not None]
-        ax2.plot(util_times, util_vals, 'b-', linewidth=2, label='CPU/GPU Utilization', marker='o', markersize=3)
+        ax2.plot(util_times, util_vals, 'b', linewidth=3, label='CPU/GPU Utilization')
 
     if any(m is not None for m in memory_utilization):
         mem_times = [timestamps[i] for i, m in enumerate(memory_utilization) if m is not None]
         mem_vals = [m for m in memory_utilization if m is not None]
-        ax2.plot(mem_times, mem_vals, 'c-', linewidth=2, label='Memory Utilization', marker='o', markersize=3)
+        ax2.plot(mem_times, mem_vals, 'c', linewidth=3, label='Memory Utilization')
 
     ax2.set_ylabel('Utilization (%)', fontsize=11)
     ax2.set_xlabel('Time', fontsize=11)

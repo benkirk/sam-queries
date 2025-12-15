@@ -131,6 +131,8 @@ class ReservationParser:
         if not reservation_name:
             logger.warning("Skipping reservation: missing Reserve_Name")
             return None
+        elif reservation_name == "NULL":
+            reservation_name = data.get('queue')
 
         # Parse start and end times
         start_time_str = data.get('reserve_start')
@@ -151,7 +153,7 @@ class ReservationParser:
         node_count = ReservationParser._extract_node_count(data)
 
         # Extract description (use Reserve_Name or Resv ID)
-        description = reservation_name or data.get('Resv ID')
+        description = data.get('Resv ID')
 
         # Extract partition (may be missing)
         partition = data.get('partition')
