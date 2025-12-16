@@ -193,20 +193,21 @@ def generate_queue_history_matplotlib(history_data: List[Dict], queue_name: str,
 
     ax1.set_ylabel('Count', fontsize=11)
     ax1.set_title(f'{system_name.upper()} - {queue_name} Queue Activity', fontsize=13, fontweight='bold')
-    ax1.legend(loc='best', fontsize=10)
+    ax1.legend(loc=2, fontsize=10)
     ax1.grid(True, alpha=0.3)
 
     # Plot 2: Resource Demand
-    ax2.plot(timestamps, cores_allocated, 'g-', linewidth=2, label='Cores Running', marker='o', markersize=3)
-    ax2.plot(timestamps, cores_pending, 'orange', linewidth=2, label='Cores Pending', marker='o', markersize=3)
-
     if has_gpus:
-        ax2.plot(timestamps, gpus_allocated, 'b-', linewidth=2, label='GPUs Running', marker='s', markersize=3)
-        ax2.plot(timestamps, gpus_pending, 'c-', linewidth=2, label='GPUs Pending', marker='s', markersize=3)
+        ax2.plot(timestamps, gpus_allocated, 'b', linewidth=3, label='GPUs Running')
+        ax2.plot(timestamps, gpus_pending, 'c', linewidth=3, label='GPUs Pending')
+
+    else:
+        ax2.plot(timestamps, cores_allocated, 'b', linewidth=3, label='Cores Running')
+        ax2.plot(timestamps, cores_pending, 'c', linewidth=3, label='Cores Pending')
 
     ax2.set_ylabel('Resources', fontsize=11)
     ax2.set_xlabel('Time', fontsize=11)
-    ax2.legend(loc='best', fontsize=10)
+    ax2.legend(loc=2, fontsize=10)
     ax2.grid(True, alpha=0.3)
 
     # Format dates on x-axis
