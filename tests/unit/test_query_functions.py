@@ -33,6 +33,8 @@ from sam.queries.allocations import (
     get_project_allocations,
     get_allocation_history,
     get_allocations_by_resource,
+    get_allocation_summary,
+    get_allocation_summary_with_usage,
 )
 from sam.queries.statistics import (
     get_user_statistics,
@@ -614,3 +616,147 @@ class TestProjectQueries:
         # All results should be inactive
         for project in result_inactive:
             assert project.active == False
+
+
+class TestAllocationSummaryWithRates:
+    """Test allocation summary functions with annualized rate calculations."""
+
+    def test_get_allocation_summary_single_allocation_has_rate(self, session):
+        """Test that single allocations (count=1) have annualized rate calculated."""
+        # Query for a specific project which should return single allocations
+        results = get_allocation_summary(
+            session,
+            projcode="SCSG0001",
+            active_only=True
+        )
+
+        assert len(results) > 0, "Should find allocations for SCSG0001"
+
+        for result in results:
+            assert 'count' in result
+            assert 'duration_days' in result
+            assert 'annualized_rate' in result
+            assert 'is_open_ended' in result
+
+            # Single allocations should have rate calculated
+            if result['count'] == 1:
+                assert result['duration_days'] is not None, "Single allocation should have duration"
+                assert result['annualized_rate'] is not None, "Single allocation should have annualized rate"
+                assert isinstance(result['duration_days'], int), "Duration should be integer"
+                assert isinstance(result['annualized_rate'], (int, float)), "Rate should be numeric"
+                assert result['annualized_rate'] >= 0, "Rate should be non-negative"
+                assert isinstance(result['is_open_ended'], bool), "is_open_ended should be boolean"
+
+                # Verify calculation: rate = (amount / days) * 365
+                if result['duration_days'] > 0:
+                    expected_rate = (result['total_amount'] / result['duration_days']) * 365
+                    assert abs(result['annualized_rate'] - expected_rate) < 0.01, "Rate calculation should be correct"
+
+    def test_get_allocation_summary_aggregated_no_rate(self, session):
+        """Test that aggregated allocations (count > 1) have None for rate fields."""
+        # Query that aggregates multiple allocations
+        results = get_allocation_summary(
+            session,
+            facility_name="UNIV",
+            projcode="TOTAL",  # Aggregate across all projects
+            active_only=True
+        )
+
+        assert len(results) > 0, "Should find aggregated allocations"
+
+        # Find at least one aggregated result
+        aggregated = [r for r in results if r['count'] > 1]
+        assert len(aggregated) > 0, "Should have at least one aggregated result"
+
+        for result in aggregated:
+            # Aggregated results should have None for rate fields
+            assert result['duration_days'] is None, "Aggregated result should have None duration"
+            assert result['annualized_rate'] is None, "Aggregated result should have None rate"
+            assert result['is_open_ended'] == False, "Aggregated result should have False for is_open_ended"
+
+    def test_get_allocation_summary_rate_consistency(self, session):
+        """Test that annualized rates are consistent across different queries."""
+        # Get summary for specific resource and project
+        results_detailed = get_allocation_summary(
+            session,
+            resource_name="Derecho",
+            projcode="SCSG0001"
+        )
+
+        # Should have at least one result with rate
+        single_allocs = [r for r in results_detailed if r['count'] == 1]
+        assert len(single_allocs) > 0, "Should have single allocations"
+
+        for result in single_allocs:
+            # Rates should be positive for positive amounts
+            if result['total_amount'] > 0:
+                assert result['annualized_rate'] > 0, "Positive amount should have positive rate"
+
+            # Rate should scale with amount (for same duration)
+            if result['duration_days'] and result['duration_days'] > 0:
+                ratio = result['annualized_rate'] / result['total_amount']
+                # Ratio should be 365 / duration_days
+                expected_ratio = 365 / result['duration_days']
+                assert abs(ratio - expected_ratio) < 0.0001, "Rate scaling should be correct"
+
+    def test_get_allocation_summary_with_usage_includes_rates(self, session):
+        """Test that get_allocation_summary_with_usage includes annualized rates."""
+        # Query for a specific project
+        results = get_allocation_summary_with_usage(
+            session,
+            projcode="SCSG0001",
+            active_only=True
+        )
+
+        assert len(results) > 0, "Should find allocations with usage"
+
+        for result in results:
+            # Should have usage fields
+            assert 'total_used' in result
+            assert 'percent_used' in result
+            assert 'charges_by_type' in result
+
+            # Should also have rate fields
+            assert 'duration_days' in result
+            assert 'annualized_rate' in result
+            assert 'is_open_ended' in result
+
+            # Check consistency
+            if result['count'] == 1:
+                assert result['annualized_rate'] is not None
+            else:
+                assert result['annualized_rate'] is None
+
+    def test_get_allocation_summary_zero_duration_handling(self, session):
+        """Test handling of allocations with zero or very short durations."""
+        # Query all allocations
+        results = get_allocation_summary(
+            session,
+            active_only=False
+        )
+
+        # Check that zero-duration allocations are handled gracefully
+        for result in results:
+            if result['count'] == 1 and result['duration_days'] == 0:
+                # Should have zero rate, not error
+                assert result['annualized_rate'] == 0.0, "Zero duration should have zero rate"
+
+    def test_get_allocation_summary_date_fields(self, session):
+        """Test that date fields are present and valid in results."""
+        results = get_allocation_summary(
+            session,
+            projcode="SCSG0001"
+        )
+
+        assert len(results) > 0
+
+        for result in results:
+            assert 'start_date' in result
+            assert 'end_date' in result
+
+            # For single allocations, should have valid dates
+            if result['count'] == 1:
+                assert result['start_date'] is not None, "Should have start date"
+                # end_date can be None (open-ended) or datetime
+                if result['end_date'] is not None:
+                    assert result['end_date'] >= result['start_date'], "End should be after start"
