@@ -18,7 +18,6 @@ from rich.text import Text
 from rich.progress import track
 from rich import box
 from rich.tree import Tree
-from rich.markup import escape
 
 from sam import User, Project
 # Import specific queries used in the original script
@@ -388,8 +387,7 @@ def _display_project_users(ctx: Context, project: Project):
         access_notes = ""
         if inaccessible:
             sorted_resources = sorted(inaccessible)
-            # Escape markup characters to display literally
-            access_notes = escape(f"[no access to {', '.join(sorted_resources)}]")
+            access_notes = f"no access to {', '.join(sorted_resources)}"
 
         row = [str(i), user.username, user.display_name, access_notes]
         if ctx.verbose:
