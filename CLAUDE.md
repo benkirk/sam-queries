@@ -8,6 +8,20 @@
 
 ---
 
+## Session Setup
+
+To efficiently set up your environment (conda activation, .env loading):
+
+```bash
+# Recommended: Full environment setup (activates conda, loads .env)
+source etc/config_env.sh
+
+# Alternative: Load variables only (if python env is already active)
+source ../.env
+```
+
+---
+
 ## Database Connection
 
 ```python
