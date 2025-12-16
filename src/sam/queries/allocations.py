@@ -16,7 +16,7 @@ Functions:
     get_allocation_summary: Get flexible allocation summaries with grouping and filtering
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Tuple, Union
 
 from sqlalchemy import or_, func
@@ -274,6 +274,9 @@ def get_allocation_summary(
         - avg_amount: Average allocation amount
         - start_date: Earliest start date (datetime or None)
         - end_date: Latest end date (datetime or None)
+        - duration_days: Number of days in allocation period (None if count > 1)
+        - annualized_rate: Amount per year (None if count > 1)
+        - is_open_ended: True if allocation has no end_date (False if count > 1)
 
     Examples:
         # All active Derecho allocations grouped by facility and type
@@ -414,6 +417,34 @@ def get_allocation_summary(
         item['avg_amount'] = float(row[idx + 2]) if row[idx + 2] else 0.0
         item['start_date'] = row[idx + 3]  # datetime object or None
         item['end_date'] = row[idx + 4]    # datetime object or None
+
+        # Calculate annualized rate for single allocations only
+        if item['count'] == 1:
+            start = item['start_date']
+            end = item['end_date']
+            is_open_ended = (end is None)
+
+            if is_open_ended:
+                # For open-ended allocations, assume end date is 365 days from now
+                assumed_end = datetime.now() + timedelta(days=365)
+                duration_days = (assumed_end - start).days
+            else:
+                duration_days = (end - start).days
+
+            # Avoid division by zero
+            if duration_days > 0:
+                annualized_rate = (item['total_amount'] / duration_days) * 365
+            else:
+                annualized_rate = 0.0
+
+            item['duration_days'] = duration_days
+            item['annualized_rate'] = annualized_rate
+            item['is_open_ended'] = is_open_ended
+        else:
+            # Aggregated results - no rate calculation
+            item['duration_days'] = None
+            item['annualized_rate'] = None
+            item['is_open_ended'] = False
 
         output.append(item)
 
