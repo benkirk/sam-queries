@@ -476,16 +476,16 @@ for project in user.all_projects:
 ### Test Execution
 ```bash
 # Fast iteration (parallel, no coverage)
-pytest tests/ --no-cov  # 32 seconds
+source ../.env && pytest tests/ --no-cov  # 32 seconds
 
 # Full validation (with coverage)
-pytest tests/  # 97 seconds, generates coverage report
+source ../.env && pytest tests/  # 97 seconds, generates coverage report
 
 # Specific test file
-pytest tests/unit/test_query_functions.py -v
+source ../.env && pytest tests/unit/test_query_functions.py -v
 
 # Force serial execution
-pytest tests/ -n 1
+source ../.env && pytest tests/ -n 1
 ```
 
 ### Key Test Files
@@ -691,8 +691,8 @@ docker compose up
 docker compose up                                  # Start webapp (http://localhost:5050)
 
 # Testing
-pytest tests/ --no-cov                            # Fast tests (32s, parallel)
-pytest tests/                                     # Full tests with coverage (97s)
+source ../.env && pytest tests/ --no-cov                            # Fast tests (32s, parallel)
+source ../.env && pytest tests/                                     # Full tests with coverage (97s)
 
 # CLI
 sam-search user benkirk --list-projects  # User lookup
