@@ -97,7 +97,7 @@
                                 {{ node.state }}
                             </span>
                         </td>
-                        <td>({{ node.jobs_running }})</td>
+                        <td>{{ node.jobs_running|replace('(', '')|replace(')', '') }}</td>
                         <td>
                             <small>{{ node.cpus_used }}/{{ node.cpus_total }}</small>
                             <div class="progress" style="height: 8px; width: 60px;">
