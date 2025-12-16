@@ -7,6 +7,8 @@ from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 import sys
 from pathlib import Path
+import os
+import logging
 
 from webapp.extensions import db
 from ..charts import generate_nodetype_history_matplotlib, generate_queue_history_matplotlib
@@ -18,7 +20,103 @@ sys.path.insert(0, str(python_dir))
 from system_status import create_status_engine, get_session
 from system_status import queries as status_queries
 
+# Import JupyterHub client for real-time statistics
+from webapp.clients import JupyterHubClient
+from webapp.clients.jupyterhub import (
+    JupyterHubAPIError,
+    JupyterHubAuthError,
+    JupyterHubConnectionError
+)
+
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
+logger = logging.getLogger(__name__)
+
+
+# JupyterHub client singleton
+_jupyterhub_client = None
+
+
+def get_jupyterhub_client():
+    """Get or create JupyterHub client singleton."""
+    global _jupyterhub_client
+    if _jupyterhub_client is None:
+        base_url = os.getenv('JUPYTERHUB_API_URL', 'https://jupyterhub.hpc.ucar.edu')
+        cache_ttl = int(os.getenv('JUPYTERHUB_CACHE_TTL', '300'))
+        try:
+            _jupyterhub_client = JupyterHubClient(
+                base_url=base_url,
+                instance='stable',
+                cache_ttl=cache_ttl
+            )
+        except JupyterHubAuthError as e:
+            logger.warning(f"Failed to initialize JupyterHub client: {str(e)}")
+            return None
+    return _jupyterhub_client
+
+
+def get_realtime_jupyterhub_status(session):
+    """
+    Fetch real-time JupyterHub statistics from the API.
+
+    Combines real-time user/session stats from JupyterHub API with
+    node data from the database (if available).
+
+    Args:
+        session: SQLAlchemy session for database queries
+
+    Returns:
+        Object with JupyterHub status data, or None if unavailable
+    """
+    client = get_jupyterhub_client()
+    if not client:
+        # Fallback to database if client unavailable
+        return status_queries.get_latest_jupyterhub_status(session)
+
+    try:
+        # Fetch real-time statistics from JupyterHub API
+        stats = client.get_statistics(use_cache=True)
+
+        # Fetch node data from database (if available)
+        db_status = status_queries.get_latest_jupyterhub_status(session)
+        nodes = db_status.nodes if db_status and db_status.nodes else []
+
+        # Calculate node counts from node data
+        nodes_free = 0
+        nodes_busy = 0
+        nodes_down = 0
+        if nodes:
+            for node in nodes:
+                state = node.get('state', '').lower()
+                if state == 'free':
+                    nodes_free += 1
+                elif 'busy' in state:
+                    nodes_busy += 1
+                elif 'down' in state:
+                    nodes_down += 1
+
+        # Create status object matching template expectations
+        class JupyterHubStatusView:
+            """View object for JupyterHub status display."""
+            def __init__(self, stats_data, nodes_data):
+                self.available = True  # API call succeeded
+                self.timestamp = datetime.now()
+                self.active_users = stats_data.get('active_users', 0)
+                self.active_sessions = stats_data.get('active_sessions', 0)
+                self.casper_login_jobs = stats_data.get('casper_login_jobs', 0)
+                self.casper_batch_jobs = stats_data.get('casper_batch_jobs', 0)
+                self.derecho_batch_jobs = stats_data.get('derecho_batch_jobs', 0)
+                self.jobs_suspended = stats_data.get('broken_jobs', 0)
+                self.nodes = nodes_data
+                self.nodes_free = nodes_free
+                self.nodes_busy = nodes_busy
+                self.nodes_down = nodes_down
+
+        return JupyterHubStatusView(stats, nodes)
+
+    except (JupyterHubConnectionError, JupyterHubAPIError) as e:
+        logger.warning(f"Failed to fetch real-time JupyterHub stats: {str(e)}")
+        # Fallback to database
+        return status_queries.get_latest_jupyterhub_status(session)
 
 
 @bp.route('/')
@@ -58,8 +156,8 @@ def index():
             casper_login_nodes = status_queries.get_latest_casper_login_nodes(session, casper_status.timestamp)
             casper_filesystems = status_queries.get_latest_casper_filesystems(session, casper_status.timestamp)
 
-        # Get latest JupyterHub status
-        jupyterhub_status = status_queries.get_latest_jupyterhub_status(session)
+        # Get real-time JupyterHub status (combines API stats with DB node data)
+        jupyterhub_status = get_realtime_jupyterhub_status(session)
 
         # Get active outages
         outages = status_queries.get_active_outages(session)

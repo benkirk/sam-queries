@@ -3,19 +3,24 @@
 JupyterHub Status Collector
 
 Collects JupyterHub node status and active sessions
-by SSH'ing to casper and running custom scripts.
+using the JupyterHub Hub API.
 """
 import sys
-import subprocess
+import os
 import logging
 from pathlib import Path
 
 # Ensure the 'lib' directory is in the path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Add webapp to path for JupyterHub API client
+webapp_path = Path(__file__).resolve().parent.parent.parent / 'src'
+sys.path.insert(0, str(webapp_path))
+
 from lib.base_collector import BaseCollector, main_runner
 from lib.parsers.jupyterhub_nodes import JupyterHubNodeParser
 from lib.exceptions import SSHError
+from webapp.clients.jupyterhub import JupyterHubClient, JupyterHubAPIError
 
 
 class JupyterHubCollector(BaseCollector):
@@ -24,9 +29,21 @@ class JupyterHubCollector(BaseCollector):
     def __init__(self, system_name, dry_run=False, json_only=False):
         super().__init__(system_name, dry_run, json_only)
 
-    def _run_ssh_command(self, command: str, timeout: int = 30) -> str:
+        # Initialize JupyterHub API client
+        base_url = os.getenv('JUPYTERHUB_API_URL', 'https://jupyterhub.hpc.ucar.edu')
+        instance = os.getenv('JUPYTERHUB_INSTANCE', 'stable')
+        cache_ttl = int(os.getenv('JUPYTERHUB_CACHE_TTL', '0'))  # No cache for collector
+
+        self.jupyterhub_client = JupyterHubClient(
+            base_url=base_url,
+            instance=instance,
+            cache_ttl=cache_ttl
+        )
+        self.logger.info(f"Initialized JupyterHub API client for {instance} instance")
+
+    def _run_ssh_command_for_nodes(self, command: str, timeout: int = 30) -> str:
         """
-        Run a command on casper via SSH.
+        Run a command on casper via SSH (used only for jhlnodes).
 
         Args:
             command: The command to run
@@ -38,8 +55,9 @@ class JupyterHubCollector(BaseCollector):
         Raises:
             SSHError: If command fails or times out
         """
-        ssh_cmd = f'ssh -o ConnectTimeout=10 {self.config.pbs_host} "{command}"'
+        import subprocess
 
+        ssh_cmd = f'ssh -o ConnectTimeout=10 {self.config.pbs_host} "{command}"'
         self.logger.debug(f"Running SSH command: {ssh_cmd}")
 
         try:
@@ -60,15 +78,16 @@ class JupyterHubCollector(BaseCollector):
 
     def _collect_node_data(self, data: dict):
         """
-        Collect JupyterHub node data by running jhlnodes on casper.
+        Collect JupyterHub node data by running jhlnodes on casper via SSH.
 
         This replaces the standard PBS node collection.
+        Note: Node data still uses SSH as the JupyterHub API doesn't provide this info.
         """
         try:
             self.logger.info("Collecting JupyterHub node data...")
 
-            # Run jhlnodes on casper
-            output = self._run_ssh_command(
+            # Run jhlnodes on casper (still requires SSH)
+            output = self._run_ssh_command_for_nodes(
                 '/glade/u/home/csgteam/bin/jhlnodes',
                 timeout=30
             )
@@ -136,58 +155,25 @@ class JupyterHubCollector(BaseCollector):
 
     def _collect_job_data(self, data: dict):
         """
-        Collect JupyterHub job metrics from jhstat.
+        Collect JupyterHub job metrics using the JupyterHub Hub API.
 
-        Runs jhstat once and parses locally for efficiency.
+        Uses the JupyterHub API to get real-time statistics about active sessions.
         Extracts: active_sessions, active_users, casper_login_jobs, casper_batch_jobs,
                   derecho_batch_jobs, broken_jobs.
         """
         try:
-            self.logger.info("Collecting job data from jhstat...")
+            self.logger.info("Collecting job data from JupyterHub API...")
 
-            # Run jhstat once to get all job data
-            output = self._run_ssh_command(
-                "/glade/u/home/csgteam/bin/jhstat stable",
-                timeout=30
-            )
+            # Get statistics from JupyterHub API (no caching for collector)
+            stats = self.jupyterhub_client.get_statistics(use_cache=False)
 
-            # Parse the output locally (skip first 3 header lines)
-            lines = output.strip().split('\n')
-            data_lines = [line.strip() for line in lines[3:] if line.strip()]
-
-            # Active sessions = total number of jobs
-            data['active_sessions'] = len(data_lines)
-
-            # Active users = unique usernames (first column)
-            usernames = []
-            casper_login_jobs = 0
-            casper_batch_jobs = 0
-            derecho_batch_jobs = 0
-            broken_jobs = 0
-
-            for line in data_lines:
-                parts = line.split()
-                if len(parts) > 0:
-                    username = parts[0]
-                    usernames.append(username)
-
-                # Count job types by checking line content
-                line_lower = line.lower()
-                if 'cr-login' in line_lower:
-                    casper_login_jobs += 1
-                if 'cr-batch' in line_lower:
-                    casper_batch_jobs += 1
-                if 'de-batch' in line_lower:
-                    derecho_batch_jobs += 1
-                if 'broken' in line_lower:
-                    broken_jobs += 1
-
-            # Get unique users (preserving order with dict.fromkeys for Python 3.7+)
-            data['active_users'] = len(list(dict.fromkeys(usernames)))
-            data['casper_login_jobs'] = casper_login_jobs
-            data['casper_batch_jobs'] = casper_batch_jobs
-            data['derecho_batch_jobs'] = derecho_batch_jobs
-            data['jobs_suspended'] = broken_jobs  # broken_jobs stored as jobs_suspended
+            # Map API response to data dict
+            data['active_sessions'] = stats['active_sessions']
+            data['active_users'] = stats['active_users']
+            data['casper_login_jobs'] = stats['casper_login_jobs']
+            data['casper_batch_jobs'] = stats['casper_batch_jobs']
+            data['derecho_batch_jobs'] = stats['derecho_batch_jobs']
+            data['jobs_suspended'] = stats['broken_jobs']  # broken_jobs stored as jobs_suspended
 
             self.logger.info(f"  Active sessions: {data['active_sessions']}")
             self.logger.info(f"  Active users: {data['active_users']}")
@@ -196,8 +182,18 @@ class JupyterHubCollector(BaseCollector):
             self.logger.info(f"  Derecho batch jobs: {data['derecho_batch_jobs']}")
             self.logger.info(f"  Broken jobs: {data['jobs_suspended']}")
 
+        except JupyterHubAPIError as e:
+            self.logger.error(f"Failed to collect job data from API: {e}", exc_info=True)
+            data.update({
+                'active_sessions': 0,
+                'active_users': 0,
+                'casper_login_jobs': 0,
+                'casper_batch_jobs': 0,
+                'derecho_batch_jobs': 0,
+                'jobs_suspended': 0
+            })
         except Exception as e:
-            self.logger.error(f"Failed to collect job data: {e}", exc_info=True)
+            self.logger.error(f"Unexpected error collecting job data: {e}", exc_info=True)
             data.update({
                 'active_sessions': 0,
                 'active_users': 0,
@@ -213,14 +209,17 @@ class JupyterHubCollector(BaseCollector):
 
         Overrides BaseCollector.collect() to skip PBS-related collections
         and add JupyterHub-specific collections.
+
+        Node data: Collected via SSH to casper running jhlnodes script
+        Job data: Collected via JupyterHub Hub API (/hub/api/users?state=active)
         """
         from datetime import datetime
 
         data = {'timestamp': datetime.now().isoformat()}
 
         # Collect JupyterHub-specific data
-        self._collect_node_data(data)        # Uses jhlnodes (nodes, CPUs, memory, GPUs)
-        self._collect_job_data(data)         # Uses jhstat (sessions, users, job types)
+        self._collect_node_data(data)        # Uses SSH + jhlnodes (nodes, CPUs, memory, GPUs)
+        self._collect_job_data(data)         # Uses JupyterHub API (sessions, users, job types)
 
         # Skip these BaseCollector methods (not applicable to JupyterHub):
         # - _collect_login_node_data (JupyterHub has different model)
