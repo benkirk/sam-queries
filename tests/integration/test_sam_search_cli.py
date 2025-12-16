@@ -18,6 +18,7 @@ Test Organization:
 import pytest
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 
@@ -36,11 +37,17 @@ def run_cli(*args, expect_success=True):
     Returns:
         subprocess.CompletedProcess with stdout, stderr, returncode
     """
+    # Set COLUMNS to a high value to prevent truncation by rich
+    env = os.environ.copy()
+    env['COLUMNS'] = '300'
+    env['TERMINAL_WIDTH'] = '300'
+
     result = subprocess.run(
         [CLI_PATH] + list(args),
         capture_output=True,
         text=True,
-        timeout=60
+        timeout=60,
+        env=env
     )
 
     if expect_success:
@@ -111,7 +118,7 @@ class TestUserPatternSearch:
 
         assert 'Found' in result.stdout
         assert 'user(s)' in result.stdout
-        # Should find multiple users 
+        # Should find multiple users
         assert 'benkirk' in result.stdout
 
     def test_user_pattern_with_limit(self):

@@ -359,7 +359,7 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
 
 
 def _display_project_users(ctx: Context, project: Project):
-    """Display users for a project."""
+    """Display users for a project with resource access information."""
     users = project.users
 
     if not users:
@@ -375,13 +375,21 @@ def _display_project_users(ctx: Context, project: Project):
     table.add_column("#", style="dim", width=4)
     table.add_column("Username", style="green")
     table.add_column("Name")
+    table.add_column("Access Notes", style="yellow italic")
 
     if ctx.verbose:
         table.add_column("Email")
         table.add_column("UID")
 
     for i, user in enumerate(sorted(users, key=lambda u: u.username), 1):
-        row = [str(i), user.username, user.display_name]
+        # Check for restricted resource access
+        inaccessible = project.get_user_inaccessible_resources(user)
+        access_notes = ""
+        if inaccessible:
+            sorted_resources = sorted(inaccessible)
+            access_notes = f"no access to {', '.join(sorted_resources)}"
+
+        row = [str(i), user.username, user.display_name, access_notes]
         if ctx.verbose:
             row.append(user.primary_email or 'N/A')
             row.append(str(user.unix_uid))
@@ -794,7 +802,8 @@ def _display_allocation_summary(ctx: Context, results: List[Dict], show_usage: b
 
     # Check if all rows have count=1 (useful for date column decision)
     all_single_allocations = all(row['count'] == 1 for row in results)
-    show_dates = ctx.verbose and all_single_allocations
+    has_annual_rate = any(row.get('annualized_rate') is not None for row in results)
+    show_dates = all_single_allocations #and ctx.verbose
     show_count = not all_single_allocations  # Only show count when aggregating multiple allocations
 
     # Build table
@@ -813,6 +822,7 @@ def _display_allocation_summary(ctx: Context, results: List[Dict], show_usage: b
     if show_dates:
         table.add_column("Begin Date", justify="right", style="dim")
         table.add_column("End Date", justify="right", style="dim")
+        table.add_column("# Days", justify="right", style="dim")
 
     # Conditional columns based on mode
     if show_usage:
@@ -826,6 +836,9 @@ def _display_allocation_summary(ctx: Context, results: List[Dict], show_usage: b
         table.add_column("Total Amount", justify="right", style="bold blue")
         if ctx.verbose and not all_single_allocations:
             table.add_column("Avg Amount", justify="right", style="dim")
+
+    if has_annual_rate:
+        table.add_column("Annual Rate", justify="right", style="cyan")
 
     # Count column always last, only when aggregating multiple allocations
     if show_count:
@@ -852,7 +865,8 @@ def _display_allocation_summary(ctx: Context, results: List[Dict], show_usage: b
         if show_dates:
             start_str = row['start_date'].strftime("%Y-%m-%d") if row.get('start_date') else "N/A"
             end_str = row['end_date'].strftime("%Y-%m-%d") if row.get('end_date') else "N/A"
-            table_row.extend([start_str, end_str])
+            duration = '{:,}'.format(row['duration_days']) if row['duration_days'] else "N/A"
+            table_row.extend([start_str, end_str, duration])
 
         count = row['count']
         amount = row['total_amount']
@@ -884,6 +898,16 @@ def _display_allocation_summary(ctx: Context, results: List[Dict], show_usage: b
             if ctx.verbose and not all_single_allocations:
                 table_row.append(f"{row['avg_amount']:,.0f}")
 
+        # Add annual rate column if present
+        if has_annual_rate:
+            if row.get('annualized_rate') is not None:
+                rate_str = f"{row['annualized_rate']:,.0f}"
+                if row.get('is_open_ended', False):
+                    rate_str += "*"  # Mark open-ended allocations
+                table_row.append(rate_str)
+            else:
+                table_row.append("N/A")
+
         # Count column always last (only when aggregating)
         if show_count:
             table_row.append(str(count))
@@ -891,6 +915,13 @@ def _display_allocation_summary(ctx: Context, results: List[Dict], show_usage: b
         table.add_row(*table_row)
 
     ctx.console.print(table)
+
+    # Calculate sum of annualized rates
+    total_annual_rate = sum(
+        row.get('annualized_rate', 0.0) or 0.0
+        for row in results
+        if row.get('annualized_rate') is not None
+    )
 
     # Print totals
     if show_usage:
@@ -901,8 +932,16 @@ def _display_allocation_summary(ctx: Context, results: List[Dict], show_usage: b
         ctx.console.print(f"  Used: {total_used:,.0f}")
         ctx.console.print(f"  Remaining: {total_remaining:,.0f}")
         ctx.console.print(f"  Percent Used: {total_pct:.1f}%")
+        if has_annual_rate and total_annual_rate > 0:
+            ctx.console.print(f"  Annualized Rate: {total_annual_rate:,.0f}")
     else:
         ctx.console.print(f"\n[bold]Grand Total:[/] {total_count:,} allocations, {total_amount:,.0f} total allocation units")
+        if has_annual_rate and total_annual_rate > 0:
+            ctx.console.print(f"  Annualized Rate: {total_annual_rate:,.0f}")
+
+    # Add footnote if any open-ended allocations
+    if has_annual_rate and any(row.get('is_open_ended', False) for row in results):
+        ctx.console.print("  * = Open-ended allocation (1-year period from now assumed)", style="dim italic")
 
 
 if __name__ == '__main__':

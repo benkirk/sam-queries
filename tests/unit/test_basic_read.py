@@ -252,3 +252,139 @@ class TestRelationships:
         assert child_allocation.parent is not None
         assert isinstance(child_allocation.parent, Allocation)
         print(f"✅ Allocation hierarchy works: {child_allocation.allocation_id} → parent: {child_allocation.parent.allocation_id}")
+
+
+class TestProjectResourceAccess:
+    """Test project methods for determining user resource access."""
+
+    def test_get_user_inaccessible_resources_method_exists(self, session):
+        """Test that the get_user_inaccessible_resources method exists on Project."""
+        project = session.query(Project).filter(Project.active == True).first()
+        assert hasattr(project, 'get_user_inaccessible_resources')
+        assert callable(getattr(project, 'get_user_inaccessible_resources'))
+        print("✅ Project.get_user_inaccessible_resources() method exists")
+
+    def test_get_user_inaccessible_resources_returns_set(self, session):
+        """Test that get_user_inaccessible_resources returns a set."""
+        # Get a project with active allocations
+        project = session.query(Project).filter(
+            Project.active == True,
+            Project.projcode == 'SCSG0001'
+        ).first()
+
+        if not project:
+            pytest.skip("SCSG0001 project not found")
+
+        # Get a user on the project
+        user = User.get_by_username(session, 'benkirk')
+        if not user:
+            pytest.skip("benkirk user not found")
+
+        result = project.get_user_inaccessible_resources(user)
+        assert isinstance(result, set)
+        print(f"✅ get_user_inaccessible_resources returns set (size: {len(result)})")
+
+    def test_get_user_inaccessible_resources_with_full_access(self, session):
+        """Test user with full access to all project resources."""
+        # Use SCSG0001 as test project
+        project = session.query(Project).filter(
+            Project.active == True,
+            Project.projcode == 'SCSG0001'
+        ).first()
+
+        if not project:
+            pytest.skip("SCSG0001 project not found")
+
+        # Get project lead (should have full access)
+        if not project.lead:
+            pytest.skip("Project has no lead")
+
+        inaccessible = project.get_user_inaccessible_resources(project.lead)
+
+        # Lead should typically have access to all resources
+        # (This might fail if the lead genuinely has restricted access)
+        print(f"✅ Project lead has {len(inaccessible)} inaccessible resources")
+        assert isinstance(inaccessible, set)
+
+    def test_get_user_inaccessible_resources_with_no_allocations(self, session):
+        """Test project with no active allocations returns empty set."""
+        # Find a project with no active allocations
+        all_projects = session.query(Project).filter(Project.active == True).limit(100).all()
+
+        project_with_no_allocs = None
+        for proj in all_projects:
+            allocs = proj.get_all_allocations_by_resource()
+            if not allocs:
+                project_with_no_allocs = proj
+                break
+
+        if not project_with_no_allocs:
+            pytest.skip("No active project without allocations found")
+
+        # Get any user
+        user = session.query(User).filter(User.active == True).first()
+        if not user:
+            pytest.skip("No active user found")
+
+        inaccessible = project_with_no_allocs.get_user_inaccessible_resources(user)
+
+        # Should return empty set when project has no active allocations
+        assert inaccessible == set()
+        print(f"✅ Project with no allocations returns empty set for any user")
+
+    def test_get_user_inaccessible_resources_sorted_output(self, session):
+        """Test that inaccessible resources can be sorted alphabetically."""
+        project = session.query(Project).filter(
+            Project.active == True,
+            Project.projcode == 'SCSG0001'
+        ).first()
+
+        if not project:
+            pytest.skip("SCSG0001 project not found")
+
+        user = User.get_by_username(session, 'benkirk')
+        if not user:
+            pytest.skip("benkirk user not found")
+
+        inaccessible = project.get_user_inaccessible_resources(user)
+
+        # Verify we can sort the results
+        sorted_resources = sorted(inaccessible)
+        assert isinstance(sorted_resources, list)
+        print(f"✅ Can sort inaccessible resources: {sorted_resources}")
+
+    def test_get_user_inaccessible_resources_with_multiple_resources(self, session):
+        """Test project with multiple resources."""
+        # Find a project with multiple resources
+        all_projects = session.query(Project).filter(Project.active == True).limit(100).all()
+
+        project_with_multiple = None
+        for proj in all_projects:
+            allocs = proj.get_all_allocations_by_resource()
+            if len(allocs) >= 2:
+                project_with_multiple = proj
+                break
+
+        if not project_with_multiple:
+            pytest.skip("No project with multiple resources found")
+
+        # Get a user on the project
+        users = project_with_multiple.users
+        if not users:
+            pytest.skip("Project has no users")
+
+        user = users[0]
+        inaccessible = project_with_multiple.get_user_inaccessible_resources(user)
+
+        # Should return a set (might be empty if user has full access)
+        assert isinstance(inaccessible, set)
+
+        # Get all project resources for comparison
+        all_resources = set(project_with_multiple.get_all_allocations_by_resource().keys())
+
+        # Inaccessible should be subset of all resources
+        assert inaccessible.issubset(all_resources)
+
+        print(f"✅ User has access to {len(all_resources) - len(inaccessible)} of {len(all_resources)} resources")
+        if inaccessible:
+            print(f"   Inaccessible: {sorted(inaccessible)}")

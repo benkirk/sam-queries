@@ -276,6 +276,48 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         allocations_by_resource = self.get_all_allocations_by_resource()
         return allocations_by_resource.get(resource_name)
 
+    def get_user_inaccessible_resources(self, user: 'User') -> Set[str]:
+        """
+        Determine which resources with active allocations the user cannot access.
+
+        This method compares the resources available to this project (those with active
+        allocations) against the resources a specific user can access within this project.
+
+        Args:
+            user: User to check for resource access
+
+        Returns:
+            Set of resource names user cannot access. Empty set means full access.
+
+        Example:
+            >>> project = Project.get_by_projcode(session, 'UCSD0001')
+            >>> user = User.get_by_username(session, 'jsmith')
+            >>> inaccessible = project.get_user_inaccessible_resources(user)
+            >>> if inaccessible:
+            ...     print(f"User lacks access to: {', '.join(sorted(inaccessible))}")
+        """
+        # Get all resources with active allocations
+        allocations_by_resource = self.get_all_allocations_by_resource()
+        project_resources = set(allocations_by_resource.keys())
+
+        # If no active allocations, no restrictions apply
+        if not project_resources:
+            return set()
+
+        # Find resources user CAN access in this project
+        user_resource_names = set()
+        for account_user in user.accounts:  # AccountUser objects
+            account = account_user.account
+
+            # Check: Same project + active date range + resource exists
+            if (account.project_id == self.project_id and
+                account_user.is_active and
+                account.resource):
+                user_resource_names.add(account.resource.resource_name)
+
+        # Return resources user CANNOT access
+        return project_resources - user_resource_names
+
     @hybrid_property
     def has_active_allocations(self) -> bool:
         """Check if project has any active allocations (Python side)."""
