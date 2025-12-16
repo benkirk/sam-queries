@@ -18,6 +18,7 @@ from rich.text import Text
 from rich.progress import track
 from rich import box
 from rich.tree import Tree
+from rich.markup import escape
 
 from sam import User, Project
 # Import specific queries used in the original script
@@ -359,7 +360,7 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
 
 
 def _display_project_users(ctx: Context, project: Project):
-    """Display users for a project."""
+    """Display users for a project with resource access information."""
     users = project.users
 
     if not users:
@@ -375,13 +376,22 @@ def _display_project_users(ctx: Context, project: Project):
     table.add_column("#", style="dim", width=4)
     table.add_column("Username", style="green")
     table.add_column("Name")
+    table.add_column("Access Notes", style="yellow italic")
 
     if ctx.verbose:
         table.add_column("Email")
         table.add_column("UID")
 
     for i, user in enumerate(sorted(users, key=lambda u: u.username), 1):
-        row = [str(i), user.username, user.display_name]
+        # Check for restricted resource access
+        inaccessible = project.get_user_inaccessible_resources(user)
+        access_notes = ""
+        if inaccessible:
+            sorted_resources = sorted(inaccessible)
+            # Escape markup characters to display literally
+            access_notes = escape(f"[no access to {', '.join(sorted_resources)}]")
+
+        row = [str(i), user.username, user.display_name, access_notes]
         if ctx.verbose:
             row.append(user.primary_email or 'N/A')
             row.append(str(user.unix_uid))
