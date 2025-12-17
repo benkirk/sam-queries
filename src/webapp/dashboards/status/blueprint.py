@@ -22,20 +22,6 @@ from system_status import queries as status_queries
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
 logger = logging.getLogger(__name__)
 
-
-def get_realtime_jupyterhub_status(session):
-    """
-    Fetch JupyterHub statistics from the database.
-
-    Args:
-        session: SQLAlchemy session for database queries
-
-    Returns:
-        Object with JupyterHub status data, or None if unavailable
-    """
-    return status_queries.get_latest_jupyterhub_status(session)
-
-
 @bp.route('/')
 @login_required
 def index():
@@ -73,8 +59,8 @@ def index():
             casper_login_nodes = status_queries.get_latest_casper_login_nodes(session, casper_status.timestamp)
             casper_filesystems = status_queries.get_latest_casper_filesystems(session, casper_status.timestamp)
 
-        # Get real-time JupyterHub status (combines API stats with DB node data)
-        jupyterhub_status = get_realtime_jupyterhub_status(session)
+        # Get latest JupyterHub status
+        jupyterhub_status = status_queries.get_latest_jupyterhub_status(session)
 
         # Get active outages
         outages = status_queries.get_active_outages(session)
