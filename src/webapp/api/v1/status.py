@@ -20,9 +20,9 @@ GET endpoints (status retrieval, public with login):
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
 from webapp.utils.rbac import require_permission, Permission
-from webapp.api.helpers import register_error_handlers, parse_date_range
+from webapp.api.helpers import register_error_handlers
 from webapp.extensions import db
-from datetime import datetime, timedelta
+from datetime import datetime
 import sys
 from pathlib import Path
 
