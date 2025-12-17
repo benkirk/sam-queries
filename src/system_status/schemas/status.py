@@ -205,13 +205,11 @@ class JupyterHubStatusSchema(BaseSchema):
 
     Status for the JupyterHub/Casper JupyterHub service.
 
-    Uses auto-generated fields from the model - no explicit field declarations needed.
-    SQLAlchemyAutoSchema will generate all fields from the JupyterHubStatus model.
     """
     class Meta(BaseSchema.Meta):
         model = JupyterHubStatus
         load_instance = True
-        include_relationships = False  # No relationships in JupyterHubStatus
+        include_relationships = True
         exclude = ()
 
 
