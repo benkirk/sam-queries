@@ -219,3 +219,54 @@ def generate_queue_history_matplotlib(history_data: List[Dict], queue_name: str,
     plt.close(fig)
 
     return svg_io.getvalue()
+
+
+def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
+    """
+    Generate pie chart showing annualized rate distribution by facility.
+
+    Args:
+        facility_data: List of dicts with keys:
+            - facility: Facility name (e.g., 'UNIV', 'WNA', 'NCAR')
+            - annualized_rate: Annual allocation rate
+            - count: Number of allocations
+            - percent: Percentage of total
+
+    Returns:
+        SVG string ready for template rendering
+    """
+    if not facility_data:
+        return '<div class="text-center text-muted">No facility data available</div>'
+
+    # Extract data
+    facilities = [d['facility'] for d in facility_data]
+    rates = [d['annualized_rate'] for d in facility_data]
+    percentages = [d['percent'] for d in facility_data]
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    # Generate pie chart
+    colors = plt.cm.tab10.colors[:len(facilities)]
+    wedges, texts, autotexts = ax.pie(
+        rates,
+        labels=facilities,
+        autopct='%1.1f%%',
+        startangle=90,
+        colors=colors,
+        textprops={'fontsize': 11}
+    )
+
+    # Make percentage text bold
+    for autotext in autotexts:
+        autotext.set_color('white')
+        autotext.set_fontweight('bold')
+
+    ax.set_title('Annualized Rate Distribution by Facility', fontsize=13, fontweight='bold', pad=20)
+
+    # Render to SVG
+    svg_io = StringIO()
+    fig.savefig(svg_io, format='svg', bbox_inches='tight')
+    plt.close(fig)
+
+    return svg_io.getvalue()

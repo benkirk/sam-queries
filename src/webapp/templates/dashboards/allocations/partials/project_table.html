@@ -1,0 +1,58 @@
+<!-- Project Details Table -->
+<table class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>Project</th>
+            <th>Title</th>
+            <th>Amount</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Duration (days)</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for project in projects %}
+        <tr>
+            <td><strong>{{ project['projcode'] }}</strong></td>
+            <td>{{ project['title'] if project['title'] else 'N/A' }}</td>
+            <td>{{ "{:,.0f}".format(project['total_amount']) }}</td>
+            <td>{{ project['start_date'].strftime('%Y-%m-%d') if project['start_date'] else 'N/A' }}</td>
+            <td>
+                {% if project['end_date'] %}
+                    {{ project['end_date'].strftime('%Y-%m-%d') }}
+                {% elif project['is_open_ended'] %}
+                    <span class="badge badge-info">Open-ended</span>
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+            <td>
+                {% if project['duration_days'] %}
+                    {{ project['duration_days'] }}
+                    {% if project['is_open_ended'] %}
+                        <span class="text-muted small">(est.)</span>
+                    {% endif %}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary view-usage-btn"
+                        data-projcode="{{ project['projcode'] }}"
+                        data-resource="{{ resource }}"
+                        data-active-at="{{ active_at }}"
+                        title="View usage details">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if projects|length > 0 %}
+<div class="text-muted small">
+    Showing {{ projects|length }} project{{ 's' if projects|length != 1 else '' }}
+</div>
+{% endif %}

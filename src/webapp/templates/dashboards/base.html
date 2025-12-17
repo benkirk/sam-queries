@@ -31,6 +31,13 @@
                             <i class="fas fa-server"></i> System Status
                         </a>
                     </li>
+                    {% if has_permission('view_projects') %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('allocations_dashboard.index') }}">
+                            <i class="fas fa-chart-pie"></i> Allocations
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
                 <ul class="navbar-nav ml-auto">
                     <li class="nav-item">
