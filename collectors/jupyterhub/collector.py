@@ -7,6 +7,7 @@ using the JupyterHub Hub API.
 """
 import sys
 import os
+import subprocess
 import logging
 from pathlib import Path
 
@@ -41,9 +42,9 @@ class JupyterHubCollector(BaseCollector):
         )
         self.logger.info(f"Initialized JupyterHub API client for {instance} instance")
 
-    def _run_ssh_command_for_nodes(self, command: str, timeout: int = 30) -> str:
+    def _run_ssh_command(self, command: str, timeout: int = 30) -> str:
         """
-        Run a command on casper via SSH (used only for jhlnodes).
+        Run a command on casper via SSH.
 
         Args:
             command: The command to run
@@ -55,8 +56,6 @@ class JupyterHubCollector(BaseCollector):
         Raises:
             SSHError: If command fails or times out
         """
-        import subprocess
-
         ssh_cmd = f'ssh -o ConnectTimeout=10 {self.config.pbs_host} "{command}"'
         self.logger.debug(f"Running SSH command: {ssh_cmd}")
 
@@ -78,16 +77,15 @@ class JupyterHubCollector(BaseCollector):
 
     def _collect_node_data(self, data: dict):
         """
-        Collect JupyterHub node data by running jhlnodes on casper via SSH.
+        Collect JupyterHub node data by running jhlnodes on casper.
 
         This replaces the standard PBS node collection.
-        Note: Node data still uses SSH as the JupyterHub API doesn't provide this info.
         """
         try:
             self.logger.info("Collecting JupyterHub node data...")
 
-            # Run jhlnodes on casper (still requires SSH)
-            output = self._run_ssh_command_for_nodes(
+            # Run jhlnodes on casper
+            output = self._run_ssh_command(
                 '/glade/u/home/csgteam/bin/jhlnodes',
                 timeout=30
             )
@@ -210,8 +208,6 @@ class JupyterHubCollector(BaseCollector):
         Overrides BaseCollector.collect() to skip PBS-related collections
         and add JupyterHub-specific collections.
 
-        Node data: Collected via SSH to casper running jhlnodes script
-        Job data: Collected via JupyterHub Hub API (/hub/api/users?state=active)
         """
         from datetime import datetime
 
