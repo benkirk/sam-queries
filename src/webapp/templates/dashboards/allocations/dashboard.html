@@ -77,9 +77,11 @@
             </div>
 
             <!-- Facility Pie Chart -->
+            {% if overview.table_data|length > 1 %}
             <div class="chart-container">
                 {{ overview.chart|safe }}
             </div>
+            {% endif %}
         </div>
 
         <!-- Facility Tabs (nested) -->
