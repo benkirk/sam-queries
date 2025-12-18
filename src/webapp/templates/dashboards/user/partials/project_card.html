@@ -17,7 +17,7 @@
     {% endfor %}
 
     <div class="card project-card mb-3">
-        <div class="card-header" data-toggle="collapse" data-target="#{{ card_id }}" aria-expanded="{{ 'true' if is_expanded else 'false' }}" style="cursor: pointer;">
+        <div class="card-header" data-toggle="collapse" data-target="#{{ card_id }}" aria-expanded="{{ 'true' if is_expanded else 'false' }}" class="cursor-pointer">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h5 class="mb-0">
@@ -188,7 +188,7 @@
                                     <th>Allocated</th>
                                     <th>Used</th>
                                     <th>Remaining</th>
-                                    <th style="width: 200px;">Usage</th>
+                                    <th class="table-col-usage">Usage</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -206,7 +206,7 @@
                                     {% set is_expired = resource.days_until_expiration is not none and resource.days_until_expiration < 0 %}
                                     {% set row_class = 'text-muted' if is_expired else '' %}
 
-                                    <tr class="resource-row {{ row_class }}" style="cursor: pointer;{% if is_expired %} opacity: 0.6;{% endif %}"
+                                    <tr class="resource-row cursor-pointer {{ row_class }}{% if is_expired %} expired-allocation{% endif %}"
                                         onclick="location.href='{{ url_for('user_dashboard.resource_details', projcode=project.projcode, resource=resource.resource_name) }}'">
                                         <td><strong>{{ resource.resource_name }}</strong></td>
                                         <td>{{ resource.start_date.strftime('%Y-%m-%d') if resource.start_date else 'N/A' }}</td>
@@ -215,7 +215,7 @@
                                         <td class="{% if not is_expired %}text-warning{% endif %}">{{ '{:,.0f}'.format(resource.used) }}</td>
                                         <td class="{% if not is_expired %}text-success{% endif %}">{{ '{:,.0f}'.format(resource.remaining) }}</td>
                                         <td>
-                                            <div class="progress" style="height: 20px;">
+                                            <div class="progress" class="progress-large">
                                                 <div class="progress-bar {{ progress_class }}"
                                                      role="progressbar"
                                                      style="width: {{ [0, [percent, 100] | min] | max }}%"

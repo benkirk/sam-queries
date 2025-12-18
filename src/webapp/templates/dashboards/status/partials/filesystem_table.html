@@ -49,7 +49,7 @@
                         </td>
                         <td>
                             {% if fs.utilization_percent is not none %}
-                            <div class="progress" style="height: 20px;">
+                            <div class="progress progress-large">
                                 <div class="progress-bar bg-{{ 'danger' if fs.utilization_percent >= 90 else 'warning' if fs.utilization_percent >= 75 else 'success' }}"
                                      style="width: {{ fs.utilization_percent }}%">
                                     {{ fs.utilization_percent|round(1) }}%
@@ -102,7 +102,7 @@
                         </td>
                         <td>
                             {% if fs.inodes_utilization_percent is not none %}
-                            <div class="progress" style="height: 20px;">
+                            <div class="progress progress-large">
                                 <div class="progress-bar bg-{{ 'danger' if fs.inodes_utilization_percent >= 90 else 'warning' if fs.inodes_utilization_percent >= 75 else 'success' }}"
                                      style="width: {{ fs.inodes_utilization_percent }}%">
                                     {{ fs.inodes_utilization_percent|round(1) }}%

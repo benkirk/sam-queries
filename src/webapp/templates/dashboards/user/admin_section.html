@@ -11,9 +11,9 @@
                         <label for="userSearchImpersonate">Search for a user to impersonate</label>
                         <input type="text" class="form-control" id="userSearchImpersonate" placeholder="Start typing a username, first, or last name..." autocomplete="off">
                         <input type="hidden" id="selectedUsernameImpersonate" name="username">
-                        <div id="userSearchResultsImpersonate" class="list-group mt-2" style="display:none; max-height: 200px; overflow-y: auto;"></div>
+                        <div id="userSearchResultsImpersonate" class="list-group mt-2 dropdown-list"></div>
                     </div>
-                    <div id="selectedUserDisplayImpersonate" class="alert alert-info" style="display:none;">
+                    <div id="selectedUserDisplayImpersonate" class="alert alert-info dropdown-list">
                         <i class="fas fa-user-check"></i>
                         <strong id="selectedUserNameImpersonate"></strong>
                         <small id="selectedUserEmailImpersonate" class="text-muted ml-2"></small>
@@ -37,8 +37,7 @@
                     <label for="projectSearchInput">Search by project code or title</label>
                     <input type="text" class="form-control" id="projectSearchInput"
                            placeholder="Start typing a project code or title..." autocomplete="off">
-                    <div id="projectSearchResults" class="list-group mt-2"
-                         style="display:none; max-height: 200px; overflow-y: auto;"></div>
+                    <div id="projectSearchResults" class="list-group mt-2 dropdown-list"></div>
                 </div>
                 <div class="form-check mb-3">
                     <input type="checkbox" class="form-check-input" id="activeProjectsOnly" checked>
@@ -46,7 +45,7 @@
                         Active projects only
                     </label>
                 </div>
-                <div id="selectedProjectDisplay" class="alert alert-info" style="display:none;">
+                <div id="selectedProjectDisplay" class="alert alert-info dropdown-list">
                     <i class="fas fa-folder-open"></i>
                     <strong id="selectedProjectName"></strong>
                     <br><small id="selectedProjectLead" class="text-muted"></small>
@@ -71,7 +70,7 @@
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header" style="cursor: pointer;"
+            <div class="card-header" class="cursor-pointer"
                  data-toggle="collapse" data-target="#expirations-section">
                 <h5 class="mb-0">
                     <i class="fas fa-calendar-exclamation"></i> Project Expirations

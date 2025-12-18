@@ -1,7 +1,7 @@
 {# Loading Spinner Partial - Reusable loading indicator #}
 {% macro loading_spinner(message='Loading...', size='md') %}
 <div class="loading-spinner">
-    <div class="spinner-border text-primary {% if size == 'sm' %}spinner-border-sm{% endif %}" role="status" {% if size == 'lg' %}style="width: 3rem; height: 3rem;"{% endif %}>
+    <div class="spinner-border text-primary {% if size == 'sm' %}spinner-border-sm{% elif size == 'lg' %}loading-spinner-lg{% endif %}" role="status">
         <span class="sr-only">{{ message }}</span>
     </div>
     {% if message %}

@@ -78,7 +78,7 @@
             </div>
 
             <!-- Progress Bar -->
-            <div class="progress" style="height: 25px;">
+            <div class="progress progress-xxlarge">
                 {% set percent = allocation.percent_used %}
                 <div class="progress-bar {% if percent >= 90 %}bg-danger{% elif percent >= 75 %}bg-warning{% else %}bg-success{% endif %}"
                      role="progressbar"

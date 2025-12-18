@@ -3,77 +3,7 @@
 {% block title %}Allocations Dashboard{% endblock %}
 
 {% block extra_css %}
-<style>
-    .allocation-card {
-        background: #f8f9fa;
-        border-left: 4px solid #007bff;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        border-radius: 0.25rem;
-    }
-
-    .summary-table {
-        font-size: 0.9rem;
-    }
-
-    .summary-table th {
-        background-color: #e9ecef;
-        font-weight: 600;
-    }
-
-    .expandable-row {
-        cursor: pointer;
-        transition: background-color 0.2s;
-    }
-
-    .expandable-row:hover {
-        background-color: #f8f9fa;
-    }
-
-    .expand-icon {
-        transition: transform 0.2s;
-        display: inline-block;
-        width: 20px;
-        text-align: center;
-    }
-
-    .expand-icon.expanded {
-        transform: rotate(90deg);
-    }
-
-    .project-details-row {
-        display: none;
-        background-color: #f8f9fa;
-    }
-
-    .project-details-row.show {
-        display: table-row;
-    }
-
-    .nested-tabs {
-        margin-top: 1.5rem;
-    }
-
-    .overview-section {
-        background: #ffffff;
-        border: 1px solid #dee2e6;
-        border-radius: 0.25rem;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-    }
-
-    .overview-table {
-        margin-bottom: 1.5rem;
-    }
-
-    .chart-container {
-        text-align: center;
-    }
-
-    .date-filter-form {
-        margin-bottom: 1.5rem;
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/allocations.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -183,7 +113,7 @@
                             <table class="table table-sm table-hover summary-table">
                                 <thead>
                                     <tr>
-                                        <th style="width: 30px;"></th>
+                                        <th class="table-col-expand"></th>
                                         <th>Type</th>
                                         <th>Total Allocated</th>
                                         <th>Count</th>

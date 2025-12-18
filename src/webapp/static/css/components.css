@@ -1,0 +1,169 @@
+/**
+ * SAM Shared Components CSS
+ * Reusable component styles used across multiple dashboards
+ */
+
+/* ===================================================================
+   Interactive Table Rows
+   =================================================================== */
+
+.clickable-row {
+    cursor: pointer;
+}
+
+.clickable-row:hover {
+    background-color: #f8f9fa;
+}
+
+/* ===================================================================
+   Stat Boxes (User Dashboard)
+   =================================================================== */
+
+.stat-box {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #007bff;
+}
+
+/* ===================================================================
+   Progress Bar Sizes
+   =================================================================== */
+
+.progress-small {
+    height: 8px;
+}
+
+.progress-medium {
+    height: 18px;
+}
+
+.progress-large {
+    height: 20px;
+}
+
+.progress-xlarge {
+    height: 24px;
+}
+
+.progress-xxlarge {
+    height: 25px;
+}
+
+.progress-narrow {
+    width: 60px;
+}
+
+/* ===================================================================
+   Button Sizes
+   =================================================================== */
+
+.btn-xs {
+    padding: 0.125rem 0.375rem;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    border-radius: 0.2rem;
+}
+
+/* ===================================================================
+   Table Column Widths
+   =================================================================== */
+
+.table-col-expand {
+    width: 30px;
+}
+
+.table-col-usage {
+    width: 200px;
+}
+
+.table-col-actions {
+    width: 180px;
+}
+
+/* ===================================================================
+   Utility Classes
+   =================================================================== */
+
+.transition-smooth {
+    transition: transform 0.3s;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.expired-allocation {
+    opacity: 0.6;
+}
+
+/* ===================================================================
+   Dropdowns
+   =================================================================== */
+
+.dropdown-list {
+    display: none;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.dropdown-list.active {
+    display: block;
+}
+
+.scrollable-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* ===================================================================
+   Tree Lists (User Dashboard)
+   =================================================================== */
+
+.tree-list {
+    list-style: none;
+    padding-left: 0;
+    border-left: 2px solid #dee2e6;
+}
+
+.tree-list li {
+    padding-left: 15px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.tree-list li:last-child {
+    border-bottom: none;
+}
+
+/* ===================================================================
+   Spinners
+   =================================================================== */
+
+.loading-spinner-lg {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* ===================================================================
+   Spacing Utilities
+   =================================================================== */
+
+.section-spacing {
+    margin-top: 30px;
+}

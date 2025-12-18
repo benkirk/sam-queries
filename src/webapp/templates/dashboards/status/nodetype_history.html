@@ -97,7 +97,7 @@
         <div class="row mt-3">
             <div class="col-md-6">
                 <h6>{{ 'GPU' if latest_status.gpu_model else 'CPU' }} Utilization</h6>
-                <div class="progress" style="height: 24px;">
+                <div class="progress progress-xlarge">
                     {% set percent = latest_status.utilization_percent | round(1) %}
                     {% if percent >= 90 %}
                         {% set progress_class = 'bg-danger' %}
@@ -115,7 +115,7 @@
             {% if latest_status.memory_utilization_percent is not none %}
             <div class="col-md-6">
                 <h6>Memory Utilization</h6>
-                <div class="progress" style="height: 24px;">
+                <div class="progress progress-xlarge">
                     {% set mem_percent = latest_status.memory_utilization_percent | round(1) %}
                     {% if mem_percent >= 90 %}
                         {% set mem_progress_class = 'bg-danger' %}
