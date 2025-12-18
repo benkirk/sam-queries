@@ -5,9 +5,9 @@
             <tr>
                 <th>Queue</th>
                 <th>Users</th>
-                <th colspan="3" style="text-align: center;">Jobs</th>
-                <th colspan="3"style="text-align: center;">Cores</th>
-                {% if show_gpus %}<th colspan="3" style="text-align: center;">GPUs</th>{% endif %}
+                <th colspan="3" class="text-center">Jobs</th>
+                <th colspan="3" class="text-center">Cores</th>
+                {% if show_gpus %}<th colspan="3" class="text-center">GPUs</th>{% endif %}
                 <th>Nodes</th>
             </tr>
         </thead>
@@ -29,7 +29,7 @@
         </thead>
         <tbody>
             {% for queue in queues %}
-            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.queue_history', system=system, queue_name=queue.queue_name) }}';" style="cursor: pointer;" title="Click to view history for {{ queue.queue_name }}">
+            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.queue_history', system=system, queue_name=queue.queue_name) }}';" title="Click to view history for {{ queue.queue_name }}">
                 <td><strong>{{ queue.queue_name }}</strong></td>
                 <td>{{ queue.active_users }}</td>
                 <td>{{ queue.running_jobs }}</td>
@@ -47,10 +47,4 @@
         </tbody>
     </table>
 </div>
-
-<style>
-.clickable-row:hover {
-    background-color: #f8f9fa;
-}
-</style>
 {% endmacro %}

@@ -323,24 +323,8 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
-<style>
-    .nav-tabs .nav-link {
-        color: #495057;
-    }
-    .nav-tabs .nav-link.active {
-        font-weight: bold;
-    }
-    .card {
-        box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
-    }
-    .table th {
-        background-color: #f8f9fa;
-        font-weight: 600;
-    }
-    .badge {
-        font-size: 0.875rem;
-        padding: 0.375rem 0.625rem;
-    }
-</style>
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 {% endblock %}

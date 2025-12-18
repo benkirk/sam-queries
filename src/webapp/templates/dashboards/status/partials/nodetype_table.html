@@ -14,7 +14,7 @@
         </thead>
         <tbody>
             {% for nt in node_types %}
-            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.nodetype_history', system=system, node_type=nt.node_type) }}';" style="cursor: pointer;" title="Click to view history for {{ nt.node_type }}">
+            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.nodetype_history', system=system, node_type=nt.node_type) }}';" title="Click to view history for {{ nt.node_type }}">
                 <td><strong>{{ nt.node_type }}</strong></td>
                 <td>
                     <small>
@@ -31,7 +31,7 @@
                     {% if nt.utilization_percent is not none %}
                     <div class="mb-1">
                         <small class="text-muted">{{ 'GPU' if nt.gpu_model else 'CPU' }}:</small>
-                        <div class="progress" style="height: 18px;">
+                        <div class="progress progress-medium">
                             <div class="progress-bar bg-{{ 'danger' if nt.utilization_percent >= 90 else 'warning' if nt.utilization_percent >= 75 else 'success' }}"
                                  style="width: {{ nt.utilization_percent }}%">
                                 <small>{{ nt.utilization_percent|round(1) }}%</small>
@@ -41,7 +41,7 @@
                     {% if nt.memory_utilization_percent is not none %}
                     <div>
                         <small class="text-muted">Mem:</small>
-                        <div class="progress" style="height: 18px;">
+                        <div class="progress progress-medium">
                             <div class="progress-bar bg-{{ 'danger' if nt.memory_utilization_percent >= 90 else 'warning' if nt.memory_utilization_percent >= 75 else 'info' }}"
                                  style="width: {{ nt.memory_utilization_percent }}%">
                                 <small>{{ nt.memory_utilization_percent|round(1) }}%</small>
@@ -58,10 +58,4 @@
         </tbody>
     </table>
 </div>
-
-<style>
-.clickable-row:hover {
-    background-color: #f8f9fa;
-}
-</style>
 {% endmacro %}

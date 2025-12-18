@@ -121,10 +121,33 @@
 <!-- Member Management Modals -->
 {% include 'dashboards/user/fragments/member_modals.html' %}
 
+<!-- Project Details Modal -->
+<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog"
+     data-url-template="{{ url_for('user_dashboard.project_details_modal', projcode='__PROJCODE__') }}">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Project Details</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="projectDetailsModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/impersonation.js') }}"></script>
 <script src="{{ url_for('static', filename='js/project-search.js') }}"></script>
 <script src="{{ url_for('static', filename='js/expirations.js') }}"></script>
+<script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
 {% endblock %}

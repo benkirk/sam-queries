@@ -1,0 +1,108 @@
+/**
+ * SAM Allocations Dashboard CSS
+ * Styles specific to the allocations dashboard
+ */
+
+/* ===================================================================
+   Allocation Cards
+   =================================================================== */
+
+.allocation-card {
+    background: #f8f9fa;
+    border-left: 4px solid #007bff;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 0.25rem;
+}
+
+/* ===================================================================
+   Summary Tables
+   =================================================================== */
+
+.summary-table {
+    font-size: 0.9rem;
+}
+
+.summary-table th {
+    background-color: #e9ecef;
+    font-weight: 600;
+}
+
+/* ===================================================================
+   Expandable Rows
+   =================================================================== */
+
+.expandable-row {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.expandable-row:hover {
+    background-color: #f8f9fa;
+}
+
+.expand-icon {
+    transition: transform 0.2s;
+    display: inline-block;
+    width: 20px;
+    text-align: center;
+}
+
+.expand-icon.expanded {
+    transform: rotate(90deg);
+}
+
+.project-details-row {
+    display: none;
+    background-color: #f8f9fa;
+}
+
+.project-details-row.show {
+    display: table-row;
+}
+
+/* ===================================================================
+   Nested Tabs
+   =================================================================== */
+
+.nested-tabs {
+    margin-top: 1.5rem;
+}
+
+/* ===================================================================
+   Resource Overview Section
+   =================================================================== */
+
+.overview-section {
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.overview-table {
+    margin-bottom: 1.5rem;
+}
+
+.chart-container {
+    text-align: center;
+}
+
+/* ===================================================================
+   Date Filter Form
+   =================================================================== */
+
+.date-filter-form {
+    margin-bottom: 1.5rem;
+}
+
+.resource-selector {
+    text-align: left;
+}
+
+.resource-selector .form-check {
+    text-align: left;
+    padding-left: 0;
+    margin-bottom: 0.5rem;
+}

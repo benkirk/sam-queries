@@ -12,6 +12,7 @@ from webapp.admin import admin_bp, init_admin
 from webapp.auth import bp as auth_bp
 from webapp.dashboards.user import bp as user_dashboard_bp
 from webapp.dashboards.status import bp as status_dashboard_bp
+from webapp.dashboards.allocations import bp as allocations_dashboard_bp
 from webapp.auth.models import AuthUser
 from webapp.utils.rbac import rbac_context_processor
 from sam.core.users import User
@@ -114,6 +115,7 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(user_dashboard_bp)
     app.register_blueprint(status_dashboard_bp)
+    app.register_blueprint(allocations_dashboard_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
 
     # Register API blueprints

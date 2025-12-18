@@ -1,0 +1,117 @@
+/**
+ * SAM Status Dashboard CSS
+ * Styles specific to the system status dashboard
+ */
+
+/* ===================================================================
+   Status Badges
+   =================================================================== */
+
+.status-badge {
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: bold;
+    display: inline-block;
+}
+
+.status-online {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.status-degraded {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+
+.status-offline {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+/* ===================================================================
+   Metric Cards
+   =================================================================== */
+
+.metric-card {
+    background: #f8f9fa;
+    border-left: 4px solid #007bff;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 0.25rem;
+}
+
+.metric-card h6 {
+    color: #6c757d;
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+}
+
+.metric-card .value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #212529;
+}
+
+/* ===================================================================
+   Tables
+   =================================================================== */
+
+.queue-table,
+.filesystem-table,
+.nodetype-table {
+    font-size: 0.9rem;
+}
+
+/* ===================================================================
+   Outage Cards
+   =================================================================== */
+
+.outage-card {
+    border-left: 4px solid #dc3545;
+    margin-bottom: 1rem;
+}
+
+.outage-card.severity-critical {
+    border-left-color: #dc3545;
+}
+
+.outage-card.severity-major {
+    border-left-color: #fd7e14;
+}
+
+.outage-card.severity-minor {
+    border-left-color: #ffc107;
+}
+
+.outage-card.severity-maintenance {
+    border-left-color: #17a2b8;
+}
+
+/* ===================================================================
+   Reservation Cards
+   =================================================================== */
+
+.reservation-card {
+    border-left: 4px solid #17a2b8;
+}
+
+/* ===================================================================
+   Utility Styles
+   =================================================================== */
+
+.last-updated {
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+.no-data-message {
+    text-align: center;
+    color: #6c757d;
+    padding: 2rem;
+    font-style: italic;
+}
