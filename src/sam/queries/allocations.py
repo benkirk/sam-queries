@@ -344,7 +344,10 @@ def get_allocation_summary(
         .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
         .join(Panel, AllocationType.panel_id == Panel.panel_id)\
         .join(Facility, Panel.facility_id == Facility.facility_id)\
-        .filter(Allocation.deleted == False)
+        .filter(
+            Allocation.deleted == False,
+            Resource.is_active  # Exclude decommissioned resources
+        )
 
     # Apply specific filters
     if resource_name and resource_name != "TOTAL":
@@ -505,7 +508,10 @@ def get_allocation_summary_with_usage(
          .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
          .join(Panel, AllocationType.panel_id == Panel.panel_id)\
          .join(Facility, Panel.facility_id == Facility.facility_id)\
-         .filter(Allocation.deleted == False)
+         .filter(
+             Allocation.deleted == False,
+             Resource.is_active  # Exclude decommissioned resources
+         )
 
         # Apply filters based on what's in this summary item
         if 'resource' in item:

@@ -15,7 +15,7 @@
                     <table class="table table-bordered">
                         <tbody>
                             <tr>
-                                <th style="width: 200px;">Username</th>
+                                <th class="table-col-usage">Username</th>
                                 <td>{{ user.username }}</td>
                             </tr>
                             <tr>
@@ -56,7 +56,7 @@
                                 <th>Permissions</th>
                                 <td>
                                     {% if user_permissions %}
-                                        <div style="max-height: 200px; overflow-y: auto;">
+                                        <div class="scrollable-list">
                                             {% for perm in user_permissions | sort(attribute='value') %}
                                                 <span class="badge badge-info">{{ perm.value }}</span>
                                             {% endfor %}

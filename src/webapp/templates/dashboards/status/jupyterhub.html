@@ -100,14 +100,14 @@
                         <td>({{ node.jobs_running }})</td>
                         <td>
                             <small>{{ node.cpus_used }}/{{ node.cpus_total }}</small>
-                            <div class="progress" style="height: 8px; width: 60px;">
+                            <div class="progress progress-small progress-narrow">
                                 <div class="progress-bar bg-{{ 'danger' if (node.cpus_used / node.cpus_total * 100) >= 90 else 'warning' if (node.cpus_used / node.cpus_total * 100) >= 75 else 'success' }}"
                                      style="width: {{ (node.cpus_used / node.cpus_total * 100)|round }}%"></div>
                             </div>
                         </td>
                         <td>
                             <small>{{ node.memory_used_gb }}/{{ node.memory_total_gb }}GB</small>
-                            <div class="progress" style="height: 8px; width: 60px;">
+                            <div class="progress progress-small progress-narrow">
                                 <div class="progress-bar bg-{{ 'danger' if (node.memory_used_gb / node.memory_total_gb * 100) >= 90 else 'warning' if (node.memory_used_gb / node.memory_total_gb * 100) >= 75 else 'success' }}"
                                      style="width: {{ (node.memory_used_gb / node.memory_total_gb * 100)|round }}%"></div>
                             </div>

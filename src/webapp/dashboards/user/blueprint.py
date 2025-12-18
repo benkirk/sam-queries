@@ -275,7 +275,9 @@ def tree_fragment(projcode):
         icon = '<i class="fas fa-arrow-right text-warning mr-1"></i>' if is_current else ''
         inactive_badge = ' <span class="badge badge-secondary badge-sm">Inactive</span>' if not is_active else ''
 
-        html = f'<li style="{style}">{icon}<strong>{node.projcode}</strong>'
+        # Make project code clickable to open details modal
+        projcode_html = f'<button class="btn btn-link p-0 view-project-details-btn" data-projcode="{node.projcode}" title="View project details"><strong>{node.projcode}</strong></button>'
+        html = f'<li style="{style}">{icon}{projcode_html}'
 
         if node.title:
             html += f' - {node.title}'
@@ -377,6 +379,33 @@ def project_card(projcode):
     # Render a wrapper template that calls the macro
     return render_template(
         'dashboards/user/fragments/project_card_wrapper.html',
+        project_data=project_data,
+        user=current_user,
+        usage_warning_threshold=USAGE_WARNING_THRESHOLD,
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
+    )
+
+
+@bp.route('/project-details-modal/<projcode>')
+@login_required
+@require_permission(Permission.VIEW_PROJECTS)
+def project_details_modal(projcode):
+    """
+    Get HTML fragment for project details modal content (reusable across dashboards).
+
+    Returns:
+        HTML fragment with project info and resources for modal body
+    """
+    # Validate project exists
+    project = find_project_by_code(db.session, projcode)
+    if not project:
+        return '<p class="alert alert-danger">Project not found</p>'
+
+    # Get full project data
+    project_data = get_project_dashboard_data(db.session, projcode)
+
+    return render_template(
+        'dashboards/user/partials/project_details_modal.html',
         project_data=project_data,
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,

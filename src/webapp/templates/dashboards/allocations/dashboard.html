@@ -1,0 +1,315 @@
+{% extends 'dashboards/base.html' %}
+
+{% block title %}Allocations Dashboard{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/allocations.css') }}">
+{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-chart-pie"></i> Allocations Dashboard</h2>
+</div>
+
+<!-- Date Filter -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" class="date-filter-form" id="dateFilterForm">
+            <div class="form-row align-items-start">
+                <div class="col-auto">
+                    <label for="resources">Resources:</label>
+                    <select class="form-control" id="resources" name="resources" multiple size="4" style="min-width: 200px;">
+                        {% for res in all_resources %}
+                        <option value="{{ res }}" {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
+                </div>
+
+                <div class="col-auto">
+                    <label for="active_at">Active at:</label>
+                    <input type="date" class="form-control" id="active_at" name="active_at" value="{{ active_at }}">
+                    <br>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Update
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Resource Tabs -->
+{% if grouped_data %}
+<ul class="nav nav-tabs" id="resourceTabs" role="tablist">
+    {% for resource_name in grouped_data.keys()|sort %}
+    <li class="nav-item">
+        <a class="nav-link {% if loop.first %}active{% endif %}"
+           id="{{ resource_name|replace(' ', '_') }}-tab"
+           data-toggle="tab"
+           href="#{{ resource_name|replace(' ', '_') }}"
+           role="tab">
+            {{ resource_name }}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="tab-content" id="resourceTabsContent">
+    {% for resource_name, facilities in grouped_data.items()|sort %}
+    <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+         id="{{ resource_name|replace(' ', '_') }}"
+         role="tabpanel">
+
+        <!-- Resource Overview Section -->
+        {% set overview = resource_overviews[resource_name] %}
+        <div class="overview-section mt-3">
+            <h4>Resource Overview - {{ resource_name }}</h4>
+
+            <!-- Facility Summary Table -->
+            <div class="overview-table">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Facility</th>
+                            <th>Annual Rate</th>
+                            <th>Count</th>
+                            <th>% Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for facility_data in overview.table_data %}
+                        <tr>
+                            <td><strong>{{ facility_data.facility }}</strong></td>
+                            <td>{{ "{:,.0f}".format(facility_data.annualized_rate) }}</td>
+                            <td>{{ facility_data.count }}</td>
+                            <td>{{ "%.1f"|format(facility_data.percent) }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Facility Pie Chart -->
+            {% if overview.table_data|length > 1 %}
+            <div class="chart-container">
+                {{ overview.chart|safe }}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Facility Tabs (nested) -->
+        <div class="nested-tabs">
+            <ul class="nav nav-pills mb-3" role="tablist">
+                {% for facility_name in facilities.keys()|sort %}
+                <li class="nav-item">
+                    <a class="nav-link {% if loop.first %}active{% endif %}"
+                       id="{{ resource_name|replace(' ', '_') }}-{{ facility_name }}-tab"
+                       data-toggle="pill"
+                       href="#{{ resource_name|replace(' ', '_') }}-{{ facility_name }}"
+                       role="tab">
+                        {{ facility_name }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+
+            <div class="tab-content">
+                {% for facility_name, types in facilities.items()|sort %}
+                <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+                     id="{{ resource_name|replace(' ', '_') }}-{{ facility_name }}"
+                     role="tabpanel">
+
+                    <!-- Allocation Summary Table -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Allocation Summary - {{ facility_name }}</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm table-hover summary-table">
+                                <thead>
+                                    <tr>
+                                        <th class="table-col-expand"></th>
+                                        <th>Type</th>
+                                        <th>Total Allocated</th>
+                                        <th>Count</th>
+                                        <th>Avg Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for type_data in types %}
+                                    <tr class="expandable-row"
+                                        data-resource="{{ resource_name }}"
+                                        data-facility="{{ facility_name }}"
+                                        data-type="{{ type_data.allocation_type }}"
+                                        data-active-at="{{ active_at }}">
+                                        <td>
+                                            <i class="fas fa-chevron-right expand-icon"></i>
+                                        </td>
+                                        <td><strong>{{ type_data.allocation_type }}</strong></td>
+                                        <td>{{ "{:,.0f}".format(type_data.total_amount) }}</td>
+                                        <td>{{ type_data.count }}</td>
+                                        <td>{{ "{:,.0f}".format(type_data.avg_amount) }}</td>
+                                    </tr>
+                                    <tr class="project-details-row"
+                                        id="details-{{ resource_name|replace(' ', '_') }}-{{ facility_name }}-{{ type_data.allocation_type|replace(' ', '_') }}">
+                                        <td colspan="5">
+                                            <div class="p-3">
+                                                <div class="text-center">
+                                                    <div class="spinner-border text-primary" role="status">
+                                                        <span class="sr-only">Loading...</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info mt-3">
+    <i class="fas fa-info-circle"></i> No active allocations found for the selected date.
+</div>
+{% endif %}
+
+<!-- Usage Modal -->
+<div class="modal fade" id="usageModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Allocation Usage Details</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="usageModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Project Details Modal -->
+<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog"
+     data-url-template="{{ url_for('user_dashboard.project_details_modal', projcode='__PROJCODE__') }}">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Project Details</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="projectDetailsModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
+<script>
+$(document).ready(function() {
+    // Handle expandable row clicks
+    $('.expandable-row').click(function() {
+        var $row = $(this);
+        var $icon = $row.find('.expand-icon');
+        var resource = $row.data('resource');
+        var facility = $row.data('facility');
+        var type = $row.data('type');
+        var activeAt = $row.data('active-at');
+        var detailsId = '#details-' + resource.replace(/ /g, '_') + '-' + facility + '-' + type.replace(/ /g, '_');
+        var $detailsRow = $(detailsId);
+
+        // Toggle icon
+        $icon.toggleClass('expanded');
+
+        // Toggle details row
+        if ($detailsRow.hasClass('show')) {
+            $detailsRow.removeClass('show');
+        } else {
+            // Load data if not already loaded
+            if (!$detailsRow.data('loaded')) {
+                $.ajax({
+                    url: "{{ url_for('allocations_dashboard.projects_fragment') }}",
+                    data: {
+                        resource: resource,
+                        facility: facility,
+                        allocation_type: type,
+                        active_at: activeAt
+                    },
+                    success: function(data) {
+                        $detailsRow.find('td').html('<div class="p-3">' + data + '</div>');
+                        $detailsRow.data('loaded', true);
+                        $detailsRow.addClass('show');
+                    },
+                    error: function() {
+                        $detailsRow.find('td').html(
+                            '<div class="alert alert-danger">Failed to load project details</div>'
+                        );
+                    }
+                });
+            } else {
+                $detailsRow.addClass('show');
+            }
+        }
+    });
+
+    // Handle usage modal (delegated event for dynamically loaded content)
+    $(document).on('click', '.view-usage-btn', function(e) {
+        e.preventDefault();
+        var projcode = $(this).data('projcode');
+        var resource = $(this).data('resource');
+        var activeAt = $(this).data('active-at');
+
+        // Show modal
+        $('#usageModal').modal('show');
+
+        // Load usage data
+        $('#usageModalBody').html(
+            '<div class="text-center"><div class="spinner-border text-primary" role="status"></div></div>'
+        );
+
+        $.ajax({
+            url: "{{ url_for('allocations_dashboard.usage_modal', projcode='__PROJCODE__', resource='__RESOURCE__') }}"
+                .replace('__PROJCODE__', projcode)
+                .replace('__RESOURCE__', resource),
+            data: {
+                active_at: activeAt
+            },
+            success: function(data) {
+                $('#usageModalBody').html(data);
+            },
+            error: function() {
+                $('#usageModalBody').html(
+                    '<div class="alert alert-danger">Failed to load usage details</div>'
+                );
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
