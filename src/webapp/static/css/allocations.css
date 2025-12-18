@@ -96,3 +96,13 @@
 .date-filter-form {
     margin-bottom: 1.5rem;
 }
+
+.resource-selector {
+    text-align: left;
+}
+
+.resource-selector .form-check {
+    text-align: left;
+    padding-left: 0;
+    margin-bottom: 0.5rem;
+}

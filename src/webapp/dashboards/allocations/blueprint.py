@@ -17,7 +17,12 @@ from webapp.utils.rbac import require_permission, Permission
 from ..charts import generate_facility_pie_chart_matplotlib
 
 
+from sam.resources.resources import Resource
+
 bp = Blueprint('allocations_dashboard', __name__, url_prefix='/allocations')
+
+# Resources to hide by default from the dashboard
+HIDDEN_RESOURCES = ["CMIP Analysis Platform", "Data_Access", "HPC_Futures_Lab"]
 
 
 def group_by_resource_facility(summary_data: List[Dict]) -> Dict:
@@ -129,10 +134,11 @@ def index():
     Main allocations dashboard page.
 
     Shows allocation summaries grouped by Resource → Facility → Type.
-    Active allocations only, with optional date filter.
+    Active allocations only, with optional date filter and resource selector.
 
     Query parameters:
         active_at: Date to check for active status (YYYY-MM-DD), default: today
+        resources: List of resource names to display
     """
     # Parse active_at parameter (default to today)
     active_at_str = request.args.get('active_at')
@@ -145,11 +151,25 @@ def index():
     else:
         active_at = datetime.now()
 
+    # Get all active resources for the selector
+    all_resources = [
+        r.resource_name for r in db.session.query(Resource.resource_name)
+        .filter(Resource.is_active == True)
+        .order_by(Resource.resource_name)
+        .all()
+    ]
+
+    # Parse selected resources
+    selected_resources = request.args.getlist('resources')
+    if not selected_resources:
+        # Default subset: all active resources except HIDDEN_RESOURCES
+        selected_resources = [r for r in all_resources if r not in HIDDEN_RESOURCES]
+
     # Get summary data grouped by Resource, Facility, Type (sum across projects)
     # We use projcode="TOTAL" to sum across all projects
     summary_data = get_allocation_summary(
         session=db.session,
-        resource_name=None,      # Group by all resources
+        resource_name=selected_resources, # Filtered list
         facility_name=None,      # Group by all facilities
         allocation_type=None,    # Group by all types
         projcode="TOTAL",        # Sum across projects
@@ -174,7 +194,9 @@ def index():
         'dashboards/allocations/dashboard.html',
         grouped_data=grouped_data,
         resource_overviews=resource_overviews,
-        active_at=active_at.strftime('%Y-%m-%d')
+        active_at=active_at.strftime('%Y-%m-%d'),
+        all_resources=all_resources,
+        selected_resources=selected_resources
     )
 
 

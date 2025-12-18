@@ -15,12 +15,27 @@
 <!-- Date Filter -->
 <div class="card mb-4">
     <div class="card-body">
-        <form method="GET" class="date-filter-form form-inline" id="dateFilterForm">
-            <label for="active_at" class="mr-2">Active at:</label>
-            <input type="date" class="form-control mr-2" id="active_at" name="active_at" value="{{ active_at }}">
-            <button type="submit" class="btn btn-primary">
-                <i class="fas fa-search"></i> Update
-            </button>
+        <form method="GET" class="date-filter-form" id="dateFilterForm">
+            <div class="form-row align-items-start">
+                <div class="col-auto">
+                    <label for="resources">Resources:</label>
+                    <select class="form-control" id="resources" name="resources" multiple size="4" style="min-width: 200px;">
+                        {% for res in all_resources %}
+                        <option value="{{ res }}" {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
+                </div>
+
+                <div class="col-auto">
+                    <label for="active_at">Active at:</label>
+                    <input type="date" class="form-control" id="active_at" name="active_at" value="{{ active_at }}">
+                    <br>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Update
+                    </button>
+                </div>
+            </div>
         </form>
     </div>
 </div>
