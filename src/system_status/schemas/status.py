@@ -204,11 +204,13 @@ class JupyterHubStatusSchema(BaseSchema):
     Schema for JupyterHub status.
 
     Status for the JupyterHub/Casper JupyterHub service.
+
     """
     class Meta(BaseSchema.Meta):
         model = JupyterHubStatus
         load_instance = True
         include_relationships = True
+        exclude = ()
 
 
 # ============================================================================

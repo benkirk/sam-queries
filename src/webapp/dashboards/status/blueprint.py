@@ -7,6 +7,7 @@ from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 import sys
 from pathlib import Path
+import logging
 
 from webapp.extensions import db
 from ..charts import generate_nodetype_history_matplotlib, generate_queue_history_matplotlib
@@ -19,7 +20,7 @@ from system_status import create_status_engine, get_session
 from system_status import queries as status_queries
 
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
-
+logger = logging.getLogger(__name__)
 
 @bp.route('/')
 @login_required

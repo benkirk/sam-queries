@@ -16,6 +16,7 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.progress_bar import ProgressBar
 from rich.text import Text
+from rich import box
 
 # Make sure system_status package is in path
 python_dir = __import__('pathlib').Path(__file__).parent.parent.resolve()
@@ -177,8 +178,10 @@ class SystemStatusCLI:
 
         # Individual Node List
         if status.nodes:
-            self.console.print("\n[bold magenta]Casper JupyterHub Login Session Nodes[/bold magenta]")
-            node_table = Table(show_header=True, box=None)
+            node_table = Table(
+                title="Casper JupyterHub Login Session Nodes",
+                title_style="bold magenta"
+            )
             node_table.add_column("Node", style="cyan")
             node_table.add_column("State")
             node_table.add_column("Jobs", justify="right")

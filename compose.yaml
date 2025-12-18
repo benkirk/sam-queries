@@ -26,6 +26,10 @@ services:
       - FLASK_DEBUG=1
       - AUDIT_ENABLED=1
       - AUDIT_LOG_PATH=/var/log/sam/model_audit.log
+      - JUPYTERHUB_API_URL=https://jupyterhub.hpc.ucar.edu
+      - JUPYTERHUB_INSTANCE=stable
+      - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}
+      - JUPYTERHUB_CACHE_TTL=300
 
     # Important: watch the current directory, re-syncing as needed based on source changes
     develop:
