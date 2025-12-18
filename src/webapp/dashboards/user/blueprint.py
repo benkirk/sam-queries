@@ -275,7 +275,9 @@ def tree_fragment(projcode):
         icon = '<i class="fas fa-arrow-right text-warning mr-1"></i>' if is_current else ''
         inactive_badge = ' <span class="badge badge-secondary badge-sm">Inactive</span>' if not is_active else ''
 
-        html = f'<li style="{style}">{icon}<strong>{node.projcode}</strong>'
+        # Make project code clickable to open details modal
+        projcode_html = f'<button class="btn btn-link p-0 view-project-details-btn" data-projcode="{node.projcode}" title="View project details"><strong>{node.projcode}</strong></button>'
+        html = f'<li style="{style}">{icon}{projcode_html}'
 
         if node.title:
             html += f' - {node.title}'

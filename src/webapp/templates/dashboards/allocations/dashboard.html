@@ -206,7 +206,8 @@
 </div>
 
 <!-- Project Details Modal -->
-<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog">
+<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog"
+     data-url-template="{{ url_for('user_dashboard.project_details_modal', projcode='__PROJCODE__') }}">
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -229,6 +230,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
 <script>
 $(document).ready(function() {
     // Handle expandable row clicks
@@ -304,33 +306,6 @@ $(document).ready(function() {
             error: function() {
                 $('#usageModalBody').html(
                     '<div class="alert alert-danger">Failed to load usage details</div>'
-                );
-            }
-        });
-    });
-
-    // Handle project details modal (delegated event for dynamically loaded content)
-    $(document).on('click', '.view-project-details-btn', function(e) {
-        e.preventDefault();
-        var projcode = $(this).data('projcode');
-
-        // Show modal
-        $('#projectDetailsModal').modal('show');
-
-        // Load project details
-        $('#projectDetailsModalBody').html(
-            '<div class="text-center"><div class="spinner-border text-primary" role="status"></div></div>'
-        );
-
-        $.ajax({
-            url: "{{ url_for('user_dashboard.project_details_modal', projcode='__PROJCODE__') }}"
-                .replace('__PROJCODE__', projcode),
-            success: function(data) {
-                $('#projectDetailsModalBody').html(data);
-            },
-            error: function() {
-                $('#projectDetailsModalBody').html(
-                    '<div class="alert alert-danger">Failed to load project details</div>'
                 );
             }
         });
