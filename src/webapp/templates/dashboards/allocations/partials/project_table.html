@@ -5,6 +5,7 @@
             <th>Project</th>
             <th>Title</th>
             <th>Amount</th>
+            <th>Annual Rate</th>
             <th>Start Date</th>
             <th>End Date</th>
             <th>Duration (days)</th>
@@ -17,6 +18,13 @@
             <td><strong>{{ project['projcode'] }}</strong></td>
             <td>{{ project['title'] if project['title'] else 'N/A' }}</td>
             <td>{{ "{:,.0f}".format(project['total_amount']) }}</td>
+            <td>
+                {% if project['annualized_rate'] is not none %}
+                    {{ "{:,.0f}".format(project['annualized_rate']) }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
             <td>{{ project['start_date'].strftime('%Y-%m-%d') if project['start_date'] else 'N/A' }}</td>
             <td>
                 {% if project['end_date'] %}
