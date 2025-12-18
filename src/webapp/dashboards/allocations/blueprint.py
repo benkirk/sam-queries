@@ -55,37 +55,53 @@ def group_by_resource_facility(summary_data: List[Dict]) -> Dict:
     return grouped
 
 
-def get_facility_overview_data(summary_data: List[Dict], resource_name: str) -> List[Dict]:
+def get_facility_overview_data(session, resource_name: str, active_at: datetime) -> List[Dict]:
     """
     Calculate facility-level summaries for a specific resource.
 
+    Queries individual allocations and properly calculates annualized rates
+    using actual allocation durations, then aggregates by facility.
+
     Args:
-        summary_data: Raw allocation summary data (not yet grouped)
+        session: SQLAlchemy session
         resource_name: Resource to filter for
+        active_at: Date to check for active status
 
     Returns:
-        List of dicts with keys: facility, annual_rate, count, total_amount, percent
+        List of dicts with keys: facility, annualized_rate, count, total_amount, percent
     """
-    # Filter to this resource and aggregate by facility
+    # Get individual allocations for this resource (not aggregated)
+    # This ensures each allocation has a properly calculated annualized_rate
+    individual_allocations = get_allocation_summary(
+        session=session,
+        resource_name=resource_name,
+        facility_name=None,      # Group by all facilities
+        allocation_type=None,    # Group by all types
+        projcode=None,           # Group by individual projects (not aggregated)
+        active_only=True,
+        active_at=active_at
+    )
+
+    # Aggregate by facility, summing annualized rates
     facility_totals = {}
 
-    for row in summary_data:
-        if row['resource'] != resource_name:
-            continue
-
-        facility = row['facility']
+    for alloc in individual_allocations:
+        facility = alloc['facility']
         if facility not in facility_totals:
             facility_totals[facility] = {
                 'total_amount': 0.0,
+                'annualized_rate': 0.0,
                 'count': 0
             }
 
-        facility_totals[facility]['total_amount'] += row['total_amount']
-        facility_totals[facility]['count'] += row['count']
+        facility_totals[facility]['total_amount'] += alloc['total_amount']
+        facility_totals[facility]['count'] += alloc['count']
 
-    # Calculate annualized rates (simple approach: assume 1 year duration)
-    # Note: This is a rough estimate. More accurate would be to query with projcode=None
-    # to get individual allocations and calculate their true annualized rates.
+        # Sum annualized rates (properly calculated from actual durations)
+        if alloc.get('annualized_rate') is not None:
+            facility_totals[facility]['annualized_rate'] += alloc['annualized_rate']
+
+    # Calculate percentages
     total_amount = sum(f['total_amount'] for f in facility_totals.values())
 
     overview = []
@@ -94,7 +110,7 @@ def get_facility_overview_data(summary_data: List[Dict], resource_name: str) -> 
         overview.append({
             'facility': facility,
             'total_amount': data['total_amount'],
-            'annualized_rate': data['total_amount'],  # Simplified: assume 1-year allocations
+            'annualized_rate': data['annualized_rate'],
             'count': data['count'],
             'percent': percent
         })
@@ -147,7 +163,7 @@ def index():
     # For each resource, generate facility overview data and pie chart
     resource_overviews = {}
     for resource_name in grouped_data.keys():
-        overview_data = get_facility_overview_data(summary_data, resource_name)
+        overview_data = get_facility_overview_data(db.session, resource_name, active_at)
         pie_chart = generate_facility_pie_chart_matplotlib(overview_data)
         resource_overviews[resource_name] = {
             'table_data': overview_data,
