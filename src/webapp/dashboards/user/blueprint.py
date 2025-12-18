@@ -384,6 +384,33 @@ def project_card(projcode):
     )
 
 
+@bp.route('/project-details-modal/<projcode>')
+@login_required
+@require_permission(Permission.VIEW_PROJECTS)
+def project_details_modal(projcode):
+    """
+    Get HTML fragment for project details modal content (reusable across dashboards).
+
+    Returns:
+        HTML fragment with project info and resources for modal body
+    """
+    # Validate project exists
+    project = find_project_by_code(db.session, projcode)
+    if not project:
+        return '<p class="alert alert-danger">Project not found</p>'
+
+    # Get full project data
+    project_data = get_project_dashboard_data(db.session, projcode)
+
+    return render_template(
+        'dashboards/user/partials/project_details_modal.html',
+        project_data=project_data,
+        user=current_user,
+        usage_warning_threshold=USAGE_WARNING_THRESHOLD,
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
+    )
+
+
 # ============================================================================
 # Expirations Panel (Admin Tab)
 # ============================================================================

@@ -15,7 +15,13 @@
     <tbody>
         {% for project in projects %}
         <tr>
-            <td><strong>{{ project['projcode'] }}</strong></td>
+            <td>
+                <button class="btn btn-link p-0 view-project-details-btn"
+                        data-projcode="{{ project['projcode'] }}"
+                        title="View project details">
+                    <strong>{{ project['projcode'] }}</strong>
+                </button>
+            </td>
             <td>{{ project['title'] if project['title'] else 'N/A' }}</td>
             <td>{{ "{:,.0f}".format(project['total_amount']) }}</td>
             <td>

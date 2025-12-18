@@ -1,0 +1,18 @@
+{# Import content macros from user dashboard #}
+{% from 'dashboards/user/partials/project_card.html' import render_project_info, render_project_resources %}
+
+{# Render project details using reusable macros #}
+<div class="project-details-modal-content">
+    {% if project_data %}
+        {% set project = project_data.project %}
+        {% set resources = project_data.resources %}
+
+        {# Render project info section #}
+        {{ render_project_info(project) }}
+
+        {# Render resources table (without clickable rows since we're in allocations dashboard) #}
+        {{ render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, show_clickable_rows=false) }}
+    {% else %}
+        <p class="alert alert-warning">No project data available</p>
+    {% endif %}
+</div>
