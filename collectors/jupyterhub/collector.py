@@ -14,14 +14,16 @@ from pathlib import Path
 # Ensure the 'lib' directory is in the path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# Add webapp to path for JupyterHub API client
-webapp_path = Path(__file__).resolve().parent.parent.parent / 'src'
-sys.path.insert(0, str(webapp_path))
-
 from lib.base_collector import BaseCollector, main_runner
 from lib.parsers.jupyterhub_nodes import JupyterHubNodeParser
 from lib.exceptions import SSHError
-from webapp.clients.jupyterhub import JupyterHubClient, JupyterHubAPIError
+
+# Import requests for API calls
+import requests
+import urllib3
+
+# Disable SSL warnings for JupyterHub API
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class JupyterHubCollector(BaseCollector):
@@ -30,17 +32,127 @@ class JupyterHubCollector(BaseCollector):
     def __init__(self, system_name, dry_run=False, json_only=False):
         super().__init__(system_name, dry_run, json_only)
 
-        # Initialize JupyterHub API client
-        base_url = os.getenv('JUPYTERHUB_API_URL', 'https://jupyterhub.hpc.ucar.edu')
-        instance = os.getenv('JUPYTERHUB_INSTANCE', 'stable')
-        cache_ttl = int(os.getenv('JUPYTERHUB_CACHE_TTL', '0'))  # No cache for collector
+        # JupyterHub API configuration
+        self.base_url = os.getenv('JUPYTERHUB_API_URL', 'https://jupyterhub.hpc.ucar.edu')
+        self.instance = os.getenv('JUPYTERHUB_INSTANCE', 'stable')
+        self.timeout = 30
 
-        self.jupyterhub_client = JupyterHubClient(
-            base_url=base_url,
-            instance=instance,
-            cache_ttl=cache_ttl
+        self.logger.info(f"Initialized JupyterHub collector for {self.instance} instance")
+
+    def _resolve_api_token(self) -> str:
+        """
+        Resolve JupyterHub API token from environment or file.
+
+        Priority:
+        1. JUPYTERHUB_API_TOKEN environment variable
+        2. Token file: /ncar/usr/jupyterhub.hpc.ucar.edu/.{instance}_metrics_api_token
+
+        Returns:
+            API token string
+
+        Raises:
+            RuntimeError: If no token found
+        """
+        # Priority 1: Environment variable
+        if token := os.getenv('JUPYTERHUB_API_TOKEN'):
+            self.logger.debug("Using API token from environment variable")
+            return token
+
+        # Priority 2: Token file
+        token_file = Path(f'/ncar/usr/jupyterhub.hpc.ucar.edu/.{self.instance}_metrics_api_token')
+        if token_file.exists():
+            try:
+                token = token_file.read_text().strip()
+                if token:
+                    self.logger.debug(f"Using API token from file: {token_file}")
+                    return token
+            except (IOError, OSError) as e:
+                self.logger.warning(f"Failed to read token file {token_file}: {e}")
+
+        raise RuntimeError(
+            f"No API token found. Set JUPYTERHUB_API_TOKEN environment variable "
+            f"or provide token file at {token_file}"
         )
-        self.logger.info(f"Initialized JupyterHub API client for {instance} instance")
+
+    def _calculate_statistics(self, users: list) -> dict:
+        """
+        Calculate statistics from JupyterHub API users response.
+
+        Parses /hub/api/users?state=active response to calculate:
+        - active_users: Count of unique usernames
+        - active_sessions: Total count of server sessions
+        - casper_login_jobs: Sessions with resource='cr-login'
+        - casper_batch_jobs: Sessions with resource='cr-batch'
+        - derecho_batch_jobs: Sessions with resource='de-batch'
+        - broken_jobs: Sessions missing required state fields
+
+        Args:
+            users: List of user dicts from JupyterHub API
+
+        Returns:
+            Dict with calculated statistics
+        """
+        unique_users = set()
+        job_counts = {
+            'casper_login': 0,
+            'casper_batch': 0,
+            'derecho_batch': 0,
+            'broken': 0
+        }
+        total_sessions = 0
+
+        # Parse each user from API response
+        for user in users:
+            username = user.get('name')
+            if username:
+                unique_users.add(username)
+
+            # Each user can have multiple servers
+            servers = user.get('servers', {})
+            for server_name, server in servers.items():
+                total_sessions += 1
+
+                # Get resource type from server state
+                try:
+                    resource = server['state']['resource']
+                except (KeyError, TypeError):
+                    self.logger.warning(
+                        f"Missing resource for user {username}, server {server_name}"
+                    )
+                    job_counts['broken'] += 1
+                    continue
+
+                # Classify by resource type
+                if resource == 'cr-login':
+                    job_counts['casper_login'] += 1
+                elif resource == 'cr-batch':
+                    job_counts['casper_batch'] += 1
+                elif resource == 'de-batch':
+                    job_counts['derecho_batch'] += 1
+
+                # Detect broken jobs (missing required fields in child_state)
+                try:
+                    child_state = server['state'].get('child_state', {})
+                except (KeyError, TypeError, AttributeError):
+                    child_state = {}
+
+                if resource in ('cr-login', 'cr-batch', 'de-batch'):
+                    # PBS jobs require job_id
+                    if 'job_id' not in child_state:
+                        job_counts['broken'] += 1
+                else:
+                    # Other jobs require remote_ip and pid
+                    if 'remote_ip' not in child_state or 'pid' not in child_state:
+                        job_counts['broken'] += 1
+
+        return {
+            'active_users': len(unique_users),
+            'active_sessions': total_sessions,
+            'casper_login_jobs': job_counts['casper_login'],
+            'casper_batch_jobs': job_counts['casper_batch'],
+            'derecho_batch_jobs': job_counts['derecho_batch'],
+            'broken_jobs': job_counts['broken']
+        }
 
     def _run_ssh_command(self, command: str, timeout: int = 30) -> str:
         """
@@ -155,17 +267,44 @@ class JupyterHubCollector(BaseCollector):
         """
         Collect JupyterHub job metrics using the JupyterHub Hub API.
 
-        Uses the JupyterHub API to get real-time statistics about active sessions.
+        Makes a direct API call to /hub/api/users?state=active to get real-time
+        statistics about active sessions.
+
         Extracts: active_sessions, active_users, casper_login_jobs, casper_batch_jobs,
                   derecho_batch_jobs, broken_jobs.
         """
         try:
             self.logger.info("Collecting job data from JupyterHub API...")
 
-            # Get statistics from JupyterHub API (no caching for collector)
-            stats = self.jupyterhub_client.get_statistics(use_cache=False)
+            # Resolve API token
+            api_token = self._resolve_api_token()
 
-            # Map API response to data dict
+            # Make API call
+            url = f'{self.base_url}/{self.instance}/hub/api/users?state=active'
+            self.logger.debug(f"Making request to: {url}")
+
+            response = requests.get(
+                url,
+                headers={'Authorization': f'token {api_token}'},
+                verify=False,  # Matches existing behavior
+                timeout=self.timeout
+            )
+
+            # Handle HTTP errors
+            if response.status_code == 401:
+                raise RuntimeError("Invalid API token (401 Unauthorized)")
+            elif response.status_code == 403:
+                raise RuntimeError("Access forbidden (403 Forbidden)")
+            elif response.status_code >= 400:
+                raise RuntimeError(f"API error: {response.status_code} - {response.text}")
+
+            # Parse response
+            users = response.json()
+
+            # Calculate statistics
+            stats = self._calculate_statistics(users)
+
+            # Map stats to data dict
             data['active_sessions'] = stats['active_sessions']
             data['active_users'] = stats['active_users']
             data['casper_login_jobs'] = stats['casper_login_jobs']
@@ -180,7 +319,7 @@ class JupyterHubCollector(BaseCollector):
             self.logger.info(f"  Derecho batch jobs: {data['derecho_batch_jobs']}")
             self.logger.info(f"  Broken jobs: {data['jobs_suspended']}")
 
-        except JupyterHubAPIError as e:
+        except requests.exceptions.RequestException as e:
             self.logger.error(f"Failed to collect job data from API: {e}", exc_info=True)
             data.update({
                 'active_sessions': 0,
