@@ -1,5 +1,5 @@
 /**
- * Impersonation Functions
+ * Impersonation Functions for Admin Dashboard
  * Handles searching for a user to impersonate.
  */
 $(document).ready(function() {

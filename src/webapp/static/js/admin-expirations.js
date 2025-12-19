@@ -1,5 +1,5 @@
 /**
- * Expirations panel functionality for admin tab
+ * Expirations panel functionality for admin dashboard
  */
 
 (function() {
@@ -13,7 +13,7 @@
     function initExpirations() {
         const expirationsSection = document.getElementById('expirations-section');
         if (!expirationsSection) {
-            return; // Not on admin tab
+            return; // Not on admin dashboard
         }
 
         // Load upcoming data immediately when section is shown
@@ -91,8 +91,8 @@
             }
         }
 
-        // Fetch data
-        fetch(`/user/admin/expirations?${params.toString()}`)
+        // Fetch data from admin dashboard endpoint
+        fetch(`/admin-dashboard/expirations?${params.toString()}`)
             .then(response => response.text())
             .then(html => {
                 container.innerHTML = html;
@@ -147,8 +147,8 @@
             }
         }
 
-        // Open in new window (downloads file)
-        window.open(`/user/admin/expirations/export?${params.toString()}`, '_blank');
+        // Open in new window (downloads file) from admin dashboard endpoint
+        window.open(`/admin-dashboard/expirations/export?${params.toString()}`, '_blank');
     }
 
     /**
@@ -233,8 +233,8 @@
         // Scroll to the container
         container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-        // Fetch project card
-        fetch(`/user/project-card/${projcode}`)
+        // Fetch project card from admin dashboard endpoint
+        fetch(`/admin-dashboard/project/${projcode}`)
             .then(response => response.text())
             .then(html => {
                 container.innerHTML = html;

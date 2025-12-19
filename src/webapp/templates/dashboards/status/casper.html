@@ -37,7 +37,12 @@
         <div class="row mb-4">
             <div class="col-md-4">
                 <div class="metric-card">
-                    <h6>CPU Nodes</h6>
+                    <h6>
+                        <a href="{{ url_for('status_dashboard.partition_history', system='casper', partition='cpu') }}"
+                           class="text-dark text-decoration-none">
+                            <i class="fas fa-microchip"></i> CPU Nodes <i class="fas fa-chart-line ms-1"></i>
+                        </a>
+                    </h6>
                     <div class="value">{{ casper_status.cpu_nodes_available }} / {{ casper_status.cpu_nodes_total }} Available</div>
                     {% if casper_status.cpu_nodes_down > 0 %}
                     <div class="text-danger mt-2">{{ casper_status.cpu_nodes_down }} nodes down</div>
@@ -49,7 +54,12 @@
             </div>
             <div class="col-md-4">
                 <div class="metric-card">
-                    <h6>GPU Nodes</h6>
+                    <h6>
+                        <a href="{{ url_for('status_dashboard.partition_history', system='casper', partition='gpu') }}"
+                           class="text-dark text-decoration-none">
+                            <i class="fas fa-server"></i> GPU Nodes <i class="fas fa-chart-line ms-1"></i>
+                        </a>
+                    </h6>
                     <div class="value">{{ casper_status.gpu_nodes_available }} / {{ casper_status.gpu_nodes_total }} Available</div>
                     {% if casper_status.gpu_nodes_down > 0 %}
                     <div class="text-danger mt-2">{{ casper_status.gpu_nodes_down }} nodes down</div>
@@ -61,7 +71,12 @@
             </div>
             <div class="col-md-4">
                 <div class="metric-card">
-                    <h6>VIZ Nodes</h6>
+                    <h6>
+                        <a href="{{ url_for('status_dashboard.partition_history', system='casper', partition='viz') }}"
+                           class="text-dark text-decoration-none">
+                            <i class="fas fa-desktop"></i> VIZ Nodes <i class="fas fa-chart-line ms-1"></i>
+                        </a>
+                    </h6>
                     <div class="value">{{ casper_status.viz_nodes_available }} / {{ casper_status.viz_nodes_total }} Available</div>
                     {% if casper_status.viz_nodes_down > 0 %}
                     <div class="text-danger mt-2">{{ casper_status.viz_nodes_down }} nodes down</div>

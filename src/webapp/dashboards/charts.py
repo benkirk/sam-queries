@@ -119,6 +119,7 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict], node_type: st
                   colors=['C3', 'C0', 'C9'])
 
     ax1.set_ylabel('Number of Nodes', fontsize=11)
+    ax1.set_ylim([0,None])
     ax1.set_title(f'{node_type} - Node Availability Over Time', fontsize=13, fontweight='bold')
     ax1.legend(loc=2, fontsize=10)
     ax1.grid(True, alpha=0.3,color='grey')
@@ -191,6 +192,7 @@ def generate_queue_history_matplotlib(history_data: List[Dict], queue_name: str,
     ax1.plot(timestamps, held_jobs, 'r-', linewidth=2, label='Held', marker='o', markersize=3)
     ax1.plot(timestamps, active_users, 'b--', linewidth=1.5, label='Active Users', marker='s', markersize=2)
 
+    ax1.set_ylim([0,None])
     ax1.set_ylabel('Count', fontsize=11)
     ax1.set_title(f'{system_name.upper()} - {queue_name} Queue Activity', fontsize=13, fontweight='bold')
     ax1.legend(loc=2, fontsize=10)
@@ -205,6 +207,7 @@ def generate_queue_history_matplotlib(history_data: List[Dict], queue_name: str,
         ax2.plot(timestamps, cores_allocated, 'b', linewidth=3, label='Cores Running')
         ax2.plot(timestamps, cores_pending, 'c', linewidth=3, label='Cores Pending')
 
+    ax2.set_ylim([0,None])
     ax2.set_ylabel('Resources', fontsize=11)
     ax2.set_xlabel('Time', fontsize=11)
     ax2.legend(loc=2, fontsize=10)

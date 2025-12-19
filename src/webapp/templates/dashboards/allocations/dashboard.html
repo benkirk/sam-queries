@@ -88,6 +88,16 @@
                         </tr>
                         {% endfor %}
                     </tbody>
+                    {% if overview.table_data|length > 1 %}
+                    <tfoot class="table-secondary">
+                        <tr>
+                            <th>Total</th>
+                            <th>{{ "{:,.0f}".format(overview.table_data|sum(attribute='annualized_rate')) }}</th>
+                            <th>{{ overview.table_data|sum(attribute='count') }}</th>
+                            <th>100%</th>
+                        </tr>
+                    </tfoot>
+                    {% endif %}
                 </table>
             </div>
 
@@ -166,6 +176,19 @@
                                     </tr>
                                     {% endfor %}
                                 </tbody>
+                                {% if types|length > 1 %}
+                                <tfoot class="table-secondary">
+                                    {% set total_allocated = types|sum(attribute='total_amount') %}
+                                    {% set total_count = types|sum(attribute='count') %}
+                                    <tr>
+                                        <th></th>
+                                        <th>Total</th>
+                                        <th>{{ "{:,.0f}".format(total_allocated) }}</th>
+                                        <th>{{ total_count }}</th>
+                                        <th>{{ "{:,.0f}".format(total_allocated / total_count if total_count > 0 else 0) }}</th>
+                                    </tr>
+                                </tfoot>
+                                {% endif %}
                             </table>
                         </div>
                     </div>

@@ -1,7 +1,12 @@
-{% macro node_status_table(status) %}
+{% macro node_status_table(status, system_name='derecho') %}
 <div class="row mb-4">
     <div class="col-md-6">
-        <h6 class="text-primary">CPU Partition</h6>
+        <h6 class="text-primary">
+            <a href="{{ url_for('status_dashboard.partition_history', system=system_name, partition='cpu') }}"
+               class="text-primary text-decoration-none">
+                <i class="fas fa-microchip"></i> CPU Partition <i class="fas fa-chart-line ms-1"></i>
+            </a>
+        </h6>
         <table class="table table-sm">
             <tr><td>Total Nodes:</td><td><strong>{{ status.cpu_nodes_total }}</strong></td></tr>
             <tr><td>Available:</td><td class="text-success"><strong>{{ status.cpu_nodes_available }}</strong></td></tr>
@@ -12,7 +17,12 @@
         </table>
     </div>
     <div class="col-md-6">
-        <h6 class="text-primary">GPU Partition</h6>
+        <h6 class="text-primary">
+            <a href="{{ url_for('status_dashboard.partition_history', system=system_name, partition='gpu') }}"
+               class="text-primary text-decoration-none">
+                <i class="fas fa-server"></i> GPU Partition <i class="fas fa-chart-line ms-1"></i>
+            </a>
+        </h6>
         <table class="table table-sm">
             <tr><td>Total Nodes:</td><td><strong>{{ status.gpu_nodes_total }}</strong></td></tr>
             <tr><td>Available:</td><td class="text-success"><strong>{{ status.gpu_nodes_available }}</strong></td></tr>

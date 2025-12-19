@@ -106,12 +106,12 @@ def get_facility_overview_data(session, resource_name: str, active_at: datetime)
         if alloc.get('annualized_rate') is not None:
             facility_totals[facility]['annualized_rate'] += alloc['annualized_rate']
 
-    # Calculate percentages
-    total_amount = sum(f['total_amount'] for f in facility_totals.values())
+    # Calculate percentages based on annualized rate
+    total_annualized_rate = sum(f['annualized_rate'] for f in facility_totals.values())
 
     overview = []
     for facility, data in facility_totals.items():
-        percent = (data['total_amount'] / total_amount * 100) if total_amount > 0 else 0
+        percent = (data['annualized_rate'] / total_annualized_rate * 100) if total_annualized_rate > 0 else 0
         overview.append({
             'facility': facility,
             'total_amount': data['total_amount'],
@@ -120,8 +120,8 @@ def get_facility_overview_data(session, resource_name: str, active_at: datetime)
             'percent': percent
         })
 
-    # Sort by amount descending
-    overview.sort(key=lambda x: x['total_amount'], reverse=True)
+    # Sort by annualized rate descending
+    overview.sort(key=lambda x: x['annualized_rate'], reverse=True)
 
     return overview
 

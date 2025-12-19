@@ -93,10 +93,10 @@ def index():
 @login_required
 def nodetype_history(system, node_type):
     """
-    Display historical trends for a specific node type.
+    Display historical trends for a specific node type (Casper only).
 
     Args:
-        system: System name (casper, derecho)
+        system: System name (casper)
         node_type: Node type name (e.g., 'gpu-a100', 'standard')
     """
     # Get date range from query params (default: last 7 days)
@@ -131,6 +131,76 @@ def nodetype_history(system, node_type):
             user=current_user,
             system=system,
             node_type=node_type,
+            latest_status=latest_status,
+            history_data=history_data,
+            chart_svg=chart_svg,
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    finally:
+        session.close()
+
+
+@bp.route('/partition-history/<system>/<partition>')
+@login_required
+def partition_history(system, partition):
+    """
+    Display historical trends for a specific system partition (CPU, GPU, or VIZ).
+
+    Args:
+        system: System name (derecho, casper)
+        partition: Partition name ('cpu', 'gpu', or 'viz')
+    """
+    # Get date range from query params (default: last 7 days)
+    days = int(request.args.get('days', 7))
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+
+    engine, SessionLocal = create_status_engine()
+    session = SessionLocal(expire_on_commit=False)
+
+    try:
+        # Validate system
+        if system.lower() not in ['derecho', 'casper']:
+            flash(f'Unknown system: {system}', 'warning')
+            return redirect(url_for('status_dashboard.index'))
+
+        # Validate partition
+        partition_lower = partition.lower()
+        if partition_lower not in ['cpu', 'gpu', 'viz']:
+            flash(f'Unknown partition: {partition}', 'warning')
+            return redirect(url_for('status_dashboard.index'))
+
+        # VIZ is only valid for Casper
+        if partition_lower == 'viz' and system.lower() != 'casper':
+            flash(f'VIZ partition is only available for Casper', 'warning')
+            return redirect(url_for('status_dashboard.index'))
+
+        # Query partition history using generic function
+        history_data = status_queries.get_system_partition_history(
+            session, system, partition, start_date, end_date
+        )
+
+        # Get latest status using generic function
+        latest_status = status_queries.get_latest_system_partition_status(
+            session, system, partition
+        )
+
+        # Format partition name for display
+        partition_display = f"{partition.upper()} Partition"
+
+        # Generate chart
+        chart_svg = generate_nodetype_history_matplotlib(history_data, partition_display)
+
+        return render_template(
+            'dashboards/status/nodetype_history.html',
+            user=current_user,
+            system=system,
+            node_type=partition_display,
+            partition=partition,
+            is_partition=True,
             latest_status=latest_status,
             history_data=history_data,
             chart_svg=chart_svg,
