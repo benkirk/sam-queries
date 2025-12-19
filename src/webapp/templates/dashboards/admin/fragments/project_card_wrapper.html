@@ -1,0 +1,10 @@
+{% from 'dashboards/user/partials/project_card.html' import render_project_card with context %}
+
+{{ render_project_card(
+    project_data,
+    0,
+    user,
+    usage_warning_threshold,
+    usage_critical_threshold,
+    is_expanded=true
+) }}

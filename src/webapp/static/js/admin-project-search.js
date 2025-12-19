@@ -1,5 +1,5 @@
 /**
- * Project Search functionality for Admin tab
+ * Project Search functionality for Admin Dashboard
  *
  * Provides autocomplete search for projects and displays results using project cards.
  */
@@ -204,8 +204,8 @@
             </div>
         `;
 
-        // Fetch project card HTML
-        fetch(`/user/project-card/${encodeURIComponent(projcode)}`)
+        // Fetch project card HTML from admin dashboard endpoint
+        fetch(`/admin-dashboard/project/${encodeURIComponent(projcode)}`)
             .then(response => response.text())
             .then(html => {
                 projectCardContainer.innerHTML = html;

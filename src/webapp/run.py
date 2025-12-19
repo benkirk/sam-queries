@@ -11,6 +11,7 @@ from webapp.extensions import db
 from webapp.admin import admin_bp, init_admin
 from webapp.auth import bp as auth_bp
 from webapp.dashboards.user import bp as user_dashboard_bp
+from webapp.dashboards.admin import bp as admin_dashboard_bp
 from webapp.dashboards.status import bp as status_dashboard_bp
 from webapp.dashboards.allocations import bp as allocations_dashboard_bp
 from webapp.auth.models import AuthUser
@@ -114,6 +115,7 @@ def create_app():
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(user_dashboard_bp)
+    app.register_blueprint(admin_dashboard_bp)
     app.register_blueprint(status_dashboard_bp)
     app.register_blueprint(allocations_dashboard_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
@@ -137,7 +139,7 @@ def create_app():
         if current_user.is_authenticated:
             # Redirect admin users to admin dashboard, regular users to user dashboard
             if 'admin' in current_user.roles:
-                return redirect(url_for('admin.index'))
+                return redirect(url_for('admin_dashboard.index'))
             else:
                 return redirect(url_for('user_dashboard.index'))
         return redirect(url_for('auth.login'))

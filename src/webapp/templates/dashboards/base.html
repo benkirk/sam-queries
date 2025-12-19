@@ -39,6 +39,13 @@
                         </a>
                     </li>
                     {% endif %}
+                    {% if has_permission('impersonate_users') %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_dashboard.index') }}">
+                            <i class="fas fa-user-shield"></i> Admin
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
                 <ul class="navbar-nav ml-auto">
                     <li class="nav-item dropdown">
@@ -73,7 +80,7 @@
         <div class="container d-flex justify-content-center align-items-center">
             <i class="fas fa-user-secret mr-2"></i>
             <strong>You are currently impersonating {{ user.display_name }} ({{ user.username }}).</strong>
-            <a href="{{ url_for('user_dashboard.stop_impersonating') }}" class="btn btn-sm btn-outline-dark ml-3">
+            <a href="{{ url_for('admin_dashboard.stop_impersonating') }}" class="btn btn-sm btn-outline-dark ml-3">
                 <i class="fas fa-times"></i> Stop Impersonating
             </a>
         </div>

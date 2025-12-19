@@ -1,3 +1,15 @@
+{% extends 'dashboards/base.html' %}
+
+{% block title %}Admin Dashboard - SAM{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2><i class="fas fa-user-shield"></i> Admin Dashboard</h2>
+        <p class="text-muted">Administrative tools for managing users and projects</p>
+    </div>
+</div>
+
 <div class="row">
     <!-- Impersonate User Section -->
     <div class="col-md-6">
@@ -6,7 +18,7 @@
                 <h5><i class="fas fa-user-secret"></i> Impersonate User</h5>
             </div>
             <div class="card-body">
-                <form id="impersonateUserForm" method="POST" action="{{ url_for('user_dashboard.impersonate') }}">
+                <form id="impersonateUserForm" method="POST" action="{{ url_for('admin_dashboard.impersonate') }}">
                     <div class="form-group">
                         <label for="userSearchImpersonate">Search for a user to impersonate</label>
                         <input type="text" class="form-control" id="userSearchImpersonate" placeholder="Start typing a username, first, or last name..." autocomplete="off">
@@ -88,8 +100,8 @@
                                 <div class="form-group">
                                     <div class="form-check">
                                         <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-csl" name="facilities" value="ASD">
-                                        <label class="form-check-label" for="fac-csl">ASD</label>
+                                               id="fac-asd" name="facilities" value="ASD">
+                                        <label class="form-check-label" for="fac-asd">ASD</label>
                                     </div>
                                     <div class="form-check">
                                         <input type="checkbox" class="form-check-input facility-filter"
@@ -98,13 +110,13 @@
                                     </div>
                                     <div class="form-check">
                                         <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-csl" name="facilities" value="CISL">
-                                        <label class="form-check-label" for="fac-csl">CISL</label>
+                                               id="fac-cisl" name="facilities" value="CISL">
+                                        <label class="form-check-label" for="fac-cisl">CISL</label>
                                     </div>
                                     <div class="form-check">
                                         <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-csl" name="facilities" value="NCAR">
-                                        <label class="form-check-label" for="fac-csl">NCAR</label>
+                                               id="fac-ncar" name="facilities" value="NCAR">
+                                        <label class="form-check-label" for="fac-ncar">NCAR</label>
                                     </div>
                                     <div class="form-check">
                                         <input type="checkbox" class="form-check-input facility-filter"
@@ -118,8 +130,8 @@
                                     </div>
                                     <div class="form-check">
                                         <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-csl" name="facilities" value="XSEDE">
-                                        <label class="form-check-label" for="fac-csl">XSEDE</label>
+                                               id="fac-xsede" name="facilities" value="XSEDE">
+                                        <label class="form-check-label" for="fac-xsede">XSEDE</label>
                                     </div>
                                 </div>
                             </div>
@@ -210,3 +222,34 @@
         </div>
     </div>
 </div>
+
+<!-- Project Details Modal (reused from user dashboard) -->
+<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog"
+     data-url-template="{{ url_for('user_dashboard.project_details_modal', projcode='__PROJCODE__') }}">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Project Details</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="projectDetailsModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/admin-impersonation.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin-project-search.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin-expirations.js') }}"></script>
+<script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
+{% endblock %}
