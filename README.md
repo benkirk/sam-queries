@@ -402,9 +402,9 @@ sam-queries/
 │   └── webapp/                   # Flask web application
 │       ├── run.py               # Development server
 │       ├── auth/                # Authentication
-│       ├── admin/               # Flask-Admin interface (CRUD operations)
+│       ├── admin/               # Flask-Admin database interface (/database/)
 │       ├── dashboards/          # Dashboard blueprints
-│       │   ├── admin/           # Admin dashboard (impersonation, expirations)
+│       │   ├── admin/           # Admin dashboard (/admin/ - impersonation, expirations)
 │       │   ├── user/            # User dashboard (projects, allocations)
 │       │   ├── status/          # System status dashboard
 │       │   └── allocations/     # Allocations overview dashboard

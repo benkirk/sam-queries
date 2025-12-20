@@ -118,7 +118,7 @@ def create_app():
     app.register_blueprint(admin_dashboard_bp)
     app.register_blueprint(status_dashboard_bp)
     app.register_blueprint(allocations_dashboard_bp)
-    app.register_blueprint(admin_bp, url_prefix='/admin')
+    app.register_blueprint(admin_bp, url_prefix='/database')
 
     # Register API blueprints
     app.register_blueprint(api_projects_bp, url_prefix='/api/v1/projects')

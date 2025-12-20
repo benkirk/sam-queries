@@ -205,7 +205,7 @@
         `;
 
         // Fetch project card HTML from admin dashboard endpoint
-        fetch(`/admin-dashboard/project/${encodeURIComponent(projcode)}`)
+        fetch(`/admin/project/${encodeURIComponent(projcode)}`)
             .then(response => response.text())
             .then(html => {
                 projectCardContainer.innerHTML = html;

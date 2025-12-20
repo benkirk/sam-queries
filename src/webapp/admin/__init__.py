@@ -35,7 +35,7 @@ def init_admin(app):
         name='SAM Database',
         theme=Bootstrap4Theme(swatch="lumen", fluid=True),
         index_view=MyAdminIndexView(),
-        url='/admin'
+        url='/database'
     )
 
     # Use db.session for all ModelViews - Flask-Admin will handle per-request session management

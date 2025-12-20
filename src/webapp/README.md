@@ -236,22 +236,22 @@ app.config['LDAP_BASE_DN'] = 'ou=users,dc=example,dc=org'
 
 ## Main Features
 
-### Dashboard
+### Database Admin Interface
 
-The main dashboard shows:
+The Flask-Admin database interface provides direct access to database models:
 - Active user count
 - Active project count
 - Active resource count
 - Upcoming expirations (next 30 days)
 - Recently expired projects (last 90 days)
 
-Access: `http://localhost:5050/admin/`
+Access: `http://localhost:5050/database/`
 
 ### User Management
 
 View, search, and manage SAM users.
 
-Access: `http://localhost:5050/admin/users/`
+Access: `http://localhost:5050/database/users/`
 
 Permissions required: `VIEW_USERS` (view), `EDIT_USERS` (edit), `CREATE_USERS` (create)
 
@@ -259,7 +259,7 @@ Permissions required: `VIEW_USERS` (view), `EDIT_USERS` (edit), `CREATE_USERS` (
 
 View, search, and manage SAM projects.
 
-Access: `http://localhost:5050/admin/projects/`
+Access: `http://localhost:5050/database/projects/`
 
 Permissions required: `VIEW_PROJECTS` (view), `EDIT_PROJECTS` (edit)
 
@@ -267,7 +267,7 @@ Permissions required: `VIEW_PROJECTS` (view), `EDIT_PROJECTS` (edit)
 
 View and manage resource allocations.
 
-Access: `http://localhost:5050/admin/allocations/`
+Access: `http://localhost:5050/database/allocations/`
 
 Permissions required: `VIEW_ALLOCATIONS` (view), `EDIT_ALLOCATIONS` (edit)
 
@@ -283,7 +283,7 @@ Features:
 - CSV export
 - Direct links to projects and users
 
-Access: `http://localhost:5050/admin/expirations/`
+Access: `http://localhost:5050/admin/` (Admin Dashboard)
 
 ## REST API
 
