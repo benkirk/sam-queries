@@ -73,9 +73,12 @@
         params.append('view', view);
 
         // Facilities
-        $('.facility-filter:checked').each(function() {
-            params.append('facilities', this.value);
-        });
+        const selectedFacilities = $('#facilities-filter').val(); // Returns array
+        if (selectedFacilities && selectedFacilities.length > 0) {
+            selectedFacilities.forEach(function(fac) {
+                params.append('facilities', fac);
+            });
+        }
 
         // Resource
         const resource = $('#resource-filter').val();
@@ -131,9 +134,12 @@
         params.append('export_type', currentView);
 
         // Add filters
-        $('.facility-filter:checked').each(function() {
-            params.append('facilities', this.value);
-        });
+        const selectedFacilities = $('#facilities-filter').val();
+        if (selectedFacilities && selectedFacilities.length > 0) {
+            selectedFacilities.forEach(function(fac) {
+                params.append('facilities', fac);
+            });
+        }
 
         const resource = $('#resource-filter').val();
         if (resource) {
