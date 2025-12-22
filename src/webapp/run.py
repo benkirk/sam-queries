@@ -21,6 +21,7 @@ from webapp.api.v1.projects import bp as api_projects_bp
 from webapp.api.v1.users import bp as api_users_bp
 from webapp.api.v1.charges import bp as api_charges_bp
 from webapp.api.v1.status import bp as api_status_bp
+from webapp.api.v1.allocations import bp as api_allocations_bp
 
 
 def create_app():
@@ -125,6 +126,7 @@ def create_app():
     app.register_blueprint(api_users_bp, url_prefix='/api/v1/users')
     app.register_blueprint(api_charges_bp, url_prefix='/api/v1')
     app.register_blueprint(api_status_bp, url_prefix='/api/v1/status')
+    app.register_blueprint(api_allocations_bp, url_prefix='/api/v1/allocations')
 
     # Initialize Flask-Admin
     init_admin(app)

@@ -15,6 +15,11 @@ from sqlalchemy import select
 from sam.accounting.accounts import Account, AccountUser
 from sam.projects.projects import Project
 from .transaction import management_transaction
+from .allocations import (
+    validate_allocation_dates,
+    log_allocation_transaction,
+    update_allocation
+)
 
 
 __all__ = [
@@ -22,6 +27,9 @@ __all__ = [
     'remove_user_from_project',
     'change_project_admin',
     'management_transaction',
+    'validate_allocation_dates',
+    'log_allocation_transaction',
+    'update_allocation',
 ]
 
 

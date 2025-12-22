@@ -96,6 +96,28 @@ def can_view_project_members(user, project) -> bool:
     return True
 
 
+def can_edit_allocations(user, project) -> bool:
+    """
+    Check if user can edit allocations for a project.
+
+    Authorization is granted if:
+    - User has system-wide EDIT_ALLOCATIONS permission (admin, facility_manager)
+
+    Note: This is intentionally restricted to system administrators only.
+    Project leads/admins do NOT have allocation edit permissions by default,
+    as this is a sensitive operation requiring central oversight.
+
+    Args:
+        user: AuthUser object (Flask-Login current_user)
+        project: Project ORM object
+
+    Returns:
+        True if user can edit allocations, False otherwise
+    """
+    # System-wide permission (admin, facility_manager)
+    return has_permission(user, Permission.EDIT_ALLOCATIONS)
+
+
 def get_user_role_in_project(user_id: int, project) -> str:
     """
     Get the role of a user in a project.
