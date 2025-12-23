@@ -73,9 +73,12 @@
         params.append('view', view);
 
         // Facilities
-        $('.facility-filter:checked').each(function() {
-            params.append('facilities', this.value);
-        });
+        const selectedFacilities = $('#facilities-filter').val(); // Returns array
+        if (selectedFacilities && selectedFacilities.length > 0) {
+            selectedFacilities.forEach(function(fac) {
+                params.append('facilities', fac);
+            });
+        }
 
         // Resource
         const resource = $('#resource-filter').val();
@@ -92,7 +95,7 @@
         }
 
         // Fetch data from admin dashboard endpoint
-        fetch(`/admin-dashboard/expirations?${params.toString()}`)
+        fetch(`/admin/expirations?${params.toString()}`)
             .then(response => response.text())
             .then(html => {
                 container.innerHTML = html;
@@ -131,9 +134,12 @@
         params.append('export_type', currentView);
 
         // Add filters
-        $('.facility-filter:checked').each(function() {
-            params.append('facilities', this.value);
-        });
+        const selectedFacilities = $('#facilities-filter').val();
+        if (selectedFacilities && selectedFacilities.length > 0) {
+            selectedFacilities.forEach(function(fac) {
+                params.append('facilities', fac);
+            });
+        }
 
         const resource = $('#resource-filter').val();
         if (resource) {
@@ -148,7 +154,7 @@
         }
 
         // Open in new window (downloads file) from admin dashboard endpoint
-        window.open(`/admin-dashboard/expirations/export?${params.toString()}`, '_blank');
+        window.open(`/admin/expirations/export?${params.toString()}`, '_blank');
     }
 
     /**
@@ -234,7 +240,7 @@
         container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
         // Fetch project card from admin dashboard endpoint
-        fetch(`/admin-dashboard/project/${projcode}`)
+        fetch(`/admin/project/${projcode}`)
             .then(response => response.text())
             .then(html => {
                 container.innerHTML = html;

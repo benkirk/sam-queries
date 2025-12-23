@@ -62,6 +62,9 @@
                         <th>Used</th>
                         <th>Remaining</th>
                         <th class="table-col-usage">Usage</th>
+                        {% if has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) %}
+                        <th class="text-center" style="width: 80px;">Actions</th>
+                        {% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -94,6 +97,19 @@
                                 </div>
                             </div>
                         </td>
+                        {% if has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) and summary.allocation_id %}
+                        <td class="text-center">
+                            <button class="btn btn-xs btn-outline-primary"
+                                    onclick="showEditAllocationModal('{{ projcode }}', {{ summary.allocation_id }}, '{{ resource_name }}');"
+                                    title="Edit allocation">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                        </td>
+                        {% elif has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) %}
+                        <td class="text-center text-muted">
+                            <small>No allocation</small>
+                        </td>
+                        {% endif %}
                     </tr>
                 </tbody>
             </table>
@@ -230,7 +246,11 @@
     </div>
 </div>
 
+<!-- Allocation Management Modals -->
+{% include 'dashboards/user/fragments/allocation_modals.html' %}
+
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
 {% endblock %}

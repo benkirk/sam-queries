@@ -108,6 +108,7 @@ from .accounting.accounts import Account, AccountUser, ResponsibleParty
 from .accounting.allocations import (
     Allocation,
     AllocationTransaction,
+    AllocationTransactionType,
     AllocationType
 )
 from .accounting.adjustments import (

@@ -21,7 +21,7 @@ from sam.core.users import User
 from webapp.utils.rbac import require_permission, Permission
 
 
-bp = Blueprint('admin_dashboard', __name__, url_prefix='/admin-dashboard')
+bp = Blueprint('admin_dashboard', __name__, url_prefix='/admin')
 
 
 # Usage threshold configuration (percentage)

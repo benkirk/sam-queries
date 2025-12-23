@@ -7,11 +7,14 @@
         {% set project = project_data.project %}
         {% set resources = project_data.resources %}
 
+        {# Check if user can edit allocations #}
+        {% set user_can_edit_allocations = has_permission(Permission.EDIT_ALLOCATIONS) if has_permission is defined and Permission is defined else false %}
+
         {# Render project info section #}
         {{ render_project_info(project) }}
 
-        {# Render resources table (without clickable rows since we're in allocations dashboard) #}
-        {{ render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, show_clickable_rows=false) }}
+        {# Render resources table (without clickable rows since we're in modal) #}
+        {{ render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, show_clickable_rows=false, can_edit_allocations=user_can_edit_allocations) }}
 
         {# Render members section (collapsed by default, lazy loaded) #}
         {{ render_project_members(project, unique_id='modal') }}

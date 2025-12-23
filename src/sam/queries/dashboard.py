@@ -61,6 +61,8 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
 
         resources.append({
             'resource_name': resource_name,
+            'allocation_id': usage.get('allocation_id'),  # Required for edit functionality
+            'account_id': usage.get('account_id'),  # Required for permission checks
             'allocated': usage.get('allocated', 0.0),
             'used': usage.get('used', 0.0),
             'remaining': usage.get('remaining', 0.0),
@@ -296,6 +298,8 @@ def get_resource_detail_data(
         # No allocation for this resource
         resource_summary = {
             'resource_name': resource_name,
+            'allocation_id': None,  # No allocation exists
+            'account_id': None,
             'allocated': 0.0,
             'used': 0.0,
             'remaining': 0.0,

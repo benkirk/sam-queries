@@ -1,0 +1,103 @@
+{# Fragment: Allocation Management Modals #}
+
+<!-- Edit Allocation Modal -->
+<div class="modal fade" id="editAllocationModal" tabindex="-1" role="dialog" aria-labelledby="editAllocationModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="editAllocationModalLabel">
+                    <i class="fas fa-edit"></i> Edit Allocation
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form id="editAllocationForm">
+                <input type="hidden" id="editAllocationId" name="allocation_id" value="">
+                <input type="hidden" id="editAllocationProjcode" name="projcode" value="">
+                <div class="modal-body">
+                    <!-- Resource Display (read-only) -->
+                    <div class="form-group">
+                        <label>Resource</label>
+                        <div class="form-control-plaintext">
+                            <strong id="editAllocationResourceName"></strong>
+                        </div>
+                    </div>
+
+                    <!-- Amount -->
+                    <div class="form-group">
+                        <label for="allocationAmount">Allocation Amount <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="allocationAmount" name="amount"
+                                   step="0.01" min="0" required>
+                            <div class="input-group-append">
+                                <span class="input-group-text" id="allocationAmountCurrent" title="Current allocation amount">
+                                    <i class="fas fa-info-circle"></i>
+                                </span>
+                            </div>
+                        </div>
+                        <small class="form-text text-muted">Core-hours or storage units. Current: <strong id="allocationAmountDisplay">-</strong></small>
+                    </div>
+
+                    <!-- Date Range -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="allocationStartDate">Start Date <span class="text-danger">*</span></label>
+                                <input type="date" class="form-control" id="allocationStartDate" name="start_date" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="allocationEndDate">End Date <span class="text-muted">(optional)</span></label>
+                                <input type="date" class="form-control" id="allocationEndDate" name="end_date">
+                                <small class="form-text text-muted">Leave blank for no end date</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Description (optional) -->
+                    <div class="form-group">
+                        <label for="allocationDescription">Description <span class="text-muted">(optional)</span></label>
+                        <textarea class="form-control" id="allocationDescription" name="description" rows="2"
+                                  placeholder="Optional notes about this allocation..."></textarea>
+                    </div>
+
+                    <!-- Warning message -->
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Warning:</strong> Changes to allocations will be logged in the audit trail.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="editAllocationSubmitBtn">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Error Modal (for displaying errors) -->
+<div class="modal fade" id="allocationErrorModal" tabindex="-1" role="dialog" aria-labelledby="allocationErrorModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="allocationErrorModalLabel">
+                    <i class="fas fa-exclamation-circle"></i> Error
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="allocationErrorMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>

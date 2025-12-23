@@ -106,6 +106,9 @@
 <!-- Member Management Modals -->
 {% include 'dashboards/user/fragments/member_modals.html' %}
 
+<!-- Allocation Management Modals -->
+{% include 'dashboards/user/fragments/allocation_modals.html' %}
+
 <!-- Project Details Modal -->
 <div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog"
      data-url-template="{{ url_for('user_dashboard.project_details_modal', projcode='__PROJCODE__') }}">
@@ -132,4 +135,5 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
 {% endblock %}

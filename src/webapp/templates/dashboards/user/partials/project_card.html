@@ -89,7 +89,7 @@
 {% endmacro %}
 
 {# Macro: Resources Table #}
-{% macro render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, show_clickable_rows=true) %}
+{% macro render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, show_clickable_rows=true, can_edit_allocations=false) %}
 {% if resources %}
 <div class="mt-3">
     <h6 class="mb-2"><i class="fas fa-server"></i> Resources:</h6>
@@ -104,6 +104,9 @@
                     <th>Used</th>
                     <th>Remaining</th>
                     <th class="table-col-usage">Usage</th>
+                    {% if can_edit_allocations %}
+                    <th class="text-center" style="width: 80px;">Actions</th>
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -141,6 +144,19 @@
                                 </div>
                             </div>
                         </td>
+                        {% if can_edit_allocations %}
+                        <td class="text-center" onclick="event.stopPropagation();">
+                            {% if resource.allocation_id %}
+                            <button class="btn btn-xs btn-outline-primary"
+                                    onclick="showEditAllocationModal('{{ project.projcode }}', {{ resource.allocation_id }}, '{{ resource.resource_name }}'); event.stopPropagation();"
+                                    title="Edit allocation">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            {% else %}
+                            <span class="text-muted small">No allocation</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
                     </tr>
                 {% endfor %}
             </tbody>
@@ -176,6 +192,9 @@
     {% set project = project_data.project %}
     {% set resources = project_data.resources %}
     {% set card_id = 'project-' ~ loop_index %}
+
+    {# Check if user can edit allocations (requires EDIT_ALLOCATIONS permission) #}
+    {% set user_can_edit_allocations = has_permission(Permission.EDIT_ALLOCATIONS) if has_permission is defined and Permission is defined else false %}
 
     {# Calculate expiration status from resources #}
     {% set days_groups = {} %}
@@ -264,7 +283,7 @@
                 {{ render_project_info(project) }}
 
                 <!-- Resources Section -->
-                {{ render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold) }}
+                {{ render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, true, user_can_edit_allocations) }}
 
                 <!-- Members Section (Lazy Loaded) -->
                 {{ render_project_members(project, card_id) }}

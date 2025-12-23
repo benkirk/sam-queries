@@ -118,6 +118,17 @@ class AllocationTransaction(Base):
     user = relationship('User', back_populates='allocation_transactions')
 
 
+#----------------------------------------------------------------------------
+class AllocationTransactionType:
+    """Transaction types for allocation audit trail."""
+    CREATE = "CREATE"
+    EDIT = "EDIT"
+    TRANSFER = "TRANSFER"
+    ADJUSTMENT = "ADJUSTMENT"
+    EXPIRE = "EXPIRE"
+    DELETE = "DELETE"
+
+
 # ============================================================================
 # Project Management
 # ============================================================================

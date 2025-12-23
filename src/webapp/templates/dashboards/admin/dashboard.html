@@ -94,45 +94,20 @@
                     <!-- Filters Form -->
                     <form id="expirations-filters-form" class="mb-3">
                         <div class="row">
-                            <!-- Facilities checkboxes -->
+                            <!-- Facilities multi-select -->
                             <div class="col-md-4">
-                                <label><strong>Facilities</strong></label>
                                 <div class="form-group">
-                                    <div class="form-check">
-                                        <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-asd" name="facilities" value="ASD">
-                                        <label class="form-check-label" for="fac-asd">ASD</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-csl" name="facilities" value="CSL">
-                                        <label class="form-check-label" for="fac-csl">CSL</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-cisl" name="facilities" value="CISL">
-                                        <label class="form-check-label" for="fac-cisl">CISL</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-ncar" name="facilities" value="NCAR">
-                                        <label class="form-check-label" for="fac-ncar">NCAR</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-univ" name="facilities" value="UNIV" checked>
-                                        <label class="form-check-label" for="fac-univ">UNIV</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-wna" name="facilities" value="WNA" checked>
-                                        <label class="form-check-label" for="fac-wna">WNA</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input type="checkbox" class="form-check-input facility-filter"
-                                               id="fac-xsede" name="facilities" value="XSEDE">
-                                        <label class="form-check-label" for="fac-xsede">XSEDE</label>
-                                    </div>
+                                    <label for="facilities-filter"><strong>Facilities</strong></label>
+                                    <select class="form-control" id="facilities-filter" name="facilities" multiple size="7" style="min-width: 200px;">
+                                        <option value="ASD">ASD</option>
+                                        <option value="CSL">CSL</option>
+                                        <option value="CISL">CISL</option>
+                                        <option value="NCAR">NCAR</option>
+                                        <option value="UNIV" selected>UNIV</option>
+                                        <option value="WNA" selected>WNA</option>
+                                        <option value="XSEDE">XSEDE</option>
+                                    </select>
+                                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
                                 </div>
                             </div>
 
