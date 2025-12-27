@@ -34,7 +34,7 @@ def init_admin(app):
         app,
         name='SAM Database',
         theme=Bootstrap4Theme(swatch="lumen", fluid=True),
-        index_view=MyAdminIndexView(),
+        index_view=MyAdminIndexView(url='/database', endpoint='admin'),
         url='/database'
     )
 
