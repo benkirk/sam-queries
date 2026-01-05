@@ -73,7 +73,13 @@
                     <thead>
                         <tr>
                             <th>Facility</th>
-                            <th>Annual Rate</th>
+                            <th>
+                                {% if resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
+                                    Data Volume
+                                {% else %}
+                                    Annual Rate
+                                {% endif %}
+                            </th>
                             <th>Count</th>
                             <th>% Total</th>
                         </tr>
@@ -82,7 +88,13 @@
                         {% for facility_data in overview.table_data %}
                         <tr>
                             <td><strong>{{ facility_data.facility }}</strong></td>
-                            <td>{{ "{:,.0f}".format(facility_data.annualized_rate) }}</td>
+                            <td>
+                                {% if resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
+                                    {{ "{:,.0f}".format(facility_data.total_amount) }}
+                                {% else %}
+                                    {{ "{:,.0f}".format(facility_data.annualized_rate) }}
+                                {% endif %}
+                            </td>
                             <td>{{ facility_data.count }}</td>
                             <td>{{ "%.1f"|format(facility_data.percent) }}%</td>
                         </tr>
@@ -92,7 +104,13 @@
                     <tfoot class="table-secondary">
                         <tr>
                             <th>Total</th>
-                            <th>{{ "{:,.0f}".format(overview.table_data|sum(attribute='annualized_rate')) }}</th>
+                            <th>
+                                {% if resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
+                                    {{ "{:,.0f}".format(overview.table_data|sum(attribute='total_amount')) }}
+                                {% else %}
+                                    {{ "{:,.0f}".format(overview.table_data|sum(attribute='annualized_rate')) }}
+                                {% endif %}
+                            </th>
                             <th>{{ overview.table_data|sum(attribute='count') }}</th>
                             <th>100%</th>
                         </tr>

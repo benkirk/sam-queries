@@ -126,6 +126,22 @@ def get_facility_overview_data(session, resource_name: str, active_at: datetime)
     return overview
 
 
+def get_resource_types(session) -> Dict[str, str]:
+    """
+    Get mapping of resource name to resource type.
+
+    Returns:
+        Dict mapping resource_name → resource_type string (e.g., 'Derecho' → 'HPC')
+    """
+    from sam.resources.resources import ResourceType
+
+    resources = session.query(Resource.resource_name, ResourceType.resource_type)\
+        .join(Resource.resource_type)\
+        .all()
+
+    return {r.resource_name: r.resource_type for r in resources}
+
+
 @bp.route('/')
 @login_required
 @require_permission(Permission.VIEW_PROJECTS)
@@ -180,11 +196,22 @@ def index():
     # Group results hierarchically for tab structure
     grouped_data = group_by_resource_facility(summary_data)
 
+    # Get resource type mapping for conditional display
+    resource_types = get_resource_types(db.session)
+
     # For each resource, generate facility overview data and pie chart
     resource_overviews = {}
     for resource_name in grouped_data.keys():
         overview_data = get_facility_overview_data(db.session, resource_name, active_at)
-        pie_chart = generate_facility_pie_chart_matplotlib(overview_data)
+
+        # Determine chart title based on resource type
+        resource_type = resource_types.get(resource_name, 'HPC')
+        if resource_type in ['DISK', 'ARCHIVE']:
+            chart_title = 'Data Volume Distribution by Facility'
+        else:
+            chart_title = 'Annual Rate Distribution by Facility'
+
+        pie_chart = generate_facility_pie_chart_matplotlib(overview_data, title=chart_title)
         resource_overviews[resource_name] = {
             'table_data': overview_data,
             'chart': pie_chart
@@ -196,7 +223,8 @@ def index():
         resource_overviews=resource_overviews,
         active_at=active_at.strftime('%Y-%m-%d'),
         all_resources=all_resources,
-        selected_resources=selected_resources
+        selected_resources=selected_resources,
+        resource_types=resource_types
     )
 
 
@@ -257,13 +285,18 @@ def projects_fragment():
     # Sort by amount descending
     projects.sort(key=lambda p: p['total_amount'], reverse=True)
 
+    # Get resource type for conditional display
+    resource_types = get_resource_types(db.session)
+    resource_type = resource_types.get(resource, 'HPC')  # Default to HPC if not found
+
     return render_template(
         'dashboards/allocations/partials/project_table.html',
         projects=projects,
         resource=resource,
         facility=facility,
         allocation_type=allocation_type,
-        active_at=active_at.strftime('%Y-%m-%d')
+        active_at=active_at.strftime('%Y-%m-%d'),
+        resource_type=resource_type
     )
 
 
