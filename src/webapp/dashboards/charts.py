@@ -224,7 +224,7 @@ def generate_queue_history_matplotlib(history_data: List[Dict], queue_name: str,
     return svg_io.getvalue()
 
 
-def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
+def generate_facility_pie_chart_matplotlib(facility_data: List[Dict], title: str = 'Annualized Rate Distribution by Facility') -> str:
     """
     Generate pie chart showing annualized rate distribution by facility.
 
@@ -234,6 +234,7 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
             - annualized_rate: Annual allocation rate
             - count: Number of allocations
             - percent: Percentage of total
+        title: Chart title (default: 'Annualized Rate Distribution by Facility')
 
     Returns:
         SVG string ready for template rendering
@@ -265,7 +266,7 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
         autotext.set_color('white')
         autotext.set_fontweight('bold')
 
-    ax.set_title('Annualized Rate Distribution by Facility', fontsize=13, fontweight='bold', pad=20)
+    ax.set_title(title, fontsize=13, fontweight='bold', pad=20)
 
     # Render to SVG
     svg_io = StringIO()
