@@ -4,9 +4,10 @@
 #
 # Generates a CSV file containing all users from a project and its active sub-projects.
 #
-# Usage: ./export_project_users.sh <project_code> [output_file.csv]
+# Usage: ./export_project_users.sh [--exclude-subprojects] <project_code> [output_file.csv]
 #
 # Example: ./export_project_users.sh NMMM0003 nmmm0003_users.csv
+# Example: ./export_project_users.sh --exclude-subprojects NMMM0003 nmmm0003_users.csv
 #
 
 set -euo pipefail
@@ -14,10 +15,18 @@ set -euo pipefail
 # Set wide column width to prevent email truncation
 export COLUMNS=200
 
+# Parse flags
+EXCLUDE_SUBPROJECTS=false
+if [ "${1:-}" = "--exclude-subprojects" ]; then
+    EXCLUDE_SUBPROJECTS=true
+    shift
+fi
+
 # Check arguments
 if [ $# -lt 1 ]; then
-    echo "Usage: $0 <project_code> [output_file.csv]" >&2
+    echo "Usage: $0 [--exclude-subprojects] <project_code> [output_file.csv]" >&2
     echo "Example: $0 NMMM0003 nmmm0003_users.csv" >&2
+    echo "Example: $0 --exclude-subprojects NMMM0003 nmmm0003_users.csv" >&2
     exit 1
 fi
 
@@ -31,33 +40,43 @@ TEMP_PROJECTS=$(mktemp)
 # Cleanup on exit
 trap "rm -f $TEMP_HIERARCHY $TEMP_PROJECTS" EXIT
 
-echo "Fetching project hierarchy for $PROJECT_CODE..." >&2
+if [ "$EXCLUDE_SUBPROJECTS" = true ]; then
+    echo "Processing only $PROJECT_CODE (excluding sub-projects)..." >&2
+    echo "$PROJECT_CODE" > "$TEMP_PROJECTS"
+    PROJECT_COUNT=1
+else
+    echo "Fetching project hierarchy for $PROJECT_CODE..." >&2
 
-# Get project info with verbose flag to get hierarchy
-if ! sam-search project "$PROJECT_CODE" --verbose > "$TEMP_HIERARCHY" 2>&1; then
-    echo "Error: Could not fetch project information for $PROJECT_CODE" >&2
-    cat "$TEMP_HIERARCHY" >&2
-    exit 1
+    # Get project info with verbose flag to get hierarchy
+    if ! sam-search project "$PROJECT_CODE" --verbose > "$TEMP_HIERARCHY" 2>&1; then
+        echo "Error: Could not fetch project information for $PROJECT_CODE" >&2
+        cat "$TEMP_HIERARCHY" >&2
+        exit 1
+    fi
+
+    echo "Extracting active project codes from hierarchy..." >&2
+
+    # Extract all project codes from the hierarchy section
+    # - Look for lines in the hierarchy box (starting with │)
+    # - Extract project codes (pattern: uppercase letters followed by digits)
+    # - Exclude lines marked as "(Inactive)"
+    # - Remove duplicates
+    grep "^│" "$TEMP_HIERARCHY" | \
+        grep -v "(Inactive)" | \
+        grep -oE '[A-Z][A-Z0-9]+[0-9]{4,}' | \
+        sort -u > "$TEMP_PROJECTS"
+
+    # Count projects found
+    PROJECT_COUNT=$(wc -l < "$TEMP_PROJECTS" | tr -d ' ')
+    echo "Found $PROJECT_COUNT active projects (including parent)" >&2
 fi
 
-echo "Extracting active project codes from hierarchy..." >&2
-
-# Extract all project codes from the hierarchy section
-# - Look for lines in the hierarchy box (starting with │)
-# - Extract project codes (pattern: uppercase letters followed by digits)
-# - Exclude lines marked as "(Inactive)"
-# - Remove duplicates
-grep "^│" "$TEMP_HIERARCHY" | \
-    grep -v "(Inactive)" | \
-    grep -oE '[A-Z][A-Z0-9]+[0-9]{4,}' | \
-    sort -u > "$TEMP_PROJECTS"
-
-# Count projects found
-PROJECT_COUNT=$(wc -l < "$TEMP_PROJECTS" | tr -d ' ')
-echo "Found $PROJECT_COUNT active projects (including parent)" >&2
-
-# Create CSV header
-echo "project_code,username,full_name,email" > "$OUTPUT_FILE"
+# Create CSV header (only if file doesn't exist)
+if [ ! -f "$OUTPUT_FILE" ]; then
+    echo "project_code,username,full_name,email" > "$OUTPUT_FILE"
+else
+    echo "Appending to existing file: $OUTPUT_FILE" >&2
+fi
 
 # Process each project
 TOTAL_USERS=0
