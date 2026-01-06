@@ -58,7 +58,7 @@ solve-%: %.yaml ## Dry-run solve for conda environment
 fixperms: ## Fix file permissions for .env
 	for file in .env; do \
 	  setfacl --remove-all $${file} ; \
-	  for group in csgteam csg hdt nusd hsg; do \
+	  for group in csgteam csg hdt ssg; do \
 	    setfacl -m g:$${group}:r $${file} ; \
 	  done ;\
 	  for user in bdobbins; do \
