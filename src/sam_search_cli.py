@@ -32,6 +32,7 @@ class Context:
     def __init__(self):
         self.session: Optional[Session] = None
         self.verbose: bool = False
+        self.very_verbose: bool = False
         self.inactive_projects: bool = False
         self.inactive_users: bool = False
         self.console = Console()
@@ -205,6 +206,15 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
 
     if project.lead:
         grid.add_row("Lead", f"{project.lead.display_name} ({project.lead.username}) <{project.lead.primary_email or 'N/A'}>")
+        # Show PI institution in very verbose mode
+        if ctx.very_verbose and project.lead.institutions:
+            pi_insts = []
+            for ui in project.lead.institutions:
+                if ui.is_currently_active:
+                    inst = ui.institution
+                    pi_insts.append(f"{inst.name} ({inst.acronym})")
+            if pi_insts:
+                grid.add_row("PI Institution", "\n".join(pi_insts))
     if project.admin and project.admin != project.lead:
         grid.add_row("Admin", f"{project.admin.display_name} ({project.admin.username}) <{project.admin.primary_email or 'N/A'}>")
 
@@ -236,6 +246,20 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
     if project.charging_exempt:
         grid.add_row("Exempt", "[bold magenta]** Charging Exempt **[/]")
 
+    # Very verbose: show additional IDs and timestamps
+    if ctx.very_verbose:
+        grid.add_row("Project ID", str(project.project_id))
+        if project.ext_alias:
+            grid.add_row("External Alias", project.ext_alias)
+        if project.creation_time:
+            grid.add_row("Created", project.creation_time.strftime("%Y-%m-%d %H:%M:%S"))
+        if project.modified_time:
+            grid.add_row("Modified", project.modified_time.strftime("%Y-%m-%d %H:%M:%S"))
+        if project.membership_change_time:
+            grid.add_row("Membership Changed", project.membership_change_time.strftime("%Y-%m-%d %H:%M:%S"))
+        if project.inactivate_time:
+            grid.add_row("Inactivated", project.inactivate_time.strftime("%Y-%m-%d %H:%M:%S"))
+
     # Main Panel
     panel = Panel(grid, title=f"Project Information: [bold]{project.projcode}[/]{extra_title_info}", expand=False, border_style="green")
     ctx.console.print(panel)
@@ -255,6 +279,11 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
             alloc_table.add_column("Used", justify="right")
             alloc_table.add_column("% Used", justify="right")
 
+            # Very verbose: add extra columns for jobs and time metrics
+            if ctx.very_verbose:
+                alloc_table.add_column("Jobs", justify="right", style="dim")
+                alloc_table.add_column("Days Left", justify="right", style="dim")
+
             for resource_name, alloc in allocations.items():
                 if resource_name in usage:
                     resource_usage = usage[resource_name]
@@ -268,7 +297,7 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
                     if pct > 80: pct_style = "yellow"
                     if pct > 100: pct_style = "red bold"
 
-                    alloc_table.add_row(
+                    row = [
                         resource_name,
                         resource_usage['resource_type'],
                         date_range,
@@ -276,8 +305,34 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
                         f"{resource_usage['remaining']:,.0f}",
                         f"{resource_usage['used']:,.0f}",
                         f"[{pct_style}]{pct:,.1f}%[/]"
-                    )
+                    ]
+
+                    # Very verbose: add jobs and days remaining
+                    if ctx.very_verbose:
+                        jobs = resource_usage.get('total_jobs')
+                        days_remaining = resource_usage.get('days_remaining')
+                        row.append(f"{jobs:,}" if jobs is not None else "N/A")
+                        row.append(str(days_remaining) if days_remaining is not None else "N/A")
+
+                    alloc_table.add_row(*row)
             ctx.console.print(alloc_table)
+
+            # Very verbose: show charge breakdown and adjustments
+            if ctx.very_verbose:
+                for resource_name, resource_usage in usage.items():
+                    charges_by_type = resource_usage.get('charges_by_type', {})
+                    adjustments = resource_usage.get('adjustments', 0)
+
+                    if charges_by_type or adjustments:
+                        breakdown_parts = []
+                        for charge_type, amount in charges_by_type.items():
+                            if amount > 0:
+                                breakdown_parts.append(f"{charge_type}: {amount:,.0f}")
+                        if adjustments:
+                            breakdown_parts.append(f"adjustments: {adjustments:,.0f}")
+
+                        if breakdown_parts:
+                            ctx.console.print(f"  [dim]{resource_name} charges:[/] {', '.join(breakdown_parts)}")
 
     except Exception as e:
          ctx.console.print(f"Warning: Could not fetch allocations: {e}", style="yellow")
@@ -294,14 +349,14 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
         _display_project_users(ctx, project)
     else:
         ctx.console.print(f"\nActive Users: [bold]{project.get_user_count()}[/]")
-        if not ctx.verbose:
-            ctx.console.print(" (Use --list-users to see user details, --verbose for more project information.)", style="dim italic")
+        if not ctx.verbose and not ctx.very_verbose:
+            ctx.console.print(" (Use --list-users to see user details, --verbose/-vv for more project information.)", style="dim italic")
 
-    if ctx.verbose:
-        # Abstract
+    if ctx.verbose or ctx.very_verbose:
+        # Abstract - truncated for verbose, full for very verbose
         if project.abstract:
             abstract = project.abstract
-            if len(abstract) > 500:
+            if ctx.verbose and not ctx.very_verbose and len(abstract) > 500:
                 abstract = abstract[:500] + "..."
 
             ctx.console.print(Panel(abstract, title="Abstract", border_style="dim", expand=False))
@@ -529,9 +584,10 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
 @click.option('--since', type=click.DateTime(formats=['%Y-%m-%d']), default=None, help='Look back to this date for --recent-expirations (e.g., 2024-01-01)')
 @click.option('--list-users', is_flag=True, help='List all users on the project')
 @click.option('--limit', type=int, default=50, help='Maximum number of results for pattern search (default: 50)')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information (truncated abstract, hierarchy)')
+@click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (full abstract, timestamps, IDs, charge breakdown)')
 @pass_context
-def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, verbose):
+def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, verbose, very_verbose):
     """
     Search for projects.
 
@@ -543,7 +599,10 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
         click.echo(ctx.get_help())
         sys.exit(1)
 
-    if verbose:
+    if very_verbose:
+        ctx.very_verbose = True
+        ctx.verbose = True  # very_verbose implies verbose
+    elif verbose:
         ctx.verbose = True
 
     if upcoming_expirations:
@@ -569,19 +628,22 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
         expiring_projects = set()
 
         # Calculate max_days_expired from --since date, default to 365 days
+        # When --since is provided, automatically include inactive projects
         if since:
             max_days = (datetime.now() - since).days
             if max_days < 0:
                 ctx.console.print(f"Error: --since date cannot be in the future", style="bold red")
                 raise SystemExit(2)
+            include_inactive = True
         else:
             max_days = 365
+            include_inactive = ctx.inactive_projects
 
         expiring = get_projects_with_expired_allocations(ctx.session,
                                                          min_days_expired=0,
                                                          max_days_expired=max_days,
                                                          facility_names=['UNIV', 'WNA'],
-                                                         include_inactive_projects=ctx.inactive_projects)
+                                                         include_inactive_projects=include_inactive)
 
         ctx.console.print(f"Found {len(expiring)} recently expired projects:", style="yellow")
         for proj, alloc, res_name, days_expired in expiring:
