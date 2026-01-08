@@ -584,10 +584,11 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
 @click.option('--since', type=click.DateTime(formats=['%Y-%m-%d']), default=None, help='Look back to this date for --recent-expirations (e.g., 2024-01-01)')
 @click.option('--list-users', is_flag=True, help='List all users on the project')
 @click.option('--limit', type=int, default=50, help='Maximum number of results for pattern search (default: 50)')
+@click.option('--facilities', '-F', multiple=True, default=['UNIV', 'WNA'], help='Facilities to include (default: UNIV, WNA). Use * for all facilities.')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information (truncated abstract, hierarchy)')
 @click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (full abstract, timestamps, IDs, charge breakdown)')
 @pass_context
-def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, verbose, very_verbose):
+def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, facilities, verbose, very_verbose):
     """
     Search for projects.
 
@@ -605,12 +606,17 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
     elif verbose:
         ctx.verbose = True
 
+    # Handle facility filtering - '*' means all facilities
+    facility_filter = None if '*' in facilities else list(facilities)
+
     if upcoming_expirations:
         # Upcoming Expirations
+        if ctx.verbose:
+            ctx.console.print(f"[dim]Facilities: {'ALL' if facility_filter is None else ', '.join(facilities)}[/]")
         expiring = get_projects_by_allocation_end_date(ctx.session,
                                                        start_date=datetime.now(),
                                                        end_date=datetime.now() + timedelta(days=32),
-                                                       facility_names=['UNIV', 'WNA'])
+                                                       facility_names=facility_filter)
 
         ctx.console.print(f"Found {len(expiring)} allocations expiring", style="yellow")
         for proj, alloc, res_name, days in expiring:
@@ -639,10 +645,12 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
             max_days = 365
             include_inactive = ctx.inactive_projects
 
+        if ctx.verbose:
+            ctx.console.print(f"[dim]Facilities: {'ALL' if facility_filter is None else ', '.join(facilities)}[/]")
         expiring = get_projects_with_expired_allocations(ctx.session,
                                                          min_days_expired=0,
                                                          max_days_expired=max_days,
-                                                         facility_names=['UNIV', 'WNA'],
+                                                         facility_names=facility_filter,
                                                          include_inactive_projects=include_inactive)
 
         ctx.console.print(f"Found {len(expiring)} recently expired projects:", style="yellow")
