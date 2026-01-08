@@ -526,11 +526,12 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
 @click.option('--search', metavar='PATTERN', help='Search pattern (use % for wildcard, _ for single char)')
 @click.option('--upcoming-expirations', '-f', is_flag=True, help='Search for upcoming project expirations.')
 @click.option('--recent-expirations', '-p', is_flag=True, help='Search for recently expired projects.')
+@click.option('--since', type=click.DateTime(formats=['%Y-%m-%d']), default=None, help='Look back to this date for --recent-expirations (e.g., 2024-01-01)')
 @click.option('--list-users', is_flag=True, help='List all users on the project')
 @click.option('--limit', type=int, default=50, help='Maximum number of results for pattern search (default: 50)')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @pass_context
-def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, list_users, limit, verbose):
+def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, verbose):
     """
     Search for projects.
 
@@ -566,21 +567,32 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
         all_users = set()
         abandoned_users = set()
         expiring_projects = set()
+
+        # Calculate max_days_expired from --since date, default to 365 days
+        if since:
+            max_days = (datetime.now() - since).days
+            if max_days < 0:
+                ctx.console.print(f"Error: --since date cannot be in the future", style="bold red")
+                raise SystemExit(2)
+        else:
+            max_days = 365
+
         expiring = get_projects_with_expired_allocations(ctx.session,
-                                                         max_days_expired=90,
-                                                         min_days_expired=365,
-                                                         facility_names=['UNIV', 'WNA'])
+                                                         min_days_expired=0,
+                                                         max_days_expired=max_days,
+                                                         facility_names=['UNIV', 'WNA'],
+                                                         include_inactive_projects=ctx.inactive_projects)
 
         ctx.console.print(f"Found {len(expiring)} recently expired projects:", style="yellow")
-        for proj, alloc, res_name, days in expiring:
+        for proj, alloc, res_name, days_expired in expiring:
             if list_users:
                 all_users.update(proj.roster)
             expiring_projects.add(proj.projcode)
 
             if ctx.verbose:
-                _display_project(ctx, proj, f" - {days} since expiration", list_users=list_users)
+                _display_project(ctx, proj, f" - {days_expired} days since expiration", list_users=list_users)
             else:
-                ctx.console.print(f"  {proj.projcode} - {days} days since expiration")
+                ctx.console.print(f"  {proj.projcode} - {days_expired} days since expiration")
 
         if list_users:
             for user in track(all_users, description="Determining abandoned users..."):
