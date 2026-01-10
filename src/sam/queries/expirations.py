@@ -280,8 +280,8 @@ def get_projects_with_expired_allocations(
     """
     results = get_projects_by_allocation_end_date(
         session=session,
-        days_until_now=min_days_expired,
-        days_from_now=-max_days_expired if max_days_expired else None,
+        days_until_now=max_days_expired,
+        days_from_now=-min_days_expired,
         facility_names=facility_names,
         resource_name=resource_name,
         include_inactive_projects=include_inactive_projects
