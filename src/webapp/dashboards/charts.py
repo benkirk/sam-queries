@@ -274,3 +274,61 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict], title: str
     plt.close(fig)
 
     return svg_io.getvalue()
+
+
+def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict], resource_type: str, facility_name: str) -> str:
+    """
+    Generate pie chart showing allocation distribution by allocation type within a facility.
+
+    Args:
+        type_data: List of dicts with keys:
+            - allocation_type: Type name (e.g., 'NSC', 'Small', 'University')
+            - total_amount: Total allocated amount
+            - count: Number of allocations
+            - avg_amount: Average allocation amount
+        resource_type: Resource type string ('HPC', 'DAV', 'DISK', 'ARCHIVE')
+        facility_name: Facility name for chart title
+
+    Returns:
+        SVG string ready for template rendering
+    """
+    if not type_data:
+        return '<div class="text-center text-muted">No allocation type data available</div>'
+
+    # Extract data
+    allocation_types = [d['allocation_type'] for d in type_data]
+    amounts = [d['total_amount'] for d in type_data]
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    # Generate pie chart
+    colors = plt.cm.tab10.colors[:len(allocation_types)]
+    wedges, texts, autotexts = ax.pie(
+        amounts,
+        labels=allocation_types,
+        autopct='%1.1f%%',
+        startangle=90,
+        colors=colors,
+        textprops={'fontsize': 11}
+    )
+
+    # Make percentage text bold and white
+    for autotext in autotexts:
+        autotext.set_color('white')
+        autotext.set_fontweight('bold')
+
+    # Dynamic title based on resource type
+    if resource_type in ['DISK', 'ARCHIVE']:
+        title = f'Data Volume Distribution by Type - {facility_name}'
+    else:
+        title = f'Allocation Distribution by Type - {facility_name}'
+
+    ax.set_title(title, fontsize=13, fontweight='bold', pad=20)
+
+    # Render to SVG
+    svg_io = StringIO()
+    fig.savefig(svg_io, format='svg', bbox_inches='tight')
+    plt.close(fig)
+
+    return svg_io.getvalue()

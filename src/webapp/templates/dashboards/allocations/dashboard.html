@@ -208,6 +208,16 @@
                                 </tfoot>
                                 {% endif %}
                             </table>
+
+                            <!-- Allocation Type Pie Chart -->
+                            {% if types|length > 1 %}
+                            {% set type_chart = allocation_type_charts.get(resource_name, {}).get(facility_name) %}
+                            {% if type_chart %}
+                            <div class="chart-container mt-4">
+                                {{ type_chart|safe }}
+                            </div>
+                            {% endif %}
+                            {% endif %}
                         </div>
                     </div>
 

@@ -31,7 +31,6 @@ WITH RankedAllocations AS (
         r.resource_name LIKE '%Casper%'
         AND f.facility_name IN ('UNIV', 'WNA')
         AND a.start_date >= '2023-01-01'
-        AND s.name IN ('Kansas', 'Maine', 'Mississippi', 'North Carolina', 'Wyoming', 'Alaska', 'Texas')
         AND (ui.end_date IS NULL OR ui.end_date >= a.start_date)
 )
 SELECT
@@ -40,8 +39,8 @@ SELECT
     projcode,
     pi_name,
     project_title,
-    MAX(CASE WHEN resource_name = 'Casper' THEN allocation_size ELSE NULL END) AS derecho_allocation,
-    MAX(CASE WHEN resource_name = 'Casper GPU' THEN allocation_size ELSE NULL END) AS derecho_gpu_allocation,
+    MAX(CASE WHEN resource_name = 'Casper' THEN allocation_size ELSE NULL END) AS cpu_allocation,
+    MAX(CASE WHEN resource_name = 'Casper GPU' THEN allocation_size ELSE NULL END) AS gpu_allocation,
     grant_award,
     facility_name,
     abstract
