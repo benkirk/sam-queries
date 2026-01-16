@@ -36,7 +36,9 @@ dir="$(realpath ${ROOT_DIR})"
 while true; do
     if [[ -f "$dir/.env" ]]; then
         # shellcheck source=/dev/null
+        set +a
         source "$dir/.env" || { echo "Found .env but could not source it!"; exit 1; }
+        set -a
         echo "Loaded .env from $dir"
         break
     fi

@@ -14,7 +14,7 @@ from webapp.extensions import db
 from sam.queries.allocations import get_allocation_summary, get_allocation_summary_with_usage
 from sam.queries.lookups import find_project_by_code
 from webapp.utils.rbac import require_permission, Permission
-from ..charts import generate_facility_pie_chart_matplotlib
+from ..charts import generate_facility_pie_chart_matplotlib, generate_allocation_type_pie_chart_matplotlib
 
 
 from sam.resources.resources import Resource
@@ -217,10 +217,29 @@ def index():
             'chart': pie_chart
         }
 
+    # Generate allocation type charts for each facility
+    allocation_type_charts = {}
+    for resource_name, facilities in grouped_data.items():
+        allocation_type_charts[resource_name] = {}
+        resource_type = resource_types.get(resource_name, 'HPC')
+
+        for facility_name, types in facilities.items():
+            # Only generate chart if there are multiple allocation types
+            if len(types) > 1:
+                pie_chart = generate_allocation_type_pie_chart_matplotlib(
+                    types,
+                    resource_type,
+                    facility_name
+                )
+                allocation_type_charts[resource_name][facility_name] = pie_chart
+            else:
+                allocation_type_charts[resource_name][facility_name] = None
+
     return render_template(
         'dashboards/allocations/dashboard.html',
         grouped_data=grouped_data,
         resource_overviews=resource_overviews,
+        allocation_type_charts=allocation_type_charts,
         active_at=active_at.strftime('%Y-%m-%d'),
         all_resources=all_resources,
         selected_resources=selected_resources,
