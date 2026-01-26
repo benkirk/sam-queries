@@ -46,8 +46,28 @@ for i in {1..60}; do
 done
 
 msg "Restoring backup.sql.xz into fresh database..."
-if xzcat /backup.sql.xz | mysql --socket=/var/run/mysqld/mysqld.sock -uroot 2>&1; then
-    msg "Restore completed successfully!"
+
+# Check if file is Git LFS pointer
+if head -1 /backup.sql.xz 2>/dev/null | grep -q "version https://git-lfs.github.com"; then
+    msg "WARNING: Backup file is a Git LFS pointer, not the actual backup!"
+    msg "The actual backup file needs to be downloaded from Git LFS."
+    msg "Creating empty 'sam' database for now..."
+    mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS sam;" 2>&1
+    msg "Empty 'sam' database created."
+    msg "To get the real backup: git lfs pull containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+elif xzcat /backup.sql.xz 2>/dev/null | mysql --socket=/var/run/mysqld/mysqld.sock -uroot 2>&1; then
+    msg "Restore completed successfully (from xz compressed backup)!"
+elif mysql --socket=/var/run/mysqld/mysqld.sock -uroot < /backup.sql.xz 2>&1; then
+    msg "Restore completed successfully (from plain SQL file)!"
+else
+    msg "WARNING: Backup file restore failed. Creating empty 'sam' database..."
+    mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS sam;" 2>&1
+    msg "Empty 'sam' database created. You may need to restore data manually."
+fi
+
+# Check if restore actually worked by verifying database exists
+if mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "USE sam;" 2>/dev/null; then
+    msg "Database 'sam' verified successfully!"
 
     # Analyze tables to update statistics immediately after bulk insert
     # (mysqlcheck is not available in minimal images, so we generate SQL manually)
@@ -64,6 +84,14 @@ else
     wait "$pid" 2>/dev/null || true
     exit 1
 fi
+
+msg "Setting up MySQL user permissions for remote access..."
+# Grant root access from any host (for Docker Desktop VM connections)
+mysql --socket=/var/run/mysqld/mysqld.sock -uroot <<EOF
+CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'root';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+EOF
 
 msg "Shutting down temporary server..."
 mysqladmin --socket=/var/run/mysqld/mysqld.sock -uroot shutdown
