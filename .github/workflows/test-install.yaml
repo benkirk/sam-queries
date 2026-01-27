@@ -85,21 +85,68 @@ jobs:
 
           echo "✅ Installation verified successfully at ${INSTALL_DIR}"
 
+      - name: Verify backup file
+        run: |
+          cd "${INSTALL_DIR}"
+          BACKUP_FILE="containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+          
+          echo "=== Verifying backup file ==="
+          ls -lh "${BACKUP_FILE}" || echo "Backup file not found"
+          
+          FILE_SIZE=$(stat -c%s "${BACKUP_FILE}" 2>/dev/null || stat -f%z "${BACKUP_FILE}" 2>/dev/null || echo "0")
+          echo "File size: ${FILE_SIZE} bytes"
+          
+          if [ "${FILE_SIZE}" -lt 1000 ]; then
+            echo "⚠️ File appears to be LFS pointer, pulling..."
+            git lfs pull
+            ls -lh "${BACKUP_FILE}"
+          fi
+
       - name: Start Services
         run: |
           cd "${INSTALL_DIR}"
           echo "Starting services in ${INSTALL_DIR}..."
           docker compose build
           docker compose up -d
+          
+          echo "=== Initial container status ==="
+          docker compose ps -a
+          sleep 5
+          docker compose ps -a
 
       - name: Wait for services to be healthy
         run: |
           cd "${INSTALL_DIR}"
 
-          echo "Waiting for MySQL to be healthy..."
-          timeout 120 bash -c 'until docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot --silent; do sleep 2; done'
+          echo "=== Waiting for MySQL to be healthy ==="
+          
+          # Check if MySQL container is running
+          for i in $(seq 1 24); do
+            STATE=$(docker compose ps mysql --format "{{.State}}" 2>/dev/null || echo "unknown")
+            
+            if [ "${STATE}" = "exited" ]; then
+              echo "❌ MySQL container exited!"
+              docker compose logs mysql --tail=200
+              exit 1
+            fi
+            
+            if docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot --silent 2>/dev/null; then
+              echo "✅ MySQL is healthy after $((i * 5)) seconds"
+              break
+            fi
+            
+            echo "  Waiting... ($i/24, state: ${STATE})"
+            sleep 5
+          done
+          
+          docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot || {
+            echo "❌ MySQL health check failed!"
+            docker compose logs mysql --tail=100
+            exit 1
+          }
           echo "✅ MySQL is healthy"
 
+          echo ""
           echo "Waiting for webapp to be ready..."
           timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sam; import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
           echo "✅ Webapp is ready"

@@ -38,14 +38,46 @@ jobs:
           docker --version
           docker compose --version
 
-      - name: Verify MySQL backup file exists
+      - name: Verify MySQL backup file exists and is not LFS pointer
         run: |
-          if [ ! -f containers/sam-sql-dev/backups/sam-obfuscated.sql.xz ]; then
-            echo "❌ Backup file not found: containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+          BACKUP_FILE="containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+          
+          if [ ! -f "${BACKUP_FILE}" ]; then
+            echo "❌ Backup file not found: ${BACKUP_FILE}"
             echo "Please ensure backup is committed or use artifacts"
             exit 1
           fi
-          ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
+          
+          echo "=== Backup file info ==="
+          ls -lh "${BACKUP_FILE}"
+          
+          # Check if it's a Git LFS pointer (small file starting with "version https")
+          FILE_SIZE=$(stat -c%s "${BACKUP_FILE}" 2>/dev/null || stat -f%z "${BACKUP_FILE}" 2>/dev/null)
+          echo "File size: ${FILE_SIZE} bytes"
+          
+          if [ "${FILE_SIZE}" -lt 1000 ]; then
+            echo "⚠️ File is very small, checking if it's an LFS pointer..."
+            head -c 100 "${BACKUP_FILE}" | cat -v
+            if head -c 50 "${BACKUP_FILE}" | grep -q "version https"; then
+              echo ""
+              echo "❌ File is a Git LFS pointer, not the actual backup!"
+              echo "Attempting to pull LFS files..."
+              git lfs pull
+              ls -lh "${BACKUP_FILE}"
+            fi
+          else
+            echo "✅ Backup file appears to be actual data (${FILE_SIZE} bytes)"
+          fi
+          
+          # Verify it's a valid xz file
+          echo ""
+          echo "=== Verifying xz format ==="
+          if file "${BACKUP_FILE}" | grep -q "XZ compressed"; then
+            echo "✅ File is valid XZ compressed data"
+          else
+            echo "⚠️ File type:"
+            file "${BACKUP_FILE}"
+          fi
 
       - name: Build and start services
         run: |
@@ -56,18 +88,63 @@ jobs:
           sleep 5
           docker compose ps
 
-      - name: Show MySQL container logs
+      - name: Show MySQL container status and logs
         run: |
+          echo "=== Container status ==="
+          docker compose ps -a
+          
+          echo ""
           echo "=== MySQL container logs ==="
-          docker compose logs mysql --tail=50 || true
+          docker compose logs mysql --tail=100 || true
+          
+          echo ""
+          echo "=== Check if MySQL is running ==="
+          docker compose ps mysql --format "{{.State}}" || echo "Could not get state"
 
       - name: Wait for services to be healthy
         run: |
-          echo "Waiting for MySQL to be healthy..."
-          timeout 180 bash -c 'until docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot --silent 2>/dev/null; do echo "Waiting..."; sleep 5; done'
+          echo "=== Waiting for MySQL to be healthy ==="
+          
+          # First check if MySQL container is even running
+          MYSQL_STATE=$(docker compose ps mysql --format "{{.State}}" 2>/dev/null || echo "unknown")
+          echo "MySQL container state: ${MYSQL_STATE}"
+          
+          if [ "${MYSQL_STATE}" = "exited" ]; then
+            echo "❌ MySQL container has exited! Showing logs..."
+            docker compose logs mysql --tail=200
+            exit 1
+          fi
+          
+          # Wait for MySQL to be ready
+          echo "Waiting for MySQL to accept connections..."
+          for i in $(seq 1 36); do
+            if docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot --silent 2>/dev/null; then
+              echo "✅ MySQL is healthy after $((i * 5)) seconds"
+              break
+            fi
+            
+            # Check if container is still running
+            STATE=$(docker compose ps mysql --format "{{.State}}" 2>/dev/null || echo "unknown")
+            if [ "${STATE}" = "exited" ]; then
+              echo "❌ MySQL container exited while waiting!"
+              docker compose logs mysql --tail=200
+              exit 1
+            fi
+            
+            echo "  Waiting... ($i/36, state: ${STATE})"
+            sleep 5
+          done
+          
+          # Verify MySQL is actually ready
+          docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot || {
+            echo "❌ MySQL health check failed!"
+            docker compose logs mysql --tail=100
+            exit 1
+          }
           echo "✅ MySQL is healthy"
 
-          echo "Waiting for webapp to be ready..."
+          echo ""
+          echo "=== Waiting for webapp to be ready ==="
           timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
           echo "✅ Webapp is ready"
 
