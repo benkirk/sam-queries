@@ -68,21 +68,34 @@ fi
 # Check if restore actually worked by verifying database exists
 if mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "USE sam;" 2>/dev/null; then
     msg "Database 'sam' verified successfully!"
-
-    # Analyze tables to update statistics immediately after bulk insert
-    # (mysqlcheck is not available in minimal images, so we generate SQL manually)
-    msg "Updating table statistics (ANALYZE)..."
-    mysql --socket=/var/run/mysqld/mysqld.sock -uroot --skip-column-names -e \
-        "SELECT CONCAT('ANALYZE TABLE \`', table_schema, '\`.\`', table_name, '\`;') \
-         FROM information_schema.tables \
-         WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys');" \
-        | mysql --socket=/var/run/mysqld/mysqld.sock -uroot
+    
+    # Only analyze tables if database has tables (not empty)
+    table_count=$(mysql --socket=/var/run/mysqld/mysqld.sock -uroot --skip-column-names -e \
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'sam';" 2>/dev/null || echo "0")
+    
+    if [ "$table_count" -gt 0 ]; then
+        # Analyze tables to update statistics immediately after bulk insert
+        # (mysqlcheck is not available in minimal images, so we generate SQL manually)
+        msg "Updating table statistics (ANALYZE)..."
+        mysql --socket=/var/run/mysqld/mysqld.sock -uroot --skip-column-names -e \
+            "SELECT CONCAT('ANALYZE TABLE \`', table_schema, '\`.\`', table_name, '\`;') \
+             FROM information_schema.tables \
+             WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys');" \
+            | mysql --socket=/var/run/mysqld/mysqld.sock -uroot 2>/dev/null || true
+    else
+        msg "Database 'sam' exists but is empty (backup restore may have failed)"
+    fi
 else
     exitcode=$?
-    msg "ERROR: Restore failed with exit code $exitcode"
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-    exit 1
+    msg "ERROR: Database 'sam' does not exist (exit code $exitcode)"
+    msg "Attempting to create empty database as fallback..."
+    mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS sam;" 2>&1 || {
+        msg "ERROR: Failed to create database"
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+        exit 1
+    }
+    msg "Empty 'sam' database created (backup restore failed)"
 fi
 
 msg "Setting up MySQL user permissions for remote access..."

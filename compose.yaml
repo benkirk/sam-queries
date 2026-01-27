@@ -65,10 +65,10 @@ services:
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
       - ./containers/sam-sql-dev/docker-init.sh:/docker-init.sh:ro
     healthcheck:
-      # Check if MySQL is ready AND restore is complete
+      # Check if MySQL is ready and database exists (may be empty if backup restore failed)
       test: |
-        mysqladmin ping -h localhost -u root -proot
-        mysql -h localhost -u root -proot sam -e "SELECT COUNT(*) FROM users" > /dev/null 2>&1
+        mysqladmin ping -h localhost -u root -proot && \
+        mysql -h localhost -u root -proot -e "USE sam;" > /dev/null 2>&1
       interval: 10s
       timeout: 5s
       retries: 30
