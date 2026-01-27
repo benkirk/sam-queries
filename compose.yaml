@@ -59,20 +59,17 @@ services:
     image: mysql:9
     environment:
       MYSQL_ROOT_PASSWORD: root
-    command: ["/bin/bash", "/docker-init.sh"]
+      MYSQL_DATABASE: sam
     volumes:
       - samuel-mysql-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
-      - ./containers/sam-sql-dev/docker-init.sh:/docker-init.sh:ro
+      - ./containers/sam-sql-dev/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
-      # Check if MySQL is ready and database exists (may be empty if backup restore failed)
-      test: |
-        mysqladmin ping -h localhost -u root -proot && \
-        mysql -h localhost -u root -proot -e "USE sam;" > /dev/null 2>&1
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 60s
+      start_period: 120s
     ports:
       - "3306:3306"
     networks:
