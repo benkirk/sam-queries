@@ -6,10 +6,11 @@ if [ -n "${BASH_SOURCE[0]}" ]; then
     SCRIPT_PATH="${BASH_SOURCE[0]}"
 fi
 #----------------------------------------------------------------------------
-set -e
-
+# Don't use set -e globally; handle errors explicitly for better control
+# set -e
 
 msg() { echo "[${SCRIPT_PATH}]: ${@}"; }
+err() { echo "[${SCRIPT_PATH}] ERROR: ${@}" >&2; }
 
 # MySQL official image entrypoint variables
 DATADIR="/var/lib/mysql"
@@ -24,10 +25,17 @@ msg "No existing data found. Will initialize and restore from backup..."
 
 # Initialize using mysqld directly (not entrypoint)
 msg "Initializing database..."
-mysqld --initialize-insecure --user=mysql --datadir="${DATADIR}"
+if ! mysqld --initialize-insecure --user=mysql --datadir="${DATADIR}" 2>&1; then
+    err "Failed to initialize database"
+    exit 1
+fi
 
 msg "Starting temporary server for restore..."
-mysqld --user=mysql --skip-networking --socket=/var/run/mysqld/mysqld.sock --datadir="${DATADIR}" &
+if ! mysqld --user=mysql --skip-networking --socket=/var/run/mysqld/mysqld.sock --datadir="${DATADIR}" &
+then
+    err "Failed to start MySQL server"
+    exit 1
+fi
 pid="$!"
 
 # Wait for server to be ready
@@ -100,14 +108,20 @@ fi
 
 msg "Setting up MySQL user permissions for remote access..."
 # Grant root access from any host (for Docker Desktop VM connections)
-mysql --socket=/var/run/mysqld/mysqld.sock -uroot <<EOF
+if ! mysql --socket=/var/run/mysqld/mysqld.sock -uroot <<EOF 2>&1
 CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'root';
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 EOF
+then
+    err "Failed to setup permissions (continuing anyway)"
+fi
 
 msg "Shutting down temporary server..."
-mysqladmin --socket=/var/run/mysqld/mysqld.sock -uroot shutdown
+if ! mysqladmin --socket=/var/run/mysqld/mysqld.sock -uroot shutdown 2>&1; then
+    err "Failed to shutdown MySQL gracefully, killing process..."
+    kill "$pid" 2>/dev/null || true
+fi
 wait "$pid" 2>/dev/null || true
 
 msg "Starting MySQL normally..."
