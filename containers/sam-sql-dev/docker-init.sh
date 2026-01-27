@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Enable exit on error but allow us to handle specific failures
-set -e
+# DO NOT use set -e - handle all errors explicitly
+# set -e
 
 msg() { echo "[docker-init.sh] $(date '+%Y-%m-%d %H:%M:%S'): $@"; }
 err() { echo "[docker-init.sh] ERROR $(date '+%Y-%m-%d %H:%M:%S'): $@" >&2; }
@@ -9,114 +9,117 @@ err() { echo "[docker-init.sh] ERROR $(date '+%Y-%m-%d %H:%M:%S'): $@" >&2; }
 # MySQL official image entrypoint variables
 DATADIR="/var/lib/mysql"
 
+msg "=== Starting MySQL initialization ==="
+
 # Ensure directories exist with proper permissions
 msg "Setting up directories..."
-mkdir -p /var/run/mysqld
-mkdir -p "${DATADIR}"
-chown -R mysql:mysql /var/run/mysqld
-chown -R mysql:mysql "${DATADIR}"
-chmod 777 /var/run/mysqld
+mkdir -p /var/run/mysqld || true
+mkdir -p "${DATADIR}" || true
+chown -R mysql:mysql /var/run/mysqld 2>/dev/null || true
+chown -R mysql:mysql "${DATADIR}" 2>/dev/null || true
+chmod 777 /var/run/mysqld 2>/dev/null || true
+msg "Directories ready"
 
-# If system tables exist, skip restore
+# If system tables exist, skip restore and start normally
 if [ -d "${DATADIR}/mysql" ]; then
-    msg "Existing MySQL data found — skipping restore."
+    msg "Existing MySQL data found — skipping initialization"
+    msg "Starting MySQL with docker-entrypoint.sh..."
     exec docker-entrypoint.sh mysqld
 fi
 
-msg "No existing data found. Will initialize and restore from backup..."
+msg "No existing data found. Will initialize fresh database..."
 
 # Initialize database
-msg "Initializing MySQL database..."
-mysqld --initialize-insecure --user=mysql --datadir="${DATADIR}" 2>&1 | tee -a /tmp/mysql-init.log || {
-    err "Failed to initialize database"
-    cat /tmp/mysql-init.log || true
-    # Don't exit - try to continue anyway
-    msg "Attempting to continue despite initialization error..."
-}
+msg "Running mysqld --initialize-insecure..."
+if mysqld --initialize-insecure --user=mysql --datadir="${DATADIR}" 2>&1; then
+    msg "✓ Database initialized successfully"
+else
+    err "mysqld --initialize-insecure failed"
+    msg "Checking if data directory was created anyway..."
+    if [ -d "${DATADIR}/mysql" ]; then
+        msg "Data directory exists, continuing..."
+    else
+        err "No data directory created - cannot continue"
+        exit 1
+    fi
+fi
 
 # Start temporary MySQL server for restore
-msg "Starting temporary MySQL server..."
-mysqld --user=mysql --skip-networking --socket=/var/run/mysqld/mysqld.sock --datadir="${DATADIR}" > /tmp/mysql-server.log 2>&1 &
+msg "Starting temporary MySQL server (skip-networking)..."
+mysqld --user=mysql --skip-networking --socket=/var/run/mysqld/mysqld.sock --datadir="${DATADIR}" 2>&1 &
 MYSQL_PID=$!
-msg "MySQL started with PID $MYSQL_PID"
+msg "MySQL process started with PID $MYSQL_PID"
 
 # Wait for MySQL to be ready
-msg "Waiting for MySQL to accept connections (max 120 seconds)..."
-max_attempts=120
-attempt=0
-while [ $attempt -lt $max_attempts ]; do
+msg "Waiting for MySQL to accept connections..."
+READY=0
+for i in $(seq 1 120); do
     if mysqladmin --socket=/var/run/mysqld/mysqld.sock -uroot ping >/dev/null 2>&1; then
-        msg "✓ MySQL is ready!"
+        msg "✓ MySQL is ready after $i seconds"
+        READY=1
         break
     fi
-    attempt=$((attempt + 1))
-    if [ $((attempt % 10)) -eq 0 ]; then
-        msg "  Waiting... ($attempt/$max_attempts seconds)"
+    if [ $((i % 10)) -eq 0 ]; then
+        msg "  Still waiting... ($i/120 seconds)"
     fi
     sleep 1
 done
 
-if [ $attempt -ge $max_attempts ]; then
-    err "MySQL failed to start within $max_attempts seconds"
-    tail -50 /tmp/mysql-server.log || true
+if [ "$READY" -ne 1 ]; then
+    err "MySQL failed to start within 120 seconds"
+    ps aux | grep mysql || true
     kill $MYSQL_PID 2>/dev/null || true
     exit 1
 fi
 
-msg "Restoring SAM database from backup..."
+# Create databases
+msg "Creating databases..."
+mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS sam;" 2>&1 || true
+mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS system_status;" 2>&1 || true
+msg "✓ Databases created"
 
-# Check backup file
-if [ ! -f /backup.sql.xz ]; then
-    msg "Backup file /backup.sql.xz not found - creating empty database"
-    mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS sam;" 2>&1 || true
-elif head -c 16 /backup.sql.xz 2>/dev/null | grep -q "^version https://git-lfs"; then
-    msg "Backup is Git LFS pointer (not actual backup) - creating empty database"
-    mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS sam;" 2>&1 || true
-else
-    msg "Attempting to restore from backup..."
-    if xzcat /backup.sql.xz 2>/dev/null | mysql --socket=/var/run/mysqld/mysqld.sock -uroot 2>&1 | head -20; then
-        msg "✓ Backup restore successful"
+# Try to restore backup if available
+msg "Checking for backup file..."
+if [ -f /backup.sql.xz ]; then
+    # Check if it's a Git LFS pointer
+    FIRST_LINE=$(head -c 50 /backup.sql.xz 2>/dev/null || echo "")
+    if echo "$FIRST_LINE" | grep -q "version https://git-lfs"; then
+        msg "Backup is Git LFS pointer - skipping restore"
     else
-        msg "Backup restore failed - creating empty database instead"
-        mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS sam;" 2>&1 || true
+        msg "Attempting to restore from backup..."
+        if xzcat /backup.sql.xz 2>/dev/null | mysql --socket=/var/run/mysqld/mysqld.sock -uroot 2>&1; then
+            msg "✓ Backup restored successfully"
+        else
+            msg "Backup restore failed (continuing with empty database)"
+        fi
     fi
+else
+    msg "No backup file found - using empty database"
 fi
 
-# Ensure database exists
-msg "Verifying database exists..."
-mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS sam;" 2>&1 || {
-    err "Failed to create database"
-    kill $MYSQL_PID 2>/dev/null || true
-    exit 1
-}
+# Verify databases exist
+msg "Verifying databases..."
+mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS sam;" 2>&1 || true
+mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE DATABASE IF NOT EXISTS system_status;" 2>&1 || true
 
-# Get table count
-TABLE_COUNT=$(mysql --socket=/var/run/mysqld/mysqld.sock -uroot --skip-column-names -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'sam';" 2>/dev/null || echo "0")
-msg "Database 'sam' has $TABLE_COUNT tables"
+# Count tables
+SAM_TABLES=$(mysql --socket=/var/run/mysqld/mysqld.sock -uroot --skip-column-names -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'sam';" 2>/dev/null || echo "0")
+msg "Database 'sam' has $SAM_TABLES tables"
 
-# Analyze tables if they exist
-if [ "$TABLE_COUNT" -gt 0 ]; then
-    msg "Analyzing tables..."
-    mysql --socket=/var/run/mysqld/mysqld.sock -uroot --skip-column-names -e \
-        "SELECT CONCAT('ANALYZE TABLE \`', table_schema, '\`.\`', table_name, '\`;') \
-         FROM information_schema.tables \
-         WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys');" 2>/dev/null | \
-        mysql --socket=/var/run/mysqld/mysqld.sock -uroot 2>&1 || msg "Table analysis failed (continuing anyway)"
-fi
-
-# Setup permissions
+# Setup root user for remote access
 msg "Setting up root user for remote access..."
-mysql --socket=/var/run/mysqld/mysqld.sock -uroot <<'MYSQL_EOF' 2>&1 || msg "Permission setup had issues (continuing)"
-CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'root';
-GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
-FLUSH PRIVILEGES;
-MYSQL_EOF
+mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'root';" 2>&1 || true
+mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;" 2>&1 || true
+mysql --socket=/var/run/mysqld/mysqld.sock -uroot -e "FLUSH PRIVILEGES;" 2>&1 || true
+msg "✓ Permissions configured"
 
 # Shutdown temporary server
 msg "Shutting down temporary MySQL server..."
 mysqladmin --socket=/var/run/mysqld/mysqld.sock -uroot shutdown 2>&1 || true
-sleep 2
+sleep 3
 wait $MYSQL_PID 2>/dev/null || true
+msg "✓ Temporary server stopped"
 
-msg "Initialization complete. Starting MySQL normally..."
+msg "=== Initialization complete ==="
+msg "Starting MySQL normally with docker-entrypoint.sh..."
 exec docker-entrypoint.sh mysqld
