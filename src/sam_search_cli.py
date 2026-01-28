@@ -41,7 +41,10 @@ class Context:
 pass_context = click.make_pass_decorator(Context, ensure=True)
 
 
-@click.group()
+CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+
+
+@click.group(context_settings=CONTEXT_SETTINGS)
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @click.option('--inactive-projects', is_flag=True, help='Consider inactive projects')
 @click.option('--inactive-users', is_flag=True, help='Consider inactive users')

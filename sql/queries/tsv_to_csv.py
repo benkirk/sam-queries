@@ -2,6 +2,13 @@ import csv
 import sys
 import os
 
+# Increase CSV field size limit to handle large fields
+try:
+    csv.field_size_limit(sys.maxsize)
+except OverflowError:
+    # On some systems, sys.maxsize is too large
+    csv.field_size_limit(2147483647)  # Max int32 value
+
 def convert_tsv_to_csv(tsv_file, csv_file):
     try:
         with open(tsv_file, 'r', encoding='utf-8') as fin:
