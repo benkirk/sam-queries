@@ -32,6 +32,11 @@ class TestSamSearchCli:
         assert result.exit_code == 0
         assert "Search and query the SAM database" in result.output
 
+    def test_cli_help_short(self, runner):
+        result = runner.invoke(cli, ['-h'])
+        assert result.exit_code == 0
+        assert "Search and query the SAM database" in result.output
+
     def test_user_command_help(self, runner, mock_db_session):
         result = runner.invoke(cli, ['user', '--help'])
         assert result.exit_code == 0
