@@ -28,7 +28,7 @@ STATUS_DB_PASSWORD=root
 FILE1
 
 WORKDIR /code
-COPY --exclude=conda-env/ --exclude=.*/ . .
+COPY . .
 RUN pip install -e ".[test]"
 
 CMD ["python3", "./src/webapp/run.py"]

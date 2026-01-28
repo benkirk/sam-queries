@@ -36,6 +36,7 @@ class Context:
         self.inactive_projects: bool = False
         self.inactive_users: bool = False
         self.console = Console()
+        self.stderr_console = Console(file=sys.stderr)
 
 
 pass_context = click.make_pass_decorator(Context, ensure=True)
@@ -61,7 +62,7 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
         engine, _ = create_sam_engine()
         ctx.session = Session(engine)
     except Exception as e:
-        ctx.console.print(f"Error connecting to database: {e}", style="bold red", err=True)
+        ctx.stderr_console.print(f"Error connecting to database: {e}", style="bold red")
         sys.exit(1)
 
 
@@ -495,7 +496,7 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
 
             _display_user(ctx, user, list_projects)
         except Exception as e:
-            ctx.console.print(f"❌ Error searching for user: {e}", style="bold red", err=True)
+            ctx.stderr_console.print(f"❌ Error searching for user: {e}", style="bold red")
             sys.exit(2)
 
     elif abandoned:
@@ -579,7 +580,7 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
             ctx.console.print(table)
 
         except Exception as e:
-            ctx.console.print(f"❌ Error searching for users: {e}", style="bold red", err=True)
+            ctx.stderr_console.print(f"❌ Error searching for users: {e}", style="bold red")
             sys.exit(2)
 
 
@@ -702,7 +703,7 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
             _display_project(ctx, project, list_users=list_users)
 
         except Exception as e:
-            ctx.console.print(f"❌ Error searching for project: {e}", style="bold red", err=True)
+            ctx.stderr_console.print(f"❌ Error searching for project: {e}", style="bold red")
             sys.exit(2)
 
     else:
@@ -734,7 +735,7 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
 
                 ctx.console.print("")
         except Exception as e:
-            ctx.console.print(f"❌ Error searching for projects: {e}", style="bold red", err=True)
+            ctx.stderr_console.print(f"❌ Error searching for projects: {e}", style="bold red")
             sys.exit(2)
 
 
@@ -865,7 +866,7 @@ def allocations(ctx: Context, resource, facility, allocation_type, project,
         _display_allocation_summary(ctx, results, show_usage=show_usage)
 
     except Exception as e:
-        ctx.console.print(f"❌ Error querying allocations: {e}", style="bold red", err=True)
+        ctx.stderr_console.print(f"❌ Error querying allocations: {e}", style="bold red")
         if ctx.verbose:
             import traceback
             ctx.console.print(traceback.format_exc(), style="dim")
