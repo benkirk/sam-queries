@@ -172,6 +172,8 @@ def _display_user_projects(ctx: Context, user: User):
     table.add_column("Title")
     table.add_column("Role", style="magenta")
     table.add_column("Status")
+    if ctx.very_verbose:
+        table.add_column("Alloc End", style="yellow")
 
     for i, project in enumerate(projects, 1):
         # Determine role logic (simple approximation if exact role object isn't easily grabbed without more queries,
@@ -188,7 +190,17 @@ def _display_user_projects(ctx: Context, user: User):
         elif project.admin == user:
             role = "Admin"
 
-        table.add_row(str(i), project.projcode, project.title, role, f"[{status_style}]{status_str}[/]")
+        row = [str(i), project.projcode, project.title, role, f"[{status_style}]{status_str}[/]"]
+
+        if ctx.very_verbose:
+            latest_end = None
+            for account in project.accounts:
+                for alloc in account.allocations:
+                    if alloc.end_date and (latest_end is None or alloc.end_date > latest_end):
+                        latest_end = alloc.end_date
+            row.append(latest_end.strftime("%Y-%m-%d") if latest_end else "—")
+
+        table.add_row(*row)
 
     ctx.console.print(table)
     return
@@ -477,8 +489,9 @@ def _display_project_users(ctx: Context, project: Project):
 @click.option('--list-projects', is_flag=True, help='List all projects for the user')
 @click.option('--limit', type=int, default=50, help='Maximum number of results for pattern search (default: 50)')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (allocation end dates, timestamps)')
 @pass_context
-def user(ctx: Context, username, search, abandoned, has_active_project, list_projects, limit, verbose):
+def user(ctx: Context, username, search, abandoned, has_active_project, list_projects, limit, verbose, very_verbose):
     """
     Search for users.
 
@@ -491,7 +504,10 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
         click.echo(ctx.get_help())
         sys.exit(1)
 
-    if verbose:
+    if very_verbose:
+        ctx.very_verbose = True
+        ctx.verbose = True  # very_verbose implies verbose
+    elif verbose:
         ctx.verbose = True
 
     if username:
