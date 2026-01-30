@@ -263,6 +263,15 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
         if project.inactivate_time:
             grid.add_row("Inactivated", project.inactivate_time.strftime("%Y-%m-%d %H:%M:%S"))
 
+        # Show latest allocation end date
+        latest_end = None
+        for account in project.accounts:
+            for alloc in account.allocations:
+                if alloc.end_date and (latest_end is None or alloc.end_date > latest_end):
+                    latest_end = alloc.end_date
+        if latest_end:
+            grid.add_row("Allocation End", latest_end.strftime("%Y-%m-%d"))
+
     # Main Panel
     panel = Panel(grid, title=f"Project Information: [bold]{project.projcode}[/]{extra_title_info}", expand=False, border_style="green")
     ctx.console.print(panel)
