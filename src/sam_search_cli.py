@@ -341,22 +341,6 @@ def _display_project(ctx: Context, project: Project, extra_title_info: str = "",
                     alloc_table.add_row(*row)
             ctx.console.print(alloc_table)
 
-            # Very verbose: show charge breakdown and adjustments
-            if ctx.very_verbose:
-                for resource_name, resource_usage in usage.items():
-                    charges_by_type = resource_usage.get('charges_by_type', {})
-                    adjustments = resource_usage.get('adjustments', 0)
-
-                    if charges_by_type or adjustments:
-                        breakdown_parts = []
-                        for charge_type, amount in charges_by_type.items():
-                            if amount > 0:
-                                breakdown_parts.append(f"{charge_type}: {amount:,.0f}")
-                        if adjustments:
-                            breakdown_parts.append(f"adjustments: {adjustments:,.0f}")
-
-                        if breakdown_parts:
-                            ctx.console.print(f"  [dim]{resource_name} charges:[/] {', '.join(breakdown_parts)}")
 
     except Exception as e:
          ctx.console.print(f"Warning: Could not fetch allocations: {e}", style="yellow")
