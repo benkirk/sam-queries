@@ -251,8 +251,8 @@ def expirations_fragment():
     elif view_type == 'expired' or view_type == 'abandoned':
         results = get_projects_with_expired_allocations(
             db.session,
-            max_days_expired=365,
             min_days_expired=90,
+            max_days_expired=365,
             facility_names=facilities,
             resource_name=resource
         )
@@ -313,8 +313,8 @@ def expirations_export():
         # Export abandoned users
         expired_results = get_projects_with_expired_allocations(
             db.session,
-            max_days_expired=365,
             min_days_expired=90,
+            max_days_expired=365,
             facility_names=facilities,
             resource_name=resource
         )
@@ -350,8 +350,8 @@ def expirations_export():
             # Expired exports
             results = get_projects_with_expired_allocations(
                 db.session,
-                max_days_expired=365,
                 min_days_expired=90,
+                max_days_expired=365,
                 facility_names=facilities,
                 resource_name=resource
             )
