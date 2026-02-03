@@ -9,6 +9,7 @@ logs/
 
 # auth config:
 .env
+.cursor/
 
 # skip linting reports in CI
 megalinter-reports/
