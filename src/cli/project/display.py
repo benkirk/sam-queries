@@ -317,3 +317,40 @@ def display_abandoned_users_from_expired_projects(ctx: Context, abandoned_users:
     for user in sorted(abandoned_users, key=lambda u: u.username):
         table.add_row(f"{user.username:12} {user.display_name:30} <{user.primary_email}>")
     ctx.console.print(table)
+
+
+def display_notification_results(ctx: Context, results: dict, total_projects: int):
+    """Display notification results summary.
+
+    Args:
+        ctx: Context object
+        results: Dict with 'success' and 'failed' lists
+        total_projects: Total number of projects with expiring allocations
+    """
+    success_count = len(results['success'])
+    failed_count = len(results['failed'])
+    total_sent = success_count + failed_count
+
+    # Summary panel
+    grid = Table(show_header=False, box=None, padding=(0, 2))
+    grid.add_column("Field", style="cyan bold")
+    grid.add_column("Value")
+
+    grid.add_row("Expiring Projects", str(total_projects))
+    grid.add_row("Emails Sent", f"[green]{success_count}[/]" if success_count > 0 else "0")
+    grid.add_row("Failed", f"[red]{failed_count}[/]" if failed_count > 0 else "0")
+
+    panel = Panel(grid, title="Notification Results", expand=False, border_style="blue")
+    ctx.console.print(panel)
+
+    # Show failures if any
+    if failed_count > 0:
+        ctx.console.print("\n[red bold]Failed Notifications:[/]")
+        for notification in results['failed']:
+            ctx.console.print(f"  {notification['recipient']}: {notification.get('error', 'Unknown error')}", style="red")
+
+    # Show success details in verbose mode
+    if ctx.verbose and success_count > 0:
+        ctx.console.print("\n[green]Successful Notifications:[/]")
+        for notification in results['success']:
+            ctx.console.print(f"  {notification['recipient']} ({notification['project_code']})", style="green")

@@ -1,0 +1,33 @@
+Dear {{ user_name }},
+
+This is an automated notification from the SAM (System for Allocation Management) regarding your project allocation.
+
+Project: {{ project_code }} - {{ project_title }}
+
+The following resource allocation(s) for this project are expiring soon:
+
+{% for resource in resources -%}
+Resource: {{ resource.resource_name }}
+Expiration Date: {{ resource.expiration_date }}
+Days Remaining: {{ resource.days_remaining }}
+{% if resource.days_remaining <= 7 -%}
+URGENT: This allocation expires in {{ resource.days_remaining }} days or less!
+{% elif resource.days_remaining <= 14 -%}
+WARNING: This allocation expires in {{ resource.days_remaining }} days.
+{% else -%}
+Notice: This allocation expires in {{ resource.days_remaining }} days.
+{% endif -%}
+
+Allocation Details:
+  Allocated: {{ "{:,.0f}".format(resource.allocated_amount) }} {{ resource.units }}
+  Used: {{ "{:,.0f}".format(resource.used_amount) }} {{ resource.units }}
+  Remaining: {{ "{:,.0f}".format(resource.remaining_amount) }} {{ resource.units }}
+
+{% endfor -%}
+
+Please take appropriate action before the expiration date(s) to ensure continued access to these resources.
+
+For questions or assistance, please contact CISL User Support.
+
+---
+This is an automated message from SAM. Please do not reply to this email.
