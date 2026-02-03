@@ -3,13 +3,17 @@
 from datetime import datetime, timedelta
 from cli.core.base import BaseProjectCommand
 from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
-from cli.project.display import display_project
+from cli.project.display import (
+    display_project,
+    display_project_search_results,
+    display_expiring_projects,
+    display_abandoned_users_from_expired_projects
+)
 from sam import Project
 from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
     get_projects_with_expired_allocations
 )
-from rich.table import Table
 from rich.progress import track
 
 
@@ -48,19 +52,7 @@ class ProjectPatternSearchCommand(BaseProjectCommand):
                 self.console.print(f"❌ No projects found matching: {pattern}", style="bold red")
                 return EXIT_NOT_FOUND
 
-            self.console.print(f"✅ Found {len(projects)} project(s):\n", style="green bold")
-
-            for i, project in enumerate(projects, 1):
-                self.console.print(f"{i}. {project.projcode}", style="cyan bold")
-                self.console.print(f"   {project.title}")
-
-                if self.ctx.verbose:
-                    lead_name = project.lead.display_name if project.lead else 'N/A'
-                    self.console.print(f"   ID: {project.project_id}")
-                    self.console.print(f"   Lead: {lead_name}")
-                    self.console.print(f"   Users: {project.get_user_count()}")
-
-                self.console.print("")
+            display_project_search_results(self.ctx, projects, pattern)
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)
@@ -84,14 +76,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
                     facility_names=facility_filter
                 )
 
-                self.console.print(f"Found {len(expiring)} allocations expiring", style="yellow")
-                for proj, alloc, res_name, days in expiring:
-                    if self.ctx.verbose:
-                        display_project(self.ctx, proj, f" - {days} days remaining", list_users=list_users)
-                    else:
-                         self.console.print(f"  {proj.projcode} - {days} days remaining")
-                if not self.ctx.verbose:
-                    self.console.print("\n (Use --verbose for more project information.)", style="dim italic")
+                display_expiring_projects(self.ctx, expiring, list_users=list_users, upcoming=True)
 
             else:
                 # Recent Expirations
@@ -119,18 +104,12 @@ class ProjectExpirationCommand(BaseProjectCommand):
                     include_inactive_projects=include_inactive
                 )
 
-                self.console.print(f"Found {len(expiring)} recently expired projects:", style="yellow")
-                for proj, alloc, res_name, days_expired in expiring:
-                    if list_users:
-                        all_users.update(proj.roster)
-                    expiring_projects.add(proj.projcode)
-
-                    if self.ctx.verbose:
-                        display_project(self.ctx, proj, f" - {days_expired} days since expiration", list_users=list_users)
-                    else:
-                        self.console.print(f"  {proj.projcode} - {days_expired} days since expiration")
-
+                # Extract users if needed (business logic)
                 if list_users:
+                    for proj, alloc, res_name, days_expired in expiring:
+                        all_users.update(proj.roster)
+                        expiring_projects.add(proj.projcode)
+
                     for user in track(all_users, description="Determining abandoned users..."):
                         user_projects = set()
                         for proj in user.active_projects:
@@ -138,12 +117,11 @@ class ProjectExpirationCommand(BaseProjectCommand):
                         if user_projects.issubset(expiring_projects):
                             abandoned_users.add(user)
 
-                    self.console.print(f"Found {len(abandoned_users)} expiring users:", style="bold red")
-                    table = Table(show_header=False, box=None)
-                    table.add_column("User")
-                    for user in sorted(abandoned_users, key=lambda u: u.username):
-                        table.add_row(f"{user.username:12} {user.display_name:30} <{user.primary_email}>")
-                    self.console.print(table)
+                # Display results
+                display_expiring_projects(self.ctx, expiring, list_users=list_users, upcoming=False)
+
+                if list_users and abandoned_users:
+                    display_abandoned_users_from_expired_projects(self.ctx, abandoned_users)
 
             return EXIT_SUCCESS
         except Exception as e:

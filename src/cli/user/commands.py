@@ -2,10 +2,14 @@
 
 from cli.core.base import BaseUserCommand
 from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
-from cli.user.display import display_user, display_user_projects
+from cli.user.display import (
+    display_user,
+    display_user_projects,
+    display_user_search_results,
+    display_abandoned_users,
+    display_users_with_projects
+)
 from sam import User
-from rich.table import Table
-from rich import box
 from rich.progress import track
 
 
@@ -42,29 +46,7 @@ class UserPatternSearchCommand(BaseUserCommand):
                 self.console.print(f"❌ No users found matching: {pattern}", style="red")
                 return EXIT_NOT_FOUND
 
-            self.console.print(f"✅ Found {len(users)} user(s):\n", style="green bold")
-
-            table = Table(box=box.SIMPLE)
-            table.add_column("#", style="dim")
-            table.add_column("Username", style="green")
-            table.add_column("Name")
-
-            if self.ctx.verbose:
-                table.add_column("ID")
-                table.add_column("Email")
-                table.add_column("Active")
-
-            for i, user in enumerate(users, 1):
-                row = [str(i), user.username, user.display_name]
-                if self.ctx.verbose:
-                    row.extend([
-                        str(user.user_id),
-                        user.primary_email or 'N/A',
-                        "✓" if user.is_accessible else "✗"
-                    ])
-                table.add_row(*row)
-
-            self.console.print(table)
+            display_user_search_results(self.ctx, users, pattern)
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)
@@ -76,22 +58,13 @@ class UserAbandonedCommand(BaseUserCommand):
     def execute(self) -> int:
         try:
             active_users = User.get_active_users(self.session)
-            self.console.print(f"Examining {len(active_users):,} 'active' users listed in SAM")
             abandoned_users = set()
 
             for user in track(active_users, description=" --> determining abandoned users..."):
                 if len(user.active_projects) == 0:
                     abandoned_users.add(user)
 
-            if abandoned_users:
-                self.console.print(f"Found {len(abandoned_users):,} abandoned_users", style="bold yellow")
-
-                table = Table(show_header=False, box=None)
-                table.add_column("User")
-                for user in sorted(abandoned_users, key=lambda u: u.username):
-                    table.add_row(f"{user.username:12} {user.display_name:30} <{user.primary_email}>")
-                self.console.print(table)
-
+            display_abandoned_users(self.ctx, abandoned_users, len(active_users))
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)
@@ -110,19 +83,7 @@ class UserWithProjectsCommand(BaseUserCommand):
                     users_with_projects.add(user)
 
             if users_with_projects:
-                self.console.print(f"Found {len(users_with_projects)} users with at least one active project.", style="green")
-
-                if self.ctx.verbose:
-                     for user in sorted(users_with_projects, key=lambda u: u.username):
-                        display_user(self.ctx, user)
-                        if list_projects:
-                            display_user_projects(self.ctx, user)
-                else:
-                    table = Table(show_header=False, box=None)
-                    table.add_column("User")
-                    for user in sorted(users_with_projects, key=lambda u: u.username):
-                         table.add_row(f"{user.username:12} {user.display_name:30} <{user.primary_email}>")
-                    self.console.print(table)
+                display_users_with_projects(self.ctx, users_with_projects, list_projects)
 
             return EXIT_SUCCESS
         except Exception as e:

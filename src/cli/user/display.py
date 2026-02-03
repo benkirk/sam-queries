@@ -135,3 +135,61 @@ def display_user_projects(ctx: Context, user: User):
 
     ctx.console.print(table)
     return
+
+
+def display_user_search_results(ctx: Context, users: list, pattern: str):
+    """Display user pattern search results."""
+    ctx.console.print(f"✅ Found {len(users)} user(s):\n", style="green bold")
+
+    table = Table(box=box.SIMPLE)
+    table.add_column("#", style="dim")
+    table.add_column("Username", style="green")
+    table.add_column("Name")
+
+    if ctx.verbose:
+        table.add_column("ID")
+        table.add_column("Email")
+        table.add_column("Active")
+
+    for i, user in enumerate(users, 1):
+        row = [str(i), user.username, user.display_name]
+        if ctx.verbose:
+            row.extend([
+                str(user.user_id),
+                user.primary_email or 'N/A',
+                "✓" if user.is_accessible else "✗"
+            ])
+        table.add_row(*row)
+
+    ctx.console.print(table)
+
+
+def display_abandoned_users(ctx: Context, abandoned_users: set, total_active_users: int):
+    """Display abandoned users (active users with no active projects)."""
+    ctx.console.print(f"Examining {total_active_users:,} 'active' users listed in SAM")
+
+    if abandoned_users:
+        ctx.console.print(f"Found {len(abandoned_users):,} abandoned_users", style="bold yellow")
+
+        table = Table(show_header=False, box=None)
+        table.add_column("User")
+        for user in sorted(abandoned_users, key=lambda u: u.username):
+            table.add_row(f"{user.username:12} {user.display_name:30} <{user.primary_email}>")
+        ctx.console.print(table)
+
+
+def display_users_with_projects(ctx: Context, users_with_projects: set, list_projects: bool = False):
+    """Display users who have at least one active project."""
+    ctx.console.print(f"Found {len(users_with_projects)} users with at least one active project.", style="green")
+
+    if ctx.verbose:
+        for user in sorted(users_with_projects, key=lambda u: u.username):
+            display_user(ctx, user)
+            if list_projects:
+                display_user_projects(ctx, user)
+    else:
+        table = Table(show_header=False, box=None)
+        table.add_column("User")
+        for user in sorted(users_with_projects, key=lambda u: u.username):
+            table.add_row(f"{user.username:12} {user.display_name:30} <{user.primary_email}>")
+        ctx.console.print(table)

@@ -262,3 +262,58 @@ def display_project_users(ctx: Context, project: Project):
         table.add_row(*row)
 
     ctx.console.print(table)
+
+
+def display_project_search_results(ctx: Context, projects: list, pattern: str):
+    """Display project pattern search results."""
+    ctx.console.print(f"✅ Found {len(projects)} project(s):\n", style="green bold")
+
+    for i, project in enumerate(projects, 1):
+        ctx.console.print(f"{i}. {project.projcode}", style="cyan bold")
+        ctx.console.print(f"   {project.title}")
+
+        if ctx.verbose:
+            lead_name = project.lead.display_name if project.lead else 'N/A'
+            ctx.console.print(f"   ID: {project.project_id}")
+            ctx.console.print(f"   Lead: {lead_name}")
+            ctx.console.print(f"   Users: {project.get_user_count()}")
+
+        ctx.console.print("")
+
+
+def display_expiring_projects(ctx: Context, expiring_data: list, list_users: bool = False, upcoming: bool = True):
+    """Display upcoming or recently expired projects.
+
+    Args:
+        ctx: Context object
+        expiring_data: List of tuples (project, allocation, resource_name, days)
+        list_users: Whether to list users
+        upcoming: True for upcoming expirations, False for recent expirations
+    """
+    if upcoming:
+        ctx.console.print(f"Found {len(expiring_data)} allocations expiring", style="yellow")
+        for proj, alloc, res_name, days in expiring_data:
+            if ctx.verbose:
+                display_project(ctx, proj, f" - {days} days remaining", list_users=list_users)
+            else:
+                ctx.console.print(f"  {proj.projcode} - {days} days remaining")
+    else:
+        ctx.console.print(f"Found {len(expiring_data)} recently expired projects:", style="yellow")
+        for proj, alloc, res_name, days_expired in expiring_data:
+            if ctx.verbose:
+                display_project(ctx, proj, f" - {days_expired} days since expiration", list_users=list_users)
+            else:
+                ctx.console.print(f"  {proj.projcode} - {days_expired} days since expiration")
+
+    if not ctx.verbose:
+        ctx.console.print("\n (Use --verbose for more project information.)", style="dim italic")
+
+
+def display_abandoned_users_from_expired_projects(ctx: Context, abandoned_users: set):
+    """Display users whose only active projects have expired."""
+    ctx.console.print(f"Found {len(abandoned_users)} expiring users:", style="bold red")
+    table = Table(show_header=False, box=None)
+    table.add_column("User")
+    for user in sorted(abandoned_users, key=lambda u: u.username):
+        table.add_row(f"{user.username:12} {user.display_name:30} <{user.primary_email}>")
+    ctx.console.print(table)
