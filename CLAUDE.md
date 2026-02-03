@@ -53,7 +53,12 @@ sam-queries/
 │   ├── integration/         # XRAS integration (tables + views)
 │   ├── security/            # Roles, API credentials, access control
 │   └── operational.py       # Synchronizers, tasks, products
-├── src/sam_search.py     # CLI tool for user/project searches
+├── src/cli/              # Modular CLI architecture ⭐ NEW
+│   ├── core/                # Shared infrastructure (Context, base classes, utils)
+│   ├── user/                # User commands and display functions
+│   ├── project/             # Project commands and display functions
+│   ├── allocations/         # Allocation commands and display functions
+│   └── cmds/                # Entry points (search.py, admin.py)
 ├── src/webapp/           # Flask web application
 ├── compose.yaml          # Docker Compose config (preferred way to run webapp)
 └── tests/                   # Comprehensive test suite
@@ -61,8 +66,8 @@ sam-queries/
     │   ├── test_basic_read.py           # Basic ORM queries
     │   ├── test_crud_operations.py      # Create/update/delete
     │   ├── test_new_models.py           # 7 new models (51 tests)
-    │   ├── test_query_functions.py      # Query functions (41 tests) ⭐ NEW
-    │   └── test_sam_search_cli.py       # CLI integration tests (44 tests)
+    │   ├── test_query_functions.py      # Query functions (41 tests) ⭐
+    │   └── test_sam_search_cli.py       # CLI integration tests (20 tests)
     ├── integration/
     │   ├── test_schema_validation.py    # Schema drift detection (18 tests)
     │   └── test_views.py                # Database views
@@ -503,13 +508,13 @@ source ../.env && pytest tests/ -n 1
 ```
 
 ### Key Test Files
-1. **test_query_functions.py** (41 tests): Query function coverage ⭐ NEW
+1. **test_query_functions.py** (41 tests): Query function coverage ⭐
    - Charge aggregations (charges.py: 38% → 90%)
    - Dashboard queries (dashboard.py: 28% → 79%)
    - Allocation lookups (allocations.py: 41% → 76%)
    - Statistics & project searches
 2. **test_schema_validation.py** (18 tests): Schema drift detection ⭐
-3. **test_sam_search_cli.py** (44 tests): CLI integration
+3. **test_sam_search_cli.py** (20 tests): CLI integration (modular architecture) ⭐
 4. **test_new_models.py** (51 tests): Security, charging, project models
 5. **test_basic_read.py** (26 tests): ORM queries, relationships
 6. **test_views.py** (24 tests): XRAS views, read-only enforcement
@@ -521,9 +526,40 @@ source ../.env && pytest tests/ -n 1
 
 ---
 
-## CLI Tool: sam-search
+## CLI Tools: sam-search & sam-admin
 
-### Usage Examples
+### Architecture
+
+The CLI has been refactored into a modular, class-based architecture supporting both search and administrative commands:
+
+```
+src/cli/
+├── core/           # Shared infrastructure
+│   ├── context.py     # Context class (session, console, flags)
+│   ├── base.py        # Base command classes (BaseCommand, BaseUserCommand, etc.)
+│   └── utils.py       # Exit codes, utilities
+├── user/           # User domain
+│   ├── commands.py    # UserSearchCommand, UserAdminCommand, etc.
+│   └── display.py     # display_user(), display_user_projects()
+├── project/        # Project domain
+│   ├── commands.py    # ProjectSearchCommand, ProjectAdminCommand, etc.
+│   └── display.py     # display_project(), display_project_users()
+├── allocations/    # Allocation domain
+│   ├── commands.py    # AllocationSearchCommand
+│   └── display.py     # display_allocation_summary()
+└── cmds/           # Entry points
+    ├── search.py      # sam-search CLI (user-facing)
+    └── admin.py       # sam-admin CLI (administrative)
+```
+
+**Design Principles:**
+- Command classes encapsulate business logic, enable inheritance
+- Display functions are stateless, reusable
+- Entry points delegate to command classes
+- Admin commands extend search commands via inheritance
+
+### sam-search Usage Examples
+
 ```bash
 # Find user
 sam-search user benkirk
@@ -544,8 +580,31 @@ sam-search project SCSG0001 --list-users --verbose
 sam-search project --upcoming-expirations --list-users
 sam-search project --recent-expirations --list-users
 
+# Allocation queries with flexible grouping
+sam-search allocations --resource Derecho --total-facilities --total-types
+sam-search allocations --resource Derecho,Casper --allocation-type Small
+
 # Global flags
 sam-search --inactive-projects user benkirk --list-projects
+```
+
+### sam-admin Usage Examples ⭐ NEW
+
+Administrative commands that extend search functionality:
+
+```bash
+# User validation
+sam-admin user benkirk --validate
+
+# Project validation
+sam-admin project SCSG0001 --validate
+
+# Project reconciliation
+sam-admin project SCSG0001 --reconcile
+
+# Admin commands include all search functionality
+sam-admin user benkirk --list-projects  # Works like sam-search
+sam-admin project SCSG0001 --list-users  # Works like sam-search
 ```
 
 ### Exit Codes
@@ -553,6 +612,10 @@ sam-search --inactive-projects user benkirk --list-projects
 - `1`: Not found
 - `2`: Error
 - `130`: Keyboard interrupt
+
+### Adding New Commands
+
+See `src/cli/README.md` for detailed guide on extending the CLI with new commands.
 
 ---
 
@@ -627,12 +690,16 @@ for project, allocation, resource_name, days_since in expired:
 ## Git Workflow
 
 ### Recent Commits
-1. **aa83b9b**: Enable parallel test execution with pytest-xdist (3x faster)
-2. **c92972b**: Add targeted tests for query functions (+41 tests, +5% coverage)
-3. **df4d317**: Admin functionality (#13)
+1. **cfbf846**: Refactor SAM CLI into modular, class-based architecture ⭐ NEW
+   - Split 1043-line monolith into 17 modular files
+   - Added sam-admin CLI with validation and reconciliation
+   - 100% backward compatibility, all 437 tests pass
+2. **aa83b9b**: Enable parallel test execution with pytest-xdist (3x faster)
+3. **c92972b**: Add targeted tests for query functions (+41 tests, +5% coverage)
+4. **df4d317**: Admin functionality (#13)
 
 ### Branches
-- **Current**: `more_tests`
+- **Current**: `admin-cli`
 - **Main branch**: `main`
 
 ### Commit Guidelines
@@ -705,12 +772,18 @@ docker compose up
 docker compose up                                  # Start webapp (http://localhost:5050)
 
 # Testing
-source ../.env && pytest tests/ --no-cov                            # Fast tests (32s, parallel)
-source ../.env && pytest tests/                                     # Full tests with coverage (97s)
+source ../.env && pytest tests/ --no-cov          # Fast tests (32s, parallel)
+source ../.env && pytest tests/                   # Full tests with coverage (97s)
 
-# CLI
-sam-search user benkirk --list-projects  # User lookup
-sam-search project SCSG0001 --list-users # Project lookup
+# CLI - Search
+sam-search user benkirk --list-projects           # User lookup
+sam-search project SCSG0001 --list-users          # Project lookup
+sam-search allocations --resource Derecho         # Allocation queries
+
+# CLI - Admin (NEW)
+sam-admin user benkirk --validate                 # Validate user data
+sam-admin project SCSG0001 --validate             # Validate project
+sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ```
 
 ---

@@ -39,7 +39,8 @@ dependencies = [
 ]
 
 [project.scripts]
-sam-search = "sam_search_cli:cli"
+sam-search = "cli.cmds.search:cli"
+sam-admin = "cli.cmds.admin:cli"
 sam-status = "system_status:main"
 
 [project.optional-dependencies]

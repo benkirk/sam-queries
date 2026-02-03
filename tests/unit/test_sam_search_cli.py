@@ -1,7 +1,7 @@
 import pytest
 from click.testing import CliRunner
 from unittest.mock import patch, MagicMock
-from sam_search_cli import cli
+from cli.cmds.search import cli
 from sam import User, Project
 
 class TestSamSearchCli:
@@ -16,13 +16,13 @@ class TestSamSearchCli:
         # The CLI does:
         # engine, _ = create_sam_engine()
         # ctx.session = Session(engine)
-        
+
         # We'll patch create_sam_engine in sam.session where it is defined
-        # And patch Session in sam_search_cli where it is imported
-        
+        # And patch Session in cli.cmds.search where it is imported
+
         with patch('sam.session.create_sam_engine') as mock_create_engine, \
-             patch('sam_search_cli.Session') as mock_session_cls:
-            
+             patch('cli.cmds.search.Session') as mock_session_cls:
+
             mock_create_engine.return_value = (MagicMock(), None)
             mock_session_cls.return_value = session
             yield session
