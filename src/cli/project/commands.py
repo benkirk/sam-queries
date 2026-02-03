@@ -14,7 +14,8 @@ from cli.project.display import (
 from sam import Project
 from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
-    get_projects_with_expired_allocations
+    get_projects_with_expired_allocations,
+    get_all_expiring_allocations
 )
 from rich.progress import track
 
@@ -83,7 +84,14 @@ class ProjectExpirationCommand(BaseProjectCommand):
 
                 # Send notifications if requested
                 if notify:
-                    return self._send_notifications(expiring, email_list, dry_run)
+                    # For notifications, get ALL expiring allocations (not just latest per project)
+                    all_expiring = get_all_expiring_allocations(
+                        self.session,
+                        start_date=datetime.now(),
+                        end_date=datetime.now() + timedelta(days=32),
+                        facility_names=facility_filter
+                    )
+                    return self._send_notifications(all_expiring, email_list, dry_run)
 
             else:
                 # Recent Expirations
