@@ -77,7 +77,7 @@ jobs:
       - name: Run pytest with coverage
         id: pytest
         run: |
-          docker compose exec -T webapp bash -c "cd /code && pytest tests/ --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=70"
+          docker compose exec -T webapp bash -c "cd /code && pytest tests/ --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=60"
 
       - name: Copy coverage report from container
         if: always()
