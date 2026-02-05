@@ -4,15 +4,17 @@
 
 Add email notification functionality to `sam-admin project --upcoming-expirations --notify` to automatically email users about expiring project allocations.
 
+**Key Design:** Send **one email per project** (not per resource). If a project has multiple resources expiring (e.g., Derecho + Casper), all resources are listed in a single email to avoid notification spam.
+
 ## Requirements
 
 - Command: `sam-admin project --upcoming-expirations --notify [--email-list]`
 - Works exactly like `sam-search project --upcoming-expirations` for finding projects
-- For each expiring project, determine users and send notification emails
+- For each expiring project, determine users and send **one email** listing all expiring resources
 - Use stdlib: `email.message.EmailMessage` and `smtplib`
 - Use Jinja2 for templates (already a dependency)
 - Support both text and HTML email formats
-- Templates should include project code and expiration date
+- Templates should include project code, expiration dates for all resources
 
 ## Architecture
 
@@ -24,11 +26,15 @@ ProjectExpirationCommand.execute(notify=True)
 get_projects_by_allocation_end_date()
     → [(project, allocation, resource_name, days), ...]
          ↓
-For each expiring project:
-    1. Get recipients: project.lead, project.admin (or project.roster)
-    2. Render email from templates
-    3. Send via EmailNotificationService
-    4. Track success/failure
+Group by project (using defaultdict)
+    → {projcode: [resources_list]}
+         ↓
+For each unique project:
+    1. Build resources list (all expiring resources for this project)
+    2. Get recipients: project.lead, project.admin, project.roster
+    3. Render email from templates (includes all resources)
+    4. Send ONE email per recipient via EmailNotificationService
+    5. Track success/failure
          ↓
 display_notification_results()
 ```
@@ -91,30 +97,36 @@ class Context:
 ```jinja2
 Dear {{ user_name }},
 
-This is an automated notification from NCAR CISL regarding your project allocation.
+This is an automated notification from NCAR CISL regarding your project allocations.
 
 Project: {{ project_code }} - {{ project_title }}
-Resource: {{ resource_name }}
-Expiration Date: {{ expiration_date }}
-Days Remaining: {{ days_remaining }}
 
-{% if days_remaining <= 7 %}
-⚠️  URGENT: Your allocation expires in {{ days_remaining }} days!
-{% elif days_remaining <= 14 %}
-⚠️  WARNING: Your allocation expires in {{ days_remaining }} days.
+{% if resources|length == 1 %}
+Your allocation is expiring soon:
 {% else %}
-Your allocation will expire in {{ days_remaining }} days.
+You have {{ resources|length }} allocations expiring soon:
 {% endif %}
+
+{% for resource in resources %}
+{% if resource.days_remaining <= 7 %}
+⚠️  URGENT: {{ resource.resource_name }} expires in {{ resource.days_remaining }} days ({{ resource.expiration_date }})
+{% elif resource.days_remaining <= 14 %}
+⚠️  WARNING: {{ resource.resource_name }} expires in {{ resource.days_remaining }} days ({{ resource.expiration_date }})
+{% else %}
+{{ resource.resource_name }} expires in {{ resource.days_remaining }} days ({{ resource.expiration_date }})
+{% endif %}
+   - Allocated: {{ resource.allocated_amount }} core-hours
+   - Used: {{ resource.used_amount }} core-hours
+   - Remaining: {{ resource.remaining_amount }} core-hours
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
 
 Please take action to:
 - Submit a renewal request if you need continued access
 - Save any critical data before expiration
 - Contact CISL support if you have questions
-
-Allocation Details:
-- Allocated: {{ allocated_amount }} core-hours
-- Used: {{ used_amount }} core-hours
-- Remaining: {{ remaining_amount }} core-hours
 
 For more information, visit: https://arc.ucar.edu/
 
@@ -150,36 +162,43 @@ Questions? Contact: cisl-consulting@ucar.edu
         <div class="content">
             <p>Dear {{ user_name }},</p>
 
-            <p>This is an automated notification regarding your project allocation.</p>
-
-            {% if days_remaining <= 7 %}
-            <div class="alert-urgent">
-                <strong>⚠️ URGENT:</strong> Your allocation expires in {{ days_remaining }} days!
-            </div>
-            {% elif days_remaining <= 14 %}
-            <div class="alert-warning">
-                <strong>⚠️ WARNING:</strong> Your allocation expires in {{ days_remaining }} days.
-            </div>
-            {% else %}
-            <div class="alert-info">
-                Your allocation will expire in {{ days_remaining }} days.
-            </div>
-            {% endif %}
+            <p>This is an automated notification regarding your project allocations.</p>
 
             <div class="details">
                 <h3>Project Information</h3>
                 <p><strong>Project:</strong> {{ project_code }} - {{ project_title }}</p>
-                <p><strong>Resource:</strong> {{ resource_name }}</p>
-                <p><strong>Expiration Date:</strong> {{ expiration_date }}</p>
-                <p><strong>Days Remaining:</strong> {{ days_remaining }}</p>
             </div>
 
-            <div class="details">
-                <h3>Allocation Usage</h3>
-                <p><strong>Allocated:</strong> {{ allocated_amount }} core-hours</p>
-                <p><strong>Used:</strong> {{ used_amount }} core-hours</p>
-                <p><strong>Remaining:</strong> {{ remaining_amount }} core-hours</p>
+            {% if resources|length == 1 %}
+            <h3>Expiring Allocation</h3>
+            {% else %}
+            <h3>Expiring Allocations ({{ resources|length }} resources)</h3>
+            {% endif %}
+
+            {% for resource in resources %}
+            {% if resource.days_remaining <= 7 %}
+            <div class="alert-urgent">
+                <strong>⚠️ URGENT:</strong> {{ resource.resource_name }} expires in {{ resource.days_remaining }} days!
             </div>
+            {% elif resource.days_remaining <= 14 %}
+            <div class="alert-warning">
+                <strong>⚠️ WARNING:</strong> {{ resource.resource_name }} expires in {{ resource.days_remaining }} days.
+            </div>
+            {% else %}
+            <div class="alert-info">
+                {{ resource.resource_name }} expires in {{ resource.days_remaining }} days.
+            </div>
+            {% endif %}
+
+            <div class="details">
+                <p><strong>Resource:</strong> {{ resource.resource_name }}</p>
+                <p><strong>Expiration Date:</strong> {{ resource.expiration_date }}</p>
+                <p><strong>Days Remaining:</strong> {{ resource.days_remaining }}</p>
+                <p><strong>Allocated:</strong> {{ resource.allocated_amount }} core-hours</p>
+                <p><strong>Used:</strong> {{ resource.used_amount }} core-hours</p>
+                <p><strong>Remaining:</strong> {{ resource.remaining_amount }} core-hours</p>
+            </div>
+            {% endfor %}
 
             <h3>Action Required</h3>
             <ul>
@@ -243,12 +262,7 @@ class EmailNotificationService:
         recipient: str,
         project_code: str,
         project_title: str,
-        resource_name: str,
-        expiration_date: str,
-        days_remaining: int,
-        allocated_amount: float,
-        used_amount: float,
-        remaining_amount: float,
+        resources: List[Dict],
         user_name: str = None
     ) -> Tuple[bool, Optional[str]]:
         """
@@ -258,12 +272,8 @@ class EmailNotificationService:
             recipient: Email address
             project_code: Project code (e.g., SCSG0001)
             project_title: Full project title
-            resource_name: Resource name (e.g., Derecho)
-            expiration_date: ISO format date string
-            days_remaining: Days until expiration
-            allocated_amount: Total allocation
-            used_amount: Used amount
-            remaining_amount: Remaining amount
+            resources: List of dicts with keys: resource_name, expiration_date,
+                      days_remaining, allocated_amount, used_amount, remaining_amount
             user_name: Recipient's name (optional)
 
         Returns:
@@ -274,19 +284,21 @@ class EmailNotificationService:
             msg = EmailMessage()
             msg['From'] = self.ctx.mail_from
             msg['To'] = recipient
-            msg['Subject'] = f"Allocation Expiring Soon: {project_code} - {resource_name}"
+
+            # Subject includes resource names
+            if len(resources) == 1:
+                subject = f"Allocation Expiring Soon: {project_code} - {resources[0]['resource_name']}"
+            else:
+                resource_names = ', '.join(r['resource_name'] for r in resources)
+                subject = f"Allocations Expiring Soon: {project_code} - {resource_names}"
+            msg['Subject'] = subject
 
             # Render templates
             context = {
                 'user_name': user_name or 'User',
                 'project_code': project_code,
                 'project_title': project_title,
-                'resource_name': resource_name,
-                'expiration_date': expiration_date,
-                'days_remaining': days_remaining,
-                'allocated_amount': f'{allocated_amount:,.0f}',
-                'used_amount': f'{used_amount:,.0f}',
-                'remaining_amount': f'{remaining_amount:,.0f}'
+                'resources': resources  # List of resource dicts
             }
 
             # Render text content
@@ -449,22 +461,57 @@ class ProjectExpirationCommand(BaseProjectCommand):
             return self.handle_exception(e)
 
     def _send_notifications(self, expiring_data: list, additional_recipients: str = None) -> int:
-        """Send email notifications for expiring projects."""
+        """Send email notifications for expiring projects.
+
+        Groups by project and sends one email per project (even if multiple resources expiring).
+        """
+        from collections import defaultdict
+
         email_service = EmailNotificationService(self.ctx)
-        notifications = []
 
         # Parse additional recipients
         extra_emails = []
         if additional_recipients:
             extra_emails = [email.strip() for email in additional_recipients.split(',')]
 
-        # Build notification list
+        # Group expiring data by project
+        projects_data = defaultdict(list)
         for proj, alloc, resource_name, days in expiring_data:
-            # Get project usage details
-            usage = proj.get_detailed_allocation_usage(resource_name=resource_name)
-            resource_usage = usage.get(resource_name, {})
+            projects_data[proj.projcode].append({
+                'project': proj,
+                'allocation': alloc,
+                'resource_name': resource_name,
+                'days_remaining': days
+            })
 
-            # Determine recipients
+        # Build notification list (one per project per recipient)
+        notifications = []
+
+        for projcode, resources_list in projects_data.items():
+            # Use first entry to get project details (all have same project)
+            proj = resources_list[0]['project']
+
+            # Get project usage details for all resources
+            usage = proj.get_detailed_allocation_usage()
+
+            # Build resources list for this project
+            resources = []
+            for res_data in resources_list:
+                resource_name = res_data['resource_name']
+                alloc = res_data['allocation']
+                days = res_data['days_remaining']
+                resource_usage = usage.get(resource_name, {})
+
+                resources.append({
+                    'resource_name': resource_name,
+                    'expiration_date': alloc.end_date.strftime('%Y-%m-%d'),
+                    'days_remaining': days,
+                    'allocated_amount': f"{resource_usage.get('allocated', alloc.amount):,.0f}",
+                    'used_amount': f"{resource_usage.get('used', 0):,.0f}",
+                    'remaining_amount': f"{resource_usage.get('remaining', alloc.amount):,.0f}"
+                })
+
+            # Determine recipients for this project
             recipients = set()
 
             # Always notify lead and admin
@@ -485,28 +532,24 @@ class ProjectExpirationCommand(BaseProjectCommand):
             for email in extra_emails:
                 recipients.add((email, None))
 
-            # Create notification for each recipient
+            # Create one notification per recipient for this project
             for recipient_email, recipient_name in recipients:
                 notifications.append({
                     'recipient': recipient_email,
                     'project_code': proj.projcode,
                     'project_title': proj.title,
-                    'resource_name': resource_name,
-                    'expiration_date': alloc.end_date.strftime('%Y-%m-%d'),
-                    'days_remaining': days,
-                    'allocated_amount': resource_usage.get('allocated', alloc.amount),
-                    'used_amount': resource_usage.get('used', 0),
-                    'remaining_amount': resource_usage.get('remaining', alloc.amount),
+                    'resources': resources,  # List of resource dicts
                     'user_name': recipient_name
                 })
 
         # Send notifications
-        self.console.print(f"\n[bold]Sending {len(notifications)} email notifications...[/]")
+        unique_projects = len(projects_data)
+        self.console.print(f"\n[bold]Sending notifications for {unique_projects} project(s) to {len(notifications)} recipient(s)...[/]")
         results = email_service.send_batch_notifications(notifications)
 
         # Display results
         from cli.project.display import display_notification_results
-        display_notification_results(self.ctx, results, len(expiring_data))
+        display_notification_results(self.ctx, results, unique_projects)
 
         # Return error if any failed
         if len(results['failed']) > 0:
@@ -616,16 +659,19 @@ def test_send_expiration_notification_success(mock_smtp, email_service):
     mock_smtp.return_value.__enter__.return_value = smtp_instance
 
     # Send notification
+    resources = [{
+        'resource_name': 'Derecho',
+        'expiration_date': '2025-03-01',
+        'days_remaining': 15,
+        'allocated_amount': '100,000',
+        'used_amount': '50,000',
+        'remaining_amount': '50,000'
+    }]
     success, error = email_service.send_expiration_notification(
         recipient='test@example.com',
         project_code='TEST0001',
         project_title='Test Project',
-        resource_name='Derecho',
-        expiration_date='2025-03-01',
-        days_remaining=15,
-        allocated_amount=100000.0,
-        used_amount=50000.0,
-        remaining_amount=50000.0,
+        resources=resources,
         user_name='Test User'
     )
 
@@ -641,16 +687,19 @@ def test_send_expiration_notification_failure(mock_smtp, email_service):
     mock_smtp.return_value.__enter__.side_effect = Exception('SMTP error')
 
     # Send notification
+    resources = [{
+        'resource_name': 'Derecho',
+        'expiration_date': '2025-03-01',
+        'days_remaining': 15,
+        'allocated_amount': '100,000',
+        'used_amount': '50,000',
+        'remaining_amount': '50,000'
+    }]
     success, error = email_service.send_expiration_notification(
         recipient='test@example.com',
         project_code='TEST0001',
         project_title='Test Project',
-        resource_name='Derecho',
-        expiration_date='2025-03-01',
-        days_remaining=15,
-        allocated_amount=100000.0,
-        used_amount=50000.0,
-        remaining_amount=50000.0
+        resources=resources
     )
 
     assert success is False
@@ -668,23 +717,27 @@ def test_send_batch_notifications(mock_smtp, email_service):
             'recipient': 'user1@example.com',
             'project_code': 'TEST0001',
             'project_title': 'Test Project 1',
-            'resource_name': 'Derecho',
-            'expiration_date': '2025-03-01',
-            'days_remaining': 15,
-            'allocated_amount': 100000.0,
-            'used_amount': 50000.0,
-            'remaining_amount': 50000.0
+            'resources': [{
+                'resource_name': 'Derecho',
+                'expiration_date': '2025-03-01',
+                'days_remaining': 15,
+                'allocated_amount': '100,000',
+                'used_amount': '50,000',
+                'remaining_amount': '50,000'
+            }]
         },
         {
             'recipient': 'user2@example.com',
             'project_code': 'TEST0002',
             'project_title': 'Test Project 2',
-            'resource_name': 'Casper',
-            'expiration_date': '2025-03-15',
-            'days_remaining': 30,
-            'allocated_amount': 200000.0,
-            'used_amount': 100000.0,
-            'remaining_amount': 100000.0
+            'resources': [{
+                'resource_name': 'Casper',
+                'expiration_date': '2025-03-15',
+                'days_remaining': 30,
+                'allocated_amount': '200,000',
+                'used_amount': '100,000',
+                'remaining_amount': '100,000'
+            }]
         }
     ]
 

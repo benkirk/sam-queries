@@ -1,0 +1,42 @@
+Dear {{ recipient_name }},
+
+Project {{ project_code }} - "{{ project_title }}" is expiring on
+{{ latest_expiration }}.
+
+Read this message carefully to re-familiarize yourself with the
+expiration process and timeline for data retrieval and ultimate
+removal.
+
+Project Data Removal Timeline:
+Expired projects have 90 days after expiration for data retrieval,
+after which all project data is subject to removal from NCAR systems.
+You therefore must transfer any required data to your home institution
+during this 90 day grace period. Your 90 day post-expiry grace period
+will end on {{ grace_expiration }}, after which you will NOT have
+further access to project data and it will be removed.
+
+User Account Deactivation and User Data Removal Timeline:
+User accounts become disabled when they are no longer associated with
+any active project, at which point all user-specific data in your
+home, work, and scratch file systems will be removed. If your account
+is associated with other, active projects your user data will remain
+unaffected.
+
+For additional details on data access and retention policies
+see https://arc.ucar.edu/docs/glade.
+
+Project Extensions:
+{% if recipient_role == 'lead' -%}
+If you would like this project to continue, you may request an
+extension if your NSF award has been extended, or if you have not
+finished with your grad student or postdoc allocation.
+  - Visit https://arc.ucar.edu/ and login
+  - Select "Allocations" from the navigation menu, then click on
+    "My Allocation Requests"
+  - Find project {{ project_code }}, click on "Actions" and select
+    the "Extension" option.
+  - Complete the extension request form and submit.
+{% else -%}
+Your project lead ({{ project_lead }} / {{ project_lead_email }}) can
+request an extension if warranted under certain circumstances.
+{% endif %}

@@ -1,18 +1,22 @@
 """Project command classes."""
 
 from datetime import datetime, timedelta
+from collections import defaultdict
 from cli.core.base import BaseProjectCommand
 from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
 from cli.project.display import (
     display_project,
     display_project_search_results,
     display_expiring_projects,
-    display_abandoned_users_from_expired_projects
+    display_abandoned_users_from_expired_projects,
+    display_notification_results,
+    display_notification_preview
 )
 from sam import Project
 from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
-    get_projects_with_expired_allocations
+    get_projects_with_expired_allocations,
+    get_all_expiring_allocations
 )
 from rich.progress import track
 
@@ -62,7 +66,8 @@ class ProjectExpirationCommand(BaseProjectCommand):
     """Find upcoming or recently expired projects."""
 
     def execute(self, upcoming: bool = True, since: datetime = None,
-                list_users: bool = False, facility_filter: list = None) -> int:
+                list_users: bool = False, facility_filter: list = None,
+                notify: bool = False, dry_run: bool = False, email_list: str = None) -> int:
         try:
             if self.ctx.verbose:
                 self.console.print(f"[dim]Facilities: {'ALL' if facility_filter is None else ', '.join(facility_filter)}[/]")
@@ -77,6 +82,17 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 )
 
                 display_expiring_projects(self.ctx, expiring, list_users=list_users, upcoming=True)
+
+                # Send notifications if requested
+                if notify:
+                    # For notifications, get ALL expiring allocations (not just latest per project)
+                    all_expiring = get_all_expiring_allocations(
+                        self.session,
+                        start_date=datetime.now(),
+                        end_date=datetime.now() + timedelta(days=32),
+                        facility_names=facility_filter
+                    )
+                    return self._send_notifications(all_expiring, email_list, dry_run)
 
             else:
                 # Recent Expirations
@@ -126,6 +142,135 @@ class ProjectExpirationCommand(BaseProjectCommand):
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)
+
+
+    def _send_notifications(self, expiring_data: list, additional_recipients: str = None, dry_run: bool = False) -> int:
+        """Send email notifications for expiring projects.
+
+        Args:
+            expiring_data: List of tuples (project, allocation, resource_name, days_remaining)
+            additional_recipients: Comma-separated list of additional email addresses
+            dry_run: If True, preview emails without sending
+
+        Returns:
+            EXIT_SUCCESS if all emails sent, EXIT_ERROR if any failed
+        """
+        from cli.notifications import EmailNotificationService
+
+        # Group by project to send one email per project
+        projects_map = defaultdict(list)
+        for proj, alloc, resource_name, days_remaining in expiring_data:
+            projects_map[proj.projcode].append({
+                'project': proj,
+                'allocation': alloc,
+                'resource_name': resource_name,
+                'days_remaining': days_remaining
+            })
+
+        # Build notification list
+        notifications = []
+        for projcode, resources_data in projects_map.items():
+            project = resources_data[0]['project']
+
+            # Get usage data for all resources
+            usage = project.get_detailed_allocation_usage()
+
+            # Calculate grace expiration (90 days after latest resource expiration)
+            latest_expiration = None
+            for item in resources_data:
+                if item['allocation'].end_date:
+                    if latest_expiration is None or item['allocation'].end_date > latest_expiration:
+                        latest_expiration = item['allocation'].end_date
+
+            latest_expiration_date = None
+            grace_expiration_date = None
+            if latest_expiration:
+                latest_expiration_date = latest_expiration.strftime("%Y-%m-%d")
+                grace_expiration_date = (latest_expiration + timedelta(days=90)).strftime("%Y-%m-%d")
+
+            # Determine facility for template selection
+            facility_name = None
+            if project.allocation_type and project.allocation_type.panel and project.allocation_type.panel.facility:
+                facility_name = project.allocation_type.panel.facility.facility_name
+
+            # Build resources list for email
+            resources = []
+            for item in resources_data:
+                resource_name = item['resource_name']
+                resource_usage = usage.get(resource_name, {})
+
+                resources.append({
+                    'resource_name': resource_name,
+                    'expiration_date': item['allocation'].end_date.strftime("%Y-%m-%d") if item['allocation'].end_date else 'N/A',
+                    'days_remaining': item['days_remaining'],
+                    'allocated_amount': resource_usage.get('allocated', 0),
+                    'used_amount': resource_usage.get('used', 0),
+                    'remaining_amount': resource_usage.get('remaining', 0),
+                    'units': 'core-hours'  # Default unit
+                })
+
+            # Build recipients dict: email -> (name, role)
+            # Start with roster (all users default to 'user' role)
+            recipients = {}
+            for user in project.roster:
+                if user.primary_email:
+                    recipients[user.primary_email] = (user.display_name, 'user')
+
+            # Override with admin role (higher priority than user)
+            if project.admin and project.admin.primary_email:
+                recipients[project.admin.primary_email] = (project.admin.display_name, 'admin')
+
+            # Override with lead role (highest priority)
+            if project.lead and project.lead.primary_email:
+                recipients[project.lead.primary_email] = (project.lead.display_name, 'lead')
+
+            # Add additional recipients if provided (default to 'user' role)
+            if additional_recipients:
+                for email in additional_recipients.split(','):
+                    email = email.strip()
+                    if email and email not in recipients:
+                        recipients[email] = (email, 'user')
+
+            # Get project lead name for templates
+            project_lead_name = project.lead.display_name if project.lead else 'Project Lead'
+
+            ## hard-code one for test
+            #recipients = {}
+            #recipients["benkirk@ucar.edu"] = (user.display_name, 'lead')
+
+            # Create notification for each recipient
+            for recipient_email, (recipient_name, recipient_role) in recipients.items():
+                notifications.append({
+                    'subject': f'NSF NCAR Project {projcode} Expiration Notice',
+                    'recipient': recipient_email,
+                    'recipient_name': recipient_name,
+                    'recipient_role': recipient_role,
+                    'project_code': projcode,
+                    'project_title': project.title,
+                    'project_lead': project_lead_name,
+                    'project_lead_email': project.lead.primary_email,
+                    'resources': resources,
+                    'latest_expiration': latest_expiration_date,
+                    'grace_expiration': grace_expiration_date,
+                    'facility': facility_name
+                })
+
+        # Send notifications (or preview in dry-run mode)
+        total_projects = len(projects_map)
+        email_service = EmailNotificationService(self.ctx)
+        results = email_service.send_batch_notifications(notifications, dry_run=dry_run)
+
+        # Display results
+        if dry_run:
+            display_notification_preview(self.ctx, results, total_projects)
+        else:
+            display_notification_results(self.ctx, results, total_projects)
+
+        # Return error if any failed
+        if results['failed']:
+            return EXIT_ERROR
+
+        return EXIT_SUCCESS
 
 
 class ProjectAdminCommand(ProjectSearchCommand):
