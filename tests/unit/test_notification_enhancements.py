@@ -168,23 +168,23 @@ def test_grace_expiration_calculation():
 
 def test_role_determination_logic():
     """Test the role determination logic with mock user/project data."""
-    # Create mock project
-    mock_project = MagicMock(spec=Project)
+    # Create mock project (no spec to avoid SQLAlchemy inspection issues in Python 3.12)
+    mock_project = MagicMock()
 
     # Create mock lead user
-    lead_user = MagicMock(spec=User)
+    lead_user = MagicMock()
     lead_user.user_id = 1
     lead_user.primary_email = 'lead@example.com'
     lead_user.display_name = 'Project Lead'
 
     # Create mock admin user
-    admin_user = MagicMock(spec=User)
+    admin_user = MagicMock()
     admin_user.user_id = 2
     admin_user.primary_email = 'admin@example.com'
     admin_user.display_name = 'Project Admin'
 
     # Create mock regular user
-    regular_user = MagicMock(spec=User)
+    regular_user = MagicMock()
     regular_user.user_id = 3
     regular_user.primary_email = 'user@example.com'
     regular_user.display_name = 'Regular User'
@@ -224,20 +224,20 @@ def test_role_determination_logic():
 
 def test_facility_extraction_logic():
     """Test facility extraction from project allocation type chain."""
-    # Create mock facility
-    mock_facility = MagicMock(spec=Facility)
+    # Create mock facility (no spec to avoid Flask-SQLAlchemy inspection issues in Python 3.12)
+    mock_facility = MagicMock()
     mock_facility.facility_name = 'UNIV'
 
     # Create mock panel
-    mock_panel = MagicMock(spec=Panel)
+    mock_panel = MagicMock()
     mock_panel.facility = mock_facility
 
     # Create mock allocation type
-    mock_allocation_type = MagicMock(spec=AllocationType)
+    mock_allocation_type = MagicMock()
     mock_allocation_type.panel = mock_panel
 
     # Create mock project
-    mock_project = MagicMock(spec=Project)
+    mock_project = MagicMock()
     mock_project.allocation_type = mock_allocation_type
 
     # Test facility extraction
@@ -250,7 +250,7 @@ def test_facility_extraction_logic():
 
 def test_facility_extraction_with_missing_allocation_type():
     """Test facility extraction when allocation_type is None."""
-    mock_project = MagicMock(spec=Project)
+    mock_project = MagicMock()
     mock_project.allocation_type = None
 
     # Test facility extraction
@@ -263,10 +263,10 @@ def test_facility_extraction_with_missing_allocation_type():
 
 def test_facility_extraction_with_missing_panel():
     """Test facility extraction when panel is None."""
-    mock_allocation_type = MagicMock(spec=AllocationType)
+    mock_allocation_type = MagicMock()
     mock_allocation_type.panel = None
 
-    mock_project = MagicMock(spec=Project)
+    mock_project = MagicMock()
     mock_project.allocation_type = mock_allocation_type
 
     # Test facility extraction

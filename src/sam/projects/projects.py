@@ -4,6 +4,7 @@ from ..base import *
 #-------------------------------------------------------------------------eh-
 
 from ..accounting.accounts import *
+from ..accounting.allocations import *
 from ..accounting.adjustments import *
 from ..resources.resources import *
 from ..summaries.comp_summaries import *
