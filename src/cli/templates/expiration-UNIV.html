@@ -7,256 +7,72 @@
             font-family: Arial, sans-serif;
             line-height: 1.6;
             color: #333;
-            max-width: 800px;
+            max-width: 700px;
             margin: 0 auto;
             padding: 20px;
         }
-        .header {
-            background-color: #1e88e5;
-            color: white;
-            padding: 20px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        .header h2 {
-            margin: 0;
-        }
-        .header .subtitle {
-            font-size: 0.9em;
-            opacity: 0.9;
-            margin-top: 5px;
+        h3 {
+            color: #0275d8;
+            margin-top: 25px;
+            margin-bottom: 10px;
         }
         .project-info {
             background-color: #f5f5f5;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        .role-info {
-            background-color: #e3f2fd;
-            border-left: 4px solid #1976d2;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 3px;
-        }
-        .role-info.lead {
-            background-color: #e8f5e9;
-            border-left-color: #4caf50;
-        }
-        .role-info.admin {
-            background-color: #fff3e0;
-            border-left-color: #ff9800;
-        }
-        .renewal-process {
-            background-color: #fafafa;
-            border: 1px solid #ddd;
-            padding: 15px;
+            border-left: 4px solid #d9534f;
+            padding: 10px 15px;
             margin: 15px 0;
-            border-radius: 5px;
-        }
-        .renewal-process h4 {
-            margin-top: 0;
-            color: #1976d2;
-        }
-        .renewal-process ol {
-            margin: 10px 0;
-            padding-left: 25px;
-        }
-        .resource {
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
-        .urgent {
-            background-color: #ffebee;
-            border-left: 4px solid #d32f2f;
-        }
-        .warning {
-            background-color: #fff3e0;
-            border-left: 4px solid #f57c00;
-        }
-        .notice {
-            background-color: #e3f2fd;
-            border-left: 4px solid #1976d2;
-        }
-        .alert-badge {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 3px;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        .urgent .alert-badge {
-            background-color: #d32f2f;
-            color: white;
-        }
-        .warning .alert-badge {
-            background-color: #f57c00;
-            color: white;
-        }
-        .notice .alert-badge {
-            background-color: #1976d2;
-            color: white;
-        }
-        .details {
-            margin-top: 10px;
-            padding: 10px;
-            background-color: #fafafa;
-            border-radius: 3px;
-        }
-        .details-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 5px 0;
-            border-bottom: 1px solid #eee;
-        }
-        .details-row:last-child {
-            border-bottom: none;
         }
         .grace-period {
-            background-color: #e8f5e9;
-            border-left: 4px solid #4caf50;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 3px;
-        }
-        .important-notes {
-            background-color: #fff9c4;
-            border-left: 4px solid #fbc02d;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 3px;
-        }
-        .important-notes h4 {
-            margin-top: 0;
-            color: #f57c00;
-        }
-        .important-notes ul {
-            margin: 10px 0;
-            padding-left: 25px;
-        }
-        .contact-info {
-            background-color: #f5f5f5;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 10px 15px;
+            margin: 15px 0;
         }
         .footer {
             margin-top: 30px;
             padding-top: 20px;
             border-top: 1px solid #ddd;
-            color: #666;
             font-size: 0.9em;
+            color: #666;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h2>SAM Allocation Expiration Notice</h2>
-        <div class="subtitle">UNIVERSITY ALLOCATION</div>
-    </div>
-
     <p>Dear {{ recipient_name }},</p>
 
-    <p>This is an automated notification from the SAM (System for Allocation Management) regarding your university allocation.</p>
-
     <div class="project-info">
-        <strong>Project:</strong> {{ project_code }} - {{ project_title }}
+        Project <strong>{{ project_code }}</strong> - "{{ project_title }}" is expiring on <strong>{{ latest_expiration }}</strong>.
     </div>
 
-    {% if recipient_role == 'lead' %}
-    <div class="role-info lead">
-        <p><strong>As the lead for this project</strong>, you are responsible for managing these allocations and submitting renewal requests through the university allocation portal.</p>
-        <div class="renewal-process">
-            <h4>RENEWAL PROCESS:</h4>
-            <ol>
-                <li>Visit the university allocation renewal portal: <a href="https://sam.ucar.edu/university-renewals">sam.ucar.edu/university-renewals</a></li>
-                <li>Submit updated project abstract and list of publications</li>
-                <li>Provide justification for continued allocation</li>
-                <li>Renewals are reviewed quarterly by the university allocation panel</li>
-            </ol>
-        </div>
-    </div>
-    {% elif recipient_role == 'admin' %}
-    <div class="role-info admin">
-        <p><strong>As an administrator for this project</strong>, please coordinate with the project lead regarding allocation renewal through the university portal.</p>
-    </div>
-    {% else %}
-    <div class="role-info">
-        <p>Your project (led by <strong>{{ project_lead }}</strong>) has university allocations expiring soon. Please contact your project lead if you have questions about the renewal process.</p>
-    </div>
-    {% endif %}
+    <p>Read this message carefully to re-familiarize yourself with the expiration process and timeline for data retrieval and ultimate removal.</p>
 
-    <p>The following resource allocation(s) for this project are expiring soon:</p>
+    <h3>Project Data Removal Timeline:</h3>
+    <p>Expired projects have <strong>90 days after expiration</strong> for data retrieval, after which all project data is subject to removal from NCAR systems. You therefore must transfer any required data to your home institution during this 90 day grace period.</p>
 
-    {% for resource in resources %}
-    <div class="resource {% if resource.days_remaining <= 7 %}urgent{% elif resource.days_remaining <= 14 %}warning{% else %}notice{% endif %}">
-        <div class="alert-badge">
-            {% if resource.days_remaining <= 7 -%}
-            URGENT - {{ resource.days_remaining }} days remaining
-            {% elif resource.days_remaining <= 14 -%}
-            WARNING - {{ resource.days_remaining }} days remaining
-            {% else -%}
-            NOTICE - {{ resource.days_remaining }} days remaining
-            {% endif %}
-        </div>
-
-        <h3>{{ resource.resource_name }}</h3>
-
-        <p><strong>Expiration Date:</strong> {{ resource.expiration_date }}</p>
-
-        {% if resource.days_remaining <= 7 %}
-        <p style="color: #d32f2f; font-weight: bold;">⚠️ This allocation expires in {{ resource.days_remaining }} days or less!</p>
-        {% elif resource.days_remaining <= 14 %}
-        <p style="color: #f57c00; font-weight: bold;">⚠️ This allocation expires in {{ resource.days_remaining }} days.</p>
-        {% else %}
-        <p>This allocation expires in {{ resource.days_remaining }} days.</p>
-        {% endif %}
-
-        <div class="details">
-            <div class="details-row">
-                <span><strong>Allocated:</strong></span>
-                <span>{{ "{:,.0f}".format(resource.allocated_amount) }} {{ resource.units }}</span>
-            </div>
-            <div class="details-row">
-                <span><strong>Used:</strong></span>
-                <span>{{ "{:,.0f}".format(resource.used_amount) }} {{ resource.units }}</span>
-            </div>
-            <div class="details-row">
-                <span><strong>Remaining:</strong></span>
-                <span>{{ "{:,.0f}".format(resource.remaining_amount) }} {{ resource.units }}</span>
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-
-    {% if grace_expiration %}
     <div class="grace-period">
-        <strong>GRACE PERIOD:</strong> After expiration, resources will remain accessible in read-only mode until <strong>{{ grace_expiration }}</strong>.
+        Your 90 day post-expiry grace period will end on <strong>{{ grace_expiration }}</strong>, after which you will <strong>NOT</strong> have further access to project data and it will be removed.
     </div>
+
+    <h3>User Account Deactivation and User Data Removal Timeline:</h3>
+    <p>User accounts become disabled when they are no longer associated with any active project, at which point all user-specific data in your home, work, and scratch file systems will be removed. If your account is associated with other, active projects your user data will remain unaffected.</p>
+
+    <p>For additional details on data access and retention policies see <a href="https://arc.ucar.edu/docs/glade">https://arc.ucar.edu/docs/glade</a>.</p>
+
+    <h3>Project Extensions:</h3>
+    {% if recipient_role == 'lead' -%}
+    <p>If you would like this project to continue, you may request an extension if your NSF award has been extended, or if you have not finished with your grad student or postdoc allocation.</p>
+    <ul>
+        <li>Visit <a href="https://arc.ucar.edu/">https://arc.ucar.edu/</a> and login</li>
+        <li>Select "Allocations" from the navigation menu, then click on "My Allocation Requests"</li>
+        <li>Find project <strong>{{ project_code }}</strong>, click on "Actions" and select the "Extension" option.</li>
+        <li>Complete the extension request form and submit.</li>
+    </ul>
+    {% else -%}
+    <p>Your project lead (<strong>{{ project_lead }}</strong> / <a href="mailto:{{ project_lead_email }}">{{ project_lead_email }}</a>) can request an extension if warranted under certain circumstances.</p>
     {% endif %}
-
-    <div class="important-notes">
-        <h4>IMPORTANT NOTES FOR UNIVERSITY ALLOCATIONS:</h4>
-        <ul>
-            <li>Renewal requests must be submitted at least 2 weeks before expiration</li>
-            <li>Include recent publications and progress reports</li>
-            <li>Faculty sponsor approval may be required for large requests</li>
-            <li>Quarterly allocation panels review all university requests</li>
-        </ul>
-    </div>
-
-    <div class="contact-info">
-        <p><strong>For questions about university allocations, please contact:</strong></p>
-        <ul style="list-style: none; padding-left: 0;">
-            <li>📧 CISL User Support: <a href="mailto:help@ucar.edu">help@ucar.edu</a></li>
-            <li>🎓 University Allocation Coordinator: <a href="mailto:university-allocations@ucar.edu">university-allocations@ucar.edu</a></li>
-        </ul>
-    </div>
 
     <div class="footer">
-        <p>This is an automated message from SAM. Please do not reply to this email.</p>
+        <p>This is an automated notification from the NSF NCAR Systems Accounting Manager.</p>
     </div>
 </body>
 </html>
