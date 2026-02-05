@@ -238,10 +238,14 @@ class ProjectExpirationCommand(BaseProjectCommand):
             #recipients = {}
             #recipients["benkirk@ucar.edu"] = (user.display_name, 'lead')
 
+            subject = f'NSF NCAR Project {projcode} Expiration Notice'
+            if 'WNA' == facility_name:
+                subject = f'NCAR/Wyoming Computing Project {projcode} Expiration Notice'
+
             # Create notification for each recipient
             for recipient_email, (recipient_name, recipient_role) in recipients.items():
                 notifications.append({
-                    'subject': f'NSF NCAR Project {projcode} Expiration Notice',
+                    'subject': subject,
                     'recipient': recipient_email,
                     'recipient_name': recipient_name,
                     'recipient_role': recipient_role,

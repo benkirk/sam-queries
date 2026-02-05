@@ -40,3 +40,6 @@ finished with your grad student or postdoc allocation.
 Your project lead ({{ project_lead }} / {{ project_lead_email }}) can
 request an extension if warranted under certain circumstances.
 {% endif %}
+
+--
+This is an automated notification from the NSF NCAR Systems Accounting Manager.
