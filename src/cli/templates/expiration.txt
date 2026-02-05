@@ -1,8 +1,16 @@
-Dear {{ user_name }},
+Dear {{ recipient_name }},
 
 This is an automated notification from the SAM (System for Allocation Management) regarding your project allocation.
 
 Project: {{ project_code }} - {{ project_title }}
+
+{% if recipient_role == 'lead' -%}
+As the lead for this project, you are responsible for managing these allocations and submitting renewal requests if needed.
+{% elif recipient_role == 'admin' -%}
+As an administrator for this project, please coordinate with the project lead regarding allocation renewal.
+{% else -%}
+Your project (led by {{ project_lead }}) has allocations expiring soon. Please contact your project lead if you have questions about renewal.
+{% endif %}
 
 The following resource allocation(s) for this project are expiring soon:
 
@@ -24,6 +32,10 @@ Allocation Details:
   Remaining: {{ "{:,.0f}".format(resource.remaining_amount) }} {{ resource.units }}
 
 {% endfor -%}
+{% if grace_expiration %}
+
+GRACE PERIOD: After expiration, resources will remain accessible in read-only mode until {{ grace_expiration }}.
+{% endif %}
 
 Please take appropriate action before the expiration date(s) to ensure continued access to these resources.
 

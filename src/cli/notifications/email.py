@@ -6,6 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from pathlib import Path
 from typing import Tuple, Optional, List, Dict
 from jinja2 import Environment, FileSystemLoader
+import jinja2
 
 
 class EmailNotificationService:
@@ -29,13 +30,44 @@ class EmailNotificationService:
         template_dir = Path(__file__).parent.parent / 'templates'
         self.jinja_env = Environment(loader=FileSystemLoader(str(template_dir)))
 
+    def _get_template_name(self, base_name: str, facility: str = None, extension: str = 'txt') -> str:
+        """
+        Get template name with facility-specific fallback.
+
+        Resolution order:
+        1. {base_name}-{facility}.{extension} (e.g., expiration-UNIV.txt)
+        2. {base_name}.{extension} (e.g., expiration.txt)
+
+        Args:
+            base_name: Base template name (e.g., 'expiration')
+            facility: Facility name (e.g., 'UNIV', 'WNA', 'NCAR')
+            extension: File extension (e.g., 'txt', 'html')
+
+        Returns:
+            Template filename to use
+        """
+        if facility:
+            facility_template = f"{base_name}-{facility}.{extension}"
+            try:
+                # Check if facility-specific template exists
+                self.jinja_env.get_template(facility_template)
+                return facility_template
+            except jinja2.exceptions.TemplateNotFound:
+                pass  # Fall back to generic
+
+        return f"{base_name}.{extension}"
+
     def send_expiration_notification(
         self,
         recipient: str,
         project_code: str,
         project_title: str,
         resources: List[Dict],
-        user_name: str
+        recipient_name: str,
+        recipient_role: str = 'user',
+        project_lead: str = None,
+        grace_expiration: str = None,
+        facility: str = None
     ) -> Tuple[bool, Optional[str]]:
         """Send expiration notification email.
 
@@ -51,35 +83,62 @@ class EmailNotificationService:
                 - used_amount: Used amount
                 - remaining_amount: Remaining amount
                 - units: Units string (e.g., 'core-hours')
-            user_name: Recipient's display name
+            recipient_name: Recipient's display name
+            recipient_role: Recipient's role ('lead', 'admin', or 'user')
+            project_lead: Name of project lead (for user emails)
+            grace_expiration: Grace period end date (YYYY-MM-DD format)
+            facility: Facility name for template selection (e.g., 'UNIV', 'WNA')
 
         Returns:
             Tuple of (success: bool, error_message: Optional[str])
         """
         try:
-            # Create multipart message
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = f'SAM Allocation Expiration Notice - {project_code}'
-            msg['From'] = self.mail_from
-            msg['To'] = recipient
+            # Select templates with facility-specific fallback
+            text_template_name = self._get_template_name('expiration', facility, 'txt')
+            html_template_name = self._get_template_name('expiration', facility, 'html')
 
-            # Render templates
-            text_template = self.jinja_env.get_template('expiration.txt')
-            html_template = self.jinja_env.get_template('expiration.html')
+            # Load text template (required)
+            text_template = self.jinja_env.get_template(text_template_name)
 
+            # Try to load HTML template (optional)
+            html_template = None
+            try:
+                html_template = self.jinja_env.get_template(html_template_name)
+            except jinja2.exceptions.TemplateNotFound:
+                # HTML template doesn't exist, will send text-only
+                pass
+
+            # Prepare template variables
             template_vars = {
-                'user_name': user_name,
+                'recipient_name': recipient_name,
                 'project_code': project_code,
                 'project_title': project_title,
-                'resources': resources
+                'resources': resources,
+                'recipient_role': recipient_role,
+                'project_lead': project_lead,
+                'grace_expiration': grace_expiration
             }
 
+            # Render text content
             text_content = text_template.render(**template_vars)
-            html_content = html_template.render(**template_vars)
 
-            # Attach both text and HTML versions
-            msg.attach(MIMEText(text_content, 'plain'))
-            msg.attach(MIMEText(html_content, 'html'))
+            # Create message (multipart if HTML exists, plain text otherwise)
+            if html_template:
+                # Multipart message with both text and HTML
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = f'SAM Allocation Expiration Notice - {project_code}'
+                msg['From'] = self.mail_from
+                msg['To'] = recipient
+
+                html_content = html_template.render(**template_vars)
+                msg.attach(MIMEText(text_content, 'plain'))
+                msg.attach(MIMEText(html_content, 'html'))
+            else:
+                # Plain text only
+                msg = MIMEText(text_content, 'plain')
+                msg['Subject'] = f'SAM Allocation Expiration Notice - {project_code}'
+                msg['From'] = self.mail_from
+                msg['To'] = recipient
 
             # Send email
             with smtplib.SMTP(self.mail_server, self.mail_port) as smtp:
@@ -104,7 +163,11 @@ class EmailNotificationService:
                 - project_code: Project code
                 - project_title: Project title
                 - resources: List of resource dicts
-                - user_name: Recipient's display name
+                - recipient_name: Recipient's display name
+                - recipient_role: Recipient's role (optional)
+                - project_lead: Project lead name (optional)
+                - grace_expiration: Grace expiration date (optional)
+                - facility: Facility name (optional)
 
         Returns:
             Dict with 'success' and 'failed' lists containing notification dicts
@@ -120,7 +183,11 @@ class EmailNotificationService:
                 project_code=notification['project_code'],
                 project_title=notification['project_title'],
                 resources=notification['resources'],
-                user_name=notification['user_name']
+                recipient_name=notification['recipient_name'],
+                recipient_role=notification.get('recipient_role', 'user'),
+                project_lead=notification.get('project_lead'),
+                grace_expiration=notification.get('grace_expiration'),
+                facility=notification.get('facility')
             )
 
             if success:

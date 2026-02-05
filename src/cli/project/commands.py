@@ -142,6 +142,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
         except Exception as e:
             return self.handle_exception(e)
 
+
     def _send_notifications(self, expiring_data: list, additional_recipients: str = None, dry_run: bool = False) -> int:
         """Send email notifications for expiring projects.
 
@@ -173,6 +174,22 @@ class ProjectExpirationCommand(BaseProjectCommand):
             # Get usage data for all resources
             usage = project.get_detailed_allocation_usage()
 
+            # Calculate grace expiration (90 days after latest resource expiration)
+            latest_expiration = None
+            for item in resources_data:
+                if item['allocation'].end_date:
+                    if latest_expiration is None or item['allocation'].end_date > latest_expiration:
+                        latest_expiration = item['allocation'].end_date
+
+            grace_expiration_date = None
+            if latest_expiration:
+                grace_expiration_date = (latest_expiration + timedelta(days=90)).strftime("%Y-%m-%d")
+
+            # Determine facility for template selection
+            facility_name = None
+            if project.allocation_type and project.allocation_type.panel and project.allocation_type.panel.facility:
+                facility_name = project.allocation_type.panel.facility.facility_name
+
             # Build resources list for email
             resources = []
             for item in resources_data:
@@ -189,31 +206,43 @@ class ProjectExpirationCommand(BaseProjectCommand):
                     'units': 'core-hours'  # Default unit
                 })
 
-            # Get recipients: lead, admin, all roster members
-            recipients = set()
-            if project.lead and project.lead.primary_email:
-                recipients.add((project.lead.primary_email, project.lead.display_name))
-            if project.admin and project.admin.primary_email:
-                recipients.add((project.admin.primary_email, project.admin.display_name))
+            # Build recipients dict: email -> (name, role)
+            # Start with roster (all users default to 'user' role)
+            recipients = {}
             for user in project.roster:
                 if user.primary_email:
-                    recipients.add((user.primary_email, user.display_name))
+                    recipients[user.primary_email] = (user.display_name, 'user')
 
-            # Add additional recipients if provided
+            # Override with admin role (higher priority than user)
+            if project.admin and project.admin.primary_email:
+                recipients[project.admin.primary_email] = (project.admin.display_name, 'admin')
+
+            # Override with lead role (highest priority)
+            if project.lead and project.lead.primary_email:
+                recipients[project.lead.primary_email] = (project.lead.display_name, 'lead')
+
+            # Add additional recipients if provided (default to 'user' role)
             if additional_recipients:
                 for email in additional_recipients.split(','):
                     email = email.strip()
-                    if email:
-                        recipients.add((email, email))
+                    if email and email not in recipients:
+                        recipients[email] = (email, 'user')
+
+            # Get project lead name for templates
+            project_lead_name = project.lead.display_name if project.lead else 'Project Lead'
 
             # Create notification for each recipient
-            for recipient_email, recipient_name in recipients:
+            for recipient_email, (recipient_name, recipient_role) in recipients.items():
                 notifications.append({
                     'recipient': recipient_email,
                     'project_code': projcode,
                     'project_title': project.title,
                     'resources': resources,
-                    'user_name': recipient_name
+                    'recipient_name': recipient_name,
+                    'recipient_role': recipient_role,
+                    'project_lead': project_lead_name,
+                    'grace_expiration': grace_expiration_date,
+                    'facility': facility_name
                 })
 
         # Send notifications or preview in dry-run mode
@@ -236,6 +265,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 return EXIT_ERROR
 
             return EXIT_SUCCESS
+
 
     def _preview_notifications(self, notifications: list, total_projects: int):
         """Preview notifications in dry-run mode without sending.

@@ -12,17 +12,55 @@
             padding: 20px;
         }
         .header {
-            background-color: #0066cc;
+            background-color: #1e88e5;
             color: white;
             padding: 20px;
             border-radius: 5px;
             margin-bottom: 20px;
+        }
+        .header h2 {
+            margin: 0;
+        }
+        .header .subtitle {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-top: 5px;
         }
         .project-info {
             background-color: #f5f5f5;
             padding: 15px;
             border-radius: 5px;
             margin-bottom: 20px;
+        }
+        .role-info {
+            background-color: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 3px;
+        }
+        .role-info.lead {
+            background-color: #e8f5e9;
+            border-left-color: #4caf50;
+        }
+        .role-info.admin {
+            background-color: #fff3e0;
+            border-left-color: #ff9800;
+        }
+        .renewal-process {
+            background-color: #fafafa;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        .renewal-process h4 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        .renewal-process ol {
+            margin: 10px 0;
+            padding-left: 25px;
         }
         .resource {
             border: 1px solid #ddd;
@@ -76,6 +114,34 @@
         .details-row:last-child {
             border-bottom: none;
         }
+        .grace-period {
+            background-color: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 3px;
+        }
+        .important-notes {
+            background-color: #fff9c4;
+            border-left: 4px solid #fbc02d;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 3px;
+        }
+        .important-notes h4 {
+            margin-top: 0;
+            color: #f57c00;
+        }
+        .important-notes ul {
+            margin: 10px 0;
+            padding-left: 25px;
+        }
+        .contact-info {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
         .footer {
             margin-top: 30px;
             padding-top: 20px;
@@ -88,22 +154,38 @@
 <body>
     <div class="header">
         <h2>SAM Allocation Expiration Notice</h2>
+        <div class="subtitle">UNIVERSITY ALLOCATION</div>
     </div>
 
     <p>Dear {{ recipient_name }},</p>
 
-    <p>This is an automated notification from the SAM (System for Allocation Management) regarding your project allocation.</p>
+    <p>This is an automated notification from the SAM (System for Allocation Management) regarding your university allocation.</p>
 
     <div class="project-info">
         <strong>Project:</strong> {{ project_code }} - {{ project_title }}
     </div>
 
     {% if recipient_role == 'lead' %}
-    <p><strong>As the lead for this project</strong>, you are responsible for managing these allocations and submitting renewal requests if needed.</p>
+    <div class="role-info lead">
+        <p><strong>As the lead for this project</strong>, you are responsible for managing these allocations and submitting renewal requests through the university allocation portal.</p>
+        <div class="renewal-process">
+            <h4>RENEWAL PROCESS:</h4>
+            <ol>
+                <li>Visit the university allocation renewal portal: <a href="https://sam.ucar.edu/university-renewals">sam.ucar.edu/university-renewals</a></li>
+                <li>Submit updated project abstract and list of publications</li>
+                <li>Provide justification for continued allocation</li>
+                <li>Renewals are reviewed quarterly by the university allocation panel</li>
+            </ol>
+        </div>
+    </div>
     {% elif recipient_role == 'admin' %}
-    <p><strong>As an administrator for this project</strong>, please coordinate with the project lead regarding allocation renewal.</p>
+    <div class="role-info admin">
+        <p><strong>As an administrator for this project</strong>, please coordinate with the project lead regarding allocation renewal through the university portal.</p>
+    </div>
     {% else %}
-    <p>Your project (led by <strong>{{ project_lead }}</strong>) has allocations expiring soon. Please contact your project lead if you have questions about renewal.</p>
+    <div class="role-info">
+        <p>Your project (led by <strong>{{ project_lead }}</strong>) has university allocations expiring soon. Please contact your project lead if you have questions about the renewal process.</p>
+    </div>
     {% endif %}
 
     <p>The following resource allocation(s) for this project are expiring soon:</p>
@@ -150,14 +232,28 @@
     {% endfor %}
 
     {% if grace_expiration %}
-    <div class="project-info" style="background-color: #e8f5e9; border-left: 4px solid #4caf50;">
+    <div class="grace-period">
         <strong>GRACE PERIOD:</strong> After expiration, resources will remain accessible in read-only mode until <strong>{{ grace_expiration }}</strong>.
     </div>
     {% endif %}
 
-    <p>Please take appropriate action before the expiration date(s) to ensure continued access to these resources.</p>
+    <div class="important-notes">
+        <h4>IMPORTANT NOTES FOR UNIVERSITY ALLOCATIONS:</h4>
+        <ul>
+            <li>Renewal requests must be submitted at least 2 weeks before expiration</li>
+            <li>Include recent publications and progress reports</li>
+            <li>Faculty sponsor approval may be required for large requests</li>
+            <li>Quarterly allocation panels review all university requests</li>
+        </ul>
+    </div>
 
-    <p>For questions or assistance, please contact CISL User Support.</p>
+    <div class="contact-info">
+        <p><strong>For questions about university allocations, please contact:</strong></p>
+        <ul style="list-style: none; padding-left: 0;">
+            <li>📧 CISL User Support: <a href="mailto:help@ucar.edu">help@ucar.edu</a></li>
+            <li>🎓 University Allocation Coordinator: <a href="mailto:university-allocations@ucar.edu">university-allocations@ucar.edu</a></li>
+        </ul>
+    </div>
 
     <div class="footer">
         <p>This is an automated message from SAM. Please do not reply to this email.</p>

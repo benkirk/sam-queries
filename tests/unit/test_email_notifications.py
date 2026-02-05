@@ -59,7 +59,7 @@ def test_send_expiration_notification_success(mock_smtp, email_service):
         project_code='SCSG0001',
         project_title='Test Project',
         resources=resources,
-        user_name='Test User'
+        recipient_name='Test User'
     )
 
     # Verify success
@@ -96,7 +96,7 @@ def test_send_expiration_notification_with_tls(mock_smtp, mock_context):
         project_code='TEST0001',
         project_title='Test Project',
         resources=resources,
-        user_name='Test User'
+        recipient_name='Test User'
     )
 
     assert success is True
@@ -129,7 +129,7 @@ def test_send_expiration_notification_with_auth(mock_smtp, mock_context):
         project_code='SCSG0001',
         project_title='Test Project',
         resources=resources,
-        user_name='Test User'
+        recipient_name='Test User'
     )
 
     assert success is True
@@ -158,7 +158,7 @@ def test_send_expiration_notification_failure(mock_smtp, email_service):
         project_code='SCSG0001',
         project_title='Test Project',
         resources=resources,
-        user_name='Test User'
+        recipient_name='Test User'
     )
 
     # Verify failure
@@ -188,7 +188,7 @@ def test_send_batch_notifications(mock_smtp, email_service):
                 'remaining_amount': 543210.88,
                 'units': 'core-hours'
             }],
-            'user_name': 'User One'
+            'recipient_name': 'User One'
         },
         {
             'recipient': 'user2@example.com',
@@ -203,7 +203,7 @@ def test_send_batch_notifications(mock_smtp, email_service):
                 'remaining_amount': 25000.0,
                 'units': 'core-hours'
             }],
-            'user_name': 'User Two'
+            'recipient_name': 'User Two'
         }
     ]
 
@@ -239,7 +239,7 @@ def test_send_batch_notifications_with_failures(mock_smtp, email_service):
                 'remaining_amount': 543210.88,
                 'units': 'core-hours'
             }],
-            'user_name': 'User One'
+            'recipient_name': 'User One'
         },
         {
             'recipient': 'user2@example.com',
@@ -254,7 +254,7 @@ def test_send_batch_notifications_with_failures(mock_smtp, email_service):
                 'remaining_amount': 25000.0,
                 'units': 'core-hours'
             }],
-            'user_name': 'User Two'
+            'recipient_name': 'User Two'
         }
     ]
 
@@ -283,7 +283,7 @@ def test_template_rendering(email_service):
     }]
 
     text_content = text_template.render(
-        user_name='Test User',
+        recipient_name='Test User',
         project_code='SCSG0001',
         project_title='Test Project',
         resources=resources
@@ -301,7 +301,7 @@ def test_template_rendering(email_service):
     html_template = email_service.jinja_env.get_template('expiration.html')
 
     html_content = html_template.render(
-        user_name='Test User',
+        recipient_name='Test User',
         project_code='SCSG0001',
         project_title='Test Project',
         resources=resources
@@ -348,7 +348,7 @@ def test_multiple_resources_in_single_email(mock_smtp, email_service):
         project_code='SCSG0001',
         project_title='Test Project',
         resources=resources,
-        user_name='Test User'
+        recipient_name='Test User'
     )
 
     assert success is True
@@ -386,7 +386,7 @@ def test_dry_run_mode_does_not_send_emails(email_service):
     html_template = email_service.jinja_env.get_template('expiration.html')
 
     context = {
-        'user_name': 'Test User',
+        'recipient_name': 'Test User',
         'project_code': 'TEST0001',
         'project_title': 'Test Project',
         'resources': resources
