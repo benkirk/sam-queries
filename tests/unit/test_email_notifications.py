@@ -60,7 +60,13 @@ def test_send_expiration_notification_success(mock_smtp, email_service):
         'project_code': 'SCSG0001',
         'project_title': 'Test Project',
         'resources': resources,
-        'recipient_name': 'Test User'
+        'recipient_name': 'Test User',
+        'recipient_role': 'user',
+        'project_lead': 'Dr. Lead',
+        'project_lead_email': 'lead@example.com',
+        'latest_expiration': '2025-02-15',
+        'grace_expiration': '2025-05-16',
+        'facility': 'UNIV'
     }
     success, error = email_service.send_expiration_notification(notification)
 
@@ -99,7 +105,13 @@ def test_send_expiration_notification_with_tls(mock_smtp, mock_context):
         'project_code': 'TEST0001',
         'project_title': 'Test Project',
         'resources': resources,
-        'recipient_name': 'Test User'
+        'recipient_name': 'Test User',
+        'recipient_role': 'user',
+        'project_lead': 'Dr. Lead',
+        'project_lead_email': 'lead@example.com',
+        'latest_expiration': '2025-03-01',
+        'grace_expiration': '2025-05-30',
+        'facility': 'UNIV'
     }
     success, error = service.send_expiration_notification(notification)
 
@@ -134,7 +146,13 @@ def test_send_expiration_notification_with_auth(mock_smtp, mock_context):
         'project_code': 'SCSG0001',
         'project_title': 'Test Project',
         'resources': resources,
-        'recipient_name': 'Test User'
+        'recipient_name': 'Test User',
+        'recipient_role': 'user',
+        'project_lead': 'Dr. Lead',
+        'project_lead_email': 'lead@example.com',
+        'latest_expiration': '2025-02-15',
+        'grace_expiration': '2025-05-16',
+        'facility': 'UNIV'
     }
     success, error = service.send_expiration_notification(notification)
 
@@ -165,7 +183,13 @@ def test_send_expiration_notification_failure(mock_smtp, email_service):
         'project_code': 'SCSG0001',
         'project_title': 'Test Project',
         'resources': resources,
-        'recipient_name': 'Test User'
+        'recipient_name': 'Test User',
+        'recipient_role': 'user',
+        'project_lead': 'Dr. Lead',
+        'project_lead_email': 'lead@example.com',
+        'latest_expiration': '2025-02-15',
+        'grace_expiration': '2025-05-16',
+        'facility': 'UNIV'
     }
     success, error = email_service.send_expiration_notification(notification)
 
@@ -197,7 +221,13 @@ def test_send_batch_notifications(mock_smtp, email_service):
                 'remaining_amount': 543210.88,
                 'units': 'core-hours'
             }],
-            'recipient_name': 'User One'
+            'recipient_name': 'User One',
+            'recipient_role': 'user',
+            'project_lead': 'Dr. Lead One',
+            'project_lead_email': 'lead1@example.com',
+            'latest_expiration': '2025-02-15',
+            'grace_expiration': '2025-05-16',
+            'facility': 'UNIV'
         },
         {
             'subject': 'NSF NCAR Project PROJ0002 Expiration Notice',
@@ -213,7 +243,13 @@ def test_send_batch_notifications(mock_smtp, email_service):
                 'remaining_amount': 25000.0,
                 'units': 'core-hours'
             }],
-            'recipient_name': 'User Two'
+            'recipient_name': 'User Two',
+            'recipient_role': 'user',
+            'project_lead': 'Dr. Lead Two',
+            'project_lead_email': 'lead2@example.com',
+            'latest_expiration': '2025-03-01',
+            'grace_expiration': '2025-05-30',
+            'facility': 'UNIV'
         }
     ]
 
@@ -250,7 +286,13 @@ def test_send_batch_notifications_with_failures(mock_smtp, email_service):
                 'remaining_amount': 543210.88,
                 'units': 'core-hours'
             }],
-            'recipient_name': 'User One'
+            'recipient_name': 'User One',
+            'recipient_role': 'user',
+            'project_lead': 'Dr. Lead One',
+            'project_lead_email': 'lead1@example.com',
+            'latest_expiration': '2025-02-15',
+            'grace_expiration': '2025-05-16',
+            'facility': 'UNIV'
         },
         {
             'subject': 'NSF NCAR Project PROJ0002 Expiration Notice',
@@ -266,7 +308,13 @@ def test_send_batch_notifications_with_failures(mock_smtp, email_service):
                 'remaining_amount': 25000.0,
                 'units': 'core-hours'
             }],
-            'recipient_name': 'User Two'
+            'recipient_name': 'User Two',
+            'recipient_role': 'user',
+            'project_lead': 'Dr. Lead Two',
+            'project_lead_email': 'lead2@example.com',
+            'latest_expiration': '2025-03-01',
+            'grace_expiration': '2025-05-30',
+            'facility': 'UNIV'
         }
     ]
 
@@ -281,8 +329,8 @@ def test_send_batch_notifications_with_failures(mock_smtp, email_service):
 
 def test_template_rendering(email_service):
     """Test that templates render correctly with data."""
-    # Test text template
-    text_template = email_service.jinja_env.get_template('expiration.txt')
+    # Test text template - use UNIV template since it exists
+    text_template = email_service.jinja_env.get_template('expiration-UNIV.txt')
 
     resources = [{
         'resource_name': 'Derecho',
@@ -294,42 +342,56 @@ def test_template_rendering(email_service):
         'units': 'core-hours'
     }]
 
+    # Templates now use latest_expiration and grace_expiration instead of individual resources
     text_content = text_template.render(
         recipient_name='Test User',
         project_code='SCSG0001',
         project_title='Test Project',
-        resources=resources
+        resources=resources,
+        latest_expiration='2025-02-15',
+        grace_expiration='2025-05-16',
+        recipient_role='user',
+        project_lead='Dr. Lead',
+        project_lead_email='lead@example.com'
     )
 
-    # Verify content
+    # Verify content - check for fields that ARE in the template
     assert 'Test User' in text_content
     assert 'SCSG0001' in text_content
     assert 'Test Project' in text_content
-    assert 'Derecho' in text_content
-    assert '2025-02-15' in text_content
-    assert '12' in text_content
+    assert '2025-02-15' in text_content  # latest_expiration
+    assert '2025-05-16' in text_content  # grace_expiration
+    assert '90 days' in text_content  # grace period text
+    assert 'Dr. Lead' in text_content  # project lead name
+    assert 'lead@example.com' in text_content  # project lead email
 
     # Test HTML template
-    html_template = email_service.jinja_env.get_template('expiration.html')
+    html_template = email_service.jinja_env.get_template('expiration-UNIV.html')
 
     html_content = html_template.render(
         recipient_name='Test User',
         project_code='SCSG0001',
         project_title='Test Project',
-        resources=resources
+        resources=resources,
+        latest_expiration='2025-02-15',
+        grace_expiration='2025-05-16',
+        recipient_role='user',
+        project_lead='Dr. Lead',
+        project_lead_email='lead@example.com'
     )
 
     # Verify HTML content
     assert 'Test User' in html_content
     assert 'SCSG0001' in html_content
-    assert 'Derecho' in html_content
+    assert '2025-02-15' in html_content
+    assert '2025-05-16' in html_content
     assert '<html>' in html_content
     assert '</html>' in html_content
 
 
 @patch('cli.notifications.email.smtplib.SMTP')
 def test_multiple_resources_in_single_email(mock_smtp, email_service):
-    """Test that multiple resources are included in a single email."""
+    """Test that multiple resources are handled in a single email notification."""
     smtp_instance = MagicMock()
     mock_smtp.return_value.__enter__.return_value = smtp_instance
 
@@ -361,7 +423,13 @@ def test_multiple_resources_in_single_email(mock_smtp, email_service):
         'project_code': 'SCSG0001',
         'project_title': 'Test Project',
         'resources': resources,
-        'recipient_name': 'Test User'
+        'recipient_name': 'Test User',
+        'recipient_role': 'user',
+        'project_lead': 'Dr. Lead',
+        'project_lead_email': 'lead@example.com',
+        'latest_expiration': '2025-02-20',  # Latest of the two resources
+        'grace_expiration': '2025-05-21',  # 90 days after latest
+        'facility': 'UNIV'
     }
     success, error = email_service.send_expiration_notification(notification)
 
@@ -373,10 +441,12 @@ def test_multiple_resources_in_single_email(mock_smtp, email_service):
     # Get the message that was sent
     sent_message = smtp_instance.send_message.call_args[0][0]
 
-    # Verify it's a multipart message with both resources
+    # Verify it's a multipart message with expected content
     message_str = sent_message.as_string()
-    assert 'Derecho' in message_str
-    assert 'Casper' in message_str
+    assert 'SCSG0001' in message_str
+    assert 'Test Project' in message_str
+    assert '2025-02-20' in message_str  # latest_expiration
+    assert '2025-05-21' in message_str  # grace_expiration
 
 
 def test_dry_run_mode_does_not_send_emails(email_service):
