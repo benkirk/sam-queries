@@ -234,15 +234,21 @@ class ProjectExpirationCommand(BaseProjectCommand):
             # Get project lead name for templates
             project_lead_name = project.lead.display_name if project.lead else 'Project Lead'
 
+            ## hard-code one for test
+            #recipients = {}
+            #recipients["benkirk@ucar.edu"] = (user.display_name, 'lead')
+
             # Create notification for each recipient
             for recipient_email, (recipient_name, recipient_role) in recipients.items():
                 notifications.append({
+                    'subject': f'NSF NCAR Project {projcode} Expiration Notice',
                     'recipient': recipient_email,
                     'recipient_name': recipient_name,
                     'recipient_role': recipient_role,
                     'project_code': projcode,
                     'project_title': project.title,
                     'project_lead': project_lead_name,
+                    'project_lead_email': project.lead.primary_email,
                     'resources': resources,
                     'latest_expiration': latest_expiration_date,
                     'grace_expiration': grace_expiration_date,

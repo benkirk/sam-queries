@@ -57,42 +57,42 @@ class EmailNotificationService:
 
         return f"{base_name}.{extension}"
 
-    def send_expiration_notification(
-        self,
-        recipient: str,
-        project_code: str,
-        project_title: str,
-        resources: List[Dict],
-        recipient_name: str,
-        recipient_role: str = 'user',
-        project_lead: str = None,
-        grace_expiration: str = None,
-        facility: str = None
-    ) -> Tuple[bool, Optional[str]]:
+    def send_expiration_notification(self, notification: Dict) -> Tuple[bool, Optional[str]]:
         """Send expiration notification email.
 
         Args:
-            recipient: Email address of recipient
-            project_code: Project code (e.g., 'SCSG0001')
-            project_title: Project title
-            resources: List of resource dicts with keys:
-                - resource_name: Name of resource (e.g., 'Derecho')
-                - expiration_date: Date string (e.g., '2025-01-15')
-                - days_remaining: Number of days until expiration
-                - allocated_amount: Allocated amount
-                - used_amount: Used amount
-                - remaining_amount: Remaining amount
-                - units: Units string (e.g., 'core-hours')
-            recipient_name: Recipient's display name
-            recipient_role: Recipient's role ('lead', 'admin', or 'user')
-            project_lead: Name of project lead (for user emails)
-            grace_expiration: Grace period end date (YYYY-MM-DD format)
-            facility: Facility name for template selection (e.g., 'UNIV', 'WNA')
+            notification: Notification dict with fields:
+                - subject: Email Subject
+                - recipient: Email address of recipient
+                - recipient_name: Recipient's display name
+                - recipient_role: Recipient's role ('lead', 'admin', or 'user')
+                - project_code: Project code (e.g., 'SCSG0001')
+                - project_title: Project title
+                - project_lead: Name of project lead (for user emails)
+                - project_lead_email: Email of project lead
+                - resources: List of resource dicts with keys:
+                    - resource_name: Name of resource (e.g., 'Derecho')
+                    - expiration_date: Date string (e.g., '2025-01-15')
+                    - days_remaining: Number of days until expiration
+                    - allocated_amount: Allocated amount
+                    - used_amount: Used amount
+                    - remaining_amount: Remaining amount
+                    - units: Units string (e.g., 'core-hours')
+                - latest_expiration: Latest expiration date across all resources
+                - grace_expiration: Grace period end date (YYYY-MM-DD format)
+                - facility: Facility name for template selection (e.g., 'UNIV', 'WNA')
+
+                Additional fields can be added and will automatically be available in templates.
 
         Returns:
             Tuple of (success: bool, error_message: Optional[str])
         """
         try:
+            subject = notification['subject']
+            recipient = notification['recipient']
+            project_code = notification['project_code']
+            facility = notification.get('facility')
+
             # Select templates with facility-specific fallback
             text_template_name = self._get_template_name('expiration', facility, 'txt')
             html_template_name = self._get_template_name('expiration', facility, 'html')
@@ -108,16 +108,8 @@ class EmailNotificationService:
                 # HTML template doesn't exist, will send text-only
                 pass
 
-            # Prepare template variables
-            template_vars = {
-                'recipient_name': recipient_name,
-                'project_code': project_code,
-                'project_title': project_title,
-                'resources': resources,
-                'recipient_role': recipient_role,
-                'project_lead': project_lead,
-                'grace_expiration': grace_expiration
-            }
+            # Pass entire notification dict to template (all fields available)
+            template_vars = notification.copy()
 
             # Render text content
             text_content = text_template.render(**template_vars)
@@ -126,7 +118,7 @@ class EmailNotificationService:
             if html_template:
                 # Multipart message with both text and HTML
                 msg = MIMEMultipart('alternative')
-                msg['Subject'] = f'SAM Allocation Expiration Notice - {project_code}'
+                msg['Subject'] = subject
                 msg['From'] = self.mail_from
                 msg['To'] = recipient
 
@@ -136,7 +128,7 @@ class EmailNotificationService:
             else:
                 # Plain text only
                 msg = MIMEText(text_content, 'plain')
-                msg['Subject'] = f'SAM Allocation Expiration Notice - {project_code}'
+                msg['Subject'] = subject
                 msg['From'] = self.mail_from
                 msg['To'] = recipient
 
@@ -151,7 +143,8 @@ class EmailNotificationService:
             return (True, None)
 
         except Exception as e:
-            error_msg = f"Failed to send email to {recipient}: {str(e)}"
+            recipient_addr = notification.get('recipient', 'unknown')
+            error_msg = f"Failed to send email to {recipient_addr}: {str(e)}"
             return (False, error_msg)
 
     def send_batch_notifications(self, notifications: List[Dict], dry_run: bool = False) -> Dict:
@@ -198,17 +191,7 @@ class EmailNotificationService:
                     results['failed'].append(notification)
             else:
                 # Normal mode: actually send email
-                success, error = self.send_expiration_notification(
-                    recipient=notification['recipient'],
-                    project_code=notification['project_code'],
-                    project_title=notification['project_title'],
-                    resources=notification['resources'],
-                    recipient_name=notification['recipient_name'],
-                    recipient_role=notification.get('recipient_role', 'user'),
-                    project_lead=notification.get('project_lead'),
-                    grace_expiration=notification.get('grace_expiration'),
-                    facility=notification.get('facility')
-                )
+                success, error = self.send_expiration_notification(notification)
 
                 if success:
                     results['success'].append(notification)
@@ -222,7 +205,7 @@ class EmailNotificationService:
         """Render email for preview without sending.
 
         Args:
-            notification: Notification dict
+            notification: Notification dict (same structure as send_expiration_notification)
 
         Returns:
             Dict with rendered email content and metadata
@@ -243,16 +226,8 @@ class EmailNotificationService:
         except jinja2.exceptions.TemplateNotFound:
             pass
 
-        # Prepare template variables (same as send_expiration_notification)
-        template_vars = {
-            'recipient_name': notification['recipient_name'],
-            'project_code': notification['project_code'],
-            'project_title': notification['project_title'],
-            'resources': notification['resources'],
-            'recipient_role': notification.get('recipient_role', 'user'),
-            'project_lead': notification.get('project_lead'),
-            'grace_expiration': notification.get('grace_expiration')
-        }
+        # Pass entire notification dict to template (all fields available)
+        template_vars = notification.copy()
 
         # Render templates
         text_content = text_template.render(**template_vars)

@@ -68,17 +68,19 @@ def test_send_notification_with_role_and_grace_period(mock_smtp, email_service):
     }]
 
     # Send email with new parameters
-    success, error = email_service.send_expiration_notification(
-        recipient='test@example.com',
-        project_code='SCSG0001',
-        project_title='Test Project',
-        resources=resources,
-        recipient_name='Test User',
-        recipient_role='lead',
-        project_lead='Dr. Test Lead',
-        grace_expiration='2025-05-15',
-        facility='UNIV'
-    )
+    notification = {
+        'subject': 'NSF NCAR Project SCSG0001 Expiration Notice',
+        'recipient': 'test@example.com',
+        'project_code': 'SCSG0001',
+        'project_title': 'Test Project',
+        'resources': resources,
+        'recipient_name': 'Test User',
+        'recipient_role': 'lead',
+        'project_lead': 'Dr. Test Lead',
+        'grace_expiration': '2025-05-15',
+        'facility': 'UNIV'
+    }
+    success, error = email_service.send_expiration_notification(notification)
 
     assert success is True
     assert error is None
@@ -101,16 +103,18 @@ def test_send_notification_for_user_role(mock_smtp, email_service):
         'units': 'core-hours'
     }]
 
-    success, error = email_service.send_expiration_notification(
-        recipient='user@example.com',
-        project_code='TEST0001',
-        project_title='Test Project',
-        resources=resources,
-        recipient_name='Regular User',
-        recipient_role='user',
-        project_lead='Dr. Project Lead',
-        grace_expiration='2025-06-01'
-    )
+    notification = {
+        'subject': 'NSF NCAR Project TEST0001 Expiration Notice',
+        'recipient': 'user@example.com',
+        'project_code': 'TEST0001',
+        'project_title': 'Test Project',
+        'resources': resources,
+        'recipient_name': 'Regular User',
+        'recipient_role': 'user',
+        'project_lead': 'Dr. Project Lead',
+        'grace_expiration': '2025-06-01'
+    }
+    success, error = email_service.send_expiration_notification(notification)
 
     assert success is True
     assert error is None
@@ -132,15 +136,17 @@ def test_send_notification_without_grace_period(mock_smtp, email_service):
         'units': 'core-hours'
     }]
 
-    success, error = email_service.send_expiration_notification(
-        recipient='test@example.com',
-        project_code='TEST0002',
-        project_title='Test Project',
-        resources=resources,
-        recipient_name='Test User',
-        recipient_role='lead',
-        grace_expiration=None  # No grace period
-    )
+    notification = {
+        'subject': 'NSF NCAR Project TEST0002 Expiration Notice',
+        'recipient': 'test@example.com',
+        'project_code': 'TEST0002',
+        'project_title': 'Test Project',
+        'resources': resources,
+        'recipient_name': 'Test User',
+        'recipient_role': 'lead',
+        'grace_expiration': None  # No grace period
+    }
+    success, error = email_service.send_expiration_notification(notification)
 
     if not success:
         print(f"Error: {error}")
@@ -289,17 +295,19 @@ def test_send_text_only_when_html_template_missing(mock_smtp, email_service):
 
     # Send email with facility that has no HTML template
     # This will use text template but HTML template won't exist
-    success, error = email_service.send_expiration_notification(
-        recipient='test@example.com',
-        project_code='SCSG0001',
-        project_title='Test Project',
-        resources=resources,
-        recipient_name='Test User',
-        recipient_role='lead',
-        project_lead='Dr. Test Lead',
-        grace_expiration='2025-05-15',
-        facility='NONEXISTENT_FACILITY'  # This facility has no templates
-    )
+    notification = {
+        'subject': 'NSF NCAR Project SCSG0001 Expiration Notice',
+        'recipient': 'test@example.com',
+        'project_code': 'SCSG0001',
+        'project_title': 'Test Project',
+        'resources': resources,
+        'recipient_name': 'Test User',
+        'recipient_role': 'lead',
+        'project_lead': 'Dr. Test Lead',
+        'grace_expiration': '2025-05-15',
+        'facility': 'NONEXISTENT_FACILITY'  # This facility has no templates
+    }
+    success, error = email_service.send_expiration_notification(notification)
 
     # Should still succeed with text-only email
     assert success is True
@@ -308,4 +316,4 @@ def test_send_text_only_when_html_template_missing(mock_smtp, email_service):
 
     # Verify message was sent (it will be plain text, not multipart)
     sent_msg = smtp_instance.send_message.call_args[0][0]
-    assert sent_msg['Subject'] == 'SAM Allocation Expiration Notice - SCSG0001'
+    assert sent_msg['Subject'] == 'NSF NCAR Project SCSG0001 Expiration Notice'

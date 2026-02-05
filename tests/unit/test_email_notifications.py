@@ -54,13 +54,15 @@ def test_send_expiration_notification_success(mock_smtp, email_service):
     }]
 
     # Send email
-    success, error = email_service.send_expiration_notification(
-        recipient='test@example.com',
-        project_code='SCSG0001',
-        project_title='Test Project',
-        resources=resources,
-        recipient_name='Test User'
-    )
+    notification = {
+        'subject': 'NSF NCAR Project SCSG0001 Expiration Notice',
+        'recipient': 'test@example.com',
+        'project_code': 'SCSG0001',
+        'project_title': 'Test Project',
+        'resources': resources,
+        'recipient_name': 'Test User'
+    }
+    success, error = email_service.send_expiration_notification(notification)
 
     # Verify success
     assert success is True
@@ -91,13 +93,15 @@ def test_send_expiration_notification_with_tls(mock_smtp, mock_context):
         'units': 'core-hours'
     }]
 
-    success, error = service.send_expiration_notification(
-        recipient='test@example.com',
-        project_code='TEST0001',
-        project_title='Test Project',
-        resources=resources,
-        recipient_name='Test User'
-    )
+    notification = {
+        'subject': 'NSF NCAR Project TEST0001 Expiration Notice',
+        'recipient': 'test@example.com',
+        'project_code': 'TEST0001',
+        'project_title': 'Test Project',
+        'resources': resources,
+        'recipient_name': 'Test User'
+    }
+    success, error = service.send_expiration_notification(notification)
 
     assert success is True
     smtp_instance.starttls.assert_called_once()
@@ -124,13 +128,15 @@ def test_send_expiration_notification_with_auth(mock_smtp, mock_context):
         'units': 'core-hours'
     }]
 
-    success, error = service.send_expiration_notification(
-        recipient='test@example.com',
-        project_code='SCSG0001',
-        project_title='Test Project',
-        resources=resources,
-        recipient_name='Test User'
-    )
+    notification = {
+        'subject': 'NSF NCAR Project SCSG0001 Expiration Notice',
+        'recipient': 'test@example.com',
+        'project_code': 'SCSG0001',
+        'project_title': 'Test Project',
+        'resources': resources,
+        'recipient_name': 'Test User'
+    }
+    success, error = service.send_expiration_notification(notification)
 
     assert success is True
     smtp_instance.login.assert_called_once_with('testuser', 'testpass')
@@ -153,13 +159,15 @@ def test_send_expiration_notification_failure(mock_smtp, email_service):
     }]
 
     # Send email
-    success, error = email_service.send_expiration_notification(
-        recipient='test@example.com',
-        project_code='SCSG0001',
-        project_title='Test Project',
-        resources=resources,
-        recipient_name='Test User'
-    )
+    notification = {
+        'subject': 'NSF NCAR Project SCSG0001 Expiration Notice',
+        'recipient': 'test@example.com',
+        'project_code': 'SCSG0001',
+        'project_title': 'Test Project',
+        'resources': resources,
+        'recipient_name': 'Test User'
+    }
+    success, error = email_service.send_expiration_notification(notification)
 
     # Verify failure
     assert success is False
@@ -176,6 +184,7 @@ def test_send_batch_notifications(mock_smtp, email_service):
     # Create test notifications
     notifications = [
         {
+            'subject': 'NSF NCAR Project PROJ0001 Expiration Notice',
             'recipient': 'user1@example.com',
             'project_code': 'PROJ0001',
             'project_title': 'Project 1',
@@ -191,6 +200,7 @@ def test_send_batch_notifications(mock_smtp, email_service):
             'recipient_name': 'User One'
         },
         {
+            'subject': 'NSF NCAR Project PROJ0002 Expiration Notice',
             'recipient': 'user2@example.com',
             'project_code': 'PROJ0002',
             'project_title': 'Project 2',
@@ -227,6 +237,7 @@ def test_send_batch_notifications_with_failures(mock_smtp, email_service):
 
     notifications = [
         {
+            'subject': 'NSF NCAR Project PROJ0001 Expiration Notice',
             'recipient': 'user1@example.com',
             'project_code': 'PROJ0001',
             'project_title': 'Project 1',
@@ -242,6 +253,7 @@ def test_send_batch_notifications_with_failures(mock_smtp, email_service):
             'recipient_name': 'User One'
         },
         {
+            'subject': 'NSF NCAR Project PROJ0002 Expiration Notice',
             'recipient': 'user2@example.com',
             'project_code': 'PROJ0002',
             'project_title': 'Project 2',
@@ -343,13 +355,15 @@ def test_multiple_resources_in_single_email(mock_smtp, email_service):
         }
     ]
 
-    success, error = email_service.send_expiration_notification(
-        recipient='test@example.com',
-        project_code='SCSG0001',
-        project_title='Test Project',
-        resources=resources,
-        recipient_name='Test User'
-    )
+    notification = {
+        'subject': 'NSF NCAR Project SCSG0001 Expiration Notice',
+        'recipient': 'test@example.com',
+        'project_code': 'SCSG0001',
+        'project_title': 'Test Project',
+        'resources': resources,
+        'recipient_name': 'Test User'
+    }
+    success, error = email_service.send_expiration_notification(notification)
 
     assert success is True
 
@@ -369,6 +383,7 @@ def test_dry_run_mode_does_not_send_emails(email_service):
     """Test that dry-run mode renders emails but doesn't send them."""
     notifications = [
         {
+            'subject': 'NSF NCAR Project TEST0001 Expiration Notice',
             'recipient': 'user1@example.com',
             'project_code': 'TEST0001',
             'project_title': 'Test Project 1',
@@ -388,6 +403,7 @@ def test_dry_run_mode_does_not_send_emails(email_service):
             'facility': 'UNIV'
         },
         {
+            'subject': 'NSF NCAR Project TEST0002 Expiration Notice',
             'recipient': 'user2@example.com',
             'project_code': 'TEST0002',
             'project_title': 'Test Project 2',
