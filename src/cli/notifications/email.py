@@ -154,7 +154,7 @@ class EmailNotificationService:
             error_msg = f"Failed to send email to {recipient}: {str(e)}"
             return (False, error_msg)
 
-    def send_batch_notifications(self, notifications: List[Dict]) -> Dict:
+    def send_batch_notifications(self, notifications: List[Dict], dry_run: bool = False) -> Dict:
         """Send multiple notifications in batch.
 
         Args:
@@ -168,32 +168,105 @@ class EmailNotificationService:
                 - project_lead: Project lead name (optional)
                 - grace_expiration: Grace expiration date (optional)
                 - facility: Facility name (optional)
+            dry_run: If True, render emails but don't send (returns preview data)
 
         Returns:
             Dict with 'success' and 'failed' lists containing notification dicts
+            In dry_run mode, also includes 'preview_samples' with 1-2 rendered emails
         """
         results = {
             'success': [],
             'failed': []
         }
 
-        for notification in notifications:
-            success, error = self.send_expiration_notification(
-                recipient=notification['recipient'],
-                project_code=notification['project_code'],
-                project_title=notification['project_title'],
-                resources=notification['resources'],
-                recipient_name=notification['recipient_name'],
-                recipient_role=notification.get('recipient_role', 'user'),
-                project_lead=notification.get('project_lead'),
-                grace_expiration=notification.get('grace_expiration'),
-                facility=notification.get('facility')
-            )
+        # In dry-run mode, collect preview samples (first 2 emails)
+        if dry_run:
+            results['preview_samples'] = []
 
-            if success:
-                results['success'].append(notification)
+        for i, notification in enumerate(notifications):
+            if dry_run:
+                # Dry-run: render email but don't send
+                try:
+                    rendered = self._render_email_preview(notification)
+                    results['success'].append(notification)
+
+                    # Collect first 2 emails as samples
+                    if i < 2:
+                        results['preview_samples'].append(rendered)
+                except Exception as e:
+                    notification['error'] = str(e)
+                    results['failed'].append(notification)
             else:
-                notification['error'] = error
-                results['failed'].append(notification)
+                # Normal mode: actually send email
+                success, error = self.send_expiration_notification(
+                    recipient=notification['recipient'],
+                    project_code=notification['project_code'],
+                    project_title=notification['project_title'],
+                    resources=notification['resources'],
+                    recipient_name=notification['recipient_name'],
+                    recipient_role=notification.get('recipient_role', 'user'),
+                    project_lead=notification.get('project_lead'),
+                    grace_expiration=notification.get('grace_expiration'),
+                    facility=notification.get('facility')
+                )
+
+                if success:
+                    results['success'].append(notification)
+                else:
+                    notification['error'] = error
+                    results['failed'].append(notification)
 
         return results
+
+    def _render_email_preview(self, notification: Dict) -> Dict:
+        """Render email for preview without sending.
+
+        Args:
+            notification: Notification dict
+
+        Returns:
+            Dict with rendered email content and metadata
+        """
+        facility = notification.get('facility')
+
+        # Select templates (same logic as send_expiration_notification)
+        text_template_name = self._get_template_name('expiration', facility, 'txt')
+        html_template_name = self._get_template_name('expiration', facility, 'html')
+
+        # Load text template (required)
+        text_template = self.jinja_env.get_template(text_template_name)
+
+        # Try to load HTML template (optional)
+        html_template = None
+        try:
+            html_template = self.jinja_env.get_template(html_template_name)
+        except jinja2.exceptions.TemplateNotFound:
+            pass
+
+        # Prepare template variables (same as send_expiration_notification)
+        template_vars = {
+            'recipient_name': notification['recipient_name'],
+            'project_code': notification['project_code'],
+            'project_title': notification['project_title'],
+            'resources': notification['resources'],
+            'recipient_role': notification.get('recipient_role', 'user'),
+            'project_lead': notification.get('project_lead'),
+            'grace_expiration': notification.get('grace_expiration')
+        }
+
+        # Render templates
+        text_content = text_template.render(**template_vars)
+        html_content = html_template.render(**template_vars) if html_template else None
+
+        return {
+            'recipient': notification['recipient'],
+            'recipient_name': notification['recipient_name'],
+            'recipient_role': notification.get('recipient_role', 'user'),
+            'project_code': notification['project_code'],
+            'project_title': notification['project_title'],
+            'facility': facility,
+            'text_template': text_template_name,
+            'html_template': html_template_name if html_template else None,
+            'text_content': text_content,
+            'html_content': html_content
+        }

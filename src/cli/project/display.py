@@ -354,3 +354,96 @@ def display_notification_results(ctx: Context, results: dict, total_projects: in
         ctx.console.print("\n[green]Successful Notifications:[/]")
         for notification in results['success']:
             ctx.console.print(f"  {notification['recipient']} ({notification['project_code']})", style="green")
+
+
+def display_notification_preview(ctx: Context, results: dict, total_projects: int):
+    """Display notification preview in dry-run mode.
+
+    Args:
+        ctx: Context object
+        results: Dict with 'success', 'failed', and 'preview_samples' lists
+        total_projects: Total number of projects with expiring allocations
+    """
+    from collections import defaultdict
+
+    success_count = len(results['success'])
+    failed_count = len(results['failed'])
+
+    ctx.console.print(f"\n[bold yellow]DRY-RUN MODE: Preview only, no emails will be sent[/]\n")
+
+    # Summary panel
+    grid = Table(show_header=False, box=None, padding=(0, 2))
+    grid.add_column("Field", style="cyan bold")
+    grid.add_column("Value")
+
+    grid.add_row("Projects with Expiring Allocations", str(total_projects))
+    grid.add_row("Emails That Would Be Sent", str(success_count))
+
+    # Count unique recipients
+    unique_recipients = set(n['recipient'] for n in results['success'])
+    grid.add_row("Unique Recipients", str(len(unique_recipients)))
+
+    if failed_count > 0:
+        grid.add_row("Preview Errors", f"[red]{failed_count}[/]")
+
+    panel = Panel(grid, title="Dry-Run Summary", expand=False, border_style="yellow")
+    ctx.console.print(panel)
+
+    # Show preview errors if any
+    if failed_count > 0:
+        ctx.console.print("\n[red bold]Preview Errors:[/]")
+        for notification in results['failed']:
+            ctx.console.print(f"  {notification['recipient']}: {notification.get('error', 'Unknown error')}", style="red")
+
+    # Group by project for display
+    by_project = defaultdict(list)
+    for notification in results['success']:
+        by_project[notification['project_code']].append(notification)
+
+    # Show email distribution by project
+    ctx.console.print("\n[bold]Email Preview by Project:[/]\n")
+
+    for projcode, project_notifications in sorted(by_project.items()):
+        # Use first notification to get project details
+        first = project_notifications[0]
+        recipients = [n['recipient'] for n in project_notifications]
+
+        ctx.console.print(f"[cyan bold]{projcode}[/] - {first['project_title']}")
+        ctx.console.print(f"  Recipients ({len(recipients)}): {', '.join(sorted(recipients))}")
+
+        # Show resources that would be included
+        resources = first['resources']
+        for resource in resources:
+            urgency = "🔴 URGENT" if resource['days_remaining'] <= 7 else "🟠 WARNING" if resource['days_remaining'] <= 14 else "🔵 NOTICE"
+            ctx.console.print(f"    {urgency} {resource['resource_name']}: {resource['days_remaining']} days remaining (expires {resource['expiration_date']})")
+
+        ctx.console.print()
+
+    # Show sample rendered emails in verbose mode
+    if ctx.verbose and 'preview_samples' in results and results['preview_samples']:
+        ctx.console.print("\n[bold]Sample Rendered Emails:[/]\n")
+
+        for i, sample in enumerate(results['preview_samples'], 1):
+            # Show email metadata
+            meta_info = f"To: {sample['recipient']} ({sample['recipient_role']}) | Project: {sample['project_code']}"
+            if sample['facility']:
+                meta_info += f" | Facility: {sample['facility']}"
+            if sample['html_content']:
+                meta_info += f" | Templates: {sample['text_template']}, {sample['html_template']}"
+            else:
+                meta_info += f" | Template: {sample['text_template']} (text-only)"
+
+            ctx.console.print(f"[dim]{meta_info}[/dim]")
+
+            # Show rendered text content
+            ctx.console.print(Panel(
+                sample['text_content'],
+                title=f"Sample Email #{i} to {sample['recipient_name']}",
+                border_style="dim"
+            ))
+
+            if i < len(results['preview_samples']):
+                ctx.console.print()
+
+    if not ctx.verbose:
+        ctx.console.print("[dim]Use --verbose to see sample rendered email content[/]")

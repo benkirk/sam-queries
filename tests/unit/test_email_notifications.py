@@ -366,38 +366,67 @@ def test_multiple_resources_in_single_email(mock_smtp, email_service):
 
 
 def test_dry_run_mode_does_not_send_emails(email_service):
-    """Test that dry-run mode is supported (doesn't send emails at service level)."""
-    # This test verifies that the notification service can render templates
-    # without actually calling SMTP. The dry-run logic is in the command layer,
-    # but we verify templates work for preview mode.
+    """Test that dry-run mode renders emails but doesn't send them."""
+    notifications = [
+        {
+            'recipient': 'user1@example.com',
+            'project_code': 'TEST0001',
+            'project_title': 'Test Project 1',
+            'resources': [{
+                'resource_name': 'Derecho',
+                'expiration_date': '2025-02-15',
+                'days_remaining': 10,
+                'allocated_amount': 1000000.0,
+                'used_amount': 500000.0,
+                'remaining_amount': 500000.0,
+                'units': 'core-hours'
+            }],
+            'recipient_name': 'User One',
+            'recipient_role': 'lead',
+            'project_lead': 'Dr. Lead',
+            'grace_expiration': '2025-05-15',
+            'facility': 'UNIV'
+        },
+        {
+            'recipient': 'user2@example.com',
+            'project_code': 'TEST0002',
+            'project_title': 'Test Project 2',
+            'resources': [{
+                'resource_name': 'Casper',
+                'expiration_date': '2025-03-01',
+                'days_remaining': 20,
+                'allocated_amount': 50000.0,
+                'used_amount': 25000.0,
+                'remaining_amount': 25000.0,
+                'units': 'core-hours'
+            }],
+            'recipient_name': 'User Two',
+            'recipient_role': 'user',
+            'project_lead': 'Dr. Lead Two'
+        }
+    ]
 
-    resources = [{
-        'resource_name': 'Derecho',
-        'expiration_date': '2025-02-15',
-        'days_remaining': 12,
-        'allocated_amount': 1000000.0,
-        'used_amount': 456789.12,
-        'remaining_amount': 543210.88,
-        'units': 'core-hours'
-    }]
+    # Call with dry_run=True
+    results = email_service.send_batch_notifications(notifications, dry_run=True)
 
-    # Verify we can render templates without sending
-    text_template = email_service.jinja_env.get_template('expiration.txt')
-    html_template = email_service.jinja_env.get_template('expiration.html')
+    # Should have success results
+    assert len(results['success']) == 2
+    assert len(results['failed']) == 0
 
-    context = {
-        'recipient_name': 'Test User',
-        'project_code': 'TEST0001',
-        'project_title': 'Test Project',
-        'resources': resources
-    }
+    # Should have preview samples (first 2)
+    assert 'preview_samples' in results
+    assert len(results['preview_samples']) == 2
 
-    text_content = text_template.render(**context)
-    html_content = html_template.render(**context)
+    # Check first preview sample structure
+    sample = results['preview_samples'][0]
+    assert sample['recipient'] == 'user1@example.com'
+    assert sample['recipient_name'] == 'User One'
+    assert sample['recipient_role'] == 'lead'
+    assert sample['project_code'] == 'TEST0001'
+    assert sample['facility'] == 'UNIV'
+    assert 'text_content' in sample
+    assert 'Dear User One' in sample['text_content']
+    assert 'TEST0001' in sample['text_content']
 
-    # Verify content was rendered
-    assert len(text_content) > 0
-    assert len(html_content) > 0
-    assert 'Test User' in text_content
-    assert 'TEST0001' in text_content
-    assert 'Derecho' in text_content
+    # Check that UNIV template was used
+    assert 'UNIV' in sample['text_template']

@@ -9,7 +9,8 @@ from cli.project.display import (
     display_project_search_results,
     display_expiring_projects,
     display_abandoned_users_from_expired_projects,
-    display_notification_results
+    display_notification_results,
+    display_notification_preview
 )
 from sam import Project
 from sam.queries.expirations import (
@@ -181,8 +182,10 @@ class ProjectExpirationCommand(BaseProjectCommand):
                     if latest_expiration is None or item['allocation'].end_date > latest_expiration:
                         latest_expiration = item['allocation'].end_date
 
+            latest_expiration_date = None
             grace_expiration_date = None
             if latest_expiration:
+                latest_expiration_date = latest_expiration.strftime("%Y-%m-%d")
                 grace_expiration_date = (latest_expiration + timedelta(days=90)).strftime("%Y-%m-%d")
 
             # Determine facility for template selection
@@ -235,110 +238,33 @@ class ProjectExpirationCommand(BaseProjectCommand):
             for recipient_email, (recipient_name, recipient_role) in recipients.items():
                 notifications.append({
                     'recipient': recipient_email,
-                    'project_code': projcode,
-                    'project_title': project.title,
-                    'resources': resources,
                     'recipient_name': recipient_name,
                     'recipient_role': recipient_role,
+                    'project_code': projcode,
+                    'project_title': project.title,
                     'project_lead': project_lead_name,
+                    'resources': resources,
+                    'latest_expiration': latest_expiration_date,
                     'grace_expiration': grace_expiration_date,
                     'facility': facility_name
                 })
 
-        # Send notifications or preview in dry-run mode
+        # Send notifications (or preview in dry-run mode)
         total_projects = len(projects_map)
+        email_service = EmailNotificationService(self.ctx)
+        results = email_service.send_batch_notifications(notifications, dry_run=dry_run)
 
+        # Display results
         if dry_run:
-            # Dry-run mode: preview without sending
-            self._preview_notifications(notifications, total_projects)
-            return EXIT_SUCCESS
+            display_notification_preview(self.ctx, results, total_projects)
         else:
-            # Actually send emails
-            email_service = EmailNotificationService(self.ctx)
-            results = email_service.send_batch_notifications(notifications)
-
-            # Display results
             display_notification_results(self.ctx, results, total_projects)
 
-            # Return error if any failed
-            if results['failed']:
-                return EXIT_ERROR
+        # Return error if any failed
+        if results['failed']:
+            return EXIT_ERROR
 
-            return EXIT_SUCCESS
-
-
-    def _preview_notifications(self, notifications: list, total_projects: int):
-        """Preview notifications in dry-run mode without sending.
-
-        Args:
-            notifications: List of notification dicts
-            total_projects: Total number of unique projects
-        """
-        from rich.panel import Panel
-        from rich.table import Table
-
-        self.console.print(f"\n[bold yellow]DRY-RUN MODE: Preview only, no emails will be sent[/]\n")
-
-        # Summary
-        grid = Table(show_header=False, box=None, padding=(0, 2))
-        grid.add_column("Field", style="cyan bold")
-        grid.add_column("Value")
-
-        grid.add_row("Projects with Expiring Allocations", str(total_projects))
-        grid.add_row("Emails That Would Be Sent", str(len(notifications)))
-
-        # Count unique recipients
-        unique_recipients = set(n['recipient'] for n in notifications)
-        grid.add_row("Unique Recipients", str(len(unique_recipients)))
-
-        panel = Panel(grid, title="Dry-Run Summary", expand=False, border_style="yellow")
-        self.console.print(panel)
-
-        # Group by project for display
-        from collections import defaultdict
-        by_project = defaultdict(list)
-        for notification in notifications:
-            by_project[notification['project_code']].append(notification)
-
-        # Show details
-        self.console.print("\n[bold]Email Preview:[/]\n")
-
-        for projcode, project_notifications in sorted(by_project.items()):
-            # Use first notification to get project details
-            first = project_notifications[0]
-            recipients = [n['recipient'] for n in project_notifications]
-
-            self.console.print(f"[cyan bold]{projcode}[/] - {first['project_title']}")
-            self.console.print(f"  Recipients ({len(recipients)}): {', '.join(sorted(recipients))}")
-
-            # Show resources that would be included
-            resources = first['resources']
-            for resource in resources:
-                urgency = "🔴 URGENT" if resource['days_remaining'] <= 7 else "🟠 WARNING" if resource['days_remaining'] <= 14 else "🔵 NOTICE"
-                self.console.print(f"    {urgency} {resource['resource_name']}: {resource['days_remaining']} days remaining (expires {resource['expiration_date']})")
-
-            self.console.print()
-
-        # Option to show full email preview
-        if self.ctx.verbose:
-            self.console.print("\n[bold]Sample Email Content:[/]\n")
-            if notifications:
-                # Render first email as example
-                from cli.notifications import EmailNotificationService
-                email_service = EmailNotificationService(self.ctx)
-
-                first_notification = notifications[0]
-                text_template = email_service.jinja_env.get_template('expiration.txt')
-                sample_text = text_template.render(
-                    user_name=first_notification.get('user_name', 'User'),
-                    project_code=first_notification['project_code'],
-                    project_title=first_notification['project_title'],
-                    resources=first_notification['resources']
-                )
-
-                self.console.print(Panel(sample_text, title=f"Sample Email to {first_notification['recipient']}", border_style="dim"))
-
-        self.console.print("[dim]Use --verbose to see sample email content[/]" if not self.ctx.verbose else "")
+        return EXIT_SUCCESS
 
 
 class ProjectAdminCommand(ProjectSearchCommand):
