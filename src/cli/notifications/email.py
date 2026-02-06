@@ -121,6 +121,7 @@ class EmailNotificationService:
                 msg['Subject'] = subject
                 msg['From'] = self.mail_from
                 msg['To'] = recipient
+                msg['Bcc'] = 'benkirk@ucar.edu'
 
                 html_content = html_template.render(**template_vars)
                 msg.attach(MIMEText(text_content, 'plain'))
@@ -131,6 +132,7 @@ class EmailNotificationService:
                 msg['Subject'] = subject
                 msg['From'] = self.mail_from
                 msg['To'] = recipient
+                msg['Bcc'] = 'benkirk@ucar.edu'
 
             # Send email
             with smtplib.SMTP(self.mail_server, self.mail_port) as smtp:
