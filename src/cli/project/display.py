@@ -193,29 +193,41 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
 
             ctx.console.print(Panel(abstract, title="Abstract", border_style="dim", expand=False))
 
-        # Tree info - show entire tree from root
+        # Tree info - show active tree in verbose, full tree in very verbose
         if project.parent or project.get_children():
             # Get the root of the project tree
             root = project.get_root() if hasattr(project, 'get_root') else project
             current_projcode = project.projcode
 
-            def build_tree_node(node, parent_tree, current_projcode):
-                """Recursively build tree with sorted children, inactive status, and current highlight."""
+            def build_tree_node(node, parent_tree, current_projcode, show_inactive):
+                """Recursively build tree with sorted children, inactive status, and current highlight.
+
+                Args:
+                    node: Current project node
+                    parent_tree: Parent tree to add children to
+                    current_projcode: Project code of the currently viewed project
+                    show_inactive: If True, show all projects; if False, only show active projects
+                """
                 # Sort children alphabetically by projcode
                 sorted_children = sorted(node.get_children(), key=lambda c: c.projcode)
 
                 for child in sorted_children:
                     is_current = child.projcode == current_projcode
+                    is_inactive = hasattr(child, 'active') and not child.active
+
+                    # Skip inactive projects unless showing all OR it's the current project
+                    if is_inactive and not show_inactive and not is_current:
+                        continue
 
                     # Format child node with inactive status and current highlight
                     if is_current:
                         # Current project - highlighted in yellow
-                        if hasattr(child, 'active') and not child.active:
+                        if is_inactive:
                             label = f"[bold yellow]→ {child.projcode} - {child.title}[/bold yellow] [dim italic](Inactive)[/dim italic]"
                         else:
                             label = f"[bold yellow]→ {child.projcode} - {child.title}[/bold yellow]"
-                    elif hasattr(child, 'active') and not child.active:
-                        # Inactive project - muted gray
+                    elif is_inactive:
+                        # Inactive project - muted gray (only shown in very verbose mode)
                         label = f"[dim]{child.projcode} - {child.title} [italic](Inactive)[/italic][/dim]"
                     else:
                         # Active project - normal display
@@ -225,9 +237,13 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
 
                     # Recursively add grandchildren
                     if child.get_children():
-                        build_tree_node(child, child_node, current_projcode)
+                        build_tree_node(child, child_node, current_projcode, show_inactive)
 
             # Build tree starting from root
+            # Very verbose: show all projects including inactive
+            # Verbose: show only active projects (but always include current project)
+            show_inactive = ctx.very_verbose
+
             is_current_root = root.projcode == current_projcode
             if is_current_root:
                 if hasattr(root, 'active') and not root.active:
@@ -241,7 +257,7 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
                     root_label = f"{root.projcode} - {root.title}"
 
             tree = Tree(root_label)
-            build_tree_node(root, tree, current_projcode)
+            build_tree_node(root, tree, current_projcode, show_inactive)
             ctx.console.print(Panel(tree, title="Project Hierarchy", border_style="blue", expand=False))
 
 
