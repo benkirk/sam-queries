@@ -1,7 +1,8 @@
 Dear {{ recipient_name }},
 
-Project {{ project_code }} - "{{ project_title }}" is expiring on
-{{ latest_expiration }}.
+NCAR/Wyoming Computing Project Project {{ project_code }}
+"{{ project_title }}"
+is expiring on {{ latest_expiration }}.
 
 Read this message carefully to re-familiarize yourself with the
 expiration process and timeline for data retrieval and ultimate
@@ -27,18 +28,11 @@ see https://arc.ucar.edu/docs/glade.
 
 Project Extensions:
 {% if recipient_role == 'lead' -%}
-If you would like this project to continue, you may request an
-extension if your NSF award has been extended, or if you have not
-finished with your grad student or postdoc allocation.
-  - Visit https://arc.ucar.edu/ and login
-  - Select "Allocations" from the navigation menu, then click on
-    "My Allocation Requests"
-  - Find project {{ project_code }}, click on "Actions" and select
-    the "Extension" option.
-  - Complete the extension request form and submit.
+If you would like the project to continue please send an email to
+wrap@uwyo.edu indicating the date of your desired extension.
 {% else -%}
 Your project lead ({{ project_lead }} / {{ project_lead_email }}) can
-request an extension if warranted under certain circumstances.
+request an extension if required.
 {% endif %}
 
 --

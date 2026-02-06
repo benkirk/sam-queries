@@ -41,7 +41,7 @@
     <p>Dear {{ recipient_name }},</p>
 
     <div class="project-info">
-        Project <strong>{{ project_code }}</strong> - "{{ project_title }}" is expiring on <strong>{{ latest_expiration }}</strong>.
+        NCAR/Wyoming Computing Project <strong>{{ project_code }}</strong> - "{{ project_title }}" is expiring on <strong>{{ latest_expiration }}</strong>.
     </div>
 
     <p>Read this message carefully to re-familiarize yourself with the expiration process and timeline for data retrieval and ultimate removal.</p>
@@ -60,15 +60,9 @@
 
     <h3>Project Extensions</h3>
     {% if recipient_role == 'lead' -%}
-    <p>If you would like this project to continue, you may request an extension if your NSF award has been extended, or if you have not finished with your grad student or postdoc allocation.</p>
-    <ul>
-        <li>Visit <a href="https://arc.ucar.edu/">https://arc.ucar.edu/</a> and login</li>
-        <li>Select "Allocations" from the navigation menu, then click on "My Allocation Requests"</li>
-        <li>Find project <strong>{{ project_code }}</strong>, click on "Actions" and select the "Extension" option.</li>
-        <li>Complete the extension request form and submit.</li>
-    </ul>
+    <p>If would like the project to continue please send an email to <a href="mailto:wrap@uwyo.edu">wrap@uwyo.edu</a> indicating the date of your desired extension.</p>
     {% else -%}
-    <p>Your project lead (<strong>{{ project_lead }}</strong> / <a href="mailto:{{ project_lead_email }}">{{ project_lead_email }}</a>) can request an extension if warranted under certain circumstances.</p>
+    <p>Your project lead (<strong>{{ project_lead }}</strong> / <a href="mailto:{{ project_lead_email }}">{{ project_lead_email }}</a>) can request an extension if required.</p>
     {% endif %}
 
     <div class="footer">
