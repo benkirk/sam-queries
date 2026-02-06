@@ -94,13 +94,12 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
     # Allocations Table
     try:
         usage = project.get_detailed_allocation_usage()
-        allocations = project.get_all_allocations_by_resource()
 
         if usage:
             alloc_table = Table(title="Allocations & Usage", box=box.SIMPLE, show_header=True)
-            alloc_table.add_column("Resource", style="cyan")
+            alloc_table.add_column("Resource")
             alloc_table.add_column("Type")
-            alloc_table.add_column("Dates", style="dim")
+            alloc_table.add_column("Dates")
             alloc_table.add_column("Allocation", justify="right")
             alloc_table.add_column("Remaining", justify="right")
             alloc_table.add_column("Used", justify="right")
@@ -111,37 +110,59 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
                 alloc_table.add_column("Jobs", justify="right", style="dim")
                 alloc_table.add_column("Days Left", justify="right", style="dim")
 
-            for resource_name, alloc in allocations.items():
-                if resource_name in usage:
-                    resource_usage = usage[resource_name]
+            # Iterate directly over usage dict (includes both active and recent expired allocations)
+            for resource_name, resource_usage in usage.items():
+                # Determine if allocation is expired based on days_remaining
+                days_remaining = resource_usage.get('days_remaining')
+                is_expired = days_remaining is not None and days_remaining < 0
 
-                    start_str = alloc.start_date.strftime("%Y-%m-%d")
-                    end_str = alloc.end_date.strftime("%Y-%m-%d") if alloc.end_date else "N/A"
-                    date_range = f"{start_str}\n{end_str}"
+                # Apply styling based on expiration status
+                if is_expired:
+                    resource_style = "dim"
+                    date_style = "dim red"
+                    expired_indicator = " (Expired)"
+                else:
+                    resource_style = "cyan"
+                    date_style = "dim"
+                    expired_indicator = ""
 
-                    pct = resource_usage['percent_used']
-                    pct_style = "green"
-                    if pct > 80: pct_style = "yellow"
-                    if pct > 100: pct_style = "red bold"
+                # Format dates
+                start_date = resource_usage.get('start_date')
+                end_date = resource_usage.get('end_date')
+                start_str = start_date.strftime("%Y-%m-%d") if start_date else "N/A"
+                end_str = end_date.strftime("%Y-%m-%d") if end_date else "N/A"
+                date_range = f"[{date_style}]{start_str}\n{end_str}[/]"
 
-                    row = [
-                        resource_name,
-                        resource_usage['resource_type'],
-                        date_range,
-                        f"{alloc.amount:,.0f}",
-                        f"{resource_usage['remaining']:,.0f}",
-                        f"{resource_usage['used']:,.0f}",
-                        f"[{pct_style}]{pct:,.1f}%[/]"
-                    ]
+                # Calculate percentage used styling
+                pct = resource_usage['percent_used']
+                pct_style = "green"
+                if pct > 80: pct_style = "yellow"
+                if pct > 100: pct_style = "red bold"
 
-                    # Very verbose: add jobs and days remaining
-                    if ctx.very_verbose:
-                        jobs = resource_usage.get('total_jobs')
-                        days_remaining = resource_usage.get('days_remaining')
-                        row.append(f"{jobs:,}" if jobs is not None else "N/A")
-                        row.append(str(days_remaining) if days_remaining is not None else "N/A")
+                # Dim percentage style for expired allocations
+                if is_expired:
+                    pct_style = "dim"
 
-                    alloc_table.add_row(*row)
+                # Format allocation amount
+                allocated = resource_usage.get('allocated', 0)
+
+                row = [
+                    f"[{resource_style}]{resource_name}{expired_indicator}[/]",
+                    f"[{resource_style}]{resource_usage['resource_type']}[/]" if is_expired else resource_usage['resource_type'],
+                    date_range,
+                    f"[{resource_style}]{allocated:,.0f}[/]" if is_expired else f"{allocated:,.0f}",
+                    f"[{resource_style}]{resource_usage['remaining']:,.0f}[/]" if is_expired else f"{resource_usage['remaining']:,.0f}",
+                    f"[{resource_style}]{resource_usage['used']:,.0f}[/]" if is_expired else f"{resource_usage['used']:,.0f}",
+                    f"[{pct_style}]{pct:,.1f}%[/]"
+                ]
+
+                # Very verbose: add jobs and days remaining
+                if ctx.very_verbose:
+                    jobs = resource_usage.get('total_jobs')
+                    row.append(f"[{resource_style}]{jobs:,}[/]" if jobs is not None and is_expired else (f"{jobs:,}" if jobs is not None else "N/A"))
+                    row.append(f"[{resource_style}]{days_remaining}[/]" if days_remaining is not None and is_expired else (str(days_remaining) if days_remaining is not None else "N/A"))
+
+                alloc_table.add_row(*row)
             ctx.console.print(alloc_table)
 
 
