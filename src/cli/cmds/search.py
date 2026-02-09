@@ -46,7 +46,7 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
         engine, _ = create_sam_engine()
         ctx.session = Session(engine)
     except Exception as e:
-        ctx.console.print(f"Error connecting to database: {e}", style="bold red", err=True)
+        ctx.stderr_console.print(f"Error connecting to database: {e}", style="bold red")
         sys.exit(1)
 
 

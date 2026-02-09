@@ -20,7 +20,7 @@ class BaseCommand(ABC):
 
     def handle_exception(self, e: Exception) -> int:
         """Common error handling."""
-        self.console.print(f"❌ Error: {e}", style="bold red", err=True)
+        self.ctx.stderr_console.print(f"❌ Error: {e}", style="bold red")
         if self.ctx.verbose:
             import traceback
             self.console.print(traceback.format_exc(), style="dim")
