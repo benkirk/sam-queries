@@ -15,6 +15,9 @@ jobs:
   test-piped-install:
     runs-on: ubuntu-latest
     steps:
+      - name: Install MySQL Client
+        run: sudo apt-get install -y mysql-client
+
       - name: Setup Environment
         run: echo "INSTALL_DIR=${{ runner.temp }}/test-install-target" >> ${GITHUB_ENV}
 
@@ -114,40 +117,53 @@ jobs:
           sleep 5
           docker compose ps -a
 
-      - name: Wait for services to be healthy
+      - name: Wait for MySQL to be healthy (TCP from host)
         run: |
           cd "${INSTALL_DIR}"
 
-          echo "=== Waiting for MySQL to be healthy ==="
+          echo "=== Waiting for MySQL to accept TCP connections on 127.0.0.1:3306 ==="
           
-          # Check if MySQL container is running
-          for i in $(seq 1 24); do
-            STATE=$(docker compose ps mysql --format "{{.State}}" 2>/dev/null || echo "unknown")
+          # Wait using HOST mysql client over TCP — same path as subsequent steps.
+          for i in $(seq 1 60); do
+            if mysql -h 127.0.0.1 -proot -uroot -e "SELECT 1" 2>/dev/null; then
+              echo "✅ MySQL accepting TCP connections after $((i * 5))s"
+              break
+            fi
             
+            STATE=$(docker compose ps mysql --format "{{.State}}" 2>/dev/null || echo "unknown")
             if [ "${STATE}" = "exited" ]; then
               echo "❌ MySQL container exited!"
               docker compose logs mysql --tail=200
               exit 1
             fi
             
-            if docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot --silent 2>/dev/null; then
-              echo "✅ MySQL is healthy after $((i * 5)) seconds"
-              break
+            if [ $((i % 6)) -eq 0 ]; then
+              echo "  Still waiting... ($((i * 5))s elapsed, container state: ${STATE})"
             fi
-            
-            echo "  Waiting... ($i/24, state: ${STATE})"
             sleep 5
           done
           
-          docker compose exec -T mysql mysqladmin ping -h localhost -u root -proot || {
-            echo "❌ MySQL health check failed!"
+          # Verify sam database is queryable
+          echo ""
+          echo "=== Verifying sam database ==="
+          for i in $(seq 1 12); do
+            if mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" 2>/dev/null; then
+              echo "✅ SAM database is ready"
+              break
+            fi
+            echo "  Waiting for sam database... ($((i * 5))s)"
+            sleep 5
+          done
+          
+          mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" || {
+            echo "❌ SAM database not accessible!"
             docker compose logs mysql --tail=100
             exit 1
           }
-          echo "✅ MySQL is healthy"
 
-          echo ""
-          echo "Waiting for webapp to be ready..."
+      - name: Wait for webapp to be ready
+        run: |
+          cd "${INSTALL_DIR}"
           timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sam; import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
           echo "✅ Webapp is ready"
 
