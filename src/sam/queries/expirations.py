@@ -292,3 +292,103 @@ def get_projects_with_expired_allocations(
         (proj, alloc, res, abs(days))
         for proj, alloc, res, days in results
     ][::-1]  # Most expired first
+
+
+def get_all_expiring_allocations(
+    session: Session,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    facility_names: Optional[List[str]] = None,
+    resource_name: Optional[str] = None,
+    include_inactive_projects: bool = False
+) -> List[Tuple['Project', 'Allocation', str, Optional[int]]]:
+    """
+    Find ALL allocations (not just latest per project) with end_dates in a date range.
+
+    Unlike get_projects_by_allocation_end_date(), this returns ALL allocations
+    that expire in the date range, not just the latest one per project.
+    This is useful for notifications where you want to alert about all
+    expiring resources.
+
+    Args:
+        session: SQLAlchemy session
+        start_date: Include allocations ending on or after this date
+        end_date: Include allocations ending on or before this date
+        facility_names: Optional list of facility names to filter
+        resource_name: Optional resource name to filter
+        include_inactive_projects: If True, include projects marked inactive
+
+    Returns:
+        List of (Project, Allocation, resource_name, days_from_now) tuples,
+        sorted by end_date then project code. days_from_now is positive for
+        future dates, negative for past dates.
+
+    Example:
+        # Get all allocations expiring in next 32 days
+        expiring = get_all_expiring_allocations(
+            session,
+            start_date=datetime.now(),
+            end_date=datetime.now() + timedelta(days=32),
+            facility_names=['UNIV', 'WNA']
+        )
+        # This will return multiple allocations per project if they all expire
+        # in the date range (e.g., Derecho, Casper, and Derecho GPU)
+    """
+    now = datetime.now()
+
+    # Main query - no subquery filter, returns ALL allocations in range
+    query = (
+        session.query(Project, Allocation, Resource.resource_name)
+        .join(Account, Project.project_id == Account.project_id)
+        .join(Allocation, Account.account_id == Allocation.account_id)
+        .join(Resource, Account.resource_id == Resource.resource_id)
+        .filter(Allocation.deleted == False)
+    )
+
+    # Filter by project active status
+    if not include_inactive_projects:
+        query = query.filter(Project.active == True)
+
+    # Build date range filters
+    date_filters = [Allocation.end_date.isnot(None)]
+
+    if start_date is not None:
+        date_filters.append(Allocation.end_date >= start_date)
+
+    if end_date is not None:
+        date_filters.append(Allocation.end_date <= end_date)
+
+    if date_filters:
+        query = query.filter(and_(*date_filters))
+
+    # Filter by facility
+    if facility_names:
+        query = (
+            query
+            .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)
+            .join(Panel, AllocationType.panel_id == Panel.panel_id)
+            .join(Facility, Panel.facility_id == Facility.facility_id)
+            .filter(Facility.facility_name.in_(facility_names))
+        )
+
+    # Filter by resource
+    if resource_name:
+        query = query.filter(Resource.resource_name == resource_name)
+
+    # Execute query and calculate days from now
+    results = []
+    for project, allocation, res_name in query.all():
+        if allocation.end_date is not None:
+            days_difference = (allocation.end_date - now).days
+        else:
+            days_difference = None
+        results.append((project, allocation, res_name, days_difference))
+
+    # Sort by end_date, then project code for stable ordering
+    return sorted(
+        results,
+        key=lambda x: (
+            x[1].end_date if x[1].end_date is not None else datetime(9999, 12, 31),
+            x[0].projcode
+        )
+    )

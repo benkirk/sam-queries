@@ -51,8 +51,8 @@ class MyAdminIndexView(AdminIndexView):
         # Recently expired (last 90 days)
         expired_projects = get_projects_with_expired_allocations(
             session,
-            max_days_expired=90,
-            min_days_expired=365,
+            min_days_expired=90,
+            max_days_expired=365,
             facility_names=default_facilities
         )
         expired_count = len(expired_projects)

@@ -124,8 +124,8 @@ class ProjectExpirationView(BaseView):
         """
         return get_projects_with_expired_allocations(
             session,
-            max_days_expired=90,
-            min_days_expired=365,
+            min_days_expired=90,
+            max_days_expired=365,
             facility_names=facilities if facilities else None,
             resource_name=resource
         )

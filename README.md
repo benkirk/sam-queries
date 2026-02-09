@@ -26,13 +26,19 @@ This repository provides tools to interact with SAM data programmatically, repla
 - Automated schema validation to prevent drift
 - Test coverage for all major models
 
-### CLI Tool (`sam-search`)
-- User and project lookups by username or project code
-- Pattern matching with SQL wildcards
-- Track upcoming and expired allocations
-- Proper exit codes for automation
-- Built with [Click](https://click.palletsprojects.com/)
-- Installed as `sam-search` command via pyproject.toml entry point
+### CLI Tools (`sam-search` & `sam-admin`)
+- **sam-search**: User-facing search and query tool
+  - User and project lookups by username or project code
+  - Pattern matching with SQL wildcards
+  - Track upcoming and expired allocations
+  - Flexible allocation querying with grouping
+  - Proper exit codes for automation
+- **sam-admin**: Administrative commands (NEW)
+  - User and project validation
+  - Allocation reconciliation
+  - Data integrity checks
+- Built with [Click](https://click.palletsprojects.com/) using modular architecture
+- Installed via pyproject.toml entry points
 
 ### Web UI (Flask-Admin)
 - Admin dashboard with CRUD operations for SAM tables
@@ -429,7 +435,15 @@ sam-queries/
 │   │   ├── models/              # Status tracking models
 │   │   └── queries/             # Status query functions
 │   │
-│   ├── sam_search_cli.py        # CLI tool for user/project searches (built with Click)
+│   ├── cli/                     # Modular CLI architecture (NEW)
+│   │   ├── README.md            # CLI architecture documentation
+│   │   ├── core/                # Shared infrastructure (Context, base classes)
+│   │   ├── user/                # User commands and display functions
+│   │   ├── project/             # Project commands and display functions
+│   │   ├── allocations/         # Allocation commands and display functions
+│   │   └── cmds/                # Entry points (search.py, admin.py)
+│   │
+│   ├── sam_search_cli.py        # Compatibility shim (re-exports from cli.cmds.search)
 │   │
 │   └── webapp/                   # Flask web application
 │       ├── run.py               # Development server

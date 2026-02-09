@@ -1,0 +1,7 @@
+"""Core utilities for SAM CLI."""
+
+# Exit codes
+EXIT_SUCCESS = 0
+EXIT_NOT_FOUND = 1
+EXIT_ERROR = 2
+EXIT_KEYBOARD_INTERRUPT = 130

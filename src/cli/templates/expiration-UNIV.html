@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h3 {
+            color: #0275d8;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        .project-info {
+            background-color: #f5f5f5;
+            border-left: 4px solid #d9534f;
+            padding: 10px 15px;
+            margin: 15px 0;
+        }
+        .grace-period {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 10px 15px;
+            margin: 15px 0;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <p>Dear {{ recipient_name }},</p>
+
+    <div class="project-info">
+        Project <strong>{{ project_code }}</strong> - "{{ project_title }}" is expiring on <strong>{{ latest_expiration }}</strong>.
+    </div>
+
+    <p>Read this message carefully to re-familiarize yourself with the expiration process and timeline for data retrieval and ultimate removal.</p>
+
+    <h3>Project Data Removal Timeline</h3>
+    <p>Expired projects have <strong>90 days after expiration</strong> for data retrieval, after which all project data is subject to removal from NCAR systems. You therefore must transfer any required data to your home institution during this 90 day grace period.</p>
+
+    <div class="grace-period">
+        Your 90 day post-expiry grace period will end on <strong>{{ grace_expiration }}</strong>, after which you will <strong>NOT</strong> have further access to project data and it will be removed.
+    </div>
+
+    <h3>User Account Deactivation and User Data Removal Timeline</h3>
+    <p>User accounts become disabled when they are no longer associated with any active project, at which point all user-specific data in your home, work, and scratch file systems will be removed. If your account is associated with other, active projects your user data will remain unaffected.</p>
+
+    <p>For additional details on data access and retention policies see <a href="https://arc.ucar.edu/docs/glade">https://arc.ucar.edu/docs/glade</a>.</p>
+
+    <h3>Project Extensions</h3>
+    {% if recipient_role == 'lead' -%}
+    <p>If you would like this project to continue, you may request an extension if your NSF award has been extended, or if you have not finished with your grad student or postdoc allocation.</p>
+    <ul>
+        <li>Visit <a href="https://arc.ucar.edu/">https://arc.ucar.edu/</a> and login</li>
+        <li>Select "Allocations" from the navigation menu, then click on "My Allocation Requests"</li>
+        <li>Find project <strong>{{ project_code }}</strong>, click on "Actions" and select the "Extension" option.</li>
+        <li>Complete the extension request form and submit.</li>
+    </ul>
+    {% else -%}
+    <p>Your project lead (<strong>{{ project_lead }}</strong> / <a href="mailto:{{ project_lead_email }}">{{ project_lead_email }}</a>) can request an extension if warranted under certain circumstances.</p>
+    {% endif %}
+
+    <div class="footer">
+        <p>This is an automated notification from the NSF NCAR Systems Accounting Manager.</p>
+    </div>
+</body>
+</html>

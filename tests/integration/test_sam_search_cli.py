@@ -22,8 +22,8 @@ import os
 from pathlib import Path
 
 
-# Path to the CLI script (relative to repository root)
-CLI_PATH = str(Path(__file__).parent.parent.parent / 'src' / 'sam_search_cli.py')
+# Use the installed sam-search command
+CLI_COMMAND = 'sam-search'
 
 
 def run_cli(*args, expect_success=True):
@@ -43,7 +43,7 @@ def run_cli(*args, expect_success=True):
     env['TERMINAL_WIDTH'] = '300'
 
     result = subprocess.run(
-        [CLI_PATH] + list(args),
+        [CLI_COMMAND] + list(args),
         capture_output=True,
         text=True,
         timeout=60,
@@ -621,7 +621,7 @@ class TestAllocationQueries:
         result = run_cli('allocations', '--active-at', 'invalid-date',
                         expect_success=False)
 
-        assert result.returncode == 1
+        assert result.returncode == 2  # Exit code 2 for errors (invalid input)
         assert 'Invalid date format' in result.stdout
 
     def test_allocations_no_results(self):

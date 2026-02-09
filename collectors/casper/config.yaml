@@ -2,8 +2,9 @@ system_name: casper
 pbs_host: casper
 
 login_nodes:
-  - name: casper-login1
-  - name: casper-login2
+  - name: crlogin1
+  - name: crlogin2
+  - name: crlogin3
 
 filesystems:
   - /glade/u/home
