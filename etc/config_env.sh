@@ -23,6 +23,15 @@ conda --version > /dev/null 2>&1 || {
     exit 1
 }
 
+# Initialize conda if not already initialized
+if [ -z "$CONDA_SHLVL" ]; then
+    # Try to source conda's setup script
+    CONDA_ROOT=$(conda info --base 2>/dev/null)
+    if [ -n "$CONDA_ROOT" ] && [ -f "$CONDA_ROOT/etc/profile.d/conda.sh" ]; then
+        source "$CONDA_ROOT/etc/profile.d/conda.sh"
+    fi
+fi
+
 make --silent -C ${ROOT_DIR} ${ENV_NAME}
 
 conda activate ${ENV_DIR}

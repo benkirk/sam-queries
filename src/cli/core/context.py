@@ -1,6 +1,7 @@
 """Context class for SAM CLI."""
 
 import os
+import sys
 from typing import Optional
 from sqlalchemy.orm import Session
 from rich.console import Console
@@ -16,6 +17,7 @@ class Context:
         self.inactive_projects: bool = False
         self.inactive_users: bool = False
         self.console = Console()
+        self.stderr_console = Console(file=sys.stderr)
 
         # Email configuration from environment
         self.mail_server = os.getenv('MAIL_SERVER', 'ndir.ucar.edu')

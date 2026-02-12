@@ -59,20 +59,19 @@ services:
     image: mysql:9
     environment:
       MYSQL_ROOT_PASSWORD: root
-    command: ["/bin/bash", "/docker-init.sh"]
+      MYSQL_DATABASE: sam
     volumes:
       - samuel-mysql-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
-      - ./containers/sam-sql-dev/docker-init.sh:/docker-init.sh:ro
+      - ./containers/sam-sql-dev/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
-      # Check if MySQL is ready AND restore is complete
-      test: |
-        mysqladmin ping -h localhost -u root -proot
-        mysql -h localhost -u root -proot sam -e "SELECT COUNT(*) FROM users" > /dev/null 2>&1
+      # Verify MySQL is up AND the sam database is queryable.
+      # This prevents the webapp from starting before the restore completes.
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -proot && mysql -h localhost -u root -proot sam -e 'SELECT 1'"]
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 60s
+      start_period: 120s
     ports:
       - "3306:3306"
     networks:
