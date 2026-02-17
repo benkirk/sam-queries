@@ -40,6 +40,13 @@ if [ -f /backup.sql.xz ]; then
             echo "[init-db.sh] xzcat found, attempting backup restore (this may take a while)..."
             if xzcat /backup.sql.xz 2>&1 | mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" 2>&1; then
                 echo "[init-db.sh] Backup restored successfully!"
+                echo "[init-db.sh] Running ANALYZE TABLE on all user tables (improves query optimizer)..."
+                mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --skip-column-names -e \
+                    "SELECT CONCAT('ANALYZE TABLE \`', table_schema, '\`.\`', table_name, '\`;') \
+                     FROM information_schema.tables \
+                     WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys');" 2>/dev/null \
+                    | mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" 2>&1 || echo "[init-db.sh] Warning: ANALYZE TABLE had errors"
+                echo "[init-db.sh] ANALYZE TABLE complete"
             else
                 echo "[init-db.sh] Backup restore failed (continuing with empty database)"
             fi
