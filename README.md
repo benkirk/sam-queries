@@ -56,7 +56,28 @@ This repository provides tools to interact with SAM data programmatically, repla
 
 ## Quick Start
 
-If you already have conda and database credentials:
+### Option 1: Local Development (Recommended)
+
+For local development with Docker database:
+
+```bash
+# 1. Install Python environment
+./install_local.sh
+
+# 2. Set up local database
+./setup_local_db.sh
+
+# 3. Test installation
+./test_database.sh
+```
+
+**See [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md) for complete local setup guide.**
+
+**Utility scripts:** See `scripts/setup/` for database switching and troubleshooting tools.
+
+### Option 2: Production Database
+
+If you already have conda and production database credentials:
 
 ```bash
 # 1. Create conda environment
@@ -70,14 +91,17 @@ SAM_DB_PASSWORD='your_password'
 EOF
 chmod 600 .env
 
-# 3. Try the CLI tool
+# 3. Activate environment
+source etc/config_env.sh
+
+# 4. Try the CLI tool
 sam-search user <your_username>
 
-# 4. Run tests to verify setup
+# 5. Run tests to verify setup
 pytest tests/ --no-cov
 ```
 
-For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)** or **[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)**.
 
 ---
 
@@ -87,8 +111,9 @@ For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 - **Conda** (miniconda or anaconda)
 - **Git**
-- **Database credentials** (contact CISL staff)
-- **Docker** (optional, for local development database)
+- **Docker Desktop** (for local development database)
+- **Git LFS** (for downloading database backup)
+- **Database credentials** (optional, for production database access - contact CISL staff)
 
 ### Setup Steps
 
@@ -106,13 +131,18 @@ For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 3. **Configure database credentials**
 
-   Create `.env` file in project root:
+   Create `.env` file from example:
    ```bash
-   SAM_DB_USERNAME=your_username
-   SAM_DB_SERVER=sam-sql.ucar.edu
-   SAM_DB_PASSWORD='your_password'
+   cp .env.example .env
+   chmod 600 .env
    ```
 
+   Edit `.env` and add your production credentials (if needed):
+   - For local development: Already configured (uses Docker)
+   - For production access: Add production credentials (contact CISL staff)
+   
+   **See [docs/CREDENTIALS.md](docs/CREDENTIALS.md) for complete credential setup guide.**
+   
    **Important:** Wrap passwords with special characters in single quotes.
 
 4. **Verify installation**
@@ -123,7 +153,9 @@ For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
    pytest tests/ --no-cov
    ```
 
-For full setup guide including local development database, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+**For local development setup**, see **[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)**.
+
+For full development guide, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ---
 
@@ -445,9 +477,18 @@ sam-queries/
 
 ## Documentation
 
-### User Documentation
+### Setup & Configuration
 - **[README.md](README.md)** - This file (overview and quick start)
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Comprehensive setup and development guide
+- **[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)** - Complete local development setup guide
+- **[docs/CREDENTIALS.md](docs/CREDENTIALS.md)** - Credential configuration guide
+- **[docs/DATABASE_SWITCHING.md](docs/DATABASE_SWITCHING.md)** - Switching between local and production databases
+- **[docs/SETUP_SUMMARY.md](docs/SETUP_SUMMARY.md)** - Quick reference for setup
+- **[docs/SCRIPTS.md](docs/SCRIPTS.md)** - Setup script reference
+- **[docs/DOCKER_TROUBLESHOOTING.md](docs/DOCKER_TROUBLESHOOTING.md)** - Docker issues and solutions
+- **[docs/WEBAPP_SETUP.md](docs/WEBAPP_SETUP.md)** - Web application setup
+
+### Development Guides
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Comprehensive development guide
 - **[src/webapp/README.md](src/webapp/README.md)** - Web UI and REST API documentation
 - **[tests/docs/README.md](tests/docs/README.md)** - Testing guide and best practices
 
@@ -734,21 +775,25 @@ Copyright (c) 2025 NCAR CISL
 ## Getting Help
 
 1. **Documentation:**
-   - Start with this README for overview
-   - See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and development
-   - See [CLAUDE.md](CLAUDE.md) for technical deep dive
-   - Check subdirectory READMEs for specific components
+   - **Setup:** [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md) - Complete local setup guide
+   - **Credentials:** [docs/CREDENTIALS.md](docs/CREDENTIALS.md) - How to configure credentials
+   - **Development:** [CONTRIBUTING.md](CONTRIBUTING.md) - Development workflow
+   - **Technical:** [CLAUDE.md](CLAUDE.md) - Technical deep dive
+   - **Quick Reference:** [docs/SETUP_SUMMARY.md](docs/SETUP_SUMMARY.md)
 
 2. **Common Questions:**
-   - Setup issues → [CONTRIBUTING.md](CONTRIBUTING.md#troubleshooting)
-   - ORM patterns → [CLAUDE.md](CLAUDE.md#key-orm-models)
-   - API usage → [src/webapp/README.md](src/webapp/README.md#rest-api)
-   - Testing → [tests/docs/README.md](tests/docs/README.md)
+   - **Setup issues** → [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md#common-issues--solutions)
+   - **Docker issues** → [docs/DOCKER_TROUBLESHOOTING.md](docs/DOCKER_TROUBLESHOOTING.md)
+   - **Database switching** → [docs/DATABASE_SWITCHING.md](docs/DATABASE_SWITCHING.md)
+   - **Credential setup** → [docs/CREDENTIALS.md](docs/CREDENTIALS.md)
+   - **ORM patterns** → [CLAUDE.md](CLAUDE.md#key-orm-models)
+   - **API usage** → [src/webapp/README.md](src/webapp/README.md#rest-api)
+   - **Testing** → [tests/docs/README.md](tests/docs/README.md)
 
 3. **Support:**
    - Check existing documentation first
    - Review code examples in test files
-   - Contact CISL USS team for access/credentials
+   - Contact CISL USS team for database access/credentials
    - File issues for bugs or feature requests
 
 ---

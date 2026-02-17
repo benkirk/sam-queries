@@ -53,6 +53,26 @@ jobs:
         run: |
           make docker-up
 
+      - name: Wait for MySQL TCP connectivity from host
+        run: |
+          echo "Verifying MySQL accepts TCP connections on 127.0.0.1:3306..."
+          for i in $(seq 1 60); do
+            if mysql -h 127.0.0.1 -proot -uroot -e "SELECT 1" 2>/dev/null; then
+              echo "✅ MySQL accepting TCP connections after $((i * 5))s"
+              break
+            fi
+            if [ $((i % 6)) -eq 0 ]; then
+              echo "  Still waiting... ($((i * 5))s elapsed)"
+            fi
+            sleep 5
+          done
+          mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" || {
+            echo "❌ SAM database not accessible via TCP!"
+            docker compose logs mysql --tail=100
+            exit 1
+          }
+          echo "✅ SAM database ready via TCP"
+
       - name: Run sam-search CLI tool
         run: |
           sam-search --inactive-projects user benkirk --list-projects --verbose
