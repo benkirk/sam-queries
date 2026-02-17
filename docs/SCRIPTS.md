@@ -349,10 +349,62 @@ All scripts include error checking:
 - **File checks:** Scripts verify backup files exist and are valid
 - **Health checks:** Database scripts wait for healthy status before completing
 
+## Infrastructure Scripts (scripts/infra/)
+
+Scripts for managing the AWS staging environment.
+
+### `scripts/infra/ssh-staging.sh`
+
+**Purpose:** Open interactive shell in staging ECS container
+
+**Prerequisites:** AWS CLI, Session Manager plugin
+
+**Usage:**
+```bash
+./scripts/infra/ssh-staging.sh
+```
+
+### `scripts/infra/query-staging-db.sh`
+
+**Purpose:** Connect to staging RDS MySQL database
+
+**Prerequisites:** UCAR VPN, mysql client, Terraform outputs
+
+**Usage:**
+```bash
+./scripts/infra/query-staging-db.sh              # interactive session
+./scripts/infra/query-staging-db.sh "SELECT 1"   # single query
+```
+
+### `scripts/infra/deploy-staging.sh`
+
+**Purpose:** Manual deployment to staging (builds, pushes, updates ECS)
+
+**Prerequisites:** AWS CLI, Docker, Terraform outputs
+
+**Usage:**
+```bash
+./scripts/infra/deploy-staging.sh
+```
+
+### `infrastructure/scripts/init-rds.sh`
+
+**Purpose:** One-time restore of obfuscated backup to staging RDS
+
+**Prerequisites:** UCAR VPN, mysql client, xzcat, Terraform outputs
+
+**Usage:**
+```bash
+cd infrastructure/staging
+../scripts/init-rds.sh
+```
+
 ## See Also
 
 - [scripts/README.md](../scripts/README.md) - Scripts directory overview
 - [scripts/setup/README.md](../scripts/setup/README.md) - Setup utilities documentation
+- [STAGING.md](STAGING.md) - Staging environment guide
+- [infrastructure/README.md](../infrastructure/README.md) - Infrastructure documentation
 - [LOCAL_SETUP.md](LOCAL_SETUP.md) - Complete local setup guide
 - [DATABASE_SWITCHING.md](DATABASE_SWITCHING.md) - Database switching guide
 - [README.md](../README.md) - Project overview
