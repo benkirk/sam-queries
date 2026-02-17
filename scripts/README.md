@@ -102,4 +102,6 @@ python scripts/cleanup_status_data.py
 
 - **[setup/README.md](setup/README.md)** - Setup utility scripts
 - **[../docs/SCRIPTS.md](../docs/SCRIPTS.md)** - Complete script reference
+- **[../docs/STAGING.md](../docs/STAGING.md)** - Staging environment guide
+- **[../infrastructure/README.md](../infrastructure/README.md)** - Infrastructure documentation
 - **[../docs/LOCAL_SETUP.md](../docs/LOCAL_SETUP.md)** - Setup guide
