@@ -14,6 +14,10 @@ scripts/
 │   ├── check_docker.sh
 │   ├── fix_mysql_permissions.sh
 │   └── download_backup.sh
+├── infra/                       # AWS infrastructure scripts
+│   ├── ssh-staging.sh          # SSH into staging ECS container
+│   ├── query-staging-db.sh     # Connect to staging RDS MySQL
+│   └── deploy-staging.sh       # Manual staging deployment
 ├── setup_status_db.py          # System status database setup
 ├── test_status_db.py           # System status database testing
 ├── cleanup_status_data.py      # System status data cleanup
@@ -32,6 +36,16 @@ Utility scripts for database setup, switching, and troubleshooting:
 - **Git LFS:** Download database backup files
 
 See [setup/README.md](setup/README.md) for detailed documentation.
+
+### Infrastructure Scripts (`infra/`)
+
+AWS staging environment management:
+
+- `ssh-staging.sh` - SSH into staging ECS container (via ECS Exec)
+- `query-staging-db.sh` - Connect to staging RDS MySQL (requires VPN)
+- `deploy-staging.sh` - Manual build and deploy to staging
+
+See [infra scripts documentation](../docs/SCRIPTS.md#infrastructure-scripts-scriptsinfra) for details.
 
 ### System Status Scripts
 
@@ -88,4 +102,6 @@ python scripts/cleanup_status_data.py
 
 - **[setup/README.md](setup/README.md)** - Setup utility scripts
 - **[../docs/SCRIPTS.md](../docs/SCRIPTS.md)** - Complete script reference
+- **[../docs/STAGING.md](../docs/STAGING.md)** - Staging environment guide
+- **[../infrastructure/README.md](../infrastructure/README.md)** - Infrastructure documentation
 - **[../docs/LOCAL_SETUP.md](../docs/LOCAL_SETUP.md)** - Setup guide

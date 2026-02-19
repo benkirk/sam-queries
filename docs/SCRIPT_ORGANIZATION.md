@@ -11,20 +11,29 @@ sam-queries/
 ├── setup_local_db.sh           # Main: Set up local database
 ├── test_database.sh            # Main: Test database connection
 │
-└── scripts/
-    ├── README.md              # Scripts directory overview
-    ├── setup/                 # Setup utilities
-    │   ├── README.md         # Setup utilities documentation
-    │   ├── switch_to_production_db.sh
-    │   ├── switch_to_local_db.sh
-    │   ├── check_docker.sh
-    │   ├── fix_mysql_permissions.sh
-    │   └── download_backup.sh
-    │
-    └── [Python scripts]       # System status database scripts
-        ├── setup_status_db.py
-        ├── test_status_db.py
-        └── ...
+├── scripts/
+│   ├── README.md              # Scripts directory overview
+│   ├── setup/                 # Setup utilities
+│   │   ├── README.md         # Setup utilities documentation
+│   │   ├── switch_to_production_db.sh
+│   │   ├── switch_to_local_db.sh
+│   │   ├── check_docker.sh
+│   │   ├── fix_mysql_permissions.sh
+│   │   └── download_backup.sh
+│   ├── infra/                 # AWS infrastructure scripts
+│   │   ├── ssh-staging.sh     # SSH into staging ECS container
+│   │   ├── query-staging-db.sh # Connect to staging RDS
+│   │   └── deploy-staging.sh  # Manual staging deployment
+│   └── [Python scripts]       # System status database scripts
+│       ├── setup_status_db.py
+│       ├── test_status_db.py
+│       └── ...
+│
+└── infrastructure/
+    ├── README.md              # Infrastructure documentation
+    ├── staging/               # Terraform for staging environment
+    └── scripts/
+        └── init-rds.sh        # One-time RDS database restore
 ```
 
 ## Script Categories
@@ -50,6 +59,16 @@ sam-queries/
 - Git LFS backup download
 
 **Why in scripts/setup/:** Secondary utilities, not needed for basic setup
+
+### Infrastructure Scripts (scripts/infra/)
+
+**Purpose:** AWS staging environment management
+
+- SSH into ECS containers
+- Query staging database
+- Manual deployments
+
+**Why in scripts/infra/:** Infrastructure-specific operations, separate from local dev
 
 ### System Status Scripts (scripts/)
 
