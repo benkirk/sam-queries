@@ -73,11 +73,32 @@
     }
 
     /**
-     * Reload the project card fragment from the server
+     * Reload the project card fragment from the server.
+     * If the project details modal is currently open, refresh its content
+     * in place rather than doing a full page reload.
      */
     function reloadProjectCard(projcode) {
-        // Reload the entire dashboard to refresh all project cards
-        // This is simpler than trying to reload individual cards
+        var $projectModal = $('#projectDetailsModal');
+        if ($projectModal.hasClass('show')) {
+            var baseUrl = $projectModal.data('url-template') || '/user/project-details-modal/__PROJCODE__';
+            var url = baseUrl.replace('__PROJCODE__', projcode);
+            $('#projectDetailsModalBody').html(
+                '<div class="text-center"><div class="spinner-border text-primary" role="status"></div></div>'
+            );
+            $.ajax({
+                url: url,
+                success: function(data) {
+                    $('#projectDetailsModalBody').html(data);
+                },
+                error: function() {
+                    $('#projectDetailsModalBody').html(
+                        '<div class="alert alert-danger">Failed to reload project details</div>'
+                    );
+                }
+            });
+            return;
+        }
+        // Fallback: full page reload (edit triggered outside of a project details modal)
         window.location.reload();
     }
 
@@ -93,6 +114,25 @@
      * Handle form submission
      */
     $(document).ready(function() {
+
+        // Fix Bootstrap 4 stacked modal z-index so the edit modal appears on top
+        // of any already-open modal (e.g. project details modal).
+        $(document).on('show.bs.modal', '.modal', function() {
+            var zIndex = 1040 + (10 * $('.modal.show').length);
+            $(this).css('z-index', zIndex);
+            setTimeout(function() {
+                $('.modal-backdrop').not('.modal-stack').css('z-index', zIndex - 1).addClass('modal-stack');
+            }, 0);
+        });
+
+        // Re-add modal-open to body when a stacked modal closes so the underlying
+        // modal remains non-scrollable (Bootstrap removes the class prematurely).
+        $(document).on('hidden.bs.modal', '.modal', function() {
+            if ($('.modal.show').length) {
+                $(document.body).addClass('modal-open');
+            }
+        });
+
         $('#editAllocationForm').on('submit', function(e) {
             e.preventDefault();
 
