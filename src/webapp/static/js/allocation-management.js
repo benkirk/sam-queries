@@ -118,7 +118,7 @@
         // Fix Bootstrap 4 stacked modal z-index so the edit modal appears on top
         // of any already-open modal (e.g. project details modal).
         $(document).on('show.bs.modal', '.modal', function() {
-            var zIndex = 1040 + (10 * $('.modal.show').length);
+            var zIndex = 1040 + (10 * ($('.modal.show').length + 1));
             $(this).css('z-index', zIndex);
             setTimeout(function() {
                 $('.modal-backdrop').not('.modal-stack').css('z-index', zIndex - 1).addClass('modal-stack');

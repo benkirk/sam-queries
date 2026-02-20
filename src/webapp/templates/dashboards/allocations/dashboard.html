@@ -278,10 +278,13 @@
     </div>
 </div>
 
+{% include 'dashboards/user/fragments/allocation_modals.html' %}
+
 {% endblock %}
 
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
 <script>
 $(document).ready(function() {
     // Handle expandable row clicks
