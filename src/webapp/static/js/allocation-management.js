@@ -74,10 +74,13 @@
 
     /**
      * Reload the project card fragment from the server.
-     * If the project details modal is currently open, refresh its content
-     * in place rather than doing a full page reload.
+     * Tries three contexts in order:
+     *   1. Project details modal (user/allocations dashboards) — refresh modal body in place
+     *   2. Admin project card container — re-fetch the inline project card
+     *   3. Fallback — full page reload
      */
     function reloadProjectCard(projcode) {
+        // 1. Project details modal (user dashboard, allocations dashboard)
         var $projectModal = $('#projectDetailsModal');
         if ($projectModal.hasClass('show')) {
             var baseUrl = $projectModal.data('url-template') || '/user/project-details-modal/__PROJCODE__';
@@ -98,7 +101,14 @@
             });
             return;
         }
-        // Fallback: full page reload (edit triggered outside of a project details modal)
+
+        // 2. Admin inline project card
+        if ($('#projectCardContainer').length && window.loadAdminProjectCard) {
+            window.loadAdminProjectCard(projcode);
+            return;
+        }
+
+        // 3. Fallback: full page reload
         window.location.reload();
     }
 
