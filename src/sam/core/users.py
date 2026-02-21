@@ -89,8 +89,6 @@ class User(Base, TimestampMixin):
     responsible_accounts = relationship('ResponsibleParty', back_populates='user')
     role_assignments = relationship('RoleUser', back_populates='user')
     wallclock_exemptions = relationship('WallclockExemption', back_populates='user', cascade='all')
-    # xras_user = relationship('XrasUser', back_populates='local_user', uselist=False)  # DEPRECATED - XRAS views don't support relationships
-
     _projects_w_dups = association_proxy('accounts', 'account.project')
 
     # ============================================================================
@@ -492,7 +490,7 @@ class User(Base, TimestampMixin):
 
 
 #----------------------------------------------------------------------------
-class UserAlias(Base, TimestampMixin):
+class UserAlias(Base):
     """Stores external identifiers for users."""
     __tablename__ = 'user_alias'
 
@@ -507,6 +505,7 @@ class UserAlias(Base, TimestampMixin):
     username = Column(String(35), nullable=False, unique=True)
     orcid_id = Column(String(20))
     access_global_id = Column(String(31))
+    creation_time = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))  # DB: nullable
     modified_time = Column(TIMESTAMP(3), server_default=text('CURRENT_TIMESTAMP(3)'))
 
     user = relationship('User', back_populates='aliases')
