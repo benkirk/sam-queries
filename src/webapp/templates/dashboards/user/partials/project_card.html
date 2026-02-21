@@ -46,7 +46,7 @@
     {% if project.organizations %}
     <div class="stat-item mt-2">
       <span class="stat-label d-block mb-1">Organizations:</span>
-      <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
+      <div class="stat-value text-dark text-detail">
         {% for po in project.organizations %}
             <div class="mb-1">
                 <span class="badge bg-light text-dark border">{{ po.organization.acronym }}</span>
@@ -60,7 +60,7 @@
     {% if project.contracts %}
     <div class="stat-item mt-2">
       <span class="stat-label d-block mb-1">Contracts:</span>
-      <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
+      <div class="stat-value text-dark text-detail">
         {% for pc in project.contracts %}
             <div class="mb-1">
                 <span class="badge bg-light text-dark border">{{ pc.contract.contract_source.contract_source }}</span>
@@ -75,7 +75,7 @@
     {% if project.active_directories %}
     <div class="stat-item mt-2">
       <span class="stat-label d-block mb-1">Directories:</span>
-      <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
+      <div class="stat-value text-dark text-detail">
         {% for dir in project.active_directories %}
             <div class="mb-1">
                 <span class="fas fa-folder text-warning me-1"></span>
@@ -133,7 +133,7 @@
                         <td class="{% if not is_expired %}text-warning{% endif %}">{{ '{:,.0f}'.format(resource.used) }}</td>
                         <td class="{% if not is_expired %}text-success{% endif %}">{{ '{:,.0f}'.format(resource.remaining) }}</td>
                         <td>
-                            <div class="progress" class="progress-large">
+                            <div class="progress progress-large">
                                 <div class="progress-bar {{ progress_class }}"
                                      role="progressbar"
                                      style="width: {{ [0, [percent, 100] | min] | max }}%"
@@ -210,7 +210,7 @@
     {% endfor %}
 
     <div class="card project-card mb-3">
-        <div class="card-header" data-bs-toggle="collapse" data-bs-target="#{{ card_id }}" aria-expanded="{{ 'true' if is_expanded else 'false' }}" class="cursor-pointer">
+        <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#{{ card_id }}" aria-expanded="{{ 'true' if is_expanded else 'false' }}">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h5 class="mb-0">

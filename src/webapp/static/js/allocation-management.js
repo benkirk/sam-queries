@@ -10,8 +10,8 @@
 (function() {
     'use strict';
 
-    // API base path (reuse from window if it exists to avoid conflicts)
-    const API_BASE = '/api/v1';
+    // API base path — defined once in utils.js / window.SAMUtils.API_BASE
+    const API_BASE = window.SAMUtils.API_BASE;
 
     // Track current allocation for operations
     let currentAllocationId = null;
