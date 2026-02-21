@@ -60,7 +60,6 @@ class Resource(Base, TimestampMixin):
     root_directories = relationship('DiskResourceRootDirectory', back_populates='resource')
     shells = relationship('ResourceShell', back_populates='resource', foreign_keys='ResourceShell.resource_id', cascade='save-update, merge')
     user_homes = relationship('UserResourceHome', back_populates='resource')
-    # xras_hpc_amounts = relationship('XrasHpcAllocationAmount', back_populates='resource')  # REMOVED - XrasHpcAllocationAmountView is read-only
     xras_resource_keys = relationship('XrasResourceRepositoryKeyResource', back_populates='resource')
 
     @classmethod
@@ -231,10 +230,11 @@ class DiskResourceRootDirectory(Base):
     root_directory = Column(String(64), nullable=False, unique=True)
     charging_exempt = Column(Boolean, nullable=False, default=False)
     resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
+    # DB quirk: creation_time has ON UPDATE (semantically swapped with modified_time)
     creation_time = Column(TIMESTAMP, nullable=False,
                           server_default=text('CURRENT_TIMESTAMP'),
-                          onupdate=datetime.utcnow)
-    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
+                          server_onupdate=text('CURRENT_TIMESTAMP'))
+    modified_time = Column(TIMESTAMP)  # DB: NULL default, no auto-update
 
     resource = relationship('Resource', back_populates='root_directories')
 

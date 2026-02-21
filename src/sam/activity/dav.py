@@ -133,8 +133,6 @@ class DavCos(Base, TimestampMixin):
 
     dav_cos_id = Column(Integer, primary_key=True)
     description = Column(String(50))
-    modified_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
-
     activities = relationship('DavActivity', back_populates='dav_cos')
 
     def __str__(self):

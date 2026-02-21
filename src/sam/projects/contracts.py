@@ -51,6 +51,20 @@ class Contract(Base, TimestampMixin):
 
         return True
 
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if contract is currently active (Python side)."""
+        return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if contract is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            cls.start_date <= now,
+            or_(cls.end_date.is_(None), cls.end_date >= now)
+        )
+
     def __str__(self):
         return f"{self.contract_number}: {self.title[:50]}..."
 

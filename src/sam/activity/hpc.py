@@ -103,6 +103,7 @@ class HPCCos(Base, TimestampMixin):
 
     hpc_cos_id = Column(Integer, primary_key=True)
     description = Column(String(50))
+    # Override TimestampMixin: DB column is NOT NULL (mixin defaults to nullable)
     modified_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
 
     activities = relationship('HPCActivity', back_populates='hpc_cos')

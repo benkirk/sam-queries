@@ -1,6 +1,7 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
+import enum
 #-------------------------------------------------------------------------eh-
 
 
@@ -43,8 +44,6 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
     children = relationship('Allocation', back_populates='parent', cascade='all')
     parent = relationship('Allocation', remote_side=[allocation_id], back_populates='children')
     transactions = relationship('AllocationTransaction', back_populates='allocation', cascade='all, delete-orphan')
-    # xras_allocation = relationship('XrasAllocation', back_populates='local_allocation', uselist=False)  # DEPRECATED - XRAS views don't support relationships
-
     def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
         """Check if allocation is active at a given date."""
         if self.deleted:
@@ -119,7 +118,7 @@ class AllocationTransaction(Base):
 
 
 #----------------------------------------------------------------------------
-class AllocationTransactionType:
+class AllocationTransactionType(enum.StrEnum):
     """Transaction types for allocation audit trail."""
     CREATE = "CREATE"
     EDIT = "EDIT"
