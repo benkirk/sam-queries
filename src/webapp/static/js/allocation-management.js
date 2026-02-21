@@ -73,11 +73,42 @@
     }
 
     /**
-     * Reload the project card fragment from the server
+     * Reload the project card fragment from the server.
+     * Tries three contexts in order:
+     *   1. Project details modal (user/allocations dashboards) — refresh modal body in place
+     *   2. Admin project card container — re-fetch the inline project card
+     *   3. Fallback — full page reload
      */
     function reloadProjectCard(projcode) {
-        // Reload the entire dashboard to refresh all project cards
-        // This is simpler than trying to reload individual cards
+        // 1. Project details modal (user dashboard, allocations dashboard)
+        var $projectModal = $('#projectDetailsModal');
+        if ($projectModal.hasClass('show')) {
+            var baseUrl = $projectModal.data('url-template') || '/user/project-details-modal/__PROJCODE__';
+            var url = baseUrl.replace('__PROJCODE__', projcode);
+            $('#projectDetailsModalBody').html(
+                '<div class="text-center"><div class="spinner-border text-primary" role="status"></div></div>'
+            );
+            $.ajax({
+                url: url,
+                success: function(data) {
+                    $('#projectDetailsModalBody').html(data);
+                },
+                error: function() {
+                    $('#projectDetailsModalBody').html(
+                        '<div class="alert alert-danger">Failed to reload project details</div>'
+                    );
+                }
+            });
+            return;
+        }
+
+        // 2. Admin inline project card
+        if ($('#projectCardContainer').length && window.loadAdminProjectCard) {
+            window.loadAdminProjectCard(projcode);
+            return;
+        }
+
+        // 3. Fallback: full page reload
         window.location.reload();
     }
 
@@ -93,6 +124,25 @@
      * Handle form submission
      */
     $(document).ready(function() {
+
+        // Fix Bootstrap 4 stacked modal z-index so the edit modal appears on top
+        // of any already-open modal (e.g. project details modal).
+        $(document).on('show.bs.modal', '.modal', function() {
+            var zIndex = 1040 + (10 * ($('.modal.show').length + 1));
+            $(this).css('z-index', zIndex);
+            setTimeout(function() {
+                $('.modal-backdrop').not('.modal-stack').css('z-index', zIndex - 1).addClass('modal-stack');
+            }, 0);
+        });
+
+        // Re-add modal-open to body when a stacked modal closes so the underlying
+        // modal remains non-scrollable (Bootstrap removes the class prematurely).
+        $(document).on('hidden.bs.modal', '.modal', function() {
+            if ($('.modal.show').length) {
+                $(document.body).addClass('modal-open');
+            }
+        });
+
         $('#editAllocationForm').on('submit', function(e) {
             e.preventDefault();
 
