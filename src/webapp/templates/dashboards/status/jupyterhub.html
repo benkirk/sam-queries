@@ -14,9 +14,9 @@
                     <div class="card-body text-center d-flex flex-column justify-content-center">
                         <div class="mb-3">
                             {% if jupyterhub_status.available %}
-                            <i class="fas fa-check-circle text-success" style="font-size: 70px;"></i>
+                            <i class="fas fa-check-circle text-success icon-jumbo"></i>
                             {% else %}
-                            <i class="fas fa-times-circle text-danger" style="font-size: 70px;"></i>
+                            <i class="fas fa-times-circle text-danger icon-jumbo"></i>
                             {% endif %}
                         </div>
                         <h6 class="text-muted mb-1">Service Status</h6>
@@ -28,7 +28,7 @@
                 <div class="card border h-100">
                     <div class="card-body text-center d-flex flex-column justify-content-center">
                         <div class="mb-3">
-                            <i class="fas fa-users text-primary" style="font-size: 70px;"></i>
+                            <i class="fas fa-users text-primary icon-jumbo"></i>
                         </div>
                         <h6 class="text-muted mb-1">Active Users</h6>
                         <div class="h5 mb-0">{{ jupyterhub_status.active_users or 0 }}</div>
@@ -39,7 +39,7 @@
                 <div class="card border h-100">
                     <div class="card-body text-center d-flex flex-column justify-content-center">
                         <div class="mb-3">
-                            <i class="fas fa-desktop text-info" style="font-size: 70px;"></i>
+                            <i class="fas fa-desktop text-info icon-jumbo"></i>
                         </div>
                         <h6 class="text-muted mb-1">Active Sessions</h6>
                         <div class="h5 mb-0">{{ jupyterhub_status.active_sessions or 0 }}</div>

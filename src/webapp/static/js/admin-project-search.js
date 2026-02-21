@@ -185,50 +185,17 @@
     }
 
     /**
-     * Load and display project card
+     * Load and display project card.
+     * Delegates to the shared utility in utils.js (window.loadAdminProjectCard).
      */
     function loadProjectCard(projcode) {
-        const projectCardContainer = document.getElementById('projectCardContainer');
-
-        if (!projectCardContainer) {
-            console.error('Project card container not found');
-            return;
+        if (typeof window.loadAdminProjectCard === 'function') {
+            window.loadAdminProjectCard(projcode);
         }
-
-        // Show loading state
-        projectCardContainer.innerHTML = `
-            <div class="text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="sr-only">Loading project...</span>
-                </div>
-            </div>
-        `;
-
-        // Fetch project card HTML from admin dashboard endpoint
-        fetch(`/admin/project/${encodeURIComponent(projcode)}`)
-            .then(response => response.text())
-            .then(html => {
-                projectCardContainer.innerHTML = html;
-
-                // Initialize lazy loading for the project card
-                if (window.initLazyLoading) {
-                    window.initLazyLoading();
-                }
-            })
-            .catch(error => {
-                console.error('Error loading project card:', error);
-                projectCardContainer.innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        Error loading project information
-                    </div>
-                `;
-            });
     }
 
-    // Expose loadProjectCard globally so allocation-management.js can
-    // reload the card in place after an allocation edit without a full page reload.
-    window.loadAdminProjectCard = loadProjectCard;
+    // window.loadAdminProjectCard is already provided by utils.js and is used by
+    // allocation-management.js to reload the card after an allocation edit.
 
     // Initialize on page load
     if (document.readyState === 'loading') {

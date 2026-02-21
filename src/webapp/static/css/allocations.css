@@ -8,11 +8,11 @@
    =================================================================== */
 
 .allocation-card {
-    background: #f8f9fa;
-    border-left: 4px solid #0056C2;
+    background: var(--bg-gray-light);
+    border-left: 4px solid var(--ncar-blue);
     padding: 1rem;
     margin-bottom: 1rem;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
 }
 
 /* ===================================================================
@@ -24,7 +24,7 @@
 }
 
 .summary-table th {
-    background-color: #e9ecef;
+    background-color: var(--bg-gray-medium);
     font-weight: 600;
 }
 
@@ -34,15 +34,15 @@
 
 .expandable-row {
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color var(--transition-fast);
 }
 
 .expandable-row:hover {
-    background-color: #f8f9fa;
+    background-color: var(--bg-gray-light);
 }
 
 .expand-icon {
-    transition: transform 0.2s;
+    transition: transform var(--transition-fast);
     display: inline-block;
     width: 20px;
     text-align: center;
@@ -54,7 +54,7 @@
 
 .project-details-row {
     display: none;
-    background-color: #f8f9fa;
+    background-color: var(--bg-gray-light);
 }
 
 .project-details-row.show {

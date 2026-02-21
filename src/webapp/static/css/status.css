@@ -37,15 +37,15 @@
    =================================================================== */
 
 .metric-card {
-    background: #f8f9fa;
-    border-left: 4px solid #0056C2;
+    background: var(--bg-gray-light);
+    border-left: 4px solid var(--ncar-blue);
     padding: 1rem;
     margin-bottom: 1rem;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
 }
 
 .metric-card h6 {
-    color: #6c757d;
+    color: var(--ncar-gray);
     font-size: 0.875rem;
     margin-bottom: 0.5rem;
     text-transform: uppercase;
@@ -105,13 +105,13 @@
    =================================================================== */
 
 .last-updated {
-    color: #6c757d;
+    color: var(--ncar-gray);
     font-size: 0.875rem;
 }
 
 .no-data-message {
     text-align: center;
-    color: #6c757d;
+    color: var(--ncar-gray);
     padding: 2rem;
     font-style: italic;
 }

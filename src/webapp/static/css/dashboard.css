@@ -8,6 +8,7 @@
    ========================================================================= */
 
 :root {
+    /* --- NCAR brand colors --- */
     --ncar-navy:       #002E6C;   /* NSF NCAR brand navy */
     --ncar-blue:       #0056C2;   /* NSF NCAR brand blue */
     --ncar-light-blue: #00A2B4;   /* NSF NCAR teal light */
@@ -16,6 +17,9 @@
     --ncar-sky:        #42C0FF;   /* NSF NCAR sky light */
     --ncar-vermilion:  #E81D24;   /* NSF NCAR defining accent */
     --ncar-gray:       #4A5568;
+    --ncar-teal-rgb:   0, 153, 204;  /* #0099CC used in rgba() calls */
+
+    /* --- Semantic colors --- */
     --success-color:   #10b981;
     --warning-color:   #f59e0b;
     --danger-color:    #E81D24;   /* brand vermilion */
@@ -23,6 +27,23 @@
     --bg-light:        #F0EFED;   /* NSF NCAR warm off-white */
     --text-dark:       #1A202C;
     --border-color:    #E2E8F0;
+
+    /* --- Design system tokens --- */
+    --bg-gray-light:     #f8f9fa;
+    --bg-gray-medium:    #e9ecef;
+
+    --shadow-sm:  0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    --shadow-md:  0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg:  0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --shadow-brand: 0 4px 12px rgba(0, 153, 204, 0.3);
+
+    --radius-sm:  4px;
+    --radius-md:  6px;
+    --radius-lg:  8px;
+    --radius-xl:  10px;
+
+    --transition-fast: 0.2s ease;
+    --transition-base: 0.3s ease;
 }
 
 /* ============================================================================
@@ -42,7 +63,7 @@ body {
 
 .navbar {
     background: linear-gradient(135deg, var(--ncar-navy) 0%, #003579 100%);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-md);
     padding: 0.75rem 0;
 }
 
@@ -51,7 +72,7 @@ body {
     font-weight: 700;
     font-size: 1.75rem;
     letter-spacing: 0.5px;
-    transition: all 0.3s ease;
+    transition: all var(--transition-base);
 }
 
 .navbar-brand:hover {
@@ -63,8 +84,8 @@ body {
     color: rgba(255,255,255,0.9) !important;
     font-weight: 500;
     padding: 0.5rem 1rem !important;
-    transition: all 0.3s ease;
-    border-radius: 4px;
+    transition: all var(--transition-base);
+    border-radius: var(--radius-sm);
     margin: 0 2px;
 }
 
@@ -76,15 +97,15 @@ body {
 .user-info {
     color: white;
     padding: 8px 16px;
-    background: rgba(0, 153, 204, 0.3);
-    border-radius: 6px;
+    background: rgba(var(--ncar-teal-rgb), 0.3);
+    border-radius: var(--radius-md);
     font-weight: 500;
     border: 1px solid rgba(255, 255, 255, 0.2);
-    transition: all 0.3s ease;
+    transition: all var(--transition-base);
 }
 
 .user-info:hover {
-    background: rgba(0, 153, 204, 0.4);
+    background: rgba(var(--ncar-teal-rgb), 0.4);
     border-color: rgba(255, 255, 255, 0.3);
 }
 
@@ -121,25 +142,25 @@ body {
 
 .card {
     border: none;
-    border-radius: 10px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
     margin-bottom: 24px;
     background: white;
-    transition: all 0.3s ease;
+    transition: all var(--transition-base);
 }
 
 .card:hover {
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-lg);
     transform: translateY(-2px);
 }
 
 .card-header {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
     border-bottom: 2px solid var(--ncar-blue);
     font-weight: 700;
     padding: 16px 24px;
     color: var(--ncar-navy);
-    border-radius: 10px 10px 0 0 !important;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important;
 }
 
 .card-header h5 {
@@ -161,14 +182,14 @@ body {
     border: none;
     font-weight: 600;
     padding: 10px 24px;
-    border-radius: 6px;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 153, 204, 0.2);
+    border-radius: var(--radius-md);
+    transition: all var(--transition-base);
+    box-shadow: 0 2px 4px rgba(var(--ncar-teal-rgb), 0.2);
 }
 
 .btn-primary:hover {
     background: linear-gradient(135deg, var(--ncar-light-blue) 0%, var(--ncar-blue) 100%);
-    box-shadow: 0 4px 8px rgba(0, 153, 204, 0.3);
+    box-shadow: 0 4px 8px rgba(var(--ncar-teal-rgb), 0.3);
     transform: translateY(-1px);
 }
 
@@ -176,7 +197,7 @@ body {
     border-color: var(--ncar-navy);
     color: var(--ncar-navy);
     font-weight: 600;
-    transition: all 0.3s ease;
+    transition: all var(--transition-base);
 }
 
 .btn-outline-secondary:hover {
@@ -206,7 +227,7 @@ body {
    ========================================================================= */
 
 .footer {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
     padding: 24px 0;
     margin-top: 50px;
     border-top: 3px solid var(--ncar-blue);
@@ -223,8 +244,8 @@ body {
 
 .progress {
     height: 28px;
-    border-radius: 6px;
-    background-color: #e9ecef;
+    border-radius: var(--radius-md);
+    background-color: var(--bg-gray-medium);
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
@@ -232,8 +253,8 @@ body {
     font-size: 14px;
     font-weight: 700;
     line-height: 28px;
-    border-radius: 6px;
-    transition: width 0.6s ease;
+    border-radius: var(--radius-md);
+    transition: width var(--transition-base);
 }
 
 /* Progress bar color variants */
@@ -261,7 +282,7 @@ body {
     padding: 6px 12px;
     font-size: 0.75rem;
     font-weight: 700;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     letter-spacing: 0.3px;
 }
 
@@ -334,7 +355,7 @@ body {
 }
 
 .table-hover tbody tr:hover {
-    background-color: rgba(0, 153, 204, 0.05);
+    background-color: rgba(var(--ncar-teal-rgb), 0.05);
 }
 
 .table-bordered {
@@ -354,11 +375,11 @@ body {
 /* Clickable table rows */
 .resource-row {
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all var(--transition-fast);
 }
 
 .resource-row:hover {
-    background-color: rgba(0, 153, 204, 0.08) !important;
+    background-color: rgba(var(--ncar-teal-rgb), 0.08) !important;
     transform: scale(1.01);
 }
 
@@ -367,13 +388,13 @@ body {
    ========================================================================= */
 
 .alert {
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     border: none;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .alert-info {
-    background-color: rgba(0, 153, 204, 0.1);
+    background-color: rgba(var(--ncar-teal-rgb), 0.1);
     color: var(--ncar-navy);
     border-left: 4px solid var(--ncar-blue);
 }
@@ -409,7 +430,7 @@ body {
     font-weight: 600;
     border: none;
     border-bottom: 3px solid transparent;
-    transition: all 0.3s ease;
+    transition: all var(--transition-base);
 }
 
 .nav-tabs .nav-link:hover {
@@ -439,16 +460,16 @@ body {
 }
 
 .project-card .card-header:hover {
-    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    background: linear-gradient(135deg, var(--bg-gray-medium) 0%, #dee2e6 100%);
 }
 
 .project-stats-box {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border-radius: 8px;
+    background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
+    border-radius: var(--radius-lg);
     padding: 16px;
     margin-bottom: 16px;
     border-left: 4px solid var(--ncar-blue);
-    transition: all 0.3s ease;
+    transition: all var(--transition-base);
 }
 
 .project-stats-box:hover {
@@ -505,14 +526,14 @@ body {
 .tree-list li {
     padding: 8px 12px;
     margin: 4px 0;
-    background: #f8f9fa;
+    background: var(--bg-gray-light);
     border-left: 3px solid var(--ncar-blue);
-    border-radius: 4px;
-    transition: all 0.2s ease;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
 }
 
 .tree-list li:hover {
-    background: #e9ecef;
+    background: var(--bg-gray-medium);
     border-left-color: var(--ncar-navy);
     transform: translateX(2px);
 }
@@ -536,7 +557,7 @@ body {
     font-family: 'Font Awesome 5 Free';
     font-weight: 900;
     float: right;
-    transition: transform 0.3s ease;
+    transition: transform var(--transition-base);
 }
 
 .collapse-toggle.collapsed::after {
@@ -553,7 +574,7 @@ body {
 
 .form-control:focus {
     border-color: var(--ncar-blue);
-    box-shadow: 0 0 0 0.2rem rgba(0, 153, 204, 0.25);
+    box-shadow: 0 0 0 0.2rem rgba(var(--ncar-teal-rgb), 0.25);
 }
 
 .form-label {
@@ -567,49 +588,6 @@ body {
     color: white;
     border: none;
     font-weight: 600;
-}
-
-/* ============================================================================
-   SPARKLINES (Simple SVG visualizations)
-   ========================================================================= */
-
-.sparkline-container {
-    display: inline-block;
-    width: 100%;
-    height: 60px;
-}
-
-.sparkline {
-    width: 100%;
-    height: 100%;
-}
-
-.sparkline line.baseline {
-    stroke: var(--border-color);
-    stroke-width: 1;
-    stroke-dasharray: 2,2;
-}
-
-.sparkline polyline.line {
-    fill: none;
-    stroke: var(--ncar-blue);
-    stroke-width: 2;
-}
-
-.sparkline circle.point {
-    fill: var(--ncar-blue);
-    stroke: white;
-    stroke-width: 1;
-}
-
-.sparkline circle.point:hover {
-    fill: var(--ncar-navy);
-    r: 5;
-}
-
-.sparkline .area {
-    fill: var(--ncar-blue);
-    fill-opacity: 0.1;
 }
 
 /* ============================================================================

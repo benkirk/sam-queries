@@ -60,13 +60,7 @@
         if (!container) return;
 
         // Show loading spinner
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="sr-only">Loading...</span>
-                </div>
-            </div>
-        `;
+        container.innerHTML = window.SAMUtils ? window.SAMUtils.spinnerHtml() : '';
 
         // Build query parameters from filters
         const params = new URLSearchParams();
@@ -221,44 +215,13 @@
     }
 
     /**
-     * Load project card into projectCardContainer
+     * Load project card into projectCardContainer.
+     * Delegates to the shared utility in utils.js.
      */
     function loadProjectCard(projcode) {
-        const container = document.getElementById('projectCardContainer');
-        if (!container) return;
-
-        // Show loading spinner
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="sr-only">Loading project ${projcode}...</span>
-                </div>
-            </div>
-        `;
-
-        // Scroll to the container
-        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-        // Fetch project card from admin dashboard endpoint
-        fetch(`/admin/project/${projcode}`)
-            .then(response => response.text())
-            .then(html => {
-                container.innerHTML = html;
-
-                // Initialize lazy loading for the project card
-                if (typeof initLazyLoading === 'function') {
-                    initLazyLoading();
-                }
-            })
-            .catch(error => {
-                console.error('Error loading project card:', error);
-                container.innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        Error loading project ${projcode}
-                    </div>
-                `;
-            });
+        if (typeof window.loadAdminProjectCard === 'function') {
+            window.loadAdminProjectCard(projcode);
+        }
     }
 
     // Initialize on page load
