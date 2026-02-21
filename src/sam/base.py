@@ -129,4 +129,144 @@ class SessionMixin:
         #if not s:
         #    return []
         return s
+
+
+class NestedSetMixin:
+    """
+    Mixin for models implementing the nested set model for tree hierarchies.
+
+    Subclasses must set:
+        _ns_pk_col     - primary key attribute name (e.g., 'project_id')
+        _ns_parent_col - parent FK attribute name (e.g., 'parent_id')
+
+    Subclasses may set:
+        _ns_root_col   - tree_root FK attribute name, or None (default)
+        _ns_path_attr  - attribute used in get_path() display (default: 'name')
+    """
+    _ns_pk_col = 'id'
+    _ns_parent_col = 'parent_id'
+    _ns_root_col = None       # None → no tree_root scoping
+    _ns_path_attr = 'name'
+
+    def _ns_apply_root_scope(self, query):
+        """Optionally scope query to tree_root."""
+        if self._ns_root_col:
+            cls = type(self)
+            root_val = getattr(self, self._ns_root_col, None)
+            root_col = getattr(cls, self._ns_root_col)
+            if root_val:
+                query = query.filter(root_col == root_val)
+        return query
+
+    def get_ancestors(self, include_self: bool = False) -> list:
+        """Get ancestor nodes ordered root → immediate parent."""
+        cls = type(self)
+        if not self.tree_left or not self.tree_right:
+            return []
+        query = self.session.query(cls).filter(
+            cls.tree_left < self.tree_left,
+            cls.tree_right > self.tree_right
+        )
+        query = self._ns_apply_root_scope(query)
+        ancestors = query.order_by(cls.tree_left).all()
+        if include_self:
+            ancestors.append(self)
+        return ancestors
+
+    def get_descendants(self, include_self: bool = False,
+                        max_depth: Optional[int] = None) -> list:
+        """Get all descendant nodes (depth-first order)."""
+        cls = type(self)
+        if not self.tree_left or not self.tree_right:
+            return []
+        query = self.session.query(cls).filter(
+            cls.tree_left > self.tree_left,
+            cls.tree_right < self.tree_right
+        )
+        query = self._ns_apply_root_scope(query)
+        descendants = query.order_by(cls.tree_left).all()
+        if max_depth is not None:
+            my_depth = self.get_depth()
+            descendants = [d for d in descendants
+                           if d.get_depth() - my_depth <= max_depth]
+        return ([self] + descendants) if include_self else descendants
+
+    def get_children(self) -> list:
+        """Get immediate children via parent FK."""
+        cls = type(self)
+        my_pk = getattr(self, self._ns_pk_col)
+        parent_col = getattr(cls, self._ns_parent_col)
+        return self.session.query(cls).filter(parent_col == my_pk).all()
+
+    def get_siblings(self, include_self: bool = False) -> list:
+        """Get nodes sharing the same parent."""
+        cls = type(self)
+        my_parent = getattr(self, self._ns_parent_col)
+        if my_parent is None:
+            return []
+        parent_col = getattr(cls, self._ns_parent_col)
+        query = self.session.query(cls).filter(parent_col == my_parent)
+        if not include_self:
+            pk_col = getattr(cls, self._ns_pk_col)
+            my_pk = getattr(self, self._ns_pk_col)
+            query = query.filter(pk_col != my_pk)
+        return query.all()
+
+    def get_root(self):
+        """Get the root node of this tree."""
+        ancestors = self.get_ancestors()
+        return ancestors[0] if ancestors else self
+
+    def get_depth(self) -> int:
+        """Depth in tree (0 for root nodes)."""
+        if not self.tree_left or not self.tree_right:
+            return 0
+        return len(self.get_ancestors())
+
+    def get_level(self) -> int:
+        """Alias for get_depth()."""
+        return self.get_depth()
+
+    def is_root(self) -> bool:
+        """True if node has no parent."""
+        return getattr(self, self._ns_parent_col) is None
+
+    def is_leaf(self) -> bool:
+        """True if node has no children (right == left + 1)."""
+        if not self.tree_left or not self.tree_right:
+            return True
+        return self.tree_right == self.tree_left + 1
+
+    def is_ancestor_of(self, other) -> bool:
+        """True if self contains other in its subtree."""
+        if not all([self.tree_left, self.tree_right,
+                    other.tree_left, other.tree_right]):
+            return False
+        return (self.tree_left < other.tree_left and
+                self.tree_right > other.tree_right)
+
+    def is_descendant_of(self, other) -> bool:
+        """True if other contains self in its subtree."""
+        return other.is_ancestor_of(self)
+
+    def get_subtree_size(self) -> int:
+        """Number of descendants (not including self)."""
+        if not self.tree_left or not self.tree_right:
+            return 0
+        return (self.tree_right - self.tree_left - 1) // 2
+
+    def get_path(self, separator: str = ' > ') -> str:
+        """Full path from root to self using _ns_path_attr."""
+        nodes = self.get_ancestors(include_self=True)
+        return separator.join(getattr(n, self._ns_path_attr) for n in nodes)
+
+    @hybrid_property
+    def has_children(self) -> bool:
+        """True if node has children (Python side)."""
+        return not self.is_leaf()
+
+    @has_children.expression
+    def has_children(cls):
+        """True if node has children (SQL side)."""
+        return cls.tree_right > cls.tree_left + 1
 #-------------------------------------------------------------------------em-

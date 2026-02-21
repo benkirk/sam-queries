@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class Organization(Base, TimestampMixin, ActiveFlagMixin):
+class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixin):
     """Organizational units (departments, labs, etc.)."""
     __tablename__ = 'organization'
 
@@ -14,6 +14,12 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin):
         Index('ix_organization_tree', 'tree_left', 'tree_right'),
         Index('ix_organization_parent', 'parent_org_id'),
     )
+
+    # NestedSetMixin config
+    _ns_pk_col = 'organization_id'
+    _ns_parent_col = 'parent_org_id'
+    _ns_root_col = None      # no tree_root in this model
+    _ns_path_attr = 'acronym'
 
     def __eq__(self, other):
         """Two organizations are equal if they have the same organization_id."""
