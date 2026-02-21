@@ -28,7 +28,7 @@
                 <div>
                     <strong>{{ outage.system_name|upper }}</strong>
                     {% if outage.component %} - {{ outage.component }}{% endif %}
-                    <span class="badge badge-{{ 'danger' if outage.severity == 'critical' else 'warning' if outage.severity == 'major' else 'info' }}">
+                    <span class="badge bg-{{ 'danger' if outage.severity == 'critical' else 'warning' if outage.severity == 'major' else 'info' }} {{ '' if outage.severity == 'critical' else 'text-dark' }}">
                         {{ outage.severity }}
                     </span>
                 </div>
@@ -56,23 +56,23 @@
 <!-- Tab Navigation -->
 <ul class="nav nav-tabs mb-4" id="statusTabs" role="tablist">
     <li class="nav-item">
-        <a class="nav-link active" id="derecho-tab" data-toggle="tab" href="#derecho" role="tab">
+        <a class="nav-link active" id="derecho-tab" data-bs-toggle="tab" href="#derecho" role="tab">
             <i class="fas fa-server"></i> Derecho
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" id="casper-tab" data-toggle="tab" href="#casper" role="tab">
+        <a class="nav-link" id="casper-tab" data-bs-toggle="tab" href="#casper" role="tab">
             <i class="fas fa-hdd"></i> Casper
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" id="jupyterhub-tab" data-toggle="tab" href="#jupyterhub" role="tab">
+        <a class="nav-link" id="jupyterhub-tab" data-bs-toggle="tab" href="#jupyterhub" role="tab">
             <i class="fas fa-book"></i> JupyterHub
         </a>
     </li>
     {% if reservations %}
     <li class="nav-item">
-        <a class="nav-link" id="reservations-tab" data-toggle="tab" href="#reservations" role="tab">
+        <a class="nav-link" id="reservations-tab" data-bs-toggle="tab" href="#reservations" role="tab">
             <i class="fas fa-calendar-alt"></i> Reservations ({{ reservations|length }})
         </a>
     </li>

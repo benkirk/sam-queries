@@ -20,7 +20,7 @@
                 <th>Email</th>
                 <th>Role</th>
                 {% if can_manage %}
-                <th class="text-right" style="width: 180px;">Actions</th>
+                <th class="text-end" style="width: 180px;">Actions</th>
                 {% endif %}
             </tr>
         </thead>
@@ -28,7 +28,7 @@
             {% for member in members %}
             <tr>
                 <td>
-                    <i class="fas fa-user text-muted mr-1"></i>
+                    <i class="fas fa-user text-muted me-1"></i>
                     <strong>{{ member.display_name }}</strong>
                 </td>
                 <td><code>{{ member.username }}</code></td>
@@ -41,17 +41,17 @@
                 </td>
                 <td>
                     {% if member.role == 'Lead' %}
-                        <span class="badge badge-primary">
+                        <span class="badge bg-primary">
                             <i class="fas fa-star"></i> Lead
                         </span>
                     {% elif member.role == 'Admin' %}
-                        <span class="badge badge-info">
+                        <span class="badge bg-info text-dark">
                             <i class="fas fa-user-shield"></i> Admin
                         </span>
                     {% endif %}
                 </td>
                 {% if can_manage %}
-                <td class="text-right">
+                <td class="text-end">
                     {% if member.role == 'Lead' %}
                         {# Cannot modify the lead #}
                         <span class="text-muted small" title="Project lead cannot be removed">

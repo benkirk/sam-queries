@@ -35,7 +35,7 @@ function showAddMemberModal(projcode) {
     $('#memberStartDate').val(today.toISOString().split('T')[0]);
     $('#memberEndDate').val('');  // Optional - leave blank for no end date
 
-    $('#addMemberModal').modal('show');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('addMemberModal')).show();
 }
 
 /**
@@ -160,7 +160,7 @@ $(document).ready(function() {
             return reloadMembersFragment(projcode);
         })
         .then(() => {
-            $('#addMemberModal').modal('hide');
+            bootstrap.Modal.getInstance(document.getElementById('addMemberModal'))?.hide();
         })
         .catch(error => {
             console.error('Error adding member:', error);
@@ -192,7 +192,7 @@ $(document).ready(function() {
             return reloadMembersFragment(currentProjcode);
         })
         .then(() => {
-            $('#removeMemberModal').modal('hide');
+            bootstrap.Modal.getInstance(document.getElementById('removeMemberModal'))?.hide();
         })
         .catch(error => {
             console.error('Error removing member:', error);
@@ -233,7 +233,7 @@ $(document).ready(function() {
             return reloadMembersFragment(currentProjcode);
         })
         .then(() => {
-            $('#changeAdminModal').modal('hide');
+            bootstrap.Modal.getInstance(document.getElementById('changeAdminModal'))?.hide();
         })
         .catch(error => {
             console.error('Error changing admin:', error);
@@ -262,7 +262,7 @@ function confirmRemoveMember(projcode, username, displayName) {
     currentProjcode = projcode;
     $('#removeMemberName').text(displayName + ' (' + username + ')');
     $('#confirmRemoveBtn').data('username', username);
-    $('#removeMemberModal').modal('show');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('removeMemberModal')).show();
 }
 
 /**
@@ -273,7 +273,7 @@ function makeAdmin(projcode, username) {
     $('#changeAdminMessage').html(`Make <strong>${username}</strong> the project admin?`);
     $('#confirmAdminChangeBtn').data('username', username);
     $('#confirmAdminChangeBtn').data('action', 'make');
-    $('#changeAdminModal').modal('show');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('changeAdminModal')).show();
 }
 
 /**
@@ -284,7 +284,7 @@ function removeAdminRole(projcode, username) {
     $('#changeAdminMessage').html(`Remove admin role from <strong>${username}</strong>? They will remain a project member.`);
     $('#confirmAdminChangeBtn').data('username', '');
     $('#confirmAdminChangeBtn').data('action', 'remove');
-    $('#changeAdminModal').modal('show');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('changeAdminModal')).show();
 }
 
 /**
@@ -304,5 +304,5 @@ function reloadMembersContainer(projcode, html) {
  */
 function showError(message) {
     $('#errorMessage').text(message);
-    $('#errorModal').modal('show');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('errorModal')).show();
 }

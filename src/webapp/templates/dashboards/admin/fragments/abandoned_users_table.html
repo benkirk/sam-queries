@@ -26,7 +26,7 @@
                     <small>
                         {% set project_codes = user_info.projects.split(', ') %}
                         {% for projcode in project_codes %}
-                            <a href="#" class="badge badge-secondary project-code-link"
+                            <a href="#" class="badge bg-secondary project-code-link"
                                data-projcode="{{ projcode }}"
                                title="Click to view {{ projcode }} details">
                                 {{ projcode }}

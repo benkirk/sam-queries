@@ -7,7 +7,7 @@
 <!-- Tab Navigation -->
 <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
     <li class="nav-item">
-        <a class="nav-link active" id="account-statements-tab" data-toggle="tab" href="#account-statements" role="tab">
+        <a class="nav-link active" id="account-statements-tab" data-bs-toggle="tab" href="#account-statements" role="tab">
             <i class="fas fa-file-invoice-dollar"></i>
             {% if session.impersonator_id %}
                 {{ user.username }}'s Accounts
@@ -17,7 +17,7 @@
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" id="user-info-tab" data-toggle="tab" href="#user-info" role="tab">
+        <a class="nav-link" id="user-info-tab" data-bs-toggle="tab" href="#user-info" role="tab">
             <i class="fas fa-user-circle"></i> User Information
         </a>
     </li>
@@ -116,9 +116,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Project Details</h5>
-                <button type="button" class="close" data-dismiss="modal">
-                    <span>&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="projectDetailsModalBody">
                 <div class="text-center">
