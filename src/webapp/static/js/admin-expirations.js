@@ -103,11 +103,8 @@
                     initLazyLoading();
                 }
 
-                // Attach impersonate handlers for abandoned users
-                if (view === 'abandoned') {
-                    attachImpersonateHandlers();
-                    attachProjectCodeHandlers();
-                }
+                // Impersonate / project-code handlers are attached once via
+                // document-level delegation below — no per-load registration needed.
             })
             .catch(error => {
                 console.error('Error loading expirations:', error);
@@ -183,38 +180,6 @@
     }
 
     /**
-     * Attach impersonate button handlers
-     */
-    function attachImpersonateHandlers() {
-        $('.impersonate-user-btn').on('click', function() {
-            const username = this.dataset.username;
-            if (username && confirm(`Impersonate user ${username}?`)) {
-                // Use existing impersonation form
-                const form = document.getElementById('impersonateUserForm');
-                const usernameInput = document.getElementById('selectedUsernameImpersonate');
-
-                if (form && usernameInput) {
-                    usernameInput.value = username;
-                    form.submit();
-                }
-            }
-        });
-    }
-
-    /**
-     * Attach project code click handlers
-     */
-    function attachProjectCodeHandlers() {
-        $('.project-code-link').on('click', function(e) {
-            e.preventDefault();
-            const projcode = this.dataset.projcode;
-            if (projcode) {
-                loadProjectCard(projcode);
-            }
-        });
-    }
-
-    /**
      * Load project card into projectCardContainer.
      * Delegates to the shared utility in utils.js.
      */
@@ -223,6 +188,28 @@
             window.loadAdminProjectCard(projcode);
         }
     }
+
+    // Document-level delegated handlers — registered once, work for
+    // dynamically injected content (abandoned users panel, etc.)
+    $(document).on('click', '.impersonate-user-btn', function() {
+        const username = this.dataset.username;
+        if (username && confirm(`Impersonate user ${username}?`)) {
+            const form = document.getElementById('impersonateUserForm');
+            const usernameInput = document.getElementById('selectedUsernameImpersonate');
+            if (form && usernameInput) {
+                usernameInput.value = username;
+                form.submit();
+            }
+        }
+    });
+
+    $(document).on('click', '.project-code-link', function(e) {
+        e.preventDefault();
+        const projcode = this.dataset.projcode;
+        if (projcode) {
+            loadProjectCard(projcode);
+        }
+    });
 
     // Initialize on page load
     if (document.readyState === 'loading') {

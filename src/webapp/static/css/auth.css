@@ -1,26 +1,16 @@
 /**
  * SAM Auth/Login Page CSS
- * Styles for login and authentication pages with NCAR branding
+ * Styles for login and authentication pages with NCAR branding.
+ *
+ * Design tokens are defined in variables.css, which must be loaded first.
  */
-
-/* ===================================================================
-   NCAR Color Palette
-   =================================================================== */
-
-:root {
-    --ncar-navy:       #002E6C;
-    --ncar-blue:       #0056C2;
-    --ncar-light-blue: #00A2B4;
-    --ncar-cyan:       #34E0F4;
-    --ncar-vermilion:  #E81D24;
-}
 
 /* ===================================================================
    Body & Layout
    =================================================================== */
 
 body {
-    background: linear-gradient(135deg, var(--ncar-navy) 0%, #003579 50%, var(--ncar-blue) 100%);
+    background: linear-gradient(135deg, var(--ncar-navy) 0%, var(--ncar-navy-mid) 50%, var(--ncar-blue) 100%);
     min-height: 100vh;
     display: flex;
     align-items: center;
@@ -60,7 +50,7 @@ body {
 }
 
 .login-header p {
-    color: #4A5568;
+    color: var(--ncar-gray);
     font-size: 15px;
     font-weight: 500;
 }
@@ -77,7 +67,7 @@ body {
 }
 
 .form-control {
-    border: 2px solid #E2E8F0;
+    border: 2px solid var(--border-color);
     border-radius: 8px;
     padding: 12px 16px;
     font-size: 15px;
@@ -86,11 +76,11 @@ body {
 
 .form-control:focus {
     border-color: var(--ncar-blue);
-    box-shadow: 0 0 0 3px rgba(0, 153, 204, 0.1);
+    box-shadow: 0 0 0 3px rgba(var(--ncar-teal-rgb), 0.1);
 }
 
 .form-check-label {
-    color: #4A5568;
+    color: var(--ncar-gray);
     font-size: 14px;
     font-weight: 500;
 }
@@ -108,14 +98,14 @@ body {
     font-weight: 700;
     border-radius: 8px;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(0, 153, 204, 0.3);
+    box-shadow: 0 4px 12px rgba(var(--ncar-teal-rgb), 0.3);
     letter-spacing: 0.5px;
 }
 
 .btn-login:hover {
     background: linear-gradient(135deg, var(--ncar-light-blue) 0%, var(--ncar-blue) 100%);
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 153, 204, 0.4);
+    box-shadow: 0 6px 20px rgba(var(--ncar-teal-rgb), 0.4);
 }
 
 .btn-login:active {
@@ -128,9 +118,9 @@ body {
 
 .alert-dev {
     background: linear-gradient(135deg, #fff3cd 0%, #fff9e6 100%);
-    border: 2px solid #ffc107;
-    border-left: 5px solid #f59e0b;
-    color: #856404;
+    border: 2px solid var(--warning-color);
+    border-left: 5px solid var(--warning-color);
+    color: var(--bs-warning-text);
     padding: 14px 16px;
     border-radius: 8px;
     margin-bottom: 25px;
@@ -145,7 +135,7 @@ body {
 .quick-login-section {
     margin-top: 30px;
     padding-top: 30px;
-    border-top: 2px solid #E2E8F0;
+    border-top: 2px solid var(--border-color);
 }
 
 .quick-login-section h5 {
@@ -163,7 +153,7 @@ body {
     margin-bottom: 10px;
     text-align: left;
     padding: 12px 16px;
-    border: 2px solid #E2E8F0;
+    border: 2px solid var(--border-color);
     background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
     color: var(--ncar-navy);
     font-size: 14px;
@@ -177,7 +167,7 @@ body {
     border-color: var(--ncar-blue);
     color: var(--ncar-navy);
     transform: translateX(4px);
-    box-shadow: 0 4px 12px rgba(0, 153, 204, 0.15);
+    box-shadow: 0 4px 12px rgba(var(--ncar-teal-rgb), 0.15);
 }
 
 .user-btn .role-badge {
@@ -210,7 +200,7 @@ body {
    =================================================================== */
 
 .text-muted {
-    color: #718096 !important;
+    color: var(--color-gray-muted) !important;
 }
 
 .login-form {

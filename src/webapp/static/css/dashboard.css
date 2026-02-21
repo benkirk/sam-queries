@@ -1,50 +1,10 @@
 /**
  * SAM Dashboard Styles
  * NCAR-themed custom styles for user and project dashboards
+ *
+ * Design tokens (CSS custom properties) are defined in variables.css,
+ * which must be loaded before this file.
  */
-
-/* ============================================================================
-   NCAR COLOR PALETTE
-   ========================================================================= */
-
-:root {
-    /* --- NCAR brand colors --- */
-    --ncar-navy:       #002E6C;   /* NSF NCAR brand navy */
-    --ncar-blue:       #0056C2;   /* NSF NCAR brand blue */
-    --ncar-light-blue: #00A2B4;   /* NSF NCAR teal light */
-    --ncar-cyan:       #34E0F4;   /* NSF NCAR sky blue */
-    --ncar-teal:       #00818F;   /* NSF NCAR teal dark */
-    --ncar-sky:        #42C0FF;   /* NSF NCAR sky light */
-    --ncar-vermilion:  #E81D24;   /* NSF NCAR defining accent */
-    --ncar-gray:       #4A5568;
-    --ncar-teal-rgb:   0, 153, 204;  /* #0099CC used in rgba() calls */
-
-    /* --- Semantic colors --- */
-    --success-color:   #10b981;
-    --warning-color:   #f59e0b;
-    --danger-color:    #E81D24;   /* brand vermilion */
-    --info-color:      #0056C2;
-    --bg-light:        #F0EFED;   /* NSF NCAR warm off-white */
-    --text-dark:       #1A202C;
-    --border-color:    #E2E8F0;
-
-    /* --- Design system tokens --- */
-    --bg-gray-light:     #f8f9fa;
-    --bg-gray-medium:    #e9ecef;
-
-    --shadow-sm:  0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-    --shadow-md:  0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    --shadow-lg:  0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    --shadow-brand: 0 4px 12px rgba(0, 153, 204, 0.3);
-
-    --radius-sm:  4px;
-    --radius-md:  6px;
-    --radius-lg:  8px;
-    --radius-xl:  10px;
-
-    --transition-fast: 0.2s ease;
-    --transition-base: 0.3s ease;
-}
 
 /* ============================================================================
    GLOBAL STYLES
@@ -67,30 +27,30 @@ body {
     padding: 0.75rem 0;
 }
 
-.navbar-brand {
-    color: white !important;
+.navbar-dark .navbar-brand {
+    color: white;
     font-weight: 700;
     font-size: 1.75rem;
     letter-spacing: 0.5px;
     transition: all var(--transition-base);
 }
 
-.navbar-brand:hover {
-    color: var(--ncar-cyan) !important;
+.navbar-dark .navbar-brand:hover {
+    color: var(--ncar-cyan);
     transform: translateX(2px);
 }
 
-.navbar-nav .nav-link {
-    color: rgba(255,255,255,0.9) !important;
+.navbar-dark .navbar-nav .nav-link {
+    color: rgba(255,255,255,0.9);
     font-weight: 500;
-    padding: 0.5rem 1rem !important;
+    padding: 0.5rem 1rem;
     transition: all var(--transition-base);
     border-radius: var(--radius-sm);
     margin: 0 2px;
 }
 
-.navbar-nav .nav-link:hover {
-    color: white !important;
+.navbar-dark .navbar-nav .nav-link:hover {
+    color: white;
     background-color: rgba(255,255,255,0.1);
 }
 
@@ -154,13 +114,13 @@ body {
     transform: translateY(-2px);
 }
 
-.card-header {
+.card > .card-header {
     background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
     border-bottom: 2px solid var(--ncar-blue);
     font-weight: 700;
     padding: 16px 24px;
     color: var(--ncar-navy);
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 }
 
 .card-header h5 {

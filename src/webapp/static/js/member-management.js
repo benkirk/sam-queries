@@ -9,8 +9,8 @@
  *   PUT    /api/v1/projects/<projcode>/admin - Change admin
  */
 
-// API base path
-const API_BASE = '/api/v1';
+// API base path — defined once in utils.js / window.SAMUtils.API_BASE
+const API_BASE = window.SAMUtils.API_BASE;
 
 // Track current project code for operations
 let currentProjcode = null;

@@ -76,7 +76,7 @@
 .overview-section {
     background: #ffffff;
     border: 1px solid #dee2e6;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
     padding: 1.5rem;
     margin-bottom: 2rem;
 }

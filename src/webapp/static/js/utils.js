@@ -59,6 +59,7 @@
 
     // Expose namespace
     window.SAMUtils = {
+        API_BASE:             '/api/v1',
         spinnerHtml:          spinnerHtml,
         loadAdminProjectCard: loadAdminProjectCard
     };

@@ -101,6 +101,17 @@
 }
 
 /* ===================================================================
+   Status Severity Border Utilities
+   Used to replace inline style="border-left: ..." attributes.
+   !important matches Bootstrap's .border-start specificity.
+   =================================================================== */
+
+.border-status-success { border-left: 4px solid #198754 !important; }
+.border-status-info    { border-left: 4px solid #0dcaf0 !important; }
+.border-status-primary { border-left: 4px solid #0d6efd !important; }
+.border-status-warning { border-left: 4px solid #ffc107 !important; }
+
+/* ===================================================================
    Utility Styles
    =================================================================== */
 
