@@ -388,3 +388,58 @@ class TestProjectResourceAccess:
         print(f"✅ User has access to {len(all_resources) - len(inaccessible)} of {len(all_resources)} resources")
         if inaccessible:
             print(f"   Inaccessible: {sorted(inaccessible)}")
+
+
+class TestOrganizationTree:
+    """Test Organization tree navigation via NestedSetMixin."""
+
+    def test_get_ancestors_from_leaf(self, session):
+        leaf = session.query(Organization).filter(
+            Organization.tree_right == Organization.tree_left + 1,
+            Organization.parent_org_id.isnot(None)
+        ).first()
+        assert leaf is not None
+        ancestors = leaf.get_ancestors()
+        assert len(ancestors) >= 1
+        for anc in ancestors:
+            assert anc.tree_left < leaf.tree_left
+            assert anc.tree_right > leaf.tree_right
+
+    def test_get_descendants_from_root(self, session):
+        root = session.query(Organization).filter(
+            Organization.parent_org_id.is_(None),
+            Organization.tree_left.isnot(None),
+            Organization.tree_right > Organization.tree_left + 1
+        ).first()
+        assert root is not None
+        descendants = root.get_descendants()
+        assert len(descendants) > 0
+
+    def test_get_children_match_parent_fk(self, session):
+        parent = session.query(Organization).filter(
+            Organization.tree_right > Organization.tree_left + 1
+        ).first()
+        assert parent is not None
+        children = parent.get_children()
+        assert len(children) > 0
+        assert all(c.parent_org_id == parent.organization_id for c in children)
+
+    def test_is_root_and_is_leaf(self, session):
+        root = session.query(Organization).filter(
+            Organization.parent_org_id.is_(None)
+        ).first()
+        assert root is not None and root.is_root()
+
+        leaf = session.query(Organization).filter(
+            Organization.tree_right == Organization.tree_left + 1
+        ).first()
+        assert leaf is not None and leaf.is_leaf()
+
+    def test_get_path_multi_part(self, session):
+        child = session.query(Organization).filter(
+            Organization.parent_org_id.isnot(None)
+        ).first()
+        assert child is not None
+        path = child.get_path()
+        assert ' > ' in path
+        assert child.acronym in path
