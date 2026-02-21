@@ -14,7 +14,7 @@ $(document).ready(function() {
         var projcode = $(this).data('projcode');
 
         // Show modal
-        $('#projectDetailsModal').modal('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();
 
         // Load project details
         $('#projectDetailsModalBody').html(

@@ -46,10 +46,10 @@
     {% if project.organizations %}
     <div class="stat-item mt-2">
       <span class="stat-label d-block mb-1">Organizations:</span>
-      <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
+      <div class="stat-value text-dark text-detail">
         {% for po in project.organizations %}
             <div class="mb-1">
-                <span class="badge badge-light border">{{ po.organization.acronym }}</span>
+                <span class="badge bg-light text-dark border">{{ po.organization.acronym }}</span>
                 <span class="text-muted">{{ po.organization.name }}</span>
             </div>
         {% endfor %}
@@ -60,10 +60,10 @@
     {% if project.contracts %}
     <div class="stat-item mt-2">
       <span class="stat-label d-block mb-1">Contracts:</span>
-      <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
+      <div class="stat-value text-dark text-detail">
         {% for pc in project.contracts %}
             <div class="mb-1">
-                <span class="badge badge-light border">{{ pc.contract.contract_source.contract_source }}</span>
+                <span class="badge bg-light text-dark border">{{ pc.contract.contract_source.contract_source }}</span>
                 <strong>{{ pc.contract.contract_number }}</strong>
                 <span class="text-muted">- {{ pc.contract.title }}</span>
             </div>
@@ -75,10 +75,10 @@
     {% if project.active_directories %}
     <div class="stat-item mt-2">
       <span class="stat-label d-block mb-1">Directories:</span>
-      <div class="stat-value text-dark" style="font-size: 0.9rem; font-weight: normal;">
+      <div class="stat-value text-dark text-detail">
         {% for dir in project.active_directories %}
             <div class="mb-1">
-                <span class="fas fa-folder text-warning mr-1"></span>
+                <span class="fas fa-folder text-warning me-1"></span>
                 <span><code>{{ dir }}</code></span>
             </div>
         {% endfor %}
@@ -133,7 +133,7 @@
                         <td class="{% if not is_expired %}text-warning{% endif %}">{{ '{:,.0f}'.format(resource.used) }}</td>
                         <td class="{% if not is_expired %}text-success{% endif %}">{{ '{:,.0f}'.format(resource.remaining) }}</td>
                         <td>
-                            <div class="progress" class="progress-large">
+                            <div class="progress progress-large">
                                 <div class="progress-bar {{ progress_class }}"
                                      role="progressbar"
                                      style="width: {{ [0, [percent, 100] | min] | max }}%"
@@ -171,7 +171,7 @@
 <div class="mt-3">
     <h6 class="mb-2">
         <i class="fas fa-users"></i> Project Members
-        <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#members-{{ unique_id }}" aria-expanded="false">
+        <button class="btn btn-sm btn-link" data-bs-toggle="collapse" data-bs-target="#members-{{ unique_id }}" aria-expanded="false">
             <i class="fas fa-chevron-down"></i>
         </button>
     </h6>
@@ -210,7 +210,7 @@
     {% endfor %}
 
     <div class="card project-card mb-3">
-        <div class="card-header" data-toggle="collapse" data-target="#{{ card_id }}" aria-expanded="{{ 'true' if is_expanded else 'false' }}" class="cursor-pointer">
+        <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#{{ card_id }}" aria-expanded="{{ 'true' if is_expanded else 'false' }}">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h5 class="mb-0">
@@ -223,31 +223,31 @@
                             {% set count = resource_names|length %}
                             {% if days <= 0 %}
                                 {# Expired #}
-                                <span class="badge badge-secondary ml-2" title="Expired {{ days|abs }} days ago ({{ resource_list }})">
+                                <span class="badge bg-secondary ms-2" title="Expired {{ days|abs }} days ago ({{ resource_list }})">
                                     <i class="fas fa-times-circle"></i>
                                     {{ days|abs }}d ago{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
                             {% elif days <= 7 %}
                                 {# Critical: 7 days or less #}
-                                <span class="badge badge-danger ml-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                <span class="badge bg-danger ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
                                     <i class="fas fa-exclamation-circle"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
                             {% elif days <= 14 %}
                                 {# Warning: 8-14 days #}
-                                <span class="badge badge-warning ml-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                <span class="badge bg-warning text-dark ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
                                     <i class="fas fa-exclamation-triangle"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
                             {% elif days <= 30 %}
                                 {# Info: 15-30 days #}
-                                <span class="badge badge-info ml-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                <span class="badge bg-info text-dark ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
                                     <i class="fas fa-calendar"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
                             {% else %}
                                 {# Light info: 31-60 days #}
-                                <span class="badge badge-light ml-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                <span class="badge bg-light text-dark ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
                                     <i class="fas fa-calendar"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
@@ -258,18 +258,18 @@
                 <div>
                     {# Show user's role on this project #}
                     {% if project.lead and project.lead.user_id == user.user_id %}
-                        <span class="badge badge-primary"><i class="fas fa-star"></i> Lead</span>
+                        <span class="badge bg-primary"><i class="fas fa-star"></i> Lead</span>
                     {% elif project.admin and project.admin.user_id == user.user_id %}
-                        <span class="badge badge-info"><i class="fas fa-user-shield"></i> Admin</span>
+                        <span class="badge bg-info text-dark"><i class="fas fa-user-shield"></i> Admin</span>
                     {% endif %}
                     {# Show usage warning if any resource exceeds thresholds #}
                     {% set max_usage = resources | map(attribute='percent_used') | max | default(0) %}
                     {% if max_usage >= usage_critical_threshold %}
-                        <span class="badge badge-danger" title="Resource usage above {{ usage_critical_threshold }}%">
+                        <span class="badge bg-danger" title="Resource usage above {{ usage_critical_threshold }}%">
                             <i class="fas fa-exclamation-circle"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% elif max_usage >= usage_warning_threshold %}
-                        <span class="badge badge-warning" title="Resource usage above {{ usage_warning_threshold }}%">
+                        <span class="badge bg-warning text-dark" title="Resource usage above {{ usage_warning_threshold }}%">
                             <i class="fas fa-exclamation-triangle"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% endif %}
@@ -293,7 +293,7 @@
                 <div class="mt-3">
                     <h6 class="mb-2">
                         <i class="fas fa-sitemap"></i> Project Hierarchy
-                        <button class="btn btn-sm btn-link" data-toggle="collapse" data-target="#tree-{{ card_id }}" aria-expanded="false">
+                        <button class="btn btn-sm btn-link" data-bs-toggle="collapse" data-bs-target="#tree-{{ card_id }}" aria-expanded="false">
                             <i class="fas fa-chevron-down"></i>
                         </button>
                     </h6>

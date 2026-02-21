@@ -47,7 +47,7 @@
     <li class="nav-item">
         <a class="nav-link {% if loop.first %}active{% endif %}"
            id="{{ resource_name|replace(' ', '_') }}-tab"
-           data-toggle="tab"
+           data-bs-toggle="tab"
            href="#{{ resource_name|replace(' ', '_') }}"
            role="tab">
             {{ resource_name }}
@@ -134,7 +134,7 @@
                 <li class="nav-item">
                     <a class="nav-link {% if loop.first %}active{% endif %}"
                        id="{{ resource_name|replace(' ', '_') }}-{{ facility_name }}-tab"
-                       data-toggle="pill"
+                       data-bs-toggle="pill"
                        href="#{{ resource_name|replace(' ', '_') }}-{{ facility_name }}"
                        role="tab">
                         {{ facility_name }}
@@ -241,9 +241,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Allocation Usage Details</h5>
-                <button type="button" class="close" data-dismiss="modal">
-                    <span>&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="usageModalBody">
                 <div class="text-center">
@@ -263,9 +261,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Project Details</h5>
-                <button type="button" class="close" data-dismiss="modal">
-                    <span>&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="projectDetailsModalBody">
                 <div class="text-center">
@@ -283,124 +279,12 @@
 {% endblock %}
 
 {% block extra_js %}
+{# Inject Flask-generated URLs for allocations-dashboard.js #}
+<div id="allocations-dashboard-config" hidden
+     data-projects-url="{{ url_for('allocations_dashboard.projects_fragment') }}"
+     data-usage-url="{{ url_for('allocations_dashboard.usage_modal', projcode='__PROJCODE__', resource='__RESOURCE__') }}">
+</div>
 <script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
 <script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
-<script>
-$(document).ready(function() {
-    // Handle expandable row clicks
-    $('.expandable-row').click(function() {
-        var $row = $(this);
-        var $icon = $row.find('.expand-icon');
-        var resource = $row.data('resource');
-        var facility = $row.data('facility');
-        var type = $row.data('type');
-        var activeAt = $row.data('active-at');
-        var detailsId = '#details-' + resource.replace(/ /g, '_') + '-' + facility + '-' + type.replace(/ /g, '_');
-        var $detailsRow = $(detailsId);
-
-        // Toggle icon
-        $icon.toggleClass('expanded');
-
-        // Toggle details row
-        if ($detailsRow.hasClass('show')) {
-            $detailsRow.removeClass('show');
-        } else {
-            // Load data if not already loaded
-            if (!$detailsRow.data('loaded')) {
-                $.ajax({
-                    url: "{{ url_for('allocations_dashboard.projects_fragment') }}",
-                    data: {
-                        resource: resource,
-                        facility: facility,
-                        allocation_type: type,
-                        active_at: activeAt
-                    },
-                    success: function(data) {
-                        $detailsRow.find('td').html('<div class="p-3">' + data + '</div>');
-                        $detailsRow.data('loaded', true);
-                        $detailsRow.addClass('show');
-                        initSortableTable($detailsRow.find('table'));
-                    },
-                    error: function() {
-                        $detailsRow.find('td').html(
-                            '<div class="alert alert-danger">Failed to load project details</div>'
-                        );
-                    }
-                });
-            } else {
-                $detailsRow.addClass('show');
-            }
-        }
-    });
-
-    // Initialize sortable column headers on a dynamically loaded table
-    function initSortableTable($table) {
-        // Reflect the server's default sort (Amount descending = column index 2)
-        $table.find('th').eq(2).addClass('sort-desc');
-
-        $table.find('th.sortable-header').on('click', function() {
-            var $th = $(this);
-            var colIndex = $th.index();
-            var sortType = $th.data('sort');
-            var isAsc = !$th.hasClass('sort-asc');
-
-            $table.find('th').removeClass('sort-asc sort-desc');
-            $th.addClass(isAsc ? 'sort-asc' : 'sort-desc');
-
-            var $tbody = $table.find('tbody');
-            var rows = $tbody.find('tr').toArray();
-
-            rows.sort(function(a, b) {
-                var aVal = $(a).find('td').eq(colIndex).data('sort-value');
-                var bVal = $(b).find('td').eq(colIndex).data('sort-value');
-
-                if (sortType === 'numeric') {
-                    aVal = parseFloat(aVal) || 0;
-                    bVal = parseFloat(bVal) || 0;
-                    return isAsc ? aVal - bVal : bVal - aVal;
-                } else {
-                    aVal = String(aVal || '').toLowerCase();
-                    bVal = String(bVal || '').toLowerCase();
-                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-                }
-            });
-
-            $tbody.append(rows);
-        });
-    }
-
-    // Handle usage modal (delegated event for dynamically loaded content)
-    $(document).on('click', '.view-usage-btn', function(e) {
-        e.preventDefault();
-        var projcode = $(this).data('projcode');
-        var resource = $(this).data('resource');
-        var activeAt = $(this).data('active-at');
-
-        // Show modal
-        $('#usageModal').modal('show');
-
-        // Load usage data
-        $('#usageModalBody').html(
-            '<div class="text-center"><div class="spinner-border text-primary" role="status"></div></div>'
-        );
-
-        $.ajax({
-            url: "{{ url_for('allocations_dashboard.usage_modal', projcode='__PROJCODE__', resource='__RESOURCE__') }}"
-                .replace('__PROJCODE__', projcode)
-                .replace('__RESOURCE__', resource),
-            data: {
-                active_at: activeAt
-            },
-            success: function(data) {
-                $('#usageModalBody').html(data);
-            },
-            error: function() {
-                $('#usageModalBody').html(
-                    '<div class="alert alert-danger">Failed to load usage details</div>'
-                );
-            }
-        });
-    });
-});
-</script>
+<script src="{{ url_for('static', filename='js/allocations-dashboard.js') }}"></script>
 {% endblock %}

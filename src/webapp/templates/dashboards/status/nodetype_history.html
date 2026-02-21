@@ -27,8 +27,8 @@
     </div>
     <div class="card-body">
         <form method="GET" action="{% if is_partition %}{{ url_for('status_dashboard.partition_history', system=system, partition=partition) }}{% else %}{{ url_for('status_dashboard.nodetype_history', system=system, node_type=node_type) }}{% endif %}" class="form-inline">
-            <label for="days" class="mr-2">Show Last:</label>
-            <select id="days" name="days" class="form-control form-control-sm mr-3">
+            <label for="days" class="me-2">Show Last:</label>
+            <select id="days" name="days" class="form-control form-control-sm me-3">
                 <option value="1" {% if days == 1 %}selected{% endif %}>24 Hours</option>
                 <option value="3" {% if days == 3 %}selected{% endif %}>3 Days</option>
                 <option value="7" {% if days == 7 %}selected{% endif %}>7 Days</option>

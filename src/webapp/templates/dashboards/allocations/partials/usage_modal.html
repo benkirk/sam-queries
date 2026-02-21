@@ -27,7 +27,7 @@
                     {% if allocation.end_date %}
                         {{ allocation.end_date.strftime('%Y-%m-%d') }}
                     {% elif allocation.is_open_ended %}
-                        <span class="badge badge-info">Open-ended</span>
+                        <span class="badge bg-info text-dark">Open-ended</span>
                     {% else %}
                         N/A
                     {% endif %}
@@ -70,7 +70,7 @@
                     <div class="text-muted small">% Used</div>
                     <div class="h5 mb-0">
                         {% set percent = allocation.percent_used %}
-                        <span class="badge badge-{% if percent >= 90 %}danger{% elif percent >= 75 %}warning{% else %}success{% endif %}">
+                        <span class="badge bg-{% if percent >= 90 %}danger{% elif percent >= 75 %}warning text-dark{% else %}success{% endif %}">
                             {{ "%.1f"|format(percent) }}%
                         </span>
                     </div>

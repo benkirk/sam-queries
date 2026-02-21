@@ -19,7 +19,7 @@
             </div>
             <div class="card-body">
                 <form id="impersonateUserForm" method="POST" action="{{ url_for('admin_dashboard.impersonate') }}">
-                    <div class="form-group">
+                    <div class="mb-3">
                         <label for="userSearchImpersonate">Search for a user to impersonate</label>
                         <input type="text" class="form-control" id="userSearchImpersonate" placeholder="Start typing a username, first, or last name..." autocomplete="off">
                         <input type="hidden" id="selectedUsernameImpersonate" name="username">
@@ -28,7 +28,7 @@
                     <div id="selectedUserDisplayImpersonate" class="alert alert-info dropdown-list">
                         <i class="fas fa-user-check"></i>
                         <strong id="selectedUserNameImpersonate"></strong>
-                        <small id="selectedUserEmailImpersonate" class="text-muted ml-2"></small>
+                        <small id="selectedUserEmailImpersonate" class="text-muted ms-2"></small>
                     </div>
                     <button type="submit" class="btn btn-primary" id="impersonateSubmitBtn" disabled>
                         <i class="fas fa-user-secret"></i> Impersonate
@@ -45,7 +45,7 @@
                 <h5><i class="fas fa-search"></i> Search Projects</h5>
             </div>
             <div class="card-body">
-                <div class="form-group">
+                <div class="mb-3">
                     <label for="projectSearchInput">Search by project code or title</label>
                     <input type="text" class="form-control" id="projectSearchInput"
                            placeholder="Start typing a project code or title..." autocomplete="off">
@@ -82,11 +82,11 @@
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header" class="cursor-pointer"
-                 data-toggle="collapse" data-target="#expirations-section">
+            <div class="card-header cursor-pointer"
+                 data-bs-toggle="collapse" data-bs-target="#expirations-section">
                 <h5 class="mb-0">
                     <i class="fas fa-calendar-exclamation"></i> Project Expirations
-                    <i class="fas fa-chevron-down float-right"></i>
+                    <i class="fas fa-chevron-down float-end"></i>
                 </h5>
             </div>
             <div id="expirations-section" class="collapse">
@@ -96,7 +96,7 @@
                         <div class="row">
                             <!-- Facilities multi-select -->
                             <div class="col-md-4">
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label for="facilities-filter"><strong>Facilities</strong></label>
                                     <select class="form-control" id="facilities-filter" name="facilities" multiple size="7" style="min-width: 200px;">
                                         <option value="ASD">ASD</option>
@@ -113,7 +113,7 @@
 
                             <!-- Resource filter -->
                             <div class="col-md-4">
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label for="resource-filter"><strong>Resource (optional)</strong></label>
                                     <input type="text" class="form-control" id="resource-filter"
                                            placeholder="e.g., Derecho, GLADE">
@@ -123,7 +123,7 @@
 
                             <!-- Time range -->
                             <div class="col-md-4">
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label for="time-range-filter"><strong>Time Range</strong></label>
                                     <select class="form-control" id="time-range-filter">
                                         <option value="7days">Next 7 days</option>
@@ -150,24 +150,24 @@
                     <!-- Sub-tabs -->
                     <ul class="nav nav-pills mb-3" id="expirations-tabs" role="tablist">
                         <li class="nav-item">
-                            <a class="nav-link active" id="upcoming-tab" data-toggle="pill"
+                            <a class="nav-link active" id="upcoming-tab" data-bs-toggle="pill"
                                href="#exp-upcoming" role="tab" data-view="upcoming">
                                 <i class="fas fa-calendar-alt"></i> Upcoming
-                                <span class="badge badge-light" id="upcoming-count">-</span>
+                                <span class="badge bg-light text-dark" id="upcoming-count">-</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" id="expired-tab" data-toggle="pill"
+                            <a class="nav-link" id="expired-tab" data-bs-toggle="pill"
                                href="#exp-expired" role="tab" data-view="expired">
                                 <i class="fas fa-exclamation-triangle"></i> Expired (90+ days)
-                                <span class="badge badge-light" id="expired-count">-</span>
+                                <span class="badge bg-light text-dark" id="expired-count">-</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" id="abandoned-tab" data-toggle="pill"
+                            <a class="nav-link" id="abandoned-tab" data-bs-toggle="pill"
                                href="#exp-abandoned" role="tab" data-view="abandoned">
                                 <i class="fas fa-user-slash"></i> Abandoned Users
-                                <span class="badge badge-light" id="abandoned-count">-</span>
+                                <span class="badge bg-light text-dark" id="abandoned-count">-</span>
                             </a>
                         </li>
                     </ul>
@@ -208,9 +208,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Project Details</h5>
-                <button type="button" class="close" data-dismiss="modal">
-                    <span>&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="projectDetailsModalBody">
                 <div class="text-center">

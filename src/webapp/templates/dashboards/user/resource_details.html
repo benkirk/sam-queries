@@ -30,11 +30,11 @@
             <input type="hidden" name="projcode" value="{{ projcode }}">
             <input type="hidden" name="resource" value="{{ resource_name }}">
 
-            <label for="start_date" class="mr-2">Start Date:</label>
-            <input type="date" id="start_date" name="start_date" value="{{ start_date }}" class="form-control form-control-sm mr-3">
+            <label for="start_date" class="me-2">Start Date:</label>
+            <input type="date" id="start_date" name="start_date" value="{{ start_date }}" class="form-control form-control-sm me-3">
 
-            <label for="end_date" class="mr-2">End Date:</label>
-            <input type="date" id="end_date" name="end_date" value="{{ end_date }}" class="form-control form-control-sm mr-3">
+            <label for="end_date" class="me-2">End Date:</label>
+            <input type="date" id="end_date" name="end_date" value="{{ end_date }}" class="form-control form-control-sm me-3">
 
             <button type="submit" class="btn btn-sm btn-primary">
                 <i class="fas fa-sync"></i> Update Range
@@ -86,7 +86,7 @@
                         <td class="text-warning">{{ '{:,.0f}'.format(summary.used) }}</td>
                         <td class="text-success">{{ '{:,.0f}'.format(summary.remaining) }}</td>
                         <td>
-                            <div class="progress" class="progress-large">
+                            <div class="progress progress-large">
                                 <div class="progress-bar {{ progress_class }}"
                                      role="progressbar"
                                      style="width: {{ [0, [percent, 100] | min] | max }}%"
@@ -119,10 +119,10 @@
 
 <!-- Usage Trend Chart Card -->
 <div class="card mb-4">
-    <div class="card-header" class="cursor-pointer" data-toggle="collapse" data-target="#collapseUsage" aria-expanded="true">
+    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseUsage" aria-expanded="true">
         <h5 class="mb-0">
             <i class="fas fa-chart-area"></i> Usage Trend
-            <i class="fas fa-chevron-down float-right" class="transition-smooth"></i>
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseUsage" class="collapse show">
@@ -138,10 +138,10 @@
 
 <!-- User Breakdown Card -->
 <div class="card mb-4">
-    <div class="card-header" class="cursor-pointer" data-toggle="collapse" data-target="#collapseUsers" aria-expanded="true">
+    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseUsers" aria-expanded="true">
         <h5 class="mb-0">
             <i class="fas fa-users"></i> Usage by User
-            <i class="fas fa-chevron-down float-right" class="transition-smooth"></i>
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseUsers" class="collapse show">
@@ -151,22 +151,22 @@
                     <thead class="thead-dark">
                         <tr>
                             <th>Username</th>
-                            <th class="text-right">Jobs</th>
-                            <th class="text-right">Charges</th>
+                            <th class="text-end">Jobs</th>
+                            <th class="text-end">Charges</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% if user_breakdown %}
                             <tr class="table-info font-weight-bold">
                                 <td>Total</td>
-                                <td class="text-right">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
-                                <td class="text-right">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
+                                <td class="text-end">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
+                                <td class="text-end">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
                             </tr>
                             {% for user in user_breakdown %}
                             <tr>
                                 <td><code>{{ user.username }}</code></td>
-                                <td class="text-right">{{ '{:,}'.format(user.jobs) }}</td>
-                                <td class="text-right">{{ '{:,.0f}'.format(user.charges) }}</td>
+                                <td class="text-end">{{ '{:,}'.format(user.jobs) }}</td>
+                                <td class="text-end">{{ '{:,.0f}'.format(user.charges) }}</td>
                             </tr>
                             {% endfor %}
                         {% else %}
@@ -185,10 +185,10 @@
 
 <!-- Recent Usage (Charges) Card, collapsed by default -->
 <div class="card mb-4">
-    <div class="card-header" class="cursor-pointer" data-toggle="collapse" data-target="#collapseCharges" aria-expanded="true">
+    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseCharges" aria-expanded="true">
         <h5 class="mb-0">
             <i class="fas fa-table"></i> Recent Usage (Charges)
-            <i class="fas fa-chevron-down float-right" class="transition-smooth"></i>
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseCharges" class="collapse">
@@ -198,7 +198,7 @@
                     <thead class="thead-dark">
                         <tr>
                             <th>Date</th>
-                            <th class="text-right">Value</th>
+                            <th class="text-end">Value</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -206,7 +206,7 @@
                             {% for i in range(detail_data.daily_charges['dates']|length) %}
                             <tr>
                                 <td>{{ detail_data.daily_charges['dates'][i] }}</td>
-                                <td class="text-right">{{ '{:,.0f}'.format(detail_data.daily_charges['values'][i]) }}</td>
+                                <td class="text-end">{{ '{:,.0f}'.format(detail_data.daily_charges['values'][i]) }}</td>
                             </tr>
                             {% endfor %}
                         {% else %}
@@ -225,10 +225,10 @@
 
 <!-- Job List Card (Lazy Loaded with Pagination) -->
 <div class="card mb-4">
-    <div class="card-header" class="cursor-pointer" data-toggle="collapse" data-target="#collapseJobs" aria-expanded="false">
+    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseJobs" aria-expanded="false">
         <h5 class="mb-0">
             <i class="fas fa-list"></i> Job List
-            <i class="fas fa-chevron-down float-right" class="transition-smooth"></i>
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseJobs" class="collapse">
@@ -252,5 +252,6 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/jobs-table.js') }}"></script>
 <script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
 {% endblock %}

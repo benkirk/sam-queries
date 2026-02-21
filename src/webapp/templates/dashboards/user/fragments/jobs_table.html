@@ -7,7 +7,7 @@
                 <th>Queue</th>
                 <th>Nodes</th>
                 <th>Core Hours</th>
-                <th class="text-right">Charge</th>
+                <th class="text-end">Charge</th>
             </tr>
         </thead>
         <tbody>
@@ -18,7 +18,7 @@
                 <td>{{ job.queue or 'N/A' }}</td>
                 <td>{{ job.nodes or 0 }}</td>
                 <td>{{ '{:,.2f}'.format(job.core_hours or 0) }}</td>
-                <td class="text-right">{{ '{:,.2f}'.format(job.charge or 0) }}</td>
+                <td class="text-end">{{ '{:,.2f}'.format(job.charge or 0) }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -77,31 +77,10 @@
     Showing {{ (page - 1) * per_page + 1 }} - {{ [page * per_page, total_jobs]|min }} of {{ total_jobs }} jobs
 </div>
 
-<!-- Pagination JavaScript -->
-<script>
-function loadJobsPage(pageNum) {
-    const container = $('#jobs-container');
-    const url = "{{ url_for('user_dashboard.jobs_fragment', projcode=projcode, resource=resource) }}" +
-                "?start_date={{ start_date }}" +
-                "&end_date={{ end_date }}" +
-                "&page=" + pageNum;
-
-    // Show loading indicator
-    container.html('<div class="text-center p-3"><div class="spinner-border text-primary" role="status"><span class="sr-only">Loading...</span></div></div>');
-
-    // Fetch new page
-    fetch(url)
-        .then(response => {
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return response.text();
-        })
-        .then(html => {
-            container.html(html);
-        })
-        .catch(error => {
-            console.error('Error loading jobs page:', error);
-            container.html('<p class="text-danger mb-0">Failed to load jobs</p>');
-        });
-}
-</script>
+<!-- Config for jobs-table.js (Jinja values baked in at render time) -->
+<div id="jobs-table-config" hidden
+     data-jobs-url="{{ url_for('user_dashboard.jobs_fragment', projcode=projcode, resource=resource) }}"
+     data-start-date="{{ start_date }}"
+     data-end-date="{{ end_date }}"></div>
+<script src="{{ url_for('static', filename='js/jobs-table.js') }}"></script>
 {% endif %}
