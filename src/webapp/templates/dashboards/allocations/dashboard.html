@@ -278,10 +278,13 @@
     </div>
 </div>
 
+{% include 'dashboards/user/fragments/allocation_modals.html' %}
+
 {% endblock %}
 
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
 <script>
 $(document).ready(function() {
     // Handle expandable row clicks
@@ -316,6 +319,7 @@ $(document).ready(function() {
                         $detailsRow.find('td').html('<div class="p-3">' + data + '</div>');
                         $detailsRow.data('loaded', true);
                         $detailsRow.addClass('show');
+                        initSortableTable($detailsRow.find('table'));
                     },
                     error: function() {
                         $detailsRow.find('td').html(
@@ -328,6 +332,42 @@ $(document).ready(function() {
             }
         }
     });
+
+    // Initialize sortable column headers on a dynamically loaded table
+    function initSortableTable($table) {
+        // Reflect the server's default sort (Amount descending = column index 2)
+        $table.find('th').eq(2).addClass('sort-desc');
+
+        $table.find('th.sortable-header').on('click', function() {
+            var $th = $(this);
+            var colIndex = $th.index();
+            var sortType = $th.data('sort');
+            var isAsc = !$th.hasClass('sort-asc');
+
+            $table.find('th').removeClass('sort-asc sort-desc');
+            $th.addClass(isAsc ? 'sort-asc' : 'sort-desc');
+
+            var $tbody = $table.find('tbody');
+            var rows = $tbody.find('tr').toArray();
+
+            rows.sort(function(a, b) {
+                var aVal = $(a).find('td').eq(colIndex).data('sort-value');
+                var bVal = $(b).find('td').eq(colIndex).data('sort-value');
+
+                if (sortType === 'numeric') {
+                    aVal = parseFloat(aVal) || 0;
+                    bVal = parseFloat(bVal) || 0;
+                    return isAsc ? aVal - bVal : bVal - aVal;
+                } else {
+                    aVal = String(aVal || '').toLowerCase();
+                    bVal = String(bVal || '').toLowerCase();
+                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                }
+            });
+
+            $tbody.append(rows);
+        });
+    }
 
     // Handle usage modal (delegated event for dynamically loaded content)
     $(document).on('click', '.view-usage-btn', function(e) {

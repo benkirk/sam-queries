@@ -226,6 +226,10 @@
             });
     }
 
+    // Expose loadProjectCard globally so allocation-management.js can
+    // reload the card in place after an allocation edit without a full page reload.
+    window.loadAdminProjectCard = loadProjectCard;
+
     // Initialize on page load
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initProjectSearch);

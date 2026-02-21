@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class Factor(Base, TimestampMixin):
+class Factor(Base, TimestampMixin, DateRangeMixin):
     """
     Charging factors for resource types.
 
@@ -29,21 +29,23 @@ class Factor(Base, TimestampMixin):
     factor_name = Column(String(50), nullable=False)
     value = Column(String(255), nullable=False)
 
-    # Validity period
-    start_date = Column(DateTime, nullable=False)
-    end_date = Column(DateTime)
-
     # Relationships
     resource_type = relationship('ResourceType', back_populates='factors')
 
-    @property
+    # Backward-compatible alias: existing code uses factor.is_active
+    @hybrid_property
     def is_active(self) -> bool:
         """Check if factor is currently active based on date range."""
-        from datetime import datetime
-        now = datetime.now()  # Use naive datetime to match database
-        if self.end_date:
-            return self.start_date <= now <= self.end_date
-        return self.start_date <= now
+        return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if factor is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            cls.start_date <= now,
+            or_(cls.end_date.is_(None), cls.end_date >= now)
+        )
 
     def __str__(self):
         return f"{self.factor_name}: {self.value}"
@@ -53,7 +55,7 @@ class Factor(Base, TimestampMixin):
 
 
 #----------------------------------------------------------------------------
-class Formula(Base, TimestampMixin):
+class Formula(Base, TimestampMixin, DateRangeMixin):
     """
     Charging formulas for resource types.
 
@@ -76,21 +78,23 @@ class Formula(Base, TimestampMixin):
     formula_name = Column(String(50), nullable=False)
     formula_str = Column(String(1024), nullable=False)
 
-    # Validity period
-    start_date = Column(DateTime, nullable=False)
-    end_date = Column(DateTime)
-
     # Relationships
     resource_type = relationship('ResourceType', back_populates='formulas')
 
-    @property
+    # Backward-compatible alias: existing code uses formula.is_active
+    @hybrid_property
     def is_active(self) -> bool:
         """Check if formula is currently active based on date range."""
-        from datetime import datetime
-        now = datetime.now()  # Use naive datetime to match database
-        if self.end_date:
-            return self.start_date <= now <= self.end_date
-        return self.start_date <= now
+        return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if formula is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            cls.start_date <= now,
+            or_(cls.end_date.is_(None), cls.end_date >= now)
+        )
 
     @property
     def variables(self) -> list:

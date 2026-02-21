@@ -67,7 +67,8 @@ class ProjectExpirationCommand(BaseProjectCommand):
 
     def execute(self, upcoming: bool = True, since: datetime = None,
                 list_users: bool = False, facility_filter: list = None,
-                notify: bool = False, dry_run: bool = False, email_list: str = None) -> int:
+                notify: bool = False, dry_run: bool = False, email_list: str = None,
+                deactivate: bool = False, force: bool = False) -> int:
         try:
             if self.ctx.verbose:
                 self.console.print(f"[dim]Facilities: {'ALL' if facility_filter is None else ', '.join(facility_filter)}[/]")
@@ -101,16 +102,14 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 expiring_projects = set()
 
                 # Calculate max_days_expired from --since date, default to 365 days
-                # When --since is provided, automatically include inactive projects
                 if since:
                     max_days = (datetime.now() - since).days
                     if max_days < 0:
                         self.console.print(f"Error: --since date cannot be in the future", style="bold red")
                         return EXIT_ERROR
-                    include_inactive = True
                 else:
                     max_days = 365
-                    include_inactive = self.ctx.inactive_projects
+                include_inactive = self.ctx.inactive_projects
 
                 expiring = get_projects_with_expired_allocations(
                     self.session,
@@ -139,10 +138,79 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 if list_users and abandoned_users:
                     display_abandoned_users_from_expired_projects(self.ctx, abandoned_users)
 
+                if deactivate:
+                    return self._deactivate_projects(expiring, force=force)
+
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)
 
+
+    def _deactivate_projects(self, expiring: list, force: bool = False) -> int:
+        """Soft-deactivate recently expired projects.
+
+        Args:
+            expiring: List of tuples (project, allocation, resource_name, days_expired)
+            force: If True, skip confirmation prompt
+
+        Returns:
+            EXIT_SUCCESS if all projects deactivated, EXIT_ERROR if any failed
+        """
+        # Deduplicate: one entry per project (query may return multiple allocations per project)
+        projects = {}
+        for proj, alloc, res_name, days_expired in expiring:
+            if proj.projcode not in projects:
+                projects[proj.projcode] = proj
+
+        if not projects:
+            self.console.print("[yellow]No active projects to deactivate.[/]")
+            return EXIT_SUCCESS
+
+        # Prompt for confirmation unless --force
+        if not force:
+            from rich.prompt import Confirm
+            confirmed = Confirm.ask(
+                f"\nDeactivate [bold]{len(projects)}[/] project(s)?",
+                console=self.console
+            )
+            if not confirmed:
+                self.console.print("[yellow]Deactivation cancelled.[/]")
+                return EXIT_SUCCESS
+
+        # Soft-deactivate each project
+        now = datetime.now()
+        deactivated = []
+        failed = []
+        for projcode, project in projects.items():
+            try:
+                project.active = False
+                project.inactivate_time = now
+                deactivated.append(projcode)
+            except Exception as e:
+                self.console.print(f"[bold red]Error staging {projcode}: {e}[/]")
+                failed.append(projcode)
+
+        # Commit all changes
+        try:
+            self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            self.console.print(f"[bold red]Database error: {e}[/]")
+            return EXIT_ERROR
+
+        # Report results
+        if deactivated:
+            self.console.print(
+                f"\n✅ Deactivated {len(deactivated)} project(s): {', '.join(deactivated)}",
+                style="bold green"
+            )
+        if failed:
+            self.console.print(
+                f"❌ Failed to stage {len(failed)} project(s): {', '.join(failed)}",
+                style="bold red"
+            )
+
+        return EXIT_ERROR if failed else EXIT_SUCCESS
 
     def _send_notifications(self, expiring_data: list, additional_recipients: str = None, dry_run: bool = False) -> int:
         """Send email notifications for expiring projects.

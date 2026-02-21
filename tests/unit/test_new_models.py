@@ -18,7 +18,8 @@ from sam import (
     Factor, Formula, ApiCredentials, RoleApiCredentials,
     ProjectCode, FosAoi, ResponsibleParty,
     ResourceType, Role, Facility, MnemonicCode,
-    AreaOfInterest, Account, User
+    AreaOfInterest, Account, User,
+    Contract, AllocationTransactionType
 )
 
 
@@ -111,6 +112,30 @@ class TestFactorModel:
         assert factor.creation_time is not None
         print(f"✅ Factor has timestamps: created={factor.creation_time}")
 
+    def test_factor_is_active_sql_filter(self, session):
+        """Test Factor.is_active hybrid works in SQL queries."""
+        active = session.query(Factor).filter(Factor.is_active).all()
+        inactive = session.query(Factor).filter(~Factor.is_active).all()
+        total = session.query(Factor).count()
+        assert len(active) + len(inactive) == total
+        # Cross-check: Python-side agrees with SQL-side
+        for f in active:
+            assert f.is_active == True
+        for f in inactive:
+            assert f.is_active == False
+        print(f"✅ Factor SQL filter: {len(active)} active, {len(inactive)} inactive out of {total}")
+
+    def test_factor_is_active_at(self, session):
+        """Test Factor.is_active_at() method from DateRangeMixin."""
+        factor = session.query(Factor).first()
+        if not factor:
+            pytest.skip("No factors in database")
+        # Far past should be inactive (before start_date)
+        assert factor.is_active_at(datetime(2000, 1, 1)) == False
+        # is_active_at(None) defaults to now, same as is_active
+        assert factor.is_active_at() == factor.is_active
+        print(f"✅ Factor.is_active_at() works: past=False, now={factor.is_active}")
+
 
 class TestFormulaModel:
     """Test Formula model - charging formulas for resource types."""
@@ -200,6 +225,83 @@ class TestFormulaModel:
         assert hasattr(formula, 'modified_time')
         assert formula.creation_time is not None
         print(f"✅ Formula has timestamps: created={formula.creation_time}")
+
+    def test_formula_is_active_sql_filter(self, session):
+        """Test Formula.is_active hybrid works in SQL queries."""
+        active = session.query(Formula).filter(Formula.is_active).all()
+        inactive = session.query(Formula).filter(~Formula.is_active).all()
+        total = session.query(Formula).count()
+        assert len(active) + len(inactive) == total
+        for f in active:
+            assert f.is_active == True
+        for f in inactive:
+            assert f.is_active == False
+        print(f"✅ Formula SQL filter: {len(active)} active, {len(inactive)} inactive out of {total}")
+
+    def test_formula_is_active_at(self, session):
+        """Test Formula.is_active_at() method from DateRangeMixin."""
+        formula = session.query(Formula).first()
+        if not formula:
+            pytest.skip("No formulas in database")
+        assert formula.is_active_at(datetime(2000, 1, 1)) == False
+        assert formula.is_active_at() == formula.is_active
+        print(f"✅ Formula.is_active_at() works: past=False, now={formula.is_active}")
+
+
+# ============================================================================
+# Contract Model
+# ============================================================================
+
+class TestContractModel:
+    """Test Contract model - funding contracts with is_active hybrid property."""
+
+    def test_contract_query(self, session):
+        """Test basic contract query and relationships."""
+        contract = session.query(Contract).first()
+        if not contract:
+            pytest.skip("No contracts in database")
+        assert contract.contract_number is not None
+        assert contract.title is not None
+        assert contract.principal_investigator is not None
+        assert contract.start_date is not None
+        print(f"✅ Contract: {contract.contract_number} - {contract.title[:50]}")
+
+    def test_contract_is_active_property(self, session):
+        """Test Contract.is_active hybrid property."""
+        contract = session.query(Contract).first()
+        if not contract:
+            pytest.skip("No contracts in database")
+        assert isinstance(contract.is_active, bool)
+        # is_active_at(None) should match is_active
+        assert contract.is_active == contract.is_active_at()
+        print(f"✅ Contract.is_active={contract.is_active}, is_active_at()={contract.is_active_at()}")
+
+    def test_contract_is_active_sql_filter(self, session):
+        """Test Contract.is_active works in SQL queries."""
+        active = session.query(Contract).filter(Contract.is_active).all()
+        inactive = session.query(Contract).filter(~Contract.is_active).all()
+        total = session.query(Contract).count()
+        assert len(active) + len(inactive) == total
+        for c in active:
+            assert c.is_active == True
+        print(f"✅ Contract SQL filter: {len(active)} active, {len(inactive)} inactive out of {total}")
+
+
+# ============================================================================
+# AllocationTransactionType StrEnum
+# ============================================================================
+
+class TestAllocationTransactionType:
+    """Test AllocationTransactionType StrEnum."""
+
+    def test_allocation_transaction_type_enum(self):
+        """Test AllocationTransactionType is a StrEnum with expected values."""
+        assert AllocationTransactionType.CREATE == "CREATE"
+        assert isinstance(AllocationTransactionType.CREATE, str)
+        expected = {"CREATE", "EDIT", "TRANSFER", "ADJUSTMENT", "EXPIRE", "DELETE"}
+        actual = {m.value for m in AllocationTransactionType}
+        assert actual == expected
+        print(f"✅ AllocationTransactionType has {len(expected)} members: {sorted(expected)}")
 
 
 # ============================================================================

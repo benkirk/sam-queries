@@ -31,7 +31,7 @@ def cli(ctx: Context, verbose: bool):
         engine, _ = create_sam_engine()
         ctx.session = Session(engine)
     except Exception as e:
-        ctx.console.print(f"Error connecting to database: {e}", style="bold red", err=True)
+        ctx.stderr_console.print(f"Error connecting to database: {e}", style="bold red")
         sys.exit(1)
 
 
@@ -56,14 +56,20 @@ def user(ctx: Context, username, validate, list_projects, verbose):
 @click.option('--validate', is_flag=True, help='Validate project data')
 @click.option('--reconcile', is_flag=True, help='Reconcile allocations')
 @click.option('--upcoming-expirations', is_flag=True, help='Search for upcoming project expirations')
+@click.option('--recent-expirations', is_flag=True, help='Show recently expired projects')
 @click.option('--notify', is_flag=True, help='Send email notifications (requires --upcoming-expirations)')
 @click.option('--dry-run', is_flag=True, help='Preview emails without sending (requires --notify)')
 @click.option('--email-list', type=str, help='Comma-separated list of additional email recipients')
+@click.option('--deactivate', is_flag=True, help='Deactivate expired projects (requires --recent-expirations)')
+@click.option('--force', is_flag=True, help='Skip confirmation prompt (requires --deactivate)')
+@click.option('--since', type=click.DateTime(formats=['%Y-%m-%d']), default=None,
+              help='Look back to this date for --recent-expirations (e.g., 2024-01-01)')
 @click.option('--list-users', is_flag=True, help='List all users')
 @click.option('--facilities', '-F', multiple=True, default=['UNIV', 'WNA'], help='Facilities to include (default: UNIV, WNA). Use * for all facilities.')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @pass_context
-def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, notify, dry_run, email_list, list_users, facilities, verbose):
+def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, recent_expirations,
+            notify, dry_run, email_list, deactivate, force, since, list_users, facilities, verbose):
     """Administrative project commands."""
     if verbose:
         ctx.verbose = True
@@ -76,6 +82,16 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, n
     # Validate that --dry-run requires --notify
     if dry_run and not notify:
         ctx.console.print("Error: --dry-run requires --notify", style="bold red")
+        sys.exit(1)
+
+    # Validate that --deactivate requires --recent-expirations
+    if deactivate and not recent_expirations:
+        ctx.console.print("Error: --deactivate requires --recent-expirations", style="bold red")
+        sys.exit(1)
+
+    # Validate that --force requires --deactivate
+    if force and not deactivate:
+        ctx.console.print("Error: --force requires --deactivate", style="bold red")
         sys.exit(1)
 
     # Handle facility filtering - '*' means all facilities
@@ -94,9 +110,25 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, n
         )
         sys.exit(exit_code)
 
+    # Handle recent expirations with optional deactivation
+    if recent_expirations:
+        command = ProjectExpirationCommand(ctx)
+        exit_code = command.execute(
+            upcoming=False,
+            since=since,
+            list_users=list_users,
+            facility_filter=facility_filter,
+            deactivate=deactivate,
+            force=force
+        )
+        sys.exit(exit_code)
+
     # Require projcode for other operations
     if not projcode:
-        ctx.console.print("Error: projcode argument is required unless using --upcoming-expirations", style="bold red")
+        ctx.console.print(
+            "Error: projcode argument is required unless using --upcoming-expirations or --recent-expirations",
+            style="bold red"
+        )
         click.echo(click.get_current_context().get_help())
         sys.exit(1)
 
