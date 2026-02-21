@@ -46,7 +46,7 @@
                 {% if project['end_date'] %}
                     {{ project['end_date'].strftime('%Y-%m-%d') }}
                 {% elif project['is_open_ended'] %}
-                    <span class="badge badge-info">Open-ended</span>
+                    <span class="badge bg-info text-dark">Open-ended</span>
                 {% else %}
                     N/A
                 {% endif %}

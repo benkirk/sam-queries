@@ -36,7 +36,7 @@
                     {{ 'Online' if node.available else 'Offline' }}
                 </span>
                 {% if node.degraded %}
-                <span class="badge badge-warning">Degraded</span>
+                <span class="badge bg-warning text-dark">Degraded</span>
                 {% endif %}
             </td>
             <td>{{ node.user_count if node.user_count is not none else 'N/A' }}</td>

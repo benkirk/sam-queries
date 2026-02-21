@@ -67,8 +67,8 @@
     </div>
     <div class="card-body">
         <form method="GET" action="{{ url_for('status_dashboard.queue_history', system=system, queue_name=queue_name) }}" class="form-inline">
-            <label for="days" class="mr-2">Show Last:</label>
-            <select id="days" name="days" class="form-control form-control-sm mr-3">
+            <label for="days" class="me-2">Show Last:</label>
+            <select id="days" name="days" class="form-control form-control-sm me-3">
                 <option value="1" {% if days == 1 %}selected{% endif %}>1 Day</option>
                 <option value="7" {% if days == 7 %}selected{% endif %}>7 Days</option>
                 <option value="14" {% if days == 14 %}selected{% endif %}>14 Days</option>

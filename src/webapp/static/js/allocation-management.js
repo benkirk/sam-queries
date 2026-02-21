@@ -27,7 +27,7 @@
 
         // Show loading state in modal
         $('#editAllocationModalLabel').html('<i class="fas fa-spinner fa-spin"></i> Loading...');
-        $('#editAllocationModal').modal('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('editAllocationModal')).show();
 
         // Fetch allocation data
         fetch(`${API_BASE}/allocations/${allocationId}`)
@@ -67,7 +67,7 @@
             })
             .catch(error => {
                 console.error('Error loading allocation:', error);
-                $('#editAllocationModal').modal('hide');
+                bootstrap.Modal.getInstance(document.getElementById('editAllocationModal'))?.hide();
                 showAllocationError('Failed to load allocation: ' + error.message);
             });
     }
@@ -117,7 +117,7 @@
      */
     function showAllocationError(message) {
         $('#allocationErrorMessage').text(message);
-        $('#allocationErrorModal').modal('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('allocationErrorModal')).show();
     }
 
     /**
@@ -125,7 +125,7 @@
      */
     $(document).ready(function() {
 
-        // Fix Bootstrap 4 stacked modal z-index so the edit modal appears on top
+        // Fix stacked modal z-index so the edit modal appears on top
         // of any already-open modal (e.g. project details modal).
         $(document).on('show.bs.modal', '.modal', function() {
             var zIndex = 1040 + (10 * ($('.modal.show').length + 1));
@@ -213,7 +213,7 @@
                     throw new Error(data.error || 'Failed to update allocation');
                 }
                 // Close modal and reload project data
-                $('#editAllocationModal').modal('hide');
+                bootstrap.Modal.getInstance(document.getElementById('editAllocationModal'))?.hide();
                 reloadProjectCard(projcode);
             })
             .catch(error => {

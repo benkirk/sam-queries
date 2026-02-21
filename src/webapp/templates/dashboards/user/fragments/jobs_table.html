@@ -7,7 +7,7 @@
                 <th>Queue</th>
                 <th>Nodes</th>
                 <th>Core Hours</th>
-                <th class="text-right">Charge</th>
+                <th class="text-end">Charge</th>
             </tr>
         </thead>
         <tbody>
@@ -18,7 +18,7 @@
                 <td>{{ job.queue or 'N/A' }}</td>
                 <td>{{ job.nodes or 0 }}</td>
                 <td>{{ '{:,.2f}'.format(job.core_hours or 0) }}</td>
-                <td class="text-right">{{ '{:,.2f}'.format(job.charge or 0) }}</td>
+                <td class="text-end">{{ '{:,.2f}'.format(job.charge or 0) }}</td>
             </tr>
             {% endfor %}
         </tbody>
