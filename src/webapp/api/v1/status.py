@@ -518,6 +518,15 @@ def get_reservations():
     if request.args.get('upcoming_only', 'true').lower() in ('true', '1', 'yes'):
         query = query.filter(ResourceReservation.end_time >= datetime.now())
 
+    # Exclude stale reservations (not reported by collector in last 30 minutes).
+    # Uses COALESCE(updated_at, created_at) so newly-inserted records (updated_at=NULL)
+    # are not incorrectly filtered out.
+    from sqlalchemy import func
+    from datetime import timedelta
+    cutoff = datetime.now() - timedelta(minutes=30)
+    last_seen = func.coalesce(ResourceReservation.updated_at, ResourceReservation.created_at)
+    query = query.filter(last_seen >= cutoff)
+
     # Order by start time
     reservations = query.order_by(ResourceReservation.start_time).all()
 
