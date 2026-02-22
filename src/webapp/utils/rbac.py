@@ -54,7 +54,8 @@ class Permission(Enum):
     MANAGE_ROLES = "manage_roles"
     IMPERSONATE_USERS = "impersonate_users"
     VIEW_SYSTEM_STATS = "view_system_stats"
-    MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data
+    MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data (collector/API)
+    EDIT_SYSTEM_STATUS = "edit_system_status"  # GUI create/edit/delete outages
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 
@@ -81,6 +82,7 @@ ROLE_PERMISSIONS = {
         Permission.VIEW_CHARGE_SUMMARIES,
         Permission.EXPORT_DATA,
         Permission.VIEW_SYSTEM_STATS,
+        Permission.EDIT_SYSTEM_STATUS,
     ],
 
     # Project lead - can view their projects and allocations
