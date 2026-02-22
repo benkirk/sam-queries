@@ -48,7 +48,7 @@ def get_latest_derecho_login_nodes(session: Session, timestamp: datetime) -> Lis
     return session.query(LoginNodeStatus).filter_by(
         timestamp=timestamp,
         system_name='derecho'
-    ).all()
+    ).order_by(LoginNodeStatus.node_name).all()
 
 
 def get_latest_casper_status(session: Session) -> Optional[CasperStatus]:
@@ -78,7 +78,7 @@ def get_latest_casper_login_nodes(session: Session, timestamp: datetime) -> List
     return session.query(LoginNodeStatus).filter_by(
         timestamp=timestamp,
         system_name='casper'
-    ).all()
+    ).order_by(LoginNodeStatus.node_name).all()
 
 
 def get_latest_casper_filesystems(session: Session, timestamp: datetime) -> List[FilesystemStatus]:
