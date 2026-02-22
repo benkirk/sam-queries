@@ -24,7 +24,7 @@
             <th>Node</th>
             <th>Status</th>
             <th>Users</th>
-            <th>Load (1/5/15 min)</th>
+            <th>Load (1, 5, 15 min)</th>
         </tr>
     </thead>
     <tbody>
@@ -42,7 +42,7 @@
             <td>{{ node.user_count if node.user_count is not none else 'N/A' }}</td>
             <td>
                 {% if node.load_1min is not none %}
-                    {{ '%.0f'|format(node.load_1min) }}%/{{ '%.0f'|format(node.load_5min) }}%/{{ '%.0f'|format(node.load_15min) }}%
+                    {{ '%.0f'|format(node.load_1min) }}%, {{ '%.0f'|format(node.load_5min) }}%, {{ '%.0f'|format(node.load_15min) }}%
                 {% else %}
                     N/A
                 {% endif %}
