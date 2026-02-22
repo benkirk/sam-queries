@@ -19,7 +19,7 @@ GET endpoints (status retrieval, public with login):
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import require_permission, require_any_permission, Permission
 from webapp.api.helpers import register_error_handlers
 from webapp.extensions import db
 from datetime import datetime
@@ -308,7 +308,7 @@ def ingest_jupyterhub():
 
 @bp.route('/outage', methods=['POST'])
 @login_required
-@require_permission(Permission.MANAGE_SYSTEM_STATUS)
+@require_any_permission(Permission.MANAGE_SYSTEM_STATUS, Permission.EDIT_SYSTEM_STATUS)
 def report_outage():
     """
     POST /api/v1/status/outage - Report a system outage or degradation.
@@ -494,6 +494,77 @@ def get_outages():
     return jsonify(result), 200
 
 
+@bp.route('/outages/<int:outage_id>', methods=['PATCH'])
+@login_required
+@require_permission(Permission.EDIT_SYSTEM_STATUS)
+def update_outage(outage_id):
+    """
+    PATCH /api/v1/status/outages/<outage_id> - Update an existing outage.
+
+    Requires EDIT_SYSTEM_STATUS permission.
+
+    JSON body may include any of:
+        - status: 'investigating', 'identified', 'monitoring', 'resolved'
+        - severity: 'critical', 'major', 'minor', 'maintenance'
+        - title: string
+        - description: string or null
+        - estimated_resolution: ISO datetime string or null/empty
+
+    Returns:
+        JSON with success status and updated outage_id/status
+    """
+    outage = db.session.query(SystemOutage).get(outage_id)
+    if not outage:
+        return jsonify({'error': 'Not found'}), 404
+
+    data = request.get_json() or {}
+    valid_statuses = ['investigating', 'identified', 'monitoring', 'resolved']
+    valid_severities = ['critical', 'major', 'minor', 'maintenance']
+
+    if 'status' in data and data['status'] in valid_statuses:
+        outage.status = data['status']
+    if 'severity' in data and data['severity'] in valid_severities:
+        outage.severity = data['severity']
+    if 'title' in data:
+        outage.title = data['title']
+    if 'description' in data:
+        outage.description = data['description'] or None
+    if 'estimated_resolution' in data:
+        val = data['estimated_resolution']
+        if val:
+            try:
+                outage.estimated_resolution = datetime.fromisoformat(val.replace('Z', '+00:00'))
+            except ValueError:
+                return jsonify({'error': 'Invalid estimated_resolution format'}), 400
+        else:
+            outage.estimated_resolution = None
+
+    outage.updated_at = datetime.now()
+    db.session.commit()
+    return jsonify({'success': True, 'outage_id': outage_id, 'status': outage.status}), 200
+
+
+@bp.route('/outages/<int:outage_id>', methods=['DELETE'])
+@login_required
+@require_permission(Permission.EDIT_SYSTEM_STATUS)
+def delete_outage(outage_id):
+    """
+    DELETE /api/v1/status/outages/<outage_id> - Delete an outage record.
+
+    Requires EDIT_SYSTEM_STATUS permission.
+
+    Returns:
+        JSON with success status
+    """
+    outage = db.session.query(SystemOutage).get(outage_id)
+    if not outage:
+        return jsonify({'error': 'Not found'}), 404
+
+    db.session.delete(outage)
+    db.session.commit()
+    return jsonify({'success': True}), 200
+
+
 @bp.route('/reservations', methods=['GET'])
 @login_required
 def get_reservations():
@@ -517,6 +588,15 @@ def get_reservations():
     # Filter by upcoming
     if request.args.get('upcoming_only', 'true').lower() in ('true', '1', 'yes'):
         query = query.filter(ResourceReservation.end_time >= datetime.now())
+
+    # Exclude stale reservations (not reported by collector in last 30 minutes).
+    # Uses COALESCE(updated_at, created_at) so newly-inserted records (updated_at=NULL)
+    # are not incorrectly filtered out.
+    from sqlalchemy import func
+    from datetime import timedelta
+    cutoff = datetime.now() - timedelta(minutes=30)
+    last_seen = func.coalesce(ResourceReservation.updated_at, ResourceReservation.created_at)
+    query = query.filter(last_seen >= cutoff)
 
     # Order by start time
     reservations = query.order_by(ResourceReservation.start_time).all()

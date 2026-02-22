@@ -4,7 +4,7 @@ System Status Query Helpers.
 Centralized queries for the system status dashboard.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy.orm import Session
@@ -48,7 +48,7 @@ def get_latest_derecho_login_nodes(session: Session, timestamp: datetime) -> Lis
     return session.query(LoginNodeStatus).filter_by(
         timestamp=timestamp,
         system_name='derecho'
-    ).all()
+    ).order_by(LoginNodeStatus.node_name).all()
 
 
 def get_latest_casper_status(session: Session) -> Optional[CasperStatus]:
@@ -78,7 +78,7 @@ def get_latest_casper_login_nodes(session: Session, timestamp: datetime) -> List
     return session.query(LoginNodeStatus).filter_by(
         timestamp=timestamp,
         system_name='casper'
-    ).all()
+    ).order_by(LoginNodeStatus.node_name).all()
 
 
 def get_latest_casper_filesystems(session: Session, timestamp: datetime) -> List[FilesystemStatus]:
@@ -103,10 +103,24 @@ def get_active_outages(session: Session) -> List[SystemOutage]:
     ).order_by(SystemOutage.start_time.desc()).all()
 
 
-def get_upcoming_reservations(session: Session) -> List[ResourceReservation]:
-    """Get upcoming resource reservations."""
+def get_upcoming_reservations(session: Session, max_staleness_minutes: int = 30) -> List[ResourceReservation]:
+    """
+    Get upcoming resource reservations, excluding stale entries.
+
+    A reservation is considered stale if the collector has not reported it
+    within max_staleness_minutes (default: 30). This handles the case where
+    a reservation is deleted from PBS before its planned end time — without
+    this filter it would remain visible on the dashboard until end_time passes.
+
+    Staleness is measured against COALESCE(updated_at, created_at) so that
+    newly-inserted records (where updated_at is NULL) are not incorrectly filtered out.
+    """
+    from sqlalchemy import func
+    cutoff = datetime.now() - timedelta(minutes=max_staleness_minutes)
+    last_seen = func.coalesce(ResourceReservation.updated_at, ResourceReservation.created_at)
     return session.query(ResourceReservation).filter(
-        ResourceReservation.end_time >= datetime.now()
+        ResourceReservation.end_time >= datetime.now(),
+        last_seen >= cutoff,
     ).order_by(ResourceReservation.start_time).all()
 
 

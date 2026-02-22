@@ -80,7 +80,7 @@ class LoginNodeCollector:
 
             self.logger.debug(
                 f"Collected from {node_name}: users={data['user_count']}, "
-                f"load={data['load_1min']}"
+                f"load={data['load_1min']:.1f}%"
             )
             return data
 
@@ -92,6 +92,7 @@ class LoginNodeCollector:
                 'available': False,
                 'degraded': True,
                 'user_count': None,
+                'num_cpus': None,
                 'load_1min': None,
                 'load_5min': None,
                 'load_15min': None,
@@ -101,13 +102,17 @@ class LoginNodeCollector:
             return entry
 
     def _collect_single_node(self, node_name: str) -> dict:
-        """Collect metrics from a single login node."""
-        # SSH through base host to login node
-        # Example: ssh derecho "ssh derecho1 'cat /proc/loadavg; echo ---; who | wc -l'"
+        """Collect metrics from a single login node.
+
+        Load averages are stored as CPU utilization percentages:
+            load_pct = (raw_load_avg / num_cpus) * 100
+        """
+        # SSH through base host to login node, collecting load, users, and CPU count
+        # Example: ssh derecho "ssh derecho1 'cat /proc/loadavg; echo ---; who | wc -l; echo ---; nproc --all'"
 
         cmd = (
             f"ssh -o ConnectTimeout={self.timeout} {self.base_host} "
-            f'"ssh {node_name} \'cat /proc/loadavg; echo ---; who | wc -l\'" '
+            f'"ssh {node_name} \'cat /proc/loadavg; echo ---; who | wc -l; echo ---; nproc --all\'" '
         )
 
         self.logger.debug(f"Running: {cmd}")
@@ -126,19 +131,24 @@ class LoginNodeCollector:
         if result.returncode != 0:
             raise SSHError(f"Failed to connect to {node_name}: {result.stderr}")
 
-        # Parse output
+        # Parse output: three sections separated by '---'
+        #   Section 0: /proc/loadavg output (load_1min load_5min load_15min ...)
+        #   Section 1: user count from 'who | wc -l'
+        #   Section 2: CPU count from 'nproc --all'
         try:
             parts = result.stdout.strip().split('---')
             loadavg = parts[0].strip().split()
             user_count = int(parts[1].strip())
+            num_cpus = int(parts[2].strip())
 
             return {
                 'available': True,
                 'degraded': False,
                 'user_count': user_count,
-                'load_1min': float(loadavg[0]),
-                'load_5min': float(loadavg[1]),
-                'load_15min': float(loadavg[2]),
+                'num_cpus': num_cpus,
+                'load_1min': (float(loadavg[0]) / num_cpus) * 100,
+                'load_5min': (float(loadavg[1]) / num_cpus) * 100,
+                'load_15min': (float(loadavg[2]) / num_cpus) * 100,
             }
         except (IndexError, ValueError) as e:
             raise SSHError(f"Failed to parse output from {node_name}: {e}")
