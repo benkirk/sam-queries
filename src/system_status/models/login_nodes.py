@@ -24,9 +24,10 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
         available: Boolean flag - is node accepting logins? (via AvailabilityMixin)
         degraded: Boolean flag - is node degraded but still available? (via AvailabilityMixin)
         user_count: Current number of logged-in users
-        load_1min: 1-minute load average
-        load_5min: 5-minute load average
-        load_15min: 15-minute load average
+        num_cpus: Total CPU count on node (from 'nproc --all')
+        load_1min: 1-minute load average as % of CPU capacity (raw_load / num_cpus * 100)
+        load_5min: 5-minute load average as % of CPU capacity (raw_load / num_cpus * 100)
+        load_15min: 15-minute load average as % of CPU capacity (raw_load / num_cpus * 100)
 
     Example:
         >>> node = LoginNodeStatus(
@@ -37,9 +38,10 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
         ...     available=True,
         ...     degraded=False,
         ...     user_count=42,
-        ...     load_1min=3.5,
-        ...     load_5min=3.2,
-        ...     load_15min=3.0
+        ...     num_cpus=128,
+        ...     load_1min=54.7,   # percentage: (70.0 / 128) * 100
+        ...     load_5min=50.0,
+        ...     load_15min=47.7
         ... )
     """
     __bind_key__ = "system_status" # <-- database for connection, if not default
@@ -68,12 +70,14 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
     # User and load metrics
     user_count = Column(Integer, nullable=True,
                        comment='Current number of logged-in users')
+    num_cpus = Column(Integer, nullable=True,
+                     comment='Total CPU count on node (from nproc --all); used to compute load percentages')
     load_1min = Column(Float, nullable=True,
-                      comment='1-minute load average')
+                      comment='1-minute load average as % of CPU capacity (raw_load / num_cpus * 100)')
     load_5min = Column(Float, nullable=True,
-                      comment='5-minute load average')
+                      comment='5-minute load average as % of CPU capacity (raw_load / num_cpus * 100)')
     load_15min = Column(Float, nullable=True,
-                       comment='15-minute load average')
+                       comment='15-minute load average as % of CPU capacity (raw_load / num_cpus * 100)')
 
     # Note: available, degraded inherited from AvailabilityMixin
     # Note: timestamp, created_at inherited from StatusSnapshotMixin
@@ -86,7 +90,8 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
                                 foreign_keys=[casper_status_id])
 
     def __repr__(self):
+        load_str = f"{self.load_1min:.1f}%" if self.load_1min is not None else "N/A"
         return (f"<LoginNodeStatus(node_name='{self.node_name}', "
                 f"system='{self.system_name}', "
                 f"type='{self.node_type}', available={self.available}, "
-                f"users={self.user_count}, load_1min={self.load_1min})>")
+                f"users={self.user_count}, load_1min={load_str})>")
