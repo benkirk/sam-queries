@@ -5,6 +5,7 @@ os.environ['FLASK_ACTIVE'] = '1'
 
 from flask import Flask, redirect, url_for
 from flask_login import LoginManager, current_user
+from flask_talisman import Talisman
 import sam.session
 import system_status.session
 
@@ -23,6 +24,7 @@ from webapp.api.v1.users import bp as api_users_bp
 from webapp.api.v1.charges import bp as api_charges_bp
 from webapp.api.v1.status import bp as api_status_bp
 from webapp.api.v1.allocations import bp as api_allocations_bp
+from webapp.api.v1.health import bp as api_health_bp
 
 
 def create_app():
@@ -91,6 +93,31 @@ def create_app():
     db.init_app(app)
 
     # =========================================================================
+    # SECURITY HEADERS
+    # =========================================================================
+    # flask-talisman sets HSTS, X-Frame-Options, X-Content-Type-Options, CSP,
+    # and referrer policy. force_https and HSTS are disabled in debug mode so
+    # local development works over plain HTTP.
+    Talisman(
+        app,
+        force_https=not app.debug,
+        strict_transport_security=not app.debug,
+        session_cookie_secure=not app.debug,  # aligns with SESSION_COOKIE_SECURE above
+        content_security_policy={
+            'default-src': "'self'",
+            'script-src':  ["'self'", "'unsafe-inline'",
+                            "cdn.jsdelivr.net", "code.jquery.com"],
+            'style-src':   ["'self'", "'unsafe-inline'",
+                            "cdn.jsdelivr.net", "stackpath.bootstrapcdn.com"],
+            'font-src':    ["'self'", "stackpath.bootstrapcdn.com"],
+            'img-src':     ["'self'", "data:"],
+        },
+        frame_options='SAMEORIGIN',          # allow same-origin iframes (Flask-Admin)
+        referrer_policy='strict-origin-when-cross-origin',
+    )
+    # =========================================================================
+
+    # =========================================================================
     # AUDIT LOGGING INITIALIZATION
     # =========================================================================
     # Track INSERT/UPDATE/DELETE operations on SAM database models
@@ -141,6 +168,7 @@ def create_app():
     app.register_blueprint(api_charges_bp, url_prefix='/api/v1')
     app.register_blueprint(api_status_bp, url_prefix='/api/v1/status')
     app.register_blueprint(api_allocations_bp, url_prefix='/api/v1/allocations')
+    app.register_blueprint(api_health_bp, url_prefix='/api/v1/health')
 
     # Initialize Flask-Admin
     init_admin(app)

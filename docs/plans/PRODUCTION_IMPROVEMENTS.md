@@ -5,8 +5,8 @@
 This document provides a comprehensive analysis of production deployment concerns and recommendations for the SAM (System for Allocation Management) web application. Based on an extensive codebase review, we've identified **30 improvements** organized into four priority levels.
 
 **Quick Stats**:
-- **Critical Security Issues**: 2 remaining (must fix before production) ~~4~~ ✅ #1 #3 done
-- **High Priority**: 13 (operational and configuration improvements)
+- **Critical Security Issues**: 2 remaining ~~4~~ ✅ #1 #3 done
+- **High Priority**: 10 remaining ~~13~~ ✅ #4 #5 #6 done; #9 folded into #6
 - **Medium Priority**: 10 (monitoring, testing, documentation)
 - **Nice to Have**: 3 (advanced features for future)
 
@@ -110,49 +110,11 @@ GUNICORN_LOG_LEVEL=info
 
 ---
 
-### 🔴 4. Security Headers Missing (HIGH - ~15 min)
+### ✅ 4. Security Headers — DONE
 
-**Current State**: No security headers on HTTP responses
-
-**Risk**: Clickjacking, MIME sniffing, XSS attacks
-
-**Fix**: Add middleware to `src/webapp/run.py`:
-```python
-@app.after_request
-def add_security_headers(response):
-    """Add security headers to all responses.
-
-    See: https://owasp.org/www-project-secure-headers/
-    """
-    if not app.config.get('DEBUG', False):
-        # Force HTTPS for all future requests (1 year)
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-
-        # Prevent MIME type sniffing
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-
-        # Prevent clickjacking
-        response.headers['X-Frame-Options'] = 'DENY'
-
-        # Legacy XSS protection (most browsers ignore now, but doesn't hurt)
-        response.headers['X-XSS-Protection'] = '1; mode=block'
-
-        # Content Security Policy (start restrictive, relax as needed)
-        # NOTE: May need to adjust based on actual resource usage
-        response.headers['Content-Security-Policy'] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com; "
-            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://stackpath.bootstrapcdn.com; "
-            "font-src 'self' https://stackpath.bootstrapcdn.com; "
-            "img-src 'self' data:; "
-        )
-
-    return response
-```
-
-**Note**: The CSP may need adjustment based on actual resource loading. Test thoroughly.
-
-**Priority**: HIGH - Implement soon after launch
+`flask-talisman` added to `pyproject.toml` and initialized in `run.py` after `db.init_app()`.
+Provides HSTS, X-Frame-Options (`SAMEORIGIN`), X-Content-Type-Options, CSP, and referrer policy.
+`force_https` and HSTS disabled in debug mode; CSP tuned for Bootstrap/jQuery CDNs used by the app.
 
 ---
 
@@ -165,95 +127,13 @@ def add_security_headers(response):
 
 ---
 
-### 🟡 6. Health Check Endpoint (HIGH - ~15 min)
+### ✅ 6. Health Check Endpoint + DB Pool Monitoring — DONE (merged with #9)
 
-**Current State**: Status endpoints exist but no simple health check
-
-**Why Needed**: Load balancers, Kubernetes, monitoring systems need quick health checks
-
-**Fix**: Add to `src/webapp/api/v1/status.py`:
-```python
-from datetime import datetime
-from flask import jsonify
-from sqlalchemy import text
-from webapp.database import db
-
-@bp.route('/health', methods=['GET'])
-def health_check():
-    """Simple health check for load balancers and orchestration.
-
-    This endpoint should be FAST (<100ms) and lightweight.
-    It only checks critical systems (database connectivity).
-
-    Returns:
-        - 200 OK: Service is healthy and can accept requests
-        - 503 Service Unavailable: Service is unhealthy (check logs)
-    """
-    health_status = {
-        'status': 'healthy',
-        'service': 'sam-webapp',
-        'timestamp': datetime.now().isoformat(),
-        'checks': {}
-    }
-
-    try:
-        # Quick database connectivity check
-        start = datetime.now()
-        db.session.execute(text('SELECT 1')).scalar()
-        db_latency_ms = (datetime.now() - start).total_seconds() * 1000
-
-        health_status['checks']['database'] = {
-            'status': 'healthy',
-            'latency_ms': round(db_latency_ms, 2)
-        }
-
-        return jsonify(health_status), 200
-
-    except Exception as e:
-        health_status['status'] = 'unhealthy'
-        health_status['checks']['database'] = {
-            'status': 'unhealthy',
-            'error': str(e)
-        }
-        return jsonify(health_status), 503
-
-
-@bp.route('/ready', methods=['GET'])
-def readiness_check():
-    """Kubernetes readiness probe.
-
-    Returns 200 when the service is ready to accept traffic.
-    Unlike /health, this can check more expensive conditions.
-    """
-    # For now, same as health check
-    # In future, could check:
-    # - Database connection pool has capacity
-    # - Critical dependencies are available
-    # - Initialization is complete
-    return health_check()
-
-
-@bp.route('/live', methods=['GET'])
-def liveness_check():
-    """Kubernetes liveness probe.
-
-    Returns 200 if the service is alive (even if not ready).
-    Should be very lightweight - just confirms process is running.
-    """
-    return jsonify({
-        'status': 'alive',
-        'service': 'sam-webapp',
-        'timestamp': datetime.now().isoformat()
-    }), 200
-```
-
-**Usage**:
-- **Load balancers**: Point to `/api/v1/health`
-- **Kubernetes liveness**: `/api/v1/live`
-- **Kubernetes readiness**: `/api/v1/ready`
-- **Monitoring systems**: Poll `/api/v1/health` every 30-60s
-
-**Priority**: HIGH - Required for container orchestration
+New blueprint `src/webapp/api/v1/health.py`, registered at `/api/v1/health`:
+- `GET /api/v1/health/`     — pings both DB binds, 200/503 (public, for load balancers)
+- `GET /api/v1/health/live` — immediate alive response, no DB call (public, k8s liveness)
+- `GET /api/v1/health/ready`— delegates to `/` check (public, k8s readiness)
+- `GET /api/v1/health/db-pool` — pool stats for all engines (admin only)
 
 ---
 
@@ -481,47 +361,11 @@ def create_app():
 
 ---
 
-### 🟡 9. Database Connection Pool Monitoring (MEDIUM - ~20 min)
+### ✅ 9. Database Connection Pool Monitoring — DONE (merged into #6)
 
-**Current State**: Connection pooling configured but no visibility into pool health
-
-**Fix**: Add monitoring to `src/webapp/api/v1/status.py`:
-```python
-@bp.route('/status/db-pool', methods=['GET'])
-@admin_required  # Add authentication
-def database_pool_status():
-    """Get database connection pool status.
-
-    Useful for monitoring and capacity planning.
-    """
-    from webapp.database import db
-
-    engine = db.engine
-    pool = engine.pool
-
-    status = {
-        'pool_size': pool.size(),
-        'checked_in': pool.checkedin(),
-        'checked_out': pool.checkedout(),
-        'overflow': pool.overflow(),
-        'max_overflow': pool._max_overflow,
-        'utilization_percent': round((pool.checkedout() / pool.size()) * 100, 2)
-    }
-
-    # Add health assessment
-    if status['utilization_percent'] > 80:
-        status['health'] = 'warning'
-        status['message'] = 'Connection pool utilization high - consider increasing pool size'
-    elif status['checked_out'] + status['overflow'] >= (pool.size() + pool._max_overflow):
-        status['health'] = 'critical'
-        status['message'] = 'Connection pool exhausted - requests may be blocked'
-    else:
-        status['health'] = 'healthy'
-
-    return jsonify(status), 200
-```
-
-**Priority**: MEDIUM - Helpful for monitoring
+Implemented as `GET /api/v1/health/db-pool` in the new `health.py` blueprint.
+Returns pool stats (size, checked_in/out, overflow, utilization_pct, health) for both
+`sam` and `system_status` engine binds. Admin login required.
 
 ---
 
