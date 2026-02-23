@@ -10,7 +10,7 @@
 | 4 | Security headers | High | 🔴 Open |
 | 5 | Gunicorn production config | High | ✅ Done |
 | 6 | Health check + DB pool endpoints | High | ✅ Done |
-| 7 | Config/env-var checking | High | 🔴 **Next** |
+| 7 | Config/env-var checking | High | ✅ Done |
 | 8 | Structured logging | High | 🔴 Open |
 | 9 | Request ID tracking | High | 🔴 Open |
 | 10 | Security testing suite | Medium | 🔴 Open |
@@ -36,6 +36,16 @@ and `PERMANENT_SESSION_LIFETIME=12 h` set in `run.py` when `app.debug` is False.
 `gunicorn -c containers/webapp/gunicorn_config.py "webapp.run:create_app()"`.
 Workers tuned to `(2 × CPU) + 1`, `preload_app=True`, logs to stdout/stderr.
 **Commit**: `eb7fa8f`
+
+### 7 — Config / Environment-Variable Validation
+`src/config.py`: `BaseConfig` centralises all env-var reading for SAM DB, STATUS DB,
+and mail. `BaseConfig.validate()` fails fast at startup with a clear list of missing
+variables. `src/webapp/config.py`: `WebappConfig` hierarchy
+(`DevelopmentConfig` / `ProductionConfig` / `TestingConfig`) replaces scattered inline
+settings in `run.py`. `ProductionConfig.validate()` adds length-check on `FLASK_SECRET_KEY`.
+`DEV_ROLE_MAPPING` moved from `run.py` into `DevelopmentConfig`.
+CLI entry points (`sam-search`, `sam-admin`, `sam-status`) call `BaseConfig.validate()`
+at startup so missing vars produce a clean error before any DB connection is attempted.
 
 ### 6 — Health Check + DB Pool Monitoring
 `src/webapp/api/v1/health.py` blueprint at `/api/v1/health`:
@@ -64,33 +74,6 @@ service only, but it must **never** reach the production (`webapp`) service.
 - Create `.env.production.example` documenting required production env vars (see §11).
 - Ensure the `webapp` service in `compose.yaml` does **not** set `DISABLE_AUTH` or
   `DEV_AUTO_LOGIN_USER`.
-
-#### 7 — Environment-Based Config Validation (High)
-
-**Problem**: `run.py` is a growing config monolith and gives no early error on missing env vars
-(other than `FLASK_SECRET_KEY`).
-
-**Approach**: Add a `validate_environment()` call at the top of `create_app()`:
-
-```python
-def validate_environment():
-    required = {
-        'SAM_DB_USERNAME': 'SAM database username',
-        'SAM_DB_PASSWORD': 'SAM database password',
-        'SAM_DB_SERVER':   'SAM database hostname',
-    }
-    missing = [f"  {k}: {v}" for k, v in required.items() if not os.getenv(k)]
-    if missing:
-        raise EnvironmentError(
-            "Missing required environment variables:\n" + "\n".join(missing) +
-            "\n\nSee .env.example for a template."
-        )
-```
-
-A full `src/webapp/config.py` with `DevelopmentConfig` / `ProductionConfig` / `TestingConfig`
-classes (see original doc) is a good follow-on refactor but **not** required before launch.
-
-**Files**: `src/webapp/run.py` (immediate), optionally `src/webapp/config.py` later.
 
 ---
 
