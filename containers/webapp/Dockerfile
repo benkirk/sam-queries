@@ -1,4 +1,4 @@
-FROM python:3
+FROM python:3 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
@@ -36,7 +36,18 @@ WORKDIR /code
 COPY . .
 RUN pip install -e ".[test]"
 
+
+#-------------------------------------------------------------------------------
+# webdev - development flask internal sever config
+#-------------------------------------------------------------------------------
+FROM base AS development
 CMD ["python3", "./src/webapp/run.py"]
+
+#-------------------------------------------------------------------------------
+# webapp - production gunicorn config
+#-------------------------------------------------------------------------------
+FROM base AS production
+CMD ["gunicorn", "-c", "containers/webapp/gunicorn_config.py", "webapp.run:create_app()"]
 
 #-------------------------------------------------------------------------------
 # emacs cruft follows

@@ -158,93 +158,10 @@ def add_security_headers(response):
 
 ## Operational Improvements
 
-### 🟡 5. Production Gunicorn Configuration (HIGH - ~20 min)
+### ✅ 5. Production Gunicorn Configuration — DONE
 
-**Current State**: Gunicorn used in Dockerfile but no production configuration
-
-**Fix**: Create `gunicorn_config.py` in project root:
-```python
-"""Gunicorn production configuration for SAM webapp.
-
-Documentation: https://docs.gunicorn.org/en/stable/settings.html
-"""
-import multiprocessing
-import os
-
-# Server socket
-bind = '0.0.0.0:5000'
-backlog = 2048
-
-# Worker processes
-# Rule of thumb: (2 x $num_cores) + 1
-workers = int(os.environ.get('GUNICORN_WORKERS', multiprocessing.cpu_count() * 2 + 1))
-
-# Worker class
-# 'sync' - Default, good for CPU-bound work
-# 'gevent' - Better for I/O-bound work (database queries)
-# 'gthread' - Threaded workers
-worker_class = os.environ.get('GUNICORN_WORKER_CLASS', 'sync')
-
-worker_connections = 1000
-
-# Worker lifecycle
-max_requests = 1000  # Restart workers after N requests (prevents memory leaks)
-max_requests_jitter = 50  # Add randomness to prevent thundering herd
-timeout = 120  # Workers silent for more than this are killed
-keepalive = 5  # Keep-alive connections
-
-# Server mechanics
-preload_app = True  # Load application before forking (faster startup, shared memory)
-daemon = False  # Don't daemonize (important for containers)
-pidfile = None  # Don't write PID file
-umask = 0
-user = None
-group = None
-tmp_upload_dir = None
-
-# Logging
-accesslog = os.environ.get('GUNICORN_ACCESS_LOG', '-')  # '-' = stdout
-errorlog = os.environ.get('GUNICORN_ERROR_LOG', '-')   # '-' = stderr
-loglevel = os.environ.get('GUNICORN_LOG_LEVEL', 'info')
-
-# Access log format (includes response time)
-access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s µs'
-
-# Process naming
-proc_name = 'sam-webapp'
-
-# Graceful timeout for worker shutdown
-graceful_timeout = 30
-
-# Server hooks
-def on_starting(server):
-    """Called just before the master process is initialized."""
-    server.log.info("=" * 60)
-    server.log.info("SAM Webapp starting up...")
-    server.log.info(f"Workers: {workers}")
-    server.log.info(f"Worker class: {worker_class}")
-    server.log.info(f"Timeout: {timeout}s")
-    server.log.info("=" * 60)
-
-def on_reload(server):
-    """Called to recycle workers during a reload via SIGHUP."""
-    server.log.info("Reloading workers...")
-
-def when_ready(server):
-    """Called just after the server is started."""
-    server.log.info("SAM Webapp ready to serve requests")
-
-def on_exit(server):
-    """Called just before the master process exits."""
-    server.log.info("SAM Webapp shutting down...")
-```
-
-**Update Dockerfile**: Change CMD to:
-```dockerfile
-CMD ["gunicorn", "-c", "gunicorn_config.py", "webapp.run:app"]
-```
-
-**Priority**: HIGH - Required for production
+`containers/webapp/gunicorn_config.py` created; production Dockerfile stage now runs:
+`gunicorn -c containers/webapp/gunicorn_config.py "webapp.run:create_app()"`
 
 ---
 
