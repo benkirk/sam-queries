@@ -1,1195 +1,251 @@
-# Production Readiness Improvements - SAM Web Application
+# Production Readiness — SAM Web Application
 
-## Executive Summary
+## Status at a Glance
 
-This document provides a comprehensive analysis of production deployment concerns and recommendations for the SAM (System for Allocation Management) web application. Based on an extensive codebase review, we've identified **30 improvements** organized into four priority levels.
-
-**Quick Stats**:
-- **Critical Security Issues**: 2 remaining ~~4~~ ✅ #1 #3 done
-- **High Priority**: 11 remaining ~~13~~ ✅ #5 #6 done; #9 folded into #6
-- **Medium Priority**: 10 (monitoring, testing, documentation)
-- **Nice to Have**: 3 (advanced features for future)
-
-**Estimated Time to Production Ready**: ~4 hours for immediate + high priority fixes
-
----
-
-## Table of Contents
-
-1. [Critical Security Issues](#critical-security-issues)
-2. [Operational Improvements](#operational-improvements)
-3. [Logging & Observability](#logging--observability)
-4. [Testing Gaps](#testing-gaps)
-5. [Monitoring & Alerting](#monitoring--alerting)
-6. [Documentation](#documentation)
-7. [Implementation Timeline](#implementation-timeline)
-8. [Reference Information](#reference-information)
+| # | Item | Priority | Status |
+|---|------|----------|--------|
+| 1 | Hardcoded `SECRET_KEY` | Critical | ✅ Done |
+| 2 | Dev auth enabled by default | Critical | 🔴 Open |
+| 3 | Session cookie security flags | Critical | ✅ Done |
+| 4 | Security headers | High | 🔴 Open |
+| 5 | Gunicorn production config | High | ✅ Done |
+| 6 | Health check + DB pool endpoints | High | ✅ Done |
+| 7 | Config/env-var checking | High | 🔴 **Next** |
+| 8 | Structured logging | High | 🔴 Open |
+| 9 | Request ID tracking | High | 🔴 Open |
+| 10 | Security testing suite | Medium | 🔴 Open |
+| 11 | Deployment checklist / docs | Medium | 🔴 Open |
+| 12 | Metrics & alerting | Future | 🔴 Open |
 
 ---
 
-## Critical Security Issues
+## ✅ Completed Items
 
-### ✅ 1. Hardcoded Secret Key — DONE
+### 1 — Hardcoded Secret Key
+`FLASK_SECRET_KEY` env var required; `ValueError` raised on startup if unset.
+Added to `.env.example`, `containers/webapp/Dockerfile`, and local `.env`.
+**Commit**: `101e383`
 
-`SECRET_KEY` now reads from `FLASK_SECRET_KEY` env var and raises `ValueError` if unset.
-`FLASK_SECRET_KEY` added to `.env.example`, `containers/webapp/Dockerfile` default env, and local `.env`.
+### 3 — Session Cookie Security Flags
+`SESSION_COOKIE_SECURE`, `SESSION_COOKIE_HTTPONLY`, `SESSION_COOKIE_SAMESITE='Lax'`,
+and `PERMANENT_SESSION_LIFETIME=12 h` set in `run.py` when `app.debug` is False.
+**Commit**: `101e383`
 
----
+### 5 — Gunicorn Production Config
+`containers/webapp/gunicorn_config.py` created; production Dockerfile stage runs:
+`gunicorn -c containers/webapp/gunicorn_config.py "webapp.run:create_app()"`.
+Workers tuned to `(2 × CPU) + 1`, `preload_app=True`, logs to stdout/stderr.
+**Commit**: `eb7fa8f`
 
-### 🔴 2. Development Authentication Enabled by Default (IMMEDIATE - ~10 min)
+### 6 — Health Check + DB Pool Monitoring
+`src/webapp/api/v1/health.py` blueprint at `/api/v1/health`:
+- `GET /` and `GET /ready` — ping both DB binds, 200/503 (public)
+- `GET /live` — immediate alive response, no DB call (public, k8s liveness)
+- `GET /db-pool` — pool stats for all engines (admin login required)
 
-**Current State**:
-- `compose.yaml:24-25` - Dev auth enabled
-- `src/webapp/utils/dev_auth.py` - Auto-login accepts ANY password
-- `src/webapp/auth/providers.py:55-109` - Stub auth provider
-
-**Risk**: Complete authentication bypass in production if not disabled
-
-**Fix #1 - Document in compose.yaml**:
-```yaml
-# WARNING: These settings bypass authentication - NEVER use in production
-# Remove or comment out the following lines in production:
-# DISABLE_AUTH: 1  # <-- MUST BE REMOVED IN PRODUCTION
-# DEV_AUTO_LOGIN_USER: benkirk  # <-- MUST BE REMOVED IN PRODUCTION
-```
-
-**Fix #2 - Create `.env.production.example`**:
-```bash
-# SAM Web Application - Production Environment Variables
-# CRITICAL: Copy this to .env and fill in real values
-
-# Flask Configuration
-FLASK_CONFIG=production
-FLASK_SECRET_KEY=  # REQUIRED: Generate with 'python -c "import secrets; print(secrets.token_hex(32))"'
-FLASK_DEBUG=0
-
-# Authentication - CRITICAL SECURITY SETTINGS
-# NEVER set DISABLE_AUTH=1 in production
-# DEV_AUTO_LOGIN_USER should NOT be set in production
-
-# Database Configuration
-SAM_DB_USERNAME=  # REQUIRED
-SAM_DB_PASSWORD=  # REQUIRED
-SAM_DB_SERVER=  # REQUIRED (hostname or IP)
-SAM_DB_NAME=sam
-SAM_DB_REQUIRE_SSL=True  # Recommended for production
-
-# Status Database (optional)
-STATUS_DB_USERNAME=
-STATUS_DB_PASSWORD=
-STATUS_DB_SERVER=
-STATUS_DB_NAME=system_status
-
-# Audit Logging
-AUDIT_ENABLED=True
-AUDIT_LOG_PATH=/var/log/sam/audit
-
-# Application Logging
-LOG_LEVEL=INFO
-LOG_FILE=/var/log/sam/app.log
-
-# Gunicorn Configuration
-GUNICORN_WORKERS=4  # Adjust based on CPU cores
-GUNICORN_ACCESS_LOG=/var/log/sam/access.log
-GUNICORN_ERROR_LOG=/var/log/sam/error.log
-GUNICORN_LOG_LEVEL=info
-
-# JupyterHub Integration (if used)
-# JUPYTERHUB_API_URL=https://jupyterhub.hpc.ucar.edu
-# JUPYTERHUB_API_TOKEN=
-```
-
-**Priority**: CRITICAL - Must ensure dev auth is disabled
+22 tests in `tests/api/test_health_endpoints.py`.
+**Commits**: `f6840ae`, `a5991aa`, `ddd052a`
 
 ---
 
-### ✅ 3. Session Cookie Security Flags — DONE
-
-`SESSION_COOKIE_SECURE`, `SESSION_COOKIE_HTTPONLY`, `SESSION_COOKIE_SAMESITE='Lax'`, and
-`PERMANENT_SESSION_LIFETIME=12h` are now set in `run.py` when `app.debug` is False.
+## Open Items — Prioritised
 
 ---
 
-### 🔴 4. Security Headers Missing (HIGH - ~15 min)
+### Priority 1 — Configuration & Environment Variable Checking
 
-**Current State**: No security headers on HTTP responses
+#### 2 — Dev Auth Enabled by Default (Critical)
 
-**Risk**: Clickjacking, MIME sniffing, XSS attacks
+`compose.yaml` sets `DISABLE_AUTH=1` / `DEV_AUTO_LOGIN_USER=benkirk` for the `webdev`
+service only, but it must **never** reach the production (`webapp`) service.
 
-**Note**: flask-talisman was attempted but caused issues with the containerised reverse-proxy
-deployment model. Revisit with a manual `after_request` approach or a proxy-level solution (nginx).
+**Actions**:
+- Add `# WARNING: never set in production` comments in `compose.yaml` next to the dev vars.
+- Create `.env.production.example` documenting required production env vars (see §11).
+- Ensure the `webapp` service in `compose.yaml` does **not** set `DISABLE_AUTH` or
+  `DEV_AUTO_LOGIN_USER`.
 
-**Priority**: HIGH - Implement soon after launch
+#### 7 — Environment-Based Config Validation (High)
 
----
+**Problem**: `run.py` is a growing config monolith and gives no early error on missing env vars
+(other than `FLASK_SECRET_KEY`).
 
-## Operational Improvements
+**Approach**: Add a `validate_environment()` call at the top of `create_app()`:
 
-### ✅ 5. Production Gunicorn Configuration — DONE
-
-`containers/webapp/gunicorn_config.py` created; production Dockerfile stage now runs:
-`gunicorn -c containers/webapp/gunicorn_config.py "webapp.run:create_app()"`
-
----
-
-### ✅ 6. Health Check Endpoint + DB Pool Monitoring — DONE (merged with #9)
-
-New blueprint `src/webapp/api/v1/health.py`, registered at `/api/v1/health`:
-- `GET /api/v1/health/`     — pings both DB binds, 200/503 (public, for load balancers)
-- `GET /api/v1/health/live` — immediate alive response, no DB call (public, k8s liveness)
-- `GET /api/v1/health/ready`— delegates to `/` check (public, k8s readiness)
-- `GET /api/v1/health/db-pool` — pool stats for all engines (admin only)
-
----
-
-### 🟡 7. Environment-Based Configuration Classes (HIGH - ~30 min)
-
-**Current State**: Configuration scattered across `run.py`, `compose.yaml`, `.env`
-
-**Problem**: Hard to manage different environments, easy to accidentally use dev settings in production
-
-**Fix**: Create `src/webapp/config.py`:
-```python
-"""Flask configuration for different environments."""
-import os
-from datetime import timedelta
-
-
-class Config:
-    """Base configuration with common settings."""
-
-    # Secret key (required)
-    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY')
-    if not SECRET_KEY:
-        raise ValueError(
-            "FLASK_SECRET_KEY environment variable must be set.\n"
-            "Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
-        )
-
-    # Database
-    SAM_DB_USERNAME = os.environ.get('SAM_DB_USERNAME')
-    SAM_DB_PASSWORD = os.environ.get('SAM_DB_PASSWORD')
-    SAM_DB_SERVER = os.environ.get('SAM_DB_SERVER', 'localhost')
-    SAM_DB_NAME = os.environ.get('SAM_DB_NAME', 'sam')
-    SAM_DB_REQUIRE_SSL = os.environ.get('SAM_DB_REQUIRE_SSL', 'False').lower() == 'true'
-
-    # Status database (optional)
-    STATUS_DB_USERNAME = os.environ.get('STATUS_DB_USERNAME')
-    STATUS_DB_PASSWORD = os.environ.get('STATUS_DB_PASSWORD')
-    STATUS_DB_SERVER = os.environ.get('STATUS_DB_SERVER')
-    STATUS_DB_NAME = os.environ.get('STATUS_DB_NAME', 'system_status')
-
-    # Session
-    SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = 'Lax'
-    PERMANENT_SESSION_LIFETIME = timedelta(hours=12)
-
-    # Audit
-    AUDIT_ENABLED = os.environ.get('AUDIT_ENABLED', 'True').lower() == 'true'
-    AUDIT_LOG_PATH = os.environ.get('AUDIT_LOG_PATH', 'logs/audit')
-
-    # Flask-Admin
-    FLASK_ADMIN_SWATCH = 'lumen'
-
-    # File uploads (if applicable)
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB
-
-
-class DevelopmentConfig(Config):
-    """Development-specific configuration."""
-
-    DEBUG = True
-    TESTING = False
-
-    # Development auth (NEVER in production)
-    DISABLE_AUTH = os.environ.get('DISABLE_AUTH', '0') == '1'
-    DEV_AUTO_LOGIN_USER = os.environ.get('DEV_AUTO_LOGIN_USER')
-    DEV_ROLE_MAPPING = {
-        'benkirk': ['admin'],
-        'mtrahan': ['facility_manager'],
-    }
-
-    # Session cookies don't require HTTPS in dev
-    SESSION_COOKIE_SECURE = False
-
-    # Show SQLAlchemy queries in dev
-    SQLALCHEMY_ECHO = os.environ.get('SQLALCHEMY_ECHO', 'False').lower() == 'true'
-
-
-class ProductionConfig(Config):
-    """Production-specific configuration."""
-
-    DEBUG = False
-    TESTING = False
-
-    # Security
-    SESSION_COOKIE_SECURE = True  # Require HTTPS
-
-    # Authentication (MUST be enabled)
-    DISABLE_AUTH = False
-
-    # Never echo SQL in production
-    SQLALCHEMY_ECHO = False
-
-    @classmethod
-    def validate(cls):
-        """Validate that all required production settings are present."""
-        required = [
-            'FLASK_SECRET_KEY',
-            'SAM_DB_USERNAME',
-            'SAM_DB_PASSWORD',
-            'SAM_DB_SERVER',
-        ]
-        missing = [var for var in required if not os.environ.get(var)]
-        if missing:
-            raise ValueError(
-                f"Missing required environment variables for production:\n"
-                f"  {', '.join(missing)}\n"
-                f"See .env.production.example for required variables."
-            )
-
-        # Validate secret key strength
-        secret = os.environ.get('FLASK_SECRET_KEY', '')
-        if len(secret) < 32:
-            raise ValueError(
-                "FLASK_SECRET_KEY must be at least 32 characters.\n"
-                "Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
-            )
-
-
-class TestingConfig(Config):
-    """Testing-specific configuration."""
-
-    DEBUG = False
-    TESTING = True
-
-    # Use test databases
-    SAM_DB_SERVER = os.environ.get('SAM_DB_SERVER', 'localhost')
-    SAM_DB_NAME = os.environ.get('SAM_DB_NAME', 'sam_test')
-
-    # Disable CSRF for testing
-    WTF_CSRF_ENABLED = False
-    SESSION_COOKIE_SECURE = False
-
-    # Disable auth in tests (can be overridden per test)
-    DISABLE_AUTH = True
-
-
-# Configuration dictionary
-config = {
-    'development': DevelopmentConfig,
-    'production': ProductionConfig,
-    'testing': TestingConfig,
-    'default': DevelopmentConfig
-}
-
-
-def get_config():
-    """Get configuration based on FLASK_CONFIG environment variable."""
-    config_name = os.environ.get('FLASK_CONFIG', 'development')
-    return config[config_name]
-```
-
-**Update `src/webapp/run.py`**:
-```python
-from webapp.config import get_config
-
-def create_app():
-    app = Flask(__name__)
-
-    # Load configuration
-    config_class = get_config()
-    app.config.from_object(config_class)
-
-    # Validate production config
-    if isinstance(config_class, type) and issubclass(config_class, ProductionConfig):
-        config_class.validate()
-
-    # ... rest of app setup
-```
-
-**Priority**: HIGH - Critical for environment management
-
----
-
-### 🟡 8. Environment Variable Validation (HIGH - ~20 min)
-
-**Current State**: Missing variables cause cryptic errors later
-
-**Fix**: Add validation to `src/webapp/run.py`:
 ```python
 def validate_environment():
-    """Validate required environment variables are set.
-
-    This function is called early in application startup to
-    provide clear error messages if configuration is incomplete.
-    """
-    required_vars = {
-        'SAM_DB_USERNAME': 'Database username',
-        'SAM_DB_PASSWORD': 'Database password',
-        'SAM_DB_SERVER': 'Database server hostname',
+    required = {
+        'SAM_DB_USERNAME': 'SAM database username',
+        'SAM_DB_PASSWORD': 'SAM database password',
+        'SAM_DB_SERVER':   'SAM database hostname',
     }
-
-    missing = []
-    for var, description in required_vars.items():
-        if not os.environ.get(var):
-            missing.append(f"  - {var}: {description}")
-
+    missing = [f"  {k}: {v}" for k, v in required.items() if not os.getenv(k)]
     if missing:
-        error_msg = (
-            "Missing required environment variables:\n"
-            + "\n".join(missing) +
-            "\n\nPlease check your .env file or environment configuration.\n"
-            "See .env.example for a template."
+        raise EnvironmentError(
+            "Missing required environment variables:\n" + "\n".join(missing) +
+            "\n\nSee .env.example for a template."
         )
-        raise EnvironmentError(error_msg)
-
-    # Validate database connection string format
-    try:
-        db_server = os.environ['SAM_DB_SERVER']
-        if not db_server or db_server.lower() in ['none', 'null']:
-            raise ValueError("SAM_DB_SERVER cannot be empty")
-    except Exception as e:
-        raise EnvironmentError(f"Invalid database configuration: {e}")
-
-
-def create_app():
-    """Application factory."""
-    # Validate environment FIRST
-    validate_environment()
-
-    app = Flask(__name__)
-    # ... rest of setup
 ```
 
-**Priority**: HIGH - Better error messages = faster debugging
+A full `src/webapp/config.py` with `DevelopmentConfig` / `ProductionConfig` / `TestingConfig`
+classes (see original doc) is a good follow-on refactor but **not** required before launch.
+
+**Files**: `src/webapp/run.py` (immediate), optionally `src/webapp/config.py` later.
 
 ---
 
-### ✅ 9. Database Connection Pool Monitoring — DONE (merged into #6)
+### Priority 2 — Security Headers
 
-Implemented as `GET /api/v1/health/db-pool` in the new `health.py` blueprint.
-Returns pool stats (size, checked_in/out, overflow, utilization_pct, health) for both
-`sam` and `system_status` engine binds. Admin login required.
+#### 4 — HTTP Security Headers (High)
 
----
+**Background**: flask-talisman was attempted (`f6840ae`) and immediately reverted (`a5991aa`)
+because `force_https=True` caused an infinite redirect loop in the containerised deployment
+(HTTP-only container behind a TLS-terminating proxy).
 
-## Logging & Observability
+**Recommended approach — manual `after_request` hook** in `run.py`:
 
-### 🟡 10. Structured Logging Configuration (HIGH - ~30 min)
-
-**Current State**: Audit logging excellent, but application logging uses print statements
-
-**Fix**: Create `src/webapp/logging_config.py`:
 ```python
-"""Structured logging configuration for SAM webapp."""
-import logging
-import logging.handlers
-import os
-import sys
-from datetime import datetime
-
-
-def configure_logging(app):
-    """Configure structured logging for the application.
-
-    In development: Human-readable format to console
-    In production: JSON format for log aggregators
-
-    Args:
-        app: Flask application instance
-    """
-    # Log level from environment
-    log_level_name = os.environ.get('LOG_LEVEL', 'INFO').upper()
-    log_level = getattr(logging, log_level_name)
-
-    # Create formatters
-    if app.config.get('DEBUG'):
-        # Human-readable format for development
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-    else:
-        # JSON format for production (easier to parse in log aggregators)
-        formatter = JsonFormatter()
-
-    # Console handler (always enabled)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(log_level)
-
-    # File handler (if log path specified)
-    handlers = [console_handler]
-    log_file = os.environ.get('LOG_FILE')
-    if log_file:
-        # Create log directory if it doesn't exist
-        log_dir = os.path.dirname(log_file)
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-
-        # Rotating file handler (10 MB, 5 backups)
-        file_handler = logging.handlers.RotatingFileHandler(
-            log_file,
-            maxBytes=10 * 1024 * 1024,  # 10 MB
-            backupCount=5,
-            encoding='utf-8'
-        )
-        file_handler.setFormatter(formatter)
-        file_handler.setLevel(log_level)
-        handlers.append(file_handler)
-
-    # Configure root logger
-    logging.basicConfig(
-        level=log_level,
-        handlers=handlers,
-        force=True  # Override any existing configuration
-    )
-
-    # Configure Flask app logger
-    app.logger.setLevel(log_level)
-    app.logger.handlers = []  # Clear any existing handlers
-    for handler in handlers:
-        app.logger.addHandler(handler)
-
-    # Suppress noisy third-party loggers
-    logging.getLogger('werkzeug').setLevel(logging.WARNING)
-    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
-
-    # Log startup info
-    app.logger.info("=" * 60)
-    app.logger.info("SAM Webapp Logging Configured")
-    app.logger.info(f"Log level: {log_level_name}")
-    app.logger.info(f"Handlers: {len(handlers)} ({', '.join(h.__class__.__name__ for h in handlers)})")
-    if log_file:
-        app.logger.info(f"Log file: {log_file}")
-    app.logger.info("=" * 60)
-
-
-class JsonFormatter(logging.Formatter):
-    """JSON log formatter for structured logging.
-
-    Produces JSON logs that are easy to parse in log aggregators
-    like ELK stack, Splunk, CloudWatch, etc.
-    """
-
-    def format(self, record):
-        """Format log record as JSON."""
-        import json
-
-        log_data = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
-            'level': record.levelname,
-            'logger': record.name,
-            'message': record.getMessage(),
-            'module': record.module,
-            'function': record.funcName,
-            'line': record.lineno,
-        }
-
-        # Add exception info if present
-        if record.exc_info:
-            log_data['exception'] = self.formatException(record.exc_info)
-
-        # Add extra fields (from extra={} in log calls)
-        if hasattr(record, 'user_id'):
-            log_data['user_id'] = record.user_id
-        if hasattr(record, 'request_id'):
-            log_data['request_id'] = record.request_id
-        if hasattr(record, 'username'):
-            log_data['username'] = record.username
-        if hasattr(record, 'endpoint'):
-            log_data['endpoint'] = record.endpoint
-        if hasattr(record, 'method'):
-            log_data['method'] = record.method
-        if hasattr(record, 'status_code'):
-            log_data['status_code'] = record.status_code
-        if hasattr(record, 'response_time_ms'):
-            log_data['response_time_ms'] = record.response_time_ms
-
-        return json.dumps(log_data)
-
-
-class RequestContextFilter(logging.Filter):
-    """Add request context to log records.
-
-    Automatically adds request ID, user, etc. to all log messages
-    during request handling.
-    """
-
-    def filter(self, record):
-        """Add Flask request context to log record."""
-        from flask import has_request_context, request, g
-        from flask_login import current_user
-
-        if has_request_context():
-            record.endpoint = request.endpoint
-            record.method = request.method
-            record.path = request.path
-
-            if hasattr(g, 'request_id'):
-                record.request_id = g.request_id
-
-            if current_user.is_authenticated:
-                record.user_id = current_user.user_id
-                record.username = current_user.username
-
-        return True
-```
-
-**Update `src/webapp/run.py`**:
-```python
-from webapp.logging_config import configure_logging, RequestContextFilter
-
-def create_app():
-    app = Flask(__name__)
-    # ... config setup ...
-
-    # Configure logging
-    configure_logging(app)
-
-    # Add request context filter
-    app.logger.addFilter(RequestContextFilter())
-
-    app.logger.info("SAM Webapp starting...")
-
-    # ... rest of setup ...
-```
-
-**Usage in code**:
-```python
-# Simple logging
-app.logger.info("User logged in successfully")
-
-# With extra context
-app.logger.warning(
-    "Failed login attempt",
-    extra={'username': username, 'ip_address': request.remote_addr}
-)
-
-# Exception logging
-try:
-    something_risky()
-except Exception:
-    app.logger.exception("Error processing request")  # Includes traceback
-```
-
-**Priority**: HIGH - Essential for production debugging
-
----
-
-### 🟡 11. Request ID Tracking (HIGH - ~15 min)
-
-**Current State**: No way to trace requests through logs
-
-**Fix**: Add middleware to `src/webapp/run.py`:
-```python
-import uuid
-from flask import g, request
-
-@app.before_request
-def before_request_logging():
-    """Add request ID for distributed tracing.
-
-    Request ID is either:
-    1. Provided by load balancer/proxy (X-Request-ID header)
-    2. Generated fresh for this request
-    """
-    request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
-    g.request_id = request_id
-    g.request_start_time = time.time()
-
-
 @app.after_request
-def after_request_logging(response):
-    """Log request completion with timing and request ID."""
-    if hasattr(g, 'request_id'):
-        # Add request ID to response headers
-        response.headers['X-Request-ID'] = g.request_id
-
-        # Calculate response time
-        if hasattr(g, 'request_start_time'):
-            response_time_ms = (time.time() - g.request_start_time) * 1000
-
-            # Log request with rich context
-            app.logger.info(
-                f"Request completed: {request.method} {request.path} -> {response.status_code}",
-                extra={
-                    'request_id': g.request_id,
-                    'method': request.method,
-                    'path': request.path,
-                    'status_code': response.status_code,
-                    'response_time_ms': round(response_time_ms, 2)
-                }
-            )
-
-            # Warn on slow requests
-            if response_time_ms > 5000:  # 5 seconds
-                app.logger.warning(
-                    f"Slow request detected: {request.method} {request.path}",
-                    extra={
-                        'request_id': g.request_id,
-                        'response_time_ms': round(response_time_ms, 2)
-                    }
-                )
-
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options']        = 'SAMEORIGIN'
+    response.headers['Referrer-Policy']        = 'strict-origin-when-cross-origin'
+    if not app.debug:
+        response.headers['Strict-Transport-Security'] = (
+            'max-age=31536000; includeSubDomains'
+        )
     return response
 ```
 
-**Benefits**:
-- Trace requests across logs
-- Identify slow requests
-- Debug issues in distributed systems
-- Correlate with load balancer/proxy logs
+A Content-Security-Policy header is the most valuable but requires auditing
+which CDN domains the templates use before enabling. Defer CSP until a dedicated
+audit pass; the four headers above are safe to add immediately.
 
-**Priority**: HIGH - Critical for production debugging
+**Alternative**: configure the nginx reverse proxy to inject headers at the proxy layer
+(no code change required). Either approach satisfies the requirement.
+
+**Files**: `src/webapp/run.py` (after_request hook) *or* nginx config.
 
 ---
 
-### 🟢 12. Application Performance Monitoring (NICE TO HAVE - Future)
+### Priority 3 — Logging
 
-**Options**:
-- **New Relic**: Full-stack APM with automatic instrumentation
-- **DataDog**: Metrics, traces, logs in one platform
-- **Sentry**: Error tracking and performance monitoring
-- **Elastic APM**: Part of ELK stack
-- **Prometheus + Grafana**: Self-hosted metrics
+#### 8 — Structured Application Logging (High)
 
-**Example - Sentry Integration** (~30 min):
+**Problem**: The app currently has no `app.logger` instrumentation; debug info relies on
+`print()` or gunicorn's access log.
+
+**Approach**: Create `src/webapp/logging_config.py` with a `configure_logging(app)` function:
+
+- **Development**: human-readable `%(asctime)s %(levelname)s %(name)s — %(message)s`
+- **Production**: JSON lines (one object per log event) for log-aggregator ingestion
+
+Wire into `create_app()`:
 ```python
-import sentry_sdk
-from sentry_sdk.integrations.flask import FlaskIntegration
-from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+from webapp.logging_config import configure_logging
+configure_logging(app)
+app.logger.info("SAM webapp starting — config: %s", os.getenv('FLASK_CONFIG', 'default'))
+```
 
-if not app.config.get('DEBUG'):
-    sentry_sdk.init(
-        dsn=os.environ.get('SENTRY_DSN'),
-        integrations=[
-            FlaskIntegration(),
-            SqlalchemyIntegration(),
-        ],
-        traces_sample_rate=0.1,  # 10% of transactions
-        profiles_sample_rate=0.1,
-        environment=os.environ.get('FLASK_CONFIG', 'production'),
+Log level from `LOG_LEVEL` env var (default `INFO`); rotating file if `LOG_FILE` is set.
+Suppress noisy third-party loggers (`werkzeug`, `sqlalchemy.engine`) to `WARNING`.
+
+**Files**: `src/webapp/logging_config.py` (new), `src/webapp/run.py`.
+
+#### 9 — Request ID Tracking (High)
+
+**Problem**: No way to correlate a user complaint / browser error with a specific server log line.
+
+**Approach**: Add `before_request` / `after_request` hooks to `run.py`:
+
+```python
+import uuid, time
+from flask import g, request
+
+@app.before_request
+def _set_request_id():
+    g.request_id    = request.headers.get('X-Request-ID', str(uuid.uuid4()))
+    g.request_start = time.monotonic()
+
+@app.after_request
+def _log_request(response):
+    elapsed_ms = round((time.monotonic() - g.request_start) * 1000, 1)
+    response.headers['X-Request-ID'] = g.request_id
+    app.logger.info(
+        '%s %s → %s  (%.1f ms)  rid=%s',
+        request.method, request.path, response.status_code,
+        elapsed_ms, g.request_id,
     )
+    if elapsed_ms > 5000:
+        app.logger.warning('Slow request: %.1f ms  %s %s', elapsed_ms,
+                           request.method, request.path)
+    return response
 ```
 
-**Priority**: NICE TO HAVE - Invest after launch
+Adding `rid=` to every log line makes grepping for a single request trivial.
+
+**Files**: `src/webapp/run.py`.
 
 ---
 
-## Testing Gaps
+### Priority 4 — Miscellaneous / Other
 
-### 🟡 13. Security Testing Suite (MEDIUM - ~3 hours)
+#### 10 — Security Testing Suite (Medium)
 
-**Current State**: 380 tests, 77% coverage, but limited security testing
+Current coverage (~77%) is strong on happy paths but thin on security boundaries.
+Create `tests/security/` with:
 
-**Missing**:
-- Authentication bypass attempts
-- Authorization boundary testing
-- SQL injection prevention
-- XSS prevention
-- CSRF token validation
+- **`test_auth_boundaries.py`**: unauthenticated access → redirect, cross-user data access → 403
+- **`test_input_validation.py`**: SQLi in search params returns 200/400 (not 500), no data leak
+- **`test_csrf.py`**: POST endpoints without CSRF token are rejected when WTF_CSRF_ENABLED=True
 
-**Fix**: Create `tests/security/test_authentication.py`:
-```python
-"""Security tests for authentication and authorization."""
-import pytest
-from webapp.run import create_app
+These can be added incrementally; start with auth boundary tests (highest impact, least effort).
 
+#### 11 — Deployment Checklist & Production Env Template (Medium)
 
-class TestAuthenticationSecurity:
-    """Test authentication security boundaries."""
+Create two files:
 
-    def test_login_requires_password(self, client):
-        """Empty password should be rejected."""
-        response = client.post('/login', data={
-            'username': 'testuser',
-            'password': ''
-        })
-        assert response.status_code == 401
+**`DEPLOYMENT.md`** — pre-flight checklist covering:
+- Security env vars verified (SECRET_KEY, no DISABLE_AUTH)
+- SSL/TLS and HSTS checked
+- DB credentials use a read-only or service account
+- Health endpoint responding (`GET /api/v1/health/`)
+- Log paths exist and are writable
+- Rollback procedure documented
 
-    def test_login_rate_limiting(self, client):
-        """Multiple failed logins should be rate limited."""
-        # TODO: Implement rate limiting first
-        pass
+**`.env.production.example`** — annotated template for all required prod vars:
+`FLASK_SECRET_KEY`, `SAM_DB_*`, `STATUS_DB_*`, `LOG_LEVEL`, `LOG_FILE`,
+`AUDIT_ENABLED`, `AUDIT_LOG_PATH`.
 
-    def test_session_expires(self, client):
-        """Sessions should expire after timeout."""
-        # TODO: Test session lifetime
-        pass
+#### 12 — Metrics & Alerting (Future)
 
-    def test_logout_invalidates_session(self, client, auth):
-        """Logout should prevent further requests."""
-        auth.login()
-        auth.logout()
+Not needed before launch. Revisit once the application is running in production
+and baseline traffic patterns are known.
 
-        response = client.get('/api/v1/projects/')
-        assert response.status_code == 401
+Options: `prometheus-flask-exporter` + Grafana, or Sentry for error tracking.
+Key metrics to capture when the time comes: request latency p95, error rate (5xx),
+DB pool utilization (already available via `/api/v1/health/db-pool`).
 
+---
 
-class TestAuthorizationSecurity:
-    """Test authorization boundary conditions."""
+## Implementation Order
 
-    def test_admin_required_endpoints(self, client, auth):
-        """Non-admin users cannot access admin endpoints."""
-        auth.login(username='regularuser')
-
-        response = client.get('/admin/')
-        assert response.status_code == 403
-
-    def test_user_cannot_view_other_users_data(self, client, auth):
-        """Users can only access their own sensitive data."""
-        auth.login(username='user1')
-
-        # Try to access user2's data
-        response = client.get('/api/v1/users/user2')
-        assert response.status_code == 403
-
-
-class TestInputValidation:
-    """Test input validation and injection prevention."""
-
-    def test_sql_injection_prevention(self, client, auth):
-        """SQL injection attempts should be blocked."""
-        auth.login()
-
-        # Try SQL injection in search
-        response = client.get("/api/v1/users/?search=' OR '1'='1")
-        assert response.status_code in [200, 400]  # Not 500
-        # Should not return all users
-
-    def test_xss_prevention_in_project_title(self, client, auth, db):
-        """XSS in project titles should be escaped."""
-        auth.login(username='admin')
-
-        # Try to create project with XSS
-        response = client.post('/api/v1/projects/', json={
-            'projcode': 'TEST0001',
-            'title': '<script>alert("XSS")</script>',
-        })
-
-        # Verify script is escaped in response
-        if response.status_code == 200:
-            assert '<script>' not in response.get_data(as_text=True)
 ```
-
-**Priority**: MEDIUM - Important for secure production
-
----
-
-## Monitoring & Alerting
-
-### 🟡 14. Metrics Collection (MEDIUM - ~2 hours)
-
-**Recommendation**: Use Prometheus for metrics collection
-
-**Install**:
-```bash
-pip install prometheus-flask-exporter
-```
-
-**Setup**: Add to `src/webapp/run.py`:
-```python
-from prometheus_flask_exporter import PrometheusMetrics
-
-def create_app():
-    app = Flask(__name__)
-    # ... config ...
-
-    # Prometheus metrics
-    if not app.config.get('DEBUG'):
-        metrics = PrometheusMetrics(app)
-
-        # Custom metrics
-        metrics.info('sam_webapp_info', 'SAM Webapp info', version='1.0.0')
-
-        # Track endpoint latency by endpoint
-        metrics.histogram(
-            'request_duration_seconds',
-            'Request duration in seconds',
-            labels={'endpoint': lambda: request.endpoint}
-        )
-
-    # ... rest of setup ...
-```
-
-**Metrics endpoint**: `/metrics` (scrape with Prometheus)
-
-**Priority**: MEDIUM - Very helpful for production monitoring
-
----
-
-### 🟡 15. Alerting Rules (MEDIUM - ~1 hour)
-
-**Recommendation**: Define alert rules for critical conditions
-
-**Example Prometheus Alert Rules**:
-```yaml
-# prometheus-alerts.yml
-groups:
-  - name: sam_webapp
-    interval: 30s
-    rules:
-      # High error rate
-      - alert: HighErrorRate
-        expr: rate(flask_http_request_total{status=~"5.."}[5m]) > 0.05
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "High error rate detected"
-          description: "Error rate is {{ $value }} (threshold: 0.05)"
-
-      # Slow responses
-      - alert: SlowResponses
-        expr: histogram_quantile(0.95, flask_http_request_duration_seconds_bucket) > 5
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "95th percentile response time is high"
-          description: "P95 latency: {{ $value }}s"
-
-      # Database pool exhaustion
-      - alert: DatabasePoolExhausted
-        expr: database_pool_utilization_percent > 90
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Database connection pool nearly exhausted"
-          description: "Pool utilization: {{ $value }}%"
-
-      # Service down
-      - alert: ServiceDown
-        expr: up{job="sam-webapp"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "SAM Webapp is down"
-          description: "Service has been down for 1 minute"
-```
-
-**Priority**: MEDIUM - Set up after launch
-
----
-
-## Documentation
-
-### 🟡 16. Production Deployment Checklist (HIGH - ~30 min)
-
-**Fix**: Create `DEPLOYMENT.md`:
-```markdown
-# SAM Webapp - Production Deployment Checklist
-
-## Pre-Deployment Checklist
-
-### Security Configuration
-- [ ] `FLASK_SECRET_KEY` set to strong random value (64+ chars)
-- [ ] `DISABLE_AUTH` is NOT set (or set to 0)
-- [ ] `DEV_AUTO_LOGIN_USER` is NOT set
-- [ ] Database credentials use dedicated service account (not root)
-- [ ] Database requires SSL/TLS (`SAM_DB_REQUIRE_SSL=True`)
-- [ ] Session cookies configured for HTTPS
-- [ ] Security headers middleware enabled
-
-### Environment Variables
-- [ ] All required variables set (see `.env.production.example`)
-- [ ] No sensitive values in environment files checked into git
-- [ ] Database connection strings tested
-- [ ] Log paths exist and are writable
-- [ ] FLASK_CONFIG=production
-
-### Application Configuration
-- [ ] Debug mode disabled (`FLASK_DEBUG=0`)
-- [ ] Gunicorn configured with appropriate worker count
-- [ ] Health check endpoint responding
-- [ ] Audit logging enabled and writing to correct path
-
-### Infrastructure
-- [ ] Load balancer configured with health checks
-- [ ] HTTPS/TLS certificate installed and valid
-- [ ] Firewall rules configured
-- [ ] Log rotation configured
-- [ ] Backup strategy in place
-
-### Testing
-- [ ] All tests pass (`pytest tests/`)
-- [ ] Integration tests run against staging environment
-- [ ] Load testing completed
-- [ ] Security scan completed (no critical findings)
-
-### Monitoring
-- [ ] Health check monitored
-- [ ] Error rate monitored
-- [ ] Response time monitored
-- [ ] Database connection pool monitored
-- [ ] Disk space monitored
-- [ ] Alert rules configured
-
-## Deployment Steps
-
-1. **Backup current state**
-   ```bash
-   # Backup database
-   mysqldump -u $USER -p sam > backup-$(date +%Y%m%d).sql
-
-   # Backup application files
-   tar czf app-backup-$(date +%Y%m%d).tar.gz /path/to/app
-   ```
-
-2. **Pull latest code**
-   ```bash
-   git fetch origin
-   git checkout main
-   git pull origin main
-   ```
-
-3. **Update dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Run database migrations** (if applicable)
-   ```bash
-   # TODO: Add Alembic migration steps when implemented
-   ```
-
-5. **Restart application**
-   ```bash
-   # Docker Compose
-   docker compose down
-   docker compose up -d
-
-   # Or systemd
-   sudo systemctl restart sam-webapp
-   ```
-
-6. **Verify deployment**
-   ```bash
-   # Check health endpoint
-   curl https://sam.example.com/api/v1/health
-
-   # Check logs
-   tail -f /var/log/sam/app.log
-   ```
-
-7. **Monitor for errors**
-   - Watch logs for 5-10 minutes
-   - Check error rate in monitoring dashboard
-   - Verify critical workflows (login, project view, etc.)
-
-## Rollback Procedure
-
-If deployment fails:
-
-1. **Revert code**
-   ```bash
-   git checkout <previous-commit>
-   ```
-
-2. **Restore database** (if migrations were run)
-   ```bash
-   mysql -u $USER -p sam < backup-YYYYMMDD.sql
-   ```
-
-3. **Restart application**
-   ```bash
-   docker compose restart
-   ```
-
-4. **Verify rollback**
-   ```bash
-   curl https://sam.example.com/api/v1/health
-   ```
-
-## Post-Deployment Verification
-
-- [ ] Health check returns 200
-- [ ] Can log in successfully
-- [ ] Can view projects and users
-- [ ] Can create/edit allocations (if admin)
-- [ ] API endpoints respond correctly
-- [ ] No error spikes in logs
-- [ ] Response times normal
-- [ ] Database connection pool healthy
-
-## Troubleshooting
-
-### Service won't start
-- Check environment variables: `docker compose config`
-- Check logs: `docker compose logs webapp`
-- Verify database connectivity: `mysql -u $USER -p -h $HOST sam`
-
-### 500 errors
-- Check application logs: `/var/log/sam/app.log`
-- Check Gunicorn logs: `/var/log/sam/error.log`
-- Look for exceptions in Sentry (if configured)
-
-### Slow responses
-- Check database pool: `/api/v1/status/db-pool`
-- Check slow query log
-- Review recent code changes for inefficient queries
-
-### Database connection errors
-- Verify credentials
-- Check SSL/TLS configuration
-- Verify database server is accessible
-- Check connection pool exhaustion
-```
-
-**Priority**: HIGH - Required before production
-
----
-
-## Implementation Timeline
-
-### Phase 1: Critical Security Fixes (IMMEDIATE - ~1 hour)
-**Must complete before any production deployment**
-
-1. ✅ Replace hardcoded SECRET_KEY
-2. ✅ Add session cookie security flags
-3. Document dev auth disable requirement (~5 min)
-4. Create `.env.production.example` (~10 min)
-5. Add security headers middleware (~15 min)
-6. Environment variable validation (~20 min)
-
-**Acceptance Criteria**:
-- No hardcoded secrets in code
-- Session cookies secured for HTTPS
-- Clear production config template exists
-- Dev auth warnings documented
-
----
-
-### Phase 2: Operational Readiness (HIGH - ~2 hours)
-**Complete within first week of production**
-
-7. Create Gunicorn production config (~20 min)
-8. Add health check endpoint (~15 min)
-9. Environment-based config classes (~30 min)
-10. Structured logging configuration (~30 min)
-11. Request ID tracking (~15 min)
-12. Production deployment checklist (~30 min)
-
-**Acceptance Criteria**:
-- Production-ready server configuration
-- Health checks operational
-- Clear environment separation
-- Structured logging in place
-- Deployment procedures documented
-
----
-
-### Phase 3: Monitoring & Testing (MEDIUM - ~6 hours)
-**Complete within first month**
-
-13. Database connection pool monitoring (~20 min)
-14. Security testing suite (~3 hours)
-15. Metrics collection (Prometheus) (~2 hours)
-16. Alerting rules configuration (~1 hour)
-
-**Acceptance Criteria**:
-- Key metrics being collected
-- Critical alerts configured
-- Security test coverage >80%
-- Pool exhaustion detectable
-
----
-
-### Phase 4: Nice-to-Have (Future)
-**Implement as needed**
-
-17. Application Performance Monitoring integration
-18. Advanced metrics and dashboards
-19. Chaos engineering tests
-
----
-
-## Reference Information
-
-### Files Modified/Created
-
-**New Files**:
-- `gunicorn_config.py` - Production server config
-- `src/webapp/config.py` - Environment-based configuration
-- `src/webapp/logging_config.py` - Structured logging
-- `.env.production.example` - Production environment template
-- `DEPLOYMENT.md` - Deployment checklist
-- `tests/security/test_authentication.py` - Security tests
-- `prometheus-alerts.yml` - Alert rules (if using Prometheus)
-
-**Modified Files**:
-- `src/webapp/run.py` - Security, config, logging, middleware
-- `src/webapp/api/v1/status.py` - Health check and monitoring endpoints
-- `compose.yaml` - Add warnings about dev settings
-- `containers/webapp/Dockerfile` - Use Gunicorn config
-
-### Critical Production Environment Variables
-
-```bash
-# Required
-FLASK_CONFIG=production
-FLASK_SECRET_KEY=<64-char-hex-string>
-SAM_DB_USERNAME=<username>
-SAM_DB_PASSWORD=<password>
-SAM_DB_SERVER=<hostname>
-
-# Security
-SAM_DB_REQUIRE_SSL=True
-# DISABLE_AUTH must NOT be set
-# DEV_AUTO_LOGIN_USER must NOT be set
-
-# Logging
-LOG_LEVEL=INFO
-LOG_FILE=/var/log/sam/app.log
-
-# Gunicorn
-GUNICORN_WORKERS=4
-GUNICORN_ACCESS_LOG=/var/log/sam/access.log
-GUNICORN_ERROR_LOG=/var/log/sam/error.log
-```
-
-### Quick Commands
-
-```bash
-# Generate secret key
-python -c 'import secrets; print(secrets.token_hex(32))'
-
-# Test production config
-FLASK_CONFIG=production python -c 'from webapp.run import create_app; app = create_app()'
-
-# Check health endpoint
-curl http://localhost:5050/api/v1/health
-
-# View database pool status
-curl http://localhost:5050/api/v1/status/db-pool
+Next sprint:
+  1. #2  — compose.yaml dev-auth comments + webapp service audit      (~10 min)
+  2. #7  — validate_environment() in run.py                           (~20 min)
+  3. #4  — after_request security headers                             (~15 min)
+  4. #8  — logging_config.py + wire into run.py                       (~45 min)
+  5. #9  — request ID before/after hooks                              (~15 min)
+
+Before launch:
+  6. #11 — DEPLOYMENT.md + .env.production.example                    (~30 min)
+
+Post-launch:
+  7. #10 — Security test suite                                        (~3 h)
+  8. #12 — Metrics & alerting                                         (future)
 ```
 
 ---
 
-## Summary
-
-This document identified **30 improvements** to make the SAM webapp production-ready:
-
-- **4 Critical security issues** that must be fixed before deployment
-- **13 High priority** operational and configuration improvements
-- **10 Medium priority** monitoring, testing, and documentation tasks
-- **3 Nice-to-have** advanced features for future implementation
-
-**Total estimated time**: ~10 hours for Phases 1-3 (critical through medium priority)
-
-**Next Steps**:
-1. Review this document with the team
-2. Prioritize based on deployment timeline
-3. Create tickets/issues for each improvement
-4. Implement Phase 1 (Critical) immediately
-5. Schedule Phases 2-3 based on launch date
-
----
-
-**Document Version**: 1.0
-**Last Updated**: 2025-12-23
-**Maintained By**: Development Team
+*Last updated: 2026-02-23 — webprod branch*
