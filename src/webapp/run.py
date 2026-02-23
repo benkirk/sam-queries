@@ -5,7 +5,6 @@ os.environ['FLASK_ACTIVE'] = '1'
 
 from flask import Flask, redirect, url_for
 from flask_login import LoginManager, current_user
-from flask_talisman import Talisman
 import sam.session
 import system_status.session
 
@@ -91,37 +90,6 @@ def create_app():
 
     # Initialize db with app
     db.init_app(app)
-
-    # =========================================================================
-    # SECURITY HEADERS
-    # =========================================================================
-    # flask-talisman sets HSTS, X-Frame-Options, X-Content-Type-Options, CSP,
-    # and referrer policy.
-    #
-    # force_https is intentionally driven by an explicit env var, NOT app.debug.
-    # In containerised deployments TLS is terminated upstream (load balancer /
-    # reverse proxy) and the app itself always serves plain HTTP — setting
-    # force_https=True in that case causes an infinite HTTPS redirect loop.
-    # Set FLASK_FORCE_HTTPS=true only when the app terminates TLS directly.
-    force_https = os.environ.get('FLASK_FORCE_HTTPS', '').lower() in ('true', '1', 'yes')
-    Talisman(
-        app,
-        force_https=force_https,
-        strict_transport_security=force_https,
-        session_cookie_secure=not app.debug,  # aligns with SESSION_COOKIE_SECURE above
-        content_security_policy={
-            'default-src': "'self'",
-            'script-src':  ["'self'", "'unsafe-inline'",
-                            "cdn.jsdelivr.net", "code.jquery.com"],
-            'style-src':   ["'self'", "'unsafe-inline'",
-                            "cdn.jsdelivr.net", "stackpath.bootstrapcdn.com"],
-            'font-src':    ["'self'", "stackpath.bootstrapcdn.com"],
-            'img-src':     ["'self'", "data:"],
-        },
-        frame_options='SAMEORIGIN',          # allow same-origin iframes (Flask-Admin)
-        referrer_policy='strict-origin-when-cross-origin',
-    )
-    # =========================================================================
 
     # =========================================================================
     # AUDIT LOGGING INITIALIZATION

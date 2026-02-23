@@ -25,7 +25,6 @@ dependencies = [
     "flask-admin",
     "flask-login",
     "flask-sqlalchemy",
-    "flask-talisman",
     "gunicorn",
     "marshmallow-sqlalchemy",
     "matplotlib",

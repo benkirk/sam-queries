@@ -6,7 +6,7 @@ This document provides a comprehensive analysis of production deployment concern
 
 **Quick Stats**:
 - **Critical Security Issues**: 2 remaining ~~4~~ ✅ #1 #3 done
-- **High Priority**: 10 remaining ~~13~~ ✅ #4 #5 #6 done; #9 folded into #6
+- **High Priority**: 11 remaining ~~13~~ ✅ #5 #6 done; #9 folded into #6
 - **Medium Priority**: 10 (monitoring, testing, documentation)
 - **Nice to Have**: 3 (advanced features for future)
 
@@ -110,11 +110,16 @@ GUNICORN_LOG_LEVEL=info
 
 ---
 
-### ✅ 4. Security Headers — DONE
+### 🔴 4. Security Headers Missing (HIGH - ~15 min)
 
-`flask-talisman` added to `pyproject.toml` and initialized in `run.py` after `db.init_app()`.
-Provides HSTS, X-Frame-Options (`SAMEORIGIN`), X-Content-Type-Options, CSP, and referrer policy.
-`force_https` and HSTS disabled in debug mode; CSP tuned for Bootstrap/jQuery CDNs used by the app.
+**Current State**: No security headers on HTTP responses
+
+**Risk**: Clickjacking, MIME sniffing, XSS attacks
+
+**Note**: flask-talisman was attempted but caused issues with the containerised reverse-proxy
+deployment model. Revisit with a manual `after_request` approach or a proxy-level solution (nginx).
+
+**Priority**: HIGH - Implement soon after launch
 
 ---
 
