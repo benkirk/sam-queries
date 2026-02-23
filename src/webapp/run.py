@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+from datetime import timedelta
 os.environ['FLASK_ACTIVE'] = '1'
 
 from flask import Flask, redirect, url_for
@@ -30,7 +31,19 @@ def create_app():
     app = Flask(__name__)
 
     # Flask configuration
-    app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'
+    app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY')
+    if not app.config['SECRET_KEY']:
+        raise ValueError(
+            "FLASK_SECRET_KEY environment variable must be set. "
+            "Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
+        )
+
+    # Session cookie security (enabled when not in debug mode)
+    if not app.debug:
+        app.config['SESSION_COOKIE_SECURE'] = True       # HTTPS only
+        app.config['SESSION_COOKIE_HTTPONLY'] = True     # Block JS access (XSS)
+        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'   # CSRF protection
+        app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=12)
 
     # Authentication provider configuration
     app.config['AUTH_PROVIDER'] = 'stub'  # Options: 'stub', 'ldap', 'saml'

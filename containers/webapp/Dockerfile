@@ -25,6 +25,11 @@ SAM_DB_REQUIRE_SSL=false
 STATUS_DB_SERVER=mysql
 STATUS_DB_USERNAME=root
 STATUS_DB_PASSWORD=root
+
+#-------------------------
+# Flask application security
+# WARNING: dev-only key - change for production
+FLASK_SECRET_KEY=dev-only-insecure-key-change-for-production
 FILE1
 
 WORKDIR /code

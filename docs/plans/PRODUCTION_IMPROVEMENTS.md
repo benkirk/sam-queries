@@ -5,7 +5,7 @@
 This document provides a comprehensive analysis of production deployment concerns and recommendations for the SAM (System for Allocation Management) web application. Based on an extensive codebase review, we've identified **30 improvements** organized into four priority levels.
 
 **Quick Stats**:
-- **Critical Security Issues**: 4 (must fix before production)
+- **Critical Security Issues**: 2 remaining (must fix before production) ~~4~~ ✅ #1 #3 done
 - **High Priority**: 13 (operational and configuration improvements)
 - **Medium Priority**: 10 (monitoring, testing, documentation)
 - **Nice to Have**: 3 (advanced features for future)
@@ -29,36 +29,10 @@ This document provides a comprehensive analysis of production deployment concern
 
 ## Critical Security Issues
 
-### 🔴 1. Hardcoded Secret Key (IMMEDIATE - ~5 min)
+### ✅ 1. Hardcoded Secret Key — DONE
 
-**Current State**: `src/webapp/run.py:33`
-```python
-app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'
-```
-
-**Risk**: Session hijacking, CSRF attacks, compromised authentication
-
-**Fix**:
-```python
-import os
-import secrets
-
-# Get secret key from environment or generate secure one
-app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY')
-if not app.config['SECRET_KEY']:
-    raise ValueError(
-        "FLASK_SECRET_KEY environment variable must be set. "
-        "Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
-    )
-```
-
-**Add to `.env`**:
-```bash
-# Generate with: python -c 'import secrets; print(secrets.token_hex(32))'
-FLASK_SECRET_KEY=your_generated_64_character_hex_string_here
-```
-
-**Priority**: CRITICAL - Must fix before any production deployment
+`SECRET_KEY` now reads from `FLASK_SECRET_KEY` env var and raises `ValueError` if unset.
+`FLASK_SECRET_KEY` added to `.env.example`, `containers/webapp/Dockerfile` default env, and local `.env`.
 
 ---
 
@@ -129,30 +103,10 @@ GUNICORN_LOG_LEVEL=info
 
 ---
 
-### 🔴 3. Session Cookie Security Flags Missing (IMMEDIATE - ~5 min)
+### ✅ 3. Session Cookie Security Flags — DONE
 
-**Current State**: No session cookie security configuration
-
-**Risk**: Session hijacking via XSS, CSRF attacks
-
-**Fix**: Add to `src/webapp/run.py` (after SECRET_KEY):
-```python
-# Session cookie security
-if not app.config.get('DEBUG', False):
-    # HTTPS only (requires SSL/TLS)
-    app.config['SESSION_COOKIE_SECURE'] = True
-
-    # Prevent JavaScript access (XSS protection)
-    app.config['SESSION_COOKIE_HTTPONLY'] = True
-
-    # CSRF protection
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-
-    # Session lifetime (optional but recommended)
-    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=12)
-```
-
-**Priority**: CRITICAL - Implement before production
+`SESSION_COOKIE_SECURE`, `SESSION_COOKIE_HTTPONLY`, `SESSION_COOKIE_SAMESITE='Lax'`, and
+`PERMANENT_SESSION_LIFETIME=12h` are now set in `run.py` when `app.debug` is False.
 
 ---
 
@@ -1329,8 +1283,8 @@ If deployment fails:
 ### Phase 1: Critical Security Fixes (IMMEDIATE - ~1 hour)
 **Must complete before any production deployment**
 
-1. Replace hardcoded SECRET_KEY (~5 min)
-2. Add session cookie security flags (~5 min)
+1. ✅ Replace hardcoded SECRET_KEY
+2. ✅ Add session cookie security flags
 3. Document dev auth disable requirement (~5 min)
 4. Create `.env.production.example` (~10 min)
 5. Add security headers middleware (~15 min)
