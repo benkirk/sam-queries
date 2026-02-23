@@ -96,12 +96,18 @@ def create_app():
     # SECURITY HEADERS
     # =========================================================================
     # flask-talisman sets HSTS, X-Frame-Options, X-Content-Type-Options, CSP,
-    # and referrer policy. force_https and HSTS are disabled in debug mode so
-    # local development works over plain HTTP.
+    # and referrer policy.
+    #
+    # force_https is intentionally driven by an explicit env var, NOT app.debug.
+    # In containerised deployments TLS is terminated upstream (load balancer /
+    # reverse proxy) and the app itself always serves plain HTTP — setting
+    # force_https=True in that case causes an infinite HTTPS redirect loop.
+    # Set FLASK_FORCE_HTTPS=true only when the app terminates TLS directly.
+    force_https = os.environ.get('FLASK_FORCE_HTTPS', '').lower() in ('true', '1', 'yes')
     Talisman(
         app,
-        force_https=not app.debug,
-        strict_transport_security=not app.debug,
+        force_https=force_https,
+        strict_transport_security=force_https,
         session_cookie_secure=not app.debug,  # aligns with SESSION_COOKIE_SECURE above
         content_security_policy={
             'default-src': "'self'",
