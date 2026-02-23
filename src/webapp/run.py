@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import os
+import uuid
+import time
 os.environ['FLASK_ACTIVE'] = '1'
 
 from flask import Flask, redirect, url_for
@@ -24,6 +26,7 @@ from webapp.api.v1.status import bp as api_status_bp
 from webapp.api.v1.allocations import bp as api_allocations_bp
 from webapp.api.v1.health import bp as api_health_bp
 from webapp.config import get_webapp_config
+from webapp.logging_config import configure_logging
 
 
 def create_app():
@@ -85,6 +88,35 @@ def create_app():
             db=db,
             logfile_path=app.config.get('AUDIT_LOG_PATH', '/var/log/sam/model_audit.log')
         )
+    # =========================================================================
+
+    # =========================================================================
+    # APPLICATION LOGGING + REQUEST ID TRACKING
+    # =========================================================================
+    configure_logging(app)
+
+    @app.before_request
+    def _set_request_id():
+        from flask import g, request
+        g.request_id    = request.headers.get('X-Request-ID', str(uuid.uuid4()))
+        g.request_start = time.monotonic()
+
+    @app.after_request
+    def _log_request(response):
+        from flask import g, request
+        elapsed_ms = round((time.monotonic() - g.request_start) * 1000, 1)
+        response.headers['X-Request-ID'] = g.request_id
+        app.logger.info(
+            '%s %s → %s  (%.1f ms)  rid=%s',
+            request.method, request.path, response.status_code,
+            elapsed_ms, g.request_id,
+        )
+        if elapsed_ms > 5000:
+            app.logger.warning(
+                'Slow request: %.1f ms  %s %s',
+                elapsed_ms, request.method, request.path,
+            )
+        return response
     # =========================================================================
 
     # Initialize Flask-Login

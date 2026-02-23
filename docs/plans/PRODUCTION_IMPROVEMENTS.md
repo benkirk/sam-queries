@@ -5,14 +5,14 @@
 | # | Item | Priority | Status |
 |---|------|----------|--------|
 | 1 | Hardcoded `SECRET_KEY` | Critical | ✅ Done |
-| 2 | Dev auth enabled by default | Critical | 🔴 Open |
+| 2 | Dev auth enabled by default | Critical | ✅ Done |
 | 3 | Session cookie security flags | Critical | ✅ Done |
 | 4 | Security headers | High | 🔴 Open |
 | 5 | Gunicorn production config | High | ✅ Done |
 | 6 | Health check + DB pool endpoints | High | ✅ Done |
 | 7 | Config/env-var checking | High | ✅ Done |
-| 8 | Structured logging | High | 🔴 Open |
-| 9 | Request ID tracking | High | 🔴 Open |
+| 8 | Structured logging | High | ✅ Done |
+| 9 | Request ID tracking | High | ✅ Done |
 | 10 | Security testing suite | Medium | 🔴 Open |
 | 11 | Deployment checklist / docs | Medium | 🔴 Open |
 | 12 | Metrics & alerting | Future | 🔴 Open |
@@ -47,6 +47,27 @@ settings in `run.py`. `ProductionConfig.validate()` adds length-check on `FLASK_
 CLI entry points (`sam-search`, `sam-admin`, `sam-status`) call `BaseConfig.validate()`
 at startup so missing vars produce a clean error before any DB connection is attempted.
 
+### 2 — Dev Auth Enabled by Default
+`compose.yaml`: added `# WARNING: dev-only — NEVER set in production` comments on
+`DISABLE_AUTH=1` and `DEV_AUTO_LOGIN_USER=benkirk` in the `webdev` service; added
+explanatory comment on `DISABLE_AUTH=0` in the `webapp` (production) service.
+`containers/webapp/Dockerfile`: added `ENV DISABLE_AUTH=0` and `ENV DEV_AUTO_LOGIN_USER=`
+to the `production` stage so the production image actively clears these vars regardless
+of build-time environment or accidental inheritance.
+
+### 8 & 9 — Structured Logging + Request ID Tracking
+`src/webapp/logging_config.py` (new): `configure_logging(app)` wires a fixed-format
+`%(asctime)s %(levelname)-8s %(name)s — %(message)s` handler into `app.logger`.
+Console always on; optional rotating file via `LOG_FILE` env var; level from `LOG_LEVEL`
+(default `INFO`). Noisy third-party loggers silenced to `WARNING`.
+`src/webapp/run.py`: `before_request` hook attaches `g.request_id` (from `X-Request-ID`
+header or a new UUID) and `g.request_start`; `after_request` hook logs method, path,
+status, elapsed ms, and `rid=` and echoes `X-Request-ID` in the response.
+Slow-request warning at >5 000 ms.
+`src/sam/session/__init__.py`: replaced `print()` with `logging.debug()` so connection
+info is silent at `INFO` and appears in webapp log when `LOG_LEVEL=DEBUG`.
+`src/webapp/config.py`: added `LOG_LEVEL` and `LOG_FILE` attrs to `SAMWebappConfig`.
+
 ### 6 — Health Check + DB Pool Monitoring
 `src/webapp/api/v1/health.py` blueprint at `/api/v1/health`:
 - `GET /` and `GET /ready` — ping both DB binds, 200/503 (public)
@@ -62,22 +83,7 @@ at startup so missing vars produce a clean error before any DB connection is att
 
 ---
 
-### Priority 1 — Configuration & Environment Variable Checking
-
-#### 2 — Dev Auth Enabled by Default (Critical)
-
-`compose.yaml` sets `DISABLE_AUTH=1` / `DEV_AUTO_LOGIN_USER=benkirk` for the `webdev`
-service only, but it must **never** reach the production (`webapp`) service.
-
-**Actions**:
-- Add `# WARNING: never set in production` comments in `compose.yaml` next to the dev vars.
-- Create `.env.production.example` documenting required production env vars (see §11).
-- Ensure the `webapp` service in `compose.yaml` does **not** set `DISABLE_AUTH` or
-  `DEV_AUTO_LOGIN_USER`.
-
----
-
-### Priority 2 — Security Headers
+### Priority 1 — Security Headers
 
 #### 4 — HTTP Security Headers (High)
 
@@ -111,67 +117,7 @@ audit pass; the four headers above are safe to add immediately.
 
 ---
 
-### Priority 3 — Logging
-
-#### 8 — Structured Application Logging (High)
-
-**Problem**: The app currently has no `app.logger` instrumentation; debug info relies on
-`print()` or gunicorn's access log.
-
-**Approach**: Create `src/webapp/logging_config.py` with a `configure_logging(app)` function:
-
-- **Development**: human-readable `%(asctime)s %(levelname)s %(name)s — %(message)s`
-- **Production**: JSON lines (one object per log event) for log-aggregator ingestion
-
-Wire into `create_app()`:
-```python
-from webapp.logging_config import configure_logging
-configure_logging(app)
-app.logger.info("SAM webapp starting — config: %s", os.getenv('FLASK_CONFIG', 'default'))
-```
-
-Log level from `LOG_LEVEL` env var (default `INFO`); rotating file if `LOG_FILE` is set.
-Suppress noisy third-party loggers (`werkzeug`, `sqlalchemy.engine`) to `WARNING`.
-
-**Files**: `src/webapp/logging_config.py` (new), `src/webapp/run.py`.
-
-#### 9 — Request ID Tracking (High)
-
-**Problem**: No way to correlate a user complaint / browser error with a specific server log line.
-
-**Approach**: Add `before_request` / `after_request` hooks to `run.py`:
-
-```python
-import uuid, time
-from flask import g, request
-
-@app.before_request
-def _set_request_id():
-    g.request_id    = request.headers.get('X-Request-ID', str(uuid.uuid4()))
-    g.request_start = time.monotonic()
-
-@app.after_request
-def _log_request(response):
-    elapsed_ms = round((time.monotonic() - g.request_start) * 1000, 1)
-    response.headers['X-Request-ID'] = g.request_id
-    app.logger.info(
-        '%s %s → %s  (%.1f ms)  rid=%s',
-        request.method, request.path, response.status_code,
-        elapsed_ms, g.request_id,
-    )
-    if elapsed_ms > 5000:
-        app.logger.warning('Slow request: %.1f ms  %s %s', elapsed_ms,
-                           request.method, request.path)
-    return response
-```
-
-Adding `rid=` to every log line makes grepping for a single request trivial.
-
-**Files**: `src/webapp/run.py`.
-
----
-
-### Priority 4 — Miscellaneous / Other
+### Priority 3 — Miscellaneous / Other
 
 #### 10 — Security Testing Suite (Medium)
 
@@ -215,18 +161,14 @@ DB pool utilization (already available via `/api/v1/health/db-pool`).
 
 ```
 Next sprint:
-  1. #2  — compose.yaml dev-auth comments + webapp service audit      (~10 min)
-  2. #7  — validate_environment() in run.py                           (~20 min)
-  3. #4  — after_request security headers                             (~15 min)
-  4. #8  — logging_config.py + wire into run.py                       (~45 min)
-  5. #9  — request ID before/after hooks                              (~15 min)
+  1. #4  — after_request security headers                             (~15 min)
 
 Before launch:
-  6. #11 — DEPLOYMENT.md + .env.production.example                    (~30 min)
+  2. #11 — DEPLOYMENT.md + .env.production.example                    (~30 min)
 
 Post-launch:
-  7. #10 — Security test suite                                        (~3 h)
-  8. #12 — Metrics & alerting                                         (future)
+  3. #10 — Security test suite                                        (~3 h)
+  4. #12 — Metrics & alerting                                         (future)
 ```
 
 ---

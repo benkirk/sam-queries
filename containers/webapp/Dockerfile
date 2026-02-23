@@ -47,6 +47,9 @@ CMD ["python3", "./src/webapp/run.py"]
 # webapp - production gunicorn config
 #-------------------------------------------------------------------------------
 FROM base AS production
+# Explicitly clear dev-auth vars — these must never be set in the production image
+ENV DISABLE_AUTH=0
+ENV DEV_AUTO_LOGIN_USER=
 CMD ["gunicorn", "-c", "containers/webapp/gunicorn_config.py", "webapp.run:create_app()"]
 
 #-------------------------------------------------------------------------------

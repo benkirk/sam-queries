@@ -18,7 +18,7 @@ services:
     volumes:
       - ./logs/prod:/var/log/sam
     environment:
-      - DISABLE_AUTH=0
+      - DISABLE_AUTH=0         # Explicitly disabled — must remain 0 in production
       - FLASK_DEBUG=0
       - AUDIT_ENABLED=1
       - AUDIT_LOG_PATH=/var/log/sam/model_audit.log
@@ -58,8 +58,8 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
-      - DISABLE_AUTH=1
-      - DEV_AUTO_LOGIN_USER=benkirk
+      - DISABLE_AUTH=1         # WARNING: dev-only — NEVER set in production
+      - DEV_AUTO_LOGIN_USER=benkirk  # WARNING: dev-only — NEVER set in production
       - FLASK_DEBUG=1
       - AUDIT_ENABLED=1
       - AUDIT_LOG_PATH=/var/log/sam/model_audit.log
