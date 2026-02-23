@@ -20,7 +20,10 @@ def init_sam_db_defaults():
     server = os.environ['SAM_DB_SERVER']
     database = os.getenv('SAM_DB_NAME', 'sam')
 
-    print(f'{username}:$SAM_DB_PASSWORD@{server}/{database}')
+    import logging as _logging
+    _logging.getLogger(__name__).debug(
+        'SAM DB: %s:$SAM_DB_PASSWORD@%s/%s', username, server, database
+    )
 
     # Create connection string
     # Using pymysql driver for consistency with test suite

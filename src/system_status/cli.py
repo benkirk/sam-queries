@@ -435,6 +435,13 @@ class SystemStatusCLI:
 def main():
     """Main entry point for the CLI."""
     try:
+        from config import SAMConfig
+        SAMConfig.validate()
+    except EnvironmentError as e:
+        Console().print(f"[bold red]❌ {e}[/bold red]")
+        sys.exit(2)
+
+    try:
         with SystemStatusCLI() as cli:
             exit_code = cli.run()
             sys.exit(exit_code)

@@ -9,6 +9,7 @@ import sys
 import click
 from sqlalchemy.orm import Session
 
+from config import SAMConfig
 from cli.core.context import Context
 from cli.core.utils import EXIT_ERROR
 from cli.user.commands import (
@@ -36,6 +37,12 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @pass_context
 def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bool):
     """Search and query the SAM database"""
+    try:
+        SAMConfig.validate()
+    except EnvironmentError as e:
+        ctx.stderr_console.print(str(e), style="bold red")
+        sys.exit(2)
+
     ctx.verbose = verbose
     ctx.inactive_projects = inactive_projects
     ctx.inactive_users = inactive_users
