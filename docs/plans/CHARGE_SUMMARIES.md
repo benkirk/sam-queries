@@ -2,7 +2,7 @@
 
 **Branch:** `summary_charges`
 **Date:** 2026-02-24
-**Status:** Approved for implementation
+**Status:** Approved for implementation (reviewer corrections applied 2026-02-24)
 
 ---
 
@@ -118,6 +118,16 @@ process that previously populated these tables.
 
 All functions use session.flush() (not commit). Callers must wrap in
 management_transaction() for proper commit/rollback handling.
+
+Update semantics: PUT-style full replacement. All mutable fields are set
+to whatever the caller provides; omitting an optional field writes NULL.
+Callers needing partial updates must first read the existing row and merge.
+
+WARNING: The upsert functions use query-then-insert (not atomic
+ON DUPLICATE KEY UPDATE). The summary tables have no UNIQUE constraint on
+their natural key columns, so concurrent writes for the same natural key
+(date, user, project, ...) bucket may produce duplicate rows. Batch
+processes must serialize writes for the same natural key.
 """
 from datetime import date
 from typing import Optional, Tuple
@@ -133,17 +143,19 @@ from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
 
 
-def _resolve_user(session: Session, act_username: str, act_unix_uid: int) -> User:
+def _resolve_user(session: Session, act_username: str, act_unix_uid: Optional[int]) -> User:
     """
     Look up user by username; fall back to unix_uid if username not found.
+    act_unix_uid may be None for jobs submitted before identity sync.
     Raises ValueError if neither lookup succeeds.
     """
     user = User.get_by_username(session, act_username)
-    if not user:
+    if not user and act_unix_uid is not None:
         user = session.query(User).filter_by(unix_uid=act_unix_uid).first()
     if not user:
+        uid_str = f"unix_uid={act_unix_uid}" if act_unix_uid is not None else "no uid"
         raise ValueError(
-            f"User '{act_username}' (unix_uid={act_unix_uid}) not found in SAM"
+            f"User '{act_username}' ({uid_str}) not found in SAM"
         )
     return user
 
@@ -164,17 +176,28 @@ def _resolve_resource(session: Session, resource_name: str) -> Resource:
     return resource
 
 
-def _resolve_account(session: Session, project: Project, resource: Resource) -> Account:
+def _resolve_account(
+    session: Session,
+    project: Project,
+    resource: Resource,
+    include_deleted: bool = False,
+) -> Account:
     """
     Look up account linking project to resource.
-    Raises ValueError if no (non-deleted) account exists.
+    Pass include_deleted=True for historical backfill against accounts that
+    have since been marked deleted.
+    Raises ValueError if no matching account exists.
     """
     account = Account.get_by_project_and_resource(
-        session, project.project_id, resource.resource_id
+        session,
+        project.project_id,
+        resource.resource_id,
+        exclude_deleted=not include_deleted,
     )
     if not account:
+        qualifier = " (including deleted)" if include_deleted else ""
         raise ValueError(
-            f"No account found for project '{project.projcode}' "
+            f"No account{qualifier} found for project '{project.projcode}' "
             f"on resource '{resource.resource_name}'"
         )
     return account
@@ -234,7 +257,7 @@ def upsert_comp_charge_summary(
     activity_date: date,
     act_username: str,
     act_projcode: str,
-    act_unix_uid: int,
+    act_unix_uid: Optional[int],
     resource_name: str,
     machine_name: str,
     queue_name: str,
@@ -246,10 +269,12 @@ def upsert_comp_charge_summary(
     projcode: Optional[str] = None,
     unix_uid: Optional[int] = None,
     resource: Optional[str] = None,
+    facility_name: Optional[str] = None,
     cos: Optional[int] = None,
     sweep: Optional[int] = None,
     error_comment: Optional[str] = None,
     create_queue_if_missing: bool = False,
+    include_deleted_accounts: bool = False,
 ) -> Tuple[CompChargeSummary, str]:
     """
     Insert or update a CompChargeSummary row.
@@ -268,28 +293,28 @@ def upsert_comp_charge_summary(
     Raises:
         ValueError: If any required entity is not found.
 
-    Note:
+    Notes:
         Does NOT commit. Caller must use management_transaction().
+        PUT semantics: all mutable fields replaced; omitted optionals write NULL.
+        Pass include_deleted_accounts=True for historical charge backfill.
     """
     user = _resolve_user(session, act_username, act_unix_uid)
     project = _resolve_project(session, act_projcode)
     res = _resolve_resource(session, resource_name)
-    account = _resolve_account(session, project, res)
+    account = _resolve_account(session, project, res, include_deleted=include_deleted_accounts)
     machine = _resolve_machine(session, machine_name, res)
     queue = _resolve_or_create_queue(session, queue_name, res, create_queue_if_missing)
 
-    # Resolved field defaults
-    resolved_username = username or act_username
-    resolved_projcode = projcode or act_projcode
-    resolved_unix_uid = unix_uid or act_unix_uid
-    resource_col = resource or resource_name
+    # Resolved field defaults — explicit None checks preserve falsy values (e.g. uid=0)
+    resolved_username = username  if username  is not None else act_username
+    resolved_projcode = projcode  if projcode  is not None else act_projcode
+    resolved_unix_uid = unix_uid  if unix_uid  is not None else act_unix_uid
+    resource_col      = resource  if resource  is not None else resource_name
 
-    # Derive facility name from resource if available
-    facility_name = None
-    if res.facility_resources:
+    # Facility name: use caller-provided value; fall back to resource heuristic
+    if facility_name is None and res.facility_resources:
         fr = res.facility_resources[0]
-        if fr.facility:
-            facility_name = fr.facility.facility_name
+        facility_name = fr.facility.facility_name if fr.facility else None
 
     # Natural key lookup
     existing = session.query(CompChargeSummary).filter(
@@ -363,7 +388,7 @@ def _upsert_storage_summary(
     activity_date: date,
     act_username: str,
     act_projcode: str,
-    act_unix_uid: int,
+    act_unix_uid: Optional[int],
     resource_name: str,
     charges: float,
     number_of_files: Optional[int] = None,
@@ -372,22 +397,24 @@ def _upsert_storage_summary(
     username: Optional[str] = None,
     projcode: Optional[str] = None,
     unix_uid: Optional[int] = None,
+    facility_name: Optional[str] = None,
+    include_deleted_accounts: bool = False,
 ) -> Tuple[object, str]:
     """Shared upsert logic for DiskChargeSummary and ArchiveChargeSummary."""
     user = _resolve_user(session, act_username, act_unix_uid)
     project = _resolve_project(session, act_projcode)
     res = _resolve_resource(session, resource_name)
-    account = _resolve_account(session, project, res)
+    account = _resolve_account(session, project, res, include_deleted=include_deleted_accounts)
 
-    resolved_username = username or act_username
-    resolved_projcode = projcode or act_projcode
-    resolved_unix_uid = unix_uid or act_unix_uid
+    # Resolved field defaults — explicit None checks preserve falsy values (e.g. uid=0)
+    resolved_username = username  if username  is not None else act_username
+    resolved_projcode = projcode  if projcode  is not None else act_projcode
+    resolved_unix_uid = unix_uid  if unix_uid  is not None else act_unix_uid
 
-    facility_name = None
-    if res.facility_resources:
+    # Facility name: use caller-provided value; fall back to resource heuristic
+    if facility_name is None and res.facility_resources:
         fr = res.facility_resources[0]
-        if fr.facility:
-            facility_name = fr.facility.facility_name
+        facility_name = fr.facility.facility_name if fr.facility else None
 
     # Natural key: (activity_date, act_username, act_projcode, account_id)
     existing = session.query(model_cls).filter(
@@ -488,16 +515,20 @@ marshmallow.Schema
 from marshmallow import Schema, fields, validate
 
 class BaseChargeSummaryInputSchema(Schema):
-    activity_date  = fields.Date(required=True)
-    act_username   = fields.Str(required=True, validate=validate.Length(max=35))
-    act_projcode   = fields.Str(required=True, validate=validate.Length(max=30))
-    act_unix_uid   = fields.Int(required=True)
-    resource_name  = fields.Str(required=True, validate=validate.Length(max=40))
-    charges        = fields.Float(required=True)
+    activity_date            = fields.Date(required=True)
+    act_username             = fields.Str(required=True, validate=validate.Length(max=35))
+    act_projcode             = fields.Str(required=True, validate=validate.Length(max=30))
+    act_unix_uid             = fields.Int(load_default=None)  # nullable: jobs may lack uid
+    resource_name            = fields.Str(required=True, validate=validate.Length(max=40))
+    charges                  = fields.Float(required=True)
     # Optional resolved overrides
-    username       = fields.Str(load_default=None, validate=validate.Length(max=35))
-    projcode       = fields.Str(load_default=None, validate=validate.Length(max=30))
-    unix_uid       = fields.Int(load_default=None)
+    username                 = fields.Str(load_default=None, validate=validate.Length(max=35))
+    projcode                 = fields.Str(load_default=None, validate=validate.Length(max=30))
+    unix_uid                 = fields.Int(load_default=None)
+    # Facility override — bypasses [0]-index heuristic on multi-facility resources
+    facility_name            = fields.Str(load_default=None, validate=validate.Length(max=30))
+    # Allow resolving historically deleted accounts (for backfill)
+    include_deleted_accounts = fields.Bool(load_default=False)
 ```
 
 ### `CompChargeSummaryInputSchema`
@@ -578,11 +609,12 @@ def _handle_charge_summary_post(schema, upsert_fn, output_schema_cls):
         db.session.rollback()
         return jsonify({'error': f'Internal error: {str(e)}'}), 500
 
+    status_code = 201 if action == 'created' else 200
     return jsonify({
         'success': True,
         'action': action,
         'charge_summary': output_schema_cls().dump(record),
-    }), 200
+    }), status_code
 ```
 
 ### Three route handlers
@@ -641,9 +673,11 @@ Tests for the shared private validation helpers (imported directly for white-box
 | `test_resolve_user_by_username` | Happy path via username |
 | `test_resolve_user_by_uid_fallback` | Falls back to uid when username not found |
 | `test_resolve_user_not_found` | Raises `ValueError` containing both username and uid |
+| `test_resolve_user_none_uid` | `act_unix_uid=None` uses username only; error message contains "no uid" |
 | `test_resolve_project_not_found` | Raises `ValueError` containing projcode |
 | `test_resolve_resource_not_found` | Raises `ValueError` containing resource name |
 | `test_resolve_account_not_found` | Raises `ValueError` containing project + resource |
+| `test_resolve_account_include_deleted` | Deleted account found when `include_deleted=True` |
 | `test_resolve_machine_not_found` | Raises `ValueError` containing machine + resource |
 | `test_resolve_queue_not_found_no_create` | Raises `ValueError` with hint about flag |
 | `test_resolve_queue_creates_when_flag_set` | New `Queue` row in session after flush |
@@ -658,6 +692,10 @@ Uses `session` fixture (auto-rollback) and live test entities from DB.
 | `test_update_existing` | Same natural key → row updated, returns `('updated')` |
 | `test_act_fields_immutable_on_update` | `act_username`, `act_projcode`, `act_unix_uid` unchanged after update |
 | `test_resolved_fields_default_from_act` | Omitted `username`/`projcode` default to act_ values |
+| `test_zero_unix_uid_preserved` | `unix_uid=0` stored as 0, not replaced by `act_unix_uid` |
+| `test_put_semantics_nulls_optional_fields` | Second call omitting `cos` overwrites stored value with NULL |
+| `test_facility_name_override` | Explicit `facility_name` in payload stored, bypassing heuristic |
+| `test_include_deleted_accounts` | `include_deleted_accounts=True` finds account default would miss |
 | `test_invalid_user_raises` | Unknown username + uid → `ValueError` containing "User" |
 | `test_invalid_project_raises` | Unknown projcode → `ValueError` containing "Project" |
 | `test_invalid_resource_raises` | Unknown resource → `ValueError` containing "Resource" |
@@ -705,15 +743,16 @@ STORAGE_CASES = [
 
 | Test | Endpoint | Scenario | Expected |
 |------|----------|----------|---------|
-| `test_post_comp_created` | `/comp` | Valid body | 200, `action=created` |
-| `test_post_comp_updated` | `/comp` | POST twice same key | 200, `action=updated` |
+| `test_post_comp_created` | `/comp` | Valid body, first insert | **201**, `action=created` |
+| `test_post_comp_updated` | `/comp` | POST twice same key | **200**, `action=updated` |
 | `test_post_comp_validation_error` | `/comp` | Missing field | 400 |
 | `test_post_comp_unknown_user` | `/comp` | Unknown user | 422 |
 | `test_post_comp_queue_missing_no_flag` | `/comp` | Unknown queue | 422 with hint |
-| `test_post_comp_queue_autocreate` | `/comp` | Unknown queue + flag | 200 |
-| `test_post_disk_created` | `/disk` | Valid body | 200 |
+| `test_post_comp_queue_autocreate` | `/comp` | Unknown queue + flag | 201 |
+| `test_post_comp_facility_name_override` | `/comp` | Explicit `facility_name` | 201, stored value matches |
+| `test_post_disk_created` | `/disk` | Valid body | 201 |
 | `test_post_disk_validation_error` | `/disk` | Missing field | 400 |
-| `test_post_archive_created` | `/archive` | Valid body | 200 |
+| `test_post_archive_created` | `/archive` | Valid body | 201 |
 | `test_post_unauthorized` | all | Non-admin user | 403 |
 | `test_post_unauthenticated` | all | No login | 401/302 |
 
