@@ -20,6 +20,11 @@ from .allocations import (
     log_allocation_transaction,
     update_allocation
 )
+from .summaries import (
+    upsert_comp_charge_summary,
+    upsert_disk_charge_summary,
+    upsert_archive_charge_summary,
+)
 
 
 __all__ = [
@@ -30,6 +35,9 @@ __all__ = [
     'validate_allocation_dates',
     'log_allocation_transaction',
     'update_allocation',
+    'upsert_comp_charge_summary',
+    'upsert_disk_charge_summary',
+    'upsert_archive_charge_summary',
 ]
 
 

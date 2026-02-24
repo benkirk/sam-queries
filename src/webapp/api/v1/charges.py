@@ -24,6 +24,11 @@ from sam.schemas import (
     DiskChargeDetailSchema,
     ArchiveChargeDetailSchema
 )
+from sam.schemas.charges import (
+    CompChargeSummaryInputSchema,
+    DiskChargeSummaryInputSchema,
+    ArchiveChargeSummaryInputSchema,
+)
 from webapp.api.helpers import register_error_handlers, get_project_or_404, parse_date_range
 from datetime import datetime, timedelta
 from sam.summaries.archive_summaries import *
@@ -226,3 +231,81 @@ def get_project_charges_summary(projcode):
         'resources': summary_by_resource,
         'total_resources': len(summary_by_resource)
     })
+
+
+# ---------------------------------------------------------------------------
+# POST endpoints — charge summary upsert
+# ---------------------------------------------------------------------------
+
+def _handle_charge_summary_post(schema, upsert_fn, output_schema_cls):
+    """
+    Shared handler for all three POST charge-summary endpoints.
+    Validates input, calls management function, returns serialized result.
+    """
+    from marshmallow import ValidationError
+    from sam.manage import management_transaction
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Request body must be JSON'}), 400
+
+    try:
+        validated = schema.load(data)
+    except ValidationError as e:
+        return jsonify({'error': 'Validation failed', 'details': e.messages}), 400
+
+    try:
+        with management_transaction(db.session):
+            record, action = upsert_fn(db.session, **validated)
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 422
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Internal error: {str(e)}'}), 500
+
+    status_code = 201 if action == 'created' else 200
+    return jsonify({
+        'success': True,
+        'action': action,
+        'charge_summary': output_schema_cls().dump(record),
+    }), status_code
+
+
+@bp.route('/charge-summaries/comp', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_CHARGE_SUMMARIES)
+def create_comp_charge_summary():
+    """POST /api/v1/charge-summaries/comp — Insert/update a comp charge summary."""
+    from sam.manage import upsert_comp_charge_summary
+    return _handle_charge_summary_post(
+        CompChargeSummaryInputSchema(),
+        upsert_comp_charge_summary,
+        CompChargeSummarySchema,
+    )
+
+
+@bp.route('/charge-summaries/disk', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_CHARGE_SUMMARIES)
+def create_disk_charge_summary():
+    """POST /api/v1/charge-summaries/disk — Insert/update a disk charge summary."""
+    from sam.manage import upsert_disk_charge_summary
+    return _handle_charge_summary_post(
+        DiskChargeSummaryInputSchema(),
+        upsert_disk_charge_summary,
+        DiskChargeSummarySchema,
+    )
+
+
+@bp.route('/charge-summaries/archive', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_CHARGE_SUMMARIES)
+def create_archive_charge_summary():
+    """POST /api/v1/charge-summaries/archive — Insert/update an archive charge summary."""
+    from sam.manage import upsert_archive_charge_summary
+    return _handle_charge_summary_post(
+        ArchiveChargeSummaryInputSchema(),
+        upsert_archive_charge_summary,
+        ArchiveChargeSummarySchema,
+    )
