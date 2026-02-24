@@ -25,7 +25,7 @@
         });
 
         // Tab switching
-        $('#expirations-tabs a[data-toggle="pill"]').on('shown.bs.tab', function(e) {
+        $('#expirations-tabs a[data-bs-toggle="pill"]').on('shown.bs.tab', function(e) {
             currentView = this.dataset.view;
             const container = document.getElementById(`${currentView}-container`);
 
