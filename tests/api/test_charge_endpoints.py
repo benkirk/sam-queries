@@ -338,6 +338,19 @@ class TestPostCompChargeSummary:
         )
         assert response.status_code in [200, 201]
 
+    def test_post_comp_no_machine_name(self, auth_client, comp_post_body):
+        """POST without machine_name -> auto-resolves for single-machine resource."""
+        body = dict(comp_post_body, activity_date='2099-07-01')
+        body.pop('machine_name')
+        response = auth_client.post(
+            '/api/v1/charge-summaries/comp',
+            data=json.dumps(body),
+            content_type='application/json',
+        )
+        assert response.status_code in [200, 201]
+        data = response.get_json()
+        assert data['success'] is True
+
     def test_post_comp_facility_name_override(self, auth_client, comp_post_body):
         """Explicit facility_name -> success."""
         body = dict(comp_post_body, facility_name='TEST_FAC', activity_date='2099-06-15')

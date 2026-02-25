@@ -107,6 +107,39 @@ def _resolve_machine(
     return machine
 
 
+def _resolve_facility_name(project: Project) -> Optional[str]:
+    """Derive facility_name from project.allocation_type.panel.facility.
+    Returns None if any link in the chain is missing."""
+    at = project.allocation_type
+    if at and at.panel and at.panel.facility:
+        return at.panel.facility.facility_name
+    return None
+
+
+def _resolve_machine_optional(
+    session: Session, machine_name: Optional[str], resource: Resource
+) -> Machine:
+    """Resolve machine by name, or auto-resolve if resource has exactly one machine.
+    Raises ValueError if machine_name is None and resource has 0 or 2+ machines."""
+    if machine_name is not None:
+        return _resolve_machine(session, machine_name, resource)
+
+    machines = resource.machines
+    if len(machines) == 0:
+        raise ValueError(
+            f"Resource '{resource.resource_name}' has no machines; "
+            f"machine_name must be provided explicitly"
+        )
+    if len(machines) == 1:
+        return machines[0]
+
+    names = sorted(m.name for m in machines)
+    raise ValueError(
+        f"Resource '{resource.resource_name}' has {len(machines)} machines "
+        f"({', '.join(names)}); machine_name must be provided explicitly"
+    )
+
+
 def _resolve_or_create_queue(
     session: Session,
     queue_name: str,
@@ -145,7 +178,7 @@ def upsert_comp_charge_summary(
     act_projcode: str,
     act_unix_uid: Optional[int],
     resource_name: str,
-    machine_name: str,
+    machine_name: Optional[str] = None,
     queue_name: str,
     num_jobs: int,
     core_hours: float,
@@ -188,7 +221,7 @@ def upsert_comp_charge_summary(
     project = _resolve_project(session, act_projcode)
     res = _resolve_resource(session, resource_name)
     account = _resolve_account(session, project, res, include_deleted=include_deleted_accounts)
-    machine = _resolve_machine(session, machine_name, res)
+    machine = _resolve_machine_optional(session, machine_name, res)
     queue = _resolve_or_create_queue(session, queue_name, res, create_queue_if_missing)
 
     # Resolved field defaults — explicit None checks preserve falsy values (e.g. uid=0)
@@ -197,17 +230,16 @@ def upsert_comp_charge_summary(
     resolved_unix_uid = unix_uid if unix_uid is not None else act_unix_uid
     resource_col = resource if resource is not None else resource_name
 
-    # Facility name: use caller-provided value; fall back to resource heuristic
-    if facility_name is None and res.facility_resources:
-        fr = res.facility_resources[0]
-        facility_name = fr.facility.facility_name if fr.facility else None
+    # Facility name: use caller-provided value; fall back to project chain
+    if facility_name is None:
+        facility_name = _resolve_facility_name(project)
 
-    # Natural key lookup
+    # Natural key lookup (use machine.name since machine_name may have been auto-resolved)
     existing = session.query(CompChargeSummary).filter(
         CompChargeSummary.activity_date == activity_date,
         CompChargeSummary.act_username == act_username,
         CompChargeSummary.act_projcode == act_projcode,
-        CompChargeSummary.machine == machine_name,
+        CompChargeSummary.machine == machine.name,
         CompChargeSummary.queue == queue_name,
         CompChargeSummary.resource == resource_col,
     ).first()
@@ -225,7 +257,7 @@ def upsert_comp_charge_summary(
             user_id=user.user_id,
             account_id=account.account_id,
             facility_name=facility_name,
-            machine=machine_name,
+            machine=machine.name,
             machine_id=machine.machine_id,
             queue=queue_name,
             queue_id=queue.queue_id,
@@ -292,10 +324,9 @@ def _upsert_storage_summary(
     resolved_projcode = projcode if projcode is not None else act_projcode
     resolved_unix_uid = unix_uid if unix_uid is not None else act_unix_uid
 
-    # Facility name: use caller-provided value; fall back to resource heuristic
-    if facility_name is None and res.facility_resources:
-        fr = res.facility_resources[0]
-        facility_name = fr.facility.facility_name if fr.facility else None
+    # Facility name: use caller-provided value; fall back to project chain
+    if facility_name is None:
+        facility_name = _resolve_facility_name(project)
 
     # Natural key: (activity_date, act_username, act_projcode, account_id)
     existing = session.query(model_cls).filter(

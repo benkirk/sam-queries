@@ -17,6 +17,8 @@ from sam.manage.summaries import (
     _resolve_resource,
     _resolve_account,
     _resolve_machine,
+    _resolve_facility_name,
+    _resolve_machine_optional,
     _resolve_or_create_queue,
     upsert_comp_charge_summary,
     upsert_disk_charge_summary,
@@ -67,14 +69,17 @@ def derecho_queue(session, derecho_resource):
 
 @pytest.fixture
 def comp_kwargs(test_user, test_project, derecho_machine, derecho_queue):
-    """Standard kwargs for upsert_comp_charge_summary."""
+    """Standard kwargs for upsert_comp_charge_summary.
+
+    NOTE: machine_name is intentionally omitted to test auto-resolution.
+    Tests that need an explicit machine_name should add it via dict(comp_kwargs, machine_name=...).
+    """
     return dict(
         activity_date=date(2098, 6, 15),
         act_username=test_user.username,
         act_projcode=test_project.projcode,
         act_unix_uid=test_user.unix_uid,
         resource_name='Derecho',
-        machine_name=derecho_machine.name,
         queue_name=derecho_queue.queue_name,
         num_jobs=10,
         core_hours=1234.5,
@@ -199,6 +204,94 @@ class TestResolverHelpers:
 
 
 # ---------------------------------------------------------------------------
+# TestResolveFacilityName
+# ---------------------------------------------------------------------------
+
+class TestResolveFacilityName:
+    """Tests for _resolve_facility_name helper."""
+
+    def test_happy_path(self, session, test_project):
+        """Returns facility_name when full chain exists."""
+        result = _resolve_facility_name(test_project)
+        # SCSG0001 should have allocation_type -> panel -> facility
+        if test_project.allocation_type and test_project.allocation_type.panel:
+            assert result is not None
+            assert isinstance(result, str)
+            assert len(result) > 0
+        else:
+            assert result is None
+
+    def test_no_allocation_type(self, session):
+        """Returns None when project has no allocation_type."""
+        from sam.projects.projects import Project
+        # Find a project without an allocation_type
+        project = session.query(Project).filter(
+            Project.allocation_type_id.is_(None)
+        ).first()
+        if project is None:
+            pytest.skip("All projects have allocation_type_id set")
+        assert _resolve_facility_name(project) is None
+
+
+# ---------------------------------------------------------------------------
+# TestResolveMachineOptional
+# ---------------------------------------------------------------------------
+
+class TestResolveMachineOptional:
+    """Tests for _resolve_machine_optional helper."""
+
+    def test_explicit_name(self, session, derecho_resource, derecho_machine):
+        """Explicit machine_name delegates to _resolve_machine."""
+        machine = _resolve_machine_optional(session, derecho_machine.name, derecho_resource)
+        assert machine.machine_id == derecho_machine.machine_id
+
+    def test_explicit_name_not_found(self, session, derecho_resource):
+        """Explicit bad name raises ValueError."""
+        with pytest.raises(ValueError, match="Machine"):
+            _resolve_machine_optional(session, 'fake_machine_xyz', derecho_resource)
+
+    def test_auto_resolve_single_machine(self, session):
+        """Auto-resolves when resource has exactly one machine."""
+        from sam.resources.resources import Resource
+        from sam.resources.machines import Machine
+
+        # Find a resource with exactly one machine
+        for res in session.query(Resource).all():
+            machines = res.machines
+            if len(machines) == 1:
+                result = _resolve_machine_optional(session, None, res)
+                assert result.machine_id == machines[0].machine_id
+                return
+        pytest.skip("No single-machine resource in database")
+
+    def test_error_on_multiple_machines(self, session):
+        """Raises ValueError listing machine names when resource has 2+ machines."""
+        from sam.resources.resources import Resource
+
+        for res in session.query(Resource).all():
+            machines = res.machines
+            if len(machines) >= 2:
+                with pytest.raises(ValueError, match="machine_name must be provided") as exc_info:
+                    _resolve_machine_optional(session, None, res)
+                # Error message should list machine names
+                for m in machines:
+                    assert m.name in str(exc_info.value)
+                return
+        pytest.skip("No multi-machine resource in database")
+
+    def test_error_on_zero_machines(self, session):
+        """Raises ValueError when resource has no machines."""
+        from sam.resources.resources import Resource
+
+        for res in session.query(Resource).all():
+            if len(res.machines) == 0:
+                with pytest.raises(ValueError, match="no machines"):
+                    _resolve_machine_optional(session, None, res)
+                return
+        pytest.skip("All resources have at least one machine")
+
+
+# ---------------------------------------------------------------------------
 # TestUpsertCompChargeSummary
 # ---------------------------------------------------------------------------
 
@@ -212,6 +305,21 @@ class TestUpsertCompChargeSummary:
         assert record.charge_summary_id is not None
         assert record.activity_date == comp_kwargs['activity_date']
         assert record.charges == comp_kwargs['charges']
+
+    def test_insert_with_explicit_machine(self, session, comp_kwargs, derecho_machine):
+        """Explicit machine_name still works."""
+        kwargs = dict(comp_kwargs, machine_name=derecho_machine.name, activity_date=date(2098, 7, 1))
+        record, action = upsert_comp_charge_summary(session, **kwargs)
+        assert action == 'created'
+        assert record.machine == derecho_machine.name
+
+    def test_insert_auto_resolves_machine(self, session, comp_kwargs, derecho_machine):
+        """machine_name=None auto-resolves for single-machine resource."""
+        assert 'machine_name' not in comp_kwargs  # Verify fixture omits it
+        record, action = upsert_comp_charge_summary(session, **comp_kwargs)
+        assert action == 'created'
+        assert record.machine == derecho_machine.name
+        assert record.machine_id == derecho_machine.machine_id
 
     def test_update_existing(self, session, comp_kwargs):
         """Same natural key -> row updated, returns 'updated'."""
@@ -506,6 +614,22 @@ class TestInputSchemas:
                 'core_hours': 100.0,
                 'charges': 50.0,
             })
+
+    def test_comp_machine_name_optional(self):
+        """machine_name omitted -> defaults to None (no validation error)."""
+        from sam.schemas.charges import CompChargeSummaryInputSchema
+        schema = CompChargeSummaryInputSchema()
+        data = schema.load({
+            'activity_date': '2025-01-15',
+            'act_username': 'benkirk',
+            'act_projcode': 'SCSG0001',
+            'resource_name': 'Derecho',
+            'queue_name': 'main',
+            'num_jobs': 10,
+            'core_hours': 100.0,
+            'charges': 50.0,
+        })
+        assert data['machine_name'] is None
 
     def test_comp_queue_flag_defaults_false(self):
         """Absent flag -> False."""

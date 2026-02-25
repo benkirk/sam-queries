@@ -108,7 +108,7 @@ class BaseChargeSummaryInputSchema(Schema):
 
 class CompChargeSummaryInputSchema(BaseChargeSummaryInputSchema):
     """Input schema for comp charge summary POST endpoint."""
-    machine_name            = fields.Str(required=True, validate=validate.Length(max=100))
+    machine_name            = fields.Str(load_default=None, validate=validate.Length(max=100))
     queue_name              = fields.Str(required=True, validate=validate.Length(max=100))
     resource                = fields.Str(load_default=None)  # resource column override
     num_jobs                = fields.Int(required=True, validate=validate.Range(min=0))
