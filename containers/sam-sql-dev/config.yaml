@@ -42,6 +42,7 @@ anonymization:
   preserve_usernames:
     - benkirk
     - csgteam
+    - andersnb
     # Add more usernames as needed for testing
 
   # Whether to preserve related data for preserved users
