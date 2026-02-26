@@ -48,6 +48,7 @@ class Permission(Enum):
     # Reports and analytics
     VIEW_REPORTS = "view_reports"
     VIEW_CHARGE_SUMMARIES = "view_charge_summaries"
+    MANAGE_CHARGE_SUMMARIES = "manage_charge_summaries"  # Write charge summary records
     EXPORT_DATA = "export_data"
 
     # System administration
