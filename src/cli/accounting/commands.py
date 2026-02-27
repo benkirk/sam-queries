@@ -10,6 +10,7 @@ from cli.core.base import BaseCommand
 from cli.accounting.display import display_dry_run_table, display_import_summary
 from sam.manage.summaries import upsert_comp_charge_summary
 from sam.manage.transaction import management_transaction
+from sam.plugins import HPC_USAGE_QUERIES
 
 # Threshold: GPU hours must be at least this fraction of total compute hours
 # to classify a row as a GPU resource charge rather than CPU.
@@ -113,16 +114,12 @@ class AccountingAdminCommand(BaseCommand):
 
     def _run_comp(self, machine: str, start_date: date, end_date: date, **kwargs) -> int:
         """Query hpc-usage-queries and post results to comp_charge_summary."""
-        # --- 1. Import job_history with a helpful error if missing ---
-        try:
-            from job_history import get_session as jh_get_session, JobQueries
-        except ImportError as exc:
-            self.console.print(
-                f"[bold red]Cannot import hpc-usage-queries: {exc}[/bold red]\n"
-                "Install with: pip install 'hpc-usage-queries @ git+https://github.com/benkirk/hpc-usage-queries.git'",
-                style="bold red",
-            )
+        # --- 1. Load job_history plugin (graceful error if not installed) ---
+        mod = self.require_plugin(HPC_USAGE_QUERIES)
+        if mod is None:
             return 2
+        jh_get_session = mod.get_session
+        JobQueries = mod.JobQueries
 
         # --- 2. Open hpc-usage-queries session ---
         try:

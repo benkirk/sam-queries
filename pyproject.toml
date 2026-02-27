@@ -20,9 +20,6 @@ classifiers = [
 ]
 
 dependencies = [
-    # hpc-usage-queries for job history & summary charges
-    "hpc-usage-queries @ git+https://github.com/benkirk/hpc-usage-queries.git",
-
     # ... other dependencies from PyPI
     "click",
     "cryptography",
@@ -49,6 +46,10 @@ sam-admin = "cli.cmds.admin:cli"
 sam-status = "system_status:main"
 
 [project.optional-dependencies]
+hpc = [
+    # hpc-usage-queries: job history & charge summary ingest (sam-admin accounting --comp)
+    "hpc-usage-queries @ git+https://github.com/benkirk/hpc-usage-queries.git",
+]
 test = [
     "pytest",
     "pytest-cov",

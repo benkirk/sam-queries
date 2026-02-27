@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 from cli.core.context import Context
+from sam.plugins import Plugin, PluginUnavailableError
 
 
 class BaseCommand(ABC):
@@ -25,6 +26,25 @@ class BaseCommand(ABC):
             import traceback
             self.console.print(traceback.format_exc(), style="dim")
         return 2
+
+    def require_plugin(self, plugin: Plugin):
+        """Load an optional plugin module, printing a friendly error on failure.
+
+        Returns the imported module on success, or None if the plugin is not
+        installed. The exit code decision remains with the calling command.
+
+        Example::
+
+            mod = self.require_plugin(HPC_USAGE_QUERIES)
+            if mod is None:
+                return EXIT_ERROR
+            jh_get_session = mod.get_session
+        """
+        try:
+            return plugin.load()
+        except PluginUnavailableError as exc:
+            self.console.print(str(exc))
+            return None
 
 
 class BaseUserCommand(BaseCommand):
