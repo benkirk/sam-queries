@@ -7,6 +7,7 @@ from datetime import date
 from typing import Optional
 
 from cli.core.base import BaseCommand
+from cli.accounting.display import display_dry_run_table, display_import_summary
 from sam.manage.summaries import upsert_comp_charge_summary
 from sam.manage.transaction import management_transaction
 
@@ -151,7 +152,7 @@ class AccountingAdminCommand(BaseCommand):
 
         # --- 5. Dry-run: show Rich table and return ---
         if kwargs.get("dry_run"):
-            self._print_dry_run_table(rows, machine)
+            display_dry_run_table(self.ctx, rows, machine, adapt_hpc_row)
             return 0
 
         # --- 6-7. Chunk and post rows ---
@@ -217,63 +218,7 @@ class AccountingAdminCommand(BaseCommand):
                 return 2
 
         # --- 8. Summary ---
-        self._print_summary(n_created, n_updated, n_errors, n_skipped)
+        display_import_summary(self.ctx, n_created, n_updated, n_errors, n_skipped)
 
         # --- 9. Exit code ---
         return 0 if n_errors == 0 else 2
-
-    def _print_dry_run_table(self, rows: list, machine: str) -> None:
-        """Print a Rich table showing what would be posted."""
-        from rich.table import Table
-
-        table = Table(title=f"Dry Run — {machine} charge rows (not written)", show_lines=False)
-        table.add_column("Date", style="cyan", no_wrap=True)
-        table.add_column("User", style="white")
-        table.add_column("Account", style="white")
-        table.add_column("Queue", style="white")
-        table.add_column("Jobs", justify="right")
-        table.add_column("CPU-h", justify="right", style="dim")
-        table.add_column("GPU-h", justify="right", style="dim")
-        table.add_column("→ Resource", style="green")
-        table.add_column("core_h", justify="right", style="bold")
-        table.add_column("charges", justify="right", style="bold")
-
-        n_skipped = 0
-        for row in rows:
-            result = adapt_hpc_row(row, machine)
-            if result is None:
-                n_skipped += 1
-                continue
-            resource_name, core_hours, charges = result
-            table.add_row(
-                str(row["date"]),
-                row["user"],
-                row["account"],
-                row["queue"],
-                str(row["job_count"]),
-                f"{row['cpu_hours'] or 0.0:.1f}",
-                f"{row['gpu_hours'] or 0.0:.1f}",
-                resource_name,
-                f"{core_hours:.1f}",
-                f"{charges:.1f}",
-            )
-
-        self.console.print(table)
-        if n_skipped:
-            self.console.print(f"[dim]({n_skipped} zero-charge rows omitted)[/dim]")
-
-    def _print_summary(self, n_created: int, n_updated: int, n_errors: int, n_skipped: int) -> None:
-        """Print a Rich summary table."""
-        from rich.table import Table
-
-        table = Table(title="Import Summary", show_header=False, box=None)
-        table.add_column("Label", style="dim")
-        table.add_column("Count", justify="right", style="bold")
-
-        table.add_row("Created", f"[green]{n_created}[/green]")
-        table.add_row("Updated", f"[cyan]{n_updated}[/cyan]")
-        table.add_row("Skipped (zero-charge)", str(n_skipped))
-        if n_errors:
-            table.add_row("Errors", f"[red]{n_errors}[/red]")
-
-        self.console.print(table)

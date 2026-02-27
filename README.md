@@ -435,12 +435,13 @@ sam-queries/
 │   │   ├── models/              # Status tracking models
 │   │   └── queries/             # Status query functions
 │   │
-│   ├── cli/                     # Modular CLI architecture (NEW)
+│   ├── cli/                     # Modular CLI architecture
 │   │   ├── README.md            # CLI architecture documentation
 │   │   ├── core/                # Shared infrastructure (Context, base classes)
 │   │   ├── user/                # User commands and display functions
 │   │   ├── project/             # Project commands and display functions
 │   │   ├── allocations/         # Allocation commands and display functions
+│   │   ├── accounting/          # Accounting ingest commands and display functions
 │   │   └── cmds/                # Entry points (search.py, admin.py)
 │   │
 │   ├── sam_search_cli.py        # Compatibility shim (re-exports from cli.cmds.search)
