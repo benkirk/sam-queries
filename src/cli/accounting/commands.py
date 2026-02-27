@@ -17,7 +17,7 @@ from sam.manage.transaction import management_transaction
 GPU_FRACTION_THRESHOLD = 0.01  # 1%
 
 
-def adapt_hpc_row(row: dict, machine: str) -> Optional[tuple]:
+def adapt_jobstats_row(row: dict, machine: str) -> Optional[tuple]:
     """
     Classify an hpc-usage-queries daily summary row into SAM resource and charge fields.
 
@@ -72,7 +72,7 @@ def adapt_hpc_row(row: dict, machine: str) -> Optional[tuple]:
         return "Casper", "Casper", cpu_h, cpu_h
 
     else:
-        raise ValueError(f"Unknown machine: {machine!r}. Add a case to adapt_hpc_row().")
+        raise ValueError(f"Unknown machine: {machine!r}. Add a case to adapt_jobstats_row().")
 
 
 class AccountingAdminCommand(BaseCommand):
@@ -154,7 +154,7 @@ class AccountingAdminCommand(BaseCommand):
 
         # --- 5. Dry-run: show Rich table and return ---
         if kwargs.get("dry_run"):
-            display_dry_run_table(self.ctx, rows, machine, adapt_hpc_row)
+            display_dry_run_table(self.ctx, rows, machine, adapt_jobstats_row)
             return 0
 
         # --- 6-7. Chunk and post rows ---
@@ -169,7 +169,7 @@ class AccountingAdminCommand(BaseCommand):
             try:
                 with management_transaction(self.session):
                     for row in chunk:
-                        result = adapt_hpc_row(row, machine)
+                        result = adapt_jobstats_row(row, machine)
                         if result is None:
                             n_skipped += 1
                             continue
