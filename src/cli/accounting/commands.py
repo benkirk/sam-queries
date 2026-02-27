@@ -34,8 +34,10 @@ def adapt_hpc_row(row: dict, machine: str) -> Optional[tuple]:
         machine: 'derecho' or 'casper'
 
     Returns:
-        (resource_name, core_hours, charges) to pass to upsert_comp_charge_summary(),
-        or None to silently skip the row (e.g. zero-charge row).
+        (resource_name, machine_name, core_hours, charges) to pass to
+        upsert_comp_charge_summary(), or None to silently skip the row (e.g.
+        zero-charge row).  machine_name is always explicit so that resources
+        with multiple SAM machines (e.g. Casper) don't trigger auto-detection.
 
     Raises:
         ValueError: For rows with an unknown machine name.
@@ -54,20 +56,20 @@ def adapt_hpc_row(row: dict, machine: str) -> Optional[tuple]:
             # Meaningful GPU usage → Derecho GPU resource
             # core_hours = GPU hours (the Derecho GPU billing metric)
             # TODO: confirm whether charges = gpu_hours or a weighted formula
-            return "Derecho GPU", gpu_h, gpu_h
+            return "Derecho GPU", "derecho-gpu", gpu_h, gpu_h
         # Pure CPU job (or anomalous GPU ratio → treat as CPU)
         # core_hours = CPU core-hours (numnodes * 128 * wall_hours)
         # TODO: confirm charges formula (queue_factor multiplier?)
-        return "Derecho", cpu_h, cpu_h
+        return "Derecho", "derecho", cpu_h, cpu_h
 
     elif machine == "casper":
         if gpu_h > 0 and gpu_fraction >= GPU_FRACTION_THRESHOLD:
             # Casper GPU resource
-            # TODO: confirm Casper GPU resource name and formula
-            return "Casper GPU", gpu_h, gpu_h
+            # TODO: confirm Casper GPU resource name and charges formula
+            return "Casper GPU", "Casper-gpu", gpu_h, gpu_h
         # Casper CPU resource
         # TODO: confirm Casper charges formula (cpu_hours + memory_hours?)
-        return "Casper", cpu_h, cpu_h
+        return "Casper", "Casper", cpu_h, cpu_h
 
     else:
         raise ValueError(f"Unknown machine: {machine!r}. Add a case to adapt_hpc_row().")
@@ -172,7 +174,7 @@ class AccountingAdminCommand(BaseCommand):
                             n_skipped += 1
                             continue
 
-                        resource_name, core_hours, charges = result
+                        resource_name, machine_name, core_hours, charges = result
 
                         # Warn on anomalous GPU fraction (proceeded as CPU)
                         cpu_h = row["cpu_hours"] or 0.0
@@ -194,6 +196,7 @@ class AccountingAdminCommand(BaseCommand):
                                 act_projcode=row["account"],
                                 act_unix_uid=None,
                                 resource_name=resource_name,
+                                machine_name=machine_name,
                                 queue_name=row["queue"],
                                 num_jobs=row["job_count"],
                                 core_hours=core_hours,

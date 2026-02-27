@@ -28,6 +28,7 @@ def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn) -> N
     table.add_column("CPU-h", justify="right", style="dim")
     table.add_column("GPU-h", justify="right", style="dim")
     table.add_column("→ Resource", style="green")
+    table.add_column("→ Machine", style="dim green")
     table.add_column("core_h", justify="right", style="bold")
     table.add_column("charges", justify="right", style="bold")
 
@@ -37,7 +38,7 @@ def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn) -> N
         if result is None:
             n_skipped += 1
             continue
-        resource_name, core_hours, charges = result
+        resource_name, machine_name, core_hours, charges = result
         table.add_row(
             str(row["date"]),
             row["user"],
@@ -47,6 +48,7 @@ def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn) -> N
             f"{row['cpu_hours'] or 0.0:.1f}",
             f"{row['gpu_hours'] or 0.0:.1f}",
             resource_name,
+            machine_name,
             f"{core_hours:.1f}",
             f"{charges:.1f}",
         )
