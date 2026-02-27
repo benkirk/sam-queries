@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "samuel"
 version = "0.1.0"
-description = "Systems Accounting Manager (SAM) System - ORM and Webapp"
+description = "Systems Accounting Manager (SAM) System - ORM, CLI tools, and Webapp"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "NCAR/CISL internal use" }
@@ -20,6 +20,11 @@ classifiers = [
 ]
 
 dependencies = [
+    # hpc-usage-queries for job history & summary charges
+    "hpc-usage-queries @ https://github.com/benkirk/hpc-usage-queries.git",
+
+    # ... other dependencies from PyPI
+    "click",
     "cryptography",
     "flask",
     "flask-admin",
@@ -36,7 +41,6 @@ dependencies = [
     "rich",
     "sqlalchemy",
     "tqdm",
-    "click",
 ]
 
 [project.scripts]
