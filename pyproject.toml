@@ -21,7 +21,7 @@ classifiers = [
 
 dependencies = [
     # hpc-usage-queries for job history & summary charges
-    "hpc-usage-queries @ https://github.com/benkirk/hpc-usage-queries.git",
+    "hpc-usage-queries @ git+https://github.com/benkirk/hpc-usage-queries.git",
 
     # ... other dependencies from PyPI
     "click",
