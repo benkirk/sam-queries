@@ -136,16 +136,6 @@ class AccountingAdminCommand(BaseCommand):
             return 2
         finally:
             jh_session.close()
-            # job_history/database.py registers a PRAGMA listener on the global Engine
-            # class (not a specific engine instance), so it would fire on MySQL connections
-            # too.  Remove it now that the SQLite work is done.
-            try:
-                from sqlalchemy import event
-                from sqlalchemy.engine import Engine
-                from job_history.database import set_sqlite_pragma
-                event.remove(Engine, "connect", set_sqlite_pragma)
-            except Exception:
-                pass
 
         # --- 4. Validate rows exist ---
         if not rows:
