@@ -27,7 +27,7 @@ resource "aws_db_instance" "main" {
 
   backup_retention_period = 7
   skip_final_snapshot     = true
-  deletion_protection     = false
+  deletion_protection     = true
 
   tags = { Name = "${local.name_prefix}-mysql" }
 }

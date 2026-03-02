@@ -6,7 +6,7 @@ Extensions are initialized here but configured in the application factory.
 """
 
 from flask_sqlalchemy import SQLAlchemy
+from flask_caching import Cache
 
-# Initialize Flask-SQLAlchemy extension
-# Will be configured with app in create_app()
 db = SQLAlchemy()
+cache = Cache()

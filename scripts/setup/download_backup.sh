@@ -1,21 +1,29 @@
 #!/bin/bash
 # Download the actual backup file from Git LFS
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/prereqs.sh"
+
+# --- Prerequisites ---
+require_cmd git git git "Git"
+
+if ! git lfs version &>/dev/null; then
+    echo "ERROR: Git LFS is not installed."
+    echo ""
+    if [ "$_PREREQS_OS" = "Darwin" ] && command -v brew &>/dev/null; then
+        echo "  Installing via Homebrew: brew install git-lfs"
+        brew install git-lfs && git lfs install
+    else
+        echo "  macOS:  brew install git-lfs && git lfs install"
+        echo "  Linux:  sudo apt-get install git-lfs && git lfs install"
+        exit 2
+    fi
+fi
+
 echo "Downloading SAM database backup from Git LFS..."
 echo ""
 
-cd "$(dirname "$0")"
-
-# Check if git-lfs is installed
-if ! command -v git-lfs &> /dev/null && ! git lfs version &> /dev/null; then
-    echo "❌ Git LFS is not installed!"
-    echo ""
-    echo "Install it with:"
-    echo "  brew install git-lfs"
-    echo "  git lfs install"
-    echo ""
-    exit 1
-fi
+cd "$SCRIPT_DIR"
 
 echo "Pulling backup file from Git LFS..."
 if git lfs pull --include="containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"; then

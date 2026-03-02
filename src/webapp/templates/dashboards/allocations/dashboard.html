@@ -119,10 +119,14 @@
                 </table>
             </div>
 
-            <!-- Facility Pie Chart -->
+            <!-- Facility Pie Chart (Chart.js) -->
             {% if overview.table_data|length > 1 %}
-            <div class="chart-container">
-                {{ overview.chart|safe }}
+            <div class="chart-container" style="max-width: 500px; margin: 1rem auto;">
+                <canvas class="facility-pie-chart"
+                    data-labels='{{ overview.table_data | map(attribute="facility") | list | tojson }}'
+                    data-values='{{ overview.table_data | map(attribute="annualized_rate") | list | tojson }}'
+                    data-title='{% if resource_types.get(resource_name) in ["DISK", "ARCHIVE"] %}Data Volume Distribution by Facility{% else %}Annual Rate Distribution by Facility{% endif %}'>
+                </canvas>
             </div>
             {% endif %}
         </div>
@@ -209,14 +213,15 @@
                                 {% endif %}
                             </table>
 
-                            <!-- Allocation Type Pie Chart -->
+                            <!-- Allocation Type Pie Chart (Chart.js) -->
                             {% if types|length > 1 %}
-                            {% set type_chart = allocation_type_charts.get(resource_name, {}).get(facility_name) %}
-                            {% if type_chart %}
-                            <div class="chart-container mt-4">
-                                {{ type_chart|safe }}
+                            <div class="chart-container mt-4" style="max-width: 500px; margin: 1rem auto;">
+                                <canvas class="alloc-type-pie-chart"
+                                    data-labels='{{ types | map(attribute="allocation_type") | list | tojson }}'
+                                    data-values='{{ types | map(attribute="total_amount") | list | tojson }}'
+                                    data-title='{% if resource_types.get(resource_name) in ["DISK", "ARCHIVE"] %}Data Volume by Type - {{ facility_name }}{% else %}Allocation by Type - {{ facility_name }}{% endif %}'>
+                                </canvas>
                             </div>
-                            {% endif %}
                             {% endif %}
                         </div>
                     </div>
@@ -287,4 +292,5 @@
 <script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
 <script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
 <script src="{{ url_for('static', filename='js/allocations-dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pie-charts.js') }}"></script>
 {% endblock %}

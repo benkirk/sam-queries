@@ -4,13 +4,22 @@ set -euo pipefail
 # Open an interactive shell in the staging ECS container.
 # Uses ECS Exec (requires Session Manager plugin).
 #
-# Prerequisites:
-#   - AWS CLI configured
-#   - Session Manager plugin installed:
-#     https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html
-#
 # Usage:
 #   ./scripts/infra/ssh-staging.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/prereqs.sh"
+
+# --- Prerequisites ---
+check_aws_cli
+
+if ! command -v session-manager-plugin &>/dev/null; then
+    echo "ERROR: AWS Session Manager plugin is not installed."
+    echo ""
+    echo "  macOS:  brew install --cask session-manager-plugin"
+    echo "  Linux:  https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html"
+    exit 2
+fi
 
 CLUSTER="sam-staging"
 SERVICE="sam-staging-webapp"

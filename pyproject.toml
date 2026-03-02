@@ -23,6 +23,7 @@ dependencies = [
     "cryptography",
     "flask",
     "flask-admin",
+    "flask-caching",
     "flask-login",
     "flask-sqlalchemy",
     "gunicorn",
