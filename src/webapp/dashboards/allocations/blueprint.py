@@ -15,6 +15,7 @@ from sam.queries.allocations import get_allocation_summary, get_allocation_summa
 from sam.queries.lookups import find_project_by_code
 from webapp.utils.rbac import require_permission, Permission
 from sam.resources.resources import Resource
+from ..charts import generate_facility_pie_chart_matplotlib, generate_allocation_type_pie_chart_matplotlib
 
 bp = Blueprint('allocations_dashboard', __name__, url_prefix='/allocations')
 
@@ -193,15 +194,39 @@ def index():
 
     # Batch-fetch all facility overviews in a single query
     all_overviews = get_all_facility_overviews(db.session, list(grouped_data.keys()), active_at)
-    resource_overviews = {
-        rn: {'table_data': all_overviews.get(rn, [])}
-        for rn in grouped_data.keys()
-    }
+
+    # Generate facility pie chart SVGs (cached via lru_cache)
+    resource_overviews = {}
+    for rn in grouped_data.keys():
+        overview_data = all_overviews.get(rn, [])
+        rt = resource_types.get(rn, 'HPC')
+        if rt in ['DISK', 'ARCHIVE']:
+            chart_title = 'Data Volume Distribution by Facility'
+        else:
+            chart_title = 'Annual Rate Distribution by Facility'
+
+        resource_overviews[rn] = {
+            'table_data': overview_data,
+            'chart': generate_facility_pie_chart_matplotlib(overview_data, title=chart_title),
+        }
+
+    # Generate allocation type pie chart SVGs per resource/facility
+    allocation_type_charts = {}
+    for resource_name, facilities in grouped_data.items():
+        allocation_type_charts[resource_name] = {}
+        rt = resource_types.get(resource_name, 'HPC')
+        for facility_name, types in facilities.items():
+            if len(types) > 1:
+                allocation_type_charts[resource_name][facility_name] = \
+                    generate_allocation_type_pie_chart_matplotlib(types, rt, facility_name)
+            else:
+                allocation_type_charts[resource_name][facility_name] = None
 
     return render_template(
         'dashboards/allocations/dashboard.html',
         grouped_data=grouped_data,
         resource_overviews=resource_overviews,
+        allocation_type_charts=allocation_type_charts,
         active_at=active_at.strftime('%Y-%m-%d'),
         all_resources=all_resources,
         selected_resources=selected_resources,

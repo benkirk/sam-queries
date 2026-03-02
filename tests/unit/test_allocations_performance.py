@@ -5,12 +5,11 @@ Tests for the performance optimization changes:
 - Dashboard route responses (happy path, sad path, edge cases)
 - Flask-Caching behavior
 - Batched facility overview queries
-- Chart.js data contract (template data attributes)
+- Matplotlib lru_cache behavior
 - Extended allocation query edge cases
 """
 
 import pytest
-import json
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
@@ -187,17 +186,16 @@ class TestAllocationsIndexRoute:
         response = auth_client.get('/allocations/?resources=Derecho&resources=Casper')
         assert response.status_code == 200
 
-    def test_index_contains_chart_canvas(self, auth_client):
+    def test_index_contains_svg_chart(self, auth_client):
         response = auth_client.get('/allocations/')
-        assert b'facility-pie-chart' in response.data or b'No active allocations' in response.data
+        html = response.data.decode().lower()
+        assert '<svg' in html or 'no active allocations' in html
 
-    def test_index_contains_chartjs_data_attributes(self, auth_client):
+    def test_index_no_chartjs_canvas(self, auth_client):
         response = auth_client.get('/allocations/')
         html = response.data.decode()
-        if 'facility-pie-chart' in html:
-            assert 'data-labels' in html
-            assert 'data-values' in html
-            assert 'data-title' in html
+        assert 'facility-pie-chart' not in html
+        assert 'data-labels' not in html
 
     def test_index_unauthenticated_redirects(self, client):
         response = client.get('/allocations/')
@@ -299,58 +297,119 @@ class TestCaching:
 
 
 # ============================================================================
-# Chart.js Data Contract
+# Matplotlib lru_cache Behavior
 # ============================================================================
 
-class TestChartJsDataContract:
-    """Tests ensuring templates emit valid JSON for Chart.js."""
+class TestMatplotlibCaching:
+    """Tests for lru_cache on chart generation functions."""
 
-    def test_facility_chart_labels_are_valid_json(self, auth_client):
+    def test_svg_in_allocations_response(self, auth_client):
+        response = auth_client.get('/allocations/')
+        html = response.data.decode().lower()
+        assert '<svg' in html or 'no active allocations' in html
+
+    def test_no_chartjs_canvas_in_response(self, auth_client):
         response = auth_client.get('/allocations/')
         html = response.data.decode()
-        for marker in _extract_data_attr(html, 'facility-pie-chart', 'data-labels'):
-            parsed = json.loads(marker)
-            assert isinstance(parsed, list)
-            assert all(isinstance(x, str) for x in parsed)
+        assert '<canvas' not in html
 
-    def test_facility_chart_values_are_valid_json(self, auth_client):
-        response = auth_client.get('/allocations/')
-        html = response.data.decode()
-        for marker in _extract_data_attr(html, 'facility-pie-chart', 'data-values'):
-            parsed = json.loads(marker)
-            assert isinstance(parsed, list)
-            assert all(isinstance(x, (int, float)) for x in parsed)
+    def test_facility_pie_cache_hit(self):
+        from webapp.dashboards.charts import generate_facility_pie_chart_matplotlib
+        generate_facility_pie_chart_matplotlib.cache_clear()
 
-    def test_alloc_type_chart_labels_valid(self, auth_client):
-        response = auth_client.get('/allocations/')
-        html = response.data.decode()
-        for marker in _extract_data_attr(html, 'alloc-type-pie-chart', 'data-labels'):
-            parsed = json.loads(marker)
-            assert isinstance(parsed, list)
+        data = [
+            {'facility': 'UNIV', 'annualized_rate': 500, 'count': 10, 'percent': 62.5},
+            {'facility': 'WNA', 'annualized_rate': 300, 'count': 5, 'percent': 37.5},
+        ]
+        r1 = generate_facility_pie_chart_matplotlib(data, 'Test')
+        r2 = generate_facility_pie_chart_matplotlib(data, 'Test')
+        assert r1 is r2
+        assert generate_facility_pie_chart_matplotlib.cache_info().hits >= 1
 
-    def test_alloc_type_chart_values_valid(self, auth_client):
-        response = auth_client.get('/allocations/')
-        html = response.data.decode()
-        for marker in _extract_data_attr(html, 'alloc-type-pie-chart', 'data-values'):
-            parsed = json.loads(marker)
-            assert isinstance(parsed, list)
-            assert all(isinstance(x, (int, float)) for x in parsed)
+    def test_facility_pie_cache_miss_on_different_data(self):
+        from webapp.dashboards.charts import generate_facility_pie_chart_matplotlib
+        generate_facility_pie_chart_matplotlib.cache_clear()
 
-    def test_chart_labels_and_values_same_length(self, auth_client):
-        response = auth_client.get('/allocations/')
-        html = response.data.decode()
-        labels_list = list(_extract_data_attr(html, 'facility-pie-chart', 'data-labels'))
-        values_list = list(_extract_data_attr(html, 'facility-pie-chart', 'data-values'))
-        for labels_str, values_str in zip(labels_list, values_list):
-            labels = json.loads(labels_str)
-            values = json.loads(values_str)
-            assert len(labels) == len(values)
+        data_a = [{'facility': 'UNIV', 'annualized_rate': 500, 'count': 10, 'percent': 100}]
+        data_b = [{'facility': 'WNA', 'annualized_rate': 300, 'count': 5, 'percent': 100}]
+        r1 = generate_facility_pie_chart_matplotlib(data_a, 'Test A')
+        r2 = generate_facility_pie_chart_matplotlib(data_b, 'Test B')
+        assert r1 != r2
+        assert generate_facility_pie_chart_matplotlib.cache_info().misses >= 2
 
-    def test_no_matplotlib_svg_in_response(self, auth_client):
-        """Ensure we no longer emit server-side SVG charts."""
-        response = auth_client.get('/allocations/')
-        html = response.data.decode()
-        assert '<svg' not in html.lower() or 'favicon' in html.lower()
+    def test_alloc_type_pie_cache_hit(self):
+        from webapp.dashboards.charts import generate_allocation_type_pie_chart_matplotlib
+        generate_allocation_type_pie_chart_matplotlib.cache_clear()
+
+        data = [
+            {'allocation_type': 'NSC', 'total_amount': 1000, 'count': 5, 'avg_amount': 200},
+            {'allocation_type': 'Small', 'total_amount': 500, 'count': 10, 'avg_amount': 50},
+        ]
+        r1 = generate_allocation_type_pie_chart_matplotlib(data, 'HPC', 'UNIV')
+        r2 = generate_allocation_type_pie_chart_matplotlib(data, 'HPC', 'UNIV')
+        assert r1 is r2
+        assert generate_allocation_type_pie_chart_matplotlib.cache_info().hits >= 1
+
+    def test_nodetype_history_cache_hit(self):
+        from webapp.dashboards.charts import generate_nodetype_history_matplotlib
+        from datetime import datetime
+        generate_nodetype_history_matplotlib.cache_clear()
+
+        ts = datetime(2025, 1, 1)
+        data = [{'timestamp': ts, 'nodes_total': 100, 'nodes_available': 80,
+                 'nodes_down': 5, 'nodes_allocated': 15,
+                 'utilization_percent': 85.0, 'memory_utilization_percent': 60.0}]
+        r1 = generate_nodetype_history_matplotlib(data, 'CPU')
+        r2 = generate_nodetype_history_matplotlib(data, 'CPU')
+        assert r1 is r2
+        assert generate_nodetype_history_matplotlib.cache_info().hits >= 1
+
+    def test_queue_history_cache_hit(self):
+        from webapp.dashboards.charts import generate_queue_history_matplotlib
+        from datetime import datetime
+        generate_queue_history_matplotlib.cache_clear()
+
+        ts = datetime(2025, 1, 1)
+        data = [{'timestamp': ts, 'running_jobs': 50, 'pending_jobs': 10,
+                 'held_jobs': 2, 'active_users': 15, 'cores_allocated': 1000,
+                 'cores_pending': 200, 'gpus_allocated': 0, 'gpus_pending': 0}]
+        r1 = generate_queue_history_matplotlib(data, 'main', 'derecho')
+        r2 = generate_queue_history_matplotlib(data, 'main', 'derecho')
+        assert r1 is r2
+        assert generate_queue_history_matplotlib.cache_info().hits >= 1
+
+    def test_timeseries_cache_hit(self):
+        from webapp.dashboards.charts import generate_usage_timeseries_matplotlib
+        from datetime import date
+        generate_usage_timeseries_matplotlib.cache_clear()
+
+        data = {'dates': [date(2025, 1, 1), date(2025, 1, 2)], 'values': [100.0, 200.0]}
+        r1 = generate_usage_timeseries_matplotlib(data)
+        r2 = generate_usage_timeseries_matplotlib(data)
+        assert r1 is r2
+        assert generate_usage_timeseries_matplotlib.cache_info().hits >= 1
+
+    def test_empty_data_returns_fallback(self):
+        from webapp.dashboards.charts import generate_facility_pie_chart_matplotlib
+        result = generate_facility_pie_chart_matplotlib([], 'Empty')
+        assert 'text-muted' in result
+        assert '<svg' not in result.lower()
+
+    def test_cache_info_exposed(self):
+        from webapp.dashboards.charts import (
+            generate_facility_pie_chart_matplotlib,
+            generate_allocation_type_pie_chart_matplotlib,
+            generate_usage_timeseries_matplotlib,
+            generate_nodetype_history_matplotlib,
+            generate_queue_history_matplotlib,
+        )
+        for fn in [generate_facility_pie_chart_matplotlib,
+                   generate_allocation_type_pie_chart_matplotlib,
+                   generate_usage_timeseries_matplotlib,
+                   generate_nodetype_history_matplotlib,
+                   generate_queue_history_matplotlib]:
+            assert hasattr(fn, 'cache_info')
+            assert hasattr(fn, 'cache_clear')
 
 
 # ============================================================================
@@ -468,13 +527,3 @@ class TestAllocationSummaryEdgeCases:
             assert m['annualized_rate'] is None
 
 
-# ============================================================================
-# Helpers
-# ============================================================================
-
-def _extract_data_attr(html: str, css_class: str, attr_name: str):
-    """Yield values of a data attribute from elements matching a CSS class."""
-    import re
-    pattern = rf'class="{css_class}"[^>]*{attr_name}=\'([^\']*)\''
-    for match in re.finditer(pattern, html):
-        yield match.group(1)
