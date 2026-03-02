@@ -13,6 +13,12 @@ repos:
       - id: no-commit-to-branch
         args: [--branch, main, --branch, staging]
 
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.96.3
+    hooks:
+      - id: terraform_fmt
+        args: [--args=-recursive]
+
   - repo: https://github.com/gitguardian/ggshield
     rev: v1.35.0
     hooks:
