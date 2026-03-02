@@ -9,7 +9,7 @@ from flask_login import LoginManager, current_user
 import sam.session
 import system_status.session
 
-from webapp.extensions import db
+from webapp.extensions import db, cache
 from webapp.admin import admin_bp, init_admin
 from webapp.auth import bp as auth_bp
 from webapp.dashboards.user import bp as user_dashboard_bp
@@ -75,6 +75,13 @@ def create_app():
 
     # Initialize db with app
     db.init_app(app)
+
+    # Initialize caching (NullCache when testing to avoid stale state between tests)
+    app.config.setdefault('CACHE_TYPE', 'SimpleCache')
+    app.config.setdefault('CACHE_DEFAULT_TIMEOUT', 300)
+    if app.config.get('TESTING') or os.environ.get('FLASK_ENV') == 'testing':
+        app.config['CACHE_TYPE'] = 'NullCache'
+    cache.init_app(app)
 
     # =========================================================================
     # AUDIT LOGGING INITIALIZATION

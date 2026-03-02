@@ -279,6 +279,10 @@ docker compose up -d mysql
 ### Switching Databases
 
 ```bash
+# Switch to staging (requires VPN + password)
+./scripts/setup/switch_to_staging_db.sh
+source etc/config_env.sh
+
 # Switch to production
 ./scripts/setup/switch_to_production_db.sh
 source etc/config_env.sh
@@ -368,12 +372,37 @@ Scripts for managing the AWS staging environment.
 
 **Purpose:** Connect to staging RDS MySQL database
 
-**Prerequisites:** UCAR VPN, mysql client, Terraform outputs
+**Prerequisites:** UCAR VPN, mysql client, DB password (no AWS CLI needed)
 
 **Usage:**
 ```bash
-./scripts/infra/query-staging-db.sh              # interactive session
+./scripts/infra/query-staging-db.sh              # interactive session (prompts for password)
 ./scripts/infra/query-staging-db.sh "SELECT 1"   # single query
+
+# With env var (avoids prompt)
+export SAM_STAGING_DB_PASSWORD='...'
+./scripts/infra/query-staging-db.sh
+
+# Auto-fetch from SSM (requires AWS CLI)
+./scripts/infra/query-staging-db.sh --ssm
+```
+
+**Environment variables (optional):**
+- `SAM_STAGING_DB_HOST` - RDS hostname (has default)
+- `SAM_STAGING_DB_USER` - DB username (has default)
+- `SAM_STAGING_DB_PASSWORD` - DB password (prompted if not set)
+
+### `scripts/infra/db-creds-staging.sh`
+
+**Purpose:** Fetch staging DB credentials from AWS SSM for sharing with team
+
+**Prerequisites:** AWS CLI with access to sam-queries account
+
+**Usage:**
+```bash
+./scripts/infra/db-creds-staging.sh          # all formats (plain text, mysql string, env vars, tool config)
+./scripts/infra/db-creds-staging.sh --env     # env export lines only
+./scripts/infra/db-creds-staging.sh --json    # JSON format
 ```
 
 ### `scripts/infra/deploy-staging.sh`

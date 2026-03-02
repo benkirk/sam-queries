@@ -23,6 +23,7 @@ dependencies = [
     "cryptography",
     "flask",
     "flask-admin",
+    "flask-caching",
     "flask-login",
     "flask-sqlalchemy",
     "gunicorn",
@@ -50,7 +51,7 @@ test = [
     "pytest-timeout",
     "pytest-xdist",
 ]
-dev = ["samuel[test]", "jupyterlab", "pandas"]
+dev = ["samuel[test]", "jupyterlab", "pandas", "pre-commit"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

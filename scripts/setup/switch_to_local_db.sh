@@ -23,6 +23,9 @@ sed -i.bak 's/^SAM_DB_SERVER=\${PROD_SAM_DB_SERVER}/#SAM_DB_SERVER=${PROD_SAM_DB
 sed -i.bak 's/^SAM_DB_PASSWORD=\${PROD_SAM_DB_PASSWORD}/#SAM_DB_PASSWORD=${PROD_SAM_DB_PASSWORD}/' "$ENV_FILE"
 sed -i.bak 's/^SAM_DB_REQUIRE_SSL=true/#SAM_DB_REQUIRE_SSL=true/' "$ENV_FILE"
 
+# Remove staging settings (added by switch_to_staging_db.sh)
+sed -i.bak '/^SAM_DB_.*# staging$/d' "$ENV_FILE"
+
 # Uncomment local settings
 sed -i.bak 's/^#SAM_DB_USERNAME=root/SAM_DB_USERNAME=root/' "$ENV_FILE"
 sed -i.bak 's/^#SAM_DB_SERVER=127.0.0.1/SAM_DB_SERVER=127.0.0.1/' "$ENV_FILE"

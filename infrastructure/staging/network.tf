@@ -103,5 +103,5 @@ resource "aws_route_table_association" "private" {
 resource "aws_route_table_association" "database" {
   count          = length(var.availability_zones)
   subnet_id      = aws_subnet.database[count.index].id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.public.id
 }
