@@ -5,7 +5,8 @@ from rich.table import Table
 from rich import box
 
 
-def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn) -> None:
+def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn,
+                          normalize_queue_fn=None) -> None:
     """
     Print a Rich table showing what would be posted to comp_charge_summary.
 
@@ -39,11 +40,12 @@ def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn) -> N
             n_skipped += 1
             continue
         resource_name, machine_name, core_hours, charges = result
+        queue = normalize_queue_fn(row["queue"]) if normalize_queue_fn else row["queue"]
         table.add_row(
             str(row["date"]),
             row["user"],
             row["account"],
-            row["queue"],
+            queue,
             str(row["job_count"]),
             f"{row['cpu_hours'] or 0.0:.1f}",
             f"{row['gpu_hours'] or 0.0:.1f}",

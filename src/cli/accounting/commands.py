@@ -3,6 +3,7 @@ Accounting admin commands for SAM.
 
 Bridges hpc-usage-queries daily charge data into the SAM comp_charge_summary table.
 """
+import re
 from datetime import date
 from typing import Optional
 
@@ -16,6 +17,24 @@ from sam.plugins import HPC_USAGE_QUERIES
 # to classify a row as a GPU resource charge rather than CPU.
 # Avoids misclassifying CPU jobs that happened to touch a GPU queue briefly.
 GPU_FRACTION_THRESHOLD = 0.01  # 1%
+
+# PBS assigns ephemeral names like R5184776 (reservation), M2498882 (maintenance),
+# S870294 (standing reservation) to individual reservations.  SAM has a single
+# canonical 'reservation' queue per resource that covers all of them.
+_RESERVATION_QUEUE_RE = re.compile(r'^[RMS]\d')
+
+
+def normalize_queue_name(queue_name: str) -> str:
+    """Map ephemeral PBS reservation queue names to the canonical 'reservation' queue.
+
+    Known limitation: if the same user/project has jobs in two different PBS
+    reservations on the same day, both rows normalize to the same SAM natural key
+    and the second upsert overwrites the first (charges are not summed).  This
+    edge case is considered rare enough not to warrant pre-aggregation today.
+    """
+    if _RESERVATION_QUEUE_RE.match(queue_name):
+        return 'reservation'
+    return queue_name
 
 
 def adapt_jobstats_row(row: dict, machine: str) -> Optional[tuple]:
@@ -151,7 +170,7 @@ class AccountingAdminCommand(BaseCommand):
 
         # --- 5. Dry-run: show Rich table and return ---
         if kwargs.get("dry_run"):
-            display_dry_run_table(self.ctx, rows, machine, adapt_jobstats_row)
+            display_dry_run_table(self.ctx, rows, machine, adapt_jobstats_row, normalize_queue_name)
             return 0
 
         # --- 6-7. Chunk and post rows ---
@@ -194,7 +213,7 @@ class AccountingAdminCommand(BaseCommand):
                                 act_unix_uid=None,
                                 resource_name=resource_name,
                                 machine_name=machine_name,
-                                queue_name=row["queue"],
+                                queue_name=normalize_queue_name(row["queue"]),
                                 num_jobs=row["job_count"],
                                 core_hours=core_hours,
                                 charges=charges,
