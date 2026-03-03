@@ -13,6 +13,7 @@ from config import SAMConfig
 from cli.core.context import Context
 from cli.user.commands import UserAdminCommand
 from cli.project.commands import ProjectAdminCommand, ProjectExpirationCommand
+from cli.accounting.commands import AccountingAdminCommand
 
 
 pass_context = click.make_pass_decorator(Context, ensure=True)
@@ -142,6 +143,48 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
     command = ProjectAdminCommand(ctx)
     exit_code = command.execute(projcode, validate=validate, reconcile=reconcile,
                                 list_users=list_users)
+    sys.exit(exit_code)
+
+
+@cli.command()
+@click.option('--comp', is_flag=True, help='Post computational charge summaries')
+@click.option('--disk', is_flag=True, help='Post disk charge summaries (not yet implemented)')
+@click.option('--archive', is_flag=True, help='Post archive charge summaries (not yet implemented)')
+@click.option('--machine', '-m', type=click.Choice(['derecho', 'casper']), required=True,
+              help='HPC machine to pull charges from')
+@click.option('--start-date', type=click.DateTime(formats=['%Y-%m-%d']), required=True,
+              help='Start date (YYYY-MM-DD, inclusive)')
+@click.option('--end-date', type=click.DateTime(formats=['%Y-%m-%d']), required=True,
+              help='End date (YYYY-MM-DD, inclusive)')
+@click.option('--dry-run', is_flag=True, help='Show what would be posted, without writing')
+@click.option('--skip-errors', is_flag=True, help='Skip rows that fail entity resolution')
+@click.option('--create-queues', is_flag=True, help='Auto-create unknown queues in SAM')
+@click.option('--chunk-size', type=int, default=500, show_default=True,
+              help='Rows per database transaction')
+@click.option('--include-deleted-accounts', is_flag=True,
+              help='Allow posting to accounts marked deleted (for backfill)')
+@click.option('--verbose', '-v', is_flag=True, help='Show per-row warnings and details')
+@pass_context
+def accounting(ctx: Context, comp, disk, archive, machine, start_date, end_date,
+               dry_run, skip_errors, create_queues, chunk_size,
+               include_deleted_accounts, verbose):
+    """Post daily charge summaries from HPC job history into SAM."""
+    if verbose:
+        ctx.verbose = True
+    command = AccountingAdminCommand(ctx)
+    exit_code = command.execute(
+        comp=comp,
+        disk=disk,
+        archive=archive,
+        machine=machine,
+        start_date=start_date.date(),
+        end_date=end_date.date(),
+        dry_run=dry_run,
+        skip_errors=skip_errors,
+        create_queues=create_queues,
+        chunk_size=chunk_size,
+        include_deleted_accounts=include_deleted_accounts,
+    )
     sys.exit(exit_code)
 
 

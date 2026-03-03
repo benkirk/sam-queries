@@ -33,10 +33,11 @@ This repository provides tools to interact with SAM data programmatically, repla
   - Track upcoming and expired allocations
   - Flexible allocation querying with grouping
   - Proper exit codes for automation
-- **sam-admin**: Administrative commands (NEW)
+- **sam-admin**: Administrative commands
   - User and project validation
   - Allocation reconciliation
   - Data integrity checks
+  - **Charge ingest** — post daily HPC charge summaries from `hpc-usage-queries` into SAM's `comp_charge_summary` table
 - Built with [Click](https://click.palletsprojects.com/) using modular architecture
 - Installed via pyproject.toml entry points
 
@@ -204,6 +205,70 @@ sam-search allocations --total-resources --total-types --total-projects --verbos
 ```
 
 **Exit codes:** `0` = success, `1` = not found, `2` = error, `130` = interrupted
+
+### sam-admin accounting — Charge Ingest
+
+The `sam-admin accounting` command reads pre-aggregated daily charge data from the
+[`hpc-usage-queries`](https://github.com/benkirk/hpc-usage-queries) package and
+posts it into SAM's `comp_charge_summary` table via the ORM (no raw SQL).
+
+**Prerequisites:** The `hpc-usage-queries` package must be installed (included in
+`pyproject.toml`) and `JOB_HISTORY_DATA_DIR` must point to the SQLite data directory.
+
+```bash
+# Preview what would be posted — no database writes
+export JOB_HISTORY_DATA_DIR=/path/to/job-history-data
+sam-admin accounting --comp --machine derecho \
+    --start-date 2026-01-01 --end-date 2026-01-31 \
+    --dry-run
+
+# Post computational charges, skipping rows whose user/project is not in SAM
+sam-admin accounting --comp --machine derecho \
+    --start-date 2026-01-01 --end-date 2026-01-31 \
+    --skip-errors
+
+# Casper charges (CPU and GPU routed automatically by queue type)
+sam-admin accounting --comp --machine casper \
+    --start-date 2026-01-01 --end-date 2026-01-31 \
+    --skip-errors
+
+# Auto-create queues that don't yet exist in SAM
+sam-admin accounting --comp --machine derecho \
+    --start-date 2026-01-01 --end-date 2026-01-31 \
+    --create-queues --skip-errors
+
+# Backfill against accounts that have since been marked deleted
+sam-admin accounting --comp --machine derecho \
+    --start-date 2025-01-01 --end-date 2025-12-31 \
+    --include-deleted-accounts --skip-errors
+
+# Verbose mode: show per-row warnings (e.g. low GPU fraction anomalies)
+sam-admin accounting --comp --machine derecho \
+    --start-date 2026-01-01 --end-date 2026-01-02 \
+    --skip-errors --verbose
+```
+
+**Resource routing** is performed per row by `adapt_jobstats_row()`:
+
+| Machine  | Condition                          | SAM Resource  | SAM Machine  |
+|----------|------------------------------------|---------------|--------------|
+| derecho  | gpu_hours / total < 1% (or zero)   | Derecho       | derecho      |
+| derecho  | gpu_hours / total ≥ 1%             | Derecho GPU   | derecho-gpu  |
+| casper   | gpu_hours / total < 1% (or zero)   | Casper        | Casper       |
+| casper   | gpu_hours / total ≥ 1%             | Casper GPU    | Casper-gpu   |
+
+The 1% threshold (`GPU_FRACTION_THRESHOLD`) prevents misclassifying CPU jobs that
+briefly touched a GPU queue from being charged to the GPU resource.
+
+**Output example:**
+
+```
+Found 461 rows for derecho (2026-01-01 → 2026-01-02)
+       Import Summary
+ Created                368
+ Updated                 92
+ Skipped (zero-charge)    1
+```
 
 ### Python ORM
 
@@ -435,12 +500,13 @@ sam-queries/
 │   │   ├── models/              # Status tracking models
 │   │   └── queries/             # Status query functions
 │   │
-│   ├── cli/                     # Modular CLI architecture (NEW)
+│   ├── cli/                     # Modular CLI architecture
 │   │   ├── README.md            # CLI architecture documentation
 │   │   ├── core/                # Shared infrastructure (Context, base classes)
 │   │   ├── user/                # User commands and display functions
 │   │   ├── project/             # Project commands and display functions
 │   │   ├── allocations/         # Allocation commands and display functions
+│   │   ├── accounting/          # Accounting ingest commands and display functions
 │   │   └── cmds/                # Entry points (search.py, admin.py)
 │   │
 │   ├── sam_search_cli.py        # Compatibility shim (re-exports from cli.cmds.search)
