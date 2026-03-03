@@ -82,5 +82,5 @@ class Plugin:
 HPC_USAGE_QUERIES = Plugin(
     name="HPC Usage Queries",
     package="job_history",
-    install_hint="pip install -e '.[hpc]'  # or: pip install 'hpc-usage-queries @ git+https://github.com/benkirk/hpc-usage-queries.git'",
+    install_hint="pip install -e '.[hpc]'  # or: pip install 'hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git'",
 )
