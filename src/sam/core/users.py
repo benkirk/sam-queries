@@ -52,7 +52,6 @@ class User(Base, TimestampMixin):
     contact_person_upid = Column(Integer)
 
     pdb_modified_time = Column(TIMESTAMP)
-    access_status_change_time = Column(TIMESTAMP)
 
     token_type = Column(String(30))
     idms_sync_token = Column(String(64))
