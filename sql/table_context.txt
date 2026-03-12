@@ -1,3 +1,4 @@
+Loaded .env from /Users/benkirk/codes/project_samuel/devel
 SAM MySQL tables (for context):
 
 SHOW tables;
@@ -231,8 +232,8 @@ SELECT * FROM adhoc_group LIMIT 3;
 +----------+------------+----------+--------+---------------------+---------------------+-----------------+
 | group_id | group_name | unix_gid | active | creation_time       | pdb_modified_time   | idms_sync_token |
 +----------+------------+----------+--------+---------------------+---------------------+-----------------+
-|        1 | decs       |    73358 |      1 | 2021-07-13 10:00:27 | 2025-09-30 08:30:53 | NULL            |
-|        2 | acd        |     1150 |      1 | 2021-07-13 10:14:07 | 2025-06-02 17:10:26 | NULL            |
+|        1 | decs       |    73358 |      1 | 2021-07-13 10:00:27 | 2026-03-05 08:02:58 | NULL            |
+|        2 | acd        |     1150 |      1 | 2021-07-13 10:14:07 | 2025-12-05 09:03:52 | NULL            |
 |        3 | accg       |     4124 |      1 | 2021-07-13 10:14:07 | 2024-05-10 13:28:14 | NULL            |
 +----------+------------+----------+--------+---------------------+---------------------+-----------------+
 
@@ -1112,8 +1113,8 @@ SELECT * FROM disk_resource_root_directory LIMIT 3;
 +-------------------+----------------+-----------------+-------------+---------------------+---------------+
 | root_directory_id | root_directory | charging_exempt | resource_id | creation_time       | modified_time |
 +-------------------+----------------+-----------------+-------------+---------------------+---------------+
-|                 1 | /              |               0 |           6 | 2018-07-17 14:19:52 | NULL          |
-|                 2 | /glade         |               0 |           6 | 2018-07-17 14:19:52 | NULL          |
+|                 1 | /              |               0 |          31 | 2025-11-07 09:57:24 | NULL          |
+|                 2 | /glade         |               0 |          31 | 2025-11-07 09:57:24 | NULL          |
 |                 3 | /gpfs/csfs1    |               0 |          20 | 2018-08-08 14:42:54 | NULL          |
 +-------------------+----------------+-----------------+-------------+---------------------+---------------+
 
@@ -1400,16 +1401,17 @@ DESC institution;
 | institution_type_id | int          | YES  | MUL | NULL              |                             |
 | code                | varchar(3)   | YES  |     | NULL              |                             |
 | idms_sync_token     | varchar(64)  | YES  |     | NULL              |                             |
+| deleted             | tinyint(1)   | YES  |     | NULL              |                             |
 +---------------------+--------------+------+-----+-------------------+-----------------------------+
 
 SELECT * FROM institution LIMIT 3;
-+----------------+-----------------------------------+-----------------------------------+--------------+---------------------+---------------+---------+------------+------+---------------+---------------------+------+-----------------+
-| institution_id | name                              | acronym                           | nsf_org_code | creation_time       | modified_time | address | city       | zip  | state_prov_id | institution_type_id | code | idms_sync_token |
-+----------------+-----------------------------------+-----------------------------------+--------------+---------------------+---------------+---------+------------+------+---------------+---------------------+------+-----------------+
-|              1 | UNIVERSITY OF ALASKA FAIRBANKS    | U OF ALASKA FAIRBANKS             | 0290940      | 2012-04-24 16:41:45 | NULL          | NULL    | FAIRBANKS  | NULL |          3552 |                   1 | NULL | NULL            |
-|              2 | NASA/MARSHALL SPACE FLIGHT CENTER | NASA/MARSHALL SPACE FLIGHT CENTER | NULL         | 2012-04-24 16:41:45 | NULL          | NULL    | HUNTSVILLE | NULL |          3551 |                   2 | NULL | NULL            |
-|              3 | GHCC                              | GHCC                              | NULL         | 2012-04-24 16:41:45 | NULL          | NULL    | HUNTSVILLE | NULL |          3551 |                   3 | NULL | NULL            |
-+----------------+-----------------------------------+-----------------------------------+--------------+---------------------+---------------+---------+------------+------+---------------+---------------------+------+-----------------+
++----------------+-----------------------------------+-----------------------------------+--------------+---------------------+---------------+---------+------------+------+---------------+---------------------+------+-----------------+---------+
+| institution_id | name                              | acronym                           | nsf_org_code | creation_time       | modified_time | address | city       | zip  | state_prov_id | institution_type_id | code | idms_sync_token | deleted |
++----------------+-----------------------------------+-----------------------------------+--------------+---------------------+---------------+---------+------------+------+---------------+---------------------+------+-----------------+---------+
+|              1 | UNIVERSITY OF ALASKA FAIRBANKS    | U OF ALASKA FAIRBANKS             | 0290940      | 2012-04-24 16:41:45 | NULL          | NULL    | FAIRBANKS  | NULL |          3552 |                   1 | NULL | NULL            |    NULL |
+|              2 | NASA/MARSHALL SPACE FLIGHT CENTER | NASA/MARSHALL SPACE FLIGHT CENTER | NULL         | 2012-04-24 16:41:45 | NULL          | NULL    | HUNTSVILLE | NULL |          3551 |                   2 | NULL | NULL            |    NULL |
+|              3 | GHCC                              | GHCC                              | NULL         | 2012-04-24 16:41:45 | NULL          | NULL    | HUNTSVILLE | NULL |          3551 |                   3 | NULL | NULL            |    NULL |
++----------------+-----------------------------------+-----------------------------------+--------------+---------------------+---------------+---------+------------+------+---------------+---------------------+------+-----------------+---------+
 
 DESC institution_type;
 +---------------------+-------------+------+-----+-------------------+-----------------------------+
@@ -1563,32 +1565,34 @@ SELECT * FROM nsf_program LIMIT 3;
 +----------------+------------------------------+---------------------+---------------------+--------+
 
 DESC organization;
-+-----------------+--------------+------+-----+-------------------+-----------------------------+
-| Field           | Type         | Null | Key | Default           | Extra                       |
-+-----------------+--------------+------+-----+-------------------+-----------------------------+
-| organization_id | int          | NO   | PRI | NULL              |                             |
-| name            | varchar(100) | NO   |     | NULL              |                             |
-| description     | varchar(255) | YES  |     | NULL              |                             |
-| acronym         | varchar(15)  | NO   | UNI | NULL              |                             |
-| parent_org_id   | int          | YES  | MUL | NULL              |                             |
-| active          | tinyint(1)   | NO   |     | NULL              |                             |
-| creation_time   | datetime     | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED           |
-| modified_time   | timestamp    | YES  |     | NULL              | on update CURRENT_TIMESTAMP |
-| tree_left       | int          | YES  |     | NULL              |                             |
-| tree_right      | int          | YES  |     | NULL              |                             |
-| level           | varchar(80)  | YES  |     | NULL              |                             |
-| level_code      | varchar(10)  | YES  |     | NULL              |                             |
-| idms_sync_token | varchar(64)  | YES  |     | NULL              |                             |
-+-----------------+--------------+------+-----+-------------------+-----------------------------+
++------------------+--------------+------+-----+-------------------+-----------------------------+
+| Field            | Type         | Null | Key | Default           | Extra                       |
++------------------+--------------+------+-----+-------------------+-----------------------------+
+| organization_id  | int          | NO   | PRI | NULL              |                             |
+| name             | varchar(100) | NO   |     | NULL              |                             |
+| description      | varchar(255) | YES  |     | NULL              |                             |
+| acronym          | varchar(15)  | NO   |     | NULL              |                             |
+| parent_org_id    | int          | YES  | MUL | NULL              |                             |
+| active           | tinyint(1)   | NO   |     | NULL              |                             |
+| creation_time    | datetime     | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED           |
+| modified_time    | timestamp    | YES  |     | NULL              | on update CURRENT_TIMESTAMP |
+| tree_left        | int          | YES  |     | NULL              |                             |
+| tree_right       | int          | YES  |     | NULL              |                             |
+| level            | varchar(80)  | YES  |     | NULL              |                             |
+| level_code       | varchar(10)  | YES  |     | NULL              |                             |
+| idms_sync_token  | varchar(64)  | YES  |     | NULL              |                             |
+| idms_unique_name | varchar(64)  | YES  |     | NULL              |                             |
+| deleted          | tinyint(1)   | YES  |     | NULL              |                             |
++------------------+--------------+------+-----+-------------------+-----------------------------+
 
 SELECT * FROM organization LIMIT 3;
-+-----------------+-------------------------------------------------------+-------------+-------------+---------------+--------+---------------------+---------------------+-----------+------------+---------------------------------------+------------+-----------------+
-| organization_id | name                                                  | description | acronym     | parent_org_id | active | creation_time       | modified_time       | tree_left | tree_right | level                                 | level_code | idms_sync_token |
-+-----------------+-------------------------------------------------------+-------------+-------------+---------------+--------+---------------------+---------------------+-----------+------------+---------------------------------------+------------+-----------------+
-|               1 | Aviation Applications Program                         | NULL        | AAP         |           128 |      1 | 2012-04-24 16:41:54 | 2025-09-28 01:42:12 |        54 |         55 | Division / Section / Other Department | 0400       | NULL            |
-|               2 | Atmospheric Chemistry Division                        | NULL        | ACD         |          NULL |      0 | 2012-04-24 16:41:54 | 2024-05-16 12:26:15 |      NULL |       NULL | Division / Section / Other Department | 0400       | NULL            |
-|               3 | Atmospheric Composition Remote Sensing and Prediction | NULL        | ACRESP -- x |          NULL |      0 | 2012-04-24 16:41:54 | 2024-05-16 12:26:15 |      NULL |       NULL | Sub Division                          | 0500       | NULL            |
-+-----------------+-------------------------------------------------------+-------------+-------------+---------------+--------+---------------------+---------------------+-----------+------------+---------------------------------------+------------+-----------------+
++-----------------+-------------------------------------------------------+-------------+-------------+---------------+--------+---------------------+---------------------+-----------+------------+---------------------------------------+------------+-----------------+------------------+---------+
+| organization_id | name                                                  | description | acronym     | parent_org_id | active | creation_time       | modified_time       | tree_left | tree_right | level                                 | level_code | idms_sync_token | idms_unique_name | deleted |
++-----------------+-------------------------------------------------------+-------------+-------------+---------------+--------+---------------------+---------------------+-----------+------------+---------------------------------------+------------+-----------------+------------------+---------+
+|               1 | Aviation Applications Program                         | NULL        | AAP         |           128 |      1 | 2012-04-24 16:41:54 | 2026-02-11 09:15:59 |        68 |         69 | Division / Section / Other Department | 0400       | NULL            | NULL             |    NULL |
+|               2 | Atmospheric Chemistry Division                        | NULL        | ACD         |          NULL |      0 | 2012-04-24 16:41:54 | 2024-05-16 12:26:15 |      NULL |       NULL | Division / Section / Other Department | 0400       | NULL            | NULL             |    NULL |
+|               3 | Atmospheric Composition Remote Sensing and Prediction | NULL        | ACRESP -- x |          NULL |      0 | 2012-04-24 16:41:54 | 2024-05-16 12:26:15 |      NULL |       NULL | Sub Division                          | 0500       | NULL            | NULL             |    NULL |
++-----------------+-------------------------------------------------------+-------------+-------------+---------------+--------+---------------------+---------------------+-----------+------------+---------------------------------------+------------+-----------------+------------------+---------+
 
 DESC panel;
 +---------------+--------------+------+-----+-------------------+-----------------------------+
@@ -1786,8 +1790,8 @@ SELECT * FROM project_directory LIMIT 3;
 | project_directory_id | project_id | directory_name | creation_time       | modified_time       | start_date          | end_date            |
 +----------------------+------------+----------------+---------------------+---------------------+---------------------+---------------------+
 |                   35 |       1099 | /glade/p/asp   | 2012-11-29 00:00:00 | 2015-09-22 14:51:37 | 2012-11-27 00:00:00 | 2018-06-30 00:00:00 |
-|                   36 |       1105 | /glade/p/acd   | 2012-11-29 00:00:00 | 2015-01-09 10:04:35 | 2012-11-26 00:00:00 | NULL                |
-|                   37 |       1108 | /glade/p/cgd   | 2012-11-29 00:00:00 | 2014-11-13 10:30:59 | 2012-11-26 00:00:00 | NULL                |
+|                   36 |       1105 | /glade/p/acd   | 2012-11-29 00:00:00 | 2025-11-06 14:50:31 | 2012-11-26 00:00:00 | 2025-10-01 23:59:59 |
+|                   37 |       1108 | /glade/p/cgd   | 2012-11-29 00:00:00 | 2025-11-06 14:52:53 | 2012-11-26 00:00:00 | 2025-10-01 23:59:59 |
 +----------------------+------------+----------------+---------------------+---------------------+---------------------+---------------------+
 
 DESC project_number;
@@ -2088,7 +2092,7 @@ SELECT * FROM synchronizer LIMIT 3;
 +-----------------+------+---------------------+
 | synchronizer_id | name | last_run            |
 +-----------------+------+---------------------+
-|               1 | pdb  | 2025-10-27 17:50:00 |
+|               1 | pdb  | 2026-03-12 14:50:00 |
 +-----------------+------+---------------------+
 
 DESC tables_dictionary;
@@ -2232,43 +2236,42 @@ SELECT * FROM user_resource_shell LIMIT 3;
 +------------------------+---------+-------------------+---------------------+---------------------+
 
 DESC users;
-+---------------------------+-------------+------+-----+-------------------+-------------------+
-| Field                     | Type        | Null | Key | Default           | Extra             |
-+---------------------------+-------------+------+-----+-------------------+-------------------+
-| user_id                   | int         | NO   | PRI | NULL              | auto_increment    |
-| username                  | varchar(35) | NO   | UNI | NULL              |                   |
-| locked                    | tinyint(1)  | NO   |     | 0                 |                   |
-| upid                      | int         | YES  | UNI | NULL              |                   |
-| unix_uid                  | int         | NO   |     | NULL              |                   |
-| title                     | varchar(15) | YES  |     | NULL              |                   |
-| last_name                 | varchar(50) | YES  |     | NULL              |                   |
-| first_name                | varchar(40) | YES  |     | NULL              |                   |
-| middle_name               | varchar(40) | YES  |     | NULL              |                   |
-| academic_status_id        | int         | YES  | MUL | NULL              |                   |
-| charging_exempt           | tinyint(1)  | NO   |     | 0                 |                   |
-| creation_time             | datetime    | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
-| modified_time             | timestamp   | YES  |     | NULL              |                   |
-| token_type                | varchar(30) | YES  |     | NULL              |                   |
-| nickname                  | varchar(50) | YES  |     | NULL              |                   |
-| name_suffix               | varchar(40) | YES  |     | NULL              |                   |
-| login_type_id             | int         | YES  | MUL | NULL              |                   |
-| active                    | tinyint(1)  | NO   |     | 1                 |                   |
-| contact_person_upid       | int         | YES  |     | NULL              |                   |
-| primary_gid               | int         | YES  | MUL | NULL              |                   |
-| deleted                   | tinyint(1)  | YES  |     | NULL              |                   |
-| pdb_modified_time         | timestamp   | YES  |     | NULL              |                   |
-| idms_sync_token           | varchar(64) | YES  |     | NULL              |                   |
-| access_status_change_time | timestamp   | YES  |     | NULL              |                   |
-+---------------------------+-------------+------+-----+-------------------+-------------------+
++---------------------+-------------+------+-----+-------------------+-------------------+
+| Field               | Type        | Null | Key | Default           | Extra             |
++---------------------+-------------+------+-----+-------------------+-------------------+
+| user_id             | int         | NO   | PRI | NULL              | auto_increment    |
+| username            | varchar(35) | NO   | UNI | NULL              |                   |
+| locked              | tinyint(1)  | NO   |     | 0                 |                   |
+| upid                | int         | YES  | UNI | NULL              |                   |
+| unix_uid            | int         | NO   |     | NULL              |                   |
+| title               | varchar(45) | YES  |     | NULL              |                   |
+| last_name           | varchar(50) | YES  |     | NULL              |                   |
+| first_name          | varchar(40) | YES  |     | NULL              |                   |
+| middle_name         | varchar(40) | YES  |     | NULL              |                   |
+| academic_status_id  | int         | YES  | MUL | NULL              |                   |
+| charging_exempt     | tinyint(1)  | NO   |     | 0                 |                   |
+| creation_time       | datetime    | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
+| modified_time       | timestamp   | YES  |     | NULL              |                   |
+| token_type          | varchar(30) | YES  |     | NULL              |                   |
+| nickname            | varchar(50) | YES  |     | NULL              |                   |
+| name_suffix         | varchar(40) | YES  |     | NULL              |                   |
+| login_type_id       | int         | YES  | MUL | NULL              |                   |
+| active              | tinyint(1)  | NO   |     | 1                 |                   |
+| contact_person_upid | int         | YES  |     | NULL              |                   |
+| primary_gid         | int         | YES  | MUL | NULL              |                   |
+| deleted             | tinyint(1)  | YES  |     | NULL              |                   |
+| pdb_modified_time   | timestamp   | YES  |     | NULL              |                   |
+| idms_sync_token     | varchar(64) | YES  |     | NULL              |                   |
++---------------------+-------------+------+-----+-------------------+-------------------+
 
 SELECT * FROM users LIMIT 3;
-+---------+----------+--------+------+----------+-------+-----------+------------+-------------+--------------------+-----------------+---------------------+---------------------+------------+----------+-------------+---------------+--------+---------------------+-------------+---------+---------------------+-----------------+---------------------------+
-| user_id | username | locked | upid | unix_uid | title | last_name | first_name | middle_name | academic_status_id | charging_exempt | creation_time       | modified_time       | token_type | nickname | name_suffix | login_type_id | active | contact_person_upid | primary_gid | deleted | pdb_modified_time   | idms_sync_token | access_status_change_time |
-+---------+----------+--------+------+----------+-------+-----------+------------+-------------+--------------------+-----------------+---------------------+---------------------+------------+----------+-------------+---------------+--------+---------------------+-------------+---------+---------------------+-----------------+---------------------------+
-|       1 | bruceb   |      0 |    3 |     5017 | NULL  | Briegleb  | Bruce      | P           |               NULL |               0 | 2014-03-03 14:35:29 | 2015-10-29 11:00:00 | NULL       | NULL     | NULL        |             1 |      0 |                NULL |        1000 |    NULL | 2025-03-05 14:52:04 | NULL            | NULL                      |
-|       2 | robted   |      0 |    5 |     5315 | NULL  | Dickinson | Robert     | E           |                 35 |               0 | 2014-02-07 15:33:57 | 2021-08-20 14:32:27 | NULL       | NULL     | NULL        |             1 |      0 |                NULL |        1000 |    NULL | 2025-09-29 14:51:15 | NULL            | NULL                      |
-|       3 | fulker   |      0 |    7 |     8022 | NULL  | Fulker    | David      | W           |               NULL |               0 | 2014-03-17 17:18:04 | 2021-08-20 11:54:47 | NULL       | NULL     | NULL        |             1 |      0 |                NULL |        1000 |    NULL | 2024-01-12 06:59:21 | NULL            | NULL                      |
-+---------+----------+--------+------+----------+-------+-----------+------------+-------------+--------------------+-----------------+---------------------+---------------------+------------+----------+-------------+---------------+--------+---------------------+-------------+---------+---------------------+-----------------+---------------------------+
++---------+----------+--------+------+----------+-------+-----------+------------+-------------+--------------------+-----------------+---------------------+---------------------+------------+----------+-------------+---------------+--------+---------------------+-------------+---------+---------------------+-----------------+
+| user_id | username | locked | upid | unix_uid | title | last_name | first_name | middle_name | academic_status_id | charging_exempt | creation_time       | modified_time       | token_type | nickname | name_suffix | login_type_id | active | contact_person_upid | primary_gid | deleted | pdb_modified_time   | idms_sync_token |
++---------+----------+--------+------+----------+-------+-----------+------------+-------------+--------------------+-----------------+---------------------+---------------------+------------+----------+-------------+---------------+--------+---------------------+-------------+---------+---------------------+-----------------+
+|       1 | bruceb   |      0 |    3 |     5017 | NULL  | Briegleb  | Bruce      | P           |               NULL |               0 | 2014-03-03 14:35:29 | 2015-10-29 11:00:00 | NULL       | NULL     | NULL        |             1 |      0 |                NULL |        1000 |    NULL | 2025-11-07 10:55:19 | NULL            |
+|       2 | robted   |      0 |    5 |     5315 | NULL  | Dickinson | Robert     | E           |                 35 |               0 | 2014-02-07 15:33:57 | 2021-08-20 14:32:27 | NULL       | NULL     | NULL        |             1 |      0 |                NULL |        1000 |    NULL | 2026-03-02 09:51:14 | NULL            |
+|       3 | fulker   |      0 |    7 |     8022 | NULL  | Fulker    | David      | W           |               NULL |               0 | 2014-03-17 17:18:04 | 2021-08-20 11:54:47 | NULL       | NULL     | NULL        |             1 |      0 |                NULL |        1000 |    NULL | 2024-01-12 06:59:21 | NULL            |
++---------+----------+--------+------+----------+-------+-----------+------------+-------------+--------------------+-----------------+---------------------+---------------------+------------+----------+-------------+---------------+--------+---------------------+-------------+---------+---------------------+-----------------+
 
 DESC wallclock_exemption;
 +------------------------+------------+------+-----+-------------------+-------------------+

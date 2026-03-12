@@ -1,12 +1,16 @@
 #!/bin/bash
 
-ml conda
-conda activate /glade/work/benkirk/conda-envs/sam_sql
-which mysql >&2
-source .env
+#set -x
+source ../etc/config_env.sh
 
 set -e
 set -o noglob
+
+
+SAM_DB_USERNAME=${PROD_SAM_DB_USERNAME}
+SAM_DB_SERVER=${PROD_SAM_DB_SERVER}
+SAM_DB_PASSWORD=${PROD_SAM_DB_PASSWORD}
+SAM_DB_REQUIRE_SSL=true
 
 echo "SAM MySQL tables (for context):"
 sql_cmd="SHOW tables;"
