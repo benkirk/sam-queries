@@ -29,6 +29,7 @@ from sam.summaries.comp_summaries import CompChargeSummary
 from sam.summaries.dav_summaries import DavChargeSummary
 from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
+from sam.queries.charges import get_adjustment_totals_by_date
 
 
 # ============================================================================
@@ -239,7 +240,8 @@ def get_resource_detail_data(
     projcode: str,
     resource_name: str,
     start_date: datetime,
-    end_date: datetime
+    end_date: datetime,
+    include_adjustments: bool = True
 ) -> Optional[Dict]:
     """
     Get resource usage details for charts and summary display.
@@ -253,6 +255,8 @@ def get_resource_detail_data(
         resource_name: Resource name (e.g., 'Derecho', 'GLADE')
         start_date: Start of date range
         end_date: End of date range
+        include_adjustments: If True (default), include manual charge adjustments
+                             in both the resource_summary and daily_charges data.
 
     Returns:
         Dictionary with structure:
@@ -290,7 +294,7 @@ def get_resource_detail_data(
     # Get allocation usage for this specific resource
     all_usage = project.get_detailed_allocation_usage(
         resource_name=resource_name,
-        include_adjustments=True
+        include_adjustments=include_adjustments
     )
 
     resource_summary = all_usage.get(resource_name)
@@ -364,11 +368,20 @@ def get_resource_detail_data(
             ArchiveChargeSummary.activity_date <= end_date
         ).group_by(ArchiveChargeSummary.activity_date).all()
 
-    dates = []
-    values = []
+    daily_map = {}
     for row in results:
-        dates.append( row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date )
-        values.append( float(row.charges or 0.0) )
+        d = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
+        daily_map[d] = daily_map.get(d, 0.0) + float(row.charges or 0.0)
+
+    if include_adjustments:
+        for d, amount in get_adjustment_totals_by_date(
+            session, [account.account_id], start_date, end_date
+        ).items():
+            daily_map[d] = daily_map.get(d, 0.0) + amount
+
+    sorted_dates = sorted(daily_map.keys())
+    dates = sorted_dates
+    values = [daily_map[d] for d in sorted_dates]
 
     daily_charges = { 'dates': dates, 'values': values }
 

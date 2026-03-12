@@ -6,6 +6,7 @@ and job data across HPC, DAV, DISK, and ARCHIVE resources. These queries
 power the charges API endpoints and dashboard usage visualizations.
 
 Functions:
+    get_adjustment_totals_by_date: Get ChargeAdjustment totals grouped by date
     get_daily_charge_trends_for_accounts: Get daily charge trends by date
     get_raw_charge_summaries_for_accounts: Get raw charge summary records
     get_jobs_for_project: Get job records for a project
@@ -29,12 +30,48 @@ from sam.accounting.calculator import get_charge_models_for_resource
 # Charge Aggregation Queries
 # ============================================================================
 
+def get_adjustment_totals_by_date(
+    session: Session,
+    account_ids: List[int],
+    start_date: datetime,
+    end_date: datetime
+) -> Dict:
+    """
+    Get total charge adjustments grouped by date for a list of accounts.
+
+    Args:
+        session: SQLAlchemy session.
+        account_ids: List of account IDs to query (pass [single_id] for one account).
+        start_date: Start date (inclusive).
+        end_date: End date (inclusive).
+
+    Returns:
+        Dict mapping date objects to total adjustment amounts.
+        Example: {date(2024, 1, 1): -100.0, date(2024, 1, 15): 250.0}
+    """
+    rows = session.query(
+        ChargeAdjustment.adjustment_date,
+        func.sum(ChargeAdjustment.amount).label('total')
+    ).filter(
+        ChargeAdjustment.account_id.in_(account_ids),
+        ChargeAdjustment.adjustment_date >= start_date,
+        ChargeAdjustment.adjustment_date <= end_date
+    ).group_by(ChargeAdjustment.adjustment_date).all()
+
+    result = {}
+    for adj_date, amount in rows:
+        d = adj_date.date() if hasattr(adj_date, 'date') else adj_date
+        result[d] = result.get(d, 0.0) + float(amount or 0.0)
+    return result
+
+
 def get_daily_charge_trends_for_accounts(
     session: Session,
     account_ids: List[int],
     start_date: datetime,
     end_date: datetime,
-    resource_type: Optional[str] = None
+    resource_type: Optional[str] = None,
+    include_adjustments: bool = True
 ) -> Dict[str, Dict[str, float]]:
     """
     Get daily charge trends for a list of accounts across all charge types.
@@ -46,11 +83,15 @@ def get_daily_charge_trends_for_accounts(
         end_date: End date for the charge data.
         resource_type: Optional filter by resource type ('HPC', 'DAV', 'DISK', 'ARCHIVE').
                        If None, all applicable resource types are included.
+        include_adjustments: If True (default), include manual charge adjustments
+                             as an 'adjustments' key in each day's dict.
 
     Returns:
         A dictionary where keys are date strings (YYYY-MM-DD) and values are
-        dictionaries containing charge totals for each type (comp, dav, disk, archive).
-        Example: {'2024-01-01': {'comp': 100.0, 'dav': 10.0, 'disk': 0.0, 'archive': 0.0}}
+        dictionaries containing charge totals for each type (comp, dav, disk, archive,
+        and optionally adjustments when include_adjustments=True).
+        Example: {'2024-01-01': {'comp': 100.0, 'dav': 10.0, 'disk': 0.0, 'archive': 0.0,
+                                  'adjustments': 0.0}}
     """
     daily_data = {}
 
@@ -73,6 +114,13 @@ def get_daily_charge_trends_for_accounts(
                 daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
             daily_data[date_str][charge_type_key] += float(charges or 0.0)
 
+    if include_adjustments:
+        for d, amount in get_adjustment_totals_by_date(session, account_ids, start_date, end_date).items():
+            date_str = d.strftime('%Y-%m-%d')
+            if date_str not in daily_data:
+                daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0, 'adjustments': 0.0}
+            daily_data[date_str]['adjustments'] = daily_data[date_str].get('adjustments', 0.0) + amount
+
     return daily_data
 
 
@@ -81,7 +129,8 @@ def get_raw_charge_summaries_for_accounts(
     account_ids: List[int],
     start_date: datetime,
     end_date: datetime,
-    resource_type: Optional[str] = None
+    resource_type: Optional[str] = None,
+    include_adjustments: bool = True
 ) -> Dict[str, List[any]]:
     """
     Get raw charge summaries for a list of accounts across all charge types.
@@ -93,10 +142,13 @@ def get_raw_charge_summaries_for_accounts(
         end_date: End date for the charge data.
         resource_type: Optional filter by resource type ('HPC', 'DAV', 'DISK', 'ARCHIVE').
                        If None, all applicable resource types are included.
+        include_adjustments: If True (default), include ChargeAdjustment records
+                             under the 'adjustments' key.
 
     Returns:
-        A dictionary where keys are charge type strings (comp, dav, disk, archive)
-        and values are lists of raw summary objects.
+        A dictionary where keys are charge type strings (comp, dav, disk, archive,
+        and optionally adjustments when include_adjustments=True) and values are
+        lists of raw summary/adjustment objects.
     """
     charge_data = {
         'comp': [],
@@ -115,6 +167,13 @@ def get_raw_charge_summaries_for_accounts(
             model.activity_date <= end_date
         ).all()
         charge_data[charge_type_key] = data
+
+    if include_adjustments:
+        charge_data['adjustments'] = session.query(ChargeAdjustment).filter(
+            ChargeAdjustment.account_id.in_(account_ids),
+            ChargeAdjustment.adjustment_date >= start_date,
+            ChargeAdjustment.adjustment_date <= end_date
+        ).all()
 
     return charge_data
 

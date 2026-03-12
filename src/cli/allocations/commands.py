@@ -13,7 +13,7 @@ class AllocationSearchCommand(BaseAllocationCommand):
     def execute(self, resource=None, facility=None, allocation_type=None,
                 project=None, total_resources=False, total_facilities=False,
                 total_types=False, total_projects=False, active_at=None,
-                inactive=False, show_usage=False) -> int:
+                inactive=False, show_usage=False, include_adjustments=True) -> int:
         try:
             # Handle --total-* flags by converting to "TOTAL" string
             if total_resources:
@@ -49,7 +49,8 @@ class AllocationSearchCommand(BaseAllocationCommand):
                     allocation_type=allocation_type,
                     projcode=project,
                     active_only=not inactive,
-                    active_at=active_at_date
+                    active_at=active_at_date,
+                    include_adjustments=include_adjustments
                 )
             else:
                 results = get_allocation_summary(

@@ -201,11 +201,13 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
 @click.option('--active-at', metavar='DATE', help='Check allocations active at this date (YYYY-MM-DD). Default: today')
 @click.option('--inactive', is_flag=True, help='Include inactive allocations (ignore dates)')
 @click.option('--show-usage', is_flag=True, help='Include usage information (total used, percent used)')
+@click.option('--exclude-adjustments', is_flag=True, default=False,
+              help='Exclude manual charge adjustments from usage totals.')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information including averages')
 @pass_context
 def allocations(ctx: Context, resource, facility, allocation_type, project,
                 total_resources, total_facilities, total_types, total_projects,
-                active_at, inactive, show_usage, verbose):
+                active_at, inactive, show_usage, exclude_adjustments, verbose):
     """
     Query allocation summaries with flexible grouping and filtering.
 
@@ -247,7 +249,8 @@ def allocations(ctx: Context, resource, facility, allocation_type, project,
         total_projects=total_projects,
         active_at=active_at,
         inactive=inactive,
-        show_usage=show_usage
+        show_usage=show_usage,
+        include_adjustments=not exclude_adjustments
     )
     sys.exit(exit_code)
 
