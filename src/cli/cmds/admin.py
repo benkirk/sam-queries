@@ -7,6 +7,7 @@ Administrative commands for SAM database management and validation.
 
 import sys
 import click
+from datetime import date as _date, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from config import SAMConfig
@@ -18,6 +19,68 @@ from cli.accounting.commands import AccountingAdminCommand
 
 pass_context = click.make_pass_decorator(Context, ensure=True)
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+
+
+# ---------------------------------------------------------------------------
+# Accounting date helpers (mirrors jobhist-sync / hpc-usage-queries patterns)
+# ---------------------------------------------------------------------------
+
+def _parse_last_spec(spec: str) -> int:
+    """Parse --last spec: '3d' or '3' → 3."""
+    s = spec.strip().lower().rstrip('d')
+    try:
+        n = int(s)
+    except ValueError:
+        raise click.BadParameter(f"--last must be Nd or N (e.g. 3d), got: {spec!r}")
+    if n < 1:
+        raise click.BadParameter("--last N must be >= 1")
+    return n
+
+
+def _validate_accounting_dates(
+    date_str: str | None,
+    start: str | None,
+    end: str | None,
+    today_flag: bool,
+    last: str | None,
+) -> None:
+    if today_flag and (date_str or start or end or last):
+        raise click.BadParameter("--today cannot be combined with --date, --start, --end, or --last")
+    if last and (date_str or start or end or today_flag):
+        raise click.BadParameter("--last cannot be combined with --date, --start, --end, or --today")
+    if date_str and (start or end):
+        raise click.BadParameter("Cannot use --date with --start/--end")
+    if not any([date_str, start, end, today_flag, last]):
+        raise click.UsageError("Specify a date: --date, --today, --last N[d], or --start/--end")
+    for val, name in [(date_str, '--date'), (start, '--start'), (end, '--end')]:
+        if val:
+            try:
+                datetime.strptime(val, '%Y-%m-%d')
+            except ValueError:
+                raise click.BadParameter(f"{name} must be in YYYY-MM-DD format")
+
+
+def _resolve_accounting_dates(
+    date_str: str | None,
+    start: str | None,
+    end: str | None,
+    today_flag: bool,
+    last: str | None,
+) -> tuple[_date, _date]:
+    today = _date.today()
+    if today_flag:
+        return today, today
+    if last:
+        n = _parse_last_spec(last)
+        return today - timedelta(days=n - 1), today
+    if date_str:
+        d = _date.fromisoformat(date_str)
+        return d, d
+    # --start / --end: match jobhist-sync defaults for missing bound
+    yesterday = today - timedelta(days=1)
+    s = _date.fromisoformat(start) if start else _date.fromisoformat('2024-01-01')
+    e = _date.fromisoformat(end) if end else yesterday
+    return s, e
 
 
 @click.group(context_settings=CONTEXT_SETTINGS)
@@ -152,10 +215,12 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
 @click.option('--archive', is_flag=True, help='Post archive charge summaries (not yet implemented)')
 @click.option('--machine', '-m', type=click.Choice(['derecho', 'casper']), required=True,
               help='HPC machine to pull charges from')
-@click.option('--start-date', type=click.DateTime(formats=['%Y-%m-%d']), required=True,
-              help='Start date (YYYY-MM-DD, inclusive)')
-@click.option('--end-date', type=click.DateTime(formats=['%Y-%m-%d']), required=True,
-              help='End date (YYYY-MM-DD, inclusive)')
+@click.option('--start', type=str, default=None, help='Start date (YYYY-MM-DD, inclusive; default: 2024-01-01)')
+@click.option('--end', type=str, default=None, help='End date (YYYY-MM-DD, inclusive; default: yesterday)')
+@click.option('-d', '--date', 'date_str', type=str, default=None, help='Specific date (YYYY-MM-DD)')
+@click.option('--today', 'today_flag', is_flag=True, help='Use today as the date')
+@click.option('--last', type=str, default=None, metavar='N[d]',
+              help='Last N days including today (e.g. --last 3d)')
 @click.option('--dry-run', is_flag=True, help='Show what would be posted, without writing')
 @click.option('--skip-errors', is_flag=True, help='Skip rows that fail entity resolution')
 @click.option('--create-queues', is_flag=True, help='Auto-create unknown queues in SAM')
@@ -165,10 +230,20 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
               help='Allow posting to accounts marked deleted (for backfill)')
 @click.option('--verbose', '-v', is_flag=True, help='Show per-row warnings and details')
 @pass_context
-def accounting(ctx: Context, comp, disk, archive, machine, start_date, end_date,
+def accounting(ctx: Context, comp, disk, archive, machine, start, end, date_str, today_flag, last,
                dry_run, skip_errors, create_queues, chunk_size,
                include_deleted_accounts, verbose):
-    """Post daily charge summaries from HPC job history into SAM."""
+    """Post daily charge summaries from HPC job history into SAM.
+
+    \b
+    Date Selection (one required):
+      --date YYYY-MM-DD   Single specific date
+      --today             Today's date
+      --last N[d]         Last N days including today (e.g. --last 3d)
+      --start / --end     Date range (defaults: 2024-01-01 to yesterday)
+    """
+    _validate_accounting_dates(date_str, start, end, today_flag, last)
+    start_date, end_date = _resolve_accounting_dates(date_str, start, end, today_flag, last)
     if verbose:
         ctx.verbose = True
     command = AccountingAdminCommand(ctx)
@@ -177,8 +252,8 @@ def accounting(ctx: Context, comp, disk, archive, machine, start_date, end_date,
         disk=disk,
         archive=archive,
         machine=machine,
-        start_date=start_date.date(),
-        end_date=end_date.date(),
+        start_date=start_date,
+        end_date=end_date,
         dry_run=dry_run,
         skip_errors=skip_errors,
         create_queues=create_queues,
