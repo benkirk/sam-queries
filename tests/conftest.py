@@ -106,14 +106,20 @@ def test_databases(worker_db_name):
     db_user = os.getenv('LOCAL_SAM_DB_USERNAME', 'root')
     db_password = os.getenv('LOCAL_SAM_DB_PASSWORD', 'root')
 
-    # Connect to MySQL server (no database specified)
-    server_url = f"mysql+pymysql://{db_user}:{db_password}@{db_server}"
-    engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
-
-    with engine.connect() as conn:
-        # Drop and recreate worker-specific test database
-        conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
-        conn.execute(text(f"CREATE DATABASE {worker_db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+    # Connect to database server (no specific database) and create worker DB
+    db_driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
+    if db_driver == 'postgresql':
+        server_url = f"postgresql+psycopg2://{db_user}:{db_password}@{db_server}/postgres"
+        engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
+        with engine.connect() as conn:
+            conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
+            conn.execute(text(f"CREATE DATABASE {worker_db_name}"))
+    else:
+        server_url = f"mysql+pymysql://{db_user}:{db_password}@{db_server}"
+        engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
+        with engine.connect() as conn:
+            conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
+            conn.execute(text(f"CREATE DATABASE {worker_db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
 
     # Now that the environment variable is set and session is imported,
     # system_status.session.connection_string will be correct.

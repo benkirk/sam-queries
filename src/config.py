@@ -25,6 +25,7 @@ class SAMConfig:
     STATUS_DB_PASSWORD    = os.getenv('STATUS_DB_PASSWORD', '')
     STATUS_DB_SERVER      = os.getenv('STATUS_DB_SERVER', '')
     STATUS_DB_NAME        = os.getenv('STATUS_DB_NAME', 'system_status')
+    STATUS_DB_DRIVER      = os.getenv('STATUS_DB_DRIVER', 'mysql')
     STATUS_DB_REQUIRE_SSL = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
 
     # -------------------------------------------------------------------- Mail
