@@ -27,10 +27,11 @@ def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn,
     table.add_column("Queue", style="white")
     table.add_column("Jobs", justify="right")
     table.add_column("CPU-h", justify="right", style="dim")
+    table.add_column("CPU-c", justify="right", style="dim")
     table.add_column("GPU-h", justify="right", style="dim")
+    table.add_column("GPU-c", justify="right", style="dim")
     table.add_column("→ Resource", style="green")
     table.add_column("→ Machine", style="dim green")
-    table.add_column("core_h", justify="right", style="bold")
     table.add_column("charges", justify="right", style="bold")
 
     n_skipped = 0
@@ -48,10 +49,11 @@ def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn,
             queue,
             str(row["job_count"]),
             f"{row['cpu_hours'] or 0.0:.1f}",
+            f"{row['cpu_charges'] or 0.0:.1f}",
             f"{row['gpu_hours'] or 0.0:.1f}",
+            f"{row['gpu_charges'] or 0.0:.1f}",
             resource_name,
             machine_name,
-            f"{core_hours:.1f}",
             f"{charges:.1f}",
         )
 

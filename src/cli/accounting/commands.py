@@ -64,6 +64,8 @@ def adapt_jobstats_row(row: dict, machine: str) -> Optional[tuple]:
     """
     cpu_h = row["cpu_hours"] or 0.0
     gpu_h = row["gpu_hours"] or 0.0
+    cpu_c = row["cpu_charges"] or 0.0
+    gpu_c = row["gpu_charges"] or 0.0
     total = cpu_h + gpu_h
 
     if total <= 0.0:
@@ -76,20 +78,20 @@ def adapt_jobstats_row(row: dict, machine: str) -> Optional[tuple]:
             # Meaningful GPU usage → Derecho GPU resource
             # core_hours = GPU hours (the Derecho GPU billing metric)
             # TODO: confirm whether charges = gpu_hours or a weighted formula
-            return "Derecho GPU", "derecho-gpu", gpu_h, gpu_h
+            return "Derecho GPU", "derecho-gpu", gpu_h, gpu_c
         # Pure CPU job (or anomalous GPU ratio → treat as CPU)
         # core_hours = CPU core-hours (numnodes * 128 * wall_hours)
         # TODO: confirm charges formula (queue_factor multiplier?)
-        return "Derecho", "derecho", cpu_h, cpu_h
+        return "Derecho", "derecho", cpu_h, cpu_c
 
     elif machine == "casper":
         if gpu_h > 0 and gpu_fraction >= GPU_FRACTION_THRESHOLD:
             # Casper GPU resource
             # TODO: confirm Casper GPU resource name and charges formula
-            return "Casper GPU", "Casper-gpu", gpu_h, gpu_h
+            return "Casper GPU", "Casper-gpu", gpu_h, gpu_c
         # Casper CPU resource
         # TODO: confirm Casper charges formula (cpu_hours + memory_hours?)
-        return "Casper", "Casper", cpu_h, cpu_h
+        return "Casper", "Casper", cpu_h, cpu_c
 
     else:
         raise ValueError(f"Unknown machine: {machine!r}. Add a case to adapt_jobstats_row().")
