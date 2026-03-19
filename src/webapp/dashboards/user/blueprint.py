@@ -7,9 +7,9 @@ Refactored to use server-side rendering with direct ORM queries instead of
 JavaScript API calls for improved performance and simplicity.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify, make_response
 from flask_login import login_required, current_user
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
@@ -307,4 +307,151 @@ def project_details_modal(projcode):
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
+    )
+
+
+# ============================================================================
+# htmx Prototype Routes
+# ============================================================================
+# These routes demonstrate the htmx + WTForms approach for form handling.
+# They coexist with the existing JS-based implementation for comparison.
+# All routes are prefixed with /htmx/ to avoid conflicts.
+# ============================================================================
+
+@bp.route('/htmx/add-member-form/<projcode>')
+@login_required
+def htmx_add_member_form(projcode):
+    """
+    Return the add member form as an HTML fragment.
+
+    Called when the htmx Add Member button is clicked. Returns a fresh form
+    pre-populated with today's start date, ready to be inserted into the modal.
+    """
+    from .forms import AddMemberForm
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger m-3">Project not found</div>', 404
+
+    if not can_manage_project_members(current_user, project):
+        return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
+
+    form = AddMemberForm()
+    form.start_date.data = date.today()
+
+    return render_template(
+        'dashboards/user/fragments/add_member_form_htmx.html',
+        form=form,
+        projcode=projcode
+    )
+
+
+@bp.route('/htmx/search-users')
+@login_required
+def htmx_search_users():
+    """
+    Search users and return results as an HTML fragment.
+
+    Replaces the JSON /api/v1/users/search endpoint for htmx usage.
+    Returns clickable list items with inline onclick handlers.
+    """
+    from sam.queries.users import search_users_by_pattern, get_project_member_user_ids
+
+    query = request.args.get('q', '').strip()
+    projcode = request.args.get('projcode', '')
+
+    if len(query) < 2:
+        return ''
+
+    # Exclude users already on the project
+    exclude_ids = None
+    if projcode:
+        project = db.session.query(Project).filter_by(projcode=projcode).first()
+        if project:
+            exclude_ids = get_project_member_user_ids(db.session, project.project_id)
+
+    users = search_users_by_pattern(
+        db.session, query, limit=20, exclude_user_ids=exclude_ids
+    )
+
+    return render_template(
+        'dashboards/user/fragments/user_search_results_htmx.html',
+        users=users
+    )
+
+
+@bp.route('/htmx/add-member/<projcode>', methods=['POST'])
+@login_required
+def htmx_add_member(projcode):
+    """
+    Handle add member form submission (htmx).
+
+    On validation error: returns the form with error messages (htmx swaps
+    it back into the modal, user sees inline errors).
+
+    On success: returns a success message + OOB swap to update the members
+    table, then auto-closes the modal.
+    """
+    from .forms import AddMemberForm
+    from sam.manage import add_user_to_project, management_transaction
+    from sam.core.users import User
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger m-3">Project not found</div>', 404
+
+    if not can_manage_project_members(current_user, project):
+        return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
+
+    form = AddMemberForm(request.form)
+
+    if not form.validate():
+        # Return the form with errors — htmx swaps it back into the modal
+        return render_template(
+            'dashboards/user/fragments/add_member_form_htmx.html',
+            form=form,
+            projcode=projcode
+        )
+
+    # Look up the user
+    user = db.session.query(User).filter_by(username=form.username.data).first()
+    if not user:
+        form.username.errors.append(f'User "{form.username.data}" not found')
+        return render_template(
+            'dashboards/user/fragments/add_member_form_htmx.html',
+            form=form,
+            projcode=projcode
+        )
+
+    # Add the member
+    try:
+        with management_transaction(db.session):
+            add_user_to_project(
+                db.session, project.project_id, user.user_id,
+                form.start_date.data, form.end_date.data
+            )
+    except (ValueError, Exception) as e:
+        form.username.errors.append(str(e))
+        return render_template(
+            'dashboards/user/fragments/add_member_form_htmx.html',
+            form=form,
+            projcode=projcode
+        )
+
+    # Success — render updated members table for OOB swap
+    members = get_users_on_project(db.session, projcode)
+    members_html = render_template(
+        'dashboards/user/fragments/members_table.html',
+        members=sorted(members, key=lambda m: m["display_name"]),
+        projcode=projcode,
+        project=project,
+        can_manage=can_manage_project_members(current_user, project),
+        can_change_admin=can_change_admin(current_user, project)
+    )
+
+    return render_template(
+        'dashboards/user/fragments/add_member_success_htmx.html',
+        message=f'Added {user.display_name} to project {projcode}',
+        projcode=projcode,
+        members_html=members_html
     )

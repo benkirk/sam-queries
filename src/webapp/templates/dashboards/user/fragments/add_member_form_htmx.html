@@ -1,0 +1,121 @@
+{#
+  htmx prototype: Add Member Form (loaded into modal as fragment)
+
+  This replaces both member_modals.html AND member-management.js (~300 lines of JS)
+  with a server-rendered form using htmx attributes for all AJAX behavior.
+
+  How it works:
+    1. Search input uses hx-get with debounce to fetch results as HTML
+    2. Search results are server-rendered with inline onclick handlers
+    3. Form submission uses hx-post, server returns HTML (not JSON)
+    4. On success: OOB swap updates members table, modal auto-closes
+    5. On error: server returns this form template with error messages
+#}
+
+<form hx-post="{{ url_for('user_dashboard.htmx_add_member', projcode=projcode) }}"
+      hx-target="#addMemberFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+    {# Hidden field populated by user selection #}
+    <input type="hidden" name="username" id="htmxSelectedUsername" value="{{ form.username.data or '' }}">
+
+    <div class="modal-body">
+        {# ── User Search ── #}
+        <div class="mb-3">
+            <label for="htmxUserSearch">Search User</label>
+            <input type="search"
+                   class="form-control"
+                   id="htmxUserSearch"
+                   name="q"
+                   placeholder="Type username, first name, or last name..."
+                   autocomplete="off"
+                   hx-get="{{ url_for('user_dashboard.htmx_search_users', projcode=projcode) }}"
+                   hx-trigger="input changed delay:300ms"
+                   hx-target="#htmxUserSearchResults"
+                   hx-swap="innerHTML"
+                   hx-indicator="#searchSpinner">
+            <small class="form-text text-muted">Start typing to search (minimum 2 characters)</small>
+            <span id="searchSpinner" class="htmx-indicator">
+                <i class="fas fa-spinner fa-spin text-muted ms-2"></i>
+            </span>
+            <div id="htmxUserSearchResults" class="list-group mt-2"></div>
+        </div>
+
+        {# ── Selected User Display ── #}
+        <div id="htmxSelectedUserDisplay" class="alert alert-info" style="display:none;">
+            <i class="fas fa-user-check"></i>
+            <strong id="htmxSelectedUserName"></strong>
+            <small id="htmxSelectedUserEmail" class="text-muted ms-2"></small>
+            <button type="button" class="btn-close float-end"
+                    onclick="htmxClearUserSelection()" aria-label="Clear"></button>
+        </div>
+
+        {# ── Date Range ── #}
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="htmxStartDate">Start Date</label>
+                    <input type="date" class="form-control" id="htmxStartDate"
+                           name="start_date"
+                           value="{{ form.start_date.data.strftime('%Y-%m-%d') if form.start_date.data else '' }}">
+                    <small class="form-text text-muted">Defaults to today</small>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="htmxEndDate">End Date <span class="text-muted">(optional)</span></label>
+                    <input type="date" class="form-control" id="htmxEndDate"
+                           name="end_date"
+                           value="{{ form.end_date.data.strftime('%Y-%m-%d') if form.end_date.data else '' }}">
+                    <small class="form-text text-muted">Leave blank for no end date</small>
+                </div>
+            </div>
+        </div>
+
+        {# ── Validation Errors (rendered server-side on re-submit) ── #}
+        {% if form.errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for field, errors in form.errors.items() %}
+            {% for error in errors %}
+            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            {% endfor %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <small class="form-text text-muted">
+            The member will have access to all resources associated with this project.
+        </small>
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="htmxAddMemberSubmitBtn" disabled>
+            <i class="fas fa-user-plus"></i> Add Member
+        </button>
+    </div>
+</form>
+
+{#
+  Minimal inline JS for user selection state (~12 lines).
+  This is the ONE thing htmx can't fully replace: setting a hidden field
+  from a click on a search result. Everything else is htmx.
+#}
+<script>
+function htmxSelectUser(username, displayName, email) {
+    document.getElementById('htmxSelectedUsername').value = username;
+    document.getElementById('htmxSelectedUserName').textContent = displayName + ' (' + username + ')';
+    document.getElementById('htmxSelectedUserEmail').textContent = email;
+    document.getElementById('htmxSelectedUserDisplay').style.display = 'block';
+    document.getElementById('htmxUserSearchResults').innerHTML = '';
+    document.getElementById('htmxUserSearch').value = '';
+    document.getElementById('htmxAddMemberSubmitBtn').disabled = false;
+}
+function htmxClearUserSelection() {
+    document.getElementById('htmxSelectedUsername').value = '';
+    document.getElementById('htmxSelectedUserDisplay').style.display = 'none';
+    document.getElementById('htmxAddMemberSubmitBtn').disabled = true;
+    document.getElementById('htmxUserSearch').focus();
+}
+</script>
