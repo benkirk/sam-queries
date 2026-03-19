@@ -108,7 +108,7 @@ def test_databases(worker_db_name):
 
     # Connect to database server (no specific database) and create worker DB
     db_driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
-    if db_driver == 'postgresql':
+    if db_driver in ('postgresql', 'postgres'):
         server_url = f"postgresql+psycopg2://{db_user}:{db_password}@{db_server}/postgres"
         engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:

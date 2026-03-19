@@ -24,7 +24,7 @@ def init_status_db_defaults():
 
     # Build connection string based on configured driver
     driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
-    if driver == 'postgresql':
+    if driver in ('postgresql', 'postgres'):
         dialect = 'postgresql+psycopg2'
     else:
         dialect = 'mysql+pymysql'
@@ -61,7 +61,7 @@ def create_status_engine(input_connection_string: str = None):
     # Build connect_args based on SSL requirement (syntax differs by driver)
     connect_args = {}
     if require_ssl:
-        if driver == 'postgresql':
+        if driver in ('postgresql', 'postgres'):
             connect_args['sslmode'] = 'require'
         else:
             connect_args['ssl'] = {'ssl_disabled': False}
