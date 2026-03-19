@@ -84,6 +84,8 @@ services:
           target: /code
           ignore:
             - containers/
+            - logs/
+            - collectors/logs/
             - __pycache__/
             - "*.pyc"
             - .git/
