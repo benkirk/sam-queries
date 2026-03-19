@@ -31,6 +31,7 @@ dependencies = [
     "gunicorn",
     "marshmallow-sqlalchemy",
     "matplotlib",
+    "psycopg2-binary",
     "pymysql",
     "python-dotenv",
     "pyyaml",

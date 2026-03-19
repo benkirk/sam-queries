@@ -2,8 +2,9 @@
 """
 System Status Database Setup Script
 
-Creates all tables for the system_status database using SQLAlchemy ORM models.
-This script should be run after creating the database with create_status_db.sql.
+Creates the system_status database (if it does not exist) and all its tables
+using SQLAlchemy ORM models. Works with both MySQL and PostgreSQL backends
+(controlled by STATUS_DB_DRIVER env var).
 
 Usage:
     python scripts/setup_status_db.py [--drop]
@@ -21,7 +22,49 @@ from pathlib import Path
 python_dir = Path(__file__).parent.parent / 'src'
 sys.path.insert(0, str(python_dir))
 
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
+
+from sqlalchemy import create_engine, text
 from system_status import StatusBase, create_status_engine
+
+
+def ensure_database_exists():
+    """
+    Create the STATUS_DB database if it does not already exist.
+
+    Connects to the appropriate admin database (postgres / no-db for MySQL),
+    checks for existence, and issues CREATE DATABASE when needed.
+    """
+    driver   = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
+    username = os.environ['STATUS_DB_USERNAME']
+    password = os.environ['STATUS_DB_PASSWORD']
+    server   = os.environ['STATUS_DB_SERVER']
+    database = os.getenv('STATUS_DB_NAME', 'system_status')
+
+    if driver in ('postgresql', 'postgres'):
+        admin_url = f"postgresql+psycopg2://{username}:{password}@{server}/postgres"
+        admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
+        with admin_engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :db"),
+                {"db": database}
+            ).fetchone()
+            if row:
+                print(f'  Database "{database}" already exists.')
+            else:
+                conn.execute(text(f'CREATE DATABASE "{database}"'))
+                print(f'  Created database "{database}".')
+        admin_engine.dispose()
+    else:
+        admin_url = f"mysql+pymysql://{username}:{password}@{server}"
+        admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
+        with admin_engine.connect() as conn:
+            conn.execute(text(f"CREATE DATABASE IF NOT EXISTS `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+        print(f'  Database "{database}" ensured (MySQL).')
+        admin_engine.dispose()
+
+
 from system_status.models import (
     DerechoStatus,
     CasperStatus, CasperNodeTypeStatus,
@@ -44,6 +87,14 @@ def setup_database(drop_existing=False, yes=False):
     print("=" * 80)
     print("System Status Database Setup")
     print("=" * 80)
+
+    # Ensure database exists before connecting
+    print("\nChecking database exists...")
+    try:
+        ensure_database_exists()
+    except Exception as e:
+        print(f"\n❌ ERROR: Could not create/verify database: {e}")
+        sys.exit(1)
 
     # Create engine
     print("\nConnecting to database...")

@@ -26,6 +26,10 @@ services:
       - JUPYTERHUB_INSTANCE=stable
       - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}
       - JUPYTERHUB_CACHE_TTL=300
+      - STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}
+      - STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}
+      - STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}
+      - STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}
 
     healthcheck:
       test: |
@@ -67,6 +71,10 @@ services:
       - JUPYTERHUB_INSTANCE=stable
       - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}
       - JUPYTERHUB_CACHE_TTL=300
+      - STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}
+      - STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}
+      - STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}
+      - STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}
 
     # Important: watch the current directory, re-syncing as needed based on source changes
     develop:
@@ -76,6 +84,8 @@ services:
           target: /code
           ignore:
             - containers/
+            - logs/
+            - collectors/logs/
             - __pycache__/
             - "*.pyc"
             - .git/

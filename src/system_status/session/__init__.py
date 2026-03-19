@@ -22,10 +22,15 @@ def init_status_db_defaults():
 
     print(f'{username}:$STATUS_DB_PASSWORD@{server}/{database}')
 
-    # Create connection string
-    # Using pymysql driver for consistency with SAM
+    # Build connection string based on configured driver
+    driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
+    if driver in ('postgresql', 'postgres'):
+        dialect = 'postgresql+psycopg2'
+    else:
+        dialect = 'mysql+pymysql'
+
     global connection_string
-    connection_string = f'mysql+pymysql://{username}:{password}@{server}/{database}'
+    connection_string = f'{dialect}://{username}:{password}@{server}/{database}'
 
 # run on import
 init_status_db_defaults()
@@ -40,8 +45,9 @@ def create_status_engine(input_connection_string: str = None):
         STATUS_DB_SERVER
         STATUS_DB_REQUIRE_SSL (optional, default: false)
 
-    Example connection_string:
+    Example connection strings:
         'mysql+pymysql://username:password@localhost/system_status'
+        'postgresql+psycopg2://username:password@localhost/system_status'
     """
     import os
 
@@ -50,11 +56,15 @@ def create_status_engine(input_connection_string: str = None):
 
     # Check if SSL is required (for remote servers)
     require_ssl = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
+    driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
 
-    # Build connect_args based on SSL requirement
+    # Build connect_args based on SSL requirement (syntax differs by driver)
     connect_args = {}
     if require_ssl:
-        connect_args['ssl'] = {'ssl_disabled': False}
+        if driver in ('postgresql', 'postgres'):
+            connect_args['sslmode'] = 'require'
+        else:
+            connect_args['ssl'] = {'ssl_disabled': False}
 
     engine = create_engine(
         input_connection_string,
