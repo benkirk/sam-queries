@@ -32,23 +32,19 @@ document.body.addEventListener('allocationUpdated', function() {
     var modal = document.getElementById('projectDetailsModal');
     if (modal && modal.classList.contains('show')) {
         var body = document.getElementById('projectDetailsModalBody');
-        var btn = modal.querySelector('[hx-get]') || body;
-        // Find the last hx-get URL used on the modal body, or rebuild from the button
-        // Simplest: re-trigger htmx on the body if it has an hx-get
         if (body.getAttribute('hx-get')) {
             htmx.trigger(body, 'allocationUpdated');
         } else {
-            // Fallback: reload the page
             window.location.reload();
         }
         return;
     }
-    // If admin project card container exists, reload it
+    // If admin project card container has content, reload via htmx
     var adminCard = document.getElementById('projectCardContainer');
     if (adminCard && adminCard.innerHTML.trim()) {
-        if (window.loadAdminProjectCard) {
-            var projcode = adminCard.querySelector('[data-projcode]');
-            if (projcode) window.loadAdminProjectCard(projcode.dataset.projcode);
+        var projEl = adminCard.querySelector('[data-projcode]');
+        if (projEl) {
+            htmx.ajax('GET', '/admin/project/' + projEl.dataset.projcode, {target: adminCard, swap: 'innerHTML'});
         } else {
             window.location.reload();
         }
