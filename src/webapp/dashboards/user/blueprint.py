@@ -18,7 +18,7 @@ from sam.queries.charges import get_jobs_for_project, get_user_breakdown_for_pro
 from sam.queries.lookups import find_project_by_code
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import can_manage_project_members, can_change_admin
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import require_permission, Permission, has_permission
 from ..charts import generate_usage_timeseries_matplotlib
 
 
@@ -181,6 +181,7 @@ def tree_fragment(projcode):
 
     # Get the root of the project tree
     root = project.get_root() if hasattr(project, 'get_root') else project
+    can_view_projects = has_permission(current_user, Permission.VIEW_PROJECTS)
 
     # Render tree structure recursively
     def render_tree_node(node, current_projcode, level=0):
@@ -198,18 +199,18 @@ def tree_fragment(projcode):
         icon = '<i class="fas fa-arrow-right text-warning mr-1"></i>' if is_current else ''
         inactive_badge = ' <span class="badge badge-secondary badge-sm">Inactive</span>' if not is_active else ''
 
-        # Make project code clickable to open details modal.
-        # Uses htmx.ajax() directly rather than hx-get because this HTML
-        # is injected via lazy-loading and htmx.process() doesn't reliably
-        # pick up attributes on Python-generated HTML inside tree structures.
-        detail_url = url_for('user_dashboard.project_details_modal', projcode=node.projcode)
-        projcode_html = (
-            f'<button class="btn btn-link p-0" title="View project details"'
-            f" onclick=\"event.stopPropagation();"
-            f" htmx.ajax('GET', '{detail_url}', {{target: '#projectDetailsModalBody', swap: 'innerHTML'}});"
-            f" bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();\">"
-            f'<strong>{node.projcode}</strong></button>'
-        )
+        # Make project code clickable if user has VIEW_PROJECTS permission
+        if can_view_projects:
+            detail_url = url_for('user_dashboard.project_details_modal', projcode=node.projcode)
+            projcode_html = (
+                f'<button class="btn btn-link p-0" title="View project details"'
+                f" onclick=\"event.stopPropagation();"
+                f" htmx.ajax('GET', '{detail_url}', {{target: '#projectDetailsModalBody', swap: 'innerHTML'}});"
+                f" bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();\">"
+                f'<strong>{node.projcode}</strong></button>'
+            )
+        else:
+            projcode_html = f'<strong>{node.projcode}</strong>'
         html = f'<li style="{style}">{icon}{projcode_html}'
 
         if node.title:
@@ -295,13 +296,10 @@ def jobs_fragment(projcode, resource):
 
 @bp.route('/project-details-modal/<projcode>')
 @login_required
+@require_permission(Permission.VIEW_PROJECTS)
 def project_details_modal(projcode):
     """
     Get HTML fragment for project details modal content (reusable across dashboards).
-
-    Accessible to any logged-in user — the template only shows data
-    relevant to the project. Admin-specific actions (edit allocations)
-    are gated by permission checks in their own templates/routes.
 
     Returns:
         HTML fragment with project info and resources for modal body
