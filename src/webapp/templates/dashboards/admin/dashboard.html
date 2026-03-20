@@ -22,6 +22,7 @@
                     <div class="mb-3">
                         <label for="userSearchImpersonate">Search for a user to impersonate</label>
                         <input type="search" class="form-control" id="userSearchImpersonate"
+                               name="q"
                                placeholder="Start typing a username, first, or last name..."
                                autocomplete="off"
                                hx-get="{{ url_for('admin_dashboard.htmx_search_users_impersonate') }}"
@@ -72,6 +73,7 @@
                 <div class="mb-3">
                     <label for="projectSearchInput">Search by project code or title</label>
                     <input type="search" class="form-control" id="projectSearchInput"
+                           name="q"
                            placeholder="Start typing a project code or title..."
                            autocomplete="off"
                            hx-get="{{ url_for('admin_dashboard.htmx_search_projects') }}"
