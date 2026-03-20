@@ -21,19 +21,43 @@
                 <form id="impersonateUserForm" method="POST" action="{{ url_for('admin_dashboard.impersonate') }}">
                     <div class="mb-3">
                         <label for="userSearchImpersonate">Search for a user to impersonate</label>
-                        <input type="text" class="form-control" id="userSearchImpersonate" placeholder="Start typing a username, first, or last name..." autocomplete="off">
+                        <input type="search" class="form-control" id="userSearchImpersonate"
+                               placeholder="Start typing a username, first, or last name..."
+                               autocomplete="off"
+                               hx-get="{{ url_for('admin_dashboard.htmx_search_users_impersonate') }}"
+                               hx-trigger="input changed delay:300ms"
+                               hx-target="#userSearchResultsImpersonate"
+                               hx-swap="innerHTML">
                         <input type="hidden" id="selectedUsernameImpersonate" name="username">
                         <div id="userSearchResultsImpersonate" class="list-group mt-2 dropdown-list"></div>
                     </div>
-                    <div id="selectedUserDisplayImpersonate" class="alert alert-info dropdown-list">
+                    <div id="selectedUserDisplayImpersonate" class="alert alert-info dropdown-list" style="display:none;">
                         <i class="fas fa-user-check"></i>
                         <strong id="selectedUserNameImpersonate"></strong>
                         <small id="selectedUserEmailImpersonate" class="text-muted ms-2"></small>
+                        <button type="button" class="btn-close float-end"
+                                onclick="clearUserImpersonate()" aria-label="Clear"></button>
                     </div>
                     <button type="submit" class="btn btn-primary" id="impersonateSubmitBtn" disabled>
                         <i class="fas fa-user-secret"></i> Impersonate
                     </button>
                 </form>
+                <script>
+                function selectUserImpersonate(username, displayName, email) {
+                    document.getElementById('selectedUsernameImpersonate').value = username;
+                    document.getElementById('selectedUserNameImpersonate').textContent = displayName + ' (' + username + ')';
+                    document.getElementById('selectedUserEmailImpersonate').textContent = email;
+                    document.getElementById('selectedUserDisplayImpersonate').style.display = 'block';
+                    document.getElementById('userSearchResultsImpersonate').innerHTML = '';
+                    document.getElementById('userSearchImpersonate').value = '';
+                    document.getElementById('impersonateSubmitBtn').disabled = false;
+                }
+                function clearUserImpersonate() {
+                    document.getElementById('selectedUsernameImpersonate').value = '';
+                    document.getElementById('selectedUserDisplayImpersonate').style.display = 'none';
+                    document.getElementById('impersonateSubmitBtn').disabled = true;
+                }
+                </script>
             </div>
         </div>
     </div>
@@ -223,7 +247,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/admin-impersonation.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin-project-search.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin-expirations.js') }}"></script>
 {% endblock %}

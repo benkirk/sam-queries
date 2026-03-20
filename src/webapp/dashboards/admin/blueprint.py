@@ -382,3 +382,28 @@ def expirations_export():
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
+
+
+# ============================================================================
+# htmx Routes
+# ============================================================================
+
+@bp.route('/htmx/search-users-impersonate')
+@login_required
+@require_permission(Permission.IMPERSONATE_USERS)
+def htmx_search_users_impersonate():
+    """
+    Search active users for impersonation, returning HTML fragments.
+    """
+    from sam.queries.users import search_users_by_pattern
+
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return ''
+
+    users = search_users_by_pattern(db.session, query, limit=20, active_only=True)
+
+    return render_template(
+        'dashboards/admin/fragments/user_search_results_htmx.html',
+        users=users
+    )
