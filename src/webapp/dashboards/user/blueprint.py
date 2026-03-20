@@ -482,3 +482,134 @@ def htmx_add_member(projcode):
         projcode=projcode,
         members_html=members_html
     )
+
+
+@bp.route('/htmx/edit-allocation-form/<int:allocation_id>')
+@login_required
+@require_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_edit_allocation_form(allocation_id):
+    """
+    Return the edit allocation form as an HTML fragment, pre-populated from DB.
+
+    Replaces the JS pattern of: fetch JSON → populate form fields client-side.
+    """
+    from sam.accounting.allocations import Allocation
+
+    allocation = db.session.get(Allocation, allocation_id)
+    if not allocation:
+        return '<div class="alert alert-danger m-3">Allocation not found</div>', 404
+
+    # Derive resource name and projcode from the allocation's account
+    account = allocation.account
+    resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
+    projcode = request.args.get('projcode', account.project.projcode if account and account.project else '')
+
+    return render_template(
+        'dashboards/user/fragments/edit_allocation_form_htmx.html',
+        allocation=allocation,
+        resource_name=resource_name,
+        projcode=projcode,
+        errors=[]
+    )
+
+
+@bp.route('/htmx/edit-allocation/<int:allocation_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_edit_allocation(allocation_id):
+    """
+    Handle edit allocation form submission (htmx).
+
+    On error: returns the form with error messages.
+    On success: returns a script that closes the modal and triggers a
+    refresh event so any open project details modal reloads.
+    """
+    from sam.accounting.allocations import Allocation
+    from sam.manage import update_allocation, management_transaction
+
+    allocation = db.session.get(Allocation, allocation_id)
+    if not allocation:
+        return '<div class="alert alert-danger m-3">Allocation not found</div>', 404
+
+    account = allocation.account
+    resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
+    projcode = request.form.get('projcode', '')
+
+    # Parse form fields
+    errors = []
+    updates = {}
+
+    amount_str = request.form.get('amount', '').strip()
+    if amount_str:
+        try:
+            amount = float(amount_str)
+            if amount <= 0:
+                errors.append('Amount must be greater than 0')
+            else:
+                updates['amount'] = amount
+        except ValueError:
+            errors.append('Invalid amount format')
+    else:
+        errors.append('Amount is required')
+
+    start_date_str = request.form.get('start_date', '').strip()
+    end_date_str = request.form.get('end_date', '').strip()
+    try:
+        if start_date_str:
+            updates['start_date'] = datetime.strptime(start_date_str, '%Y-%m-%d')
+        if end_date_str:
+            updates['end_date'] = datetime.strptime(end_date_str, '%Y-%m-%d')
+        else:
+            updates['end_date'] = None  # Explicitly clear end date
+    except ValueError:
+        errors.append('Invalid date format. Use YYYY-MM-DD.')
+
+    if 'start_date' in updates and 'end_date' in updates and updates['end_date']:
+        if updates['end_date'] <= updates['start_date']:
+            errors.append('End date must be after start date')
+
+    description = request.form.get('description', '')
+    updates['description'] = description
+
+    if errors:
+        return render_template(
+            'dashboards/user/fragments/edit_allocation_form_htmx.html',
+            allocation=allocation,
+            resource_name=resource_name,
+            projcode=projcode,
+            errors=errors
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_allocation(
+                db.session, allocation_id, current_user.user_id,
+                **updates
+            )
+    except (ValueError, Exception) as e:
+        return render_template(
+            'dashboards/user/fragments/edit_allocation_form_htmx.html',
+            allocation=allocation,
+            resource_name=resource_name,
+            projcode=projcode,
+            errors=[str(e)]
+        )
+
+    # Success — close modal and trigger refresh
+    response = make_response('''
+        <div class="modal-body text-center text-success py-4">
+            <i class="fas fa-check-circle fa-2x"></i>
+            <p class="mt-2 mb-0">Allocation updated successfully</p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+        <script>
+        setTimeout(function() {
+            var modal = bootstrap.Modal.getInstance(document.getElementById('editAllocationModal'));
+            if (modal) modal.hide();
+        }, 1000);
+        </script>
+    ''')
+    response.headers['HX-Trigger'] = 'allocationUpdated'
+    return response
