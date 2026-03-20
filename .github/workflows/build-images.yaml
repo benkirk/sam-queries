@@ -1,0 +1,172 @@
+name: Build Docker Images
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      images:
+        description: |
+          Space-separated list of images to build.
+          Available: mysql webapp webdev collectors
+          Leave empty to build defaults (mysql webapp).
+        required: false
+        default: ''
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+
+  # -----------------------------------------------------------------------
+  # setup: determine which images to build and emit a JSON matrix
+  # -----------------------------------------------------------------------
+  setup:
+    name: Determine build matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+
+    steps:
+      - name: Build matrix
+        id: matrix
+        run: |
+          # ----------------------------------------------------------------
+          # IMAGE DEFINITIONS — add new images here
+          #
+          # Format per image:
+          #   name        short identifier used in image name and dispatch input
+          #   dockerfile  path relative to repo root
+          #   context     Docker build context path (relative to repo root)
+          #   target      multi-stage target, or "" for single-stage
+          #   default     "true" = built on every trigger, "false" = dispatch only
+          # ----------------------------------------------------------------
+          declare -A DOCKERFILE TARGET CONTEXT DEFAULT
+
+          DOCKERFILE[mysql]="containers/sam-sql-dev/Dockerfile"
+          CONTEXT[mysql]="containers/sam-sql-dev"
+          TARGET[mysql]=""
+          DEFAULT[mysql]="true"
+
+          DOCKERFILE[webapp]="containers/webapp/Dockerfile"
+          CONTEXT[webapp]="."
+          TARGET[webapp]="production"
+          DEFAULT[webapp]="true"
+
+          DOCKERFILE[webdev]="containers/webapp/Dockerfile"
+          CONTEXT[webdev]="."
+          TARGET[webdev]="development"
+          DEFAULT[webdev]="false"
+
+          DOCKERFILE[collectors]="containers/collectors/Dockerfile"
+          CONTEXT[collectors]="."
+          TARGET[collectors]=""
+          DEFAULT[collectors]="true"
+
+          # ----------------------------------------------------------------
+          # Determine which images to build
+          # ----------------------------------------------------------------
+          REQUESTED="${{ github.event.inputs.images }}"
+
+          if [ -z "$REQUESTED" ]; then
+            # No override: build all defaults
+            IMAGES_TO_BUILD=""
+            for img in "${!DEFAULT[@]}"; do
+              if [ "${DEFAULT[$img]}" = "true" ]; then
+                IMAGES_TO_BUILD="$IMAGES_TO_BUILD $img"
+              fi
+            done
+          else
+            IMAGES_TO_BUILD="$REQUESTED"
+          fi
+
+          # ----------------------------------------------------------------
+          # Emit JSON matrix
+          # ----------------------------------------------------------------
+          MATRIX='{"include":['
+          FIRST=true
+
+          for img in $IMAGES_TO_BUILD; do
+            if [ -z "${DOCKERFILE[$img]+x}" ]; then
+              echo "WARNING: Unknown image '$img' — skipping" >&2
+              continue
+            fi
+
+            [ "$FIRST" = "true" ] || MATRIX+=','
+            FIRST=false
+
+            MATRIX+="{\"name\":\"${img}\","
+            MATRIX+="\"dockerfile\":\"${DOCKERFILE[$img]}\","
+            MATRIX+="\"context\":\"${CONTEXT[$img]}\","
+            MATRIX+="\"target\":\"${TARGET[$img]}\"}"
+          done
+
+          MATRIX+=']}'
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Building: $IMAGES_TO_BUILD"
+          echo "Matrix: $MATRIX"
+
+  # -----------------------------------------------------------------------
+  # build: multi-platform image build and push (one job per matrix entry)
+  # -----------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.name }}
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for cross-platform builds)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}
+          tags: |
+            # branch name (e.g. main)
+            type=ref,event=branch
+            # tag name (e.g. v1.2.3)
+            type=ref,event=tag
+            # semver components from tag (v1.2.3 → 1.2.3, 1.2, 1)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # short commit SHA always
+            type=sha,prefix=sha-
+            # 'latest' only on the main branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
