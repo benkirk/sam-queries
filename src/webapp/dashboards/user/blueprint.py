@@ -198,13 +198,16 @@ def tree_fragment(projcode):
         icon = '<i class="fas fa-arrow-right text-warning mr-1"></i>' if is_current else ''
         inactive_badge = ' <span class="badge badge-secondary badge-sm">Inactive</span>' if not is_active else ''
 
-        # Make project code clickable to open details modal
+        # Make project code clickable to open details modal.
+        # Uses htmx.ajax() directly rather than hx-get because this HTML
+        # is injected via lazy-loading and htmx.process() doesn't reliably
+        # pick up attributes on Python-generated HTML inside tree structures.
         detail_url = url_for('user_dashboard.project_details_modal', projcode=node.projcode)
         projcode_html = (
             f'<button class="btn btn-link p-0" title="View project details"'
-            f' data-bs-toggle="modal" data-bs-target="#projectDetailsModal"'
-            f' hx-get="{detail_url}" hx-target="#projectDetailsModalBody" hx-swap="innerHTML"'
-            f' onclick="event.stopPropagation()">'
+            f" onclick=\"event.stopPropagation();"
+            f" htmx.ajax('GET', '{detail_url}', {{target: '#projectDetailsModalBody', swap: 'innerHTML'}});"
+            f" bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();\">"
             f'<strong>{node.projcode}</strong></button>'
         )
         html = f'<li style="{style}">{icon}{projcode_html}'
