@@ -22,9 +22,13 @@
         {% for project in projects %}
         <tr>
             <td data-sort-value="{{ project['projcode'] }}">
-                <button class="btn btn-link p-0 view-project-details-btn"
-                        data-projcode="{{ project['projcode'] }}"
-                        title="View project details">
+                <button class="btn btn-link p-0"
+                        title="View project details"
+                        data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                        hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=project['projcode']) }}"
+                        hx-target="#projectDetailsModalBody"
+                        hx-swap="innerHTML"
+                        onclick="event.stopPropagation()">
                     <strong>{{ project['projcode'] }}</strong>
                 </button>
             </td>

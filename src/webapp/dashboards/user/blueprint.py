@@ -199,7 +199,14 @@ def tree_fragment(projcode):
         inactive_badge = ' <span class="badge badge-secondary badge-sm">Inactive</span>' if not is_active else ''
 
         # Make project code clickable to open details modal
-        projcode_html = f'<button class="btn btn-link p-0 view-project-details-btn" data-projcode="{node.projcode}" title="View project details"><strong>{node.projcode}</strong></button>'
+        detail_url = url_for('user_dashboard.project_details_modal', projcode=node.projcode)
+        projcode_html = (
+            f'<button class="btn btn-link p-0" title="View project details"'
+            f' data-bs-toggle="modal" data-bs-target="#projectDetailsModal"'
+            f' hx-get="{detail_url}" hx-target="#projectDetailsModalBody" hx-swap="innerHTML"'
+            f' onclick="event.stopPropagation()">'
+            f'<strong>{node.projcode}</strong></button>'
+        )
         html = f'<li style="{style}">{icon}{projcode_html}'
 
         if node.title:
