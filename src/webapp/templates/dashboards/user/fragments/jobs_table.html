@@ -25,13 +25,19 @@
     </table>
 </div>
 
+{# Macro for pagination link URL #}
+{% macro page_url(p) %}{{ url_for('user_dashboard.jobs_fragment', projcode=projcode, resource=resource) }}?start_date={{ start_date }}&end_date={{ end_date }}&page={{ p }}{% endmacro %}
+
 <!-- Pagination Controls -->
 {% if total_pages > 1 %}
 <nav aria-label="Job list pagination">
     <ul class="pagination pagination-sm justify-content-center">
         <!-- Previous Button -->
         <li class="page-item {% if page == 1 %}disabled{% endif %}">
-            <a class="page-link" href="#" onclick="loadJobsPage({{ page - 1 }}); return false;">
+            <a class="page-link" href="#"
+               hx-get="{{ page_url(page - 1) }}"
+               hx-target="#jobs-container"
+               hx-swap="innerHTML">
                 <i class="fas fa-chevron-left"></i> Previous
             </a>
         </li>
@@ -42,7 +48,10 @@
 
         {% if start_page > 1 %}
         <li class="page-item">
-            <a class="page-link" href="#" onclick="loadJobsPage(1); return false;">1</a>
+            <a class="page-link" href="#"
+               hx-get="{{ page_url(1) }}"
+               hx-target="#jobs-container"
+               hx-swap="innerHTML">1</a>
         </li>
         {% if start_page > 2 %}
         <li class="page-item disabled"><span class="page-link">...</span></li>
@@ -51,7 +60,10 @@
 
         {% for p in range(start_page, end_page + 1) %}
         <li class="page-item {% if p == page %}active{% endif %}">
-            <a class="page-link" href="#" onclick="loadJobsPage({{ p }}); return false;">{{ p }}</a>
+            <a class="page-link" href="#"
+               hx-get="{{ page_url(p) }}"
+               hx-target="#jobs-container"
+               hx-swap="innerHTML">{{ p }}</a>
         </li>
         {% endfor %}
 
@@ -60,13 +72,19 @@
         <li class="page-item disabled"><span class="page-link">...</span></li>
         {% endif %}
         <li class="page-item">
-            <a class="page-link" href="#" onclick="loadJobsPage({{ total_pages }}); return false;">{{ total_pages }}</a>
+            <a class="page-link" href="#"
+               hx-get="{{ page_url(total_pages) }}"
+               hx-target="#jobs-container"
+               hx-swap="innerHTML">{{ total_pages }}</a>
         </li>
         {% endif %}
 
         <!-- Next Button -->
         <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-            <a class="page-link" href="#" onclick="loadJobsPage({{ page + 1 }}); return false;">
+            <a class="page-link" href="#"
+               hx-get="{{ page_url(page + 1) }}"
+               hx-target="#jobs-container"
+               hx-swap="innerHTML">
                 Next <i class="fas fa-chevron-right"></i>
             </a>
         </li>
@@ -76,11 +94,4 @@
 <div class="text-center text-muted small mb-2">
     Showing {{ (page - 1) * per_page + 1 }} - {{ [page * per_page, total_jobs]|min }} of {{ total_jobs }} jobs
 </div>
-
-<!-- Config for jobs-table.js (Jinja values baked in at render time) -->
-<div id="jobs-table-config" hidden
-     data-jobs-url="{{ url_for('user_dashboard.jobs_fragment', projcode=projcode, resource=resource) }}"
-     data-start-date="{{ start_date }}"
-     data-end-date="{{ end_date }}"></div>
-<script src="{{ url_for('static', filename='js/jobs-table.js') }}"></script>
 {% endif %}
