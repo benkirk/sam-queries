@@ -295,10 +295,13 @@ def jobs_fragment(projcode, resource):
 
 @bp.route('/project-details-modal/<projcode>')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
 def project_details_modal(projcode):
     """
     Get HTML fragment for project details modal content (reusable across dashboards).
+
+    Accessible to any logged-in user — the template only shows data
+    relevant to the project. Admin-specific actions (edit allocations)
+    are gated by permission checks in their own templates/routes.
 
     Returns:
         HTML fragment with project info and resources for modal body
