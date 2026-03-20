@@ -5,7 +5,7 @@
    hx-get="{{ url_for('admin_dashboard.project_card', projcode=project.projcode) }}"
    hx-target="#projectCardContainer"
    hx-swap="innerHTML"
-   onclick="this.closest('.list-group').innerHTML = ''; document.getElementById('projectSearchInput').value = '';">
+   hx-on::after-request="document.getElementById('projectSearchResults').innerHTML = ''; document.getElementById('projectSearchInput').value = '';">
     <div>
         <strong>{{ project.projcode }}</strong>
         {% if project.active %}
