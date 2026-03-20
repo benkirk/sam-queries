@@ -28,13 +28,13 @@
             <div class="input-group">
                 <input type="number" class="form-control" id="allocationAmount" name="amount"
                        step="0.01" min="0" required
-                       value="{{ allocation.allocated }}">
+                       value="{{ allocation.amount }}">
                 <span class="input-group-text" title="Current allocation amount">
                     <i class="fas fa-info-circle"></i>
                 </span>
             </div>
             <small class="form-text text-muted">
-                Core-hours or storage units. Current: <strong>{{ "{:,.2f}".format(allocation.allocated) }}</strong>
+                Core-hours or storage units. Current: <strong>{{ "{:,.2f}".format(allocation.amount) }}</strong>
             </small>
         </div>
 
