@@ -28,7 +28,8 @@
                                hx-get="{{ url_for('admin_dashboard.htmx_search_users_impersonate') }}"
                                hx-trigger="input changed delay:300ms"
                                hx-target="#userSearchResultsImpersonate"
-                               hx-swap="innerHTML">
+                               hx-swap="innerHTML"
+                               hx-params="q">
                         <input type="hidden" id="selectedUsernameImpersonate" name="username">
                         <div id="userSearchResultsImpersonate" class="list-group mt-2 dropdown-list"></div>
                     </div>
@@ -80,6 +81,7 @@
                            hx-trigger="input changed delay:300ms"
                            hx-target="#projectSearchResults"
                            hx-swap="innerHTML"
+                           hx-params="q,active_only"
                            hx-include="#activeProjectsOnly">
                     <div id="projectSearchResults" class="list-group mt-2 dropdown-list"></div>
                 </div>
