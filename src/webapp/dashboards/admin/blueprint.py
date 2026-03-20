@@ -407,3 +407,31 @@ def htmx_search_users_impersonate():
         'dashboards/admin/fragments/user_search_results_htmx.html',
         users=users
     )
+
+
+@bp.route('/htmx/search-projects')
+@login_required
+@require_permission(Permission.IMPERSONATE_USERS)
+def htmx_search_projects():
+    """
+    Search projects and return results as HTML fragments.
+
+    Each result has hx-get to load the project card directly into
+    #projectCardContainer when clicked.
+    """
+    from sam.queries.projects import search_projects_by_code_or_title
+
+    query = request.args.get('q', '').strip()
+    active_only = request.args.get('active_only', '') == 'true'
+
+    if len(query) < 1:
+        return ''
+
+    projects = search_projects_by_code_or_title(
+        db.session, query, active=True if active_only else None
+    )[:10]  # Limit results
+
+    return render_template(
+        'dashboards/admin/fragments/project_search_results_htmx.html',
+        projects=projects
+    )

@@ -71,25 +71,23 @@
             <div class="card-body">
                 <div class="mb-3">
                     <label for="projectSearchInput">Search by project code or title</label>
-                    <input type="text" class="form-control" id="projectSearchInput"
-                           placeholder="Start typing a project code or title..." autocomplete="off">
+                    <input type="search" class="form-control" id="projectSearchInput"
+                           placeholder="Start typing a project code or title..."
+                           autocomplete="off"
+                           hx-get="{{ url_for('admin_dashboard.htmx_search_projects') }}"
+                           hx-trigger="input changed delay:300ms"
+                           hx-target="#projectSearchResults"
+                           hx-swap="innerHTML"
+                           hx-include="#activeProjectsOnly">
                     <div id="projectSearchResults" class="list-group mt-2 dropdown-list"></div>
                 </div>
                 <div class="form-check mb-3">
-                    <input type="checkbox" class="form-check-input" id="activeProjectsOnly" checked>
+                    <input type="checkbox" class="form-check-input" id="activeProjectsOnly"
+                           name="active_only" value="true" checked>
                     <label class="form-check-label" for="activeProjectsOnly">
                         Active projects only
                     </label>
                 </div>
-                <div id="selectedProjectDisplay" class="alert alert-info dropdown-list">
-                    <i class="fas fa-folder-open"></i>
-                    <strong id="selectedProjectName"></strong>
-                    <br><small id="selectedProjectLead" class="text-muted"></small>
-                    <input type="hidden" id="selectedProjectCode">
-                </div>
-                <button type="button" class="btn btn-primary" id="viewProjectBtn" disabled>
-                    <i class="fas fa-eye"></i> View Project
-                </button>
             </div>
         </div>
     </div>
@@ -247,6 +245,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/admin-project-search.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin-expirations.js') }}"></script>
 {% endblock %}
