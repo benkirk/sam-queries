@@ -260,10 +260,12 @@ def expirations_fragment():
         if view_type == 'abandoned':
             abandoned_users = _get_abandoned_users_data(results)
 
-            return render_template(
+            html = render_template(
                 'dashboards/admin/fragments/abandoned_users_table.html',
                 abandoned_users=abandoned_users
-        )
+            )
+            badge = f'<span id="abandoned-count" hx-swap-oob="true" class="badge bg-primary">{len(abandoned_users)}</span>'
+            return html + badge
 
     else:
         return '<div class="alert alert-danger">Invalid view type</div>'
@@ -271,7 +273,7 @@ def expirations_fragment():
     # Transform to project_data format
     projects_data = _build_expiration_project_data(results)
 
-    return render_template(
+    html = render_template(
         'dashboards/admin/fragments/expirations_cards.html',
         projects_data=projects_data,
         view_type=view_type,
@@ -279,6 +281,8 @@ def expirations_fragment():
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
     )
+    badge = f'<span id="{view_type}-count" hx-swap-oob="true" class="badge bg-primary">{len(projects_data)}</span>'
+    return html + badge
 
 
 @bp.route('/expirations/export')
