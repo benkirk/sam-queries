@@ -466,15 +466,7 @@ def htmx_add_member(projcode):
         )
 
     # Success — render updated members table for OOB swap
-    members = get_users_on_project(db.session, projcode)
-    members_html = render_template(
-        'dashboards/user/fragments/members_table.html',
-        members=sorted(members, key=lambda m: m["display_name"]),
-        projcode=projcode,
-        project=project,
-        can_manage=can_manage_project_members(current_user, project),
-        can_change_admin=can_change_admin(current_user, project)
-    )
+    members_html = _render_members_table(projcode, project)
 
     return render_template(
         'dashboards/user/fragments/add_member_success_htmx.html',
@@ -613,3 +605,83 @@ def htmx_edit_allocation(allocation_id):
     ''')
     response.headers['HX-Trigger'] = 'allocationUpdated'
     return response
+
+
+def _render_members_table(projcode, project):
+    """Render the members table fragment for a project (shared by htmx routes)."""
+    members = get_users_on_project(db.session, projcode)
+    return render_template(
+        'dashboards/user/fragments/members_table.html',
+        members=sorted(members, key=lambda m: m["display_name"]),
+        projcode=projcode,
+        project=project,
+        can_manage=can_manage_project_members(current_user, project),
+        can_change_admin=can_change_admin(current_user, project)
+    )
+
+
+@bp.route('/htmx/remove-member/<projcode>/<username>', methods=['DELETE'])
+@login_required
+def htmx_remove_member(projcode, username):
+    """
+    Remove a member from a project (htmx).
+
+    Returns the updated members table HTML on success, or an error alert.
+    """
+    from sam.manage import remove_user_from_project, management_transaction
+    from sam.core.users import User
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found</div>', 404
+
+    if not can_manage_project_members(current_user, project):
+        return '<div class="alert alert-danger">Unauthorized</div>', 403
+
+    user = db.session.query(User).filter_by(username=username).first()
+    if not user:
+        return f'<div class="alert alert-danger">User "{username}" not found</div>', 404
+
+    try:
+        with management_transaction(db.session):
+            remove_user_from_project(db.session, project.project_id, user.user_id)
+    except (ValueError, Exception) as e:
+        return f'<div class="alert alert-danger">{e}</div>', 400
+
+    return _render_members_table(projcode, project)
+
+
+@bp.route('/htmx/change-admin/<projcode>', methods=['PUT'])
+@login_required
+def htmx_change_admin(projcode):
+    """
+    Change or remove the project admin (htmx).
+
+    Form field: admin_username (empty string to remove admin role).
+    Returns the updated members table HTML on success.
+    """
+    from sam.manage import change_project_admin, management_transaction
+    from sam.core.users import User
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found</div>', 404
+
+    if not can_change_admin(current_user, project):
+        return '<div class="alert alert-danger">Unauthorized — only project lead can change admin</div>', 403
+
+    admin_username = request.form.get('admin_username', '').strip()
+
+    try:
+        with management_transaction(db.session):
+            if admin_username:
+                new_admin = db.session.query(User).filter_by(username=admin_username).first()
+                if not new_admin:
+                    return f'<div class="alert alert-danger">User "{admin_username}" not found</div>', 404
+                change_project_admin(db.session, project.project_id, new_admin.user_id)
+            else:
+                change_project_admin(db.session, project.project_id, None)
+    except (ValueError, Exception) as e:
+        return f'<div class="alert alert-danger">{e}</div>', 400
+
+    return _render_members_table(projcode, project)

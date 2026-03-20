@@ -65,28 +65,42 @@
                         {# Admin actions - only lead can change admin #}
                         {% if can_change_admin %}
                         <button class="btn btn-xs btn-outline-warning"
-                                onclick="removeAdminRole('{{ projcode }}', '{{ member.username }}')"
-                                title="Remove admin role (keep as member)">
+                                title="Remove admin role (keep as member)"
+                                hx-put="{{ url_for('user_dashboard.htmx_change_admin', projcode=projcode) }}"
+                                hx-vals='{"admin_username": ""}'
+                                hx-target="#htmx-members-{{ projcode }}"
+                                hx-swap="innerHTML"
+                                hx-confirm="Remove admin role from {{ member.display_name }}? They will remain a project member.">
                             <i class="fas fa-user-minus"></i>
                         </button>
                         {% endif %}
                         <button class="btn btn-xs btn-outline-danger"
-                                onclick="confirmRemoveMember('{{ projcode }}', '{{ member.username }}', '{{ member.display_name }}')"
-                                title="Remove from project">
+                                title="Remove from project"
+                                hx-delete="{{ url_for('user_dashboard.htmx_remove_member', projcode=projcode, username=member.username) }}"
+                                hx-target="#htmx-members-{{ projcode }}"
+                                hx-swap="innerHTML"
+                                hx-confirm="Remove {{ member.display_name }} ({{ member.username }}) from this project? This will remove them from all resources.">
                             <i class="fas fa-times"></i>
                         </button>
                     {% else %}
                         {# Regular member actions #}
                         {% if can_change_admin %}
                         <button class="btn btn-xs btn-outline-info"
-                                onclick="makeAdmin('{{ projcode }}', '{{ member.username }}')"
-                                title="Make project admin">
+                                title="Make project admin"
+                                hx-put="{{ url_for('user_dashboard.htmx_change_admin', projcode=projcode) }}"
+                                hx-vals='{"admin_username": "{{ member.username }}"}'
+                                hx-target="#htmx-members-{{ projcode }}"
+                                hx-swap="innerHTML"
+                                hx-confirm="Make {{ member.display_name }} the project admin?">
                             <i class="fas fa-user-shield"></i>
                         </button>
                         {% endif %}
                         <button class="btn btn-xs btn-outline-danger"
-                                onclick="confirmRemoveMember('{{ projcode }}', '{{ member.username }}', '{{ member.display_name }}')"
-                                title="Remove from project">
+                                title="Remove from project"
+                                hx-delete="{{ url_for('user_dashboard.htmx_remove_member', projcode=projcode, username=member.username) }}"
+                                hx-target="#htmx-members-{{ projcode }}"
+                                hx-swap="innerHTML"
+                                hx-confirm="Remove {{ member.display_name }} ({{ member.username }}) from this project? This will remove them from all resources.">
                             <i class="fas fa-times"></i>
                         </button>
                     {% endif %}

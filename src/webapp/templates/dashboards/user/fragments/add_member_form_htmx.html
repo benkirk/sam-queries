@@ -1,8 +1,7 @@
 {#
   htmx: Add Member Form (loaded into modal as fragment)
 
-  Replaces member_modals.html + member-management.js (~300 lines of JS)
-  with a server-rendered form using htmx attributes for all AJAX behavior.
+  Server-rendered form using htmx attributes for all AJAX behavior.
 
   How it works:
     1. Search input uses hx-get with debounce to fetch results as HTML

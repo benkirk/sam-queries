@@ -1,38 +1,13 @@
 {#
-  htmx prototype: Add Member Modal (drop-in comparison to member_modals.html)
+  htmx: Member Management Modals
 
-  WHAT CHANGED vs. the original:
-  ─────────────────────────────────────────────────────────────────────────
-  REMOVED: member-management.js (309 lines of jQuery/fetch)
-  REMOVED: Inline form HTML from modal (form is now server-loaded)
-  ADDED:   htmx CDN script (~14KB, one line in base.html)
-  ADDED:   3 Flask routes returning HTML fragments
-  ADDED:   1 WTForms class (28 lines)
-  ADDED:   ~12 lines of inline JS (user selection state only)
-  ─────────────────────────────────────────────────────────────────────────
-
-  HOW TO USE (in the members_table.html "Add Member" button):
-
-    BEFORE (JS-driven):
-      <button onclick="showAddMemberModal('{{ projcode }}')">Add Member</button>
-
-    AFTER (htmx-driven):
-      <button data-bs-toggle="modal" data-bs-target="#addMemberModal"
-              hx-get="{{ url_for('user_dashboard.htmx_add_member_form', projcode=projcode) }}"
-              hx-target="#addMemberFormContainer"
-              hx-swap="innerHTML">
-          Add Member
-      </button>
-
-  The button does TWO things simultaneously:
-    1. data-bs-toggle opens the Bootstrap modal
-    2. hx-get fetches a fresh form from the server into the modal body
-
-  No showAddMemberModal() function needed. No form reset logic. No date
-  initialization. The server returns the form ready to go.
+  Only the Add Member modal remains — it needs a container for the
+  dynamically loaded form. The remove-member and change-admin
+  confirmations are now handled by hx-confirm on the action buttons
+  in members_table.html (browser-native confirm() dialog).
 #}
 
-<!-- Add Member Modal (htmx version) -->
+<!-- Add Member Modal — form loaded dynamically via htmx -->
 <div class="modal fade" id="addMemberModal" tabindex="-1"
      aria-labelledby="addMemberModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -50,95 +25,6 @@
                     <i class="fas fa-spinner fa-spin fa-2x"></i>
                     <p class="mt-2">Loading...</p>
                 </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-
-{# ─────────────────────────────────────────────────────────────────────────
-   The Remove Member and Change Admin modals below are unchanged from the
-   original. They're simple confirmations that don't need form handling.
-   In a full migration, these could also use htmx (hx-delete, hx-put),
-   but the payoff is smaller since they're just confirm-then-act dialogs.
-   ───────────────────────────────────────────────────────────────────────── #}
-
-<!-- Remove Member Confirmation Modal (unchanged) -->
-<div class="modal fade" id="removeMemberModal" tabindex="-1"
-     aria-labelledby="removeMemberModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="removeMemberModalLabel">
-                    <i class="fas fa-user-times"></i> Remove Member
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to remove <strong id="removeMemberName"></strong> from this project?</p>
-                <div class="alert alert-warning">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <strong>Warning:</strong> This will remove them from all resources associated with this project.
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" id="confirmRemoveBtn">
-                    <i class="fas fa-user-times"></i> Remove Member
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Change Admin Confirmation Modal (unchanged) -->
-<div class="modal fade" id="changeAdminModal" tabindex="-1"
-     aria-labelledby="changeAdminModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-info text-white">
-                <h5 class="modal-title" id="changeAdminModalLabel">
-                    <i class="fas fa-user-shield"></i> Change Project Admin
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p id="changeAdminMessage"></p>
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i>
-                    <strong>Note:</strong> A project can have only one admin.<br><br>
-                    The project admin can manage project members, but cannot change who the admin is.
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-info" id="confirmAdminChangeBtn">
-                    <i class="fas fa-check"></i> Confirm
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Error Alert Modal (unchanged) -->
-<div class="modal fade" id="errorModal" tabindex="-1"
-     aria-labelledby="errorModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="errorModalLabel">
-                    <i class="fas fa-exclamation-circle"></i> Error
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p id="errorMessage"></p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
