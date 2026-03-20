@@ -66,11 +66,12 @@
                 {% endif %}
             </td>
             <td>
-                <button class="btn btn-sm btn-outline-primary view-usage-btn"
-                        data-projcode="{{ project['projcode'] }}"
-                        data-resource="{{ resource }}"
-                        data-active-at="{{ active_at }}"
-                        title="View usage details">
+                <button class="btn btn-sm btn-outline-primary"
+                        title="View usage details"
+                        data-bs-toggle="modal" data-bs-target="#usageModal"
+                        hx-get="{{ url_for('allocations_dashboard.usage_modal', projcode=project['projcode'], resource=resource) }}?active_at={{ active_at }}"
+                        hx-target="#usageModalBody"
+                        hx-swap="innerHTML">
                     <i class="fas fa-eye"></i>
                 </button>
             </td>
