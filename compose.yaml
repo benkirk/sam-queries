@@ -103,14 +103,15 @@ services:
   # MySQL container:
   mysql:
     container_name: samuel-mysql
-    image: mysql:9
+    build:
+      context: containers/sam-sql-dev
+      dockerfile: Dockerfile
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: sam
     volumes:
       - samuel-mysql-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
-      - ./containers/sam-sql-dev/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
       # Verify MySQL is up AND the sam database is queryable.
       # This prevents the webapp from starting before the restore completes.
