@@ -1,11 +1,11 @@
-{# Fragment: Outage Management Modals #}
+{# Fragment: Outage Management Modals (htmx version) #}
 
 <!-- ======================================================== -->
 <!-- Modal 1: Create Outage                                   -->
 <!-- ======================================================== -->
-<div class="modal fade" id="createOutageModal" tabindex="-1" role="dialog"
+<div class="modal fade" id="createOutageModal" tabindex="-1"
      aria-labelledby="createOutageModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title" id="createOutageModalLabel">
@@ -13,9 +13,9 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="createOutageForm">
+            <form hx-post="{{ url_for('status_dashboard.htmx_create_outage') }}"
+                  hx-disabled-elt="find button[type='submit']">
                 <div class="modal-body">
-                    <!-- System -->
                     <div class="mb-3">
                         <label for="createSystem" class="form-label">System <span class="text-danger">*</span></label>
                         <select class="form-select" id="createSystem" name="system_name" required>
@@ -26,15 +26,11 @@
                             <option value="all">All Systems</option>
                         </select>
                     </div>
-
-                    <!-- Title -->
                     <div class="mb-3">
                         <label for="createTitle" class="form-label">Title <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="createTitle" name="title"
                                placeholder="Brief outage description" required>
                     </div>
-
-                    <!-- Severity -->
                     <div class="mb-3">
                         <label for="createSeverity" class="form-label">Severity <span class="text-danger">*</span></label>
                         <select class="form-select" id="createSeverity" name="severity" required>
@@ -45,29 +41,21 @@
                             <option value="maintenance">Maintenance</option>
                         </select>
                     </div>
-
-                    <!-- Component -->
                     <div class="mb-3">
                         <label for="createComponent" class="form-label">Component <span class="text-muted">(optional)</span></label>
                         <input type="text" class="form-control" id="createComponent" name="component"
                                placeholder="e.g. Login nodes, Lustre, Scheduler">
                     </div>
-
-                    <!-- Description -->
                     <div class="mb-3">
                         <label for="createDescription" class="form-label">Description <span class="text-muted">(optional)</span></label>
                         <textarea class="form-control" id="createDescription" name="description" rows="3"
                                   placeholder="Detailed information about the outage..."></textarea>
                     </div>
-
-                    <!-- Start Time -->
                     <div class="mb-3">
                         <label for="createStartTime" class="form-label">Start Time</label>
                         <input type="datetime-local" class="form-control" id="createStartTime" name="start_time">
                         <small class="form-text text-muted">Adjust if the outage started earlier</small>
                     </div>
-
-                    <!-- Estimated Resolution -->
                     <div class="mb-3">
                         <label for="createEstimatedResolution" class="form-label">Estimated Resolution <span class="text-muted">(optional)</span></label>
                         <input type="datetime-local" class="form-control" id="createEstimatedResolution" name="estimated_resolution">
@@ -75,7 +63,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger" id="createOutageSubmitBtn">
+                    <button type="submit" class="btn btn-danger">
                         <i class="fas fa-exclamation-circle"></i> Report Outage
                     </button>
                 </div>
@@ -87,9 +75,9 @@
 <!-- ======================================================== -->
 <!-- Modal 2: Edit Outage                                     -->
 <!-- ======================================================== -->
-<div class="modal fade" id="editOutageModal" tabindex="-1" role="dialog"
+<div class="modal fade" id="editOutageModal" tabindex="-1"
      aria-labelledby="editOutageModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-secondary text-white">
                 <h5 class="modal-title" id="editOutageModalLabel">
@@ -97,16 +85,15 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="editOutageForm">
+            {# Edit form is populated via inline JS (fields set from data attributes on button) #}
+            <form id="editOutageForm"
+                  hx-disabled-elt="find button[type='submit']">
                 <input type="hidden" id="editOutageId" name="outage_id">
                 <div class="modal-body">
-                    <!-- Title -->
                     <div class="mb-3">
                         <label for="editTitle" class="form-label">Title</label>
                         <input type="text" class="form-control" id="editTitle" name="title">
                     </div>
-
-                    <!-- Status -->
                     <div class="mb-3">
                         <label for="editStatus" class="form-label">Status</label>
                         <select class="form-select" id="editStatus" name="status">
@@ -116,8 +103,6 @@
                             <option value="resolved">Resolved</option>
                         </select>
                     </div>
-
-                    <!-- Severity -->
                     <div class="mb-3">
                         <label for="editSeverity" class="form-label">Severity</label>
                         <select class="form-select" id="editSeverity" name="severity">
@@ -127,14 +112,10 @@
                             <option value="maintenance">Maintenance</option>
                         </select>
                     </div>
-
-                    <!-- Description -->
                     <div class="mb-3">
                         <label for="editDescription" class="form-label">Description <span class="text-muted">(optional)</span></label>
                         <textarea class="form-control" id="editDescription" name="description" rows="3"></textarea>
                     </div>
-
-                    <!-- Estimated Resolution -->
                     <div class="mb-3">
                         <label for="editEstimatedResolution" class="form-label">Estimated Resolution <span class="text-muted">(optional)</span></label>
                         <input type="datetime-local" class="form-control" id="editEstimatedResolution" name="estimated_resolution">
@@ -143,7 +124,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="editOutageSubmitBtn">
+                    <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save"></i> Save Changes
                     </button>
                 </div>
@@ -152,30 +133,35 @@
     </div>
 </div>
 
-<!-- ======================================================== -->
-<!-- Modal 3: Confirm Delete                                  -->
-<!-- ======================================================== -->
-<div class="modal fade" id="deleteOutageModal" tabindex="-1" role="dialog"
-     aria-labelledby="deleteOutageModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-sm" role="document">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="deleteOutageModalLabel">
-                    <i class="fas fa-trash"></i> Delete Outage
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p>Delete outage: <strong id="deleteOutageTitle"></strong>?</p>
-                <p class="text-muted small mb-0">This action cannot be undone.</p>
-                <input type="hidden" id="deleteOutageId">
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" id="confirmDeleteOutageBtn">
-                    <i class="fas fa-trash"></i> Delete
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+{#
+  Inline JS for:
+  1. Pre-filling start time on create modal open
+  2. Populating edit form fields from button data attributes
+  3. Setting the edit form's hx-post URL dynamically
+  The delete confirmation is handled by hx-confirm on the delete buttons.
+#}
+<script>
+/* Pre-fill create start time */
+document.getElementById('createOutageModal').addEventListener('show.bs.modal', function() {
+    var now = new Date();
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    document.getElementById('createStartTime').value =
+        now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) +
+        'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+});
+
+/* Populate edit form from button click */
+function openEditOutageModal(id, status, severity, description, estimatedResolution, title) {
+    document.getElementById('editOutageId').value = id;
+    document.getElementById('editTitle').value = title || '';
+    document.getElementById('editStatus').value = status || 'investigating';
+    document.getElementById('editSeverity').value = severity || 'minor';
+    document.getElementById('editDescription').value = description || '';
+    document.getElementById('editEstimatedResolution').value = estimatedResolution ? estimatedResolution.substring(0, 16) : '';
+    /* Set the form's hx-post URL dynamically based on the outage ID */
+    document.getElementById('editOutageForm').setAttribute('hx-post',
+        '/status/htmx/outage/' + id + '/edit');
+    htmx.process(document.getElementById('editOutageForm'));
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('editOutageModal')).show();
+}
+</script>
