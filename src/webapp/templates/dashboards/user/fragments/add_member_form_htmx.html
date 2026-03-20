@@ -1,7 +1,7 @@
 {#
-  htmx prototype: Add Member Form (loaded into modal as fragment)
+  htmx: Add Member Form (loaded into modal as fragment)
 
-  This replaces both member_modals.html AND member-management.js (~300 lines of JS)
+  Replaces member_modals.html + member-management.js (~300 lines of JS)
   with a server-rendered form using htmx attributes for all AJAX behavior.
 
   How it works:
@@ -18,7 +18,7 @@
       hx-disabled-elt="find button[type='submit']">
 
     {# Hidden field populated by user selection #}
-    <input type="hidden" name="username" id="htmxSelectedUsername" value="{{ form.username.data or '' }}">
+    <input type="hidden" name="username" id="htmxSelectedUsername" value="">
 
     <div class="modal-body">
         {# ── User Search ── #}
@@ -58,7 +58,7 @@
                     <label for="htmxStartDate">Start Date</label>
                     <input type="date" class="form-control" id="htmxStartDate"
                            name="start_date"
-                           value="{{ form.start_date.data.strftime('%Y-%m-%d') if form.start_date.data else '' }}">
+                           value="{{ start_date or '' }}">
                     <small class="form-text text-muted">Defaults to today</small>
                 </div>
             </div>
@@ -67,19 +67,17 @@
                     <label for="htmxEndDate">End Date <span class="text-muted">(optional)</span></label>
                     <input type="date" class="form-control" id="htmxEndDate"
                            name="end_date"
-                           value="{{ form.end_date.data.strftime('%Y-%m-%d') if form.end_date.data else '' }}">
+                           value="{{ end_date or '' }}">
                     <small class="form-text text-muted">Leave blank for no end date</small>
                 </div>
             </div>
         </div>
 
         {# ── Validation Errors (rendered server-side on re-submit) ── #}
-        {% if form.errors %}
+        {% if errors %}
         <div class="alert alert-danger mt-2 mb-0">
-            {% for field, errors in form.errors.items() %}
             {% for error in errors %}
             <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
             {% endfor %}
         </div>
         {% endif %}

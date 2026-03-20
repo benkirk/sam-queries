@@ -311,11 +311,11 @@ def project_details_modal(projcode):
 
 
 # ============================================================================
-# htmx Prototype Routes
+# htmx Routes
 # ============================================================================
-# These routes demonstrate the htmx + WTForms approach for form handling.
-# They coexist with the existing JS-based implementation for comparison.
-# All routes are prefixed with /htmx/ to avoid conflicts.
+# Server-rendered HTML fragment routes for htmx-driven form handling.
+# These replace custom JavaScript with hx-* attributes on HTML elements.
+# All routes are prefixed with /htmx/ to avoid conflicts with API endpoints.
 # ============================================================================
 
 @bp.route('/htmx/add-member-form/<projcode>')
@@ -327,8 +327,6 @@ def htmx_add_member_form(projcode):
     Called when the htmx Add Member button is clicked. Returns a fresh form
     pre-populated with today's start date, ready to be inserted into the modal.
     """
-    from .forms import AddMemberForm
-
     project = Project.get_by_projcode(db.session, projcode)
     if not project:
         return '<div class="alert alert-danger m-3">Project not found</div>', 404
@@ -336,13 +334,11 @@ def htmx_add_member_form(projcode):
     if not can_manage_project_members(current_user, project):
         return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
 
-    form = AddMemberForm()
-    form.start_date.data = date.today()
-
     return render_template(
         'dashboards/user/fragments/add_member_form_htmx.html',
-        form=form,
-        projcode=projcode
+        projcode=projcode,
+        start_date=date.today().strftime('%Y-%m-%d'),
+        errors=[]
     )
 
 
@@ -392,7 +388,6 @@ def htmx_add_member(projcode):
     On success: returns a success message + OOB swap to update the members
     table, then auto-closes the modal.
     """
-    from .forms import AddMemberForm
     from sam.manage import add_user_to_project, management_transaction
     from sam.core.users import User
 
@@ -403,24 +398,48 @@ def htmx_add_member(projcode):
     if not can_manage_project_members(current_user, project):
         return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
 
-    form = AddMemberForm(request.form)
+    # Parse form fields
+    username = request.form.get('username', '').strip()
+    start_date_str = request.form.get('start_date', '').strip()
+    end_date_str = request.form.get('end_date', '').strip()
 
-    if not form.validate():
-        # Return the form with errors — htmx swaps it back into the modal
+    errors = []
+
+    if not username:
+        errors.append('Please select a user first')
+
+    # Parse dates
+    start_date = None
+    end_date = None
+    try:
+        if start_date_str:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        if end_date_str:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+    except ValueError:
+        errors.append('Invalid date format. Use YYYY-MM-DD.')
+
+    if start_date and end_date and end_date <= start_date:
+        errors.append('End date must be after start date')
+
+    if errors:
         return render_template(
             'dashboards/user/fragments/add_member_form_htmx.html',
-            form=form,
-            projcode=projcode
+            projcode=projcode,
+            start_date=start_date_str,
+            end_date=end_date_str,
+            errors=errors
         )
 
     # Look up the user
-    user = db.session.query(User).filter_by(username=form.username.data).first()
+    user = db.session.query(User).filter_by(username=username).first()
     if not user:
-        form.username.errors.append(f'User "{form.username.data}" not found')
         return render_template(
             'dashboards/user/fragments/add_member_form_htmx.html',
-            form=form,
-            projcode=projcode
+            projcode=projcode,
+            start_date=start_date_str,
+            end_date=end_date_str,
+            errors=[f'User "{username}" not found']
         )
 
     # Add the member
@@ -428,14 +447,15 @@ def htmx_add_member(projcode):
         with management_transaction(db.session):
             add_user_to_project(
                 db.session, project.project_id, user.user_id,
-                form.start_date.data, form.end_date.data
+                start_date, end_date
             )
     except (ValueError, Exception) as e:
-        form.username.errors.append(str(e))
         return render_template(
             'dashboards/user/fragments/add_member_form_htmx.html',
-            form=form,
-            projcode=projcode
+            projcode=projcode,
+            start_date=start_date_str,
+            end_date=end_date_str,
+            errors=[str(e)]
         )
 
     # Success — render updated members table for OOB swap

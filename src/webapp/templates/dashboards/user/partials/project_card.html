@@ -177,6 +177,7 @@
     </h6>
     <div id="members-{{ unique_id }}" class="collapse">
         <div class="members-container p-3 bg-light rounded"
+             id="htmx-members-{{ project.projcode }}"
              data-load-url="{{ url_for('user_dashboard.members_fragment', projcode=project.projcode) }}"
              data-loaded="false">
             <div class="spinner-border spinner-border-sm text-primary" role="status">
