@@ -1,0 +1,89 @@
+{#
+  htmx: Edit Allocation Form (loaded into modal as fragment)
+
+  Server pre-populates all fields from the database — no JS fetch needed.
+  Submission via hx-post returns either this form with errors or a success
+  response with HX-Trigger to refresh the parent context.
+#}
+
+<form hx-post="{{ url_for('user_dashboard.htmx_edit_allocation', allocation_id=allocation.allocation_id) }}"
+      hx-target="#editAllocationFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+    <input type="hidden" name="projcode" value="{{ projcode }}">
+
+    <div class="modal-body">
+        <!-- Resource Display (read-only) -->
+        <div class="mb-3">
+            <label>Resource</label>
+            <div class="form-control-plaintext">
+                <strong>{{ resource_name }}</strong>
+            </div>
+        </div>
+
+        <!-- Amount -->
+        <div class="mb-3">
+            <label for="allocationAmount">Allocation Amount <span class="text-danger">*</span></label>
+            <div class="input-group">
+                <input type="number" class="form-control" id="allocationAmount" name="amount"
+                       step="0.01" min="0" required
+                       value="{{ allocation.amount }}">
+                <span class="input-group-text" title="Current allocation amount">
+                    <i class="fas fa-info-circle"></i>
+                </span>
+            </div>
+            <small class="form-text text-muted">
+                Core-hours or storage units. Current: <strong>{{ "{:,.2f}".format(allocation.amount) }}</strong>
+            </small>
+        </div>
+
+        <!-- Date Range -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="allocationStartDate">Start Date <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="allocationStartDate" name="start_date" required
+                           value="{{ allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else '' }}">
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="allocationEndDate">End Date <span class="text-muted">(optional)</span></label>
+                    <input type="date" class="form-control" id="allocationEndDate" name="end_date"
+                           value="{{ allocation.end_date.strftime('%Y-%m-%d') if allocation.end_date else '' }}">
+                    <small class="form-text text-muted">Leave blank for no end date</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Description (optional) -->
+        <div class="mb-3">
+            <label for="allocationDescription">Description <span class="text-muted">(optional)</span></label>
+            <textarea class="form-control" id="allocationDescription" name="description" rows="2"
+                      placeholder="Optional notes about this allocation...">{{ allocation.description or '' }}</textarea>
+        </div>
+
+        <!-- Warning message -->
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Warning:</strong> Changes to allocations will be logged in the audit trail.
+        </div>
+
+        {# ── Validation Errors ── #}
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for error in errors %}
+            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="editAllocationSubmitBtn">
+            <i class="fas fa-save"></i> Save Changes
+        </button>
+    </div>
+</form>

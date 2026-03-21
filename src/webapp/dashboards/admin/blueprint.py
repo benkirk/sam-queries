@@ -260,10 +260,12 @@ def expirations_fragment():
         if view_type == 'abandoned':
             abandoned_users = _get_abandoned_users_data(results)
 
-            return render_template(
+            html = render_template(
                 'dashboards/admin/fragments/abandoned_users_table.html',
                 abandoned_users=abandoned_users
-        )
+            )
+            badge = f'<span id="abandoned-count" hx-swap-oob="true" class="badge bg-primary">{len(abandoned_users)}</span>'
+            return html + badge
 
     else:
         return '<div class="alert alert-danger">Invalid view type</div>'
@@ -271,7 +273,7 @@ def expirations_fragment():
     # Transform to project_data format
     projects_data = _build_expiration_project_data(results)
 
-    return render_template(
+    html = render_template(
         'dashboards/admin/fragments/expirations_cards.html',
         projects_data=projects_data,
         view_type=view_type,
@@ -279,6 +281,8 @@ def expirations_fragment():
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
     )
+    badge = f'<span id="{view_type}-count" hx-swap-oob="true" class="badge bg-primary">{len(projects_data)}</span>'
+    return html + badge
 
 
 @bp.route('/expirations/export')
@@ -381,4 +385,57 @@ def expirations_export():
         output.getvalue(),
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
+
+
+# ============================================================================
+# htmx Routes
+# ============================================================================
+
+@bp.route('/htmx/search-users-impersonate')
+@login_required
+@require_permission(Permission.IMPERSONATE_USERS)
+def htmx_search_users_impersonate():
+    """
+    Search active users for impersonation, returning HTML fragments.
+    """
+    from sam.queries.users import search_users_by_pattern
+
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return ''
+
+    users = search_users_by_pattern(db.session, query, limit=20, active_only=True)
+
+    return render_template(
+        'dashboards/admin/fragments/user_search_results_htmx.html',
+        users=users
+    )
+
+
+@bp.route('/htmx/search-projects')
+@login_required
+@require_permission(Permission.IMPERSONATE_USERS)
+def htmx_search_projects():
+    """
+    Search projects and return results as HTML fragments.
+
+    Each result has hx-get to load the project card directly into
+    #projectCardContainer when clicked.
+    """
+    from sam.queries.projects import search_projects_by_code_or_title
+
+    query = request.args.get('q', '').strip()
+    active_only = request.args.get('active_only', '') == 'true'
+
+    if len(query) < 1:
+        return ''
+
+    projects = search_projects_by_code_or_title(
+        db.session, query, active=True if active_only else None
+    )[:10]  # Limit results
+
+    return render_template(
+        'dashboards/admin/fragments/project_search_results_htmx.html',
+        projects=projects
     )

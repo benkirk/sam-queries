@@ -461,7 +461,8 @@ def get_allocation_summary_with_usage(
     allocation_type: Optional[Union[str, List[str]]] = None,
     projcode: Optional[Union[str, List[str]]] = None,
     active_only: bool = True,
-    active_at: Optional[datetime] = None
+    active_at: Optional[datetime] = None,
+    include_adjustments: bool = True
 ) -> List[Dict]:
     """
     Get allocation summary statistics with usage information.
@@ -470,14 +471,18 @@ def get_allocation_summary_with_usage(
     For aggregated results (count > 1), sums charges across all allocations in the group.
 
     Args:
-        Same as get_allocation_summary()
+        Same as get_allocation_summary(), plus:
+        include_adjustments: If True (default), include manual charge adjustments in
+            total_used. When False, only raw charge summaries are included and
+            charges_by_type will never contain an 'adjustments' key.
 
     Returns:
         List of dicts with same keys as get_allocation_summary() plus:
         - total_used: Total charges across all allocations in this group
         - total_allocated: Total allocation amounts in this group
         - percent_used: (total_used / total_allocated) * 100
-        - charges_by_type: Breakdown of charges by type (comp, dav, disk, archive)
+        - charges_by_type: Breakdown of charges by type (comp, dav, disk, archive,
+          and optionally adjustments when include_adjustments=True)
 
     Example:
         >>> results = get_allocation_summary_with_usage(session, resource_name="Derecho")
@@ -561,25 +566,26 @@ def get_allocation_summary_with_usage(
                                                                start_date,
                                                                end_date)
 
-            # Calculate adjustments
-            if use_hierarchy:
-                adjustment_amount = project.get_subtree_adjustments(account.resource_id,
-                                                                    start_date,
-                                                                    end_date)
-            else:
-                adjustment_amount = project.get_adjustments(alloc.account_id,
-                                                            start_date,
-                                                            end_date)
-
             # Accumulate charges
             for charge_type, amount in charges.items():
                 charges_by_type_total[charge_type] = charges_by_type_total.get(charge_type, 0.0) + amount
                 total_used += amount
 
-            # Add adjustments to total_used (they affect the balance)
-            total_used += adjustment_amount
-            if adjustment_amount != 0:
-                charges_by_type_total['adjustments'] = charges_by_type_total.get('adjustments', 0.0) + adjustment_amount
+            # Calculate and add adjustments (when requested)
+            if include_adjustments:
+                if use_hierarchy:
+                    adjustment_amount = project.get_subtree_adjustments(account.resource_id,
+                                                                        start_date,
+                                                                        end_date)
+                else:
+                    adjustment_amount = project.get_adjustments(alloc.account_id,
+                                                                start_date,
+                                                                end_date)
+
+                # Add adjustments to total_used (they affect the balance)
+                total_used += adjustment_amount
+                if adjustment_amount != 0:
+                    charges_by_type_total['adjustments'] = charges_by_type_total.get('adjustments', 0.0) + adjustment_amount
 
         # Add usage fields to item
         item['total_used'] = total_used

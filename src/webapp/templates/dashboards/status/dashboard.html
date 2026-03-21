@@ -50,12 +50,14 @@
                         </button>
                         <button class="btn btn-outline-success btn-sm"
                                 title="Mark resolved"
-                                onclick="resolveOutage({{ outage.outage_id }})">
+                                hx-post="{{ url_for('status_dashboard.htmx_resolve_outage', outage_id=outage.outage_id) }}"
+                                hx-confirm="Mark this outage as resolved?">
                             <i class="fas fa-check"></i>
                         </button>
                         <button class="btn btn-outline-danger btn-sm"
                                 title="Delete outage"
-                                onclick='openDeleteOutageModal({{ outage.outage_id }}, {{ outage.title|tojson }})'>
+                                hx-delete="{{ url_for('status_dashboard.htmx_delete_outage', outage_id=outage.outage_id) }}"
+                                hx-confirm="Delete outage: {{ outage.title }}?">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -130,7 +132,4 @@
 {% endblock %}
 
 {% block extra_js %}
-{% if has_permission(Permission.EDIT_SYSTEM_STATUS) %}
-<script src="{{ url_for('static', filename='js/outage-management.js') }}"></script>
-{% endif %}
 {% endblock %}

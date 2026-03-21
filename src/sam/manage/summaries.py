@@ -164,6 +164,7 @@ def _resolve_or_create_queue(
             queue_name=queue_name,
             resource_id=resource.resource_id,
             description=f"Auto-created from charge summary import",
+            wall_clock_hours_limit=12,
         )
         session.add(queue)
         session.flush()  # Populate queue_id before referencing it

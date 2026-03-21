@@ -22,6 +22,7 @@ SAM_DB_REQUIRE_SSL=false
 
 #-------------------------
 # system status database
+STATUS_DB_DRIVER=mysql
 STATUS_DB_SERVER=mysql
 STATUS_DB_USERNAME=root
 STATUS_DB_PASSWORD=root

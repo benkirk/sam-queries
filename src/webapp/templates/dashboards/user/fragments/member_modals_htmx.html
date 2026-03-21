@@ -1,0 +1,31 @@
+{#
+  htmx: Member Management Modals
+
+  Only the Add Member modal remains — it needs a container for the
+  dynamically loaded form. The remove-member and change-admin
+  confirmations are now handled by hx-confirm on the action buttons
+  in members_table.html (browser-native confirm() dialog).
+#}
+
+<!-- Add Member Modal — form loaded dynamically via htmx -->
+<div class="modal fade" id="addMemberModal" tabindex="-1"
+     aria-labelledby="addMemberModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="addMemberModalLabel">
+                    <i class="fas fa-user-plus"></i> Add Member to Project
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            {# Form content loaded from server via htmx when modal opens #}
+            <div id="addMemberFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

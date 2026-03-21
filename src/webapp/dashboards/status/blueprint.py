@@ -2,8 +2,9 @@
 System Status dashboard blueprint.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for
+from flask import Blueprint, render_template, request, flash, redirect, url_for, make_response
 from flask_login import login_required, current_user
+from webapp.utils.rbac import require_permission, Permission
 from datetime import datetime, timedelta
 import sys
 from pathlib import Path
@@ -260,3 +261,143 @@ def queue_history(system, queue_name):
 
     finally:
         session.close()
+
+
+# ============================================================================
+# htmx Routes — Outage Management
+# ============================================================================
+
+@bp.route('/htmx/outage', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_SYSTEM_STATUS)
+def htmx_create_outage():
+    """Create an outage and redirect back to the status page."""
+    from system_status.models import SystemOutage
+
+    system_name = request.form.get('system_name', '').strip()
+    title = request.form.get('title', '').strip()
+    severity = request.form.get('severity', '').strip()
+
+    if not system_name or not title or not severity:
+        flash('System, title, and severity are required.', 'error')
+        return redirect(url_for('status_dashboard.index'))
+
+    outage = SystemOutage(
+        system_name=system_name,
+        title=title,
+        severity=severity,
+        component=request.form.get('component', '').strip() or None,
+        description=request.form.get('description', '').strip() or None,
+        status='investigating',
+        start_time=datetime.now(),
+    )
+
+    start_time_str = request.form.get('start_time', '').strip()
+    if start_time_str:
+        try:
+            outage.start_time = datetime.fromisoformat(start_time_str)
+        except ValueError:
+            pass
+
+    est_res_str = request.form.get('estimated_resolution', '').strip()
+    if est_res_str:
+        try:
+            outage.estimated_resolution = datetime.fromisoformat(est_res_str)
+        except ValueError:
+            pass
+
+    db.session.add(outage)
+    db.session.commit()
+
+    flash('Outage reported.', 'warning')
+    response = make_response('')
+    response.headers['HX-Redirect'] = url_for('status_dashboard.index')
+    return response
+
+
+@bp.route('/htmx/outage/<int:outage_id>/edit', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_SYSTEM_STATUS)
+def htmx_update_outage(outage_id):
+    """Update an outage and redirect back to the status page."""
+    from system_status.models import SystemOutage
+
+    outage = db.session.query(SystemOutage).get(outage_id)
+    if not outage:
+        flash('Outage not found.', 'error')
+        response = make_response('')
+        response.headers['HX-Redirect'] = url_for('status_dashboard.index')
+        return response
+
+    valid_statuses = ['investigating', 'identified', 'monitoring', 'resolved']
+    valid_severities = ['critical', 'major', 'minor', 'maintenance']
+
+    title = request.form.get('title', '').strip()
+    if title:
+        outage.title = title
+    status = request.form.get('status', '').strip()
+    if status in valid_statuses:
+        outage.status = status
+    severity = request.form.get('severity', '').strip()
+    if severity in valid_severities:
+        outage.severity = severity
+
+    outage.description = request.form.get('description', '').strip() or None
+
+    est_res_str = request.form.get('estimated_resolution', '').strip()
+    if est_res_str:
+        try:
+            outage.estimated_resolution = datetime.fromisoformat(est_res_str)
+        except ValueError:
+            pass
+    else:
+        outage.estimated_resolution = None
+
+    outage.updated_at = datetime.now()
+    db.session.commit()
+
+    flash('Outage updated.', 'success')
+    response = make_response('')
+    response.headers['HX-Redirect'] = url_for('status_dashboard.index')
+    return response
+
+
+@bp.route('/htmx/outage/<int:outage_id>/resolve', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_SYSTEM_STATUS)
+def htmx_resolve_outage(outage_id):
+    """Quick-resolve an outage and redirect."""
+    from system_status.models import SystemOutage
+
+    outage = db.session.query(SystemOutage).get(outage_id)
+    if outage:
+        outage.status = 'resolved'
+        outage.updated_at = datetime.now()
+        db.session.commit()
+        flash('Outage resolved.', 'success')
+    else:
+        flash('Outage not found.', 'error')
+
+    response = make_response('')
+    response.headers['HX-Redirect'] = url_for('status_dashboard.index')
+    return response
+
+
+@bp.route('/htmx/outage/<int:outage_id>', methods=['DELETE'])
+@login_required
+@require_permission(Permission.EDIT_SYSTEM_STATUS)
+def htmx_delete_outage(outage_id):
+    """Delete an outage and redirect."""
+    from system_status.models import SystemOutage
+
+    outage = db.session.query(SystemOutage).get(outage_id)
+    if outage:
+        db.session.delete(outage)
+        db.session.commit()
+        flash('Outage deleted.', 'success')
+    else:
+        flash('Outage not found.', 'error')
+
+    response = make_response('')
+    response.headers['HX-Redirect'] = url_for('status_dashboard.index')
+    return response

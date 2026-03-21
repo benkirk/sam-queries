@@ -24,6 +24,13 @@ def pytest_configure(config):
 
     os.environ['STATUS_DB_NAME'] = db_name
     os.environ['FLASK_ACTIVE'] = '1'
+    # Tests always use the bundled local MySQL, regardless of production STATUS_DB settings
+    # (which may point to an external PostgreSQL server).  Override all four vars here,
+    # before any module imports, so system_status.session picks up the correct values.
+    os.environ['STATUS_DB_DRIVER']   = 'mysql'
+    os.environ['STATUS_DB_SERVER']   = os.environ.get('LOCAL_SAM_DB_SERVER',   '127.0.0.1')
+    os.environ['STATUS_DB_USERNAME'] = os.environ.get('LOCAL_SAM_DB_USERNAME', 'root')
+    os.environ['STATUS_DB_PASSWORD'] = os.environ.get('LOCAL_SAM_DB_PASSWORD', 'root')
 
 # Add project root and src to path for imports
 PROJ_ROOT = Path(__file__).parent.parent
@@ -101,19 +108,27 @@ def test_databases(worker_db_name):
     # Set worker-specific database name in environment
     os.environ['STATUS_DB_NAME'] = worker_db_name
 
-    # Get connection parameters from already set environment variables
-    db_server = os.getenv('STATUS_DB_SERVER', os.getenv('LOCAL_SAM_DB_SERVER', '127.0.0.1'))
+    # Get connection parameters for the LOCAL MySQL admin connection.
+    # Use LOCAL_SAM_DB_SERVER (always the bundled MySQL instance), NOT STATUS_DB_SERVER,
+    # which may point to an external PostgreSQL host when the status DB is remote.
+    db_server = os.getenv('LOCAL_SAM_DB_SERVER', '127.0.0.1')
     db_user = os.getenv('LOCAL_SAM_DB_USERNAME', 'root')
     db_password = os.getenv('LOCAL_SAM_DB_PASSWORD', 'root')
 
-    # Connect to MySQL server (no database specified)
-    server_url = f"mysql+pymysql://{db_user}:{db_password}@{db_server}"
-    engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
-
-    with engine.connect() as conn:
-        # Drop and recreate worker-specific test database
-        conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
-        conn.execute(text(f"CREATE DATABASE {worker_db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+    # Connect to database server (no specific database) and create worker DB
+    db_driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
+    if db_driver in ('postgresql', 'postgres'):
+        server_url = f"postgresql+psycopg2://{db_user}:{db_password}@{db_server}/postgres"
+        engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
+        with engine.connect() as conn:
+            conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
+            conn.execute(text(f"CREATE DATABASE {worker_db_name}"))
+    else:
+        server_url = f"mysql+pymysql://{db_user}:{db_password}@{db_server}"
+        engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
+        with engine.connect() as conn:
+            conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
+            conn.execute(text(f"CREATE DATABASE {worker_db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
 
     # Now that the environment variable is set and session is imported,
     # system_status.session.connection_string will be correct.

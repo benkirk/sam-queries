@@ -1,0 +1,25 @@
+{# htmx: Project search results — clicking loads the project card directly #}
+{% if projects %}
+{% for project in projects %}
+<a href="#" class="list-group-item list-group-item-action {% if not project.active %}text-muted{% endif %}"
+   hx-get="{{ url_for('admin_dashboard.project_card', projcode=project.projcode) }}"
+   hx-target="#projectCardContainer"
+   hx-swap="innerHTML"
+   hx-on::after-request="document.getElementById('projectSearchResults').innerHTML = ''; document.getElementById('projectSearchInput').value = '';">
+    <div>
+        <strong>{{ project.projcode }}</strong>
+        {% if project.active %}
+        <span class="badge bg-success ms-2">Active</span>
+        {% else %}
+        <span class="badge bg-secondary ms-2">Inactive</span>
+        {% endif %}
+    </div>
+    <small class="text-muted">{{ project.title or 'No title' }}</small>
+    {% if project.lead %}
+    <br><small class="text-muted">Lead: {{ project.lead.display_name }}</small>
+    {% endif %}
+</a>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted">No projects found</div>
+{% endif %}

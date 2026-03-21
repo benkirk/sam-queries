@@ -17,8 +17,31 @@ env:
   CONTAINER_NAME: sam-webapp
 
 jobs:
+  pre-deploy:
+    name: Pre-deploy Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive infrastructure/staging/
+
+      - name: TruffleHog scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified --results=verified,unknown
+
   deploy:
     name: Build and Deploy to Staging
+    needs: pre-deploy
     runs-on: ubuntu-latest
 
     steps:

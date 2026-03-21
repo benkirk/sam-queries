@@ -54,6 +54,7 @@ resource "aws_ecs_task_definition" "webapp" {
       { name = "STATUS_DB_SERVER", valueFrom = aws_ssm_parameter.db_host.arn },
       { name = "STATUS_DB_USERNAME", valueFrom = aws_ssm_parameter.db_username.arn },
       { name = "STATUS_DB_PASSWORD", valueFrom = aws_ssm_parameter.db_password.arn },
+      { name = "FLASK_SECRET_KEY", valueFrom = aws_ssm_parameter.flask_secret_key.arn },
     ]
 
     logConfiguration = {
@@ -82,6 +83,12 @@ resource "aws_ecs_service" "webapp" {
   deployment_maximum_percent         = 200
   deployment_minimum_healthy_percent = 50
   enable_execute_command             = true
+  health_check_grace_period_seconds  = 120
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
 
   network_configuration {
     subnets         = aws_subnet.private[*].id

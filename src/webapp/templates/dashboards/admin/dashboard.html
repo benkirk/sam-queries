@@ -21,19 +21,45 @@
                 <form id="impersonateUserForm" method="POST" action="{{ url_for('admin_dashboard.impersonate') }}">
                     <div class="mb-3">
                         <label for="userSearchImpersonate">Search for a user to impersonate</label>
-                        <input type="text" class="form-control" id="userSearchImpersonate" placeholder="Start typing a username, first, or last name..." autocomplete="off">
+                        <input type="search" class="form-control" id="userSearchImpersonate"
+                               name="q"
+                               placeholder="Start typing a username, first, or last name..."
+                               autocomplete="off"
+                               hx-get="{{ url_for('admin_dashboard.htmx_search_users_impersonate') }}"
+                               hx-trigger="input changed delay:300ms"
+                               hx-target="#userSearchResultsImpersonate"
+                               hx-swap="innerHTML"
+                               hx-params="q">
                         <input type="hidden" id="selectedUsernameImpersonate" name="username">
-                        <div id="userSearchResultsImpersonate" class="list-group mt-2 dropdown-list"></div>
+                        <div id="userSearchResultsImpersonate" class="list-group mt-2"></div>
                     </div>
-                    <div id="selectedUserDisplayImpersonate" class="alert alert-info dropdown-list">
+                    <div id="selectedUserDisplayImpersonate" class="alert alert-info dropdown-list" style="display:none;">
                         <i class="fas fa-user-check"></i>
                         <strong id="selectedUserNameImpersonate"></strong>
                         <small id="selectedUserEmailImpersonate" class="text-muted ms-2"></small>
+                        <button type="button" class="btn-close float-end"
+                                onclick="clearUserImpersonate()" aria-label="Clear"></button>
                     </div>
                     <button type="submit" class="btn btn-primary" id="impersonateSubmitBtn" disabled>
                         <i class="fas fa-user-secret"></i> Impersonate
                     </button>
                 </form>
+                <script>
+                function selectUserImpersonate(username, displayName, email) {
+                    document.getElementById('selectedUsernameImpersonate').value = username;
+                    document.getElementById('selectedUserNameImpersonate').textContent = displayName + ' (' + username + ')';
+                    document.getElementById('selectedUserEmailImpersonate').textContent = email;
+                    document.getElementById('selectedUserDisplayImpersonate').style.display = 'block';
+                    document.getElementById('userSearchResultsImpersonate').innerHTML = '';
+                    document.getElementById('userSearchImpersonate').value = '';
+                    document.getElementById('impersonateSubmitBtn').disabled = false;
+                }
+                function clearUserImpersonate() {
+                    document.getElementById('selectedUsernameImpersonate').value = '';
+                    document.getElementById('selectedUserDisplayImpersonate').style.display = 'none';
+                    document.getElementById('impersonateSubmitBtn').disabled = true;
+                }
+                </script>
             </div>
         </div>
     </div>
@@ -47,25 +73,25 @@
             <div class="card-body">
                 <div class="mb-3">
                     <label for="projectSearchInput">Search by project code or title</label>
-                    <input type="text" class="form-control" id="projectSearchInput"
-                           placeholder="Start typing a project code or title..." autocomplete="off">
-                    <div id="projectSearchResults" class="list-group mt-2 dropdown-list"></div>
+                    <input type="search" class="form-control" id="projectSearchInput"
+                           name="q"
+                           placeholder="Start typing a project code or title..."
+                           autocomplete="off"
+                           hx-get="{{ url_for('admin_dashboard.htmx_search_projects') }}"
+                           hx-trigger="input changed delay:300ms"
+                           hx-target="#projectSearchResults"
+                           hx-swap="innerHTML"
+                           hx-params="q,active_only"
+                           hx-include="#activeProjectsOnly">
+                    <div id="projectSearchResults" class="list-group mt-2"></div>
                 </div>
                 <div class="form-check mb-3">
-                    <input type="checkbox" class="form-check-input" id="activeProjectsOnly" checked>
+                    <input type="checkbox" class="form-check-input" id="activeProjectsOnly"
+                           name="active_only" value="true" checked>
                     <label class="form-check-label" for="activeProjectsOnly">
                         Active projects only
                     </label>
                 </div>
-                <div id="selectedProjectDisplay" class="alert alert-info dropdown-list">
-                    <i class="fas fa-folder-open"></i>
-                    <strong id="selectedProjectName"></strong>
-                    <br><small id="selectedProjectLead" class="text-muted"></small>
-                    <input type="hidden" id="selectedProjectCode">
-                </div>
-                <button type="button" class="btn btn-primary" id="viewProjectBtn" disabled>
-                    <i class="fas fa-eye"></i> View Project
-                </button>
             </div>
         </div>
     </div>
@@ -116,6 +142,7 @@
                                 <div class="mb-3">
                                     <label for="resource-filter"><strong>Resource (optional)</strong></label>
                                     <input type="text" class="form-control" id="resource-filter"
+                                           name="resource"
                                            placeholder="e.g., Derecho, GLADE">
                                     <small class="form-text text-muted">Leave blank for all</small>
                                 </div>
@@ -125,7 +152,7 @@
                             <div class="col-md-4">
                                 <div class="mb-3">
                                     <label for="time-range-filter"><strong>Time Range</strong></label>
-                                    <select class="form-control" id="time-range-filter">
+                                    <select class="form-control" id="time-range-filter" name="time_range">
                                         <option value="7days">Next 7 days</option>
                                         <option value="31days" selected>Next 31 days</option>
                                         <option value="60days">Next 60 days</option>
@@ -137,10 +164,12 @@
 
                         <div class="row">
                             <div class="col-12">
-                                <button type="button" id="apply-expirations-filters" class="btn btn-primary">
+                                <button type="button" class="btn btn-primary"
+                                        onclick="reloadActiveExpirationsTab()">
                                     <i class="fas fa-search"></i> Apply Filters
                                 </button>
-                                <button type="button" id="export-expirations-csv" class="btn btn-success">
+                                <button type="button" class="btn btn-success"
+                                        onclick="exportExpirationsCsv()">
                                     <i class="fas fa-download"></i> Export CSV
                                 </button>
                             </div>
@@ -175,7 +204,8 @@
                     <!-- Tab content containers -->
                     <div class="tab-content" id="expirations-tab-content">
                         <div class="tab-pane fade show active" id="exp-upcoming" role="tabpanel">
-                            <div id="upcoming-container" class="expirations-container">
+                            <div id="upcoming-container" class="expirations-container"
+                                 data-view="upcoming">
                                 <div class="text-center py-4">
                                     <div class="spinner-border text-primary" role="status">
                                         <span class="sr-only">Loading...</span>
@@ -185,11 +215,15 @@
                         </div>
 
                         <div class="tab-pane fade" id="exp-expired" role="tabpanel">
-                            <div id="expired-container" class="expirations-container"></div>
+                            <div id="expired-container" class="expirations-container"
+                                 data-view="expired">
+                            </div>
                         </div>
 
                         <div class="tab-pane fade" id="exp-abandoned" role="tabpanel">
-                            <div id="abandoned-container" class="expirations-container"></div>
+                            <div id="abandoned-container" class="expirations-container"
+                                 data-view="abandoned">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -198,12 +232,14 @@
     </div>
 </div>
 
+<!-- Member Management Modals (reused from user dashboard) -->
+{% include 'dashboards/user/fragments/member_modals_htmx.html' %}
+
 <!-- Allocation Management Modals (reused from user dashboard) -->
 {% include 'dashboards/user/fragments/allocation_modals.html' %}
 
 <!-- Project Details Modal (reused from user dashboard) -->
-<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog"
-     data-url-template="{{ url_for('user_dashboard.project_details_modal', projcode='__PROJCODE__') }}">
+<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -224,9 +260,65 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/admin-impersonation.js') }}"></script>
-<script src="{{ url_for('static', filename='js/admin-project-search.js') }}"></script>
-<script src="{{ url_for('static', filename='js/admin-expirations.js') }}"></script>
-<script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
-<script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
+<script>
+/* Expirations: load a tab's content via htmx */
+function loadExpirationsView(view) {
+    var container = document.getElementById(view + '-container');
+    if (!container) return;
+    var params = new URLSearchParams(new FormData(document.getElementById('expirations-filters-form')));
+    params.set('view', view);
+    htmx.ajax('GET', '/admin/expirations?' + params.toString(), {target: container, swap: 'innerHTML'});
+}
+
+/* Load upcoming on first expand of the expirations section */
+document.getElementById('expirations-section').addEventListener('shown.bs.collapse', function() {
+    if (!this.dataset.loaded) {
+        loadExpirationsView('upcoming');
+        this.dataset.loaded = 'true';
+    }
+});
+
+/* Load tab content on tab switch */
+$('#expirations-tabs a[data-bs-toggle="pill"]').on('shown.bs.tab', function() {
+    var view = this.dataset.view;
+    var container = document.getElementById(view + '-container');
+    if (container && !container.dataset.loaded) {
+        loadExpirationsView(view);
+        container.dataset.loaded = 'true';
+    }
+});
+
+/* Apply Filters — reload the active tab */
+function reloadActiveExpirationsTab() {
+    var activeTab = document.querySelector('#expirations-tabs .nav-link.active');
+    var view = activeTab ? activeTab.dataset.view : 'upcoming';
+    loadExpirationsView(view);
+}
+
+/* Export CSV */
+function exportExpirationsCsv() {
+    var activeTab = document.querySelector('#expirations-tabs .nav-link.active');
+    var view = activeTab ? activeTab.dataset.view : 'upcoming';
+    var params = new URLSearchParams(new FormData(document.getElementById('expirations-filters-form')));
+    params.set('export_type', view);
+    window.open('/admin/expirations/export?' + params.toString(), '_blank');
+}
+
+/* Delegated handlers for dynamically loaded expiration content */
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.impersonate-user-btn');
+    if (btn && btn.dataset.username) {
+        if (confirm('Impersonate user ' + btn.dataset.username + '?')) {
+            document.getElementById('selectedUsernameImpersonate').value = btn.dataset.username;
+            document.getElementById('impersonateUserForm').submit();
+        }
+    }
+
+    var link = e.target.closest('.project-code-link');
+    if (link && link.dataset.projcode) {
+        e.preventDefault();
+        htmx.ajax('GET', '/admin/project/' + link.dataset.projcode, {target: '#projectCardContainer', swap: 'innerHTML'});
+    }
+});
+</script>
 {% endblock %}

@@ -17,7 +17,9 @@ echo ""
 cp "$ENV_FILE" "${ENV_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
 echo "✅ Backed up current .env file"
 
-# Use sed to comment/uncomment the right sections
+# Remove staging settings (added by switch_to_staging_db.sh)
+sed -i.bak '/^SAM_DB_.*# staging$/d' "$ENV_FILE"
+
 # Comment out local settings
 sed -i.bak 's/^SAM_DB_USERNAME=root/#SAM_DB_USERNAME=root/' "$ENV_FILE"
 sed -i.bak 's/^SAM_DB_SERVER=127.0.0.1/#SAM_DB_SERVER=127.0.0.1/' "$ENV_FILE"

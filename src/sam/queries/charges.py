@@ -6,14 +6,10 @@ and job data across HPC, DAV, DISK, and ARCHIVE resources. These queries
 power the charges API endpoints and dashboard usage visualizations.
 
 Functions:
+    get_adjustment_totals_by_date: Get ChargeAdjustment totals grouped by date
     get_daily_charge_trends_for_accounts: Get daily charge trends by date
     get_raw_charge_summaries_for_accounts: Get raw charge summary records
-    get_user_charge_summary: Get charges for a user
-    get_project_usage_summary: Get aggregated usage for a project
-    get_daily_usage_trend: Get daily usage trend for a project
     get_jobs_for_project: Get job records for a project
-    get_queue_usage_breakdown: Get usage breakdown by queue
-    get_user_usage_on_project: Get top users by usage on a project
     get_user_breakdown_for_project: Get per-user usage breakdown
 """
 
@@ -34,12 +30,48 @@ from sam.accounting.calculator import get_charge_models_for_resource
 # Charge Aggregation Queries
 # ============================================================================
 
+def get_adjustment_totals_by_date(
+    session: Session,
+    account_ids: List[int],
+    start_date: datetime,
+    end_date: datetime
+) -> Dict:
+    """
+    Get total charge adjustments grouped by date for a list of accounts.
+
+    Args:
+        session: SQLAlchemy session.
+        account_ids: List of account IDs to query (pass [single_id] for one account).
+        start_date: Start date (inclusive).
+        end_date: End date (inclusive).
+
+    Returns:
+        Dict mapping date objects to total adjustment amounts.
+        Example: {date(2024, 1, 1): -100.0, date(2024, 1, 15): 250.0}
+    """
+    rows = session.query(
+        ChargeAdjustment.adjustment_date,
+        func.sum(ChargeAdjustment.amount).label('total')
+    ).filter(
+        ChargeAdjustment.account_id.in_(account_ids),
+        ChargeAdjustment.adjustment_date >= start_date,
+        ChargeAdjustment.adjustment_date <= end_date
+    ).group_by(ChargeAdjustment.adjustment_date).all()
+
+    result = {}
+    for adj_date, amount in rows:
+        d = adj_date.date() if hasattr(adj_date, 'date') else adj_date
+        result[d] = result.get(d, 0.0) + float(amount or 0.0)
+    return result
+
+
 def get_daily_charge_trends_for_accounts(
     session: Session,
     account_ids: List[int],
     start_date: datetime,
     end_date: datetime,
-    resource_type: Optional[str] = None
+    resource_type: Optional[str] = None,
+    include_adjustments: bool = True
 ) -> Dict[str, Dict[str, float]]:
     """
     Get daily charge trends for a list of accounts across all charge types.
@@ -51,11 +83,15 @@ def get_daily_charge_trends_for_accounts(
         end_date: End date for the charge data.
         resource_type: Optional filter by resource type ('HPC', 'DAV', 'DISK', 'ARCHIVE').
                        If None, all applicable resource types are included.
+        include_adjustments: If True (default), include manual charge adjustments
+                             as an 'adjustments' key in each day's dict.
 
     Returns:
         A dictionary where keys are date strings (YYYY-MM-DD) and values are
-        dictionaries containing charge totals for each type (comp, dav, disk, archive).
-        Example: {'2024-01-01': {'comp': 100.0, 'dav': 10.0, 'disk': 0.0, 'archive': 0.0}}
+        dictionaries containing charge totals for each type (comp, dav, disk, archive,
+        and optionally adjustments when include_adjustments=True).
+        Example: {'2024-01-01': {'comp': 100.0, 'dav': 10.0, 'disk': 0.0, 'archive': 0.0,
+                                  'adjustments': 0.0}}
     """
     daily_data = {}
 
@@ -78,6 +114,13 @@ def get_daily_charge_trends_for_accounts(
                 daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
             daily_data[date_str][charge_type_key] += float(charges or 0.0)
 
+    if include_adjustments:
+        for d, amount in get_adjustment_totals_by_date(session, account_ids, start_date, end_date).items():
+            date_str = d.strftime('%Y-%m-%d')
+            if date_str not in daily_data:
+                daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0, 'adjustments': 0.0}
+            daily_data[date_str]['adjustments'] = daily_data[date_str].get('adjustments', 0.0) + amount
+
     return daily_data
 
 
@@ -86,7 +129,8 @@ def get_raw_charge_summaries_for_accounts(
     account_ids: List[int],
     start_date: datetime,
     end_date: datetime,
-    resource_type: Optional[str] = None
+    resource_type: Optional[str] = None,
+    include_adjustments: bool = True
 ) -> Dict[str, List[any]]:
     """
     Get raw charge summaries for a list of accounts across all charge types.
@@ -98,10 +142,13 @@ def get_raw_charge_summaries_for_accounts(
         end_date: End date for the charge data.
         resource_type: Optional filter by resource type ('HPC', 'DAV', 'DISK', 'ARCHIVE').
                        If None, all applicable resource types are included.
+        include_adjustments: If True (default), include ChargeAdjustment records
+                             under the 'adjustments' key.
 
     Returns:
-        A dictionary where keys are charge type strings (comp, dav, disk, archive)
-        and values are lists of raw summary objects.
+        A dictionary where keys are charge type strings (comp, dav, disk, archive,
+        and optionally adjustments when include_adjustments=True) and values are
+        lists of raw summary/adjustment objects.
     """
     charge_data = {
         'comp': [],
@@ -121,161 +168,19 @@ def get_raw_charge_summaries_for_accounts(
         ).all()
         charge_data[charge_type_key] = data
 
+    if include_adjustments:
+        charge_data['adjustments'] = session.query(ChargeAdjustment).filter(
+            ChargeAdjustment.account_id.in_(account_ids),
+            ChargeAdjustment.adjustment_date >= start_date,
+            ChargeAdjustment.adjustment_date <= end_date
+        ).all()
+
     return charge_data
 
 
 # ============================================================================
 # Usage Summary Queries
 # ============================================================================
-
-def get_user_charge_summary(session, user_id: int,
-                            start_date: datetime,
-                            end_date: datetime,
-                            resource: Optional[str] = None) -> List[CompChargeSummary]:
-    """
-    Get charge summary for a user within a date range.
-
-    Args:
-        session: SQLAlchemy session
-        user_id: User ID
-        start_date: Start date (inclusive)
-        end_date: End date (inclusive)
-        resource: Optional resource filter (e.g., 'Derecho')
-
-    Returns:
-        List of CompChargeSummary records ordered by date
-
-    Example:
-        >>> summaries = get_user_charge_summary(
-        ...     session, 12345,
-        ...     datetime(2024, 1, 1),
-        ...     datetime(2024, 12, 31)
-        ... )
-        >>> total = sum(s.charges for s in summaries)
-    """
-    query = session.query(CompChargeSummary).filter(
-        CompChargeSummary.user_id == user_id,
-        CompChargeSummary.activity_date >= start_date,
-        CompChargeSummary.activity_date <= end_date
-    )
-
-    if resource:
-        query = query.filter(CompChargeSummary.resource == resource)
-
-    return query.order_by(CompChargeSummary.activity_date).all()
-
-
-def get_project_usage_summary(session, projcode: str,
-                              start_date: datetime,
-                              end_date: datetime,
-                              resource: str) -> Dict[str, float]:
-    """
-    Get aggregated usage summary for a project.
-
-    Args:
-        session: SQLAlchemy session
-        projcode: Project code (e.g., 'UCUB0001')
-        start_date: Start date (inclusive)
-        end_date: End date (inclusive)
-        resource: Resource filter (e.g., 'Derecho')
-
-    Returns:
-        Dictionary with keys:
-        - total_jobs: Number of jobs
-        - total_core_hours: Total core hours consumed
-        - total_charges: Total charges incurred
-
-    Example:
-        >>> summary = get_project_usage_summary(
-        ...     session, 'UCUB0001',
-        ...     datetime(2024, 1, 1),
-        ...     datetime(2024, 12, 31),
-        ...     resource='Derecho'
-        ... )
-        >>> print(f"Project used {summary['total_core_hours']:.2f} core hours")
-    """
-    query = session.query(
-        func.sum(CompChargeSummary.num_jobs).label('total_jobs'),
-        func.sum(CompChargeSummary.core_hours).label('total_core_hours'),
-        func.sum(CompChargeSummary.charges).label('total_charges')
-    ).filter(
-        CompChargeSummary.projcode == projcode,
-        CompChargeSummary.activity_date >= start_date,
-        CompChargeSummary.activity_date <= end_date
-    ).filter(CompChargeSummary.resource == resource)
-
-    result = query.first()
-
-    total_jobs = result.total_jobs or 0
-    total_core_hours = result.total_core_hours or 0.0
-    total_charges = result.total_charges or 0.0
-
-    return {
-        'total_jobs': total_jobs,
-        'total_core_hours': total_core_hours,
-        'total_charges': total_charges,
-    }
-
-
-def get_daily_usage_trend(session, projcode: str,
-                         start_date: datetime,
-                         end_date: datetime,
-                         resource: Optional[str] = None) -> List[Dict[str, any]]:
-    """
-    Get daily usage trend for a project.
-
-    Args:
-        session: SQLAlchemy session
-        projcode: Project code
-        start_date: Start date (inclusive)
-        end_date: End date (inclusive)
-        resource: Optional resource filter
-
-    Returns:
-        List of dicts with keys: date, jobs, core_hours, charges
-        Ordered by date ascending
-
-    Example:
-        >>> trend = get_daily_usage_trend(
-        ...     session, 'UCUB0001',
-        ...     datetime(2024, 1, 1),
-        ...     datetime(2024, 1, 31)
-        ... )
-        >>> for day in trend:
-        ...     print(f"{day['date']}: {day['charges']} charges")
-    """
-    query = session.query(
-        func.date(CompChargeSummary.activity_date).label('date'),
-        func.sum(CompChargeSummary.num_jobs).label('jobs'),
-        func.sum(CompChargeSummary.core_hours).label('core_hours'),
-        func.sum(CompChargeSummary.charges).label('charges')
-    ).filter(
-        CompChargeSummary.projcode == projcode,
-        CompChargeSummary.activity_date >= start_date,
-        CompChargeSummary.activity_date <= end_date
-    )
-
-    if resource:
-        query = query.filter(CompChargeSummary.resource == resource)
-
-    query = query.group_by(
-        func.date(CompChargeSummary.activity_date)
-    ).order_by(
-        func.date(CompChargeSummary.activity_date)
-    )
-
-    results = query.all()
-
-    return [
-        {
-            'date': row.date,
-            'jobs': row.jobs or 0,
-            'core_hours': float(row.core_hours or 0.0),
-            'charges': float(row.charges or 0.0)
-        }
-        for row in results
-    ]
-
 
 # ============================================================================
 # Job and Queue Queries
@@ -326,128 +231,9 @@ def get_jobs_for_project(session, projcode: str,
     return query.all()
 
 
-def get_queue_usage_breakdown(session, projcode: str,
-                              start_date: datetime,
-                              end_date: datetime,
-                              machine: Optional[str] = None) -> List[Dict[str, any]]:
-    """
-    Get usage breakdown by queue for a project.
-
-    Args:
-        session: SQLAlchemy session
-        projcode: Project code
-        start_date: Start date (inclusive)
-        end_date: End date (inclusive)
-        machine: Optional machine filter
-
-    Returns:
-        List of dicts with keys: queue, machine, jobs, core_hours, charges
-        Ordered by charges descending
-
-    Example:
-        >>> breakdown = get_queue_usage_breakdown(
-        ...     session, 'UCUB0001',
-        ...     datetime(2024, 1, 1),
-        ...     datetime(2024, 12, 31),
-        ...     machine='Derecho'
-        ... )
-        >>> for queue in breakdown:
-        ...     print(f"{queue['queue']}: {queue['jobs']} jobs")
-    """
-    query = session.query(
-        CompChargeSummary.queue,
-        CompChargeSummary.machine,
-        func.sum(CompChargeSummary.num_jobs).label('jobs'),
-        func.sum(CompChargeSummary.core_hours).label('core_hours'),
-        func.sum(CompChargeSummary.charges).label('charges')
-    ).filter(
-        CompChargeSummary.projcode == projcode,
-        CompChargeSummary.activity_date >= start_date,
-        CompChargeSummary.activity_date <= end_date
-    )
-
-    if machine:
-        query = query.filter(CompChargeSummary.machine == machine)
-
-    results = query.group_by(
-        CompChargeSummary.queue,
-        CompChargeSummary.machine
-    ).order_by(
-        func.sum(CompChargeSummary.charges).desc()
-    ).all()
-
-    return [
-        {
-            'queue': row.queue,
-            'machine': row.machine,
-            'jobs': row.jobs or 0,
-            'core_hours': float(row.core_hours or 0.0),
-            'charges': float(row.charges or 0.0)
-        }
-        for row in results
-    ]
-
-
 # ============================================================================
 # User Usage Queries
 # ============================================================================
-
-def get_user_usage_on_project(session, projcode: str,
-                              start_date: datetime,
-                              end_date: datetime,
-                              limit: int = 10) -> List[Dict[str, any]]:
-    """
-    Get top users by usage on a project.
-
-    Args:
-        session: SQLAlchemy session
-        projcode: Project code
-        start_date: Start date (inclusive)
-        end_date: End date (inclusive)
-        limit: Maximum number of users to return (default 10)
-
-    Returns:
-        List of dicts with keys: username, user_id, jobs, core_hours, charges
-        Ordered by charges descending
-
-    Example:
-        >>> top_users = get_user_usage_on_project(
-        ...     session, 'UCUB0001',
-        ...     datetime(2024, 1, 1),
-        ...     datetime(2024, 12, 31),
-        ...     limit=5
-        ... )
-        >>> for user in top_users:
-        ...     print(f"{user['username']}: {user['charges']:.2f}")
-    """
-    results = session.query(
-        CompChargeSummary.username,
-        CompChargeSummary.user_id,
-        func.sum(CompChargeSummary.num_jobs).label('jobs'),
-        func.sum(CompChargeSummary.core_hours).label('core_hours'),
-        func.sum(CompChargeSummary.charges).label('charges')
-    ).filter(
-        CompChargeSummary.projcode == projcode,
-        CompChargeSummary.activity_date >= start_date,
-        CompChargeSummary.activity_date <= end_date
-    ).group_by(
-        CompChargeSummary.username,
-        CompChargeSummary.user_id
-    ).order_by(
-        func.sum(CompChargeSummary.charges).desc()
-    ).limit(limit).all()
-
-    return [
-        {
-            'username': row.username,
-            'user_id': row.user_id,
-            'jobs': row.jobs or 0,
-            'core_hours': float(row.core_hours or 0.0),
-            'charges': float(row.charges or 0.0)
-        }
-        for row in results
-    ]
-
 
 def get_user_breakdown_for_project(session, projcode: str,
                                    start_date: datetime,

@@ -19,6 +19,8 @@ function loadLazyContainer(container) {
         .then(html => {
             $container.html(html);
             $container.attr('data-loaded', 'true');
+            // Let htmx discover hx-* attributes on newly injected content
+            if (window.htmx) htmx.process(container);
         })
         .catch(error => {
             console.error('Error loading content:', error);

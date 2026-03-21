@@ -167,11 +167,9 @@
                                 </thead>
                                 <tbody>
                                     {% for type_data in types %}
+                                    {% set details_id = 'details-' ~ resource_name|replace(' ', '_') ~ '-' ~ facility_name ~ '-' ~ type_data.allocation_type|replace(' ', '_') %}
                                     <tr class="expandable-row"
-                                        data-resource="{{ resource_name }}"
-                                        data-facility="{{ facility_name }}"
-                                        data-type="{{ type_data.allocation_type }}"
-                                        data-active-at="{{ active_at }}">
+                                        onclick="toggleDetails(this, '{{ details_id }}')">
                                         <td>
                                             <i class="fas fa-chevron-right expand-icon"></i>
                                         </td>
@@ -180,14 +178,14 @@
                                         <td>{{ type_data.count }}</td>
                                         <td>{{ "{:,.0f}".format(type_data.avg_amount) }}</td>
                                     </tr>
-                                    <tr class="project-details-row"
-                                        id="details-{{ resource_name|replace(' ', '_') }}-{{ facility_name }}-{{ type_data.allocation_type|replace(' ', '_') }}">
-                                        <td colspan="5">
-                                            <div class="p-3">
-                                                <div class="text-center">
-                                                    <div class="spinner-border text-primary" role="status">
-                                                        <span class="sr-only">Loading...</span>
-                                                    </div>
+                                    <tr class="project-details-row" id="{{ details_id }}">
+                                        <td colspan="5"
+                                            hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}"
+                                            hx-trigger="load-details"
+                                            hx-swap="innerHTML">
+                                            <div class="p-3 text-center">
+                                                <div class="spinner-border text-primary" role="status">
+                                                    <span class="sr-only">Loading...</span>
                                                 </div>
                                             </div>
                                         </td>
@@ -255,8 +253,7 @@
 </div>
 
 <!-- Project Details Modal -->
-<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog"
-     data-url-template="{{ url_for('user_dashboard.project_details_modal', projcode='__PROJCODE__') }}">
+<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -279,12 +276,56 @@
 {% endblock %}
 
 {% block extra_js %}
-{# Inject Flask-generated URLs for allocations-dashboard.js #}
-<div id="allocations-dashboard-config" hidden
-     data-projects-url="{{ url_for('allocations_dashboard.projects_fragment') }}"
-     data-usage-url="{{ url_for('allocations_dashboard.usage_modal', projcode='__PROJCODE__', resource='__RESOURCE__') }}">
-</div>
-<script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
-<script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
-<script src="{{ url_for('static', filename='js/allocations-dashboard.js') }}"></script>
+<script>
+/* Toggle expandable detail rows and lazy-load on first expand */
+function toggleDetails(clickedRow, detailsId) {
+    var icon = clickedRow.querySelector('.expand-icon');
+    var detailsRow = document.getElementById(detailsId);
+    icon.classList.toggle('expanded');
+    if (detailsRow.classList.contains('show')) {
+        detailsRow.classList.remove('show');
+    } else {
+        /* Trigger htmx load on first expand */
+        var td = detailsRow.querySelector('td[hx-get]');
+        if (td && !detailsRow.dataset.loaded) {
+            htmx.trigger(td, 'load-details');
+            detailsRow.dataset.loaded = 'true';
+        }
+        detailsRow.classList.add('show');
+    }
+}
+
+/* Client-side table sorting (applied after htmx loads project tables) */
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    var tables = e.detail.target.querySelectorAll('table');
+    tables.forEach(function(table) {
+        /* Mark default sort (Amount descending = column 2) */
+        var th2 = table.querySelector('th:nth-child(3)');
+        if (th2) th2.classList.add('sort-desc');
+
+        table.querySelectorAll('th.sortable-header').forEach(function(th) {
+            th.addEventListener('click', function() {
+                var colIndex = Array.from(th.parentNode.children).indexOf(th);
+                var sortType = th.dataset.sort;
+                var isAsc = !th.classList.contains('sort-asc');
+                table.querySelectorAll('th').forEach(function(h) { h.classList.remove('sort-asc', 'sort-desc'); });
+                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+                var tbody = table.querySelector('tbody');
+                var rows = Array.from(tbody.querySelectorAll('tr'));
+                rows.sort(function(a, b) {
+                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
+                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    if (sortType === 'numeric') {
+                        aVal = parseFloat(aVal) || 0; bVal = parseFloat(bVal) || 0;
+                        return isAsc ? aVal - bVal : bVal - aVal;
+                    }
+                    aVal = String(aVal || '').toLowerCase(); bVal = String(bVal || '').toLowerCase();
+                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                });
+                rows.forEach(function(r) { tbody.appendChild(r); });
+            });
+        });
+    });
+});
+</script>
 {% endblock %}

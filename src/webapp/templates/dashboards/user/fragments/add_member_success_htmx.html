@@ -1,0 +1,33 @@
+{#
+  htmx prototype: Success response after adding a member.
+
+  This response does two things:
+  1. Replaces the form container with a success message (primary swap)
+  2. Updates the members table via OOB (out-of-band) swap
+  3. Auto-closes the modal after a brief delay
+
+  The OOB swap is a core htmx feature: elements with hx-swap-oob="true"
+  are swapped into the DOM by matching their id, regardless of hx-target.
+#}
+
+{# Primary response: replaces the form with a success message #}
+<div class="modal-body text-center text-success py-4">
+    <i class="fas fa-check-circle fa-2x"></i>
+    <p class="mt-2 mb-0">{{ message }}</p>
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+</div>
+
+{# OOB swap: updates the members table in place (outside the modal) #}
+<div id="htmx-members-{{ projcode }}" hx-swap-oob="true">
+    {{ members_html|safe }}
+</div>
+
+{# Auto-close modal after showing success briefly #}
+<script>
+setTimeout(function() {
+    var modal = bootstrap.Modal.getInstance(document.getElementById('addMemberModal'));
+    if (modal) modal.hide();
+}, 1000);
+</script>

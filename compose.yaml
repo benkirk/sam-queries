@@ -26,6 +26,10 @@ services:
       - JUPYTERHUB_INSTANCE=stable
       - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}
       - JUPYTERHUB_CACHE_TTL=300
+      - STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}
+      - STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}
+      - STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}
+      - STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}
 
     healthcheck:
       test: |
@@ -67,6 +71,10 @@ services:
       - JUPYTERHUB_INSTANCE=stable
       - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}
       - JUPYTERHUB_CACHE_TTL=300
+      - STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}
+      - STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}
+      - STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}
+      - STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}
 
     # Important: watch the current directory, re-syncing as needed based on source changes
     develop:
@@ -76,6 +84,8 @@ services:
           target: /code
           ignore:
             - containers/
+            - logs/
+            - collectors/logs/
             - __pycache__/
             - "*.pyc"
             - .git/
@@ -93,14 +103,15 @@ services:
   # MySQL container:
   mysql:
     container_name: samuel-mysql
-    image: mysql:9
+    build:
+      context: containers/sam-sql-dev
+      dockerfile: Dockerfile
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: sam
     volumes:
       - samuel-mysql-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
-      - ./containers/sam-sql-dev/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
       # Verify MySQL is up AND the sam database is queryable.
       # This prevents the webapp from starting before the restore completes.

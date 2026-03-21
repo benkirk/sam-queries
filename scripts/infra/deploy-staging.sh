@@ -4,19 +4,23 @@ set -euo pipefail
 # Manual deployment to staging (alternative to git push).
 # Builds Docker image, pushes to ECR, and updates ECS service.
 #
-# Prerequisites:
-#   - AWS CLI configured
-#   - Docker running
-#   - Terraform applied
-#
 # Usage:
 #   ./scripts/infra/deploy-staging.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../lib/prereqs.sh"
+
+# --- Prerequisites ---
+check_aws_cli
+check_docker
+require_cmd terraform terraform terraform "Terraform"
+require_cmd git git git "Git"
 
 REGION="us-east-1"
 CLUSTER="sam-staging"
 SERVICE="sam-staging-webapp"
 CONTAINER="sam-webapp"
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 cd "$REPO_ROOT"
 

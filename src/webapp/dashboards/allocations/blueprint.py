@@ -10,14 +10,12 @@ from flask_login import login_required
 from datetime import datetime, timedelta
 from typing import List, Dict
 
-from webapp.extensions import db
+from webapp.extensions import db, cache
 from sam.queries.allocations import get_allocation_summary, get_allocation_summary_with_usage
 from sam.queries.lookups import find_project_by_code
 from webapp.utils.rbac import require_permission, Permission
-from ..charts import generate_facility_pie_chart_matplotlib, generate_allocation_type_pie_chart_matplotlib
-
-
 from sam.resources.resources import Resource
+from ..charts import generate_facility_pie_chart_matplotlib, generate_allocation_type_pie_chart_matplotlib
 
 bp = Blueprint('allocations_dashboard', __name__, url_prefix='/allocations')
 
@@ -60,70 +58,64 @@ def group_by_resource_facility(summary_data: List[Dict]) -> Dict:
     return grouped
 
 
-def get_facility_overview_data(session, resource_name: str, active_at: datetime) -> List[Dict]:
+def get_all_facility_overviews(session, resource_names: List[str], active_at: datetime) -> Dict[str, List[Dict]]:
     """
-    Calculate facility-level summaries for a specific resource.
+    Calculate facility-level summaries for multiple resources in a single query.
 
-    Queries individual allocations and properly calculates annualized rates
-    using actual allocation durations, then aggregates by facility.
-
-    Args:
-        session: SQLAlchemy session
-        resource_name: Resource to filter for
-        active_at: Date to check for active status
+    Fetches individual allocations for all requested resources at once, then
+    aggregates by resource and facility. Avoids N+1 queries.
 
     Returns:
-        List of dicts with keys: facility, annualized_rate, count, total_amount, percent
+        Dict mapping resource_name -> list of facility overview dicts
     """
-    # Get individual allocations for this resource (not aggregated)
-    # This ensures each allocation has a properly calculated annualized_rate
+    if not resource_names:
+        return {}
+
     individual_allocations = get_allocation_summary(
         session=session,
-        resource_name=resource_name,
-        facility_name=None,      # Group by all facilities
-        allocation_type=None,    # Group by all types
-        projcode=None,           # Group by individual projects (not aggregated)
+        resource_name=resource_names,
+        facility_name=None,
+        allocation_type=None,
+        projcode=None,
         active_only=True,
         active_at=active_at
     )
 
-    # Aggregate by facility, summing annualized rates
-    facility_totals = {}
-
+    # Group by resource, then aggregate by facility
+    resource_facility_totals: Dict[str, Dict[str, Dict]] = {}
     for alloc in individual_allocations:
+        resource = alloc['resource']
         facility = alloc['facility']
-        if facility not in facility_totals:
-            facility_totals[facility] = {
-                'total_amount': 0.0,
-                'annualized_rate': 0.0,
-                'count': 0
+        if resource not in resource_facility_totals:
+            resource_facility_totals[resource] = {}
+        if facility not in resource_facility_totals[resource]:
+            resource_facility_totals[resource][facility] = {
+                'total_amount': 0.0, 'annualized_rate': 0.0, 'count': 0
             }
 
-        facility_totals[facility]['total_amount'] += alloc['total_amount']
-        facility_totals[facility]['count'] += alloc['count']
-
-        # Sum annualized rates (properly calculated from actual durations)
+        bucket = resource_facility_totals[resource][facility]
+        bucket['total_amount'] += alloc['total_amount']
+        bucket['count'] += alloc['count']
         if alloc.get('annualized_rate') is not None:
-            facility_totals[facility]['annualized_rate'] += alloc['annualized_rate']
+            bucket['annualized_rate'] += alloc['annualized_rate']
 
-    # Calculate percentages based on annualized rate
-    total_annualized_rate = sum(f['annualized_rate'] for f in facility_totals.values())
+    overviews = {}
+    for resource, facilities in resource_facility_totals.items():
+        total_rate = sum(f['annualized_rate'] for f in facilities.values())
+        overview = []
+        for facility, data in facilities.items():
+            percent = (data['annualized_rate'] / total_rate * 100) if total_rate > 0 else 0
+            overview.append({
+                'facility': facility,
+                'total_amount': data['total_amount'],
+                'annualized_rate': data['annualized_rate'],
+                'count': data['count'],
+                'percent': percent
+            })
+        overview.sort(key=lambda x: x['annualized_rate'], reverse=True)
+        overviews[resource] = overview
 
-    overview = []
-    for facility, data in facility_totals.items():
-        percent = (data['annualized_rate'] / total_annualized_rate * 100) if total_annualized_rate > 0 else 0
-        overview.append({
-            'facility': facility,
-            'total_amount': data['total_amount'],
-            'annualized_rate': data['annualized_rate'],
-            'count': data['count'],
-            'percent': percent
-        })
-
-    # Sort by annualized rate descending
-    overview.sort(key=lambda x: x['annualized_rate'], reverse=True)
-
-    return overview
+    return overviews
 
 
 def get_resource_types(session) -> Dict[str, str]:
@@ -145,6 +137,7 @@ def get_resource_types(session) -> Dict[str, str]:
 @bp.route('/')
 @login_required
 @require_permission(Permission.VIEW_PROJECTS)
+@cache.cached(timeout=300, query_string=True)
 def index():
     """
     Main allocations dashboard page.
@@ -199,39 +192,33 @@ def index():
     # Get resource type mapping for conditional display
     resource_types = get_resource_types(db.session)
 
-    # For each resource, generate facility overview data and pie chart
-    resource_overviews = {}
-    for resource_name in grouped_data.keys():
-        overview_data = get_facility_overview_data(db.session, resource_name, active_at)
+    # Batch-fetch all facility overviews in a single query
+    all_overviews = get_all_facility_overviews(db.session, list(grouped_data.keys()), active_at)
 
-        # Determine chart title based on resource type
-        resource_type = resource_types.get(resource_name, 'HPC')
-        if resource_type in ['DISK', 'ARCHIVE']:
+    # Generate facility pie chart SVGs (cached via lru_cache)
+    resource_overviews = {}
+    for rn in grouped_data.keys():
+        overview_data = all_overviews.get(rn, [])
+        rt = resource_types.get(rn, 'HPC')
+        if rt in ['DISK', 'ARCHIVE']:
             chart_title = 'Data Volume Distribution by Facility'
         else:
             chart_title = 'Annual Rate Distribution by Facility'
 
-        pie_chart = generate_facility_pie_chart_matplotlib(overview_data, title=chart_title)
-        resource_overviews[resource_name] = {
+        resource_overviews[rn] = {
             'table_data': overview_data,
-            'chart': pie_chart
+            'chart': generate_facility_pie_chart_matplotlib(overview_data, title=chart_title),
         }
 
-    # Generate allocation type charts for each facility
+    # Generate allocation type pie chart SVGs per resource/facility
     allocation_type_charts = {}
     for resource_name, facilities in grouped_data.items():
         allocation_type_charts[resource_name] = {}
-        resource_type = resource_types.get(resource_name, 'HPC')
-
+        rt = resource_types.get(resource_name, 'HPC')
         for facility_name, types in facilities.items():
-            # Only generate chart if there are multiple allocation types
             if len(types) > 1:
-                pie_chart = generate_allocation_type_pie_chart_matplotlib(
-                    types,
-                    resource_type,
-                    facility_name
-                )
-                allocation_type_charts[resource_name][facility_name] = pie_chart
+                allocation_type_charts[resource_name][facility_name] = \
+                    generate_allocation_type_pie_chart_matplotlib(types, rt, facility_name)
             else:
                 allocation_type_charts[resource_name][facility_name] = None
 
@@ -250,6 +237,7 @@ def index():
 @bp.route('/projects')
 @login_required
 @require_permission(Permission.VIEW_PROJECTS)
+@cache.cached(timeout=300, query_string=True)
 def projects_fragment():
     """
     AJAX fragment showing individual projects for a specific Resource/Facility/Type.

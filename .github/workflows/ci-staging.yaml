@@ -1,0 +1,148 @@
+name: Staging CI
+
+on:
+  pull_request:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified --results=verified,unknown
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: MegaLinter
+        uses: oxsecurity/megalinter/flavors/cupcake@v8
+        env:
+          VALIDATE_ALL_CODEBASE: false
+          DISABLE_ERRORS: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload MegaLinter reports
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: MegaLinter reports
+          include-hidden-files: "true"
+          path: |
+            megalinter-reports
+            mega-linter.log
+          retention-days: 7
+
+  terraform-check:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive infrastructure/staging/
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install MySQL Client
+        run: sudo apt-get install -y mysql-client
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install latest Docker
+        uses: docker/setup-docker-action@v4
+        with:
+          docker-ce-version: latest
+
+      - name: Verify MySQL backup file
+        run: |
+          BACKUP_FILE="containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+          if [ ! -f "${BACKUP_FILE}" ]; then
+            echo "Backup file not found: ${BACKUP_FILE}"
+            exit 1
+          fi
+          FILE_SIZE=$(stat -c%s "${BACKUP_FILE}" 2>/dev/null || stat -f%z "${BACKUP_FILE}" 2>/dev/null)
+          if [ "${FILE_SIZE}" -lt 1000 ]; then
+            echo "File is an LFS pointer, pulling..."
+            git lfs pull
+          fi
+
+      - name: Build and start services
+        run: |
+          docker compose build
+          docker compose up -d
+          sleep 5
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 60); do
+            if mysql -h 127.0.0.1 -proot -uroot -e "SELECT 1" 2>/dev/null; then
+              echo "MySQL accepting connections after $((i * 5))s"
+              break
+            fi
+            STATE=$(docker compose ps mysql --format "{{.State}}" 2>/dev/null || echo "unknown")
+            if [ "${STATE}" = "exited" ]; then
+              echo "MySQL container exited"
+              docker compose logs mysql --tail=200
+              exit 1
+            fi
+            sleep 5
+          done
+          for i in $(seq 1 12); do
+            if mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" 2>/dev/null; then
+              echo "SAM database ready"
+              break
+            fi
+            sleep 5
+          done
+          mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" || {
+            echo "SAM database not accessible"
+            docker compose logs mysql --tail=100
+            exit 1
+          }
+
+      - name: Wait for webapp
+        run: |
+          timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
+
+      - name: Run pytest (no coverage)
+        run: |
+          docker compose exec -T webapp bash -c "cd /code && pytest tests/ -n auto --no-cov"
+
+      - name: Show container logs
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v

@@ -7,9 +7,9 @@ Refactored to use server-side rendering with direct ORM queries instead of
 JavaScript API calls for improved performance and simplicity.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify, make_response
 from flask_login import login_required, current_user
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
@@ -18,7 +18,7 @@ from sam.queries.charges import get_jobs_for_project, get_user_breakdown_for_pro
 from sam.queries.lookups import find_project_by_code
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import can_manage_project_members, can_change_admin
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import require_permission, Permission, has_permission
 from ..charts import generate_usage_timeseries_matplotlib
 
 
@@ -181,6 +181,7 @@ def tree_fragment(projcode):
 
     # Get the root of the project tree
     root = project.get_root() if hasattr(project, 'get_root') else project
+    can_view_projects = has_permission(current_user, Permission.VIEW_PROJECTS)
 
     # Render tree structure recursively
     def render_tree_node(node, current_projcode, level=0):
@@ -198,8 +199,18 @@ def tree_fragment(projcode):
         icon = '<i class="fas fa-arrow-right text-warning mr-1"></i>' if is_current else ''
         inactive_badge = ' <span class="badge badge-secondary badge-sm">Inactive</span>' if not is_active else ''
 
-        # Make project code clickable to open details modal
-        projcode_html = f'<button class="btn btn-link p-0 view-project-details-btn" data-projcode="{node.projcode}" title="View project details"><strong>{node.projcode}</strong></button>'
+        # Make project code clickable if user has VIEW_PROJECTS permission
+        if can_view_projects:
+            detail_url = url_for('user_dashboard.project_details_modal', projcode=node.projcode)
+            projcode_html = (
+                f'<button class="btn btn-link p-0" title="View project details"'
+                f" onclick=\"event.stopPropagation();"
+                f" htmx.ajax('GET', '{detail_url}', {{target: '#projectDetailsModalBody', swap: 'innerHTML'}});"
+                f" bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();\">"
+                f'<strong>{node.projcode}</strong></button>'
+            )
+        else:
+            projcode_html = f'<strong>{node.projcode}</strong>'
         html = f'<li style="{style}">{icon}{projcode_html}'
 
         if node.title:
@@ -308,3 +319,373 @@ def project_details_modal(projcode):
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
     )
+
+
+# ============================================================================
+# htmx Routes
+# ============================================================================
+# Server-rendered HTML fragment routes for htmx-driven form handling.
+# These replace custom JavaScript with hx-* attributes on HTML elements.
+# All routes are prefixed with /htmx/ to avoid conflicts with API endpoints.
+# ============================================================================
+
+@bp.route('/htmx/add-member-form/<projcode>')
+@login_required
+def htmx_add_member_form(projcode):
+    """
+    Return the add member form as an HTML fragment.
+
+    Called when the htmx Add Member button is clicked. Returns a fresh form
+    pre-populated with today's start date, ready to be inserted into the modal.
+    """
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger m-3">Project not found</div>', 404
+
+    if not can_manage_project_members(current_user, project):
+        return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
+
+    return render_template(
+        'dashboards/user/fragments/add_member_form_htmx.html',
+        projcode=projcode,
+        start_date=date.today().strftime('%Y-%m-%d'),
+        errors=[]
+    )
+
+
+@bp.route('/htmx/search-users')
+@login_required
+def htmx_search_users():
+    """
+    Search users and return results as an HTML fragment.
+
+    Replaces the JSON /api/v1/users/search endpoint for htmx usage.
+    Returns clickable list items with inline onclick handlers.
+    """
+    from sam.queries.users import search_users_by_pattern, get_project_member_user_ids
+
+    query = request.args.get('q', '').strip()
+    projcode = request.args.get('projcode', '')
+
+    if len(query) < 2:
+        return ''
+
+    # Exclude users already on the project
+    exclude_ids = None
+    if projcode:
+        project = db.session.query(Project).filter_by(projcode=projcode).first()
+        if project:
+            exclude_ids = get_project_member_user_ids(db.session, project.project_id)
+
+    users = search_users_by_pattern(
+        db.session, query, limit=20, exclude_user_ids=exclude_ids
+    )
+
+    return render_template(
+        'dashboards/user/fragments/user_search_results_htmx.html',
+        users=users
+    )
+
+
+@bp.route('/htmx/add-member/<projcode>', methods=['POST'])
+@login_required
+def htmx_add_member(projcode):
+    """
+    Handle add member form submission (htmx).
+
+    On validation error: returns the form with error messages (htmx swaps
+    it back into the modal, user sees inline errors).
+
+    On success: returns a success message + OOB swap to update the members
+    table, then auto-closes the modal.
+    """
+    from sam.manage import add_user_to_project, management_transaction
+    from sam.core.users import User
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger m-3">Project not found</div>', 404
+
+    if not can_manage_project_members(current_user, project):
+        return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
+
+    # Parse form fields
+    username = request.form.get('username', '').strip()
+    start_date_str = request.form.get('start_date', '').strip()
+    end_date_str = request.form.get('end_date', '').strip()
+
+    errors = []
+
+    if not username:
+        errors.append('Please select a user first')
+
+    # Parse dates
+    start_date = None
+    end_date = None
+    try:
+        if start_date_str:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        if end_date_str:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+    except ValueError:
+        errors.append('Invalid date format. Use YYYY-MM-DD.')
+
+    if start_date and end_date and end_date <= start_date:
+        errors.append('End date must be after start date')
+
+    if errors:
+        return render_template(
+            'dashboards/user/fragments/add_member_form_htmx.html',
+            projcode=projcode,
+            start_date=start_date_str,
+            end_date=end_date_str,
+            errors=errors
+        )
+
+    # Look up the user
+    user = db.session.query(User).filter_by(username=username).first()
+    if not user:
+        return render_template(
+            'dashboards/user/fragments/add_member_form_htmx.html',
+            projcode=projcode,
+            start_date=start_date_str,
+            end_date=end_date_str,
+            errors=[f'User "{username}" not found']
+        )
+
+    # Add the member
+    try:
+        with management_transaction(db.session):
+            add_user_to_project(
+                db.session, project.project_id, user.user_id,
+                start_date, end_date
+            )
+    except (ValueError, Exception) as e:
+        return render_template(
+            'dashboards/user/fragments/add_member_form_htmx.html',
+            projcode=projcode,
+            start_date=start_date_str,
+            end_date=end_date_str,
+            errors=[str(e)]
+        )
+
+    # Success — render updated members table for OOB swap
+    members_html = _render_members_table(projcode, project)
+
+    return render_template(
+        'dashboards/user/fragments/add_member_success_htmx.html',
+        message=f'Added {user.display_name} to project {projcode}',
+        projcode=projcode,
+        members_html=members_html
+    )
+
+
+@bp.route('/htmx/edit-allocation-form/<int:allocation_id>')
+@login_required
+@require_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_edit_allocation_form(allocation_id):
+    """
+    Return the edit allocation form as an HTML fragment, pre-populated from DB.
+
+    Replaces the JS pattern of: fetch JSON → populate form fields client-side.
+    """
+    from sam.accounting.allocations import Allocation
+
+    allocation = db.session.get(Allocation, allocation_id)
+    if not allocation:
+        return '<div class="alert alert-danger m-3">Allocation not found</div>', 404
+
+    # Derive resource name and projcode from the allocation's account
+    account = allocation.account
+    resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
+    projcode = request.args.get('projcode', account.project.projcode if account and account.project else '')
+
+    return render_template(
+        'dashboards/user/fragments/edit_allocation_form_htmx.html',
+        allocation=allocation,
+        resource_name=resource_name,
+        projcode=projcode,
+        errors=[]
+    )
+
+
+@bp.route('/htmx/edit-allocation/<int:allocation_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_edit_allocation(allocation_id):
+    """
+    Handle edit allocation form submission (htmx).
+
+    On error: returns the form with error messages.
+    On success: returns a script that closes the modal and triggers a
+    refresh event so any open project details modal reloads.
+    """
+    from sam.accounting.allocations import Allocation
+    from sam.manage import update_allocation, management_transaction
+
+    allocation = db.session.get(Allocation, allocation_id)
+    if not allocation:
+        return '<div class="alert alert-danger m-3">Allocation not found</div>', 404
+
+    account = allocation.account
+    resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
+    projcode = request.form.get('projcode', '')
+
+    # Parse form fields
+    errors = []
+    updates = {}
+
+    amount_str = request.form.get('amount', '').strip()
+    if amount_str:
+        try:
+            amount = float(amount_str)
+            if amount <= 0:
+                errors.append('Amount must be greater than 0')
+            else:
+                updates['amount'] = amount
+        except ValueError:
+            errors.append('Invalid amount format')
+    else:
+        errors.append('Amount is required')
+
+    start_date_str = request.form.get('start_date', '').strip()
+    end_date_str = request.form.get('end_date', '').strip()
+    try:
+        if start_date_str:
+            updates['start_date'] = datetime.strptime(start_date_str, '%Y-%m-%d')
+        if end_date_str:
+            updates['end_date'] = datetime.strptime(end_date_str, '%Y-%m-%d')
+        else:
+            updates['end_date'] = None  # Explicitly clear end date
+    except ValueError:
+        errors.append('Invalid date format. Use YYYY-MM-DD.')
+
+    if 'start_date' in updates and 'end_date' in updates and updates['end_date']:
+        if updates['end_date'] <= updates['start_date']:
+            errors.append('End date must be after start date')
+
+    description = request.form.get('description', '')
+    updates['description'] = description
+
+    if errors:
+        return render_template(
+            'dashboards/user/fragments/edit_allocation_form_htmx.html',
+            allocation=allocation,
+            resource_name=resource_name,
+            projcode=projcode,
+            errors=errors
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_allocation(
+                db.session, allocation_id, current_user.user_id,
+                **updates
+            )
+    except (ValueError, Exception) as e:
+        return render_template(
+            'dashboards/user/fragments/edit_allocation_form_htmx.html',
+            allocation=allocation,
+            resource_name=resource_name,
+            projcode=projcode,
+            errors=[str(e)]
+        )
+
+    # Success — close modal and trigger refresh
+    response = make_response('''
+        <div class="modal-body text-center text-success py-4">
+            <i class="fas fa-check-circle fa-2x"></i>
+            <p class="mt-2 mb-0">Allocation updated successfully</p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+        <script>
+        setTimeout(function() {
+            var modal = bootstrap.Modal.getInstance(document.getElementById('editAllocationModal'));
+            if (modal) modal.hide();
+        }, 1000);
+        </script>
+    ''')
+    response.headers['HX-Trigger'] = 'allocationUpdated'
+    return response
+
+
+def _render_members_table(projcode, project):
+    """Render the members table fragment for a project (shared by htmx routes)."""
+    members = get_users_on_project(db.session, projcode)
+    return render_template(
+        'dashboards/user/fragments/members_table.html',
+        members=sorted(members, key=lambda m: m["display_name"]),
+        projcode=projcode,
+        project=project,
+        can_manage=can_manage_project_members(current_user, project),
+        can_change_admin=can_change_admin(current_user, project)
+    )
+
+
+@bp.route('/htmx/remove-member/<projcode>/<username>', methods=['DELETE'])
+@login_required
+def htmx_remove_member(projcode, username):
+    """
+    Remove a member from a project (htmx).
+
+    Returns the updated members table HTML on success, or an error alert.
+    """
+    from sam.manage import remove_user_from_project, management_transaction
+    from sam.core.users import User
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found</div>', 404
+
+    if not can_manage_project_members(current_user, project):
+        return '<div class="alert alert-danger">Unauthorized</div>', 403
+
+    user = db.session.query(User).filter_by(username=username).first()
+    if not user:
+        return f'<div class="alert alert-danger">User "{username}" not found</div>', 404
+
+    try:
+        with management_transaction(db.session):
+            remove_user_from_project(db.session, project.project_id, user.user_id)
+    except (ValueError, Exception) as e:
+        return f'<div class="alert alert-danger">{e}</div>', 400
+
+    return _render_members_table(projcode, project)
+
+
+@bp.route('/htmx/change-admin/<projcode>', methods=['PUT'])
+@login_required
+def htmx_change_admin(projcode):
+    """
+    Change or remove the project admin (htmx).
+
+    Form field: admin_username (empty string to remove admin role).
+    Returns the updated members table HTML on success.
+    """
+    from sam.manage import change_project_admin, management_transaction
+    from sam.core.users import User
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found</div>', 404
+
+    if not can_change_admin(current_user, project):
+        return '<div class="alert alert-danger">Unauthorized — only project lead can change admin</div>', 403
+
+    admin_username = request.form.get('admin_username', '').strip()
+
+    try:
+        with management_transaction(db.session):
+            if admin_username:
+                new_admin = db.session.query(User).filter_by(username=admin_username).first()
+                if not new_admin:
+                    return f'<div class="alert alert-danger">User "{admin_username}" not found</div>', 404
+                change_project_admin(db.session, project.project_id, new_admin.user_id)
+            else:
+                change_project_admin(db.session, project.project_id, None)
+    except (ValueError, Exception) as e:
+        return f'<div class="alert alert-danger">{e}</div>', 400
+
+    return _render_members_table(projcode, project)
