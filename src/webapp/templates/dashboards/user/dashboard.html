@@ -103,15 +103,14 @@
 </div>
 <!-- End Tab Content -->
 
-<!-- Member Management Modals -->
-{% include 'dashboards/user/fragments/member_modals.html' %}
+<!-- Member Management Modals (htmx version — form loaded dynamically) -->
+{% include 'dashboards/user/fragments/member_modals_htmx.html' %}
 
 <!-- Allocation Management Modals -->
 {% include 'dashboards/user/fragments/allocation_modals.html' %}
 
 <!-- Project Details Modal -->
-<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog"
-     data-url-template="{{ url_for('user_dashboard.project_details_modal', projcode='__PROJCODE__') }}">
+<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -132,7 +131,4 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/member-management.js') }}"></script>
-<script src="{{ url_for('static', filename='js/project-details-modal.js') }}"></script>
-<script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
 {% endblock %}

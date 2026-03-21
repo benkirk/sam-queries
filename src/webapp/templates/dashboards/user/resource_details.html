@@ -100,8 +100,11 @@
                         {% if has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) and summary.allocation_id %}
                         <td class="text-center">
                             <button class="btn btn-xs btn-outline-primary"
-                                    onclick="showEditAllocationModal('{{ projcode }}', {{ summary.allocation_id }}, '{{ resource_name }}');"
-                                    title="Edit allocation">
+                                    title="Edit allocation"
+                                    data-bs-toggle="modal" data-bs-target="#editAllocationModal"
+                                    hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=summary.allocation_id) }}?projcode={{ projcode }}"
+                                    hx-target="#editAllocationFormContainer"
+                                    hx-swap="innerHTML">
                                 <i class="fas fa-edit"></i>
                             </button>
                         </td>
@@ -252,6 +255,4 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/jobs-table.js') }}"></script>
-<script src="{{ url_for('static', filename='js/allocation-management.js') }}"></script>
 {% endblock %}

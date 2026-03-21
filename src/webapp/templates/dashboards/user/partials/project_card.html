@@ -148,8 +148,12 @@
                         <td class="text-center" onclick="event.stopPropagation();">
                             {% if resource.allocation_id %}
                             <button class="btn btn-xs btn-outline-primary"
-                                    onclick="showEditAllocationModal('{{ project.projcode }}', {{ resource.allocation_id }}, '{{ resource.resource_name }}'); event.stopPropagation();"
-                                    title="Edit allocation">
+                                    title="Edit allocation"
+                                    data-bs-toggle="modal" data-bs-target="#editAllocationModal"
+                                    hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=resource.allocation_id) }}?projcode={{ project.projcode }}"
+                                    hx-target="#editAllocationFormContainer"
+                                    hx-swap="innerHTML"
+                                    onclick="event.stopPropagation()">
                                 <i class="fas fa-edit"></i>
                             </button>
                             {% else %}
@@ -177,6 +181,7 @@
     </h6>
     <div id="members-{{ unique_id }}" class="collapse">
         <div class="members-container p-3 bg-light rounded"
+             id="htmx-members-{{ project.projcode }}"
              data-load-url="{{ url_for('user_dashboard.members_fragment', projcode=project.projcode) }}"
              data-loaded="false">
             <div class="spinner-border spinner-border-sm text-primary" role="status">

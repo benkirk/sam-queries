@@ -153,3 +153,16 @@
     font-size: 0.9rem;
     font-weight: normal;
 }
+
+/* ===================================================================
+   Stacked Modal z-index
+   ===================================================================
+   When a second modal opens on top of an existing one (e.g. edit
+   allocation on top of project details), ensure proper layering.
+   Replaces the JS z-index management from allocation-management.js. */
+.modal.show ~ .modal.show {
+    z-index: 1060;
+}
+.modal.show ~ .modal-backdrop.show + .modal-backdrop.show {
+    z-index: 1055;
+}
