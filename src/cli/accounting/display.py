@@ -6,18 +6,24 @@ from rich import box
 
 
 def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn,
-                          normalize_queue_fn=None) -> None:
+                          normalize_queue_fn=None, dry_run: bool = True) -> None:
     """
-    Print a Rich table showing what would be posted to comp_charge_summary.
+    Print a Rich table showing what would be (or was) posted to comp_charge_summary.
 
     Args:
         ctx: CLI context (for console output)
         rows: List of dicts from JobQueries.daily_summary_report()
         machine: Machine name ('derecho' or 'casper')
         adapt_fn: adapt_hpc_row callable — passed in to avoid a circular import
+        dry_run: When True, title notes rows were not written
     """
+    title = (
+        f"Dry Run — {machine} charge rows (not written)"
+        if dry_run
+        else f"{machine} charge rows"
+    )
     table = Table(
-        title=f"Dry Run — {machine} charge rows (not written)",
+        title=title,
         box=box.SIMPLE_HEAD,
         show_lines=False,
     )
