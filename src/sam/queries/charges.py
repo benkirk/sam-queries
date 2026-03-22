@@ -297,3 +297,107 @@ def get_user_breakdown_for_project(session, projcode: str,
         }
         for row in results
     ]
+
+
+def query_comp_charge_summaries(
+    session: Session,
+    start_date,
+    end_date,
+    username: Optional[str] = None,
+    projcode: Optional[str] = None,
+    resource: Optional[str] = None,
+    queue: Optional[str] = None,
+    machine: Optional[str] = None,
+    per_day: bool = False,
+) -> List[Dict]:
+    """
+    Query comp_charge_summary with optional filters, aggregated by dimension.
+
+    Unlike get_user_breakdown_for_project() (which is scoped to one project/resource)
+    this function supports cross-project, cross-resource queries with flexible filters.
+
+    Args:
+        session: SQLAlchemy session
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        username: Optional filter; supports % wildcard (e.g. 'benk%')
+        projcode: Optional filter; supports % wildcard (e.g. 'SCSG%')
+        resource: Optional filter; supports % wildcard (e.g. 'Derecho%')
+        queue: Optional exact filter on queue name
+        machine: Optional filter; supports % wildcard (e.g. 'derecho%')
+        per_day: If True, include activity_date in GROUP BY for per-day rows
+
+    Returns:
+        List of dicts with keys: username, projcode, resource, machine, queue,
+        total_jobs, total_core_hours, total_charges, and activity_date (if per_day).
+        Ordered by total_charges descending.
+
+    Example:
+        >>> rows = query_comp_charge_summaries(
+        ...     session, date(2025, 1, 1), date(2025, 3, 1),
+        ...     resource='Derecho', username='benk%'
+        ... )
+        >>> for row in rows:
+        ...     print(f"{row['username']}/{row['projcode']}: {row['total_charges']:.1f}")
+    """
+    group_cols = [
+        CompChargeSummary.username,
+        CompChargeSummary.projcode,
+        CompChargeSummary.resource,
+        CompChargeSummary.machine,
+        CompChargeSummary.queue,
+    ]
+    select_cols = list(group_cols) + [
+        func.sum(CompChargeSummary.num_jobs).label('total_jobs'),
+        func.sum(CompChargeSummary.core_hours).label('total_core_hours'),
+        func.sum(CompChargeSummary.charges).label('total_charges'),
+    ]
+
+    if per_day:
+        group_cols = [CompChargeSummary.activity_date] + group_cols
+        select_cols = [CompChargeSummary.activity_date] + select_cols
+
+    query = session.query(*select_cols).filter(
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date,
+    )
+
+    # Apply optional filters (LIKE when % present, exact otherwise)
+    def _apply_filter(col, val):
+        if val is None:
+            return
+        nonlocal query
+        query = query.filter(col.like(val) if '%' in val else col == val)
+
+    _apply_filter(CompChargeSummary.username, username)
+    _apply_filter(CompChargeSummary.projcode, projcode)
+    _apply_filter(CompChargeSummary.resource, resource)
+    _apply_filter(CompChargeSummary.machine, machine)
+    if queue is not None:
+        query = query.filter(CompChargeSummary.queue == queue)
+
+    query = query.group_by(*group_cols).having(
+        func.sum(CompChargeSummary.charges) > 0
+    ).order_by(
+        func.sum(CompChargeSummary.charges).desc()
+    )
+
+    rows = query.all()
+
+    result = []
+    for row in rows:
+        d = {
+            'username': row.username,
+            'projcode': row.projcode,
+            'resource': row.resource,
+            'machine': row.machine,
+            'queue': row.queue,
+            'total_jobs': int(row.total_jobs or 0),
+            'total_core_hours': float(row.total_core_hours or 0.0),
+            'total_charges': float(row.total_charges or 0.0),
+        }
+        if per_day:
+            d['activity_date'] = row.activity_date
+        result.append(d)
+
+    return result

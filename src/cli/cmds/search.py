@@ -24,6 +24,8 @@ from cli.project.commands import (
     ProjectExpirationCommand
 )
 from cli.allocations.commands import AllocationSearchCommand
+from cli.accounting.commands import AccountingSearchCommand
+from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
 
 
 pass_context = click.make_pass_decorator(Context, ensure=True)
@@ -253,6 +255,61 @@ def allocations(ctx: Context, resource, facility, allocation_type, project,
         include_adjustments=not exclude_adjustments
     )
     sys.exit(exit_code)
+
+
+# ========================================================================
+# Accounting Commands
+# ========================================================================
+
+@cli.command()
+@click.option('--user',     metavar='USERNAME', default=None, help='Filter by username (% wildcard ok)')
+@click.option('--project',  metavar='CODE',     default=None, help='Filter by project code (% wildcard ok)')
+@click.option('--resource', metavar='NAME',     default=None, help='Filter by resource name (% wildcard ok)')
+@click.option('--queue',    metavar='NAME',     default=None, help='Filter by queue name (exact)')
+@click.option('--machine',  metavar='NAME',     default=None, help='Filter by machine name (% wildcard ok, e.g. derecho)')
+@click.option('-d', '--date', 'date_str',  type=str, default=None, metavar='YYYY-MM-DD', help='Single date')
+@click.option('--today', 'today_flag', is_flag=True, help='Use today as the date')
+@click.option('--last',  type=str, default=None, metavar='N[d]', help='Last N days including today (e.g. --last 14d)')
+@click.option('--start', type=str, default=None, metavar='YYYY-MM-DD', help='Start date')
+@click.option('--end',   type=str, default=None, metavar='YYYY-MM-DD', help='End date')
+@click.option('--verbose', '-v', is_flag=True, help='Show per-day row breakdown')
+@pass_context
+def accounting(ctx: Context, user, project, resource, queue, machine,
+               date_str, today_flag, last, start, end, verbose):
+    """
+    Query comp charge summaries from SAM summary tables.
+
+    Reads directly from comp_charge_summary (no HPC job-history plugin required).
+    Results are aggregated by user/project/resource/machine/queue over the date range.
+    Use --verbose for a per-day breakdown.
+
+    \b
+    Date Selection (one required):
+      --date YYYY-MM-DD   Single specific date
+      --today             Today's date
+      --last N[d]         Last N days including today (e.g. --last 14d)
+      --start / --end     Date range
+
+    Examples:
+      sam-search accounting --last 14d --resource Derecho
+      sam-search accounting --last 7d --user benkirk
+      sam-search accounting --start 2025-01-01 --end 2025-03-01 --project SCSG%
+      sam-search accounting --last 7d --resource Derecho --verbose
+    """
+    _validate_accounting_dates(date_str, start, end, today_flag, last)
+    start_date, end_date = _resolve_accounting_dates(date_str, start, end, today_flag, last)
+    if verbose:
+        ctx.verbose = True
+    command = AccountingSearchCommand(ctx)
+    sys.exit(command.execute(
+        start_date=start_date,
+        end_date=end_date,
+        username=user,
+        projcode=project,
+        resource=resource,
+        queue=queue,
+        machine=machine,
+    ))
 
 
 if __name__ == '__main__':

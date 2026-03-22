@@ -1,7 +1,8 @@
 """
-Accounting admin commands for SAM.
+Accounting commands for SAM.
 
-Bridges hpc-usage-queries daily charge data into the SAM comp_charge_summary table.
+AccountingAdminCommand — bridges hpc-usage-queries data into comp_charge_summary.
+AccountingSearchCommand — queries comp_charge_summary for user inspection.
 """
 import re
 from datetime import date
@@ -9,7 +10,7 @@ from typing import Optional
 
 from cli.core.base import BaseCommand
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
-from cli.accounting.display import display_dry_run_table, display_import_summary
+from cli.accounting.display import display_dry_run_table, display_import_summary, display_charge_summary_table
 from sam.manage.summaries import upsert_comp_charge_summary
 from sam.manage.transaction import management_transaction
 from sam.plugins import HPC_USAGE_QUERIES
@@ -260,3 +261,37 @@ class AccountingAdminCommand(BaseCommand):
 
         # --- 9. Exit code ---
         return 0 if n_errors == 0 else 2
+
+
+class AccountingSearchCommand(BaseCommand):
+    """Query comp_charge_summary — no plugin required."""
+
+    def execute(
+        self,
+        *,
+        start_date,
+        end_date,
+        username: Optional[str] = None,
+        projcode: Optional[str] = None,
+        resource: Optional[str] = None,
+        queue: Optional[str] = None,
+        machine: Optional[str] = None,
+    ) -> int:
+        from sam.queries.charges import query_comp_charge_summaries
+
+        rows = query_comp_charge_summaries(
+            self.session, start_date, end_date,
+            username=username,
+            projcode=projcode,
+            resource=resource,
+            queue=queue,
+            machine=machine,
+            per_day=self.ctx.verbose,
+        )
+
+        if not rows:
+            self.console.print("[yellow]No charge records found for the given filters.[/yellow]")
+            return 1
+
+        display_charge_summary_table(self.ctx, rows, start_date, end_date)
+        return 0
