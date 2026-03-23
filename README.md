@@ -32,6 +32,7 @@ This repository provides tools to interact with SAM data programmatically, repla
   - Pattern matching with SQL wildcards
   - Track upcoming and expired allocations
   - Flexible allocation querying with grouping
+  - **Charge inspection** — query `comp_charge_summary` by user/project/resource/queue/date range (no plugin required)
   - Proper exit codes for automation
 - **sam-admin**: Administrative commands
   - User and project validation
@@ -206,6 +207,28 @@ sam-search allocations --total-resources --total-types --total-projects --verbos
 
 **Exit codes:** `0` = success, `1` = not found, `2` = error, `130` = interrupted
 
+### sam-search accounting — Charge Inspection
+
+Query what has already been ingested into `comp_charge_summary` (no `hpc-usage-queries`
+plugin required). Useful for auditing ingest runs and checking per-user/project usage.
+
+```bash
+# All charges for the last 14 days
+sam-search accounting --last 14d
+
+# Filter by resource
+sam-search accounting --last 14d --resource Derecho
+
+# Filter by user
+sam-search accounting --last 7d --user benkirk
+
+# SQL wildcard on project code
+sam-search accounting --start 2025-01-01 --end 2025-03-01 --project "SCSG%"
+
+# Per-day row breakdown (--verbose adds Date column)
+sam-search accounting --last 7d --resource Derecho --verbose
+```
+
 ### sam-admin accounting — Charge Ingest
 
 The `sam-admin accounting` command reads pre-aggregated daily charge data from the
@@ -215,37 +238,40 @@ posts it into SAM's `comp_charge_summary` table via the ORM (no raw SQL).
 **Prerequisites:** The `hpc-usage-queries` package must be installed (included in
 `pyproject.toml`) and `JOB_HISTORY_DATA_DIR` must point to the SQLite data directory.
 
+**`--verbose` and `--dry-run` are independent:**
+- `--verbose` shows the full charge-row table (before any writes)
+- `--dry-run` skips database writes; can be combined with `--verbose`
+- A Rich progress bar is shown during live ingest runs
+
 ```bash
-# Preview what would be posted — no database writes
+# Preview the charge-row table without writing — verbose + dry-run
 export JOB_HISTORY_DATA_DIR=/path/to/job-history-data
 sam-admin accounting --comp --machine derecho \
-    --start-date 2026-01-01 --end-date 2026-01-31 \
-    --dry-run
+    --last 14d --verbose --dry-run
+
+# Dry-run only (skip writes, no table output)
+sam-admin accounting --comp --machine derecho --last 14d --dry-run
 
 # Post computational charges, skipping rows whose user/project is not in SAM
 sam-admin accounting --comp --machine derecho \
-    --start-date 2026-01-01 --end-date 2026-01-31 \
-    --skip-errors
+    --start 2026-01-01 --end 2026-01-31 --skip-errors
 
-# Casper charges (CPU and GPU routed automatically by queue type)
+# Casper charges (CPU and GPU routed automatically by GPU fraction)
 sam-admin accounting --comp --machine casper \
-    --start-date 2026-01-01 --end-date 2026-01-31 \
-    --skip-errors
+    --start 2026-01-01 --end 2026-01-31 --skip-errors
 
 # Auto-create queues that don't yet exist in SAM
 sam-admin accounting --comp --machine derecho \
-    --start-date 2026-01-01 --end-date 2026-01-31 \
-    --create-queues --skip-errors
+    --start 2026-01-01 --end 2026-01-31 --create-queues --skip-errors
 
 # Backfill against accounts that have since been marked deleted
 sam-admin accounting --comp --machine derecho \
-    --start-date 2025-01-01 --end-date 2025-12-31 \
+    --start 2025-01-01 --end 2025-12-31 \
     --include-deleted-accounts --skip-errors
 
-# Verbose mode: show per-row warnings (e.g. low GPU fraction anomalies)
+# Verbose live run: show charge-row table + progress bar + summary
 sam-admin accounting --comp --machine derecho \
-    --start-date 2026-01-01 --end-date 2026-01-02 \
-    --skip-errors --verbose
+    --last 2d --skip-errors --verbose
 ```
 
 **Resource routing** is performed per row by `adapt_jobstats_row()`:

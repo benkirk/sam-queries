@@ -290,6 +290,7 @@ def accounting(ctx: Context, user, project, resource, queue, machine,
       --last N[d]         Last N days including today (e.g. --last 14d)
       --start / --end     Date range
 
+    \b
     Examples:
       sam-search accounting --last 14d --resource Derecho
       sam-search accounting --last 7d --user benkirk
