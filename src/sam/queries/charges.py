@@ -245,6 +245,96 @@ def get_user_breakdown_for_project(session, projcode: str,
     ]
 
 
+def get_user_queue_breakdown_for_project(
+    session: Session,
+    projcode: str,
+    resource: str,
+    start_date: datetime,
+    end_date: datetime,
+) -> List[Dict]:
+    """
+    Get per-user usage breakdown with per-queue sub-rows for a project on a specific resource.
+
+    Wraps query_comp_charge_summaries(), grouping results by username and collecting
+    queue-level sub-rows — suitable for collapsible table display.
+
+    Returns:
+        List of dicts sorted by charges desc:
+            {username, jobs, core_hours, charges,
+             queues: [{queue, jobs, core_hours, charges}] (sorted by charges desc)}
+    """
+    rows = query_comp_charge_summaries(
+        session, start_date, end_date, projcode=projcode, resource=resource
+    )
+
+    user_map: Dict[str, Dict] = {}
+    for row in rows:
+        username = row['username']
+        if username not in user_map:
+            user_map[username] = {
+                'username': username,
+                'jobs': 0,
+                'core_hours': 0.0,
+                'charges': 0.0,
+                'queues': [],
+            }
+        user_map[username]['jobs'] += row['total_jobs']
+        user_map[username]['core_hours'] += row['total_core_hours']
+        user_map[username]['charges'] += row['total_charges']
+        user_map[username]['queues'].append({
+            'queue': row['queue'],
+            'jobs': row['total_jobs'],
+            'core_hours': row['total_core_hours'],
+            'charges': row['total_charges'],
+        })
+
+    for entry in user_map.values():
+        entry['queues'].sort(key=lambda q: q['charges'], reverse=True)
+
+    return sorted(user_map.values(), key=lambda u: u['charges'], reverse=True)
+
+
+def get_daily_breakdown_for_project(
+    session: Session,
+    projcode: str,
+    resource: str,
+    start_date: datetime,
+    end_date: datetime,
+) -> List[Dict]:
+    """
+    Get per-day usage with per-user-per-queue sub-rows for a project on a specific resource.
+
+    Wraps query_comp_charge_summaries(per_day=True), grouping results by date and
+    collecting user+queue sub-rows — suitable for collapsible table display.
+
+    Returns:
+        List of dicts sorted by date desc:
+            {date (str YYYY-MM-DD), jobs, core_hours, charges,
+             rows: [{username, queue, total_jobs, total_core_hours, total_charges}]}
+    """
+    rows = query_comp_charge_summaries(
+        session, start_date, end_date, projcode=projcode, resource=resource, per_day=True
+    )
+
+    day_map: Dict[str, Dict] = {}
+    for row in rows:
+        date_str = row['activity_date'].strftime('%Y-%m-%d')
+        if date_str not in day_map:
+            day_map[date_str] = {
+                'date': date_str,
+                'jobs': 0,
+                'core_hours': 0.0,
+                'charges': 0.0,
+                'rows': [],
+            }
+        day_map[date_str]['jobs'] += row['total_jobs']
+        day_map[date_str]['core_hours'] += row['total_core_hours']
+        day_map[date_str]['charges'] += row['total_charges']
+        day_map[date_str]['rows'].append(row)
+
+    return sorted(day_map.values(), key=lambda d: d['date'], reverse=True)
+
+
 def query_comp_charge_summaries(
     session: Session,
     start_date,

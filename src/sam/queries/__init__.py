@@ -51,6 +51,8 @@ from .charges import (
     get_daily_charge_trends_for_accounts,
     get_raw_charge_summaries_for_accounts,
     get_user_breakdown_for_project,
+    get_user_queue_breakdown_for_project,
+    get_daily_breakdown_for_project,
 )
 
 # Projects
@@ -121,6 +123,8 @@ __all__ = [
     'get_daily_charge_trends_for_accounts',
     'get_raw_charge_summaries_for_accounts',
     'get_user_breakdown_for_project',
+    'get_user_queue_breakdown_for_project',
+    'get_daily_breakdown_for_project',
     # Projects
     'search_projects_by_code_or_title',
     'search_projects_by_title',

@@ -14,7 +14,7 @@ from datetime import datetime, date, timedelta
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.users import get_users_on_project
-from sam.queries.charges import get_user_breakdown_for_project
+from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project
 from sam.queries.lookups import find_project_by_code
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import can_manage_project_members, can_change_admin
@@ -110,13 +110,12 @@ def resource_details():
         flash(f'Project {projcode} or resource {resource_name} not found', 'error')
         return redirect(url_for('user_dashboard.index'))
 
-    # Fetch user breakdown data
-    user_breakdown = get_user_breakdown_for_project(
-        db.session,
-        projcode,
-        start_date,
-        end_date,
-        resource_name
+    # Fetch enriched breakdown data (user+queue and daily+user+queue)
+    user_breakdown = get_user_queue_breakdown_for_project(
+        db.session, projcode, resource_name, start_date, end_date
+    )
+    daily_breakdown = get_daily_breakdown_for_project(
+        db.session, projcode, resource_name, start_date, end_date
     )
 
     # Generate charts server-side
@@ -132,6 +131,7 @@ def resource_details():
         end_date=end_date.strftime('%Y-%m-%d'),
         detail_data=detail_data,
         user_breakdown=user_breakdown,
+        daily_breakdown=daily_breakdown,
         usage_chart=usage_chart,
     )
 
