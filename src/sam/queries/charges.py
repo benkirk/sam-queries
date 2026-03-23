@@ -9,7 +9,6 @@ Functions:
     get_adjustment_totals_by_date: Get ChargeAdjustment totals grouped by date
     get_daily_charge_trends_for_accounts: Get daily charge trends by date
     get_raw_charge_summaries_for_accounts: Get raw charge summary records
-    get_jobs_for_project: Get job records for a project
     get_user_breakdown_for_project: Get per-user usage breakdown
 """
 
@@ -21,7 +20,6 @@ from sqlalchemy.orm import Session
 
 from sam.core.users import User
 from sam.summaries.comp_summaries import CompChargeSummary
-from sam.activity.computational import CompActivityChargeView
 from sam.accounting.adjustments import ChargeAdjustment
 from sam.accounting.calculator import get_charge_models_for_resource
 
@@ -177,58 +175,6 @@ def get_raw_charge_summaries_for_accounts(
 
     return charge_data
 
-
-# ============================================================================
-# Usage Summary Queries
-# ============================================================================
-
-# ============================================================================
-# Job and Queue Queries
-# ============================================================================
-
-def get_jobs_for_project(session, projcode: str,
-                         start_date: datetime,
-                         end_date: datetime,
-                         resource: str,
-                         limit: Optional[int] = None) -> List[CompActivityChargeView]:
-    """
-    Get jobs for a project within a date range using the charge view.
-
-    Args:
-        session: SQLAlchemy session
-        projcode: Project code
-        start_date: Start date (inclusive)
-        end_date: End date (inclusive)
-        resource: Machine filter (e.g., 'Derecho')
-        limit: Optional maximum number of jobs to return (default None = no limit)
-
-    Returns:
-        List of CompActivityChargeView view records ordered by submit time (descending)
-
-    Example:
-        >>> jobs = get_jobs_for_project(
-        ...     session, 'UCUB0001',
-        ...     datetime(2024, 1, 1),
-        ...     datetime(2024, 1, 31),
-        ...     'Derecho',
-        ...     limit=50
-        ... )
-        >>> for job in jobs:
-        ...     print(f"{job.job_id}: {job.core_hours} hours, {job.charge} charged")
-    """
-    query = session.query(CompActivityChargeView).filter(
-        CompActivityChargeView.projcode == projcode,
-        CompActivityChargeView.machine == resource,
-        CompActivityChargeView.activity_date >= start_date,
-        CompActivityChargeView.activity_date <= end_date
-    ).order_by(
-        CompActivityChargeView.activity_date.desc()
-    )
-
-    if limit is not None:
-        query = query.limit(limit)
-
-    return query.all()
 
 
 # ============================================================================
