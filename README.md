@@ -45,7 +45,6 @@ This repository provides tools to interact with SAM data programmatically, repla
 ### Web UI (Flask-Admin)
 - Admin dashboard with CRUD operations for SAM tables
 - Role-based access control
-- Expiration monitoring dashboards
 - Bootstrap 4 interface
 
 ### REST API
@@ -142,9 +141,9 @@ For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)** or *
    Edit `.env` and add your production credentials (if needed):
    - For local development: Already configured (uses Docker)
    - For production access: Add production credentials (contact CISL staff)
-   
+
    **See [docs/CREDENTIALS.md](docs/CREDENTIALS.md) for complete credential setup guide.**
-   
+
    **Important:** Wrap passwords with special characters in single quotes.
 
 4. **Verify installation**
