@@ -14,7 +14,7 @@ from datetime import datetime, date, timedelta
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.users import get_users_on_project
-from sam.queries.charges import get_jobs_for_project, get_user_breakdown_for_project
+from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project
 from sam.queries.lookups import find_project_by_code
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import can_manage_project_members, can_change_admin
@@ -110,13 +110,12 @@ def resource_details():
         flash(f'Project {projcode} or resource {resource_name} not found', 'error')
         return redirect(url_for('user_dashboard.index'))
 
-    # Fetch user breakdown data
-    user_breakdown = get_user_breakdown_for_project(
-        db.session,
-        projcode,
-        start_date,
-        end_date,
-        resource_name
+    # Fetch enriched breakdown data (user+queue and daily+user+queue)
+    user_breakdown = get_user_queue_breakdown_for_project(
+        db.session, projcode, resource_name, start_date, end_date
+    )
+    daily_breakdown = get_daily_breakdown_for_project(
+        db.session, projcode, resource_name, start_date, end_date
     )
 
     # Generate charts server-side
@@ -132,6 +131,7 @@ def resource_details():
         end_date=end_date.strftime('%Y-%m-%d'),
         detail_data=detail_data,
         user_breakdown=user_breakdown,
+        daily_breakdown=daily_breakdown,
         usage_chart=usage_chart,
     )
 
@@ -232,65 +232,6 @@ def tree_fragment(projcode):
     tree_html = f'<ul class="tree-list">{render_tree_node(root, projcode)}</ul>'
 
     return tree_html
-
-
-@bp.route('/jobs/<projcode>/<resource>')
-@login_required
-def jobs_fragment(projcode, resource):
-    """
-    Lazy-loaded HTML fragment showing project jobs with pagination.
-
-    Query parameters:
-        start_date: Start date (YYYY-MM-DD)
-        end_date: End date (YYYY-MM-DD)
-        page: Page number (default 1)
-
-    Returns:
-        HTML table of jobs (no full page layout)
-    """
-    # Get date range from query params
-    try:
-        start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d')
-        end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d')
-    except (TypeError, ValueError):
-        return '<p class="text-danger mb-0">Invalid date range</p>'
-
-    # Pagination parameters
-    page = int(request.args.get('page', 1))
-    per_page = 50
-
-    # Get all jobs to calculate total count
-    all_jobs = get_jobs_for_project(
-        db.session,
-        projcode,
-        start_date,
-        end_date,
-        resource
-    )
-
-    total_jobs = len(all_jobs)
-    total_pages = (total_jobs + per_page - 1) // per_page  # Ceiling division
-
-    # Get paginated subset
-    start_idx = (page - 1) * per_page
-    end_idx = start_idx + per_page
-    jobs = all_jobs[start_idx:end_idx]
-
-    if not jobs and page == 1:
-        return '<p class="text-muted mb-0">No jobs found for this period</p>'
-
-    return render_template(
-        'dashboards/user/fragments/jobs_table.html',
-        jobs=jobs,
-        page=page,
-        per_page=per_page,
-        total_jobs=total_jobs,
-        total_pages=total_pages,
-        projcode=projcode,
-        resource=resource,
-        start_date=start_date.strftime('%Y-%m-%d'),
-        end_date=end_date.strftime('%Y-%m-%d')
-    )
 
 
 

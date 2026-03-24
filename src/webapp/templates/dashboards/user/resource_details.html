@@ -155,42 +155,67 @@
                         <tr>
                             <th>Username</th>
                             <th class="text-end">Jobs</th>
+                            <th class="text-end">Core-Hours</th>
                             <th class="text-end">Charges</th>
                         </tr>
                     </thead>
+                    {% if user_breakdown %}
                     <tbody>
-                        {% if user_breakdown %}
-                            <tr class="table-info font-weight-bold">
-                                <td>Total</td>
-                                <td class="text-end">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
-                                <td class="text-end">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
-                            </tr>
-                            {% for user in user_breakdown %}
-                            <tr>
-                                <td><code>{{ user.username }}</code></td>
-                                <td class="text-end">{{ '{:,}'.format(user.jobs) }}</td>
-                                <td class="text-end">{{ '{:,.0f}'.format(user.charges) }}</td>
-                            </tr>
-                            {% endfor %}
-                        {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center text-muted">
-                                    No user activity recorded for this period
-                                </td>
-                            </tr>
-                        {% endif %}
+                        <tr class="table-info fw-bold">
+                            <td>Total</td>
+                            <td class="text-end">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(user_breakdown|sum(attribute='core_hours')) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
+                        </tr>
                     </tbody>
+                    {% for user in user_breakdown %}
+                    {% set uid = loop.index %}
+                    <tbody>
+                        <tr {% if user.queues|length > 1 %}class="cursor-pointer" data-bs-toggle="collapse" data-bs-target="#user-queues-{{ uid }}" aria-expanded="false"{% endif %}>
+                            <td>
+                                <code>{{ user.username }}</code>
+                                {% if user.queues|length > 1 %}
+                                <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ '{:,}'.format(user.jobs) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(user.core_hours) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(user.charges) }}</td>
+                        </tr>
+                    </tbody>
+                    {% if user.queues|length > 1 %}
+                    <tbody class="collapse" id="user-queues-{{ uid }}">
+                        {% for q in user.queues %}
+                        <tr class="table-secondary">
+                            <td class="ps-4 text-muted"><i class="fas fa-angle-right me-1"></i><em>{{ q.queue }}</em></td>
+                            <td class="text-end">{{ '{:,}'.format(q.jobs) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(q.core_hours) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(q.charges) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endif %}
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">
+                                No user activity recorded for this period
+                            </td>
+                        </tr>
+                    </tbody>
+                    {% endif %}
                 </table>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Recent Usage (Charges) Card, collapsed by default -->
+<!-- Daily Usage Card, collapsed by default -->
 <div class="card mb-4">
-    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseCharges" aria-expanded="true">
+    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseCharges" aria-expanded="false">
         <h5 class="mb-0">
-            <i class="fas fa-table"></i> Recent Usage (Charges)
+            <i class="fas fa-table"></i> Daily Usage
             <i class="fas fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
@@ -201,49 +226,50 @@
                     <thead class="thead-dark">
                         <tr>
                             <th>Date</th>
-                            <th class="text-end">Value</th>
+                            <th class="text-end">Jobs</th>
+                            <th class="text-end">Core-Hours</th>
+                            <th class="text-end">Charges</th>
                         </tr>
                     </thead>
+                    {% if daily_breakdown %}
+                    {% for day in daily_breakdown %}
+                    {% set did = loop.index %}
                     <tbody>
-                        {% if detail_data.daily_charges and detail_data.daily_charges['dates'] %}
-                            {% for i in range(detail_data.daily_charges['dates']|length) %}
-                            <tr>
-                                <td>{{ detail_data.daily_charges['dates'][i] }}</td>
-                                <td class="text-end">{{ '{:,.0f}'.format(detail_data.daily_charges['values'][i]) }}</td>
-                            </tr>
-                            {% endfor %}
-                        {% else %}
-                            <tr>
-                                <td colspan="6" class="text-center text-muted">
-                                    No charges recorded for this period
-                                </td>
-                            </tr>
-                        {% endif %}
+                        <tr {% if day.rows|length > 1 %}class="cursor-pointer" data-bs-toggle="collapse" data-bs-target="#day-detail-{{ did }}" aria-expanded="false"{% endif %}>
+                            <td>
+                                {{ day.date }}
+                                {% if day.rows|length > 1 %}
+                                <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ '{:,}'.format(day.jobs) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(day.core_hours) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(day.charges) }}</td>
+                        </tr>
                     </tbody>
+                    {% if day.rows|length > 1 %}
+                    <tbody class="collapse" id="day-detail-{{ did }}">
+                        {% for sub in day.rows %}
+                        <tr class="table-light">
+                            <td class="ps-4 text-muted"><i class="fas fa-angle-right me-1"></i><code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em></td>
+                            <td class="text-end">{{ '{:,}'.format(sub.total_jobs) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(sub.total_core_hours) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(sub.total_charges) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endif %}
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">
+                                No charges recorded for this period
+                            </td>
+                        </tr>
+                    </tbody>
+                    {% endif %}
                 </table>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Job List Card (Lazy Loaded with Pagination) -->
-<div class="card mb-4">
-    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseJobs" aria-expanded="false">
-        <h5 class="mb-0">
-            <i class="fas fa-list"></i> Job List
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
-        </h5>
-    </div>
-    <div id="collapseJobs" class="collapse">
-        <div class="card-body">
-            <div id="jobs-container"
-                 data-load-url="{{ url_for('user_dashboard.jobs_fragment', projcode=projcode, resource=resource_name) }}?start_date={{ start_date }}&end_date={{ end_date }}"
-                 data-loaded="false">
-                <div class="text-center p-3">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="sr-only">Loading jobs...</span>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -255,4 +281,8 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+.collapse-icon { transition: transform 0.2s ease; }
+[aria-expanded="true"] .collapse-icon { transform: rotate(90deg); }
+</style>
 {% endblock %}

@@ -30,6 +30,7 @@ services:
       - STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}
       - STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}
       - STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}
+      - GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-'https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver'}
 
     healthcheck:
       test: |
@@ -75,6 +76,7 @@ services:
       - STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}
       - STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}
       - STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}
+      - GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-'https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver'}
 
     # Important: watch the current directory, re-syncing as needed based on source changes
     develop:

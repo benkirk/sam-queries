@@ -28,6 +28,9 @@ class SAMWebappConfig(SAMConfig):
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     LOG_FILE  = os.getenv('LOG_FILE', '')       # empty = console only
 
+    # Google Calendar embed URL (public calendar shown on reservations tab; empty = hidden)
+    GOOGLE_CALENDAR_EMBED_URL = os.getenv('GOOGLE_CALENDAR_EMBED_URL', '')
+
     # Session cookies (common defaults; subclasses tighten for prod)
     SESSION_COOKIE_HTTPONLY    = True
     SESSION_COOKIE_SAMESITE    = 'Lax'
