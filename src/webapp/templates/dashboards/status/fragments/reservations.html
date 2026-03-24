@@ -16,7 +16,7 @@
         <p class="mb-2">{{ res.description }}</p>
         {% endif %}
         <div class="text-muted small">
-            {% if res.node_count %}{{ res.node_count }} nodes{% endif %}
+            {% if res.node_count %}{{ res.node_count }} {{ 'node' if res.node_count == 1 else 'nodes' }}{% endif %}
             {% if res.partition %} - Partition: {{ res.partition }}{% endif %}
         </div>
     </div>
