@@ -2,7 +2,7 @@
 System Status dashboard blueprint.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, make_response
+from flask import Blueprint, render_template, request, flash, redirect, url_for, make_response, current_app
 from flask_login import login_required, current_user
 from webapp.utils.rbac import require_permission, Permission
 from datetime import datetime, timedelta
@@ -84,6 +84,7 @@ def index():
             jupyterhub_status=jupyterhub_status,
             outages=outages,
             reservations=reservations,
+            google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
             now=datetime.now(),
         )
     finally:

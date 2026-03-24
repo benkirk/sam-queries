@@ -98,10 +98,10 @@
             <i class="fas fa-book"></i> JupyterHub
         </a>
     </li>
-    {% if reservations %}
+    {% if reservations or google_calendar_embed_url %}
     <li class="nav-item">
         <a class="nav-link" id="reservations-tab" data-bs-toggle="tab" href="#reservations" role="tab">
-            <i class="fas fa-calendar-alt"></i> Reservations ({{ reservations|length }})
+            <i class="fas fa-calendar-alt"></i> Reservations{% if reservations %} ({{ reservations|length }}){% endif %}
         </a>
     </li>
     {% endif %}
@@ -118,7 +118,7 @@
     <div class="tab-pane fade" id="jupyterhub" role="tabpanel">
         {% include 'dashboards/status/jupyterhub.html' %}
     </div>
-    {% if reservations %}
+    {% if reservations or google_calendar_embed_url %}
     <div class="tab-pane fade" id="reservations" role="tabpanel">
         {% include 'dashboards/status/fragments/reservations.html' %}
     </div>
