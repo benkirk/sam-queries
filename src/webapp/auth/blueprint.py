@@ -21,7 +21,11 @@ def login():
     """
     # Redirect if already logged in
     if current_user.is_authenticated:
-        return redirect(url_for('user_dashboard.index'))
+        # Redirect based on user role
+        if 'admin' in auth_user.roles:
+            return redirect(url_for('admin_dashboard.index'))
+        else:
+            return redirect(url_for('user_dashboard.index'))
 
     if request.method == 'POST':
         username = request.form.get('username')
