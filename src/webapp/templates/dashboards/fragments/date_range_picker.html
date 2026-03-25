@@ -1,0 +1,115 @@
+{% macro date_range_picker(action, start_date, end_date, hidden_fields={}) %}
+{# Unique ID to allow multiple pickers on the same page without ID collisions #}
+{% set uid = range(100000) | random %}
+{#
+  Compact date range picker with quick-select presets and optional custom inputs.
+
+  Parameters:
+    action        - form action URL (e.g. url_for('user_dashboard.resource_details'))
+    start_date    - current start date string (YYYY-MM-DD)
+    end_date      - current end date string (YYYY-MM-DD)
+    hidden_fields - dict of extra hidden form fields (e.g. {'projcode': 'SCSG0001'})
+#}
+<div class="card mb-4">
+    <div class="card-body py-2">
+        <form method="GET" action="{{ action }}" id="drp_form_{{ uid }}">
+            {% for name, value in hidden_fields.items() %}
+            <input type="hidden" name="{{ name }}" value="{{ value }}">
+            {% endfor %}
+            <div class="d-flex align-items-center flex-wrap gap-2">
+                <i class="fas fa-calendar text-muted"></i>
+
+                <!-- Quick-select preset buttons -->
+                <div class="btn-group btn-group-sm" role="group" aria-label="Date range presets">
+                    {% set presets = [('7d', 7), ('30d', 30), ('90d', 90), ('6mo', 180), ('1yr', 365)] %}
+                    {% for label, days in presets %}
+                    <button type="button"
+                            class="btn btn-outline-secondary drp-preset-{{ uid }}"
+                            data-days="{{ days }}"
+                            onclick="drpApplyDays_{{ uid }}({{ days }})">{{ label }}</button>
+                    {% endfor %}
+                </div>
+
+                <!-- Custom date range toggle -->
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary"
+                        id="drp_custom_btn_{{ uid }}"
+                        onclick="drpToggleCustom_{{ uid }}()">
+                    <i class="fas fa-calendar-alt"></i> Custom
+                </button>
+
+                <!-- Custom date inputs (hidden until toggled) -->
+                <div id="drp_custom_{{ uid }}" class="d-none d-flex align-items-center gap-2">
+                    <input type="date" name="start_date" id="drp_start_{{ uid }}"
+                           value="{{ start_date }}"
+                           class="form-control form-control-sm" style="width:140px">
+                    <span class="text-muted">→</span>
+                    <input type="date" name="end_date" id="drp_end_{{ uid }}"
+                           value="{{ end_date }}"
+                           class="form-control form-control-sm" style="width:140px">
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="fas fa-check"></i> Apply
+                    </button>
+                </div>
+
+                <!-- Current range display -->
+                <small class="text-muted ms-auto">{{ start_date }} – {{ end_date }}</small>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function () {
+    const uid      = '{{ uid }}';
+    const action   = {{ action | tojson }};
+    const hidden   = {{ hidden_fields | tojson }};
+    const PRESETS  = [7, 30, 90, 180, 365];
+    const curStart = '{{ start_date }}';
+
+    // Highlight the active preset (if current range matches today - N days)
+    function fmtDate(d) {
+        return d.toISOString().slice(0, 10);
+    }
+
+    (function markActive() {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        PRESETS.forEach(function (days) {
+            const d = new Date(today);
+            d.setDate(d.getDate() - days);
+            if (fmtDate(d) === curStart) {
+                document.querySelectorAll('.drp-preset-' + uid + '[data-days="' + days + '"]')
+                    .forEach(function (btn) {
+                        btn.classList.remove('btn-outline-secondary');
+                        btn.classList.add('btn-secondary', 'active');
+                    });
+            }
+        });
+    })();
+
+    function navigateTo(start, end) {
+        const params = new URLSearchParams(hidden);
+        params.set('start_date', start);
+        params.set('end_date', end);
+        window.location.href = action + '?' + params.toString();
+    }
+
+    window['drpApplyDays_' + uid] = function (n) {
+        const end   = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - n);
+        navigateTo(fmtDate(start), fmtDate(end));
+    };
+
+    window['drpToggleCustom_' + uid] = function () {
+        const panel = document.getElementById('drp_custom_' + uid);
+        const btn   = document.getElementById('drp_custom_btn_' + uid);
+        const hidden = panel.classList.toggle('d-none');
+        btn.classList.toggle('active', !hidden);
+        btn.classList.toggle('btn-outline-primary', hidden);
+        btn.classList.toggle('btn-primary', !hidden);
+    };
+})();
+</script>
+{% endmacro %}

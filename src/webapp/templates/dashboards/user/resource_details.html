@@ -18,30 +18,13 @@
     </p>
 </div>
 
-<!-- Date Range Selector -->
-<div class="card mb-4">
-    <div class="card-header">
-        <h5 class="mb-0">
-            <i class="fas fa-calendar"></i> Date Range
-        </h5>
-    </div>
-    <div class="card-body">
-        <form method="GET" action="{{ url_for('user_dashboard.resource_details') }}" class="form-inline">
-            <input type="hidden" name="projcode" value="{{ projcode }}">
-            <input type="hidden" name="resource" value="{{ resource_name }}">
-
-            <label for="start_date" class="me-2">Start Date:</label>
-            <input type="date" id="start_date" name="start_date" value="{{ start_date }}" class="form-control form-control-sm me-3">
-
-            <label for="end_date" class="me-2">End Date:</label>
-            <input type="date" id="end_date" name="end_date" value="{{ end_date }}" class="form-control form-control-sm me-3">
-
-            <button type="submit" class="btn btn-sm btn-primary">
-                <i class="fas fa-sync"></i> Update Range
-            </button>
-        </form>
-    </div>
-</div>
+{% from 'dashboards/fragments/date_range_picker.html' import date_range_picker %}
+{{ date_range_picker(
+    action=url_for('user_dashboard.resource_details'),
+    start_date=start_date,
+    end_date=end_date,
+    hidden_fields={'projcode': projcode, 'resource': resource_name}
+) }}
 
 <!-- Resource Summary Card -->
 <div class="card mb-4">
