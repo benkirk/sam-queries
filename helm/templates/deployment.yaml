@@ -20,7 +20,7 @@ spec:
       - name: {{ .Values.webapp.name }}
         image: {{ .Values.webapp.container.image }}
         imagePullPolicy: IfNotPresent
-        {{- if or .Values.webapp.env .Values.webapp.dbCredentials.enabled }}
+        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled .Values.webapp.samDbCredentials.enabled) }}
         env:
           {{- range $key, $value := .Values.webapp.env }}
           - name: {{ $key }}
@@ -36,6 +36,18 @@ spec:
             valueFrom:
               secretKeyRef:
                 name: {{ .Values.webapp.name }}-db-credentials
+                key: password
+          {{- end }}
+          {{- if .Values.webapp.samDbCredentials.enabled }}
+          - name: SAM_DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-sam-db-credentials
+                key: username
+          - name: SAM_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-sam-db-credentials
                 key: password
           {{- end }}
         {{- end }}
