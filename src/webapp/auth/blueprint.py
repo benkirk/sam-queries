@@ -21,10 +21,7 @@ def login():
     """
     # Redirect if already logged in
     if current_user.is_authenticated:
-        if 'admin' in current_user.roles:
-            return redirect(url_for('admin.index'))
-        else:
-            return redirect(url_for('user_dashboard.index'))
+        return redirect(url_for('user_dashboard.index'))
 
     if request.method == 'POST':
         username = request.form.get('username')
@@ -53,7 +50,7 @@ def login():
 
             # Redirect based on user role
             if 'admin' in auth_user.roles:
-                return redirect(url_for('admin.index'))
+                return redirect(url_for('admin_dashboard.index'))
             else:
                 return redirect(url_for('user_dashboard.index'))
         else:
