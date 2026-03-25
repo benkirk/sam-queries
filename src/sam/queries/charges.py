@@ -344,6 +344,7 @@ def get_daily_breakdown_for_project(
         if date_str not in day_map:
             day_map[date_str] = {
                 'date': date_str,
+                'month': date_str[:7],   # YYYY-MM — used by template groupby
                 'jobs': 0,
                 'core_hours': 0.0,
                 'charges': 0.0,
