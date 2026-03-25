@@ -181,7 +181,7 @@ def create_app():
                 return redirect(url_for('admin_dashboard.index'))
             else:
                 return redirect(url_for('user_dashboard.index'))
-        return redirect(url_for('auth.login'))
+        return redirect(url_for('status_dashboard.index'))
 
     return app
 

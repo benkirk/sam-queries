@@ -24,7 +24,6 @@ bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
 logger = logging.getLogger(__name__)
 
 @bp.route('/')
-@login_required
 def index():
     """
     Main system status dashboard landing page.
@@ -92,7 +91,6 @@ def index():
 
 
 @bp.route('/nodetype-history/<system>/<node_type>')
-@login_required
 def nodetype_history(system, node_type):
     """
     Display historical trends for a specific node type (Casper only).
@@ -151,7 +149,6 @@ def nodetype_history(system, node_type):
 
 
 @bp.route('/partition-history/<system>/<partition>')
-@login_required
 def partition_history(system, partition):
     """
     Display historical trends for a specific system partition (CPU, GPU, or VIZ).
@@ -226,7 +223,6 @@ def partition_history(system, partition):
 
 
 @bp.route('/queue-history/<system>/<queue_name>')
-@login_required
 def queue_history(system, queue_name):
     """
     Display historical trends for a specific queue.
