@@ -1,0 +1,20 @@
+replicaCount: 2                           # Number of identical pods to run
+
+webapp:
+  name: samuel                            # Name for k8s objects
+  group: samuel                           # Group label for related resources
+  path: /                                 # URL path suffix
+  tls:
+    fqdn: samuel.k8s.ucar.edu             # Must be unique and end in .k8s.ucar.edu
+    secretName: incommon-cert-samuel      # Unique TLS secret name for your FQDN
+  ingress:
+    visibility: internal                  # internal or external
+  container:                              # full image path
+    image: ghcr.io/benkirk/sam-queries/webapp:main
+    port: 5050                            # Port your container listens on
+    requests:
+      memory: 4096M                       # Guaranteed memory allocation
+      cpu: 4                              # Guaranteed CPU allocation
+    limits:
+      memory: 12G                         # Maximum memory allowed
+      cpu: 16                             # Maximum CPU allowed
