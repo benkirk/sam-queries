@@ -132,6 +132,7 @@ def resource_details():
         detail_data=detail_data,
         user_breakdown=user_breakdown,
         daily_breakdown=daily_breakdown,
+        date_span_days=(end_date - start_date).days,
         usage_chart=usage_chart,
     )
 
