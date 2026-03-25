@@ -72,8 +72,8 @@ def logout():
     """Logout current user and redirect to login (for user switching)."""
     username = current_user.username
     logout_user()
-    flash(f'Logged out {username}. Select a different user below to switch.', 'info')
-    return redirect(url_for('auth.login'))
+    flash(f'Logged out {username}.', 'info')
+    return redirect(url_for('status_dashboard.index'))
 
 
 @bp.route('/profile')
