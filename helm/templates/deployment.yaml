@@ -20,6 +20,25 @@ spec:
       - name: {{ .Values.webapp.name }}
         image: {{ .Values.webapp.container.image }}
         imagePullPolicy: IfNotPresent
+        {{- if or .Values.webapp.env .Values.webapp.dbCredentials.enabled }}
+        env:
+          {{- range $key, $value := .Values.webapp.env }}
+          - name: {{ $key }}
+            value: {{ $value | quote }}
+          {{- end }}
+          {{- if .Values.webapp.dbCredentials.enabled }}
+          - name: STATUS_DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-db-credentials
+                key: username
+          - name: STATUS_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-db-credentials
+                key: password
+          {{- end }}
+        {{- end }}
         resources:
           requests:
             memory: {{ .Values.webapp.container.requests.memory }}
