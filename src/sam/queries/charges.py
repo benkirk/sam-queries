@@ -253,43 +253,65 @@ def get_user_queue_breakdown_for_project(
     end_date: datetime,
 ) -> List[Dict]:
     """
-    Get per-user usage breakdown with per-queue sub-rows for a project on a specific resource.
+    Get per-user usage breakdown with per-queue and per-date sub-rows for a project on a
+    specific resource.
 
-    Wraps query_comp_charge_summaries(), grouping results by username and collecting
-    queue-level sub-rows — suitable for collapsible table display.
+    Wraps query_comp_charge_summaries(per_day=True), grouping results by username, then
+    queue, then date — suitable for 3-level collapsible table display.
 
     Returns:
         List of dicts sorted by charges desc:
             {username, jobs, core_hours, charges,
-             queues: [{queue, jobs, core_hours, charges}] (sorted by charges desc)}
+             queues: [{queue, jobs, core_hours, charges,
+                       dates: [{date, jobs, core_hours, charges}] (sorted by date desc)}]
+             (sorted by charges desc)}
     """
     rows = query_comp_charge_summaries(
-        session, start_date, end_date, projcode=projcode, resource=resource
+        session, start_date, end_date, projcode=projcode, resource=resource, per_day=True
     )
 
     user_map: Dict[str, Dict] = {}
     for row in rows:
         username = row['username']
+        queue    = row['queue']
+        date_str = row['activity_date'].strftime('%Y-%m-%d')
+
         if username not in user_map:
             user_map[username] = {
                 'username': username,
                 'jobs': 0,
                 'core_hours': 0.0,
                 'charges': 0.0,
-                'queues': [],
+                'queues': {},
             }
-        user_map[username]['jobs'] += row['total_jobs']
-        user_map[username]['core_hours'] += row['total_core_hours']
-        user_map[username]['charges'] += row['total_charges']
-        user_map[username]['queues'].append({
-            'queue': row['queue'],
+        u = user_map[username]
+        u['jobs']       += row['total_jobs']
+        u['core_hours'] += row['total_core_hours']
+        u['charges']    += row['total_charges']
+
+        if queue not in u['queues']:
+            u['queues'][queue] = {
+                'queue': queue,
+                'jobs': 0,
+                'core_hours': 0.0,
+                'charges': 0.0,
+                'dates': [],
+            }
+        q = u['queues'][queue]
+        q['jobs']       += row['total_jobs']
+        q['core_hours'] += row['total_core_hours']
+        q['charges']    += row['total_charges']
+        q['dates'].append({
+            'date': date_str,
             'jobs': row['total_jobs'],
             'core_hours': row['total_core_hours'],
             'charges': row['total_charges'],
         })
 
     for entry in user_map.values():
-        entry['queues'].sort(key=lambda q: q['charges'], reverse=True)
+        for q in entry['queues'].values():
+            q['dates'].sort(key=lambda d: d['date'], reverse=True)
+        entry['queues'] = sorted(entry['queues'].values(), key=lambda q: q['charges'], reverse=True)
 
     return sorted(user_map.values(), key=lambda u: u['charges'], reverse=True)
 
