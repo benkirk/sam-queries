@@ -20,7 +20,7 @@ spec:
       - name: {{ .Values.webapp.name }}
         image: {{ .Values.webapp.container.image }}
         imagePullPolicy: IfNotPresent
-        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled .Values.webapp.samDbCredentials.enabled) }}
+        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled .Values.webapp.jupyterhubCredentials.enabled)) }}
         env:
           {{- range $key, $value := .Values.webapp.env }}
           - name: {{ $key }}
@@ -49,6 +49,13 @@ spec:
               secretKeyRef:
                 name: {{ .Values.webapp.name }}-sam-db-credentials
                 key: password
+          {{- end }}
+          {{- if .Values.webapp.jupyterhubCredentials.enabled }}
+          - name: JUPYTERHUB_API_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-jh-credentials
+                key: token
           {{- end }}
         {{- end }}
         resources:
