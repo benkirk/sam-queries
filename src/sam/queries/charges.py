@@ -355,6 +355,9 @@ def get_daily_breakdown_for_project(
         day_map[date_str]['charges'] += row['total_charges']
         day_map[date_str]['rows'].append(row)
 
+    for entry in day_map.values():
+        entry['user_count'] = len({row['username'] for row in entry['rows']})
+
     return sorted(day_map.values(), key=lambda d: d['date'], reverse=True)
 
 
