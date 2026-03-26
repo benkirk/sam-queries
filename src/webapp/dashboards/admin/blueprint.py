@@ -462,3 +462,272 @@ def htmx_search_projects():
         'dashboards/admin/fragments/project_search_results_htmx.html',
         projects=projects
     )
+
+
+# ============================================================================
+# Wallclock Exemption HTMX Routes
+# ============================================================================
+
+@bp.route('/htmx/exemption-form/<username>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_add_exemption_form(username):
+    """
+    Return the add-exemption form fragment for a user (loaded into modal).
+    """
+    from sam.resources.resources import Resource
+
+    sam_user = db.session.query(User).filter_by(username=username).first()
+    if not sam_user:
+        return '<div class="alert alert-warning">User not found</div>'
+
+    # Active resources that have queues
+    resources = (
+        db.session.query(Resource)
+        .filter(Resource.active == True)
+        .order_by(Resource.resource_name)
+        .all()
+    )
+    resources = [r for r in resources if r.queues]
+
+    return render_template(
+        'dashboards/admin/fragments/add_exemption_form_htmx.html',
+        sam_user=sam_user,
+        resources=resources,
+        today=datetime.now().strftime('%Y-%m-%d')
+    )
+
+
+@bp.route('/htmx/exemption/<username>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_add_exemption(username):
+    """
+    Create a wallclock exemption for the given user.
+    On success returns a script that closes the modal and refreshes the user card.
+    On error re-renders the form with validation messages.
+    """
+    from sam.resources.resources import Resource
+    from sam.manage import create_wallclock_exemption, management_transaction
+
+    sam_user = db.session.query(User).filter_by(username=username).first()
+    if not sam_user:
+        return '<div class="alert alert-danger">User not found</div>', 404
+
+    errors = []
+
+    queue_id = request.form.get('queue_id', '').strip()
+    start_date_str = request.form.get('start_date', '').strip()
+    end_date_str = request.form.get('end_date', '').strip()
+    limit_str = request.form.get('time_limit_hours', '').strip()
+    comment = request.form.get('comment', '').strip()
+
+    # Validate
+    if not queue_id:
+        errors.append('Queue is required.')
+    if not start_date_str:
+        errors.append('Start date is required.')
+    if not end_date_str:
+        errors.append('End date is required.')
+    if not limit_str:
+        errors.append('Time limit (hours) is required.')
+    else:
+        try:
+            time_limit_hours = float(limit_str)
+            if time_limit_hours <= 0:
+                errors.append('Time limit must be a positive number.')
+        except ValueError:
+            errors.append('Time limit must be a number.')
+            time_limit_hours = None
+
+    start_date = end_date = None
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Invalid start date format.')
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Invalid end date format.')
+
+    if start_date and end_date and end_date <= start_date:
+        errors.append('End date must be after start date.')
+
+    if errors:
+        resources = (
+            db.session.query(Resource)
+            .filter(Resource.active == True)
+            .order_by(Resource.resource_name)
+            .all()
+        )
+        resources = [r for r in resources if r.queues]
+        return render_template(
+            'dashboards/admin/fragments/add_exemption_form_htmx.html',
+            sam_user=sam_user,
+            resources=resources,
+            today=datetime.now().strftime('%Y-%m-%d'),
+            errors=errors,
+            form=request.form
+        )
+
+    try:
+        with management_transaction(db.session):
+            create_wallclock_exemption(
+                db.session,
+                user_id=sam_user.user_id,
+                queue_id=int(queue_id),
+                start_date=start_date,
+                end_date=end_date,
+                time_limit_hours=time_limit_hours,
+                comment=comment or None
+            )
+    except Exception as e:
+        resources = (
+            db.session.query(Resource)
+            .filter(Resource.active == True)
+            .order_by(Resource.resource_name)
+            .all()
+        )
+        resources = [r for r in resources if r.queues]
+        return render_template(
+            'dashboards/admin/fragments/add_exemption_form_htmx.html',
+            sam_user=sam_user,
+            resources=resources,
+            today=datetime.now().strftime('%Y-%m-%d'),
+            errors=[f'Error creating exemption: {e}'],
+            form=request.form
+        )
+
+    # Success: close modal + refresh user card
+    return render_template(
+        'dashboards/admin/fragments/exemption_success_htmx.html',
+        username=username
+    )
+
+
+@bp.route('/htmx/exemption-edit-form/<int:exemption_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_edit_exemption_form(exemption_id):
+    """
+    Return the edit-exemption form fragment (loaded into modal).
+    """
+    from sam.operational import WallclockExemption
+
+    exemption = db.session.get(WallclockExemption, exemption_id)
+    if not exemption:
+        return '<div class="alert alert-warning">Exemption not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_exemption_form_htmx.html',
+        exemption=exemption
+    )
+
+
+@bp.route('/htmx/exemption-edit/<int:exemption_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_edit_exemption(exemption_id):
+    """
+    Update a wallclock exemption.
+    On success returns a script that closes the modal and refreshes the user card.
+    On error re-renders the form with validation messages.
+    """
+    from sam.operational import WallclockExemption
+    from sam.manage import update_wallclock_exemption, management_transaction
+
+    exemption = db.session.get(WallclockExemption, exemption_id)
+    if not exemption:
+        return '<div class="alert alert-danger">Exemption not found</div>', 404
+
+    errors = []
+
+    end_date_str = request.form.get('end_date', '').strip()
+    limit_str = request.form.get('time_limit_hours', '').strip()
+    comment = request.form.get('comment', '').strip()
+
+    end_date = None
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            if end_date <= exemption.start_date:
+                errors.append('End date must be after start date.')
+        except ValueError:
+            errors.append('Invalid end date format.')
+    else:
+        errors.append('End date is required.')
+
+    time_limit_hours = None
+    if limit_str:
+        try:
+            time_limit_hours = float(limit_str)
+            if time_limit_hours <= 0:
+                errors.append('Time limit must be a positive number.')
+        except ValueError:
+            errors.append('Time limit must be a number.')
+    else:
+        errors.append('Time limit (hours) is required.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_exemption_form_htmx.html',
+            exemption=exemption,
+            errors=errors,
+            form=request.form
+        )
+
+    username = exemption.user.username
+    try:
+        with management_transaction(db.session):
+            update_wallclock_exemption(
+                db.session,
+                exemption_id=exemption_id,
+                end_date=end_date,
+                time_limit_hours=time_limit_hours,
+                comment=comment
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_exemption_form_htmx.html',
+            exemption=exemption,
+            errors=[f'Error updating exemption: {e}'],
+            form=request.form
+        )
+
+    # Success: close modal + refresh user card
+    return render_template(
+        'dashboards/admin/fragments/exemption_success_htmx.html',
+        username=username
+    )
+
+
+@bp.route('/htmx/queues-for-resource')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_queues_for_resource():
+    """
+    Return queue <option> elements for a given resource_id (cascading select).
+    """
+    from sam.resources.machines import Queue
+
+    resource_id = request.args.get('resource_id', '').strip()
+    if not resource_id:
+        return '<option value="">-- Select a resource first --</option>'
+
+    now = datetime.now()
+    queues = (
+        db.session.query(Queue)
+        .filter(
+            Queue.resource_id == int(resource_id),
+            (Queue.end_date == None) | (Queue.end_date >= now)
+        )
+        .order_by(Queue.queue_name)
+        .all()
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/queues_for_resource_htmx.html',
+        queues=queues
+    )

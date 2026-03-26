@@ -25,6 +25,10 @@ from .summaries import (
     upsert_disk_charge_summary,
     upsert_archive_charge_summary,
 )
+from .exemptions import (
+    create_wallclock_exemption,
+    update_wallclock_exemption,
+)
 
 
 __all__ = [
@@ -38,6 +42,8 @@ __all__ = [
     'upsert_comp_charge_summary',
     'upsert_disk_charge_summary',
     'upsert_archive_charge_summary',
+    'create_wallclock_exemption',
+    'update_wallclock_exemption',
 ]
 
 

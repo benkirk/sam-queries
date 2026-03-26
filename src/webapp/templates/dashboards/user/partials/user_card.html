@@ -110,6 +110,72 @@
         </div>
     </div>
 
+    <!-- Wallclock Exemptions -->
+    {% set exemptions = sam_user.wallclock_exemptions %}
+    {% if exemptions or is_admin %}
+    <div class="card-body border-top pt-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong><i class="fas fa-clock"></i> Wallclock Exemptions</strong>
+            {% if is_admin %}
+            <button class="btn btn-sm btn-outline-success"
+                    data-bs-toggle="modal" data-bs-target="#addExemptionModal"
+                    hx-get="{{ url_for('admin_dashboard.htmx_add_exemption_form', username=sam_user.username) }}"
+                    hx-target="#addExemptionFormContainer"
+                    hx-swap="innerHTML">
+                <i class="fas fa-plus"></i> Add Exemption
+            </button>
+            {% endif %}
+        </div>
+        {% if exemptions %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Resource</th>
+                        <th>Queue</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Limit (hrs)</th>
+                        <th>Comment</th>
+                        {% if is_admin %}<th></th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ex in exemptions | sort(attribute='start_date', reverse=True) %}
+                    <tr class="{% if not ex.is_currently_active %}text-muted{% endif %}">
+                        <td>{{ ex.queue.resource.resource_name }}</td>
+                        <td>{{ ex.queue.queue_name }}</td>
+                        <td>{{ ex.start_date.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            {{ ex.end_date.strftime('%Y-%m-%d') }}
+                            {% if not ex.is_currently_active %}
+                            <span class="badge bg-secondary ms-1" style="font-size:0.7em;">Expired</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ ex.time_limit_hours }}</td>
+                        <td>{{ ex.comment or '' }}</td>
+                        {% if is_admin %}
+                        <td>
+                            <button class="btn btn-sm btn-outline-warning py-0"
+                                    data-bs-toggle="modal" data-bs-target="#editExemptionModal"
+                                    hx-get="{{ url_for('admin_dashboard.htmx_edit_exemption_form', exemption_id=ex.wallclock_exemption_id) }}"
+                                    hx-target="#editExemptionFormContainer"
+                                    hx-swap="innerHTML">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0"><small>No wallclock exemptions.</small></p>
+        {% endif %}
+    </div>
+    {% endif %}
+
     {% if is_admin and has_permission(Permission.IMPERSONATE_USERS) %}
     <div class="card-footer">
         <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}"
