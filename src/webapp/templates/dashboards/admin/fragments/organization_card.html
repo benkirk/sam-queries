@@ -1,7 +1,7 @@
 {#
   Admin: Organization Card Body (lazy-loaded into the Organization collapsible section)
-  Contains six tabs: Organizations, Institutions, Areas (groups+AOIs combined),
-  Contract Sources, Contracts, NSF Programs
+  Contains five tabs: Organizations, Institutions, Areas (groups+AOIs combined),
+  Contracts (sources+contracts combined), NSF Programs
 #}
 <div class="card-body p-0">
     <!-- Tab navigation -->
@@ -28,14 +28,6 @@
                     aria-controls="areas-pane" aria-selected="false">
                 <i class="fas fa-flask me-1"></i> Areas
                 <span class="badge bg-secondary ms-1">{{ aois|length }}</span>
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="contract-sources-tab" data-bs-toggle="tab"
-                    data-bs-target="#contract-sources-pane" type="button" role="tab"
-                    aria-controls="contract-sources-pane" aria-selected="false">
-                <i class="fas fa-file-contract me-1"></i> Contract Sources
-                <span class="badge bg-secondary ms-1">{{ contract_sources|length }}</span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -272,32 +264,48 @@
             </div>
         </div>
 
-        <!-- ── Contract Sources tab ───────────────────────────────────── -->
-        <div class="tab-pane fade" id="contract-sources-pane" role="tabpanel"
-             aria-labelledby="contract-sources-tab">
+        <!-- ── Contracts tab (sources collapsed, contracts expand on click) ── -->
+        <div class="tab-pane fade" id="contracts-pane" role="tabpanel"
+             aria-labelledby="contracts-tab">
             <div class="px-3 pt-2 pb-1">
                 <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="contractSourcesActiveOnly"
-                           checked onchange="filterOrgRows('contract-sources-tbody', this.checked)">
-                    <label class="form-check-label small" for="contractSourcesActiveOnly">Active only</label>
+                    <input class="form-check-input" type="checkbox" id="contractsActiveOnly"
+                           checked onchange="filterContractsPaneRows(this.checked)">
+                    <label class="form-check-label small" for="contractsActiveOnly">Active only</label>
                 </div>
             </div>
             <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
+                <table class="table table-sm mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th class="sortable-header" data-sort="text">Source Name</th>
-                            <th class="sortable-header" data-sort="numeric"># Contracts</th>
-                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th>Name / Number</th>
+                            <th>Title / Count</th>
+                            <th>PI</th>
+                            <th>Start Date</th>
+                            <th>End Date</th>
+                            <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="contract-sources-tbody">
-                        {% for cs in contract_sources %}
-                        <tr data-active="{{ '1' if cs.active else '0' }}">
-                            <td class="fw-semibold" data-sort-value="{{ cs.contract_source }}">{{ cs.contract_source }}</td>
-                            <td data-sort-value="{{ cs.contracts|length }}">{{ cs.contracts|length }}</td>
-                            <td data-sort-value="{{ 'Active' if cs.active else 'Inactive' }}">
+                    {% if contract_sources %}
+                    {% for cs in contract_sources %}
+                    {# ── Source row (clickable trigger) ── #}
+                    <tbody>
+                        <tr class="cursor-pointer table-light fw-semibold"
+                            data-active="{{ '1' if cs.active else '0' }}"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#contract-source-{{ cs.contract_source_id }}"
+                            aria-expanded="false">
+                            <td>
+                                <i class="fas fa-chevron-right small text-muted me-1 contract-collapse-icon"
+                                   style="transition: transform 0.2s;"></i>
+                                {{ cs.contract_source }}
+                            </td>
+                            <td class="text-muted small">{{ cs.contracts|length }} contract{{ 's' if cs.contracts|length != 1 else '' }}</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td>
                                 {% if cs.active %}
                                 <span class="badge bg-success">Active</span>
                                 {% else %}
@@ -312,65 +320,31 @@
                                         hx-get="{{ url_for('admin_dashboard.htmx_contract_source_edit_form', source_id=cs.contract_source_id) }}"
                                         hx-target="#editContractSourceFormContainer"
                                         hx-trigger="click"
-                                        title="Edit contract source">
+                                        title="Edit source"
+                                        onclick="event.stopPropagation()">
                                     <i class="fas fa-edit"></i>
                                 </button>
                                 {% endif %}
                             </td>
                         </tr>
-                        {% else %}
-                        <tr><td colspan="4" class="text-center text-muted py-3">No contract sources found.</td></tr>
-                        {% endfor %}
                     </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- ── Contracts tab ──────────────────────────────────────────── -->
-        <div class="tab-pane fade" id="contracts-pane" role="tabpanel"
-             aria-labelledby="contracts-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="contractsActiveOnly"
-                           checked onchange="filterOrgRows('contracts-tbody', this.checked)">
-                    <label class="form-check-label small" for="contractsActiveOnly">Active only</label>
-                </div>
-            </div>
-            <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="sortable-header" data-sort="text">Number</th>
-                            <th class="sortable-header" data-sort="text">Title</th>
-                            <th class="sortable-header" data-sort="text">Source</th>
-                            <th class="sortable-header" data-sort="text">PI</th>
-                            <th class="sortable-header" data-sort="date">Start Date</th>
-                            <th class="sortable-header" data-sort="date">End Date</th>
-                            <th class="sortable-header" data-sort="numeric"># Projects</th>
-                            <th class="sortable-header" data-sort="text">Status</th>
-                            <th class="text-end">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="contracts-tbody">
-                        {% for c in contracts %}
-                        <tr data-active="{{ '1' if c.is_active else '0' }}">
-                            <td class="fw-semibold text-nowrap" data-sort-value="{{ c.contract_number }}">{{ c.contract_number }}</td>
-                            <td data-sort-value="{{ c.title }}" style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                    {# ── Contract child rows (collapsed by default) ── #}
+                    <tbody class="collapse" id="contract-source-{{ cs.contract_source_id }}">
+                        {% for c in cs.contracts | sort(attribute='contract_number') %}
+                        <tr data-active="{{ '1' if c.is_active else '0' }}" class="table-secondary">
+                            <td class="ps-4 fw-semibold text-nowrap">{{ c.contract_number }}</td>
+                            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
                                 title="{{ c.title }}">{{ c.title }}</td>
-                            <td data-sort-value="{{ c.contract_source.contract_source if c.contract_source else '' }}">
-                                <span class="text-muted">{{ c.contract_source.contract_source if c.contract_source else '—' }}</span>
+                            <td class="text-muted small text-nowrap">
+                                {{ c.principal_investigator.username if c.principal_investigator else '—' }}
                             </td>
-                            <td data-sort-value="{{ c.principal_investigator.username if c.principal_investigator else '' }}">
-                                <span class="text-muted">{{ c.principal_investigator.username if c.principal_investigator else '—' }}</span>
-                            </td>
-                            <td class="text-nowrap" data-sort-value="{{ c.start_date.strftime('%Y-%m-%d') if c.start_date else '' }}">
+                            <td class="text-muted small text-nowrap">
                                 {{ c.start_date.strftime('%Y-%m-%d') if c.start_date else '—' }}
                             </td>
-                            <td class="text-nowrap" data-sort-value="{{ c.end_date.strftime('%Y-%m-%d') if c.end_date else 'Z' }}">
+                            <td class="text-muted small text-nowrap">
                                 {{ c.end_date.strftime('%Y-%m-%d') if c.end_date else '—' }}
                             </td>
-                            <td data-sort-value="{{ c.projects|length }}">{{ c.projects|length }}</td>
-                            <td data-sort-value="{{ 'Active' if c.is_active else 'Inactive' }}">
+                            <td>
                                 {% if c.is_active %}
                                 <span class="badge bg-success">Active</span>
                                 {% else %}
@@ -392,9 +366,17 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="9" class="text-center text-muted py-3">No contracts found.</td></tr>
+                        <tr class="table-secondary">
+                            <td colspan="7" class="ps-4 text-muted fst-italic">No contracts for this source.</td>
+                        </tr>
                         {% endfor %}
                     </tbody>
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr><td colspan="7" class="text-center text-muted py-3">No contract sources found.</td></tr>
+                    </tbody>
+                    {% endif %}
                 </table>
             </div>
         </div>
@@ -476,6 +458,15 @@
     }
     window.filterAreasPaneRows = filterAreasPaneRows;
 
+    function filterContractsPaneRows(activeOnly) {
+        var pane = document.getElementById('contracts-pane');
+        if (!pane) return;
+        pane.querySelectorAll('tr[data-active]').forEach(function(row) {
+            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
+        });
+    }
+    window.filterContractsPaneRows = filterContractsPaneRows;
+
     function attachSorting(table) {
         table.querySelectorAll('th.sortable-header').forEach(function(th) {
             th.addEventListener('click', function() {
@@ -508,24 +499,28 @@
     document.querySelectorAll('#organizationsTabsContent table').forEach(attachSorting);
 
     // Apply default active-only filter (skip institutions — no active flag)
-    ['orgs-tbody', 'contract-sources-tbody', 'contracts-tbody', 'nsf-programs-tbody'].forEach(function(id) {
+    ['orgs-tbody', 'nsf-programs-tbody'].forEach(function(id) {
         filterOrgRows(id, true);
     });
     filterAreasPaneRows(true);
+    filterContractsPaneRows(true);
 
-    // Chevron rotation for AOI group collapse rows
-    document.querySelectorAll('#areas-pane [data-bs-toggle="collapse"]').forEach(function(trigger) {
-        var targetId = trigger.dataset.bsTarget;
-        var target = document.querySelector(targetId);
-        if (!target) return;
-        var icon = trigger.querySelector('.collapse-icon');
-        if (!icon) return;
-        target.addEventListener('show.bs.collapse', function() {
-            icon.style.transform = 'rotate(90deg)';
+    // Chevron rotation helper
+    function attachChevronRotation(paneId, iconClass) {
+        document.querySelectorAll('#' + paneId + ' [data-bs-toggle="collapse"]').forEach(function(trigger) {
+            var target = document.querySelector(trigger.dataset.bsTarget);
+            if (!target) return;
+            var icon = trigger.querySelector('.' + iconClass);
+            if (!icon) return;
+            target.addEventListener('show.bs.collapse', function() {
+                icon.style.transform = 'rotate(90deg)';
+            });
+            target.addEventListener('hide.bs.collapse', function() {
+                icon.style.transform = '';
+            });
         });
-        target.addEventListener('hide.bs.collapse', function() {
-            icon.style.transform = '';
-        });
-    });
+    }
+    attachChevronRotation('areas-pane', 'collapse-icon');
+    attachChevronRotation('contracts-pane', 'contract-collapse-icon');
 })();
 </script>
