@@ -215,12 +215,12 @@ def _get_abandoned_users_data(expired_results: List[Tuple]) -> List[Dict]:
     # Find users whose active projects are all in the expired set
     abandoned_users = []
     for user in all_users:
-        user_active_projcodes = set(p.projcode for p in user.active_projects)
+        user_active_projcodes = set(p.projcode for p in user.active_projects())
 
         # If user has active projects and they're ALL in the expired set, user is abandoned
         if user_active_projcodes and user_active_projcodes.issubset(expired_projcodes):
             # Format user data
-            project_codes = [p.projcode for p in user.active_projects]
+            project_codes = [p.projcode for p in user.active_projects()]
             abandoned_users.append({
                 'username': user.username,
                 'display_name': user.display_name,

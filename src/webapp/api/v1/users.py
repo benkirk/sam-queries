@@ -35,7 +35,7 @@ def _serialize_dashboard_format(user):
     Returns:
         dict with username, projects list (with usage details), and total_projects
     """
-    projects = user.active_projects
+    projects = user.active_projects()
     projects_data = []
 
     for project in projects:
