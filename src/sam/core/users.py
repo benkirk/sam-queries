@@ -395,8 +395,15 @@ class User(Base, TimestampMixin):
 
     @property
     def active_projects(self) -> List['Project']:
-        """Return only active projects, deduplicated."""
-        return [p for p in self.all_projects if p.active]
+        """Return projects where the user has active (non-expired) membership and the project is active."""
+        now = datetime.now()
+        projects = set()
+        for au in self.accounts:
+            if au.end_date is None or au.end_date >= now:
+                project = au.account.project if au.account else None
+                if project is not None and project.active:
+                    projects.add(project)
+        return list(projects)
 
     @property
     def projects(self) -> List['Project']:
