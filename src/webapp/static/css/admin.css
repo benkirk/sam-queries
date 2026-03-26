@@ -42,6 +42,32 @@
 }
 
 /* ===================================================================
+   Sortable Table Headers
+   =================================================================== */
+
+.sortable-header {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.sortable-header::after {
+    content: ' \2195';
+    color: #adb5bd;
+    font-size: 0.8em;
+}
+
+.sortable-header.sort-asc::after {
+    content: ' \2191';
+    color: #495057;
+}
+
+.sortable-header.sort-desc::after {
+    content: ' \2193';
+    color: #495057;
+}
+
+/* ===================================================================
    Links
    =================================================================== */
 

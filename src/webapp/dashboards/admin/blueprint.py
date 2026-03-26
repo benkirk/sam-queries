@@ -731,3 +731,384 @@ def htmx_queues_for_resource():
         'dashboards/admin/fragments/queues_for_resource_htmx.html',
         queues=queues
     )
+
+
+# ── Resource Management Routes ─────────────────────────────────────────────
+
+
+@bp.route('/htmx/resources')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_resources_card():
+    """
+    Return the Resources card body fragment with four tabs:
+    Resources, Resource Types, Machines, Queues.
+    Lazy-loaded when the Resources collapsible section is first expanded.
+    """
+    from sam.resources.resources import Resource, ResourceType
+    from sam.resources.machines import Machine, Queue
+
+    resources = db.session.query(Resource).order_by(Resource.resource_name).all()
+    resource_types = db.session.query(ResourceType).order_by(ResourceType.resource_type).all()
+    machines = (
+        db.session.query(Machine)
+        .order_by(Machine.resource_id, Machine.name)
+        .all()
+    )
+    queues = (
+        db.session.query(Queue)
+        .order_by(Queue.resource_id, Queue.queue_name)
+        .all()
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/resources_card.html',
+        resources=resources,
+        resource_types=resource_types,
+        machines=machines,
+        queues=queues,
+        is_admin=True,
+        now=datetime.now(),
+    )
+
+
+@bp.route('/htmx/resource-edit-form/<int:resource_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_resource_edit_form(resource_id):
+    """Return the resource edit form fragment (loaded into modal)."""
+    from sam.resources.resources import Resource
+
+    resource = db.session.get(Resource, resource_id)
+    if not resource:
+        return '<div class="alert alert-warning">Resource not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_resource_form_htmx.html',
+        resource=resource,
+    )
+
+
+@bp.route('/htmx/resource-edit/<int:resource_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_resource_edit(resource_id):
+    """
+    Update a resource.
+    On success returns a script that closes the modal and refreshes the resources card.
+    On error re-renders the form with validation messages.
+    """
+    from sam.resources.resources import Resource
+    from sam.manage import update_resource, management_transaction
+
+    resource = db.session.get(Resource, resource_id)
+    if not resource:
+        return '<div class="alert alert-danger">Resource not found</div>', 404
+
+    errors = []
+
+    commission_str = request.form.get('commission_date', '').strip()
+    decommission_str = request.form.get('decommission_date', '').strip()
+    description = request.form.get('description', '').strip()
+    charging_exempt = bool(request.form.get('charging_exempt'))
+
+    commission_date = None
+    if commission_str:
+        try:
+            commission_date = datetime.strptime(commission_str, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Invalid commission date format.')
+    else:
+        errors.append('Commission date is required.')
+
+    decommission_date = None
+    if decommission_str:
+        try:
+            decommission_date = datetime.strptime(decommission_str, '%Y-%m-%d')
+            if commission_date and decommission_date <= commission_date:
+                errors.append('Decommission date must be after commission date.')
+        except ValueError:
+            errors.append('Invalid decommission date format.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_resource_form_htmx.html',
+            resource=resource,
+            errors=errors,
+            form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_resource(
+                db.session,
+                resource_id=resource_id,
+                description=description,
+                commission_date=commission_date,
+                decommission_date=decommission_date,
+                charging_exempt=charging_exempt,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_resource_form_htmx.html',
+            resource=resource,
+            errors=[f'Error updating resource: {e}'],
+            form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+
+
+@bp.route('/htmx/resource-type-edit-form/<int:resource_type_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_resource_type_edit_form(resource_type_id):
+    """Return the resource type edit form fragment (loaded into modal)."""
+    from sam.resources.resources import ResourceType
+
+    resource_type = db.session.get(ResourceType, resource_type_id)
+    if not resource_type:
+        return '<div class="alert alert-warning">Resource type not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_resource_type_form_htmx.html',
+        resource_type=resource_type,
+    )
+
+
+@bp.route('/htmx/resource-type-edit/<int:resource_type_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_resource_type_edit(resource_type_id):
+    """
+    Update a resource type.
+    On success returns a script that closes the modal and refreshes the resources card.
+    On error re-renders the form with validation messages.
+    """
+    from sam.resources.resources import ResourceType
+    from sam.manage import update_resource_type, management_transaction
+
+    resource_type = db.session.get(ResourceType, resource_type_id)
+    if not resource_type:
+        return '<div class="alert alert-danger">Resource type not found</div>', 404
+
+    errors = []
+
+    grace_period_str = request.form.get('grace_period_days', '').strip()
+
+    grace_period_days = None
+    if grace_period_str:
+        try:
+            grace_period_days = int(grace_period_str)
+            if grace_period_days < 0:
+                errors.append('Grace period days must be >= 0.')
+        except ValueError:
+            errors.append('Grace period days must be a whole number.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_resource_type_form_htmx.html',
+            resource_type=resource_type,
+            errors=errors,
+            form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_resource_type(
+                db.session,
+                resource_type_id=resource_type_id,
+                grace_period_days=grace_period_days,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_resource_type_form_htmx.html',
+            resource_type=resource_type,
+            errors=[f'Error updating resource type: {e}'],
+            form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+
+
+@bp.route('/htmx/machine-edit-form/<int:machine_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_machine_edit_form(machine_id):
+    """Return the machine edit form fragment (loaded into modal)."""
+    from sam.resources.machines import Machine
+
+    machine = db.session.get(Machine, machine_id)
+    if not machine:
+        return '<div class="alert alert-warning">Machine not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_machine_form_htmx.html',
+        machine=machine,
+    )
+
+
+@bp.route('/htmx/machine-edit/<int:machine_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_machine_edit(machine_id):
+    """
+    Update a machine.
+    On success returns a script that closes the modal and refreshes the resources card.
+    On error re-renders the form with validation messages.
+    """
+    from sam.resources.machines import Machine
+    from sam.manage import update_machine, management_transaction
+
+    machine = db.session.get(Machine, machine_id)
+    if not machine:
+        return '<div class="alert alert-danger">Machine not found</div>', 404
+
+    errors = []
+
+    description = request.form.get('description', '').strip()
+    cpus_str = request.form.get('cpus_per_node', '').strip()
+    commission_str = request.form.get('commission_date', '').strip()
+    decommission_str = request.form.get('decommission_date', '').strip()
+
+    commission_date = None
+    if commission_str:
+        try:
+            commission_date = datetime.strptime(commission_str, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Invalid commission date format.')
+    else:
+        errors.append('Commission date is required.')
+
+    decommission_date = None
+    if decommission_str:
+        try:
+            decommission_date = datetime.strptime(decommission_str, '%Y-%m-%d')
+            if commission_date and decommission_date <= commission_date:
+                errors.append('Decommission date must be after commission date.')
+        except ValueError:
+            errors.append('Invalid decommission date format.')
+
+    cpus_per_node = None
+    if cpus_str:
+        try:
+            cpus_per_node = int(cpus_str)
+            if cpus_per_node <= 0:
+                errors.append('CPUs per node must be a positive integer.')
+        except ValueError:
+            errors.append('CPUs per node must be a whole number.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_machine_form_htmx.html',
+            machine=machine,
+            errors=errors,
+            form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_machine(
+                db.session,
+                machine_id=machine_id,
+                description=description,
+                cpus_per_node=cpus_per_node,
+                commission_date=commission_date,
+                decommission_date=decommission_date,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_machine_form_htmx.html',
+            machine=machine,
+            errors=[f'Error updating machine: {e}'],
+            form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+
+
+@bp.route('/htmx/queue-edit-form/<int:queue_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_queue_edit_form(queue_id):
+    """Return the queue edit form fragment (loaded into modal)."""
+    from sam.resources.machines import Queue
+
+    queue = db.session.get(Queue, queue_id)
+    if not queue:
+        return '<div class="alert alert-warning">Queue not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_queue_form_htmx.html',
+        queue=queue,
+    )
+
+
+@bp.route('/htmx/queue-edit/<int:queue_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_queue_edit(queue_id):
+    """
+    Update a queue.
+    On success returns a script that closes the modal and refreshes the resources card.
+    On error re-renders the form with validation messages.
+    """
+    from sam.resources.machines import Queue
+    from sam.manage import update_queue, management_transaction
+
+    queue = db.session.get(Queue, queue_id)
+    if not queue:
+        return '<div class="alert alert-danger">Queue not found</div>', 404
+
+    errors = []
+
+    description = request.form.get('description', '').strip()
+    wallclock_str = request.form.get('wall_clock_hours_limit', '').strip()
+    end_date_str = request.form.get('end_date', '').strip()
+
+    wall_clock_hours_limit = None
+    if wallclock_str:
+        try:
+            wall_clock_hours_limit = float(wallclock_str)
+            if wall_clock_hours_limit <= 0:
+                errors.append('Wallclock limit must be a positive number.')
+        except ValueError:
+            errors.append('Wallclock limit must be a number.')
+    else:
+        errors.append('Wallclock limit (hours) is required.')
+
+    end_date = None
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            if queue.start_date and end_date <= queue.start_date:
+                errors.append('End date must be after start date.')
+        except ValueError:
+            errors.append('Invalid end date format.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_queue_form_htmx.html',
+            queue=queue,
+            errors=errors,
+            form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_queue(
+                db.session,
+                queue_id=queue_id,
+                description=description,
+                wall_clock_hours_limit=wall_clock_hours_limit,
+                end_date=end_date,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_queue_form_htmx.html',
+            queue=queue,
+            errors=[f'Error updating queue: {e}'],
+            form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')

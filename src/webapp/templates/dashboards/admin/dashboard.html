@@ -1,5 +1,9 @@
 {% extends 'dashboards/base.html' %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
+
 {% block title %}Admin Dashboard - SAM{% endblock %}
 
 {% block content %}
@@ -218,6 +222,30 @@
     </div>
 </div>
 
+<!-- Resources Section -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header cursor-pointer"
+                 data-bs-toggle="collapse" data-bs-target="#resourcesSection">
+                <h5 class="mb-0">
+                    <i class="fas fa-server"></i> Resources
+                    <i class="fas fa-chevron-down float-end"></i>
+                </h5>
+            </div>
+            <div id="resourcesSection" class="collapse"
+                 hx-get="{{ url_for('admin_dashboard.htmx_resources_card') }}"
+                 hx-trigger="show.bs.collapse once"
+                 hx-swap="innerHTML">
+                <div class="card-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Member Management Modals (reused from user dashboard) -->
 {% include 'dashboards/user/fragments/member_modals_htmx.html' %}
 
@@ -244,6 +272,8 @@
 </div>
 
 {% include 'dashboards/admin/fragments/exemption_modals.html' %}
+
+{% include 'dashboards/admin/fragments/resources_modals.html' %}
 
 {% endblock %}
 

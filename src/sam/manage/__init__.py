@@ -29,6 +29,12 @@ from .exemptions import (
     create_wallclock_exemption,
     update_wallclock_exemption,
 )
+from .resources import (
+    update_resource,
+    update_resource_type,
+    update_machine,
+    update_queue,
+)
 
 
 __all__ = [
@@ -44,6 +50,10 @@ __all__ = [
     'upsert_archive_charge_summary',
     'create_wallclock_exemption',
     'update_wallclock_exemption',
+    'update_resource',
+    'update_resource_type',
+    'update_machine',
+    'update_queue',
 ]
 
 

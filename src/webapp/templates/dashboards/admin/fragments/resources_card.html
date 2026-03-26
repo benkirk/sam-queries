@@ -1,0 +1,348 @@
+{#
+  Admin: Resources Card Body (lazy-loaded into the Resources collapsible section)
+  Contains four tabs: Resources, Resource Types, Machines, Queues
+#}
+<div class="card-body p-0">
+    <!-- Tab navigation -->
+    <ul class="nav nav-tabs px-3 pt-3" id="resourcesTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="resources-tab" data-bs-toggle="tab"
+                    data-bs-target="#resources-pane" type="button" role="tab"
+                    aria-controls="resources-pane" aria-selected="true">
+                <i class="fas fa-server me-1"></i> Resources
+                <span class="badge bg-secondary ms-1">{{ resources|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="resource-types-tab" data-bs-toggle="tab"
+                    data-bs-target="#resource-types-pane" type="button" role="tab"
+                    aria-controls="resource-types-pane" aria-selected="false">
+                <i class="fas fa-tags me-1"></i> Resource Types
+                <span class="badge bg-secondary ms-1">{{ resource_types|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="machines-tab" data-bs-toggle="tab"
+                    data-bs-target="#machines-pane" type="button" role="tab"
+                    aria-controls="machines-pane" aria-selected="false">
+                <i class="fas fa-microchip me-1"></i> Machines
+                <span class="badge bg-secondary ms-1">{{ machines|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="queues-tab" data-bs-toggle="tab"
+                    data-bs-target="#queues-pane" type="button" role="tab"
+                    aria-controls="queues-pane" aria-selected="false">
+                <i class="fas fa-list-ol me-1"></i> Queues
+                <span class="badge bg-secondary ms-1">{{ queues|length }}</span>
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="resourcesTabsContent">
+
+        <!-- ── Resources tab ───────────────────────────────────────────── -->
+        <div class="tab-pane fade show active" id="resources-pane" role="tabpanel"
+             aria-labelledby="resources-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="resourcesActiveOnly"
+                           checked onchange="filterResourceRows('resources-tbody', this.checked)">
+                    <label class="form-check-label small" for="resourcesActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Name</th>
+                            <th class="sortable-header" data-sort="text">Type</th>
+                            <th class="sortable-header" data-sort="text">Description</th>
+                            <th class="sortable-header" data-sort="date">Commissioned</th>
+                            <th class="sortable-header" data-sort="date">Decommissioned</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resources-tbody">
+                        {% for r in resources %}
+                        <tr data-active="{{ '1' if r.is_active else '0' }}">
+                            <td class="fw-semibold" data-sort-value="{{ r.resource_name }}">{{ r.resource_name }}</td>
+                            <td data-sort-value="{{ r.resource_type.resource_type if r.resource_type else '' }}">
+                                <span class="badge bg-light text-dark border">
+                                    {{ r.resource_type.resource_type if r.resource_type else '—' }}
+                                </span>
+                            </td>
+                            <td class="text-muted" data-sort-value="{{ r.description or '' }}">{{ r.description or '—' }}</td>
+                            <td class="text-nowrap" data-sort-value="{{ r.commission_date.strftime('%Y-%m-%d') if r.commission_date else '' }}">
+                                {{ r.commission_date.strftime('%Y-%m-%d') if r.commission_date else '—' }}
+                            </td>
+                            <td class="text-nowrap" data-sort-value="{{ r.decommission_date.strftime('%Y-%m-%d') if r.decommission_date else 'Z' }}">
+                                {{ r.decommission_date.strftime('%Y-%m-%d') if r.decommission_date else '—' }}
+                            </td>
+                            <td data-sort-value="{{ 'Active' if r.is_active else 'Inactive' }}">
+                                {% if r.is_active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editResourceModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_resource_edit_form', resource_id=r.resource_id) }}"
+                                        hx-target="#editResourceFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit resource">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-3">No resources found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Resource Types tab ──────────────────────────────────────── -->
+        <div class="tab-pane fade" id="resource-types-pane" role="tabpanel"
+             aria-labelledby="resource-types-tab">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Type</th>
+                            <th class="sortable-header" data-sort="numeric">Grace Period (days)</th>
+                            <th class="sortable-header" data-sort="numeric"># Resources</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rt in resource_types %}
+                        <tr>
+                            <td class="fw-semibold" data-sort-value="{{ rt.resource_type }}">{{ rt.resource_type }}</td>
+                            <td data-sort-value="{{ rt.grace_period_days if rt.grace_period_days is not none else -1 }}">
+                                {{ rt.grace_period_days if rt.grace_period_days is not none else '—' }}
+                            </td>
+                            <td data-sort-value="{{ rt.resources|length }}">{{ rt.resources|length }}</td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editResourceTypeModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_resource_type_edit_form', resource_type_id=rt.resource_type_id) }}"
+                                        hx-target="#editResourceTypeFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit resource type">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-3">No resource types found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Machines tab ────────────────────────────────────────────── -->
+        <div class="tab-pane fade" id="machines-pane" role="tabpanel"
+             aria-labelledby="machines-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="machinesActiveOnly"
+                           checked onchange="filterResourceRows('machines-tbody', this.checked)">
+                    <label class="form-check-label small" for="machinesActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Name</th>
+                            <th class="sortable-header" data-sort="text">Resource</th>
+                            <th class="sortable-header" data-sort="numeric">CPUs/Node</th>
+                            <th class="sortable-header" data-sort="text">Description</th>
+                            <th class="sortable-header" data-sort="date">Commissioned</th>
+                            <th class="sortable-header" data-sort="date">Decommissioned</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="machines-tbody">
+                        {% for m in machines %}
+                        {% set m_active = (m.decommission_date is none) or (m.decommission_date > now) %}
+                        <tr data-active="{{ '1' if m_active else '0' }}">
+                            <td class="fw-semibold" data-sort-value="{{ m.name }}">{{ m.name }}</td>
+                            <td data-sort-value="{{ m.resource.resource_name if m.resource else '' }}">
+                                <span class="text-muted">
+                                    {{ m.resource.resource_name if m.resource else '—' }}
+                                </span>
+                            </td>
+                            <td data-sort-value="{{ m.cpus_per_node or 0 }}">{{ m.cpus_per_node or '—' }}</td>
+                            <td class="text-muted" data-sort-value="{{ m.description or '' }}">{{ m.description or '—' }}</td>
+                            <td class="text-nowrap" data-sort-value="{{ m.commission_date.strftime('%Y-%m-%d') if m.commission_date else '' }}">
+                                {{ m.commission_date.strftime('%Y-%m-%d') if m.commission_date else '—' }}
+                            </td>
+                            <td class="text-nowrap" data-sort-value="{{ m.decommission_date.strftime('%Y-%m-%d') if m.decommission_date else 'Z' }}">
+                                {{ m.decommission_date.strftime('%Y-%m-%d') if m.decommission_date else '—' }}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editMachineModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_machine_edit_form', machine_id=m.machine_id) }}"
+                                        hx-target="#editMachineFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit machine">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-3">No machines found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Queues tab ──────────────────────────────────────────────── -->
+        <div class="tab-pane fade" id="queues-pane" role="tabpanel"
+             aria-labelledby="queues-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="queuesActiveOnly"
+                           checked onchange="filterResourceRows('queues-tbody', this.checked)">
+                    <label class="form-check-label small" for="queuesActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Queue Name</th>
+                            <th class="sortable-header" data-sort="text">Resource</th>
+                            <th class="sortable-header" data-sort="numeric">WC Limit (hrs)</th>
+                            <th class="sortable-header" data-sort="date">Start Date</th>
+                            <th class="sortable-header" data-sort="date">End Date</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queues-tbody">
+                        {% for q in queues %}
+                        {% set q_active = (q.end_date is none) or (q.end_date > now) %}
+                        <tr data-active="{{ '1' if q_active else '0' }}">
+                            <td class="fw-semibold" data-sort-value="{{ q.queue_name }}">{{ q.queue_name }}</td>
+                            <td data-sort-value="{{ q.resource.resource_name if q.resource else '' }}">
+                                <span class="text-muted">
+                                    {{ q.resource.resource_name if q.resource else '—' }}
+                                </span>
+                            </td>
+                            <td data-sort-value="{{ q.wall_clock_hours_limit or 0 }}">{{ q.wall_clock_hours_limit or '—' }}</td>
+                            <td class="text-nowrap" data-sort-value="{{ q.start_date.strftime('%Y-%m-%d') if q.start_date else '' }}">
+                                {{ q.start_date.strftime('%Y-%m-%d') if q.start_date else '—' }}
+                            </td>
+                            <td class="text-nowrap" data-sort-value="{{ q.end_date.strftime('%Y-%m-%d') if q.end_date else 'Z' }}">
+                                {{ q.end_date.strftime('%Y-%m-%d') if q.end_date else '—' }}
+                            </td>
+                            <td data-sort-value="{{ 'Active' if q_active else 'Inactive' }}">
+                                {% if q_active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editQueueModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_queue_edit_form', queue_id=q.queue_id) }}"
+                                        hx-target="#editQueueFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit queue">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-3">No queues found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>{# tab-content #}
+</div>{# card-body #}
+
+<script>
+(function() {
+    /* Active-only row filter */
+    function filterResourceRows(tbodyId, activeOnly) {
+        var tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        tbody.querySelectorAll('tr[data-active]').forEach(function(row) {
+            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
+        });
+    }
+    window.filterResourceRows = filterResourceRows;
+
+    /* Sortable column headers */
+    function attachSorting(table) {
+        table.querySelectorAll('th.sortable-header').forEach(function(th) {
+            th.addEventListener('click', function() {
+                var colIndex = Array.from(th.parentNode.children).indexOf(th);
+                var sortType = th.dataset.sort;
+                var isAsc = !th.classList.contains('sort-asc');
+                table.querySelectorAll('th').forEach(function(h) {
+                    h.classList.remove('sort-asc', 'sort-desc');
+                });
+                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+                var tbody = table.querySelector('tbody');
+                var rows = Array.from(tbody.querySelectorAll('tr[data-active]'));
+                rows.sort(function(a, b) {
+                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
+                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    if (sortType === 'numeric') {
+                        aVal = parseFloat(aVal) || 0;
+                        bVal = parseFloat(bVal) || 0;
+                        return isAsc ? aVal - bVal : bVal - aVal;
+                    }
+                    aVal = String(aVal || '').toLowerCase();
+                    bVal = String(bVal || '').toLowerCase();
+                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                });
+                rows.forEach(function(r) { tbody.appendChild(r); });
+            });
+        });
+    }
+
+    /* Attach sorting to all tables in this fragment */
+    document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
+
+    /* Apply default active-only filter on load */
+    ['resources-tbody', 'machines-tbody', 'queues-tbody'].forEach(function(id) {
+        filterResourceRows(id, true);
+    });
+})();
+</script>
