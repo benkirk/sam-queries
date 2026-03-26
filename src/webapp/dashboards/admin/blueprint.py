@@ -484,7 +484,7 @@ def htmx_add_exemption_form(username):
     # Active resources that have queues
     resources = (
         db.session.query(Resource)
-        .filter(Resource.active == True)
+        .filter(Resource.is_active)
         .order_by(Resource.resource_name)
         .all()
     )
@@ -558,7 +558,7 @@ def htmx_add_exemption(username):
     if errors:
         resources = (
             db.session.query(Resource)
-            .filter(Resource.active == True)
+            .filter(Resource.is_active)
             .order_by(Resource.resource_name)
             .all()
         )
@@ -586,7 +586,7 @@ def htmx_add_exemption(username):
     except Exception as e:
         resources = (
             db.session.query(Resource)
-            .filter(Resource.active == True)
+            .filter(Resource.is_active)
             .order_by(Resource.resource_name)
             .all()
         )
