@@ -57,37 +57,42 @@
             <div class="px-3 pt-2 pb-1">
                 <div class="form-check form-check-inline">
                     <input class="form-check-input" type="checkbox" id="orgsActiveOnly"
-                           checked onchange="filterOrgRows('orgs-tbody', this.checked)">
+                           checked onchange="filterOrgsPaneRows(this.checked)">
                     <label class="form-check-label small" for="orgsActiveOnly">Active only</label>
                 </div>
             </div>
             <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
+                <table class="table table-sm mb-0" id="orgs-tree-table">
                     <thead class="table-light">
                         <tr>
-                            <th class="sortable-header" data-sort="text">Acronym</th>
-                            <th class="sortable-header" data-sort="text">Name</th>
-                            <th class="sortable-header" data-sort="text">Parent</th>
-                            <th class="sortable-header" data-sort="text">Description</th>
-                            <th class="sortable-header" data-sort="numeric"># Users</th>
-                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th>Organization</th>
+                            <th>Description</th>
+                            <th># Users</th>
+                            <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="orgs-tbody">
-                        {% for o in organizations %}
-                        <tr data-active="{{ '1' if o.active else '0' }}">
-                            <td class="fw-semibold" data-sort-value="{{ o.acronym }}">
-                                <span class="badge bg-light text-dark border">{{ o.acronym }}</span>
+                        {% for org, depth, has_children in org_tree %}
+                        <tr data-active="{{ '1' if org.active else '0' }}"
+                            data-org-id="{{ org.organization_id }}"
+                            data-parent-id="{{ org.parent_org_id or '' }}"
+                            {% if depth > 0 %}class="org-tree-collapsed"{% endif %}>
+                            <td style="padding-left: {{ (depth * 1.4 + 0.4) }}rem; white-space: nowrap;">
+                                {% if has_children %}
+                                <i class="fas fa-chevron-right small text-muted me-1 org-tree-chevron"
+                                   style="cursor:pointer; transition: transform 0.15s;"
+                                   onclick="toggleOrgChildren({{ org.organization_id }}, this, event)"></i>
+                                {% else %}
+                                <i class="fas fa-circle small me-1" style="font-size:0.35em; color:#ccc; vertical-align:middle;"></i>
+                                {% endif %}
+                                <span class="badge bg-light text-dark border">{{ org.acronym }}</span>
+                                <span class="ms-1">{{ org.name }}</span>
                             </td>
-                            <td data-sort-value="{{ o.name }}">{{ o.name }}</td>
-                            <td data-sort-value="{{ o.parent.acronym if o.parent else '' }}">
-                                <span class="text-muted">{{ o.parent.acronym if o.parent else '—' }}</span>
-                            </td>
-                            <td class="text-muted" data-sort-value="{{ o.description or '' }}">{{ o.description or '—' }}</td>
-                            <td data-sort-value="{{ o.users|length }}">{{ o.users|length }}</td>
-                            <td data-sort-value="{{ 'Active' if o.active else 'Inactive' }}">
-                                {% if o.active %}
+                            <td class="text-muted small">{{ org.description or '—' }}</td>
+                            <td>{{ org.users|length }}</td>
+                            <td>
+                                {% if org.active %}
                                 <span class="badge bg-success">Active</span>
                                 {% else %}
                                 <span class="badge bg-secondary">Inactive</span>
@@ -98,7 +103,7 @@
                                 <button class="btn btn-sm btn-outline-secondary"
                                         data-bs-toggle="modal"
                                         data-bs-target="#editOrganizationModal"
-                                        hx-get="{{ url_for('admin_dashboard.htmx_organization_edit_form', org_id=o.organization_id) }}"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_organization_edit_form', org_id=org.organization_id) }}"
                                         hx-target="#editOrganizationFormContainer"
                                         hx-trigger="click"
                                         title="Edit organization">
@@ -108,7 +113,7 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="7" class="text-center text-muted py-3">No organizations found.</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted py-3">No organizations found.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -490,6 +495,53 @@
     }
     window.filterOrgRows = filterOrgRows;
 
+    // ── Organization tree expand/collapse ─────────────────────────────────
+
+    function orgRowVisible(row) {
+        // A row is shown when BOTH active filter AND tree state allow it
+        var activeOnly = document.getElementById('orgsActiveOnly').checked;
+        var passesFilter = !activeOnly || row.dataset.active === '1';
+        var treeVisible = !row.classList.contains('org-tree-collapsed');
+        row.style.display = (passesFilter && treeVisible) ? '' : 'none';
+    }
+
+    function filterOrgsPaneRows(activeOnly) {
+        document.querySelectorAll('#orgs-tbody tr[data-org-id]').forEach(function(row) {
+            orgRowVisible(row);
+        });
+    }
+    window.filterOrgsPaneRows = filterOrgsPaneRows;
+
+    function collapseOrgDescendants(parentOrgId) {
+        document.querySelectorAll('#orgs-tbody tr[data-parent-id="' + parentOrgId + '"]').forEach(function(row) {
+            row.classList.add('org-tree-collapsed');
+            orgRowVisible(row);
+            // Collapse grandchildren and reset their chevrons
+            var childId = row.dataset.orgId;
+            var chevron = row.querySelector('.org-tree-chevron');
+            if (chevron) chevron.style.transform = '';
+            collapseOrgDescendants(childId);
+        });
+    }
+
+    function toggleOrgChildren(orgId, iconEl, event) {
+        event.stopPropagation();
+        var isExpanding = iconEl.style.transform !== 'rotate(90deg)';
+        iconEl.style.transform = isExpanding ? 'rotate(90deg)' : '';
+        document.querySelectorAll('#orgs-tbody tr[data-parent-id="' + orgId + '"]').forEach(function(row) {
+            if (isExpanding) {
+                row.classList.remove('org-tree-collapsed');
+            } else {
+                row.classList.add('org-tree-collapsed');
+                collapseOrgDescendants(row.dataset.orgId);
+                var childChevron = row.querySelector('.org-tree-chevron');
+                if (childChevron) childChevron.style.transform = '';
+            }
+            orgRowVisible(row);
+        });
+    }
+    window.toggleOrgChildren = toggleOrgChildren;
+
     function filterAreasPaneRows(activeOnly) {
         var pane = document.getElementById('areas-pane');
         if (!pane) return;
@@ -540,9 +592,8 @@
     document.querySelectorAll('#organizationsTabsContent table').forEach(attachSorting);
 
     // Apply default active-only filter (skip institutions — no active flag)
-    ['orgs-tbody', 'nsf-programs-tbody'].forEach(function(id) {
-        filterOrgRows(id, true);
-    });
+    filterOrgsPaneRows(true);
+    filterOrgRows('nsf-programs-tbody', true);
     filterAreasPaneRows(true);
     filterContractsPaneRows(true);
 

@@ -1483,8 +1483,32 @@ def htmx_organizations_card():
     from sam.core.organizations import Organization, Institution, InstitutionType
     from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
     from sam.projects.contracts import Contract, ContractSource, NSFProgram
+    from sqlalchemy.orm import subqueryload
 
-    organizations = db.session.query(Organization).order_by(Organization.acronym).all()
+    # Load all orgs with children pre-fetched to avoid N+1 queries
+    organizations = (
+        db.session.query(Organization)
+        .options(subqueryload(Organization.children))
+        .all()
+    )
+
+    # Build DFS-ordered flat tree: [(org, depth, has_children)]
+    _children = {}
+    for _o in organizations:
+        _pid = _o.parent_org_id
+        _children.setdefault(_pid, []).append(_o)
+    for _pid in _children:
+        _children[_pid].sort(key=lambda o: o.acronym or '')
+
+    def _dfs(_pid, _depth):
+        result = []
+        for _o in _children.get(_pid, []):
+            _has_ch = bool(_children.get(_o.organization_id))
+            result.append((_o, _depth, _has_ch))
+            result.extend(_dfs(_o.organization_id, _depth + 1))
+        return result
+
+    org_tree = _dfs(None, 0)
     institution_types = db.session.query(InstitutionType).order_by(InstitutionType.type).all()
     institutions = db.session.query(Institution).order_by(Institution.name).all()
     aoi_groups = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
@@ -1500,6 +1524,7 @@ def htmx_organizations_card():
     return render_template(
         'dashboards/admin/fragments/organization_card.html',
         organizations=organizations,
+        org_tree=org_tree,
         institution_types=institution_types,
         institutions=institutions,
         aoi_groups=aoi_groups,
