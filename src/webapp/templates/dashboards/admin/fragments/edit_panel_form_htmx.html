@@ -1,0 +1,67 @@
+{#
+  htmx: Edit Panel Form (loaded into #editPanelFormContainer)
+  panel_name and facility are read-only.
+  Editable: description (optional), active.
+#}
+
+<form hx-post="{{ url_for('admin_dashboard.htmx_panel_edit', panel_id=panel.panel_id) }}"
+      hx-target="#editPanelFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+    <div class="modal-body">
+        <!-- Name / Facility (read-only) -->
+        <div class="row mb-3">
+            <div class="col-md-7">
+                <label class="form-label">Panel Name</label>
+                <div class="form-control-plaintext">
+                    <strong>{{ panel.panel_name }}</strong>
+                </div>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label">Facility</label>
+                <div class="form-control-plaintext text-muted">
+                    {{ panel.facility.facility_name if panel.facility else '—' }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Description -->
+        <div class="mb-3">
+            <label for="editPanelDescription" class="form-label">
+                Description <span class="text-muted">(optional)</span>
+            </label>
+            <input type="text" class="form-control" id="editPanelDescription"
+                   name="description"
+                   value="{{ form.get('description') if form else (panel.description or '') }}"
+                   placeholder="Brief description of the panel">
+        </div>
+
+        <!-- Active -->
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="editPanelActive"
+                   name="active" value="1"
+                   {% if form %}
+                       {% if form.get('active') %}checked{% endif %}
+                   {% elif panel.active %}
+                       checked
+                   {% endif %}>
+            <label class="form-check-label" for="editPanelActive">Active</label>
+        </div>
+
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for error in errors %}
+            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-warning">
+            <i class="fas fa-save"></i> Save Changes
+        </button>
+    </div>
+</form>

@@ -1,0 +1,348 @@
+{#
+  Admin: Facility Card Body (lazy-loaded into the Facility collapsible section)
+  Contains four tabs: Facilities, Panels, Panel Sessions, Allocation Types
+#}
+<div class="card-body p-0">
+    <!-- Tab navigation -->
+    <ul class="nav nav-tabs px-3 pt-3" id="facilitiesTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="facilities-tab" data-bs-toggle="tab"
+                    data-bs-target="#facilities-pane" type="button" role="tab"
+                    aria-controls="facilities-pane" aria-selected="true">
+                <i class="fas fa-building me-1"></i> Facilities
+                <span class="badge bg-secondary ms-1">{{ facilities|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="panels-tab" data-bs-toggle="tab"
+                    data-bs-target="#panels-pane" type="button" role="tab"
+                    aria-controls="panels-pane" aria-selected="false">
+                <i class="fas fa-users-cog me-1"></i> Panels
+                <span class="badge bg-secondary ms-1">{{ panels|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="panel-sessions-tab" data-bs-toggle="tab"
+                    data-bs-target="#panel-sessions-pane" type="button" role="tab"
+                    aria-controls="panel-sessions-pane" aria-selected="false">
+                <i class="fas fa-calendar-alt me-1"></i> Panel Sessions
+                <span class="badge bg-secondary ms-1">{{ panel_sessions|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="allocation-types-tab" data-bs-toggle="tab"
+                    data-bs-target="#allocation-types-pane" type="button" role="tab"
+                    aria-controls="allocation-types-pane" aria-selected="false">
+                <i class="fas fa-layer-group me-1"></i> Allocation Types
+                <span class="badge bg-secondary ms-1">{{ allocation_types|length }}</span>
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="facilitiesTabsContent">
+
+        <!-- ── Facilities tab ──────────────────────────────────────────── -->
+        <div class="tab-pane fade show active" id="facilities-pane" role="tabpanel"
+             aria-labelledby="facilities-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="facilitiesActiveOnly"
+                           checked onchange="filterFacilityRows('facilities-tbody', this.checked)">
+                    <label class="form-check-label small" for="facilitiesActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Name</th>
+                            <th class="sortable-header" data-sort="text">Code</th>
+                            <th class="sortable-header" data-sort="text">Description</th>
+                            <th class="sortable-header" data-sort="numeric">Fair Share %</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="facilities-tbody">
+                        {% for f in facilities %}
+                        <tr data-active="{{ '1' if f.active else '0' }}">
+                            <td class="fw-semibold" data-sort-value="{{ f.facility_name }}">{{ f.facility_name }}</td>
+                            <td data-sort-value="{{ f.code or '' }}">
+                                {% if f.code %}
+                                <span class="badge bg-light text-dark border">{{ f.code }}</span>
+                                {% else %}—{% endif %}
+                            </td>
+                            <td class="text-muted" data-sort-value="{{ f.description or '' }}">{{ f.description or '—' }}</td>
+                            <td data-sort-value="{{ f.fair_share_percentage if f.fair_share_percentage is not none else -1 }}">
+                                {{ '%.2f'|format(f.fair_share_percentage) if f.fair_share_percentage is not none else '—' }}
+                            </td>
+                            <td data-sort-value="{{ 'Active' if f.active else 'Inactive' }}">
+                                {% if f.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editFacilityModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_facility_edit_form', facility_id=f.facility_id) }}"
+                                        hx-target="#editFacilityFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit facility">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center text-muted py-3">No facilities found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Panels tab ─────────────────────────────────────────────── -->
+        <div class="tab-pane fade" id="panels-pane" role="tabpanel"
+             aria-labelledby="panels-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="panelsActiveOnly"
+                           checked onchange="filterFacilityRows('panels-tbody', this.checked)">
+                    <label class="form-check-label small" for="panelsActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Name</th>
+                            <th class="sortable-header" data-sort="text">Facility</th>
+                            <th class="sortable-header" data-sort="text">Description</th>
+                            <th class="sortable-header" data-sort="numeric"># Types</th>
+                            <th class="sortable-header" data-sort="numeric"># Sessions</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="panels-tbody">
+                        {% for p in panels %}
+                        <tr data-active="{{ '1' if p.active else '0' }}">
+                            <td class="fw-semibold" data-sort-value="{{ p.panel_name }}">{{ p.panel_name }}</td>
+                            <td data-sort-value="{{ p.facility.facility_name if p.facility else '' }}">
+                                <span class="text-muted">{{ p.facility.facility_name if p.facility else '—' }}</span>
+                            </td>
+                            <td class="text-muted" data-sort-value="{{ p.description or '' }}">{{ p.description or '—' }}</td>
+                            <td data-sort-value="{{ p.allocation_types|length }}">{{ p.allocation_types|length }}</td>
+                            <td data-sort-value="{{ p.panel_sessions|length }}">{{ p.panel_sessions|length }}</td>
+                            <td data-sort-value="{{ 'Active' if p.active else 'Inactive' }}">
+                                {% if p.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editPanelModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_panel_edit_form', panel_id=p.panel_id) }}"
+                                        hx-target="#editPanelFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit panel">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="text-center text-muted py-3">No panels found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Panel Sessions tab ─────────────────────────────────────── -->
+        <div class="tab-pane fade" id="panel-sessions-pane" role="tabpanel"
+             aria-labelledby="panel-sessions-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="panelSessionsActiveOnly"
+                           checked onchange="filterFacilityRows('panel-sessions-tbody', this.checked)">
+                    <label class="form-check-label small" for="panelSessionsActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Name</th>
+                            <th class="sortable-header" data-sort="text">Panel</th>
+                            <th class="sortable-header" data-sort="date">Start Date</th>
+                            <th class="sortable-header" data-sort="date">End Date</th>
+                            <th class="sortable-header" data-sort="date">Meeting Date</th>
+                            <th class="sortable-header" data-sort="text">Description</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="panel-sessions-tbody">
+                        {% for ps in panel_sessions %}
+                        {% set ps_active = (ps.end_date is none) or (ps.end_date >= now) %}
+                        <tr data-active="{{ '1' if ps_active else '0' }}">
+                            <td class="fw-semibold" data-sort-value="{{ ps.name }}">{{ ps.name }}</td>
+                            <td data-sort-value="{{ ps.panel.panel_name if ps.panel else '' }}">
+                                <span class="text-muted">{{ ps.panel.panel_name if ps.panel else '—' }}</span>
+                            </td>
+                            <td class="text-nowrap" data-sort-value="{{ ps.start_date.strftime('%Y-%m-%d') if ps.start_date else '' }}">
+                                {{ ps.start_date.strftime('%Y-%m-%d') if ps.start_date else '—' }}
+                            </td>
+                            <td class="text-nowrap" data-sort-value="{{ ps.end_date.strftime('%Y-%m-%d') if ps.end_date else 'Z' }}">
+                                {{ ps.end_date.strftime('%Y-%m-%d') if ps.end_date else '—' }}
+                            </td>
+                            <td class="text-nowrap" data-sort-value="{{ ps.panel_meeting_date.strftime('%Y-%m-%d') if ps.panel_meeting_date else '' }}">
+                                {{ ps.panel_meeting_date.strftime('%Y-%m-%d') if ps.panel_meeting_date else '—' }}
+                            </td>
+                            <td class="text-muted" data-sort-value="{{ ps.description or '' }}">{{ ps.description or '—' }}</td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editPanelSessionModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_panel_session_edit_form', panel_session_id=ps.panel_session_id) }}"
+                                        hx-target="#editPanelSessionFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit panel session">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="text-center text-muted py-3">No panel sessions found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Allocation Types tab ───────────────────────────────────── -->
+        <div class="tab-pane fade" id="allocation-types-pane" role="tabpanel"
+             aria-labelledby="allocation-types-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="allocationTypesActiveOnly"
+                           checked onchange="filterFacilityRows('allocation-types-tbody', this.checked)">
+                    <label class="form-check-label small" for="allocationTypesActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Type</th>
+                            <th class="sortable-header" data-sort="text">Panel</th>
+                            <th class="sortable-header" data-sort="numeric">Default Amount</th>
+                            <th class="sortable-header" data-sort="numeric">Fair Share %</th>
+                            <th class="sortable-header" data-sort="numeric"># Projects</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="allocation-types-tbody">
+                        {% for at in allocation_types %}
+                        <tr data-active="{{ '1' if at.active else '0' }}">
+                            <td class="fw-semibold" data-sort-value="{{ at.allocation_type }}">{{ at.allocation_type }}</td>
+                            <td data-sort-value="{{ at.panel.panel_name if at.panel else '' }}">
+                                <span class="text-muted">{{ at.panel.panel_name if at.panel else '—' }}</span>
+                            </td>
+                            <td data-sort-value="{{ at.default_allocation_amount if at.default_allocation_amount is not none else -1 }}">
+                                {{ '{:,.0f}'.format(at.default_allocation_amount) if at.default_allocation_amount is not none else '—' }}
+                            </td>
+                            <td data-sort-value="{{ at.fair_share_percentage if at.fair_share_percentage is not none else -1 }}">
+                                {{ '%.2f'|format(at.fair_share_percentage) if at.fair_share_percentage is not none else '—' }}
+                            </td>
+                            <td data-sort-value="{{ at.projects|length }}">{{ at.projects|length }}</td>
+                            <td data-sort-value="{{ 'Active' if at.active else 'Inactive' }}">
+                                {% if at.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editAllocationTypeModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_allocation_type_edit_form', allocation_type_id=at.allocation_type_id) }}"
+                                        hx-target="#editAllocationTypeFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit allocation type">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="text-center text-muted py-3">No allocation types found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>{# tab-content #}
+</div>{# card-body #}
+
+<script>
+(function() {
+    function filterFacilityRows(tbodyId, activeOnly) {
+        var tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        tbody.querySelectorAll('tr[data-active]').forEach(function(row) {
+            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
+        });
+    }
+    window.filterFacilityRows = filterFacilityRows;
+
+    function attachSorting(table) {
+        table.querySelectorAll('th.sortable-header').forEach(function(th) {
+            th.addEventListener('click', function() {
+                var colIndex = Array.from(th.parentNode.children).indexOf(th);
+                var sortType = th.dataset.sort;
+                var isAsc = !th.classList.contains('sort-asc');
+                table.querySelectorAll('th').forEach(function(h) {
+                    h.classList.remove('sort-asc', 'sort-desc');
+                });
+                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+                var tbody = table.querySelector('tbody');
+                var rows = Array.from(tbody.querySelectorAll('tr[data-active]'));
+                rows.sort(function(a, b) {
+                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
+                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    if (sortType === 'numeric') {
+                        aVal = parseFloat(aVal) || 0;
+                        bVal = parseFloat(bVal) || 0;
+                        return isAsc ? aVal - bVal : bVal - aVal;
+                    }
+                    aVal = String(aVal || '').toLowerCase();
+                    bVal = String(bVal || '').toLowerCase();
+                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                });
+                rows.forEach(function(r) { tbody.appendChild(r); });
+            });
+        });
+    }
+
+    document.querySelectorAll('#facilitiesTabsContent table').forEach(attachSorting);
+
+    ['facilities-tbody', 'panels-tbody', 'panel-sessions-tbody', 'allocation-types-tbody'].forEach(function(id) {
+        filterFacilityRows(id, true);
+    });
+})();
+</script>

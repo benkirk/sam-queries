@@ -1112,3 +1112,356 @@ def htmx_queue_edit(queue_id):
         )
 
     return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+
+
+# ── Facility Management Routes ─────────────────────────────────────────────
+
+
+@bp.route('/htmx/facilities')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_facilities_card():
+    """
+    Return the Facility card body fragment with four tabs:
+    Facilities, Panels, Panel Sessions, Allocation Types.
+    Lazy-loaded when the Facility collapsible section is first expanded.
+    """
+    from sam.resources.facilities import Facility, Panel, PanelSession
+    from sam.accounting.allocations import AllocationType
+
+    facilities = db.session.query(Facility).order_by(Facility.facility_name).all()
+    panels = db.session.query(Panel).order_by(Panel.panel_name).all()
+    panel_sessions = (
+        db.session.query(PanelSession)
+        .order_by(PanelSession.start_date.desc())
+        .all()
+    )
+    allocation_types = (
+        db.session.query(AllocationType)
+        .order_by(AllocationType.allocation_type)
+        .all()
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/facility_card.html',
+        facilities=facilities,
+        panels=panels,
+        panel_sessions=panel_sessions,
+        allocation_types=allocation_types,
+        is_admin=True,
+        now=datetime.now(),
+    )
+
+
+@bp.route('/htmx/facility-edit-form/<int:facility_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_facility_edit_form(facility_id):
+    """Return the facility edit form fragment (loaded into modal)."""
+    from sam.resources.facilities import Facility
+
+    facility = db.session.get(Facility, facility_id)
+    if not facility:
+        return '<div class="alert alert-warning">Facility not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_facility_form_htmx.html',
+        facility=facility,
+    )
+
+
+@bp.route('/htmx/facility-edit/<int:facility_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_facility_edit(facility_id):
+    """
+    Update a facility.
+    On success returns a script that closes the modal and refreshes the facility card.
+    On error re-renders the form with validation messages.
+    """
+    from sam.resources.facilities import Facility
+    from sam.manage import update_facility, management_transaction
+
+    facility = db.session.get(Facility, facility_id)
+    if not facility:
+        return '<div class="alert alert-danger">Facility not found</div>', 404
+
+    errors = []
+
+    description = request.form.get('description', '').strip()
+    fair_share_str = request.form.get('fair_share_percentage', '').strip()
+    active = bool(request.form.get('active'))
+
+    if not description:
+        errors.append('Description is required.')
+
+    fair_share_percentage = None
+    if fair_share_str:
+        try:
+            fair_share_percentage = float(fair_share_str)
+            if not (0 <= fair_share_percentage <= 100):
+                errors.append('Fair share percentage must be between 0 and 100.')
+        except ValueError:
+            errors.append('Fair share percentage must be a number.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_facility_form_htmx.html',
+            facility=facility,
+            errors=errors,
+            form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_facility(
+                db.session,
+                facility_id=facility_id,
+                description=description,
+                fair_share_percentage=fair_share_percentage,
+                active=active,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_facility_form_htmx.html',
+            facility=facility,
+            errors=[f'Error updating facility: {e}'],
+            form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+
+
+@bp.route('/htmx/panel-edit-form/<int:panel_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_panel_edit_form(panel_id):
+    """Return the panel edit form fragment (loaded into modal)."""
+    from sam.resources.facilities import Panel
+
+    panel = db.session.get(Panel, panel_id)
+    if not panel:
+        return '<div class="alert alert-warning">Panel not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_panel_form_htmx.html',
+        panel=panel,
+    )
+
+
+@bp.route('/htmx/panel-edit/<int:panel_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_panel_edit(panel_id):
+    """
+    Update a panel.
+    On success returns a script that closes the modal and refreshes the facility card.
+    On error re-renders the form with validation messages.
+    """
+    from sam.resources.facilities import Panel
+    from sam.manage import update_panel, management_transaction
+
+    panel = db.session.get(Panel, panel_id)
+    if not panel:
+        return '<div class="alert alert-danger">Panel not found</div>', 404
+
+    description = request.form.get('description', '').strip()
+    active = bool(request.form.get('active'))
+
+    try:
+        with management_transaction(db.session):
+            update_panel(
+                db.session,
+                panel_id=panel_id,
+                description=description or None,
+                active=active,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_panel_form_htmx.html',
+            panel=panel,
+            errors=[f'Error updating panel: {e}'],
+            form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+
+
+@bp.route('/htmx/panel-session-edit-form/<int:panel_session_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_panel_session_edit_form(panel_session_id):
+    """Return the panel session edit form fragment (loaded into modal)."""
+    from sam.resources.facilities import PanelSession
+
+    panel_session = db.session.get(PanelSession, panel_session_id)
+    if not panel_session:
+        return '<div class="alert alert-warning">Panel session not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_panel_session_form_htmx.html',
+        panel_session=panel_session,
+    )
+
+
+@bp.route('/htmx/panel-session-edit/<int:panel_session_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_panel_session_edit(panel_session_id):
+    """
+    Update a panel session.
+    On success returns a script that closes the modal and refreshes the facility card.
+    On error re-renders the form with validation messages.
+    """
+    from sam.resources.facilities import PanelSession
+    from sam.manage import update_panel_session, management_transaction
+
+    panel_session = db.session.get(PanelSession, panel_session_id)
+    if not panel_session:
+        return '<div class="alert alert-danger">Panel session not found</div>', 404
+
+    errors = []
+
+    start_str = request.form.get('start_date', '').strip()
+    end_str = request.form.get('end_date', '').strip()
+    meeting_str = request.form.get('panel_meeting_date', '').strip()
+    description = request.form.get('description', '').strip()
+
+    start_date = None
+    if start_str:
+        try:
+            start_date = datetime.strptime(start_str, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Invalid start date format.')
+    else:
+        errors.append('Start date is required.')
+
+    end_date = None
+    if end_str:
+        try:
+            end_date = datetime.strptime(end_str, '%Y-%m-%d')
+            effective_start = start_date or panel_session.start_date
+            if effective_start and end_date <= effective_start:
+                errors.append('End date must be after start date.')
+        except ValueError:
+            errors.append('Invalid end date format.')
+
+    panel_meeting_date = None
+    if meeting_str:
+        try:
+            panel_meeting_date = datetime.strptime(meeting_str, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Invalid panel meeting date format.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_panel_session_form_htmx.html',
+            panel_session=panel_session,
+            errors=errors,
+            form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_panel_session(
+                db.session,
+                panel_session_id=panel_session_id,
+                description=description or None,
+                start_date=start_date,
+                end_date=end_date,
+                panel_meeting_date=panel_meeting_date,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_panel_session_form_htmx.html',
+            panel_session=panel_session,
+            errors=[f'Error updating panel session: {e}'],
+            form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+
+
+@bp.route('/htmx/allocation-type-edit-form/<int:allocation_type_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_allocation_type_edit_form(allocation_type_id):
+    """Return the allocation type edit form fragment (loaded into modal)."""
+    from sam.accounting.allocations import AllocationType
+
+    allocation_type = db.session.get(AllocationType, allocation_type_id)
+    if not allocation_type:
+        return '<div class="alert alert-warning">Allocation type not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_allocation_type_form_htmx.html',
+        allocation_type=allocation_type,
+    )
+
+
+@bp.route('/htmx/allocation-type-edit/<int:allocation_type_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_allocation_type_edit(allocation_type_id):
+    """
+    Update an allocation type.
+    On success returns a script that closes the modal and refreshes the facility card.
+    On error re-renders the form with validation messages.
+    """
+    from sam.accounting.allocations import AllocationType
+    from sam.manage import update_allocation_type, management_transaction
+
+    allocation_type = db.session.get(AllocationType, allocation_type_id)
+    if not allocation_type:
+        return '<div class="alert alert-danger">Allocation type not found</div>', 404
+
+    errors = []
+
+    amount_str = request.form.get('default_allocation_amount', '').strip()
+    fair_share_str = request.form.get('fair_share_percentage', '').strip()
+    active = bool(request.form.get('active'))
+
+    default_allocation_amount = None
+    if amount_str:
+        try:
+            default_allocation_amount = float(amount_str)
+            if default_allocation_amount < 0:
+                errors.append('Default allocation amount must be >= 0.')
+        except ValueError:
+            errors.append('Default allocation amount must be a number.')
+
+    fair_share_percentage = None
+    if fair_share_str:
+        try:
+            fair_share_percentage = float(fair_share_str)
+            if not (0 <= fair_share_percentage <= 100):
+                errors.append('Fair share percentage must be between 0 and 100.')
+        except ValueError:
+            errors.append('Fair share percentage must be a number.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_allocation_type_form_htmx.html',
+            allocation_type=allocation_type,
+            errors=errors,
+            form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_allocation_type(
+                db.session,
+                allocation_type_id=allocation_type_id,
+                default_allocation_amount=default_allocation_amount,
+                fair_share_percentage=fair_share_percentage,
+                active=active,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_allocation_type_form_htmx.html',
+            allocation_type=allocation_type,
+            errors=[f'Error updating allocation type: {e}'],
+            form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')

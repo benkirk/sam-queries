@@ -35,6 +35,12 @@ from .resources import (
     update_machine,
     update_queue,
 )
+from .facilities import (
+    update_facility,
+    update_panel,
+    update_panel_session,
+    update_allocation_type,
+)
 
 
 __all__ = [
@@ -54,6 +60,10 @@ __all__ = [
     'update_resource_type',
     'update_machine',
     'update_queue',
+    'update_facility',
+    'update_panel',
+    'update_panel_session',
+    'update_allocation_type',
 ]
 
 
