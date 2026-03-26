@@ -1,0 +1,26 @@
+{# htmx: Organization edit success response — closes modal and refreshes the Organization card #}
+<div class="modal-body text-center py-4">
+    <i class="fas fa-check-circle text-success fa-2x"></i>
+    <p class="mt-2 text-success">Saved successfully.</p>
+</div>
+<script>
+(function() {
+    // Close whichever organization modal is open
+    ['editOrganizationModal', 'editInstitutionModal', 'editAoiGroupModal',
+     'editAoiModal', 'editContractSourceModal', 'editContractModal',
+     'editNsfProgramModal'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            var modal = bootstrap.Modal.getInstance(el);
+            if (modal) modal.hide();
+        }
+    });
+    // Refresh the organization card body
+    setTimeout(function() {
+        htmx.ajax('GET', '{{ url_for("admin_dashboard.htmx_organizations_card") }}', {
+            target: '#organizationsSection',
+            swap: 'innerHTML'
+        });
+    }, 300);
+})();
+</script>

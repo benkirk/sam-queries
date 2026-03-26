@@ -1,0 +1,526 @@
+{#
+  Admin: Organization Card Body (lazy-loaded into the Organization collapsible section)
+  Contains seven tabs: Organizations, Institutions, AOI Groups, Areas of Interest,
+  Contract Sources, Contracts, NSF Programs
+#}
+<div class="card-body p-0">
+    <!-- Tab navigation -->
+    <ul class="nav nav-tabs px-3 pt-3" id="organizationsTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="orgs-tab" data-bs-toggle="tab"
+                    data-bs-target="#orgs-pane" type="button" role="tab"
+                    aria-controls="orgs-pane" aria-selected="true">
+                <i class="fas fa-sitemap me-1"></i> Organizations
+                <span class="badge bg-secondary ms-1">{{ organizations|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="institutions-tab" data-bs-toggle="tab"
+                    data-bs-target="#institutions-pane" type="button" role="tab"
+                    aria-controls="institutions-pane" aria-selected="false">
+                <i class="fas fa-university me-1"></i> Institutions
+                <span class="badge bg-secondary ms-1">{{ institutions|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="aoi-groups-tab" data-bs-toggle="tab"
+                    data-bs-target="#aoi-groups-pane" type="button" role="tab"
+                    aria-controls="aoi-groups-pane" aria-selected="false">
+                <i class="fas fa-folder me-1"></i> AOI Groups
+                <span class="badge bg-secondary ms-1">{{ aoi_groups|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="aois-tab" data-bs-toggle="tab"
+                    data-bs-target="#aois-pane" type="button" role="tab"
+                    aria-controls="aois-pane" aria-selected="false">
+                <i class="fas fa-flask me-1"></i> Areas of Interest
+                <span class="badge bg-secondary ms-1">{{ aois|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="contract-sources-tab" data-bs-toggle="tab"
+                    data-bs-target="#contract-sources-pane" type="button" role="tab"
+                    aria-controls="contract-sources-pane" aria-selected="false">
+                <i class="fas fa-file-contract me-1"></i> Contract Sources
+                <span class="badge bg-secondary ms-1">{{ contract_sources|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="contracts-tab" data-bs-toggle="tab"
+                    data-bs-target="#contracts-pane" type="button" role="tab"
+                    aria-controls="contracts-pane" aria-selected="false">
+                <i class="fas fa-file-signature me-1"></i> Contracts
+                <span class="badge bg-secondary ms-1">{{ contracts|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="nsf-programs-tab" data-bs-toggle="tab"
+                    data-bs-target="#nsf-programs-pane" type="button" role="tab"
+                    aria-controls="nsf-programs-pane" aria-selected="false">
+                <i class="fas fa-award me-1"></i> NSF Programs
+                <span class="badge bg-secondary ms-1">{{ nsf_programs|length }}</span>
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="organizationsTabsContent">
+
+        <!-- ── Organizations tab ──────────────────────────────────────── -->
+        <div class="tab-pane fade show active" id="orgs-pane" role="tabpanel"
+             aria-labelledby="orgs-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="orgsActiveOnly"
+                           checked onchange="filterOrgRows('orgs-tbody', this.checked)">
+                    <label class="form-check-label small" for="orgsActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Acronym</th>
+                            <th class="sortable-header" data-sort="text">Name</th>
+                            <th class="sortable-header" data-sort="text">Parent</th>
+                            <th class="sortable-header" data-sort="text">Description</th>
+                            <th class="sortable-header" data-sort="numeric"># Users</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orgs-tbody">
+                        {% for o in organizations %}
+                        <tr data-active="{{ '1' if o.active else '0' }}">
+                            <td class="fw-semibold" data-sort-value="{{ o.acronym }}">
+                                <span class="badge bg-light text-dark border">{{ o.acronym }}</span>
+                            </td>
+                            <td data-sort-value="{{ o.name }}">{{ o.name }}</td>
+                            <td data-sort-value="{{ o.parent.acronym if o.parent else '' }}">
+                                <span class="text-muted">{{ o.parent.acronym if o.parent else '—' }}</span>
+                            </td>
+                            <td class="text-muted" data-sort-value="{{ o.description or '' }}">{{ o.description or '—' }}</td>
+                            <td data-sort-value="{{ o.users|length }}">{{ o.users|length }}</td>
+                            <td data-sort-value="{{ 'Active' if o.active else 'Inactive' }}">
+                                {% if o.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editOrganizationModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_organization_edit_form', org_id=o.organization_id) }}"
+                                        hx-target="#editOrganizationFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit organization">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="text-center text-muted py-3">No organizations found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Institutions tab ───────────────────────────────────────── -->
+        <div class="tab-pane fade" id="institutions-pane" role="tabpanel"
+             aria-labelledby="institutions-tab">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Name</th>
+                            <th class="sortable-header" data-sort="text">Acronym</th>
+                            <th class="sortable-header" data-sort="text">Type</th>
+                            <th class="sortable-header" data-sort="text">City</th>
+                            <th class="sortable-header" data-sort="text">Code</th>
+                            <th class="sortable-header" data-sort="numeric"># Users</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="institutions-tbody">
+                        {% for inst in institutions %}
+                        <tr>
+                            <td data-sort-value="{{ inst.name }}">{{ inst.name }}</td>
+                            <td class="text-muted" data-sort-value="{{ inst.acronym }}">{{ inst.acronym }}</td>
+                            <td data-sort-value="{{ inst.institution_type.type if inst.institution_type else '' }}">
+                                <span class="text-muted">{{ inst.institution_type.type if inst.institution_type else '—' }}</span>
+                            </td>
+                            <td data-sort-value="{{ inst.city or '' }}">{{ inst.city or '—' }}</td>
+                            <td data-sort-value="{{ inst.code or '' }}">{{ inst.code or '—' }}</td>
+                            <td data-sort-value="{{ inst.users|length }}">{{ inst.users|length }}</td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editInstitutionModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_institution_edit_form', inst_id=inst.institution_id) }}"
+                                        hx-target="#editInstitutionFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit institution">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="text-center text-muted py-3">No institutions found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── AOI Groups tab ─────────────────────────────────────────── -->
+        <div class="tab-pane fade" id="aoi-groups-pane" role="tabpanel"
+             aria-labelledby="aoi-groups-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="aoiGroupsActiveOnly"
+                           checked onchange="filterOrgRows('aoi-groups-tbody', this.checked)">
+                    <label class="form-check-label small" for="aoiGroupsActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Name</th>
+                            <th class="sortable-header" data-sort="numeric"># Areas</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="aoi-groups-tbody">
+                        {% for g in aoi_groups %}
+                        <tr data-active="{{ '1' if g.active else '0' }}">
+                            <td class="fw-semibold" data-sort-value="{{ g.name }}">{{ g.name }}</td>
+                            <td data-sort-value="{{ g.areas|length }}">{{ g.areas|length }}</td>
+                            <td data-sort-value="{{ 'Active' if g.active else 'Inactive' }}">
+                                {% if g.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editAoiGroupModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_aoi_group_edit_form', group_id=g.area_of_interest_group_id) }}"
+                                        hx-target="#editAoiGroupFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit AOI group">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">No AOI groups found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Areas of Interest tab ──────────────────────────────────── -->
+        <div class="tab-pane fade" id="aois-pane" role="tabpanel"
+             aria-labelledby="aois-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="aoisActiveOnly"
+                           checked onchange="filterOrgRows('aois-tbody', this.checked)">
+                    <label class="form-check-label small" for="aoisActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Name</th>
+                            <th class="sortable-header" data-sort="text">Group</th>
+                            <th class="sortable-header" data-sort="numeric"># Projects</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="aois-tbody">
+                        {% for a in aois %}
+                        <tr data-active="{{ '1' if a.active else '0' }}">
+                            <td data-sort-value="{{ a.area_of_interest }}">{{ a.area_of_interest }}</td>
+                            <td data-sort-value="{{ a.group.name if a.group else '' }}">
+                                <span class="text-muted">{{ a.group.name if a.group else '—' }}</span>
+                            </td>
+                            <td data-sort-value="{{ a.projects|length }}">{{ a.projects|length }}</td>
+                            <td data-sort-value="{{ 'Active' if a.active else 'Inactive' }}">
+                                {% if a.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editAoiModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_aoi_edit_form', aoi_id=a.area_of_interest_id) }}"
+                                        hx-target="#editAoiFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit area of interest">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-3">No areas of interest found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Contract Sources tab ───────────────────────────────────── -->
+        <div class="tab-pane fade" id="contract-sources-pane" role="tabpanel"
+             aria-labelledby="contract-sources-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="contractSourcesActiveOnly"
+                           checked onchange="filterOrgRows('contract-sources-tbody', this.checked)">
+                    <label class="form-check-label small" for="contractSourcesActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Source Name</th>
+                            <th class="sortable-header" data-sort="numeric"># Contracts</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="contract-sources-tbody">
+                        {% for cs in contract_sources %}
+                        <tr data-active="{{ '1' if cs.active else '0' }}">
+                            <td class="fw-semibold" data-sort-value="{{ cs.contract_source }}">{{ cs.contract_source }}</td>
+                            <td data-sort-value="{{ cs.contracts|length }}">{{ cs.contracts|length }}</td>
+                            <td data-sort-value="{{ 'Active' if cs.active else 'Inactive' }}">
+                                {% if cs.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editContractSourceModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_contract_source_edit_form', source_id=cs.contract_source_id) }}"
+                                        hx-target="#editContractSourceFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit contract source">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">No contract sources found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Contracts tab ──────────────────────────────────────────── -->
+        <div class="tab-pane fade" id="contracts-pane" role="tabpanel"
+             aria-labelledby="contracts-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="contractsActiveOnly"
+                           checked onchange="filterOrgRows('contracts-tbody', this.checked)">
+                    <label class="form-check-label small" for="contractsActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Number</th>
+                            <th class="sortable-header" data-sort="text">Title</th>
+                            <th class="sortable-header" data-sort="text">Source</th>
+                            <th class="sortable-header" data-sort="text">PI</th>
+                            <th class="sortable-header" data-sort="date">Start Date</th>
+                            <th class="sortable-header" data-sort="date">End Date</th>
+                            <th class="sortable-header" data-sort="numeric"># Projects</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="contracts-tbody">
+                        {% for c in contracts %}
+                        <tr data-active="{{ '1' if c.is_active else '0' }}">
+                            <td class="fw-semibold text-nowrap" data-sort-value="{{ c.contract_number }}">{{ c.contract_number }}</td>
+                            <td data-sort-value="{{ c.title }}" style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                                title="{{ c.title }}">{{ c.title }}</td>
+                            <td data-sort-value="{{ c.contract_source.contract_source if c.contract_source else '' }}">
+                                <span class="text-muted">{{ c.contract_source.contract_source if c.contract_source else '—' }}</span>
+                            </td>
+                            <td data-sort-value="{{ c.principal_investigator.username if c.principal_investigator else '' }}">
+                                <span class="text-muted">{{ c.principal_investigator.username if c.principal_investigator else '—' }}</span>
+                            </td>
+                            <td class="text-nowrap" data-sort-value="{{ c.start_date.strftime('%Y-%m-%d') if c.start_date else '' }}">
+                                {{ c.start_date.strftime('%Y-%m-%d') if c.start_date else '—' }}
+                            </td>
+                            <td class="text-nowrap" data-sort-value="{{ c.end_date.strftime('%Y-%m-%d') if c.end_date else 'Z' }}">
+                                {{ c.end_date.strftime('%Y-%m-%d') if c.end_date else '—' }}
+                            </td>
+                            <td data-sort-value="{{ c.projects|length }}">{{ c.projects|length }}</td>
+                            <td data-sort-value="{{ 'Active' if c.is_active else 'Inactive' }}">
+                                {% if c.is_active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editContractModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_contract_edit_form', contract_id=c.contract_id) }}"
+                                        hx-target="#editContractFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit contract">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="9" class="text-center text-muted py-3">No contracts found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── NSF Programs tab ───────────────────────────────────────── -->
+        <div class="tab-pane fade" id="nsf-programs-pane" role="tabpanel"
+             aria-labelledby="nsf-programs-tab">
+            <div class="px-3 pt-2 pb-1">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="nsfProgramsActiveOnly"
+                           checked onchange="filterOrgRows('nsf-programs-tbody', this.checked)">
+                    <label class="form-check-label small" for="nsfProgramsActiveOnly">Active only</label>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Program Name</th>
+                            <th class="sortable-header" data-sort="numeric"># Contracts</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="nsf-programs-tbody">
+                        {% for p in nsf_programs %}
+                        <tr data-active="{{ '1' if p.active else '0' }}">
+                            <td data-sort-value="{{ p.nsf_program_name }}">{{ p.nsf_program_name }}</td>
+                            <td data-sort-value="{{ p.contracts|length }}">{{ p.contracts|length }}</td>
+                            <td data-sort-value="{{ 'Active' if p.active else 'Inactive' }}">
+                                {% if p.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editNsfProgramModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_nsf_program_edit_form', nsf_program_id=p.nsf_program_id) }}"
+                                        hx-target="#editNsfProgramFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit NSF program">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">No NSF programs found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>{# tab-content #}
+</div>{# card-body #}
+
+<script>
+(function() {
+    function filterOrgRows(tbodyId, activeOnly) {
+        var tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        tbody.querySelectorAll('tr[data-active]').forEach(function(row) {
+            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
+        });
+    }
+    window.filterOrgRows = filterOrgRows;
+
+    function attachSorting(table) {
+        table.querySelectorAll('th.sortable-header').forEach(function(th) {
+            th.addEventListener('click', function() {
+                var colIndex = Array.from(th.parentNode.children).indexOf(th);
+                var sortType = th.dataset.sort;
+                var isAsc = !th.classList.contains('sort-asc');
+                table.querySelectorAll('th').forEach(function(h) {
+                    h.classList.remove('sort-asc', 'sort-desc');
+                });
+                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+                var tbody = table.querySelector('tbody');
+                var rows = Array.from(tbody.querySelectorAll('tr[data-active]'));
+                rows.sort(function(a, b) {
+                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
+                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    if (sortType === 'numeric') {
+                        aVal = parseFloat(aVal) || 0;
+                        bVal = parseFloat(bVal) || 0;
+                        return isAsc ? aVal - bVal : bVal - aVal;
+                    }
+                    aVal = String(aVal || '').toLowerCase();
+                    bVal = String(bVal || '').toLowerCase();
+                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                });
+                rows.forEach(function(r) { tbody.appendChild(r); });
+            });
+        });
+    }
+
+    document.querySelectorAll('#organizationsTabsContent table').forEach(attachSorting);
+
+    // Apply default active-only filter (skip institutions — no active flag)
+    ['orgs-tbody', 'aoi-groups-tbody', 'aois-tbody',
+     'contract-sources-tbody', 'contracts-tbody', 'nsf-programs-tbody'].forEach(function(id) {
+        filterOrgRows(id, true);
+    });
+})();
+</script>

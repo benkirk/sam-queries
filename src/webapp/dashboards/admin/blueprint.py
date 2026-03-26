@@ -1465,3 +1465,500 @@ def htmx_allocation_type_edit(allocation_type_id):
         )
 
     return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+
+
+# ── Organization Management Routes ────────────────────────────────────────
+
+
+@bp.route('/htmx/organizations-card')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_organizations_card():
+    """
+    Return the Organization card body fragment with seven tabs:
+    Organizations, Institutions, AOI Groups, Areas of Interest,
+    Contract Sources, Contracts, NSF Programs.
+    Lazy-loaded when the Organization collapsible section is first expanded.
+    """
+    from sam.core.organizations import Organization, Institution
+    from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
+    from sam.projects.contracts import Contract, ContractSource, NSFProgram
+
+    organizations = db.session.query(Organization).order_by(Organization.acronym).all()
+    institutions = db.session.query(Institution).order_by(Institution.name).all()
+    aoi_groups = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
+    aois = db.session.query(AreaOfInterest).order_by(AreaOfInterest.area_of_interest).all()
+    contract_sources = db.session.query(ContractSource).order_by(ContractSource.contract_source).all()
+    contracts = (
+        db.session.query(Contract)
+        .order_by(Contract.contract_number)
+        .all()
+    )
+    nsf_programs = db.session.query(NSFProgram).order_by(NSFProgram.nsf_program_name).all()
+
+    return render_template(
+        'dashboards/admin/fragments/organization_card.html',
+        organizations=organizations,
+        institutions=institutions,
+        aoi_groups=aoi_groups,
+        aois=aois,
+        contract_sources=contract_sources,
+        contracts=contracts,
+        nsf_programs=nsf_programs,
+        is_admin=True,
+        now=datetime.now(),
+    )
+
+
+@bp.route('/htmx/organization-edit-form/<int:org_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_organization_edit_form(org_id):
+    """Return the organization edit form fragment (loaded into modal)."""
+    from sam.core.organizations import Organization
+
+    org = db.session.get(Organization, org_id)
+    if not org:
+        return '<div class="alert alert-warning">Organization not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_organization_form_htmx.html',
+        org=org,
+    )
+
+
+@bp.route('/htmx/organization-edit/<int:org_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_organization_edit(org_id):
+    """Update an organization."""
+    from sam.core.organizations import Organization
+    from sam.manage import update_organization, management_transaction
+
+    org = db.session.get(Organization, org_id)
+    if not org:
+        return '<div class="alert alert-danger">Organization not found</div>', 404
+
+    errors = []
+    name = request.form.get('name', '').strip()
+    acronym = request.form.get('acronym', '').strip()
+    description = request.form.get('description', '').strip()
+    active = bool(request.form.get('active'))
+
+    if not name:
+        errors.append('Name is required.')
+    if not acronym:
+        errors.append('Acronym is required.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_organization_form_htmx.html',
+            org=org, errors=errors, form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_organization(
+                db.session, org_id=org_id,
+                name=name, acronym=acronym,
+                description=description or None,
+                active=active,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_organization_form_htmx.html',
+            org=org, errors=[f'Error updating organization: {e}'], form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+
+
+@bp.route('/htmx/institution-edit-form/<int:inst_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_institution_edit_form(inst_id):
+    """Return the institution edit form fragment (loaded into modal)."""
+    from sam.core.organizations import Institution
+
+    institution = db.session.get(Institution, inst_id)
+    if not institution:
+        return '<div class="alert alert-warning">Institution not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_institution_form_htmx.html',
+        institution=institution,
+    )
+
+
+@bp.route('/htmx/institution-edit/<int:inst_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_institution_edit(inst_id):
+    """Update an institution."""
+    from sam.core.organizations import Institution
+    from sam.manage import update_institution, management_transaction
+
+    institution = db.session.get(Institution, inst_id)
+    if not institution:
+        return '<div class="alert alert-danger">Institution not found</div>', 404
+
+    errors = []
+    name = request.form.get('name', '').strip()
+    acronym = request.form.get('acronym', '').strip()
+
+    if not name:
+        errors.append('Name is required.')
+    if not acronym:
+        errors.append('Acronym is required.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_institution_form_htmx.html',
+            institution=institution, errors=errors, form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_institution(
+                db.session, inst_id=inst_id,
+                name=name,
+                acronym=acronym,
+                nsf_org_code=request.form.get('nsf_org_code', '').strip() or None,
+                address=request.form.get('address', '').strip() or None,
+                city=request.form.get('city', '').strip() or None,
+                zip=request.form.get('zip', '').strip() or None,
+                code=request.form.get('code', '').strip() or None,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_institution_form_htmx.html',
+            institution=institution, errors=[f'Error updating institution: {e}'], form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+
+
+@bp.route('/htmx/aoi-group-edit-form/<int:group_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_aoi_group_edit_form(group_id):
+    """Return the AOI group edit form fragment (loaded into modal)."""
+    from sam.projects.areas import AreaOfInterestGroup
+
+    group = db.session.get(AreaOfInterestGroup, group_id)
+    if not group:
+        return '<div class="alert alert-warning">AOI group not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_aoi_group_form_htmx.html',
+        group=group,
+    )
+
+
+@bp.route('/htmx/aoi-group-edit/<int:group_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_aoi_group_edit(group_id):
+    """Update an AOI group."""
+    from sam.projects.areas import AreaOfInterestGroup
+    from sam.manage import update_area_of_interest_group, management_transaction
+
+    group = db.session.get(AreaOfInterestGroup, group_id)
+    if not group:
+        return '<div class="alert alert-danger">AOI group not found</div>', 404
+
+    errors = []
+    name = request.form.get('name', '').strip()
+    active = bool(request.form.get('active'))
+
+    if not name:
+        errors.append('Name is required.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_aoi_group_form_htmx.html',
+            group=group, errors=errors, form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_area_of_interest_group(
+                db.session, group_id=group_id, name=name, active=active,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_aoi_group_form_htmx.html',
+            group=group, errors=[f'Error updating AOI group: {e}'], form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+
+
+@bp.route('/htmx/aoi-edit-form/<int:aoi_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_aoi_edit_form(aoi_id):
+    """Return the AOI edit form fragment (loaded into modal)."""
+    from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
+
+    aoi = db.session.get(AreaOfInterest, aoi_id)
+    if not aoi:
+        return '<div class="alert alert-warning">Area of interest not found</div>'
+
+    aoi_groups = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
+
+    return render_template(
+        'dashboards/admin/fragments/edit_aoi_form_htmx.html',
+        aoi=aoi,
+        aoi_groups=aoi_groups,
+    )
+
+
+@bp.route('/htmx/aoi-edit/<int:aoi_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_aoi_edit(aoi_id):
+    """Update an area of interest."""
+    from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
+    from sam.manage import update_area_of_interest, management_transaction
+
+    aoi = db.session.get(AreaOfInterest, aoi_id)
+    if not aoi:
+        return '<div class="alert alert-danger">Area of interest not found</div>', 404
+
+    errors = []
+    area_of_interest = request.form.get('area_of_interest', '').strip()
+    group_id_str = request.form.get('area_of_interest_group_id', '').strip()
+    active = bool(request.form.get('active'))
+
+    if not area_of_interest:
+        errors.append('Name is required.')
+
+    group_id = None
+    if group_id_str:
+        try:
+            group_id = int(group_id_str)
+        except ValueError:
+            errors.append('Invalid group selection.')
+    else:
+        errors.append('Group is required.')
+
+    if errors:
+        aoi_groups = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
+        return render_template(
+            'dashboards/admin/fragments/edit_aoi_form_htmx.html',
+            aoi=aoi, aoi_groups=aoi_groups, errors=errors, form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_area_of_interest(
+                db.session, aoi_id=aoi_id,
+                area_of_interest=area_of_interest,
+                area_of_interest_group_id=group_id,
+                active=active,
+            )
+    except Exception as e:
+        aoi_groups = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
+        return render_template(
+            'dashboards/admin/fragments/edit_aoi_form_htmx.html',
+            aoi=aoi, aoi_groups=aoi_groups,
+            errors=[f'Error updating area of interest: {e}'], form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+
+
+@bp.route('/htmx/contract-source-edit-form/<int:source_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_contract_source_edit_form(source_id):
+    """Return the contract source edit form fragment (loaded into modal)."""
+    from sam.projects.contracts import ContractSource
+
+    source = db.session.get(ContractSource, source_id)
+    if not source:
+        return '<div class="alert alert-warning">Contract source not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_contract_source_form_htmx.html',
+        source=source,
+    )
+
+
+@bp.route('/htmx/contract-source-edit/<int:source_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_contract_source_edit(source_id):
+    """Update a contract source."""
+    from sam.projects.contracts import ContractSource
+    from sam.manage import update_contract_source, management_transaction
+
+    source = db.session.get(ContractSource, source_id)
+    if not source:
+        return '<div class="alert alert-danger">Contract source not found</div>', 404
+
+    errors = []
+    contract_source = request.form.get('contract_source', '').strip()
+    active = bool(request.form.get('active'))
+
+    if not contract_source:
+        errors.append('Source name is required.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_contract_source_form_htmx.html',
+            source=source, errors=errors, form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_contract_source(
+                db.session, source_id=source_id,
+                contract_source=contract_source, active=active,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_contract_source_form_htmx.html',
+            source=source, errors=[f'Error updating contract source: {e}'], form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+
+
+@bp.route('/htmx/contract-edit-form/<int:contract_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_contract_edit_form(contract_id):
+    """Return the contract edit form fragment (loaded into modal)."""
+    from sam.projects.contracts import Contract
+
+    contract = db.session.get(Contract, contract_id)
+    if not contract:
+        return '<div class="alert alert-warning">Contract not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_contract_form_htmx.html',
+        contract=contract,
+    )
+
+
+@bp.route('/htmx/contract-edit/<int:contract_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_contract_edit(contract_id):
+    """Update a contract."""
+    from sam.projects.contracts import Contract
+    from sam.manage import update_contract, management_transaction
+
+    contract = db.session.get(Contract, contract_id)
+    if not contract:
+        return '<div class="alert alert-danger">Contract not found</div>', 404
+
+    errors = []
+    title = request.form.get('title', '').strip()
+    url = request.form.get('url', '').strip()
+    start_str = request.form.get('start_date', '').strip()
+    end_str = request.form.get('end_date', '').strip()
+
+    if not title:
+        errors.append('Title is required.')
+
+    start_date = None
+    if start_str:
+        try:
+            start_date = datetime.strptime(start_str, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Invalid start date format.')
+    else:
+        errors.append('Start date is required.')
+
+    end_date = None
+    if end_str:
+        try:
+            end_date = datetime.strptime(end_str, '%Y-%m-%d')
+            effective_start = start_date or contract.start_date
+            if effective_start and end_date <= effective_start:
+                errors.append('End date must be after start date.')
+        except ValueError:
+            errors.append('Invalid end date format.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_contract_form_htmx.html',
+            contract=contract, errors=errors, form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_contract(
+                db.session, contract_id=contract_id,
+                title=title,
+                url=url or None,
+                start_date=start_date,
+                end_date=end_date,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_contract_form_htmx.html',
+            contract=contract, errors=[f'Error updating contract: {e}'], form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+
+
+@bp.route('/htmx/nsf-program-edit-form/<int:nsf_program_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_nsf_program_edit_form(nsf_program_id):
+    """Return the NSF program edit form fragment (loaded into modal)."""
+    from sam.projects.contracts import NSFProgram
+
+    program = db.session.get(NSFProgram, nsf_program_id)
+    if not program:
+        return '<div class="alert alert-warning">NSF program not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/edit_nsf_program_form_htmx.html',
+        program=program,
+    )
+
+
+@bp.route('/htmx/nsf-program-edit/<int:nsf_program_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_nsf_program_edit(nsf_program_id):
+    """Update an NSF program."""
+    from sam.projects.contracts import NSFProgram
+    from sam.manage import update_nsf_program, management_transaction
+
+    program = db.session.get(NSFProgram, nsf_program_id)
+    if not program:
+        return '<div class="alert alert-danger">NSF program not found</div>', 404
+
+    errors = []
+    nsf_program_name = request.form.get('nsf_program_name', '').strip()
+    active = bool(request.form.get('active'))
+
+    if not nsf_program_name:
+        errors.append('Program name is required.')
+
+    if errors:
+        return render_template(
+            'dashboards/admin/fragments/edit_nsf_program_form_htmx.html',
+            program=program, errors=errors, form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            update_nsf_program(
+                db.session, nsf_program_id=nsf_program_id,
+                nsf_program_name=nsf_program_name, active=active,
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/edit_nsf_program_form_htmx.html',
+            program=program, errors=[f'Error updating NSF program: {e}'], form=request.form,
+        )
+
+    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')

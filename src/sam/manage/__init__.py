@@ -41,6 +41,15 @@ from .facilities import (
     update_panel_session,
     update_allocation_type,
 )
+from .organizations import (
+    update_organization,
+    update_institution,
+    update_area_of_interest_group,
+    update_area_of_interest,
+    update_contract_source,
+    update_contract,
+    update_nsf_program,
+)
 
 
 __all__ = [
@@ -64,6 +73,13 @@ __all__ = [
     'update_panel',
     'update_panel_session',
     'update_allocation_type',
+    'update_organization',
+    'update_institution',
+    'update_area_of_interest_group',
+    'update_area_of_interest',
+    'update_contract_source',
+    'update_contract',
+    'update_nsf_program',
 ]
 
 
