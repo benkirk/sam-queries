@@ -12,7 +12,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from sam.core.organizations import Organization, Institution
+from sam.core.organizations import Organization, Institution, InstitutionType
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
 from sam.projects.contracts import Contract, ContractSource, NSFProgram
 
@@ -367,3 +367,39 @@ def update_nsf_program(
 
     session.flush()
     return program
+
+
+def update_institution_type(
+    session: Session,
+    institution_type_id: int,
+    *,
+    type: Optional[str] = None,
+) -> InstitutionType:
+    """
+    Update an existing InstitutionType record.
+
+    NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+    NOTE: InstitutionType has no active flag.
+
+    Args:
+        session: SQLAlchemy session
+        institution_type_id: ID of the institution type to update
+        type: New type name (NOT NULL)
+
+    Returns:
+        The updated InstitutionType object
+
+    Raises:
+        ValueError: If institution type not found or type name is empty
+    """
+    inst_type = session.get(InstitutionType, institution_type_id)
+    if not inst_type:
+        raise ValueError(f"InstitutionType {institution_type_id} not found")
+
+    if type is not None:
+        if not type.strip():
+            raise ValueError("type name is required")
+        inst_type.type = type.strip()
+
+    session.flush()
+    return inst_type

@@ -4,6 +4,28 @@
   when the edit buttons in the Organization card are clicked.
 #}
 
+<!-- Edit Institution Type Modal -->
+<div class="modal fade" id="editInstitutionTypeModal" tabindex="-1"
+     aria-labelledby="editInstitutionTypeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editInstitutionTypeModalLabel">
+                    <i class="fas fa-tag"></i> Edit Institution Type
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="editInstitutionTypeFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Edit Organization Modal -->
 <div class="modal fade" id="editOrganizationModal" tabindex="-1"
      aria-labelledby="editOrganizationModalLabel" aria-hidden="true">

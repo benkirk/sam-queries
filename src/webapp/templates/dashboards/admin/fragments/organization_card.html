@@ -1,7 +1,7 @@
 {#
   Admin: Organization Card Body (lazy-loaded into the Organization collapsible section)
-  Contains five tabs: Organizations, Institutions, Areas (groups+AOIs combined),
-  Contracts (sources+contracts combined), NSF Programs
+  Contains five tabs: Organizations, Institutions (types+institutions combined),
+  Areas (groups+AOIs combined), Contracts (sources+contracts combined), NSF Programs
 #}
 <div class="card-body p-0">
     <!-- Tab navigation -->
@@ -20,6 +20,7 @@
                     aria-controls="institutions-pane" aria-selected="false">
                 <i class="fas fa-university me-1"></i> Institutions
                 <span class="badge bg-secondary ms-1">{{ institutions|length }}</span>
+                <span class="badge bg-light text-muted border ms-1 small">{{ institution_types|length }} types</span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -114,33 +115,65 @@
             </div>
         </div>
 
-        <!-- ── Institutions tab ───────────────────────────────────────── -->
+        <!-- ── Institutions tab (types collapsed, institutions expand on click) ── -->
         <div class="tab-pane fade" id="institutions-pane" role="tabpanel"
              aria-labelledby="institutions-tab">
             <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
+                <table class="table table-sm mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th class="sortable-header" data-sort="text">Name</th>
-                            <th class="sortable-header" data-sort="text">Acronym</th>
-                            <th class="sortable-header" data-sort="text">Type</th>
-                            <th class="sortable-header" data-sort="text">City</th>
-                            <th class="sortable-header" data-sort="text">Code</th>
-                            <th class="sortable-header" data-sort="numeric"># Users</th>
+                            <th>Name / Acronym</th>
+                            <th>City</th>
+                            <th>Code</th>
+                            <th># Users / Count</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="institutions-tbody">
-                        {% for inst in institutions %}
-                        <tr>
-                            <td data-sort-value="{{ inst.name }}">{{ inst.name }}</td>
-                            <td class="text-muted" data-sort-value="{{ inst.acronym }}">{{ inst.acronym }}</td>
-                            <td data-sort-value="{{ inst.institution_type.type if inst.institution_type else '' }}">
-                                <span class="text-muted">{{ inst.institution_type.type if inst.institution_type else '—' }}</span>
+                    {% if institution_types %}
+                    {% for it in institution_types %}
+                    {# ── Institution Type row (clickable trigger) ── #}
+                    <tbody>
+                        <tr class="cursor-pointer table-light fw-semibold"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#inst-type-{{ it.institution_type_id }}"
+                            aria-expanded="false">
+                            <td>
+                                <i class="fas fa-chevron-right small text-muted me-1 inst-type-collapse-icon"
+                                   style="transition: transform 0.2s;"></i>
+                                {{ it.type }}
                             </td>
-                            <td data-sort-value="{{ inst.city or '' }}">{{ inst.city or '—' }}</td>
-                            <td data-sort-value="{{ inst.code or '' }}">{{ inst.code or '—' }}</td>
-                            <td data-sort-value="{{ inst.users|length }}">{{ inst.users|length }}</td>
+                            <td></td>
+                            <td></td>
+                            <td class="text-muted small">{{ it.institutions|length }} institution{{ 's' if it.institutions|length != 1 else '' }}</td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editInstitutionTypeModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_institution_type_edit_form', institution_type_id=it.institution_type_id) }}"
+                                        hx-target="#editInstitutionTypeFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit institution type"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                    {# ── Institution child rows (collapsed by default) ── #}
+                    <tbody class="collapse" id="inst-type-{{ it.institution_type_id }}">
+                        {% for inst in it.institutions | sort(attribute='name') %}
+                        <tr class="table-secondary">
+                            <td class="ps-4">
+                                {{ inst.name }}
+                                {% if inst.acronym %}
+                                <span class="text-muted small ms-1">({{ inst.acronym }})</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-muted small">{{ inst.city or '—' }}</td>
+                            <td class="text-muted small">{{ inst.code or '—' }}</td>
+                            <td class="text-muted small">{{ inst.users|length }}</td>
                             <td class="text-end">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
@@ -156,9 +189,17 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="7" class="text-center text-muted py-3">No institutions found.</td></tr>
+                        <tr class="table-secondary">
+                            <td colspan="5" class="ps-4 text-muted fst-italic">No institutions of this type.</td>
+                        </tr>
                         {% endfor %}
                     </tbody>
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr><td colspan="5" class="text-center text-muted py-3">No institution types found.</td></tr>
+                    </tbody>
+                    {% endif %}
                 </table>
             </div>
         </div>
@@ -520,6 +561,7 @@
             });
         });
     }
+    attachChevronRotation('institutions-pane', 'inst-type-collapse-icon');
     attachChevronRotation('areas-pane', 'collapse-icon');
     attachChevronRotation('contracts-pane', 'contract-collapse-icon');
 })();
