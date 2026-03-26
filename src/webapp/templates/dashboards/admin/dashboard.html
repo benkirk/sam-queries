@@ -11,55 +11,34 @@
 </div>
 
 <div class="row">
-    <!-- Impersonate User Section -->
+    <!-- Search Users Section -->
     <div class="col-md-6">
         <div class="card mb-3">
             <div class="card-header">
-                <h5><i class="fas fa-user-secret"></i> Impersonate User</h5>
+                <h5><i class="fas fa-users"></i> Search Users</h5>
             </div>
             <div class="card-body">
-                <form id="impersonateUserForm" method="POST" action="{{ url_for('admin_dashboard.impersonate') }}">
-                    <div class="mb-3">
-                        <label for="userSearchImpersonate">Search for a user to impersonate</label>
-                        <input type="search" class="form-control" id="userSearchImpersonate"
-                               name="q"
-                               placeholder="Start typing a username, first, or last name..."
-                               autocomplete="off"
-                               hx-get="{{ url_for('admin_dashboard.htmx_search_users_impersonate') }}"
-                               hx-trigger="input changed delay:300ms"
-                               hx-target="#userSearchResultsImpersonate"
-                               hx-swap="innerHTML"
-                               hx-params="q">
-                        <input type="hidden" id="selectedUsernameImpersonate" name="username">
-                        <div id="userSearchResultsImpersonate" class="list-group mt-2"></div>
-                    </div>
-                    <div id="selectedUserDisplayImpersonate" class="alert alert-info dropdown-list" style="display:none;">
-                        <i class="fas fa-user-check"></i>
-                        <strong id="selectedUserNameImpersonate"></strong>
-                        <small id="selectedUserEmailImpersonate" class="text-muted ms-2"></small>
-                        <button type="button" class="btn-close float-end"
-                                onclick="clearUserImpersonate()" aria-label="Clear"></button>
-                    </div>
-                    <button type="submit" class="btn btn-primary" id="impersonateSubmitBtn" disabled>
-                        <i class="fas fa-user-secret"></i> Impersonate
-                    </button>
-                </form>
-                <script>
-                function selectUserImpersonate(username, displayName, email) {
-                    document.getElementById('selectedUsernameImpersonate').value = username;
-                    document.getElementById('selectedUserNameImpersonate').textContent = displayName + ' (' + username + ')';
-                    document.getElementById('selectedUserEmailImpersonate').textContent = email;
-                    document.getElementById('selectedUserDisplayImpersonate').style.display = 'block';
-                    document.getElementById('userSearchResultsImpersonate').innerHTML = '';
-                    document.getElementById('userSearchImpersonate').value = '';
-                    document.getElementById('impersonateSubmitBtn').disabled = false;
-                }
-                function clearUserImpersonate() {
-                    document.getElementById('selectedUsernameImpersonate').value = '';
-                    document.getElementById('selectedUserDisplayImpersonate').style.display = 'none';
-                    document.getElementById('impersonateSubmitBtn').disabled = true;
-                }
-                </script>
+                <div class="mb-3">
+                    <label for="userSearchInput">Search by username, first, or last name</label>
+                    <input type="search" class="form-control" id="userSearchInput"
+                           name="q"
+                           placeholder="Start typing a username, first, or last name..."
+                           autocomplete="off"
+                           hx-get="{{ url_for('admin_dashboard.htmx_search_users_impersonate') }}"
+                           hx-trigger="input changed delay:300ms"
+                           hx-target="#userSearchResults"
+                           hx-swap="innerHTML"
+                           hx-params="q,active_only"
+                           hx-include="#activeUsersOnly">
+                    <div id="userSearchResults" class="list-group mt-2"></div>
+                </div>
+                <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="activeUsersOnly"
+                           name="active_only" value="true" checked>
+                    <label class="form-check-label" for="activeUsersOnly">
+                        Active users only
+                    </label>
+                </div>
             </div>
         </div>
     </div>
@@ -94,6 +73,13 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- User Card Display Area -->
+<div class="row">
+    <div class="col-12">
+        <div id="userCardContainer"></div>
     </div>
 </div>
 

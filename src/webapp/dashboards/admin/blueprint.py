@@ -38,7 +38,7 @@ UPCOMING_PRESETS = {
 
 @bp.route('/')
 @login_required
-@require_permission(Permission.IMPERSONATE_USERS)
+@require_permission(Permission.EDIT_PROJECTS)
 def index():
     """
     Admin dashboard main page.
@@ -140,6 +140,27 @@ def project_card(projcode):
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
+    )
+
+
+@bp.route('/user/<username>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def user_card(username):
+    """
+    Get HTML fragment for a single user card (for admin user search).
+
+    Returns:
+        HTML user card fragment
+    """
+    sam_user = db.session.query(User).filter_by(username=username).first()
+
+    if not sam_user:
+        return '<div class="alert alert-warning">User not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/user_card_wrapper.html',
+        sam_user=sam_user
     )
 
 
@@ -394,7 +415,7 @@ def expirations_export():
 
 @bp.route('/htmx/search-users-impersonate')
 @login_required
-@require_permission(Permission.IMPERSONATE_USERS)
+@require_permission(Permission.EDIT_PROJECTS)
 def htmx_search_users_impersonate():
     """
     Search active users for impersonation, returning HTML fragments.
@@ -402,10 +423,12 @@ def htmx_search_users_impersonate():
     from sam.queries.users import search_users_by_pattern
 
     query = request.args.get('q', '').strip()
+    active_only = request.args.get('active_only', '') == 'true'
+
     if len(query) < 2:
         return ''
 
-    users = search_users_by_pattern(db.session, query, limit=20, active_only=True)
+    users = search_users_by_pattern(db.session, query, limit=20, active_only=active_only)
 
     return render_template(
         'dashboards/admin/fragments/user_search_results_htmx.html',
@@ -415,7 +438,7 @@ def htmx_search_users_impersonate():
 
 @bp.route('/htmx/search-projects')
 @login_required
-@require_permission(Permission.IMPERSONATE_USERS)
+@require_permission(Permission.EDIT_PROJECTS)
 def htmx_search_projects():
     """
     Search projects and return results as HTML fragments.
