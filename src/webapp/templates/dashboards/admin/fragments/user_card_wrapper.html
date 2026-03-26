@@ -26,8 +26,19 @@
                         <td>{{ sam_user.display_name }}</td>
                     </tr>
                     <tr>
-                        <th>Email:</th>
-                        <td>{{ sam_user.primary_email or 'N/A' }}</td>
+                        <th>Email(s):</th>
+                        <td>
+                            {% for email in sam_user.email_addresses %}
+                            <div>
+                                {{ email.email_address }}
+                                {% if email.is_primary %}
+                                <span class="badge bg-info ms-1" style="font-size:0.7em;">PRIMARY</span>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            N/A
+                            {% endfor %}
+                        </td>
                     </tr>
                     <tr>
                         <th>UID:</th>
@@ -37,6 +48,38 @@
                         <th>Primary GID:</th>
                         <td>{{ sam_user.primary_gid or 'N/A' }}</td>
                     </tr>
+                    {% if sam_user.academic_status %}
+                    <tr>
+                        <th>Academic Status:</th>
+                        <td>{{ sam_user.academic_status.description }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if sam_user.institutions %}
+                    <tr>
+                        <th>Institution(s):</th>
+                        <td>
+                            {% for ui in sam_user.institutions %}
+                            <div>{{ ui.institution.name }}
+                                {% if ui.institution.acronym %}
+                                <small class="text-muted">({{ ui.institution.acronym }})</small>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% if sam_user.organizations %}
+                    <tr>
+                        <th>Organization(s):</th>
+                        <td>
+                            {% for uo in sam_user.organizations %}
+                            <div>{{ uo.organization.name }}
+                                <small class="text-muted">({{ uo.organization.acronym }})</small>
+                            </div>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endif %}
                 </table>
             </div>
 
@@ -44,8 +87,9 @@
             <div class="col-md-6">
                 <strong>Active Projects</strong>
                 <div class="mt-2">
-                    {% if sam_user.active_projects %}
-                        {% for project in sam_user.active_projects %}
+                    {% set active_projects = sam_user.active_projects() %}
+                    {% if active_projects %}
+                        {% for project in active_projects %}
                         <a href="#"
                            class="badge bg-primary text-decoration-none me-1 mb-1"
                            hx-get="{{ url_for('admin_dashboard.project_card', projcode=project.projcode) }}"
