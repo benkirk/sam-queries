@@ -2,6 +2,13 @@
 
 This guide is optimized for navigating the `nwc1` cluster using OIDC authentication.
 
+### 🚀 Quick Start: Show & Switch Contexts
+*   **List all available contexts:** `kubectl config get-contexts`
+*   **Show your current context:** `kubectl config current-context`
+*   **Switch context:** `kubectl config use-context <context-name>` (e.g., `kubectl config use-context nwc1` or `mlc1`)
+
+---
+
 ## 1. Context & Navigation
 | Task | Command |
 | :--- | :--- |
