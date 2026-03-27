@@ -1,0 +1,11 @@
+{# htmx: queue <option> elements for the cascading resource→queue select #}
+{% if queues %}
+<option value="">-- Select a queue --</option>
+{% for queue in queues %}
+<option value="{{ queue.queue_id }}">
+    {{ queue.queue_name }}{% if queue.wall_clock_hours_limit %} (default: {{ queue.wall_clock_hours_limit }}h){% endif %}
+</option>
+{% endfor %}
+{% else %}
+<option value="">-- No queues available --</option>
+{% endif %}

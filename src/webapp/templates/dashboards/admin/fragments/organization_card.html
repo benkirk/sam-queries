@@ -1,0 +1,541 @@
+{#
+  Admin: Organization Card Body (lazy-loaded into the Organization collapsible section)
+  Contains five tabs: Organizations, Institutions (types+institutions combined),
+  Areas (groups+AOIs combined), Contracts (sources+contracts combined), NSF Programs
+#}
+<div class="card-body p-0">
+    <!-- Tab navigation -->
+    <ul class="nav nav-tabs px-3 pt-3" id="organizationsTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="orgs-tab" data-bs-toggle="tab"
+                    data-bs-target="#orgs-pane" type="button" role="tab"
+                    aria-controls="orgs-pane" aria-selected="true">
+                <i class="fas fa-sitemap me-1"></i> Organizations
+                <span class="badge bg-secondary ms-1">{{ organizations|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="institutions-tab" data-bs-toggle="tab"
+                    data-bs-target="#institutions-pane" type="button" role="tab"
+                    aria-controls="institutions-pane" aria-selected="false">
+                <i class="fas fa-university me-1"></i> Institutions
+                <span class="badge bg-secondary ms-1">{{ institutions|length }}</span>
+                <span class="badge bg-light text-muted border ms-1 small">{{ institution_types|length }} types</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="areas-tab" data-bs-toggle="tab"
+                    data-bs-target="#areas-pane" type="button" role="tab"
+                    aria-controls="areas-pane" aria-selected="false">
+                <i class="fas fa-flask me-1"></i> Areas
+                <span class="badge bg-secondary ms-1">{{ aois|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="contracts-tab" data-bs-toggle="tab"
+                    data-bs-target="#contracts-pane" type="button" role="tab"
+                    aria-controls="contracts-pane" aria-selected="false">
+                <i class="fas fa-file-signature me-1"></i> Contracts
+                <span class="badge bg-secondary ms-1">{{ contracts|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="nsf-programs-tab" data-bs-toggle="tab"
+                    data-bs-target="#nsf-programs-pane" type="button" role="tab"
+                    aria-controls="nsf-programs-pane" aria-selected="false">
+                <i class="fas fa-award me-1"></i> NSF Programs
+                <span class="badge bg-secondary ms-1">{{ nsf_programs|length }}</span>
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="organizationsTabsContent">
+
+        <!-- ── Organizations tab ──────────────────────────────────────── -->
+        <div class="tab-pane fade show active" id="orgs-pane" role="tabpanel"
+             aria-labelledby="orgs-tab">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0" id="orgs-tree-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Organization</th>
+                            <th>Description</th>
+                            <th># Users</th>
+                            <th>Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orgs-tbody">
+                        {% for org, depth, has_children in org_tree %}
+                        <tr data-org-id="{{ org.organization_id }}"
+                            data-parent-id="{{ org.parent_org_id or '' }}"
+                            {% if depth > 0 %}class="org-tree-collapsed"{% endif %}>
+                            <td style="padding-left: {{ (depth * 1.4 + 0.4) }}rem; white-space: nowrap;">
+                                {% if has_children %}
+                                <i class="fas fa-chevron-right small text-muted me-1 org-tree-chevron"
+                                   style="cursor:pointer; transition: transform 0.15s;"
+                                   onclick="toggleOrgChildren({{ org.organization_id }}, this, event)"></i>
+                                {% else %}
+                                <i class="fas fa-circle small me-1" style="font-size:0.35em; color:#ccc; vertical-align:middle;"></i>
+                                {% endif %}
+                                <span class="badge bg-light text-dark border">{{ org.acronym }}</span>
+                                <span class="ms-1">{{ org.name }}</span>
+                            </td>
+                            <td class="text-muted small">{{ org.description or '—' }}</td>
+                            <td>{{ org.users|length }}</td>
+                            <td>
+                                {% if org.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editOrganizationModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_organization_edit_form', org_id=org.organization_id) }}"
+                                        hx-target="#editOrganizationFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit organization">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-3">No organizations found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Institutions tab (types collapsed, institutions expand on click) ── -->
+        <div class="tab-pane fade" id="institutions-pane" role="tabpanel"
+             aria-labelledby="institutions-tab">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name / Acronym</th>
+                            <th>City</th>
+                            <th>Code</th>
+                            <th># Users / Count</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    {% if institution_types %}
+                    {% for it in institution_types %}
+                    {# ── Institution Type row (clickable trigger) ── #}
+                    <tbody>
+                        <tr class="cursor-pointer table-light fw-semibold"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#inst-type-{{ it.institution_type_id }}"
+                            aria-expanded="false">
+                            <td>
+                                <i class="fas fa-chevron-right small text-muted me-1 inst-type-collapse-icon"
+                                   style="transition: transform 0.2s;"></i>
+                                {{ it.type }}
+                            </td>
+                            <td></td>
+                            <td></td>
+                            <td class="text-muted small">{{ it.institutions|length }} institution{{ 's' if it.institutions|length != 1 else '' }}</td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editInstitutionTypeModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_institution_type_edit_form', institution_type_id=it.institution_type_id) }}"
+                                        hx-target="#editInstitutionTypeFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit institution type"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                    {# ── Institution child rows (collapsed by default) ── #}
+                    <tbody class="collapse" id="inst-type-{{ it.institution_type_id }}">
+                        {% for inst in it.institutions | sort(attribute='name') %}
+                        <tr class="table-secondary">
+                            <td class="ps-4">
+                                {{ inst.name }}
+                                {% if inst.acronym %}
+                                <span class="text-muted small ms-1">({{ inst.acronym }})</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-muted small">{{ inst.city or '—' }}</td>
+                            <td class="text-muted small">{{ inst.code or '—' }}</td>
+                            <td class="text-muted small">{{ inst.users|length }}</td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editInstitutionModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_institution_edit_form', inst_id=inst.institution_id) }}"
+                                        hx-target="#editInstitutionFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit institution">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr class="table-secondary">
+                            <td colspan="5" class="ps-4 text-muted fst-italic">No institutions of this type.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr><td colspan="5" class="text-center text-muted py-3">No institution types found.</td></tr>
+                    </tbody>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Areas tab (groups collapsed, AOIs expand on click) ───────── -->
+        <div class="tab-pane fade" id="areas-pane" role="tabpanel"
+             aria-labelledby="areas-tab">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Count</th>
+                            <th>Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    {% if aoi_groups %}
+                    {% for g in aoi_groups %}
+                    {# ── Group row (clickable trigger) ── #}
+                    <tbody>
+                        <tr class="cursor-pointer table-light fw-semibold"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#aoi-group-{{ g.area_of_interest_group_id }}"
+                            aria-expanded="false">
+                            <td>
+                                <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"
+                                   style="transition: transform 0.2s;"></i>
+                                {{ g.name }}
+                            </td>
+                            <td class="text-muted small">{{ g.areas|length }} area{{ 's' if g.areas|length != 1 else '' }}</td>
+                            <td>
+                                {% if g.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editAoiGroupModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_aoi_group_edit_form', group_id=g.area_of_interest_group_id) }}"
+                                        hx-target="#editAoiGroupFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit group"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                    {# ── AOI child rows (collapsed by default) ── #}
+                    <tbody class="collapse" id="aoi-group-{{ g.area_of_interest_group_id }}">
+                        {% for a in aois | selectattr('area_of_interest_group_id', 'equalto', g.area_of_interest_group_id) | list | sort(attribute='area_of_interest') %}
+                        <tr class="table-secondary">
+                            <td class="ps-4">{{ a.area_of_interest }}</td>
+                            <td class="text-muted small">{{ a.projects|length }} project{{ 's' if a.projects|length != 1 else '' }}</td>
+                            <td>
+                                {% if a.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editAoiModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_aoi_edit_form', aoi_id=a.area_of_interest_id) }}"
+                                        hx-target="#editAoiFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit area of interest">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr class="table-secondary">
+                            <td colspan="4" class="ps-4 text-muted fst-italic">No areas in this group.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr><td colspan="4" class="text-center text-muted py-3">No AOI groups found.</td></tr>
+                    </tbody>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Contracts tab (sources collapsed, contracts expand on click) ── -->
+        <div class="tab-pane fade" id="contracts-pane" role="tabpanel"
+             aria-labelledby="contracts-tab">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name / Number</th>
+                            <th>Title / Count</th>
+                            <th>PI</th>
+                            <th>Start Date</th>
+                            <th>End Date</th>
+                            <th>Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    {% if contract_sources %}
+                    {% for cs in contract_sources %}
+                    {# ── Source row (clickable trigger) ── #}
+                    <tbody>
+                        <tr class="cursor-pointer table-light fw-semibold"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#contract-source-{{ cs.contract_source_id }}"
+                            aria-expanded="false">
+                            <td>
+                                <i class="fas fa-chevron-right small text-muted me-1 contract-collapse-icon"
+                                   style="transition: transform 0.2s;"></i>
+                                {{ cs.contract_source }}
+                            </td>
+                            {% set cs_contracts = contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list %}
+                            <td class="text-muted small">{{ cs_contracts|length }} contract{{ 's' if cs_contracts|length != 1 else '' }}</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td>
+                                {% if cs.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editContractSourceModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_contract_source_edit_form', source_id=cs.contract_source_id) }}"
+                                        hx-target="#editContractSourceFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit source"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                    {# ── Contract child rows (collapsed by default) ── #}
+                    <tbody class="collapse" id="contract-source-{{ cs.contract_source_id }}">
+                        {% for c in contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list | sort(attribute='contract_number') %}
+                        <tr class="table-secondary">
+                            <td class="ps-4 fw-semibold text-nowrap">{{ c.contract_number }}</td>
+                            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                                title="{{ c.title }}">{{ c.title }}</td>
+                            <td class="text-muted small text-nowrap">
+                                {{ c.principal_investigator.username if c.principal_investigator else '—' }}
+                            </td>
+                            <td class="text-muted small text-nowrap">
+                                {{ c.start_date.strftime('%Y-%m-%d') if c.start_date else '—' }}
+                            </td>
+                            <td class="text-muted small text-nowrap">
+                                {{ c.end_date.strftime('%Y-%m-%d') if c.end_date else '—' }}
+                            </td>
+                            <td>
+                                {% if c.is_active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editContractModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_contract_edit_form', contract_id=c.contract_id) }}"
+                                        hx-target="#editContractFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit contract">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr class="table-secondary">
+                            <td colspan="7" class="ps-4 text-muted fst-italic">No contracts for this source.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr><td colspan="7" class="text-center text-muted py-3">No contract sources found.</td></tr>
+                    </tbody>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        <!-- ── NSF Programs tab ───────────────────────────────────────── -->
+        <div class="tab-pane fade" id="nsf-programs-pane" role="tabpanel"
+             aria-labelledby="nsf-programs-tab">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable-header" data-sort="text">Program Name</th>
+                            <th class="sortable-header" data-sort="numeric"># Contracts</th>
+                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="nsf-programs-tbody">
+                        {% for p in nsf_programs %}
+                        <tr>
+                            <td data-sort-value="{{ p.nsf_program_name }}">{{ p.nsf_program_name }}</td>
+                            <td data-sort-value="{{ p.contracts|length }}">{{ p.contracts|length }}</td>
+                            <td data-sort-value="{{ 'Active' if p.active else 'Inactive' }}">
+                                {% if p.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editNsfProgramModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_nsf_program_edit_form', nsf_program_id=p.nsf_program_id) }}"
+                                        hx-target="#editNsfProgramFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit NSF program">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">No NSF programs found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>{# tab-content #}
+</div>{# card-body #}
+
+<script>
+(function() {
+    // ── Organization tree expand/collapse ─────────────────────────────────
+
+    function collapseOrgDescendants(parentOrgId) {
+        document.querySelectorAll('#orgs-tbody tr[data-parent-id="' + parentOrgId + '"]').forEach(function(row) {
+            row.classList.add('org-tree-collapsed');
+            row.style.display = 'none';
+            var childId = row.dataset.orgId;
+            var chevron = row.querySelector('.org-tree-chevron');
+            if (chevron) chevron.style.transform = '';
+            collapseOrgDescendants(childId);
+        });
+    }
+
+    function toggleOrgChildren(orgId, iconEl, event) {
+        event.stopPropagation();
+        var isExpanding = iconEl.style.transform !== 'rotate(90deg)';
+        iconEl.style.transform = isExpanding ? 'rotate(90deg)' : '';
+        document.querySelectorAll('#orgs-tbody tr[data-parent-id="' + orgId + '"]').forEach(function(row) {
+            if (isExpanding) {
+                row.classList.remove('org-tree-collapsed');
+                row.style.display = '';
+            } else {
+                row.classList.add('org-tree-collapsed');
+                row.style.display = 'none';
+                collapseOrgDescendants(row.dataset.orgId);
+                var childChevron = row.querySelector('.org-tree-chevron');
+                if (childChevron) childChevron.style.transform = '';
+            }
+        });
+    }
+    window.toggleOrgChildren = toggleOrgChildren;
+
+    function attachSorting(table) {
+        table.querySelectorAll('th.sortable-header').forEach(function(th) {
+            th.addEventListener('click', function() {
+                var colIndex = Array.from(th.parentNode.children).indexOf(th);
+                var sortType = th.dataset.sort;
+                var isAsc = !th.classList.contains('sort-asc');
+                table.querySelectorAll('th').forEach(function(h) {
+                    h.classList.remove('sort-asc', 'sort-desc');
+                });
+                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+                var tbody = table.querySelector('tbody');
+                var rows = Array.from(tbody.querySelectorAll('tr'));
+                rows.sort(function(a, b) {
+                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
+                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    if (sortType === 'numeric') {
+                        aVal = parseFloat(aVal) || 0;
+                        bVal = parseFloat(bVal) || 0;
+                        return isAsc ? aVal - bVal : bVal - aVal;
+                    }
+                    aVal = String(aVal || '').toLowerCase();
+                    bVal = String(bVal || '').toLowerCase();
+                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                });
+                rows.forEach(function(r) { tbody.appendChild(r); });
+            });
+        });
+    }
+
+    document.querySelectorAll('#organizationsTabsContent table').forEach(attachSorting);
+
+    // Chevron rotation helper
+    function attachChevronRotation(paneId, iconClass) {
+        document.querySelectorAll('#' + paneId + ' [data-bs-toggle="collapse"]').forEach(function(trigger) {
+            var target = document.querySelector(trigger.dataset.bsTarget);
+            if (!target) return;
+            var icon = trigger.querySelector('.' + iconClass);
+            if (!icon) return;
+            target.addEventListener('show.bs.collapse', function() {
+                icon.style.transform = 'rotate(90deg)';
+            });
+            target.addEventListener('hide.bs.collapse', function() {
+                icon.style.transform = '';
+            });
+        });
+    }
+    attachChevronRotation('institutions-pane', 'inst-type-collapse-icon');
+    attachChevronRotation('areas-pane', 'collapse-icon');
+    attachChevronRotation('contracts-pane', 'contract-collapse-icon');
+})();
+</script>

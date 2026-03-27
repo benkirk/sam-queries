@@ -25,6 +25,32 @@ from .summaries import (
     upsert_disk_charge_summary,
     upsert_archive_charge_summary,
 )
+from .exemptions import (
+    create_wallclock_exemption,
+    update_wallclock_exemption,
+)
+from .resources import (
+    update_resource,
+    update_resource_type,
+    update_machine,
+    update_queue,
+)
+from .facilities import (
+    update_facility,
+    update_panel,
+    update_panel_session,
+    update_allocation_type,
+)
+from .organizations import (
+    update_organization,
+    update_institution,
+    update_institution_type,
+    update_area_of_interest_group,
+    update_area_of_interest,
+    update_contract_source,
+    update_contract,
+    update_nsf_program,
+)
 
 
 __all__ = [
@@ -38,6 +64,24 @@ __all__ = [
     'upsert_comp_charge_summary',
     'upsert_disk_charge_summary',
     'upsert_archive_charge_summary',
+    'create_wallclock_exemption',
+    'update_wallclock_exemption',
+    'update_resource',
+    'update_resource_type',
+    'update_machine',
+    'update_queue',
+    'update_facility',
+    'update_panel',
+    'update_panel_session',
+    'update_allocation_type',
+    'update_organization',
+    'update_institution',
+    'update_institution_type',
+    'update_area_of_interest_group',
+    'update_area_of_interest',
+    'update_contract_source',
+    'update_contract',
+    'update_nsf_program',
 ]
 
 

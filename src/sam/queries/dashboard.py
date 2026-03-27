@@ -217,7 +217,7 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
         }
 
     # Get active projects
-    projects = user.active_projects
+    projects = user.active_projects()
 
     # Build project data using helper function to avoid code duplication
     project_data_list = []

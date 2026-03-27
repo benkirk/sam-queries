@@ -80,7 +80,7 @@ sam-queries/
 
 ### Core Models
 - **User** (`users`): System users with UPID, unix_uid
-  - Properties: `primary_email`, `all_emails`, `full_name`, `display_name`, `active_projects`, `all_projects`
+  - Properties: `primary_email`, `all_emails`, `full_name`, `display_name`, `all_projects`
   - Class methods: `get_by_username(session, username)`
   - Relationships: `email_addresses`, `projects`, `accounts`
 
@@ -474,7 +474,7 @@ usage_no_adj = project.get_detailed_allocation_usage(include_adjustments=False)
 ```python
 # Get user's active projects
 user = User.get_by_username(session, 'benkirk')
-for project in user.active_projects:
+for project in user.active_projects():
     print(f"{project.projcode}: {project.title}")
 
 # Get all projects (including inactive)

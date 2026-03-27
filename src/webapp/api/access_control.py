@@ -52,7 +52,7 @@ def _user_can_access_project(user, project) -> bool:
         return False
 
     # Build set of all user's project IDs
-    user_projects = {p.project_id for p in user.active_projects}
+    user_projects = {p.project_id for p in user.active_projects()}
     user_projects.update({p.project_id for p in user.led_projects})
     user_projects.update({p.project_id for p in user.admin_projects})
 

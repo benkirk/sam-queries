@@ -57,7 +57,7 @@ def _user_can_access_project(project):
         return False
 
     # Check if user is a member of the project
-    user_projects = {p.project_id for p in sam_user.active_projects}
+    user_projects = {p.project_id for p in sam_user.active_projects()}
     user_projects.update({p.project_id for p in sam_user.led_projects})
     user_projects.update({p.project_id for p in sam_user.admin_projects})
 

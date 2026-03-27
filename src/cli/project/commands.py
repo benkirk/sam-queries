@@ -127,7 +127,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
 
                     for user in track(all_users, description="Determining abandoned users..."):
                         user_projects = set()
-                        for proj in user.active_projects:
+                        for proj in user.active_projects():
                             user_projects.add(proj.projcode)
                         if user_projects.issubset(expiring_projects):
                             abandoned_users.add(user)

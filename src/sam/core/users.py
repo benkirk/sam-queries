@@ -393,30 +393,35 @@ class User(Base, TimestampMixin):
         """Return all projects (including inactive), deduplicated."""
         return list({p for p in self._projects_w_dups if p is not None})
 
-    @property
-    def active_projects(self) -> List['Project']:
-        """Return only active projects, deduplicated."""
-        return [p for p in self.all_projects if p.active]
+    def active_projects(self, as_of: Optional[datetime] = None) -> List['Project']:
+        """Return projects where the user has active (non-expired) membership and the project is active."""
+        check_date = as_of or datetime.now()
+        projects = set()
+        for au in self.accounts:
+            if au.end_date is None or au.end_date >= check_date:
+                project = au.account.project if au.account else None
+                if project is not None and project.active:
+                    projects.add(project)
+        return list(projects)
 
     @property
     def projects(self) -> List['Project']:
         """Return active projects (default)."""
-        return self.active_projects
+        return self.active_projects()
 
-    @property
-    def active_account_users(self) -> List['AccountUser']:
+    def active_account_users(self, as_of: Optional[datetime] = None) -> List['AccountUser']:
         """Get currently active account users."""
-        now = datetime.now()
+        check_date = as_of or datetime.now()
         return [
             au for account in self.accounts
             for au in account.users
-            if au.end_date is None or au.end_date >= now
+            if au.end_date is None or au.end_date >= check_date
         ]
 
     @property
     def users(self) -> List['User']:
         """Return deduplicated list of active users."""
-        return list({au.user for au in self.active_account_users if au.user})
+        return list({au.user for au in self.active_account_users() if au.user})
 
     @property
     def full_name(self) -> str:

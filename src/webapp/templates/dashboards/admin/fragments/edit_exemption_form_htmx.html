@@ -1,0 +1,83 @@
+{#
+  htmx: Edit Wallclock Exemption Form (loaded into #editExemptionFormContainer)
+  Resource, queue, and start_date are read-only. Only end_date, time_limit_hours,
+  and comment may be changed.
+#}
+
+<form hx-post="{{ url_for('admin_dashboard.htmx_edit_exemption', exemption_id=exemption.wallclock_exemption_id) }}"
+      hx-target="#editExemptionFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+    <div class="modal-body">
+        <!-- Resource / Queue (read-only) -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Resource</label>
+                <div class="form-control-plaintext">
+                    <strong>{{ exemption.queue.resource.resource_name }}</strong>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Queue</label>
+                <div class="form-control-plaintext">
+                    <strong>{{ exemption.queue.queue_name }}</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Start date (read-only) -->
+        <div class="mb-3">
+            <label class="form-label">Start Date</label>
+            <div class="form-control-plaintext text-muted">
+                {{ exemption.start_date.strftime('%Y-%m-%d') }}
+                <small>(cannot be changed)</small>
+            </div>
+        </div>
+
+        <!-- End date -->
+        <div class="mb-3">
+            <label for="editExemptionEndDate" class="form-label">
+                End Date <span class="text-danger">*</span>
+            </label>
+            <input type="date" class="form-control" id="editExemptionEndDate"
+                   name="end_date" required
+                   value="{{ form.get('end_date') if form else exemption.end_date.strftime('%Y-%m-%d') }}">
+        </div>
+
+        <!-- Time limit -->
+        <div class="mb-3">
+            <label for="editExemptionLimit" class="form-label">
+                Time Limit (hours) <span class="text-danger">*</span>
+            </label>
+            <input type="number" class="form-control" id="editExemptionLimit"
+                   name="time_limit_hours" required
+                   step="0.5" min="0.5"
+                   value="{{ form.get('time_limit_hours') if form else exemption.time_limit_hours }}">
+        </div>
+
+        <!-- Comment -->
+        <div class="mb-3">
+            <label for="editExemptionComment" class="form-label">
+                Comment <span class="text-muted">(optional)</span>
+            </label>
+            <textarea class="form-control" id="editExemptionComment" name="comment" rows="2"
+                      placeholder="Reason for exemption...">{{ form.get('comment') if form else (exemption.comment or '') }}</textarea>
+        </div>
+
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for error in errors %}
+            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-warning">
+            <i class="fas fa-save"></i> Save Changes
+        </button>
+    </div>
+</form>

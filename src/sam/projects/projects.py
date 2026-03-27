@@ -205,20 +205,19 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     #     """Return a deduplicated list of active users on this project."""
     #     return list({au.user for au in self.account_users if au.user is not None})
 
-    @property
-    def active_account_users(self) -> List['AccountUser']:
+    def active_account_users(self, as_of: Optional[datetime] = None) -> List['AccountUser']:
         """Get currently active account users."""
-        now = datetime.now()
+        check_date = as_of or datetime.now()
         return [
             au for account in self.accounts
             for au in account.users
-            if au.end_date is None or au.end_date >= now
+            if au.end_date is None or au.end_date >= check_date
         ]
 
     @property
     def users(self) -> List['User']:
         """Return deduplicated list of active users."""
-        return list({au.user for au in self.active_account_users if au.user})
+        return list({au.user for au in self.active_account_users() if au.user})
 
     @property
     def roster(self) -> List['User']:
