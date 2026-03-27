@@ -57,7 +57,7 @@ def _user_can_access_project(project):
         return False
 
     # Check if user is a member of the project
-    user_projects = {p.project_id for p in sam_user.active_projects}
+    user_projects = {p.project_id for p in sam_user.active_projects()}
     user_projects.update({p.project_id for p in sam_user.led_projects})
     user_projects.update({p.project_id for p in sam_user.admin_projects})
 
@@ -293,7 +293,7 @@ def get_project_allocations(projcode):
     # Get accounts with allocations
     query = db.session.query(Account).filter(
         Account.project_id == project.project_id,
-        Account.deleted == False
+        Account.is_active
     )
 
     if resource_name:

@@ -393,30 +393,35 @@ class User(Base, TimestampMixin):
         """Return all projects (including inactive), deduplicated."""
         return list({p for p in self._projects_w_dups if p is not None})
 
-    @property
-    def active_projects(self) -> List['Project']:
-        """Return only active projects, deduplicated."""
-        return [p for p in self.all_projects if p.active]
+    def active_projects(self, as_of: Optional[datetime] = None) -> List['Project']:
+        """Return projects where the user has active (non-expired) membership and the project is active."""
+        check_date = as_of or datetime.now()
+        projects = set()
+        for au in self.accounts:
+            if au.end_date is None or au.end_date >= check_date:
+                project = au.account.project if au.account else None
+                if project is not None and project.active:
+                    projects.add(project)
+        return list(projects)
 
     @property
     def projects(self) -> List['Project']:
         """Return active projects (default)."""
-        return self.active_projects
+        return self.active_projects()
 
-    @property
-    def active_account_users(self) -> List['AccountUser']:
+    def active_account_users(self, as_of: Optional[datetime] = None) -> List['AccountUser']:
         """Get currently active account users."""
-        now = datetime.now()
+        check_date = as_of or datetime.now()
         return [
             au for account in self.accounts
             for au in account.users
-            if au.end_date is None or au.end_date >= now
+            if au.end_date is None or au.end_date >= check_date
         ]
 
     @property
     def users(self) -> List['User']:
         """Return deduplicated list of active users."""
-        return list({au.user for au in self.active_account_users if au.user})
+        return list({au.user for au in self.active_account_users() if au.user})
 
     @property
     def full_name(self) -> str:
@@ -479,6 +484,21 @@ class User(Base, TimestampMixin):
     @is_accessible.expression
     def is_accessible(cls):
         """Check if user can access the system (SQL side)."""
+        return and_(cls.active == True, cls.locked == False)
+
+    def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
+        """Check if user is active at a given date (date-insensitive).
+        A user is active if the active flag is set and the account is not locked."""
+        return bool(self.active) and not bool(self.locked)
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if user is currently active (Python side). Equivalent to is_accessible."""
+        return bool(self.active) and not bool(self.locked)
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if user is currently active (SQL side). Equivalent to is_accessible."""
         return and_(cls.active == True, cls.locked == False)
 
     def __str__(self):
@@ -545,6 +565,20 @@ class EmailAddress(Base, TimestampMixin):
     active = Column(Boolean)
 
     user = relationship('User', back_populates='email_addresses')
+
+    def is_active_at(self, check_date=None) -> bool:
+        """Check if email address is active (date-insensitive). None is treated as active."""
+        return self.active is None or bool(self.active)
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if email address is active (Python side). None is treated as active."""
+        return self.active is None or bool(self.active)
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if email address is active (SQL side). None is treated as active."""
+        return or_(cls.active.is_(None), cls.active == True)
 
     def __str__(self):
         return f"{self.email_address}"
@@ -671,6 +705,20 @@ class AcademicStatus(Base, TimestampMixin, SoftDeleteMixin, ActiveFlagMixin):
     description = Column(String(100), nullable=False)
 
     users = relationship('User', back_populates='academic_status')
+
+    def is_active_at(self, check_date=None) -> bool:
+        """Check if academic status is active (date-insensitive). Must be active AND not deleted."""
+        return bool(self.active) and not bool(self.deleted)
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if academic status is active (Python side). Must be active AND not deleted."""
+        return bool(self.active) and not bool(self.deleted)
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if academic status is active (SQL side). Must be active AND not deleted."""
+        return and_(cls.active == True, cls.deleted == False)
 
     def __str__(self):
         return f"{self.academic_status_code}"

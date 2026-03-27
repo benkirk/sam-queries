@@ -1,0 +1,113 @@
+{#
+  htmx: Add Wallclock Exemption Form (loaded into #addExemptionFormContainer)
+  Resource → Queue cascading via HTMX.
+  Submission replaces this container; on success a script closes the modal.
+#}
+
+<form hx-post="{{ url_for('admin_dashboard.htmx_add_exemption', username=sam_user.username) }}"
+      hx-target="#addExemptionFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+    <div class="modal-body">
+        <!-- User (read-only) -->
+        <div class="mb-3">
+            <label class="form-label">User</label>
+            <div class="form-control-plaintext">
+                <strong>{{ sam_user.display_name }}</strong>
+                <span class="text-muted">({{ sam_user.username }})</span>
+            </div>
+        </div>
+
+        <!-- Resource -->
+        <div class="mb-3">
+            <label for="exemptionResource" class="form-label">
+                Resource <span class="text-danger">*</span>
+            </label>
+            <select class="form-select" id="exemptionResource" name="resource_id" required
+                    hx-get="{{ url_for('admin_dashboard.htmx_queues_for_resource') }}"
+                    hx-trigger="change"
+                    hx-target="#exemptionQueueSelect"
+                    hx-swap="innerHTML"
+                    hx-include="[name='resource_id']">
+                <option value="">-- Select a resource --</option>
+                {% for resource in resources %}
+                <option value="{{ resource.resource_id }}"
+                    {% if form and form.get('resource_id') == resource.resource_id|string %}selected{% endif %}>
+                    {{ resource.resource_name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Queue (populated by HTMX on resource change) -->
+        <div class="mb-3">
+            <label for="exemptionQueueSelect" class="form-label">
+                Queue <span class="text-danger">*</span>
+            </label>
+            <select class="form-select" id="exemptionQueueSelect" name="queue_id" required>
+                <option value="">-- Select a resource first --</option>
+            </select>
+        </div>
+
+        <!-- Date range -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="exemptionStartDate" class="form-label">
+                        Start Date <span class="text-danger">*</span>
+                    </label>
+                    <input type="date" class="form-control" id="exemptionStartDate"
+                           name="start_date" required
+                           value="{{ form.get('start_date') if form else today }}">
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="exemptionEndDate" class="form-label">
+                        End Date <span class="text-danger">*</span>
+                    </label>
+                    <input type="date" class="form-control" id="exemptionEndDate"
+                           name="end_date" required
+                           value="{{ form.get('end_date') if form else '' }}">
+                </div>
+            </div>
+        </div>
+
+        <!-- Time limit -->
+        <div class="mb-3">
+            <label for="exemptionLimit" class="form-label">
+                Time Limit (hours) <span class="text-danger">*</span>
+            </label>
+            <input type="number" class="form-control" id="exemptionLimit"
+                   name="time_limit_hours" required
+                   step="0.5" min="0.5"
+                   value="{{ form.get('time_limit_hours') if form else '' }}"
+                   placeholder="e.g. 48">
+        </div>
+
+        <!-- Comment -->
+        <div class="mb-3">
+            <label for="exemptionComment" class="form-label">
+                Comment <span class="text-muted">(optional)</span>
+            </label>
+            <textarea class="form-control" id="exemptionComment" name="comment" rows="2"
+                      placeholder="Reason for exemption...">{{ form.get('comment') if form else '' }}</textarea>
+        </div>
+
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for error in errors %}
+            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-success">
+            <i class="fas fa-plus"></i> Add Exemption
+        </button>
+    </div>
+</form>

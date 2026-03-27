@@ -1,14 +1,37 @@
-{# htmx: User search results for impersonation #}
+{# htmx: User search results — clicking a user loads their card; impersonate icon is permission-gated #}
 {% if users %}
 {% for user in users %}
-<a href="#" class="list-group-item list-group-item-action"
-   onclick="selectUserImpersonate('{{ user.username }}', '{{ user.display_name|e }}', '{{ user.primary_email or '' }}'); return false;">
-    <strong>{{ user.display_name }}</strong>
-    <small class="text-muted">({{ user.username }})</small>
-    {% if user.primary_email %}
-    <br><small class="text-muted">{{ user.primary_email }}</small>
+<div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-2">
+    <!-- Left: click to load user card -->
+    <a href="#" class="flex-grow-1 text-decoration-none {% if not user.active %}text-muted{% else %}text-body{% endif %}"
+       hx-get="{{ url_for('admin_dashboard.user_card', username=user.username) }}"
+       hx-target="#userCardContainer"
+       hx-swap="innerHTML"
+       hx-on::after-request="document.getElementById('userSearchResults').innerHTML = ''; document.getElementById('userSearchInput').value = '';">
+        <div>
+            <strong>{{ user.display_name }}</strong>
+            <small class="ms-1 {% if not user.active %}text-muted{% endif %}">({{ user.username }})</small>
+            {% if not user.active %}
+            <span class="badge bg-secondary ms-1">Inactive</span>
+            {% elif user.locked %}
+            <span class="badge bg-warning ms-1">Locked</span>
+            {% endif %}
+        </div>
+        {% if user.primary_email %}
+        <small class="text-muted">{{ user.primary_email }}</small>
+        {% endif %}
+    </a>
+    <!-- Right: impersonate icon (only for IMPERSONATE_USERS) -->
+    {% if has_permission(Permission.IMPERSONATE_USERS) %}
+    <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}" class="ms-2"
+          onsubmit="return confirm('Impersonate {{ user.display_name|e }} ({{ user.username }})?');">
+        <input type="hidden" name="username" value="{{ user.username }}">
+        <button type="submit" class="btn btn-sm btn-outline-warning" title="Impersonate {{ user.username }}">
+            <i class="fas fa-user-secret"></i>
+        </button>
+    </form>
     {% endif %}
-</a>
+</div>
 {% endfor %}
 {% else %}
 <div class="list-group-item text-muted">No users found</div>

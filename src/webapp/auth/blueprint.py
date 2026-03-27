@@ -21,8 +21,9 @@ def login():
     """
     # Redirect if already logged in
     if current_user.is_authenticated:
-        if 'admin' in current_user.roles:
-            return redirect(url_for('admin.index'))
+        # Redirect based on user role
+        if 'admin' in auth_user.roles:
+            return redirect(url_for('admin_dashboard.index'))
         else:
             return redirect(url_for('user_dashboard.index'))
 
@@ -53,7 +54,7 @@ def login():
 
             # Redirect based on user role
             if 'admin' in auth_user.roles:
-                return redirect(url_for('admin.index'))
+                return redirect(url_for('admin_dashboard.index'))
             else:
                 return redirect(url_for('user_dashboard.index'))
         else:
@@ -72,8 +73,8 @@ def logout():
     """Logout current user and redirect to login (for user switching)."""
     username = current_user.username
     logout_user()
-    flash(f'Logged out {username}. Select a different user below to switch.', 'info')
-    return redirect(url_for('auth.login'))
+    flash(f'Logged out {username}.', 'info')
+    return redirect(url_for('status_dashboard.index'))
 
 
 @bp.route('/profile')

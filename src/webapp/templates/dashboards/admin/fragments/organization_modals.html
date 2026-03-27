@@ -1,0 +1,181 @@
+{#
+  Admin: Organization Management Modals
+  These containers live in the page DOM so HTMX can load edit forms into them
+  when the edit buttons in the Organization card are clicked.
+#}
+
+<!-- Edit Institution Type Modal -->
+<div class="modal fade" id="editInstitutionTypeModal" tabindex="-1"
+     aria-labelledby="editInstitutionTypeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editInstitutionTypeModalLabel">
+                    <i class="fas fa-tag"></i> Edit Institution Type
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="editInstitutionTypeFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Organization Modal -->
+<div class="modal fade" id="editOrganizationModal" tabindex="-1"
+     aria-labelledby="editOrganizationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editOrganizationModalLabel">
+                    <i class="fas fa-sitemap"></i> Edit Organization
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="editOrganizationFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Institution Modal -->
+<div class="modal fade" id="editInstitutionModal" tabindex="-1"
+     aria-labelledby="editInstitutionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editInstitutionModalLabel">
+                    <i class="fas fa-university"></i> Edit Institution
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="editInstitutionFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit AOI Group Modal -->
+<div class="modal fade" id="editAoiGroupModal" tabindex="-1"
+     aria-labelledby="editAoiGroupModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editAoiGroupModalLabel">
+                    <i class="fas fa-folder"></i> Edit AOI Group
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="editAoiGroupFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit AOI Modal -->
+<div class="modal fade" id="editAoiModal" tabindex="-1"
+     aria-labelledby="editAoiModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editAoiModalLabel">
+                    <i class="fas fa-flask"></i> Edit Area of Interest
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="editAoiFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Contract Source Modal -->
+<div class="modal fade" id="editContractSourceModal" tabindex="-1"
+     aria-labelledby="editContractSourceModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editContractSourceModalLabel">
+                    <i class="fas fa-file-contract"></i> Edit Contract Source
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="editContractSourceFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Contract Modal -->
+<div class="modal fade" id="editContractModal" tabindex="-1"
+     aria-labelledby="editContractModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editContractModalLabel">
+                    <i class="fas fa-file-signature"></i> Edit Contract
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="editContractFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit NSF Program Modal -->
+<div class="modal fade" id="editNsfProgramModal" tabindex="-1"
+     aria-labelledby="editNsfProgramModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editNsfProgramModalLabel">
+                    <i class="fas fa-award"></i> Edit NSF Program
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="editNsfProgramFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

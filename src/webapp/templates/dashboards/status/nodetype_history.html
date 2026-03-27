@@ -18,33 +18,13 @@
     </p>
 </div>
 
-<!-- Time Range Selector -->
-<div class="card mb-4">
-    <div class="card-header">
-        <h5 class="mb-0">
-            <i class="fas fa-calendar"></i> Time Range
-        </h5>
-    </div>
-    <div class="card-body">
-        <form method="GET" action="{% if is_partition %}{{ url_for('status_dashboard.partition_history', system=system, partition=partition) }}{% else %}{{ url_for('status_dashboard.nodetype_history', system=system, node_type=node_type) }}{% endif %}" class="form-inline">
-            <label for="days" class="me-2">Show Last:</label>
-            <select id="days" name="days" class="form-control form-control-sm me-3">
-                <option value="1" {% if days == 1 %}selected{% endif %}>24 Hours</option>
-                <option value="3" {% if days == 3 %}selected{% endif %}>3 Days</option>
-                <option value="7" {% if days == 7 %}selected{% endif %}>7 Days</option>
-                <option value="14" {% if days == 14 %}selected{% endif %}>14 Days</option>
-                <option value="30" {% if days == 30 %}selected{% endif %}>30 Days</option>
-            </select>
-
-            <button type="submit" class="btn btn-sm btn-primary">
-                <i class="fas fa-sync"></i> Update Range
-            </button>
-        </form>
-        <small class="text-muted mt-2 d-block">
-            Showing data from {{ start_date.strftime('%Y-%m-%d %H:%M') }} to {{ end_date.strftime('%Y-%m-%d %H:%M') }}
-        </small>
-    </div>
-</div>
+{% from 'dashboards/fragments/time_range_picker.html' import time_range_picker %}
+{{ time_range_picker(
+    action=url_for('status_dashboard.partition_history', system=system, partition=partition) if is_partition else url_for('status_dashboard.nodetype_history', system=system, node_type=node_type),
+    hours=hours,
+    start_date=start_date,
+    end_date=end_date
+) }}
 
 <!-- Current Status Card -->
 {% if latest_status %}

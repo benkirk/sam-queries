@@ -1,0 +1,82 @@
+{#
+  htmx: Edit Queue Form (loaded into #editQueueFormContainer)
+  Queue name, resource, and start_date are read-only.
+  Editable: description, wall_clock_hours_limit, end_date.
+#}
+
+<form hx-post="{{ url_for('admin_dashboard.htmx_queue_edit', queue_id=queue.queue_id) }}"
+      hx-target="#editQueueFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+    <div class="modal-body">
+        <!-- Queue name / Resource (read-only) -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Queue Name</label>
+                <div class="form-control-plaintext">
+                    <strong>{{ queue.queue_name }}</strong>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Resource</label>
+                <div class="form-control-plaintext text-muted">
+                    {{ queue.resource.resource_name if queue.resource else '—' }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Start date (read-only) -->
+        <div class="mb-3">
+            <label class="form-label">Start Date</label>
+            <div class="form-control-plaintext text-muted">
+                {{ queue.start_date.strftime('%Y-%m-%d') if queue.start_date else '—' }}
+                <small>(cannot be changed)</small>
+            </div>
+        </div>
+
+        <!-- Description -->
+        <div class="mb-3">
+            <label for="editQueueDescription" class="form-label">Description</label>
+            <input type="text" class="form-control" id="editQueueDescription"
+                   name="description"
+                   value="{{ form.get('description') if form else (queue.description or '') }}"
+                   placeholder="Brief description of the queue">
+        </div>
+
+        <!-- Wallclock limit -->
+        <div class="mb-3">
+            <label for="editQueueWallclock" class="form-label">
+                Wallclock Limit (hours) <span class="text-danger">*</span>
+            </label>
+            <input type="number" class="form-control" id="editQueueWallclock"
+                   name="wall_clock_hours_limit" required step="0.5" min="0.5"
+                   value="{{ form.get('wall_clock_hours_limit') if form else (queue.wall_clock_hours_limit or '') }}">
+        </div>
+
+        <!-- End date -->
+        <div class="mb-3">
+            <label for="editQueueEndDate" class="form-label">
+                End Date <span class="text-muted">(optional — set to deactivate queue)</span>
+            </label>
+            <input type="date" class="form-control" id="editQueueEndDate"
+                   name="end_date"
+                   value="{{ form.get('end_date') if form else (queue.end_date.strftime('%Y-%m-%d') if queue.end_date else '') }}">
+        </div>
+
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for error in errors %}
+            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-warning">
+            <i class="fas fa-save"></i> Save Changes
+        </button>
+    </div>
+</form>

@@ -80,7 +80,7 @@ sam-queries/
 
 ### Core Models
 - **User** (`users`): System users with UPID, unix_uid
-  - Properties: `primary_email`, `all_emails`, `full_name`, `display_name`, `active_projects`, `all_projects`
+  - Properties: `primary_email`, `all_emails`, `full_name`, `display_name`, `all_projects`
   - Class methods: `get_by_username(session, username)`
   - Relationships: `email_addresses`, `projects`, `accounts`
 
@@ -109,7 +109,9 @@ sam-queries/
 - **Resource** (`resources`): HPC systems, storage
 - **ResourceType** (`resource_type`): HPC, DAV, DISK, ARCHIVE, DATA ACCESS
 - **Machine** (`machine`): Physical/logical machines (Derecho, Casper, Gust)
+  - `is_active`: commissioned and not yet decommissioned (checks commission_date / decommission_date)
 - **Queue** (`queue`): Job queues
+  - `is_active`: within start_date / end_date window (null start = always started)
 - **Facility** (`facility`): UNIV, WNA, NCAR facilities
 
 ### Charging Infrastructure
@@ -403,9 +405,75 @@ __table_args__ = (
 
 ### 4. Mixins Available
 - `TimestampMixin`: Adds creation_time, modified_time
-- `SoftDeleteMixin`: Adds deleted flag
-- `ActiveFlagMixin`: Adds active flag
-- `DateRangeMixin`: Adds start_date, end_date
+- `SoftDeleteMixin`: Adds deleted flag + `is_active` hybrid (not deleted)
+- `ActiveFlagMixin`: Adds active flag + `is_active` hybrid (active == True)
+- `DateRangeMixin`: Adds start_date, end_date + `is_active` / `is_currently_active` hybrids
+- `SessionMixin`: Adds `self.session` property (`Session.object_session(self)`) — required for `update()` instance methods
+
+### 6. Write Operations on ORM Models
+Prefer co-locating write logic with the model definition:
+- **`update()` → instance method**: validate fields + `self.session.flush()`, return `self`
+- **`create()` → classmethod**: takes `session` explicitly, validates, does `session.add(obj)` + `session.flush()`, returns instance
+
+```python
+# Instance method pattern (most update ops)
+def update(self, *, description=None, active=None):
+    if description is not None:
+        self.description = description if description.strip() else None
+    if active is not None:
+        self.active = active
+    self.session.flush()
+    return self
+
+# Classmethod pattern (creation only)
+@classmethod
+def create(cls, session, *, required_field, optional_field=None):
+    obj = cls(required_field=required_field, optional_field=optional_field)
+    session.add(obj)
+    session.flush()
+    return obj
+```
+
+**Caller pattern**: load object first, then call method:
+```python
+resource = session.get(Resource, resource_id)
+if not resource:
+    raise ValueError(...)       # caller handles not-found
+resource.update(description="new")
+```
+
+**What stays in `sam.manage`**: complex multi-entity ops (`add_user_to_project`), audit-trail-heavy ops (`update_allocation` + `log_allocation_transaction`), summary upserts (`summaries.py`), and the `management_transaction` context manager.
+
+### 5. Universal `is_active` Interface
+Every ORM model exposes `Model.is_active` as a SQLAlchemy hybrid property.
+Use it in both Python and SQL contexts — **never** use raw column comparisons:
+
+```python
+# ✅ DO — works in Python and SQL filter()
+if project.is_active: ...
+session.query(Project).filter(Project.is_active).all()
+
+# ❌ DON'T — exposes column internals, can't invert cleanly
+session.query(Project).filter(Project.active == True).all()
+session.query(Machine).filter(Machine.decommission_date == None).all()
+```
+
+Inversion is `~Model.is_active`:
+```python
+session.query(User).filter(~User.is_active).all()  # inactive users
+```
+
+**Semantics by model type:**
+| Mixin / Model | `is_active` meaning |
+|---|---|
+| `ActiveFlagMixin` (Project, Facility, Panel, …) | `active == True` |
+| `SoftDeleteMixin` (Account, …) | `deleted == False` |
+| `DateRangeMixin` (AccountUser, UserOrganization, …) | within start/end date range |
+| Custom hybrids (Resource, Machine, Queue, PanelSession, …) | commissioned / within date range |
+| `User.is_active` | `active == True AND locked == False` |
+
+**Exception — `statistics.py`**: `User.active == True` is kept intentionally
+so that `active_users` and `locked_users` remain separate counters.
 
 ### 5. Views
 - Mark views with `__table_args__ = {'info': {'is_view': True}}`
@@ -474,7 +542,7 @@ usage_no_adj = project.get_detailed_allocation_usage(include_adjustments=False)
 ```python
 # Get user's active projects
 user = User.get_by_username(session, 'benkirk')
-for project in user.active_projects:
+for project in user.active_projects():
     print(f"{project.projcode}: {project.title}")
 
 # Get all projects (including inactive)
@@ -727,12 +795,13 @@ docker compose up
 ```
 
 ### Adding New ORM Models
-1. Create model in appropriate domain module
-2. Add to `sam/__init__.py` imports
-3. Create comprehensive tests in `tests/unit/test_new_models.py`
-4. Run schema validation: `pytest tests/integration/test_schema_validation.py`
-5. Verify all tests pass: `pytest tests/ --no-cov` (fast)
-6. Commit with detailed message
+1. Create model in appropriate domain module; add `SessionMixin` if write methods are needed
+2. Add `update()` instance method and/or `create()` classmethod for any write operations (do NOT create standalone functions in `sam/manage/`)
+3. Add to `sam/__init__.py` imports
+4. Create comprehensive tests in `tests/unit/test_new_models.py`
+5. Run schema validation: `pytest tests/integration/test_schema_validation.py`
+6. Verify all tests pass: `pytest tests/ --no-cov` (fast)
+7. Commit with detailed message
 
 ### Fixing Schema Mismatches
 1. Check actual DB schema: `mysql ... -e "SHOW CREATE TABLE tablename\G"`
@@ -798,9 +867,10 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ❌ **DON'T** create files unnecessarily - prefer editing existing files
 ❌ **DON'T** batch todo completions - mark complete immediately
 ❌ **DON'T** use `user.email` - use `user.primary_email` instead (no `email` attribute exists)
-❌ **DON'T** use `allocation.active` - use `allocation.is_active` instead (it's a hybrid property)
+❌ **DON'T** use raw column comparisons (`Model.active == True`, `Model.deleted == False`, raw date checks) — use `Model.is_active` instead (universal hybrid property across all models)
 ❌ **DON'T** pass `session` to `project.get_detailed_allocation_usage()` - it uses SessionMixin internally
 ❌ **DON'T** forget to unpack tuples from `get_projects_by_allocation_end_date()` - returns `(project, allocation, resource_name, days)`
+❌ **DON'T** add standalone `update_*(session, id, ...)` functions to `sam/manage/` — put `update()` instance methods and `create()` classmethods directly on the ORM model instead
 
 ✅ **DO** use schema validation tests before committing model changes
 ✅ **DO** check actual database schema when in doubt
@@ -808,13 +878,13 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ✅ **DO** write tests for query functions (see test_query_functions.py)
 ✅ **DO** use proper exit codes (0, 1, 2, 130)
 ✅ **DO** run `pytest tests/ --no-cov` for fast iteration (32s vs 97s)
-✅ **DO** use `allocation.is_active` for hybrid property behavior (works in Python and SQL)
+✅ **DO** use `Model.is_active` for any active check — it's a hybrid property on every model (works in Python and SQL, supports `~Model.is_active` inversion)
 ✅ **DO** unpack query result tuples properly when using `get_projects_by_allocation_end_date()`
+✅ **DO** add `SessionMixin` to any ORM model that needs an `update()` method (provides `self.session`)
 
 ---
 
-*Last Updated: 2025-12-06*
-*Current Branch: more_tests*
-*Test Status: 380 passed, 16 skipped, 2 xpassed*
-*Code Coverage: 77.47% (charges 90%, dashboard 79%, allocations 76%)*
-*Parallel Execution: 32s (no coverage) / 97s (with coverage)*
+*Last Updated: 2026-03-27*
+*Current Branch: prefer_class_methods*
+*Test Status: 791 passed, 25 skipped, 2 xpassed*
+*Parallel Execution: ~148s (no coverage)*

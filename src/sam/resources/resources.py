@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class Resource(Base, TimestampMixin):
+class Resource(Base, TimestampMixin, SessionMixin):
     """Computing resources (HPC systems, storage, etc.)."""
     __tablename__ = 'resources'
 
@@ -97,6 +97,10 @@ class Resource(Base, TimestampMixin):
 
         return True
 
+    def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
+        """Check if resource is active at a given date. Delegates to is_commissioned_at()."""
+        return self.is_commissioned_at(check_date)
+
     @hybrid_property
     def is_commissioned(self) -> bool:
         """
@@ -165,6 +169,49 @@ class Resource(Base, TimestampMixin):
             or_(cls.decommission_date.is_(None), cls.decommission_date > now)
         )
 
+    def update(
+        self,
+        *,
+        description: Optional[str] = None,
+        commission_date: Optional[datetime] = None,
+        decommission_date: Optional[datetime] = None,
+        charging_exempt: Optional[bool] = None,
+    ) -> 'Resource':
+        """
+        Update this Resource record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            description: New description (pass empty string to clear)
+            commission_date: New commission date
+            decommission_date: New decommission date; must be after commission_date
+            charging_exempt: Whether the resource is exempt from charging
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If validation fails
+        """
+        if commission_date is not None:
+            self.commission_date = commission_date
+
+        if decommission_date is not None:
+            effective_commission = commission_date or self.commission_date
+            if effective_commission and decommission_date <= effective_commission:
+                raise ValueError("decommission_date must be after commission_date")
+            self.decommission_date = decommission_date
+
+        if description is not None:
+            self.description = description if description.strip() else None
+
+        if charging_exempt is not None:
+            self.charging_exempt = charging_exempt
+
+        self.session.flush()
+        return self
+
     def __str__(self):
         return f"{self.resource_name} ({self.resource_type.resource_type if self.resource_type else None})"
 
@@ -173,7 +220,7 @@ class Resource(Base, TimestampMixin):
 
 
 #----------------------------------------------------------------------------
-class ResourceType(Base, TimestampMixin, ActiveFlagMixin):
+class ResourceType(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Types of resources (HPC, DISK, ARCHIVE, etc.)."""
     __tablename__ = 'resource_type'
 
@@ -185,6 +232,33 @@ class ResourceType(Base, TimestampMixin, ActiveFlagMixin):
     resources = relationship('Resource', back_populates='resource_type')
     factors = relationship('Factor', back_populates='resource_type')
     formulas = relationship('Formula', back_populates='resource_type')
+
+    def update(
+        self,
+        *,
+        grace_period_days: Optional[int] = None,
+    ) -> 'ResourceType':
+        """
+        Update this ResourceType record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            grace_period_days: Number of grace-period days (>= 0)
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If validation fails
+        """
+        if grace_period_days is not None:
+            if grace_period_days < 0:
+                raise ValueError("grace_period_days must be >= 0")
+            self.grace_period_days = grace_period_days
+
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.resource_type}"

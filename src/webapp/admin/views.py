@@ -1,12 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from flask_admin import AdminIndexView, expose
 from flask_login import current_user
 from flask import redirect, url_for, request
 
 from sam.core.users import User
 from sam.projects.projects import Project, Resource
-from sam.queries.expirations import get_projects_by_allocation_end_date, get_projects_with_expired_allocations
-
 
 class MyAdminIndexView(AdminIndexView):
     """
@@ -28,38 +26,15 @@ class MyAdminIndexView(AdminIndexView):
         session = db.session
 
         # Get some stats
-        user_count = session.query(User).filter(User.active == True).count()
-        project_count = session.query(Project).filter(Project.active == True).count()
+        user_count = session.query(User).filter(User.is_active).count()
+        project_count = session.query(Project).filter(Project.is_active).count()
 
         # Get active resource count
         resource_count = session.query(Resource).filter(
             Resource.is_commissioned == True
         ).count()
 
-        # Get expiration counts - use default facilities like the CLI
-        default_facilities = ['UNIV', 'WNA']
-
-        # Upcoming expirations (next 31 days)
-        upcoming_expirations = get_projects_by_allocation_end_date(
-            session,
-            start_date=datetime.now(),
-            end_date=datetime.now() + timedelta(days=31),
-            facility_names=default_facilities
-        )
-        upcoming_count = len(upcoming_expirations)
-
-        # Recently expired (last 90 days)
-        expired_projects = get_projects_with_expired_allocations(
-            session,
-            min_days_expired=90,
-            max_days_expired=365,
-            facility_names=default_facilities
-        )
-        expired_count = len(expired_projects)
-
         return self.render('admin/index.html',
                            user_count=f"{user_count:,}",
                            project_count=f"{project_count:,}",
-                           resource_count=f"{resource_count:,}",
-                           upcoming_count=f"{upcoming_count:,}",
-                           expired_count=f"{expired_count:,}")
+                           resource_count=f"{resource_count:,}")

@@ -1,4 +1,5 @@
 {% from 'dashboards/user/partials/project_card.html' import render_project_card with context %}
+{% from 'dashboards/user/partials/user_card.html' import render_user_card with context %}
 {% extends 'dashboards/base.html' %}
 
 {% block title %}User Dashboard - SAM{% endblock %}
@@ -67,35 +68,7 @@
     <div class="tab-pane fade" id="user-info" role="tabpanel">
         <div class="row">
             <div class="col-md-8 offset-md-2">
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-user"></i> User Information</h5>
-                    </div>
-                    <div class="card-body">
-                        <table class="table table-sm">
-                            <tr>
-                                <th>Username:</th>
-                                <td>{{ user.username }}</td>
-                            </tr>
-                            <tr>
-                                <th>Name:</th>
-                                <td>{{ user.display_name }}</td>
-                            </tr>
-                            <tr>
-                                <th>UID:</th>
-                                <td>{{ user.unix_uid or 'N/A' }}</td>
-                            </tr>
-                            <tr>
-                                <th>Primary GID:</th>
-                                <td>{{ user.primary_gid or 'N/A' }}</td>
-                            </tr>
-                            <tr>
-                                <th>Email:</th>
-                                <td>{{ user.primary_email or 'N/A' }}</td>
-                            </tr>
-                        </table>
-                    </div>
-                </div>
+                {{ render_user_card(user) }}
             </div>
         </div>
     </div>

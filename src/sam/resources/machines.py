@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class Machine(Base, TimestampMixin):
+class Machine(Base, TimestampMixin, SessionMixin):
     """Computing machines/systems."""
     __tablename__ = 'machine'
 
@@ -26,6 +26,75 @@ class Machine(Base, TimestampMixin):
     comp_charge_summaries = relationship('CompChargeSummary', foreign_keys='CompChargeSummary.machine_id', back_populates='machine_ref')
     machine_factors = relationship('MachineFactor', back_populates='machine')
     resource = relationship('Resource', back_populates='machines')
+
+    def is_active_at(self, check_date=None) -> bool:
+        """Check if machine is active (commissioned, not decommissioned) at a given date."""
+        if check_date is None:
+            check_date = datetime.now()
+        if self.commission_date and self.commission_date > check_date:
+            return False
+        if self.decommission_date and self.decommission_date <= check_date:
+            return False
+        return True
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if machine is currently active (Python side)."""
+        return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if machine is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            or_(cls.commission_date.is_(None), cls.commission_date <= now),
+            or_(cls.decommission_date.is_(None), cls.decommission_date > now)
+        )
+
+    def update(
+        self,
+        *,
+        description: Optional[str] = None,
+        cpus_per_node: Optional[int] = None,
+        commission_date: Optional[datetime] = None,
+        decommission_date: Optional[datetime] = None,
+    ) -> 'Machine':
+        """
+        Update this Machine record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            description: New description (pass empty string to clear)
+            cpus_per_node: Number of CPUs per node (must be positive)
+            commission_date: New commission date
+            decommission_date: New decommission date
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If validation fails
+        """
+        if description is not None:
+            self.description = description if description.strip() else None
+
+        if cpus_per_node is not None:
+            if cpus_per_node <= 0:
+                raise ValueError("cpus_per_node must be a positive integer")
+            self.cpus_per_node = cpus_per_node
+
+        if commission_date is not None:
+            self.commission_date = commission_date
+
+        if decommission_date is not None:
+            effective_commission = commission_date or self.commission_date
+            if effective_commission and decommission_date <= effective_commission:
+                raise ValueError("decommission_date must be after commission_date")
+            self.decommission_date = decommission_date
+
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.name}"
@@ -64,7 +133,7 @@ class MachineFactor(Base, TimestampMixin):
 
 
 #----------------------------------------------------------------------------
-class Queue(Base, TimestampMixin):
+class Queue(Base, TimestampMixin, SessionMixin):
     """Job queues on resources."""
     __tablename__ = 'queue'
 
@@ -87,6 +156,70 @@ class Queue(Base, TimestampMixin):
     queue_factors = relationship('QueueFactor', back_populates='queue')
     wallclock_exemptions = relationship('WallclockExemption', back_populates='queue')
     comp_charge_summaries = relationship('CompChargeSummary', foreign_keys='CompChargeSummary.queue_id', back_populates='queue_ref')
+
+    def is_active_at(self, check_date=None) -> bool:
+        """Check if queue is active at a given date. Null start_date means active from the beginning."""
+        if check_date is None:
+            check_date = datetime.now()
+        if self.start_date is not None and self.start_date > check_date:
+            return False
+        if self.end_date is not None and self.end_date < check_date:
+            return False
+        return True
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if queue is currently active (Python side)."""
+        return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if queue is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            or_(cls.start_date.is_(None), cls.start_date <= now),
+            or_(cls.end_date.is_(None), cls.end_date >= now)
+        )
+
+    def update(
+        self,
+        *,
+        description: Optional[str] = None,
+        wall_clock_hours_limit: Optional[float] = None,
+        end_date: Optional[datetime] = None,
+    ) -> 'Queue':
+        """
+        Update this Queue record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            description: New description (NOT NULL column — empty string stored as '')
+            wall_clock_hours_limit: New default wallclock limit in hours (must be positive)
+            end_date: New end date; must be after start_date if provided
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If validation fails
+        """
+        if description is not None:
+            # description is NOT NULL in the schema — store empty string rather than None
+            self.description = description.strip()
+
+        if wall_clock_hours_limit is not None:
+            if wall_clock_hours_limit <= 0:
+                raise ValueError("wall_clock_hours_limit must be positive")
+            self.wall_clock_hours_limit = wall_clock_hours_limit
+
+        if end_date is not None:
+            if self.start_date and end_date <= self.start_date:
+                raise ValueError("end_date must be after start_date")
+            self.end_date = end_date
+
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.queue_name}"

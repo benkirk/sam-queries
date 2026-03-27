@@ -70,6 +70,20 @@ class SoftDeleteMixin:
         """Check if this record is soft-deleted."""
         return bool(self.deleted)
 
+    def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
+        """Check if this record is active (not deleted) at a given date (date-insensitive)."""
+        return not bool(self.deleted)
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if this record is active (not deleted) (Python side)."""
+        return not bool(self.deleted)
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if this record is active (not deleted) (SQL side)."""
+        return cls.deleted == False
+
 
 class ActiveFlagMixin:
     """Provides active status flag."""
@@ -78,10 +92,19 @@ class ActiveFlagMixin:
     def active(cls):
         return Column(Boolean, nullable=False, default=True)
 
-    @property
-    def is_active(self) -> bool:
-        """Check if this record is active."""
+    def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
+        """Check if this record is active at a given date (date-insensitive; ignores check_date)."""
         return bool(self.active)
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if this record is active (Python side)."""
+        return bool(self.active)
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if this record is active (SQL side)."""
+        return cls.active == True
 
 
 class DateRangeMixin:
@@ -121,6 +144,16 @@ class DateRangeMixin:
             cls.start_date <= now,
             or_(cls.end_date.is_(None), cls.end_date >= now)
         )
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if this record is currently active (Python side). Alias for is_currently_active."""
+        return self.is_currently_active
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if this record is currently active (SQL side). Alias for is_currently_active."""
+        return cls.is_currently_active
 
 class SessionMixin:
     @property

@@ -1,0 +1,24 @@
+{# htmx: Exemption create/edit success response — closes modal and refreshes user card #}
+<div class="modal-body text-center py-4">
+    <i class="fas fa-check-circle text-success fa-2x"></i>
+    <p class="mt-2 text-success">Exemption saved successfully.</p>
+</div>
+<script>
+(function() {
+    // Close whichever exemption modal is open
+    ['addExemptionModal', 'editExemptionModal'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            var modal = bootstrap.Modal.getInstance(el);
+            if (modal) modal.hide();
+        }
+    });
+    // Refresh the user card
+    setTimeout(function() {
+        htmx.ajax('GET', '{{ url_for("admin_dashboard.user_card", username=username) }}', {
+            target: '#userCardContainer',
+            swap: 'innerHTML'
+        });
+    }, 300);
+})();
+</script>

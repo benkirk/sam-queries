@@ -1,0 +1,245 @@
+{#
+  Admin: Facility Card Body (lazy-loaded into the Facility collapsible section)
+  Contains two tabs: Facilities & Panels (nested collapsible), Allocation Types.
+  Active-only filtering is applied server-side via ?active_only=1 query param.
+#}
+<div class="card-body p-0">
+    <!-- Tab navigation -->
+    <ul class="nav nav-tabs px-3 pt-3" id="facilitiesTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="facilities-tab" data-bs-toggle="tab"
+                    data-bs-target="#facilities-pane" type="button" role="tab"
+                    aria-controls="facilities-pane" aria-selected="true">
+                <i class="fas fa-building me-1"></i> Facilities &amp; Panels
+                <span class="badge bg-secondary ms-1">{{ facilities|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="allocation-types-tab" data-bs-toggle="tab"
+                    data-bs-target="#allocation-types-pane" type="button" role="tab"
+                    aria-controls="allocation-types-pane" aria-selected="false">
+                <i class="fas fa-layer-group me-1"></i> Allocation Types
+                <span class="badge bg-secondary ms-1">{{ allocation_types|length }}</span>
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="facilitiesTabsContent">
+
+        <!-- ── Facilities & Panels tab (nested collapsible) ─────────────── -->
+        <div class="tab-pane fade show active" id="facilities-pane" role="tabpanel"
+             aria-labelledby="facilities-tab">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Code</th>
+                            <th>Description</th>
+                            <th>Fair Share %</th>
+                            <th>Count</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    {% if facilities %}
+                    {% for f in facilities %}
+                    {% set visible_panels = (f.panels | selectattr('active') if active_only else f.panels) | sort(attribute='panel_name') %}
+                    {# ── Facility row (clickable collapse trigger) ── #}
+                    <tbody>
+                        <tr class="cursor-pointer table-light fw-semibold{% if not f.active %} opacity-50{% endif %}"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#facility-panels-{{ f.facility_id }}"
+                            aria-expanded="false">
+                            <td>
+                                <i class="fas fa-chevron-right small text-muted me-1 facility-collapse-icon"
+                                   style="transition: transform 0.2s;"></i>
+                                {{ f.facility_name }}
+                            </td>
+                            <td>
+                                {% if f.code %}
+                                <span class="badge bg-light text-dark border">{{ f.code }}</span>
+                                {% else %}—{% endif %}
+                            </td>
+                            <td class="text-muted">{{ f.description or '—' }}</td>
+                            <td>
+                                {{ '%.2f'|format(f.fair_share_percentage) if f.fair_share_percentage is not none else '—' }}
+                            </td>
+                            <td class="text-muted small">
+                                {{ visible_panels|length }} panel{{ 's' if visible_panels|length != 1 else '' }}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editFacilityModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_facility_edit_form', facility_id=f.facility_id) }}"
+                                        hx-target="#editFacilityFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit facility"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                    {# ── Panel child rows (collapsed by default) ── #}
+                    <tbody class="collapse" id="facility-panels-{{ f.facility_id }}">
+                        {% for p in visible_panels %}
+                        {% set visible_ats = (p.allocation_types | selectattr('active') if active_only else p.allocation_types) | list %}
+                        <tr class="table-secondary{% if not p.active %} opacity-50{% endif %}">
+                            <td class="ps-4">
+                                <i class="fas fa-users-cog small text-muted me-1"></i>
+                                {{ p.panel_name }}
+                            </td>
+                            <td>—</td>
+                            <td class="text-muted small">{{ p.description or '—' }}</td>
+                            <td>—</td>
+                            <td class="text-muted small">
+                                {{ visible_ats|length }} type{{ 's' if visible_ats|length != 1 else '' }}
+                            </td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editPanelModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_panel_edit_form', panel_id=p.panel_id) }}"
+                                        hx-target="#editPanelFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit panel">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr class="table-secondary">
+                            <td colspan="6" class="ps-4 text-muted fst-italic">No panels.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr><td colspan="6" class="text-center text-muted py-3">No facilities found.</td></tr>
+                    </tbody>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Allocation Types tab (flat indented tree: Facility > Panel > Type) ── -->
+        {#
+          Single <tbody> flat tree — facility rows are collapsible triggers,
+          panel and AT rows are always visible when their facility is expanded.
+          Click a facility row to show/hide all its panels and allocation types.
+        #}
+        <div class="tab-pane fade" id="allocation-types-pane" role="tabpanel"
+             aria-labelledby="allocation-types-tab">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0" id="allocation-types-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Type / Panel / Facility</th>
+                            <th>Default Amount</th>
+                            <th>Fair Share %</th>
+                            <th># Projects</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="allocation-types-tbody">
+                    {% if facilities %}
+                    {% for f in facilities %}
+                    {% set at_visible_panels = (f.panels | selectattr('active') if active_only else f.panels) | sort(attribute='panel_name') %}
+                    {# ── Level 0: Facility row (collapsible trigger) ── #}
+                    <tr class="cursor-pointer table-light fw-semibold{% if not f.active %} opacity-50{% endif %}"
+                        data-at-facility="{{ f.facility_id }}">
+                        <td style="padding-left: 0.4rem;">
+                            <i class="fas fa-chevron-right small text-muted me-1 at-facility-icon"
+                               style="transition: transform 0.2s;"></i>
+                            <i class="fas fa-building small text-muted me-1"></i>
+                            {{ f.facility_name }}
+                        </td>
+                        <td></td><td></td><td></td>
+                        <td></td>
+                    </tr>
+                    {% for p in at_visible_panels %}
+                    {% set visible_ats = (p.allocation_types | selectattr('active') if active_only else p.allocation_types) | sort(attribute='allocation_type') %}
+                    {# ── Level 1: Panel row (always visible when facility is open) ── #}
+                    <tr class="table-secondary fw-semibold at-child-{{ f.facility_id }}{% if not p.active %} opacity-50{% endif %}" style="display:none;">
+                        <td style="padding-left: 1.8rem;">
+                            <i class="fas fa-users-cog small text-muted me-1"></i>
+                            {{ p.panel_name }}
+                        </td>
+                        <td></td><td></td><td></td>
+                        <td></td>
+                    </tr>
+                    {# ── Level 2: AllocationType leaf rows ── #}
+                    {% for at in visible_ats %}
+                    <tr class="at-child-{{ f.facility_id }}{% if not at.active %} opacity-50{% endif %}" style="display:none;">
+                        <td style="padding-left: 3.2rem;">{{ at.allocation_type }}</td>
+                        <td>{{ '{:,.0f}'.format(at.default_allocation_amount) if at.default_allocation_amount is not none else '—' }}</td>
+                        <td>{{ '%.2f'|format(at.fair_share_percentage) if at.fair_share_percentage is not none else '—' }}</td>
+                        <td>{{ at.projects|length }}</td>
+                        <td class="text-end">
+                            {% if is_admin %}
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#editAllocationTypeModal"
+                                    hx-get="{{ url_for('admin_dashboard.htmx_allocation_type_edit_form', allocation_type_id=at.allocation_type_id) }}"
+                                    hx-target="#editAllocationTypeFormContainer"
+                                    hx-trigger="click"
+                                    title="Edit allocation type">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr class="at-child-{{ f.facility_id }}" style="display:none;">
+                        <td colspan="5" style="padding-left: 3.2rem;" class="text-muted fst-italic">No allocation types.</td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr class="at-child-{{ f.facility_id }}" style="display:none;">
+                        <td colspan="5" style="padding-left: 1.8rem;" class="text-muted fst-italic">No panels.</td>
+                    </tr>
+                    {% endfor %}
+                    {% endfor %}
+                    {% else %}
+                    <tr><td colspan="5" class="text-center text-muted py-3">No facilities found.</td></tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>{# tab-content #}
+</div>{# card-body #}
+
+<script>
+(function() {
+    // Facilities & Panels tab — Bootstrap collapse icon rotation
+    document.querySelectorAll('[data-bs-target^="#facility-panels-"]').forEach(function(trigger) {
+        var target = document.querySelector(trigger.dataset.bsTarget);
+        if (!target) return;
+        var icon = trigger.querySelector('.facility-collapse-icon');
+        target.addEventListener('show.bs.collapse', function() { if (icon) icon.style.transform = 'rotate(90deg)'; });
+        target.addEventListener('hide.bs.collapse', function() { if (icon) icon.style.transform = ''; });
+    });
+
+    // Allocation Types tab — facility row click toggles all child rows
+    document.querySelectorAll('[data-at-facility]').forEach(function(triggerRow) {
+        triggerRow.addEventListener('click', function() {
+            var fid = triggerRow.dataset.atFacility;
+            var icon = triggerRow.querySelector('.at-facility-icon');
+            var children = document.querySelectorAll('.at-child-' + fid);
+            var isOpen = triggerRow.dataset.atOpen === '1';
+            children.forEach(function(el) { el.style.display = isOpen ? 'none' : ''; });
+            if (icon) icon.style.transform = isOpen ? '' : 'rotate(90deg)';
+            triggerRow.dataset.atOpen = isOpen ? '0' : '1';
+        });
+    });
+
+})();
+</script>

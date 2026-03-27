@@ -2,7 +2,7 @@
 System Status dashboard blueprint.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, make_response
+from flask import Blueprint, render_template, request, flash, redirect, url_for, make_response, current_app
 from flask_login import login_required, current_user
 from webapp.utils.rbac import require_permission, Permission
 from datetime import datetime, timedelta
@@ -24,7 +24,6 @@ bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
 logger = logging.getLogger(__name__)
 
 @bp.route('/')
-@login_required
 def index():
     """
     Main system status dashboard landing page.
@@ -84,6 +83,7 @@ def index():
             jupyterhub_status=jupyterhub_status,
             outages=outages,
             reservations=reservations,
+            google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
             now=datetime.now(),
         )
     finally:
@@ -91,7 +91,6 @@ def index():
 
 
 @bp.route('/nodetype-history/<system>/<node_type>')
-@login_required
 def nodetype_history(system, node_type):
     """
     Display historical trends for a specific node type (Casper only).
@@ -100,10 +99,15 @@ def nodetype_history(system, node_type):
         system: System name (casper)
         node_type: Node type name (e.g., 'gpu-a100', 'standard')
     """
-    # Get date range from query params (default: last 7 days)
-    days = int(request.args.get('days', 7))
+    # Get time range from query params; 'hours' is primary, 'days' kept for backward compat
+    if request.args.get('hours'):
+        hours = int(request.args.get('hours'))
+    elif request.args.get('days'):
+        hours = int(request.args.get('days')) * 24
+    else:
+        hours = 168  # 7-day default
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
+    start_date = end_date - timedelta(hours=hours)
 
     engine, SessionLocal = create_status_engine()
     session = SessionLocal(expire_on_commit=False)
@@ -135,7 +139,7 @@ def nodetype_history(system, node_type):
             latest_status=latest_status,
             history_data=history_data,
             chart_svg=chart_svg,
-            days=days,
+            hours=hours,
             start_date=start_date,
             end_date=end_date,
         )
@@ -145,7 +149,6 @@ def nodetype_history(system, node_type):
 
 
 @bp.route('/partition-history/<system>/<partition>')
-@login_required
 def partition_history(system, partition):
     """
     Display historical trends for a specific system partition (CPU, GPU, or VIZ).
@@ -154,10 +157,15 @@ def partition_history(system, partition):
         system: System name (derecho, casper)
         partition: Partition name ('cpu', 'gpu', or 'viz')
     """
-    # Get date range from query params (default: last 7 days)
-    days = int(request.args.get('days', 7))
+    # Get time range from query params; 'hours' is primary, 'days' kept for backward compat
+    if request.args.get('hours'):
+        hours = int(request.args.get('hours'))
+    elif request.args.get('days'):
+        hours = int(request.args.get('days')) * 24
+    else:
+        hours = 168  # 7-day default
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
+    start_date = end_date - timedelta(hours=hours)
 
     engine, SessionLocal = create_status_engine()
     session = SessionLocal(expire_on_commit=False)
@@ -205,7 +213,7 @@ def partition_history(system, partition):
             latest_status=latest_status,
             history_data=history_data,
             chart_svg=chart_svg,
-            days=days,
+            hours=hours,
             start_date=start_date,
             end_date=end_date,
         )
@@ -215,7 +223,6 @@ def partition_history(system, partition):
 
 
 @bp.route('/queue-history/<system>/<queue_name>')
-@login_required
 def queue_history(system, queue_name):
     """
     Display historical trends for a specific queue.
@@ -224,10 +231,15 @@ def queue_history(system, queue_name):
         system: System name (casper, derecho)
         queue_name: Queue name (e.g., 'regular', 'gpu')
     """
-    # Get date range from query params (default: last 7 days)
-    days = int(request.args.get('days', 7))
+    # Get time range from query params; 'hours' is primary, 'days' kept for backward compat
+    if request.args.get('hours'):
+        hours = int(request.args.get('hours'))
+    elif request.args.get('days'):
+        hours = int(request.args.get('days')) * 24
+    else:
+        hours = 168  # 7-day default
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
+    start_date = end_date - timedelta(hours=hours)
 
     engine, SessionLocal = create_status_engine()
     session = SessionLocal(expire_on_commit=False)
@@ -254,7 +266,7 @@ def queue_history(system, queue_name):
             latest_status=latest_status,
             history_data=history_data,
             chart_svg=chart_svg,
-            days=days,
+            hours=hours,
             start_date=start_date,
             end_date=end_date,
         )

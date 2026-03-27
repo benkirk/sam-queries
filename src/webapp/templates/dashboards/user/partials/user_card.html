@@ -1,0 +1,191 @@
+{% macro render_user_card(sam_user, is_admin=False) %}
+<div class="card mb-3">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-user"></i>
+            {{ sam_user.display_name }}
+            <span class="badge bg-secondary ms-2">{{ sam_user.username }}</span>
+            {% if not sam_user.active %}
+            <span class="badge bg-secondary ms-1">Inactive</span>
+            {% elif sam_user.locked %}
+            <span class="badge bg-warning ms-1">Locked</span>
+            {% endif %}
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <!-- User details -->
+            <div class="col-md-6">
+                <table class="table table-sm">
+                    <tr>
+                        <th>Username:</th>
+                        <td>{{ sam_user.username }}</td>
+                    </tr>
+                    <tr>
+                        <th>Name:</th>
+                        <td>{{ sam_user.display_name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Email(s):</th>
+                        <td>
+                            {% for email in sam_user.email_addresses %}
+                            <div>
+                                {{ email.email_address }}
+                                {% if email.is_primary %}
+                                <span class="badge bg-info ms-1" style="font-size:0.7em;">PRIMARY</span>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            N/A
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>UID:</th>
+                        <td>{{ sam_user.unix_uid or 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Primary GID:</th>
+                        <td>{{ sam_user.primary_gid or 'N/A' }}</td>
+                    </tr>
+                    {% if sam_user.academic_status %}
+                    <tr>
+                        <th>Academic Status:</th>
+                        <td>{{ sam_user.academic_status.description }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if sam_user.institutions %}
+                    <tr>
+                        <th>Institution(s):</th>
+                        <td>
+                            {% for ui in sam_user.institutions %}
+                            <div>{{ ui.institution.name }}
+                                {% if ui.institution.acronym %}
+                                <small class="text-muted">({{ ui.institution.acronym }})</small>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% if sam_user.organizations %}
+                    <tr>
+                        <th>Organization(s):</th>
+                        <td>
+                            {% for uo in sam_user.organizations %}
+                            <div>{{ uo.organization.name }}
+                                <small class="text-muted">({{ uo.organization.acronym }})</small>
+                            </div>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+
+            <!-- Active projects -->
+            <div class="col-md-6">
+                <strong>Active Projects</strong>
+                <div class="mt-2">
+                    {% set active_projects = sam_user.active_projects() %}
+                    {% if active_projects %}
+                        {% for project in active_projects %}
+                        {% if is_admin %}
+                        <a href="#"
+                           class="badge bg-primary text-decoration-none me-1 mb-1"
+                           hx-get="{{ url_for('admin_dashboard.project_card', projcode=project.projcode) }}"
+                           hx-target="#projectCardContainer"
+                           hx-swap="innerHTML">
+                            {{ project.projcode }}
+                        </a>
+                        {% else %}
+                        <span class="badge bg-primary me-1 mb-1">{{ project.projcode }}</span>
+                        {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        <span class="text-muted">No active projects</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wallclock Exemptions -->
+    {% set exemptions = sam_user.wallclock_exemptions %}
+    {% if exemptions or is_admin %}
+    <div class="card-body border-top pt-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong><i class="fas fa-clock"></i> Wallclock Exemptions</strong>
+            {% if is_admin %}
+            <button class="btn btn-sm btn-outline-success"
+                    data-bs-toggle="modal" data-bs-target="#addExemptionModal"
+                    hx-get="{{ url_for('admin_dashboard.htmx_add_exemption_form', username=sam_user.username) }}"
+                    hx-target="#addExemptionFormContainer"
+                    hx-swap="innerHTML">
+                <i class="fas fa-plus"></i> Add Exemption
+            </button>
+            {% endif %}
+        </div>
+        {% if exemptions %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Resource</th>
+                        <th>Queue</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Limit (hrs)</th>
+                        <th>Comment</th>
+                        {% if is_admin %}<th></th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ex in exemptions | sort(attribute='start_date', reverse=True) %}
+                    <tr class="{% if not ex.is_currently_active %}text-muted{% endif %}">
+                        <td>{{ ex.queue.resource.resource_name }}</td>
+                        <td>{{ ex.queue.queue_name }}</td>
+                        <td>{{ ex.start_date.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            {{ ex.end_date.strftime('%Y-%m-%d') }}
+                            {% if not ex.is_currently_active %}
+                            <span class="badge bg-secondary ms-1" style="font-size:0.7em;">Expired</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ ex.time_limit_hours }}</td>
+                        <td>{{ ex.comment or '' }}</td>
+                        {% if is_admin %}
+                        <td>
+                            <button class="btn btn-sm btn-outline-warning py-0"
+                                    data-bs-toggle="modal" data-bs-target="#editExemptionModal"
+                                    hx-get="{{ url_for('admin_dashboard.htmx_edit_exemption_form', exemption_id=ex.wallclock_exemption_id) }}"
+                                    hx-target="#editExemptionFormContainer"
+                                    hx-swap="innerHTML">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0"><small>No wallclock exemptions.</small></p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if is_admin and has_permission(Permission.IMPERSONATE_USERS) %}
+    <div class="card-footer">
+        <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}"
+              onsubmit="return confirm('Impersonate {{ sam_user.display_name }} ({{ sam_user.username }})?');">
+            <input type="hidden" name="username" value="{{ sam_user.username }}">
+            <button type="submit" class="btn btn-sm btn-warning">
+                <i class="fas fa-user-secret"></i> Impersonate {{ sam_user.username }}
+            </button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}

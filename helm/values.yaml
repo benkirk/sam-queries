@@ -1,0 +1,57 @@
+replicaCount: 2                           # Number of identical pods to run
+
+webapp:
+  name: samuel                            # Name for k8s objects
+  group: samuel                           # Group label for related resources
+  path: /                                 # URL path suffix
+  tls:
+    fqdn: samuel.k8s.ucar.edu             # Must be unique and end in .k8s.ucar.edu
+    secretName: incommon-cert-samuel      # Unique TLS secret name for your FQDN
+  ingress:
+    visibility: internal                  # internal or external
+  container:                              # full image path
+    image: ghcr.io/benkirk/sam-queries/webapp:main
+    port: 5050                            # Port your container listens on
+    requests:
+      memory: 4096M                       # Guaranteed memory allocation
+      cpu: 4                              # Guaranteed CPU allocation
+    limits:
+      memory: 12G                         # Maximum memory allowed
+      cpu: 16                             # Maximum CPU allowed
+  env:
+    DISABLE_AUTH: "0"                     # Explicitly disabled — must remain 0 in production
+    FLASK_DEBUG: "0"
+    FLASK_SECRET_KEY: "dev-only-insecure-key-change-for-production"
+    AUDIT_ENABLED: "1"
+    AUDIT_LOG_PATH: "/var/log/sam/model_audit.log"
+    JUPYTERHUB_API_URL: "https://jupyterhub.hpc.ucar.edu"
+    JUPYTERHUB_INSTANCE: "stable"
+    JUPYTERHUB_CACHE_TTL: "300"
+    SAM_DB_SERVER: "sam-sql.ucar.edu"
+    SAM_DB_REQUIRE_SSL: "true"
+    STATUS_DB_DRIVER: "postgresql"
+    STATUS_DB_SERVER: "csg-postgres.k8s.ucar.edu"
+    GOOGLE_CALENDAR_EMBED_URL: "https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver"
+
+  dbCredentials:
+    enabled: true                         # Enable syncing credentials from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
+    secretStoreRefName: csg-ro            # Name of the SecretStore to use
+    secretPath: csg/pg-superuser          # Path in OpenBao where credentials are stored
+    usernameKey: username                 # Key in OpenBao for username
+    passwordKey: password                 # Key in OpenBao for password
+
+  samDbCredentials:
+    enabled: true                         # Enable syncing SAM DB credentials from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
+    secretStoreRefName: csg-ro            # Name of the SecretStore to use
+    secretPath: csg/sam-readuser          # Path in OpenBao where SAM DB credentials are stored
+    usernameKey: username                 # Key in OpenBao for username
+    passwordKey: password                 # Key in OpenBao for password
+
+  jupyterhubCredentials:
+    enabled: true                         # Enable syncing JupyterHub credentials from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
+    secretStoreRefName: csg-ro            # Name of the SecretStore to use
+    secretPath: csg/jh-api-token          # Path in OpenBao where JupyterHub credentials are stored
+    tokenKey: token                       # Key in OpenBao for the token

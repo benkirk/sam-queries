@@ -61,7 +61,7 @@ class UserAbandonedCommand(BaseUserCommand):
             abandoned_users = set()
 
             for user in track(active_users, description=" --> determining abandoned users..."):
-                if len(user.active_projects) == 0:
+                if len(user.active_projects()) == 0:
                     abandoned_users.add(user)
 
             display_abandoned_users(self.ctx, abandoned_users, len(active_users))
@@ -79,7 +79,7 @@ class UserWithProjectsCommand(BaseUserCommand):
             users_with_projects = set()
 
             for user in track(active_users, description="Determining users with at least one active project..."):
-                if len(user.active_projects) > 0:
+                if len(user.active_projects()) > 0:
                     users_with_projects.add(user)
 
             if users_with_projects:

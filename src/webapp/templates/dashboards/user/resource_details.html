@@ -18,31 +18,6 @@
     </p>
 </div>
 
-<!-- Date Range Selector -->
-<div class="card mb-4">
-    <div class="card-header">
-        <h5 class="mb-0">
-            <i class="fas fa-calendar"></i> Date Range
-        </h5>
-    </div>
-    <div class="card-body">
-        <form method="GET" action="{{ url_for('user_dashboard.resource_details') }}" class="form-inline">
-            <input type="hidden" name="projcode" value="{{ projcode }}">
-            <input type="hidden" name="resource" value="{{ resource_name }}">
-
-            <label for="start_date" class="me-2">Start Date:</label>
-            <input type="date" id="start_date" name="start_date" value="{{ start_date }}" class="form-control form-control-sm me-3">
-
-            <label for="end_date" class="me-2">End Date:</label>
-            <input type="date" id="end_date" name="end_date" value="{{ end_date }}" class="form-control form-control-sm me-3">
-
-            <button type="submit" class="btn btn-sm btn-primary">
-                <i class="fas fa-sync"></i> Update Range
-            </button>
-        </form>
-    </div>
-</div>
-
 <!-- Resource Summary Card -->
 <div class="card mb-4">
     <div class="card-header">
@@ -120,6 +95,14 @@
     </div>
 </div>
 
+{% from 'dashboards/fragments/date_range_picker.html' import date_range_picker %}
+{{ date_range_picker(
+    action=url_for('user_dashboard.resource_details'),
+    start_date=start_date,
+    end_date=end_date,
+    hidden_fields={'projcode': projcode, 'resource': resource_name}
+) }}
+
 <!-- Usage Trend Chart Card -->
 <div class="card mb-4">
     <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseUsage" aria-expanded="true">
@@ -155,95 +138,190 @@
                         <tr>
                             <th>Username</th>
                             <th class="text-end">Jobs</th>
+                            <th class="text-end">Core-Hours</th>
                             <th class="text-end">Charges</th>
                         </tr>
                     </thead>
+                    {% if user_breakdown %}
                     <tbody>
-                        {% if user_breakdown %}
-                            <tr class="table-info font-weight-bold">
-                                <td>Total</td>
-                                <td class="text-end">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
-                                <td class="text-end">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
-                            </tr>
-                            {% for user in user_breakdown %}
-                            <tr>
-                                <td><code>{{ user.username }}</code></td>
-                                <td class="text-end">{{ '{:,}'.format(user.jobs) }}</td>
-                                <td class="text-end">{{ '{:,.0f}'.format(user.charges) }}</td>
-                            </tr>
-                            {% endfor %}
-                        {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center text-muted">
-                                    No user activity recorded for this period
-                                </td>
-                            </tr>
-                        {% endif %}
+                        <tr class="table-info fw-bold">
+                            <td>Total</td>
+                            <td class="text-end">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(user_breakdown|sum(attribute='core_hours')) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
+                        </tr>
                     </tbody>
+                    {% for user in user_breakdown %}
+                    {% set uid = loop.index %}
+                    <tbody>
+                        <tr {% if user.queues|length > 1 %}class="cursor-pointer" data-bs-toggle="collapse" data-bs-target="#user-queues-{{ uid }}" aria-expanded="false"{% endif %}>
+                            <td>
+                                <code>{{ user.username }}</code>
+                                {% if user.queues|length > 1 %}
+                                <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ '{:,}'.format(user.jobs) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(user.core_hours) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(user.charges) }}</td>
+                        </tr>
+                    </tbody>
+                    {% if user.queues|length > 1 %}
+                    <tbody class="collapse" id="user-queues-{{ uid }}">
+                        {% for q in user.queues %}
+                        {% set qid = uid ~ '-' ~ loop.index %}
+                        <tr {% if q.dates|length > 1 %}class="table-secondary cursor-pointer" data-bs-toggle="collapse" data-bs-target="#user-queue-dates-{{ qid }}" aria-expanded="false"{% else %}class="table-secondary"{% endif %}>
+                            <td class="ps-4 text-muted">
+                                <i class="fas fa-angle-right me-1"></i><em>{{ q.queue }}</em>
+                                {% if q.dates|length > 1 %}
+                                <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ '{:,}'.format(q.jobs) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(q.core_hours) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(q.charges) }}</td>
+                        </tr>
+                        {% if q.dates|length > 1 %}
+                        {% for d in q.dates %}
+                        <tr class="collapse table-light" id="user-queue-dates-{{ qid }}">
+                            <td class="ps-5 text-muted"><i class="fas fa-angle-right me-1"></i><small>{{ d.date }}</small></td>
+                            <td class="text-end"><small>{{ '{:,}'.format(d.jobs) }}</small></td>
+                            <td class="text-end"><small>{{ '{:,.1f}'.format(d.core_hours) }}</small></td>
+                            <td class="text-end"><small>{{ '{:,.0f}'.format(d.charges) }}</small></td>
+                        </tr>
+                        {% endfor %}
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                    {% endif %}
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">
+                                No user activity recorded for this period
+                            </td>
+                        </tr>
+                    </tbody>
+                    {% endif %}
                 </table>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Recent Usage (Charges) Card, collapsed by default -->
+<!-- Historical Usage Card -->
 <div class="card mb-4">
     <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseCharges" aria-expanded="true">
         <h5 class="mb-0">
-            <i class="fas fa-table"></i> Recent Usage (Charges)
+            <i class="fas fa-table"></i> Historical Usage
             <i class="fas fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
-    <div id="collapseCharges" class="collapse">
+    <div id="collapseCharges" class="collapse show">
         <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-sm table-hover" id="charges-table">
                     <thead class="thead-dark">
                         <tr>
                             <th>Date</th>
-                            <th class="text-end">Value</th>
+                            <th class="text-end">Users</th>
+                            <th class="text-end">Jobs</th>
+                            <th class="text-end">Core-Hours</th>
+                            <th class="text-end">Charges</th>
                         </tr>
                     </thead>
+                    {% if daily_breakdown %}
+                    {% if date_span_days > 45 %}
+                    {# ── 3-level: Month → Day → User/Queue ── #}
+                    {% for month_key, month_days in daily_breakdown | groupby('month') | reverse %}
+                    {% set mid = loop.index %}
+                    {% set m_jobs = month_days | sum(attribute='jobs') %}
+                    {% set m_core_hours = month_days | sum(attribute='core_hours') %}
+                    {% set m_charges = month_days | sum(attribute='charges') %}
+                    {% set ns = namespace(u=[]) %}
+                    {% for day in month_days %}{% for row in day.rows %}{% if row.username not in ns.u %}{% set ns.u = ns.u + [row.username] %}{% endif %}{% endfor %}{% endfor %}
                     <tbody>
-                        {% if detail_data.daily_charges and detail_data.daily_charges['dates'] %}
-                            {% for i in range(detail_data.daily_charges['dates']|length) %}
-                            <tr>
-                                <td>{{ detail_data.daily_charges['dates'][i] }}</td>
-                                <td class="text-end">{{ '{:,.0f}'.format(detail_data.daily_charges['values'][i]) }}</td>
-                            </tr>
-                            {% endfor %}
-                        {% else %}
-                            <tr>
-                                <td colspan="6" class="text-center text-muted">
-                                    No charges recorded for this period
-                                </td>
-                            </tr>
-                        {% endif %}
+                        <tr class="table-primary cursor-pointer fw-semibold" data-bs-toggle="collapse" data-bs-target="#month-days-{{ mid }}" aria-expanded="false">
+                            <td>{{ month_key }} <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i></td>
+                            <td class="text-end">{{ ns.u | length }}</td>
+                            <td class="text-end">{{ '{:,}'.format(m_jobs) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(m_core_hours) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(m_charges) }}</td>
+                        </tr>
                     </tbody>
+                    <tbody class="collapse" id="month-days-{{ mid }}">
+                        {% for day in month_days %}
+                        {% set did = mid ~ '-' ~ loop.index %}
+                        <tr {% if day.rows|length > 1 %}class="cursor-pointer" data-bs-toggle="collapse" data-bs-target="#day-detail-{{ did }}" aria-expanded="false"{% endif %}>
+                            <td class="ps-3">
+                                {{ day.date }}
+                                {% if day.rows|length > 1 %}
+                                <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ day.user_count }}</td>
+                            <td class="text-end">{{ '{:,}'.format(day.jobs) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(day.core_hours) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(day.charges) }}</td>
+                        </tr>
+                        {% if day.rows|length > 1 %}
+                        {% for sub in day.rows %}
+                        <tr class="collapse table-light" id="day-detail-{{ did }}">
+                            <td class="ps-5 text-muted"><i class="fas fa-angle-right me-1"></i><code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em></td>
+                            <td></td>
+                            <td class="text-end"><small>{{ '{:,}'.format(sub.total_jobs) }}</small></td>
+                            <td class="text-end"><small>{{ '{:,.1f}'.format(sub.total_core_hours) }}</small></td>
+                            <td class="text-end"><small>{{ '{:,.0f}'.format(sub.total_charges) }}</small></td>
+                        </tr>
+                        {% endfor %}
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                    {% endfor %}
+                    {% else %}
+                    {# ── 2-level: Day → User/Queue (≤45 days) ── #}
+                    {% for day in daily_breakdown %}
+                    {% set did = loop.index %}
+                    <tbody>
+                        <tr {% if day.rows|length > 1 %}class="cursor-pointer" data-bs-toggle="collapse" data-bs-target="#day-detail-{{ did }}" aria-expanded="false"{% endif %}>
+                            <td>
+                                {{ day.date }}
+                                {% if day.rows|length > 1 %}
+                                <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ day.user_count }}</td>
+                            <td class="text-end">{{ '{:,}'.format(day.jobs) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(day.core_hours) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(day.charges) }}</td>
+                        </tr>
+                    </tbody>
+                    {% if day.rows|length > 1 %}
+                    <tbody class="collapse" id="day-detail-{{ did }}">
+                        {% for sub in day.rows %}
+                        <tr class="table-light">
+                            <td class="ps-4 text-muted"><i class="fas fa-angle-right me-1"></i><code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em></td>
+                            <td></td>
+                            <td class="text-end">{{ '{:,}'.format(sub.total_jobs) }}</td>
+                            <td class="text-end">{{ '{:,.1f}'.format(sub.total_core_hours) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(sub.total_charges) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endif %}
+                    {% endfor %}
+                    {% endif %}
+                    {% else %}
+                    <tbody>
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">
+                                No charges recorded for this period
+                            </td>
+                        </tr>
+                    </tbody>
+                    {% endif %}
                 </table>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Job List Card (Lazy Loaded with Pagination) -->
-<div class="card mb-4">
-    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseJobs" aria-expanded="false">
-        <h5 class="mb-0">
-            <i class="fas fa-list"></i> Job List
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
-        </h5>
-    </div>
-    <div id="collapseJobs" class="collapse">
-        <div class="card-body">
-            <div id="jobs-container"
-                 data-load-url="{{ url_for('user_dashboard.jobs_fragment', projcode=projcode, resource=resource_name) }}?start_date={{ start_date }}&end_date={{ end_date }}"
-                 data-loaded="false">
-                <div class="text-center p-3">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="sr-only">Loading jobs...</span>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -255,4 +333,8 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+.collapse-icon { transition: transform 0.2s ease; }
+[aria-expanded="true"] .collapse-icon { transform: rotate(90deg); }
+</style>
 {% endblock %}

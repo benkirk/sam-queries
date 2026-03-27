@@ -9,7 +9,6 @@ from wtforms.validators import ValidationError
 
 from .views import MyAdminIndexView
 from .custom_model_views import *
-from .expiration_views import ProjectExpirationView
 
 from sam import *
 from sam.core.users import *
@@ -93,10 +92,6 @@ def init_admin(app):
     admin.add_view(ChargeSummaryAdmin(HPCChargeSummary, db.session,
                                       name='HPC Charges',
                                       endpoint='hpc_charges',
-                                      category='Reports'))
-    admin.add_view(ProjectExpirationView(
-                                      name='Project Expirations',
-                                      endpoint='expirations',
                                       category='Reports'))
 
     # Misc

@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class Facility(Base, TimestampMixin, ActiveFlagMixin):
+class Facility(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Facility classifications (NCAR, UNIV, etc.)."""
     __tablename__ = 'facility'
 
@@ -19,6 +19,44 @@ class Facility(Base, TimestampMixin, ActiveFlagMixin):
     panels = relationship('Panel', back_populates='facility', cascade='save-update, merge')
     facility_resources = relationship('FacilityResource', back_populates='facility')
     project_codes = relationship('ProjectCode', back_populates='facility', cascade='all')
+
+    def update(
+        self,
+        *,
+        description: Optional[str] = None,
+        fair_share_percentage: Optional[float] = None,
+        active: Optional[bool] = None,
+    ) -> 'Facility':
+        """
+        Update this Facility record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            description: New description (NOT NULL column — empty string stored as '')
+            fair_share_percentage: Percentage 0–100
+            active: Whether the facility is active
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If validation fails
+        """
+        if description is not None:
+            # description is NOT NULL in schema — store empty string rather than None
+            self.description = description.strip()
+
+        if fair_share_percentage is not None:
+            if not (0 <= fair_share_percentage <= 100):
+                raise ValueError("fair_share_percentage must be between 0 and 100")
+            self.fair_share_percentage = fair_share_percentage
+
+        if active is not None:
+            self.active = active
+
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.facility_name} - {self.code}"
@@ -64,7 +102,7 @@ class FacilityResource(Base):
         return f"<FacilityResource(id={self.facility_resource_id}>"
 
 #----------------------------------------------------------------------------
-class Panel(Base, TimestampMixin, ActiveFlagMixin):
+class Panel(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Allocation review panels."""
     __tablename__ = 'panel'
 
@@ -80,6 +118,33 @@ class Panel(Base, TimestampMixin, ActiveFlagMixin):
     facility = relationship('Facility', back_populates='panels')
     allocation_types = relationship('AllocationType', back_populates='panel', cascade='save-update, merge')
     panel_sessions = relationship('PanelSession', back_populates='panel', cascade='save-update, merge')
+
+    def update(
+        self,
+        *,
+        description: Optional[str] = None,
+        active: Optional[bool] = None,
+    ) -> 'Panel':
+        """
+        Update this Panel record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            description: New description (nullable — pass empty string to clear)
+            active: Whether the panel is active
+
+        Returns:
+            self
+        """
+        if description is not None:
+            self.description = description if description.strip() else None
+
+        if active is not None:
+            self.active = active
+
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.panel_name}"
@@ -99,7 +164,7 @@ class Panel(Base, TimestampMixin, ActiveFlagMixin):
 
 
 #----------------------------------------------------------------------------
-class PanelSession(Base, TimestampMixin):
+class PanelSession(Base, TimestampMixin, SessionMixin):
     """Panel meeting sessions."""
     __tablename__ = 'panel_session'
 
@@ -116,6 +181,73 @@ class PanelSession(Base, TimestampMixin):
     panel_id = Column(Integer, ForeignKey('panel.panel_id'), nullable=False)
 
     panel = relationship('Panel', back_populates='panel_sessions')
+
+    def update(
+        self,
+        *,
+        description: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        panel_meeting_date: Optional[datetime] = None,
+    ) -> 'PanelSession':
+        """
+        Update this PanelSession record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            description: New description (nullable)
+            start_date: New start date
+            end_date: New end date — must be after start_date if both known
+            panel_meeting_date: New panel meeting date (no constraint)
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If end_date <= start_date
+        """
+        if start_date is not None:
+            self.start_date = start_date
+
+        if end_date is not None:
+            effective_start = start_date or self.start_date
+            if effective_start and end_date <= effective_start:
+                raise ValueError("end_date must be after start_date")
+            self.end_date = end_date
+
+        if panel_meeting_date is not None:
+            self.panel_meeting_date = panel_meeting_date
+
+        if description is not None:
+            self.description = description if description.strip() else None
+
+        self.session.flush()
+        return self
+
+    def is_active_at(self, check_date=None) -> bool:
+        """Check if panel session is active at a given date."""
+        if check_date is None:
+            check_date = datetime.now()
+        if self.start_date > check_date:
+            return False
+        if self.end_date is not None and self.end_date < check_date:
+            return False
+        return True
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if panel session is currently active (Python side)."""
+        return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if panel session is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            cls.start_date <= now,
+            or_(cls.end_date.is_(None), cls.end_date >= now)
+        )
 
 
 #----------------------------------------------------------------------------

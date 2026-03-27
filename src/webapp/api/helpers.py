@@ -159,7 +159,7 @@ def serialize_projects_by_role(user, schema) -> Dict[str, Any]:
 
     member_projects = [
         {**schema.dump(p), 'role': 'member'}
-        for p in user.active_projects
+        for p in user.active_projects()
         if p not in led_set and p not in admin_set
     ]
 

@@ -1,0 +1,50 @@
+{% macro time_range_picker(action, hours, start_date, end_date, hidden_fields={}) %}
+{# Unique ID to allow multiple pickers on the same page without ID collisions #}
+{% set uid = range(100000) | random %}
+{#
+  Compact time range picker with quick-select presets (sub-day to multi-day).
+
+  Parameters:
+    action        - form action URL (e.g. url_for('status_dashboard.nodetype_history', ...))
+    hours         - current window size in hours (integer)
+    start_date    - current start datetime object
+    end_date      - current end datetime object
+    hidden_fields - dict of extra query params to preserve (rarely needed for status routes)
+#}
+<div class="card mb-4">
+    <div class="card-body py-2">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <i class="fas fa-clock text-muted"></i>
+
+            <!-- Quick-select preset buttons -->
+            <div class="btn-group btn-group-sm" role="group" aria-label="Time range presets">
+                {% set presets = [('6h', 6), ('12h', 12), ('1d', 24), ('3d', 72), ('7d', 168), ('14d', 336), ('30d', 720)] %}
+                {% for label, h in presets %}
+                <button type="button"
+                        class="btn {% if hours == h %}btn-secondary active{% else %}btn-outline-secondary{% endif %} trp-preset-{{ uid }}"
+                        data-hours="{{ h }}"
+                        onclick="trpApply_{{ uid }}({{ h }})">{{ label }}</button>
+                {% endfor %}
+            </div>
+
+            <!-- Current range display -->
+            <small class="text-muted ms-auto">
+                {{ start_date.strftime('%Y-%m-%d %H:%M') }} – {{ end_date.strftime('%Y-%m-%d %H:%M') }}
+            </small>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const action  = {{ action | tojson }};
+    const hidden  = {{ hidden_fields | tojson }};
+
+    window['trpApply_{{ uid }}'] = function (h) {
+        const params = new URLSearchParams(hidden);
+        params.set('hours', h);
+        window.location.href = action + '?' + params.toString();
+    };
+})();
+</script>
+{% endmacro %}

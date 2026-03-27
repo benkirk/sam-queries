@@ -68,11 +68,11 @@ def display_user(ctx: Context, user: User, list_projects: bool = False):
                 grid.add_row("Organization(s)", "\n".join(orgs))
 
         # Project count
-        num_projects = len(user.active_projects)
+        num_projects = len(user.active_projects())
         grid.add_row("Active Projects", str(num_projects))
     else:
         # Just show counts
-        num_projects = len(user.active_projects)
+        num_projects = len(user.active_projects())
         grid.add_row("Active Projects", str(num_projects))
 
     panel = Panel(grid, title=f"User Information: [bold]{user.username}[/]", expand=False, border_style="blue")
@@ -88,7 +88,7 @@ def display_user(ctx: Context, user: User, list_projects: bool = False):
 def display_user_projects(ctx: Context, user: User):
     """Display projects for a user."""
     show_inactive = ctx.inactive_projects
-    projects = user.all_projects if show_inactive else user.active_projects
+    projects = user.all_projects if show_inactive else user.active_projects()
     label = "All" if show_inactive else "Active"
 
     if not projects:

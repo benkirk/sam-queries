@@ -1,0 +1,47 @@
+{#
+  htmx: Edit Resource Type Form (loaded into #editResourceTypeFormContainer)
+  resource_type name is read-only. Editable: grace_period_days.
+#}
+
+<form hx-post="{{ url_for('admin_dashboard.htmx_resource_type_edit', resource_type_id=resource_type.resource_type_id) }}"
+      hx-target="#editResourceTypeFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+    <div class="modal-body">
+        <!-- Type name (read-only) -->
+        <div class="mb-3">
+            <label class="form-label">Resource Type</label>
+            <div class="form-control-plaintext">
+                <strong>{{ resource_type.resource_type }}</strong>
+            </div>
+        </div>
+
+        <!-- Grace period days -->
+        <div class="mb-3">
+            <label for="editResourceTypeGracePeriod" class="form-label">
+                Grace Period (days)
+            </label>
+            <input type="number" class="form-control" id="editResourceTypeGracePeriod"
+                   name="grace_period_days" min="0" step="1"
+                   value="{{ form.get('grace_period_days') if form else (resource_type.grace_period_days if resource_type.grace_period_days is not none else '') }}"
+                   placeholder="Number of grace-period days after allocation ends">
+            <div class="form-text text-muted">Number of days after allocation expiry that access remains.</div>
+        </div>
+
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for error in errors %}
+            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-warning">
+            <i class="fas fa-save"></i> Save Changes
+        </button>
+    </div>
+</form>

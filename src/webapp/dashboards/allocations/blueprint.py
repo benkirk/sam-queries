@@ -163,7 +163,7 @@ def index():
     # Get all active resources for the selector
     all_resources = [
         r.resource_name for r in db.session.query(Resource.resource_name)
-        .filter(Resource.is_active == True)
+        .filter(Resource.is_active)
         .order_by(Resource.resource_name)
         .all()
     ]

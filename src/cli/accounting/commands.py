@@ -1,14 +1,16 @@
 """
-Accounting admin commands for SAM.
+Accounting commands for SAM.
 
-Bridges hpc-usage-queries daily charge data into the SAM comp_charge_summary table.
+AccountingAdminCommand — bridges hpc-usage-queries data into comp_charge_summary.
+AccountingSearchCommand — queries comp_charge_summary for user inspection.
 """
 import re
 from datetime import date
 from typing import Optional
 
 from cli.core.base import BaseCommand
-from cli.accounting.display import display_dry_run_table, display_import_summary
+from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
+from cli.accounting.display import display_dry_run_table, display_import_summary, display_charge_summary_table
 from sam.manage.summaries import upsert_comp_charge_summary
 from sam.manage.transaction import management_transaction
 from sam.plugins import HPC_USAGE_QUERIES
@@ -170,9 +172,15 @@ class AccountingAdminCommand(BaseCommand):
             f"({start_date} → {end_date})"
         )
 
-        # --- 5. Dry-run: show Rich table and return ---
+        # --- 5. Verbose: show charge-row table (independent of dry-run) ---
+        if self.ctx.verbose:
+            display_dry_run_table(
+                self.ctx, rows, machine, adapt_jobstats_row, normalize_queue_name,
+                dry_run=kwargs.get("dry_run", False),
+            )
+
+        # --- 5b. Dry-run: skip insertion ---
         if kwargs.get("dry_run"):
-            display_dry_run_table(self.ctx, rows, machine, adapt_jobstats_row, normalize_queue_name)
             return 0
 
         # --- 6-7. Chunk and post rows ---
@@ -183,63 +191,107 @@ class AccountingAdminCommand(BaseCommand):
 
         chunks = [rows[i:i + kwargs["chunk_size"]] for i in range(0, len(rows), kwargs["chunk_size"])]
 
-        for chunk_idx, chunk in enumerate(chunks, start=1):
-            try:
-                with management_transaction(self.session):
-                    for row in chunk:
-                        result = adapt_jobstats_row(row, machine)
-                        if result is None:
-                            n_skipped += 1
-                            continue
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=self.console,
+        ) as progress:
+            task = progress.add_task(f"Posting {machine} charges...", total=len(rows))
 
-                        resource_name, machine_name, core_hours, charges = result
+            for chunk_idx, chunk in enumerate(chunks, start=1):
+                try:
+                    with management_transaction(self.session):
+                        for row in chunk:
+                            result = adapt_jobstats_row(row, machine)
+                            progress.advance(task)
+                            if result is None:
+                                n_skipped += 1
+                                continue
 
-                        # Warn on anomalous GPU fraction (proceeded as CPU)
-                        cpu_h = row["cpu_hours"] or 0.0
-                        gpu_h = row["gpu_hours"] or 0.0
-                        if gpu_h > 0 and resource_name in ("Derecho", "Casper"):
-                            gpu_fraction = gpu_h / (cpu_h + gpu_h)
-                            if self.ctx.verbose:
-                                self.console.print(
-                                    f"[yellow]Warning: low GPU fraction ({gpu_fraction:.1%}) "
-                                    f"for {row['user']}/{row['account']} on {row['date']} "
-                                    f"— posting to {resource_name}[/yellow]"
+                            resource_name, machine_name, core_hours, charges = result
+
+                            # Warn on anomalous GPU fraction (proceeded as CPU)
+                            cpu_h = row["cpu_hours"] or 0.0
+                            gpu_h = row["gpu_hours"] or 0.0
+                            if gpu_h > 0 and resource_name in ("Derecho", "Casper"):
+                                gpu_fraction = gpu_h / (cpu_h + gpu_h)
+                                if self.ctx.verbose:
+                                    self.console.print(
+                                        f"[yellow]Warning: low GPU fraction ({gpu_fraction:.1%}) "
+                                        f"for {row['user']}/{row['account']} on {row['date']} "
+                                        f"— posting to {resource_name}[/yellow]"
+                                    )
+
+                            try:
+                                _, action = upsert_comp_charge_summary(
+                                    self.session,
+                                    activity_date=date.fromisoformat(str(row["date"])),
+                                    act_username=row["user"],
+                                    act_projcode=row["account"],
+                                    act_unix_uid=None,
+                                    resource_name=resource_name,
+                                    machine_name=machine_name,
+                                    queue_name=normalize_queue_name(row["queue"]),
+                                    num_jobs=row["job_count"],
+                                    core_hours=core_hours,
+                                    charges=charges,
+                                    create_queue_if_missing=kwargs["create_queues"],
+                                    include_deleted_accounts=kwargs["include_deleted_accounts"],
                                 )
+                                if action == "created":
+                                    n_created += 1
+                                else:
+                                    n_updated += 1
+                            except ValueError as exc:
+                                n_errors += 1
+                                if not kwargs["skip_errors"]:
+                                    raise
+                                if self.ctx.verbose:
+                                    self.console.print(f"[yellow]Skip: {exc}[/yellow]")
 
-                        try:
-                            _, action = upsert_comp_charge_summary(
-                                self.session,
-                                activity_date=date.fromisoformat(str(row["date"])),
-                                act_username=row["user"],
-                                act_projcode=row["account"],
-                                act_unix_uid=None,
-                                resource_name=resource_name,
-                                machine_name=machine_name,
-                                queue_name=normalize_queue_name(row["queue"]),
-                                num_jobs=row["job_count"],
-                                core_hours=core_hours,
-                                charges=charges,
-                                create_queue_if_missing=kwargs["create_queues"],
-                                include_deleted_accounts=kwargs["include_deleted_accounts"],
-                            )
-                            if action == "created":
-                                n_created += 1
-                            else:
-                                n_updated += 1
-                        except ValueError as exc:
-                            n_errors += 1
-                            if not kwargs["skip_errors"]:
-                                raise
-                            if self.ctx.verbose:
-                                self.console.print(f"[yellow]Skip: {exc}[/yellow]")
-
-            except ValueError as exc:
-                # Chunk-level failure (skip_errors=False): re-raised from inner loop
-                self.console.print(f"[bold red]Chunk {chunk_idx} aborted: {exc}[/bold red]")
-                return 2
+                except ValueError as exc:
+                    # Chunk-level failure (skip_errors=False): re-raised from inner loop
+                    self.console.print(f"[bold red]Chunk {chunk_idx} aborted: {exc}[/bold red]")
+                    return 2
 
         # --- 8. Summary ---
         display_import_summary(self.ctx, n_created, n_updated, n_errors, n_skipped)
 
         # --- 9. Exit code ---
         return 0 if n_errors == 0 else 2
+
+
+class AccountingSearchCommand(BaseCommand):
+    """Query comp_charge_summary — no plugin required."""
+
+    def execute(
+        self,
+        *,
+        start_date,
+        end_date,
+        username: Optional[str] = None,
+        projcode: Optional[str] = None,
+        resource: Optional[str] = None,
+        queue: Optional[str] = None,
+        machine: Optional[str] = None,
+    ) -> int:
+        from sam.queries.charges import query_comp_charge_summaries
+
+        rows = query_comp_charge_summaries(
+            self.session, start_date, end_date,
+            username=username,
+            projcode=projcode,
+            resource=resource,
+            queue=queue,
+            machine=machine,
+            per_day=self.ctx.verbose,
+        )
+
+        if not rows:
+            self.console.print("[yellow]No charge records found for the given filters.[/yellow]")
+            return 1
+
+        display_charge_summary_table(self.ctx, rows, start_date, end_date)
+        return 0
