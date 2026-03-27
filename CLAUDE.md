@@ -109,7 +109,9 @@ sam-queries/
 - **Resource** (`resources`): HPC systems, storage
 - **ResourceType** (`resource_type`): HPC, DAV, DISK, ARCHIVE, DATA ACCESS
 - **Machine** (`machine`): Physical/logical machines (Derecho, Casper, Gust)
+  - `is_active`: commissioned and not yet decommissioned (checks commission_date / decommission_date)
 - **Queue** (`queue`): Job queues
+  - `is_active`: within start_date / end_date window (null start = always started)
 - **Facility** (`facility`): UNIV, WNA, NCAR facilities
 
 ### Charging Infrastructure
@@ -403,9 +405,40 @@ __table_args__ = (
 
 ### 4. Mixins Available
 - `TimestampMixin`: Adds creation_time, modified_time
-- `SoftDeleteMixin`: Adds deleted flag
-- `ActiveFlagMixin`: Adds active flag
-- `DateRangeMixin`: Adds start_date, end_date
+- `SoftDeleteMixin`: Adds deleted flag + `is_active` hybrid (not deleted)
+- `ActiveFlagMixin`: Adds active flag + `is_active` hybrid (active == True)
+- `DateRangeMixin`: Adds start_date, end_date + `is_active` / `is_currently_active` hybrids
+
+### 5. Universal `is_active` Interface
+Every ORM model exposes `Model.is_active` as a SQLAlchemy hybrid property.
+Use it in both Python and SQL contexts — **never** use raw column comparisons:
+
+```python
+# ✅ DO — works in Python and SQL filter()
+if project.is_active: ...
+session.query(Project).filter(Project.is_active).all()
+
+# ❌ DON'T — exposes column internals, can't invert cleanly
+session.query(Project).filter(Project.active == True).all()
+session.query(Machine).filter(Machine.decommission_date == None).all()
+```
+
+Inversion is `~Model.is_active`:
+```python
+session.query(User).filter(~User.is_active).all()  # inactive users
+```
+
+**Semantics by model type:**
+| Mixin / Model | `is_active` meaning |
+|---|---|
+| `ActiveFlagMixin` (Project, Facility, Panel, …) | `active == True` |
+| `SoftDeleteMixin` (Account, …) | `deleted == False` |
+| `DateRangeMixin` (AccountUser, UserOrganization, …) | within start/end date range |
+| Custom hybrids (Resource, Machine, Queue, PanelSession, …) | commissioned / within date range |
+| `User.is_active` | `active == True AND locked == False` |
+
+**Exception — `statistics.py`**: `User.active == True` is kept intentionally
+so that `active_users` and `locked_users` remain separate counters.
 
 ### 5. Views
 - Mark views with `__table_args__ = {'info': {'is_view': True}}`
@@ -798,7 +831,7 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ❌ **DON'T** create files unnecessarily - prefer editing existing files
 ❌ **DON'T** batch todo completions - mark complete immediately
 ❌ **DON'T** use `user.email` - use `user.primary_email` instead (no `email` attribute exists)
-❌ **DON'T** use `allocation.active` - use `allocation.is_active` instead (it's a hybrid property)
+❌ **DON'T** use raw column comparisons (`Model.active == True`, `Model.deleted == False`, raw date checks) — use `Model.is_active` instead (universal hybrid property across all models)
 ❌ **DON'T** pass `session` to `project.get_detailed_allocation_usage()` - it uses SessionMixin internally
 ❌ **DON'T** forget to unpack tuples from `get_projects_by_allocation_end_date()` - returns `(project, allocation, resource_name, days)`
 
@@ -808,13 +841,12 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ✅ **DO** write tests for query functions (see test_query_functions.py)
 ✅ **DO** use proper exit codes (0, 1, 2, 130)
 ✅ **DO** run `pytest tests/ --no-cov` for fast iteration (32s vs 97s)
-✅ **DO** use `allocation.is_active` for hybrid property behavior (works in Python and SQL)
+✅ **DO** use `Model.is_active` for any active check — it's a hybrid property on every model (works in Python and SQL, supports `~Model.is_active` inversion)
 ✅ **DO** unpack query result tuples properly when using `get_projects_by_allocation_end_date()`
 
 ---
 
-*Last Updated: 2025-12-06*
-*Current Branch: more_tests*
-*Test Status: 380 passed, 16 skipped, 2 xpassed*
-*Code Coverage: 77.47% (charges 90%, dashboard 79%, allocations 76%)*
-*Parallel Execution: 32s (no coverage) / 97s (with coverage)*
+*Last Updated: 2026-03-27*
+*Current Branch: consistent_active*
+*Test Status: 807 passed, 25 skipped, 2 xpassed*
+*Parallel Execution: ~143s (no coverage)*
