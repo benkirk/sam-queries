@@ -73,7 +73,7 @@ class Product(Base):
 
 
 #----------------------------------------------------------------------------
-class WallclockExemption(Base, TimestampMixin):
+class WallclockExemption(Base, TimestampMixin, SessionMixin):
     """Exemptions from wallclock time limits for specific users on queues."""
     __tablename__ = 'wallclock_exemption'
 
@@ -127,6 +127,93 @@ class WallclockExemption(Base, TimestampMixin):
             cls.start_date <= now,
             cls.end_date >= now
         )
+
+    @classmethod
+    def create(
+        cls,
+        session,
+        user_id: int,
+        queue_id: int,
+        start_date: datetime,
+        end_date: datetime,
+        time_limit_hours: float,
+        comment: Optional[str] = None,
+    ) -> 'WallclockExemption':
+        """
+        Create a wallclock time-limit exemption for a user on a queue.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            session: SQLAlchemy session
+            user_id: User ID receiving the exemption
+            queue_id: Queue ID the exemption applies to
+            start_date: When the exemption becomes active
+            end_date: When the exemption expires
+            time_limit_hours: Maximum wallclock hours allowed
+            comment: Optional notes
+
+        Returns:
+            The newly created WallclockExemption object
+
+        Raises:
+            ValueError: If dates are invalid or time_limit_hours <= 0
+        """
+        if end_date <= start_date:
+            raise ValueError("end_date must be after start_date")
+        if time_limit_hours <= 0:
+            raise ValueError("time_limit_hours must be positive")
+
+        exemption = cls(
+            user_id=user_id,
+            queue_id=queue_id,
+            start_date=start_date,
+            end_date=end_date,
+            time_limit_hours=time_limit_hours,
+            comment=comment or None,
+        )
+        session.add(exemption)
+        session.flush()
+        return exemption
+
+    def update(
+        self,
+        end_date: Optional[datetime] = None,
+        time_limit_hours: Optional[float] = None,
+        comment: Optional[str] = None,
+    ) -> 'WallclockExemption':
+        """
+        Update this wallclock exemption.
+
+        Only end_date, time_limit_hours, and comment may be changed.
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            end_date: New end date (must be after start_date)
+            time_limit_hours: New hour limit (must be positive)
+            comment: New comment (pass empty string to clear)
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If validation fails
+        """
+        if end_date is not None:
+            if end_date <= self.start_date:
+                raise ValueError("end_date must be after start_date")
+            self.end_date = end_date
+
+        if time_limit_hours is not None:
+            if time_limit_hours <= 0:
+                raise ValueError("time_limit_hours must be positive")
+            self.time_limit_hours = time_limit_hours
+
+        if comment is not None:
+            self.comment = comment if comment.strip() else None
+
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.user_id} / {self.queue_id} / {self.time_limit_hours}"

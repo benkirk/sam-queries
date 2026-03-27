@@ -134,7 +134,7 @@ class AllocationTransactionType(enum.StrEnum):
 
 
 #----------------------------------------------------------------------------
-class AllocationType(Base, TimestampMixin, ActiveFlagMixin):
+class AllocationType(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Types of allocations (CHAP, ASD-UNIV, etc.)."""
     __tablename__ = 'allocation_type'
 
@@ -150,6 +150,45 @@ class AllocationType(Base, TimestampMixin, ActiveFlagMixin):
 
     panel = relationship('Panel', back_populates='allocation_types')
     projects = relationship('Project', back_populates='allocation_type')
+
+    def update(
+        self,
+        *,
+        default_allocation_amount: Optional[float] = None,
+        fair_share_percentage: Optional[float] = None,
+        active: Optional[bool] = None,
+    ) -> 'AllocationType':
+        """
+        Update this AllocationType record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            default_allocation_amount: New default amount (must be >= 0 if provided)
+            fair_share_percentage: Percentage 0–100
+            active: Whether the allocation type is active
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If validation fails
+        """
+        if default_allocation_amount is not None:
+            if default_allocation_amount < 0:
+                raise ValueError("default_allocation_amount must be >= 0")
+            self.default_allocation_amount = default_allocation_amount
+
+        if fair_share_percentage is not None:
+            if not (0 <= fair_share_percentage <= 100):
+                raise ValueError("fair_share_percentage must be between 0 and 100")
+            self.fair_share_percentage = fair_share_percentage
+
+        if active is not None:
+            self.active = active
+
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.allocation_type}"

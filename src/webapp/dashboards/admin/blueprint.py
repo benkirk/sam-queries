@@ -508,7 +508,8 @@ def htmx_add_exemption(username):
     On error re-renders the form with validation messages.
     """
     from sam.resources.resources import Resource
-    from sam.manage import create_wallclock_exemption, management_transaction
+    from sam.operational import WallclockExemption
+    from sam.manage import management_transaction
 
     sam_user = db.session.query(User).filter_by(username=username).first()
     if not sam_user:
@@ -574,7 +575,7 @@ def htmx_add_exemption(username):
 
     try:
         with management_transaction(db.session):
-            create_wallclock_exemption(
+            WallclockExemption.create(
                 db.session,
                 user_id=sam_user.user_id,
                 queue_id=int(queue_id),
@@ -636,7 +637,7 @@ def htmx_edit_exemption(exemption_id):
     On error re-renders the form with validation messages.
     """
     from sam.operational import WallclockExemption
-    from sam.manage import update_wallclock_exemption, management_transaction
+    from sam.manage import management_transaction
 
     exemption = db.session.get(WallclockExemption, exemption_id)
     if not exemption:
@@ -681,9 +682,7 @@ def htmx_edit_exemption(exemption_id):
     username = exemption.user.username
     try:
         with management_transaction(db.session):
-            update_wallclock_exemption(
-                db.session,
-                exemption_id=exemption_id,
+            exemption.update(
                 end_date=end_date,
                 time_limit_hours=time_limit_hours,
                 comment=comment
@@ -807,7 +806,7 @@ def htmx_resource_edit(resource_id):
     On error re-renders the form with validation messages.
     """
     from sam.resources.resources import Resource
-    from sam.manage import update_resource, management_transaction
+    from sam.manage import management_transaction
 
     resource = db.session.get(Resource, resource_id)
     if not resource:
@@ -848,9 +847,7 @@ def htmx_resource_edit(resource_id):
 
     try:
         with management_transaction(db.session):
-            update_resource(
-                db.session,
-                resource_id=resource_id,
+            resource.update(
                 description=description,
                 commission_date=commission_date,
                 decommission_date=decommission_date,
@@ -894,7 +891,7 @@ def htmx_resource_type_edit(resource_type_id):
     On error re-renders the form with validation messages.
     """
     from sam.resources.resources import ResourceType
-    from sam.manage import update_resource_type, management_transaction
+    from sam.manage import management_transaction
 
     resource_type = db.session.get(ResourceType, resource_type_id)
     if not resource_type:
@@ -923,9 +920,7 @@ def htmx_resource_type_edit(resource_type_id):
 
     try:
         with management_transaction(db.session):
-            update_resource_type(
-                db.session,
-                resource_type_id=resource_type_id,
+            resource_type.update(
                 grace_period_days=grace_period_days,
             )
     except Exception as e:
@@ -966,7 +961,7 @@ def htmx_machine_edit(machine_id):
     On error re-renders the form with validation messages.
     """
     from sam.resources.machines import Machine
-    from sam.manage import update_machine, management_transaction
+    from sam.manage import management_transaction
 
     machine = db.session.get(Machine, machine_id)
     if not machine:
@@ -1016,9 +1011,7 @@ def htmx_machine_edit(machine_id):
 
     try:
         with management_transaction(db.session):
-            update_machine(
-                db.session,
-                machine_id=machine_id,
+            machine.update(
                 description=description,
                 cpus_per_node=cpus_per_node,
                 commission_date=commission_date,
@@ -1062,7 +1055,7 @@ def htmx_queue_edit(queue_id):
     On error re-renders the form with validation messages.
     """
     from sam.resources.machines import Queue
-    from sam.manage import update_queue, management_transaction
+    from sam.manage import management_transaction
 
     queue = db.session.get(Queue, queue_id)
     if not queue:
@@ -1104,9 +1097,7 @@ def htmx_queue_edit(queue_id):
 
     try:
         with management_transaction(db.session):
-            update_queue(
-                db.session,
-                queue_id=queue_id,
+            queue.update(
                 description=description,
                 wall_clock_hours_limit=wall_clock_hours_limit,
                 end_date=end_date,
@@ -1199,7 +1190,7 @@ def htmx_facility_edit(facility_id):
     On error re-renders the form with validation messages.
     """
     from sam.resources.facilities import Facility
-    from sam.manage import update_facility, management_transaction
+    from sam.manage import management_transaction
 
     facility = db.session.get(Facility, facility_id)
     if not facility:
@@ -1233,9 +1224,7 @@ def htmx_facility_edit(facility_id):
 
     try:
         with management_transaction(db.session):
-            update_facility(
-                db.session,
-                facility_id=facility_id,
+            facility.update(
                 description=description,
                 fair_share_percentage=fair_share_percentage,
                 active=active,
@@ -1278,7 +1267,7 @@ def htmx_panel_edit(panel_id):
     On error re-renders the form with validation messages.
     """
     from sam.resources.facilities import Panel
-    from sam.manage import update_panel, management_transaction
+    from sam.manage import management_transaction
 
     panel = db.session.get(Panel, panel_id)
     if not panel:
@@ -1289,9 +1278,7 @@ def htmx_panel_edit(panel_id):
 
     try:
         with management_transaction(db.session):
-            update_panel(
-                db.session,
-                panel_id=panel_id,
+            panel.update(
                 description=description or None,
                 active=active,
             )
@@ -1333,7 +1320,7 @@ def htmx_panel_session_edit(panel_session_id):
     On error re-renders the form with validation messages.
     """
     from sam.resources.facilities import PanelSession
-    from sam.manage import update_panel_session, management_transaction
+    from sam.manage import management_transaction
 
     panel_session = db.session.get(PanelSession, panel_session_id)
     if not panel_session:
@@ -1382,9 +1369,7 @@ def htmx_panel_session_edit(panel_session_id):
 
     try:
         with management_transaction(db.session):
-            update_panel_session(
-                db.session,
-                panel_session_id=panel_session_id,
+            panel_session.update(
                 description=description or None,
                 start_date=start_date,
                 end_date=end_date,
@@ -1428,7 +1413,7 @@ def htmx_allocation_type_edit(allocation_type_id):
     On error re-renders the form with validation messages.
     """
     from sam.accounting.allocations import AllocationType
-    from sam.manage import update_allocation_type, management_transaction
+    from sam.manage import management_transaction
 
     allocation_type = db.session.get(AllocationType, allocation_type_id)
     if not allocation_type:
@@ -1468,9 +1453,7 @@ def htmx_allocation_type_edit(allocation_type_id):
 
     try:
         with management_transaction(db.session):
-            update_allocation_type(
-                db.session,
-                allocation_type_id=allocation_type_id,
+            allocation_type.update(
                 default_allocation_amount=default_allocation_amount,
                 fair_share_percentage=fair_share_percentage,
                 active=active,
@@ -1601,7 +1584,7 @@ def htmx_organization_edit_form(org_id):
 def htmx_organization_edit(org_id):
     """Update an organization."""
     from sam.core.organizations import Organization
-    from sam.manage import update_organization, management_transaction
+    from sam.manage import management_transaction
 
     org = db.session.get(Organization, org_id)
     if not org:
@@ -1626,8 +1609,7 @@ def htmx_organization_edit(org_id):
 
     try:
         with management_transaction(db.session):
-            update_organization(
-                db.session, org_id=org_id,
+            org.update(
                 name=name, acronym=acronym,
                 description=description or None,
                 active=active,
@@ -1664,7 +1646,7 @@ def htmx_institution_type_edit_form(institution_type_id):
 def htmx_institution_type_edit(institution_type_id):
     """Update an institution type."""
     from sam.core.organizations import InstitutionType
-    from sam.manage import update_institution_type, management_transaction
+    from sam.manage import management_transaction
 
     inst_type = db.session.get(InstitutionType, institution_type_id)
     if not inst_type:
@@ -1684,9 +1666,7 @@ def htmx_institution_type_edit(institution_type_id):
 
     try:
         with management_transaction(db.session):
-            update_institution_type(
-                db.session, institution_type_id=institution_type_id, type=type_name,
-            )
+            inst_type.update(type=type_name)
     except Exception as e:
         return render_template(
             'dashboards/admin/fragments/edit_institution_type_form_htmx.html',
@@ -1719,7 +1699,7 @@ def htmx_institution_edit_form(inst_id):
 def htmx_institution_edit(inst_id):
     """Update an institution."""
     from sam.core.organizations import Institution
-    from sam.manage import update_institution, management_transaction
+    from sam.manage import management_transaction
 
     institution = db.session.get(Institution, inst_id)
     if not institution:
@@ -1742,8 +1722,7 @@ def htmx_institution_edit(inst_id):
 
     try:
         with management_transaction(db.session):
-            update_institution(
-                db.session, inst_id=inst_id,
+            institution.update(
                 name=name,
                 acronym=acronym,
                 nsf_org_code=request.form.get('nsf_org_code', '').strip() or None,
@@ -1784,7 +1763,7 @@ def htmx_aoi_group_edit_form(group_id):
 def htmx_aoi_group_edit(group_id):
     """Update an AOI group."""
     from sam.projects.areas import AreaOfInterestGroup
-    from sam.manage import update_area_of_interest_group, management_transaction
+    from sam.manage import management_transaction
 
     group = db.session.get(AreaOfInterestGroup, group_id)
     if not group:
@@ -1805,9 +1784,7 @@ def htmx_aoi_group_edit(group_id):
 
     try:
         with management_transaction(db.session):
-            update_area_of_interest_group(
-                db.session, group_id=group_id, name=name, active=active,
-            )
+            group.update(name=name, active=active)
     except Exception as e:
         return render_template(
             'dashboards/admin/fragments/edit_aoi_group_form_htmx.html',
@@ -1843,7 +1820,7 @@ def htmx_aoi_edit_form(aoi_id):
 def htmx_aoi_edit(aoi_id):
     """Update an area of interest."""
     from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
-    from sam.manage import update_area_of_interest, management_transaction
+    from sam.manage import management_transaction
 
     aoi = db.session.get(AreaOfInterest, aoi_id)
     if not aoi:
@@ -1875,8 +1852,7 @@ def htmx_aoi_edit(aoi_id):
 
     try:
         with management_transaction(db.session):
-            update_area_of_interest(
-                db.session, aoi_id=aoi_id,
+            aoi.update(
                 area_of_interest=area_of_interest,
                 area_of_interest_group_id=group_id,
                 active=active,
@@ -1915,7 +1891,7 @@ def htmx_contract_source_edit_form(source_id):
 def htmx_contract_source_edit(source_id):
     """Update a contract source."""
     from sam.projects.contracts import ContractSource
-    from sam.manage import update_contract_source, management_transaction
+    from sam.manage import management_transaction
 
     source = db.session.get(ContractSource, source_id)
     if not source:
@@ -1936,10 +1912,7 @@ def htmx_contract_source_edit(source_id):
 
     try:
         with management_transaction(db.session):
-            update_contract_source(
-                db.session, source_id=source_id,
-                contract_source=contract_source, active=active,
-            )
+            source.update(contract_source=contract_source, active=active)
     except Exception as e:
         return render_template(
             'dashboards/admin/fragments/edit_contract_source_form_htmx.html',
@@ -1972,7 +1945,7 @@ def htmx_contract_edit_form(contract_id):
 def htmx_contract_edit(contract_id):
     """Update a contract."""
     from sam.projects.contracts import Contract
-    from sam.manage import update_contract, management_transaction
+    from sam.manage import management_transaction
 
     contract = db.session.get(Contract, contract_id)
     if not contract:
@@ -2014,8 +1987,7 @@ def htmx_contract_edit(contract_id):
 
     try:
         with management_transaction(db.session):
-            update_contract(
-                db.session, contract_id=contract_id,
+            contract.update(
                 title=title,
                 url=url or None,
                 start_date=start_date,
@@ -2053,7 +2025,7 @@ def htmx_nsf_program_edit_form(nsf_program_id):
 def htmx_nsf_program_edit(nsf_program_id):
     """Update an NSF program."""
     from sam.projects.contracts import NSFProgram
-    from sam.manage import update_nsf_program, management_transaction
+    from sam.manage import management_transaction
 
     program = db.session.get(NSFProgram, nsf_program_id)
     if not program:
@@ -2074,10 +2046,7 @@ def htmx_nsf_program_edit(nsf_program_id):
 
     try:
         with management_transaction(db.session):
-            update_nsf_program(
-                db.session, nsf_program_id=nsf_program_id,
-                nsf_program_name=nsf_program_name, active=active,
-            )
+            program.update(nsf_program_name=nsf_program_name, active=active)
     except Exception as e:
         return render_template(
             'dashboards/admin/fragments/edit_nsf_program_form_htmx.html',

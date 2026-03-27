@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class Contract(Base, TimestampMixin):
+class Contract(Base, TimestampMixin, SessionMixin):
     """Funding contracts."""
     __tablename__ = 'contract'
 
@@ -65,6 +65,54 @@ class Contract(Base, TimestampMixin):
             or_(cls.end_date.is_(None), cls.end_date >= now)
         )
 
+    def update(
+        self,
+        *,
+        title: Optional[str] = None,
+        url: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> 'Contract':
+        """
+        Update this Contract record.
+
+        Only title, url, start_date, and end_date may be changed.
+        PI, contract monitor, source, and number are read-only via this method.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            title: New title (NOT NULL)
+            url: New URL (nullable — pass empty string to clear)
+            start_date: New start date (NOT NULL)
+            end_date: New end date — must be after start_date if both known
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If validation fails
+        """
+        if title is not None:
+            if not title.strip():
+                raise ValueError("title is required")
+            self.title = title.strip()
+
+        if url is not None:
+            self.url = url.strip() if url.strip() else None
+
+        if start_date is not None:
+            self.start_date = start_date
+
+        if end_date is not None:
+            effective_start = start_date or self.start_date
+            if effective_start and end_date <= effective_start:
+                raise ValueError("end_date must be after start_date")
+            self.end_date = end_date
+
+        self.session.flush()
+        return self
+
     def __str__(self):
         return f"{self.contract_number}: {self.title[:50]}..."
 
@@ -83,7 +131,7 @@ class Contract(Base, TimestampMixin):
 
 
 #----------------------------------------------------------------------------
-class ContractSource(Base, TimestampMixin, ActiveFlagMixin):
+class ContractSource(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Sources of funding contracts."""
     __tablename__ = 'contract_source'
 
@@ -91,6 +139,38 @@ class ContractSource(Base, TimestampMixin, ActiveFlagMixin):
     contract_source = Column(String(50), nullable=False, unique=True)
 
     contracts = relationship('Contract', back_populates='contract_source')
+
+    def update(
+        self,
+        *,
+        contract_source: Optional[str] = None,
+        active: Optional[bool] = None,
+    ) -> 'ContractSource':
+        """
+        Update this ContractSource record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            contract_source: New source name (NOT NULL, unique)
+            active: Whether the source is active
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If name is empty
+        """
+        if contract_source is not None:
+            if not contract_source.strip():
+                raise ValueError("contract_source name is required")
+            self.contract_source = contract_source.strip()
+
+        if active is not None:
+            self.active = active
+
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.contract_source}"
@@ -124,7 +204,7 @@ class ProjectContract(Base):
 
 
 #----------------------------------------------------------------------------
-class NSFProgram(Base, TimestampMixin, ActiveFlagMixin):
+class NSFProgram(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """NSF program classifications."""
     __tablename__ = 'nsf_program'
 
@@ -132,6 +212,38 @@ class NSFProgram(Base, TimestampMixin, ActiveFlagMixin):
     nsf_program_name = Column(String(255), nullable=False, unique=True)
 
     contracts = relationship('Contract', back_populates='nsf_program')
+
+    def update(
+        self,
+        *,
+        nsf_program_name: Optional[str] = None,
+        active: Optional[bool] = None,
+    ) -> 'NSFProgram':
+        """
+        Update this NSFProgram record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            nsf_program_name: New program name (NOT NULL, unique)
+            active: Whether the program is active
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If name is empty
+        """
+        if nsf_program_name is not None:
+            if not nsf_program_name.strip():
+                raise ValueError("nsf_program_name is required")
+            self.nsf_program_name = nsf_program_name.strip()
+
+        if active is not None:
+            self.active = active
+
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.nsf_program_name}"
