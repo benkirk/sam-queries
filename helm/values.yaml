@@ -35,6 +35,7 @@ webapp:
 
   dbCredentials:
     enabled: true                         # Enable syncing credentials from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
     secretStoreRefName: csg-ro            # Name of the SecretStore to use
     secretPath: csg/pg-superuser          # Path in OpenBao where credentials are stored
     usernameKey: username                 # Key in OpenBao for username
@@ -42,6 +43,7 @@ webapp:
 
   samDbCredentials:
     enabled: true                         # Enable syncing SAM DB credentials from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
     secretStoreRefName: csg-ro            # Name of the SecretStore to use
     secretPath: csg/sam-readuser          # Path in OpenBao where SAM DB credentials are stored
     usernameKey: username                 # Key in OpenBao for username
@@ -49,6 +51,7 @@ webapp:
 
   jupyterhubCredentials:
     enabled: true                         # Enable syncing JupyterHub credentials from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
     secretStoreRefName: csg-ro            # Name of the SecretStore to use
     secretPath: csg/jh-api-token          # Path in OpenBao where JupyterHub credentials are stored
     tokenKey: token                       # Key in OpenBao for the token
