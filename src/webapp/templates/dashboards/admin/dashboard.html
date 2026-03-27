@@ -226,15 +226,26 @@
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header cursor-pointer"
-                 data-bs-toggle="collapse" data-bs-target="#resourcesSection">
-                <h5 class="mb-0">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 data-bs-toggle="collapse" data-bs-target="#resourcesSection"
+                 style="cursor:pointer;">
+                <h5 class="mb-0 flex-grow-1">
                     <i class="fas fa-server"></i> Resources
                     <i class="fas fa-chevron-down float-end"></i>
                 </h5>
+                <div class="form-check form-switch ms-3 mb-0" onclick="event.stopPropagation()">
+                    <input class="form-check-input" type="checkbox" id="resourcesCardActiveOnly"
+                           name="active_only" value="1" checked
+                           hx-get="{{ url_for('admin_dashboard.htmx_resources_card') }}"
+                           hx-trigger="change"
+                           hx-include="this"
+                           hx-target="#resourcesSection"
+                           hx-swap="innerHTML">
+                    <label class="form-check-label small text-muted fw-normal" for="resourcesCardActiveOnly">Active only</label>
+                </div>
             </div>
             <div id="resourcesSection" class="collapse"
-                 hx-get="{{ url_for('admin_dashboard.htmx_resources_card') }}"
+                 hx-get="{{ url_for('admin_dashboard.htmx_resources_card') }}?active_only=1"
                  hx-trigger="show.bs.collapse once"
                  hx-swap="innerHTML">
                 <div class="card-body text-center text-muted py-4">
@@ -250,15 +261,26 @@
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header cursor-pointer"
-                 data-bs-toggle="collapse" data-bs-target="#organizationsSection">
-                <h5 class="mb-0">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 data-bs-toggle="collapse" data-bs-target="#organizationsSection"
+                 style="cursor:pointer;">
+                <h5 class="mb-0 flex-grow-1">
                     <i class="fas fa-sitemap"></i> Organizations
                     <i class="fas fa-chevron-down float-end"></i>
                 </h5>
+                <div class="form-check form-switch ms-3 mb-0" onclick="event.stopPropagation()">
+                    <input class="form-check-input" type="checkbox" id="organizationsCardActiveOnly"
+                           name="active_only" value="1" checked
+                           hx-get="{{ url_for('admin_dashboard.htmx_organizations_card') }}"
+                           hx-trigger="change"
+                           hx-include="this"
+                           hx-target="#organizationsSection"
+                           hx-swap="innerHTML">
+                    <label class="form-check-label small text-muted fw-normal" for="organizationsCardActiveOnly">Active only</label>
+                </div>
             </div>
             <div id="organizationsSection" class="collapse"
-                 hx-get="{{ url_for('admin_dashboard.htmx_organizations_card') }}"
+                 hx-get="{{ url_for('admin_dashboard.htmx_organizations_card') }}?active_only=1"
                  hx-trigger="show.bs.collapse once"
                  hx-swap="innerHTML">
                 <div class="card-body text-center text-muted py-4">
@@ -274,15 +296,26 @@
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header cursor-pointer"
-                 data-bs-toggle="collapse" data-bs-target="#facilitiesSection">
-                <h5 class="mb-0">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 data-bs-toggle="collapse" data-bs-target="#facilitiesSection"
+                 style="cursor:pointer;">
+                <h5 class="mb-0 flex-grow-1">
                     <i class="fas fa-building"></i> Facilities
                     <i class="fas fa-chevron-down float-end"></i>
                 </h5>
+                <div class="form-check form-switch ms-3 mb-0" onclick="event.stopPropagation()">
+                    <input class="form-check-input" type="checkbox" id="facilitiesCardActiveOnly"
+                           name="active_only" value="1" checked
+                           hx-get="{{ url_for('admin_dashboard.htmx_facilities_card') }}"
+                           hx-trigger="change"
+                           hx-include="this"
+                           hx-target="#facilitiesSection"
+                           hx-swap="innerHTML">
+                    <label class="form-check-label small text-muted fw-normal" for="facilitiesCardActiveOnly">Active only</label>
+                </div>
             </div>
             <div id="facilitiesSection" class="collapse"
-                 hx-get="{{ url_for('admin_dashboard.htmx_facilities_card') }}"
+                 hx-get="{{ url_for('admin_dashboard.htmx_facilities_card') }}?active_only=1"
                  hx-trigger="show.bs.collapse once"
                  hx-swap="innerHTML">
                 <div class="card-body text-center text-muted py-4">

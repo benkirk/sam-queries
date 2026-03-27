@@ -13,12 +13,12 @@
             if (modal) modal.hide();
         }
     });
-    // Refresh the resources card body
+    // Refresh the resources card body (preserving active_only state)
     setTimeout(function() {
-        htmx.ajax('GET', '{{ url_for("admin_dashboard.htmx_resources_card") }}', {
-            target: '#resourcesSection',
-            swap: 'innerHTML'
-        });
+        var cb = document.getElementById('resourcesCardActiveOnly');
+        var url = '{{ url_for("admin_dashboard.htmx_resources_card") }}';
+        if (cb && cb.checked) url += '?active_only=1';
+        htmx.ajax('GET', url, {target: '#resourcesSection', swap: 'innerHTML'});
     }, 300);
 })();
 </script>

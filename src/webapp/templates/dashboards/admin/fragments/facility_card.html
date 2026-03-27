@@ -1,6 +1,7 @@
 {#
   Admin: Facility Card Body (lazy-loaded into the Facility collapsible section)
-  Contains four tabs: Facilities, Panels, Panel Sessions, Allocation Types
+  Contains four tabs: Facilities, Panels, Panel Sessions, Allocation Types.
+  Active-only filtering is applied server-side via ?active_only=1 query param.
 #}
 <div class="card-body p-0">
     <!-- Tab navigation -->
@@ -44,13 +45,6 @@
         <!-- ── Facilities tab ──────────────────────────────────────────── -->
         <div class="tab-pane fade show active" id="facilities-pane" role="tabpanel"
              aria-labelledby="facilities-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="facilitiesActiveOnly"
-                           checked onchange="filterFacilityRows('facilities-tbody', this.checked)">
-                    <label class="form-check-label small" for="facilitiesActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
                     <thead class="table-light">
@@ -65,7 +59,7 @@
                     </thead>
                     <tbody id="facilities-tbody">
                         {% for f in facilities %}
-                        <tr data-active="{{ '1' if f.active else '0' }}">
+                        <tr>
                             <td class="fw-semibold" data-sort-value="{{ f.facility_name }}">{{ f.facility_name }}</td>
                             <td data-sort-value="{{ f.code or '' }}">
                                 {% if f.code %}
@@ -108,13 +102,6 @@
         <!-- ── Panels tab ─────────────────────────────────────────────── -->
         <div class="tab-pane fade" id="panels-pane" role="tabpanel"
              aria-labelledby="panels-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="panelsActiveOnly"
-                           checked onchange="filterFacilityRows('panels-tbody', this.checked)">
-                    <label class="form-check-label small" for="panelsActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
                     <thead class="table-light">
@@ -130,7 +117,7 @@
                     </thead>
                     <tbody id="panels-tbody">
                         {% for p in panels %}
-                        <tr data-active="{{ '1' if p.active else '0' }}">
+                        <tr>
                             <td class="fw-semibold" data-sort-value="{{ p.panel_name }}">{{ p.panel_name }}</td>
                             <td data-sort-value="{{ p.facility.facility_name if p.facility else '' }}">
                                 <span class="text-muted">{{ p.facility.facility_name if p.facility else '—' }}</span>
@@ -170,13 +157,6 @@
         <!-- ── Panel Sessions tab ─────────────────────────────────────── -->
         <div class="tab-pane fade" id="panel-sessions-pane" role="tabpanel"
              aria-labelledby="panel-sessions-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="panelSessionsActiveOnly"
-                           checked onchange="filterFacilityRows('panel-sessions-tbody', this.checked)">
-                    <label class="form-check-label small" for="panelSessionsActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
                     <thead class="table-light">
@@ -193,7 +173,7 @@
                     <tbody id="panel-sessions-tbody">
                         {% for ps in panel_sessions %}
                         {% set ps_active = (ps.end_date is none) or (ps.end_date >= now) %}
-                        <tr data-active="{{ '1' if ps_active else '0' }}">
+                        <tr>
                             <td class="fw-semibold" data-sort-value="{{ ps.name }}">{{ ps.name }}</td>
                             <td data-sort-value="{{ ps.panel.panel_name if ps.panel else '' }}">
                                 <span class="text-muted">{{ ps.panel.panel_name if ps.panel else '—' }}</span>
@@ -233,13 +213,6 @@
         <!-- ── Allocation Types tab ───────────────────────────────────── -->
         <div class="tab-pane fade" id="allocation-types-pane" role="tabpanel"
              aria-labelledby="allocation-types-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="allocationTypesActiveOnly"
-                           checked onchange="filterFacilityRows('allocation-types-tbody', this.checked)">
-                    <label class="form-check-label small" for="allocationTypesActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
                     <thead class="table-light">
@@ -255,7 +228,7 @@
                     </thead>
                     <tbody id="allocation-types-tbody">
                         {% for at in allocation_types %}
-                        <tr data-active="{{ '1' if at.active else '0' }}">
+                        <tr>
                             <td class="fw-semibold" data-sort-value="{{ at.allocation_type }}">{{ at.allocation_type }}</td>
                             <td data-sort-value="{{ at.panel.panel_name if at.panel else '' }}">
                                 <span class="text-muted">{{ at.panel.panel_name if at.panel else '—' }}</span>
@@ -301,15 +274,6 @@
 
 <script>
 (function() {
-    function filterFacilityRows(tbodyId, activeOnly) {
-        var tbody = document.getElementById(tbodyId);
-        if (!tbody) return;
-        tbody.querySelectorAll('tr[data-active]').forEach(function(row) {
-            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
-        });
-    }
-    window.filterFacilityRows = filterFacilityRows;
-
     function attachSorting(table) {
         table.querySelectorAll('th.sortable-header').forEach(function(th) {
             th.addEventListener('click', function() {
@@ -321,7 +285,7 @@
                 });
                 th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
                 var tbody = table.querySelector('tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr[data-active]'));
+                var rows = Array.from(tbody.querySelectorAll('tr'));
                 rows.sort(function(a, b) {
                     var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
                     var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
@@ -341,8 +305,6 @@
 
     document.querySelectorAll('#facilitiesTabsContent table').forEach(attachSorting);
 
-    ['facilities-tbody', 'panels-tbody', 'panel-sessions-tbody', 'allocation-types-tbody'].forEach(function(id) {
-        filterFacilityRows(id, true);
-    });
+
 })();
 </script>

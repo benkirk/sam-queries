@@ -54,13 +54,6 @@
         <!-- ── Organizations tab ──────────────────────────────────────── -->
         <div class="tab-pane fade show active" id="orgs-pane" role="tabpanel"
              aria-labelledby="orgs-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="orgsActiveOnly"
-                           checked onchange="filterOrgsPaneRows(this.checked)">
-                    <label class="form-check-label small" for="orgsActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-sm mb-0" id="orgs-tree-table">
                     <thead class="table-light">
@@ -74,8 +67,7 @@
                     </thead>
                     <tbody id="orgs-tbody">
                         {% for org, depth, has_children in org_tree %}
-                        <tr data-active="{{ '1' if org.active else '0' }}"
-                            data-org-id="{{ org.organization_id }}"
+                        <tr data-org-id="{{ org.organization_id }}"
                             data-parent-id="{{ org.parent_org_id or '' }}"
                             {% if depth > 0 %}class="org-tree-collapsed"{% endif %}>
                             <td style="padding-left: {{ (depth * 1.4 + 0.4) }}rem; white-space: nowrap;">
@@ -212,13 +204,6 @@
         <!-- ── Areas tab (groups collapsed, AOIs expand on click) ───────── -->
         <div class="tab-pane fade" id="areas-pane" role="tabpanel"
              aria-labelledby="areas-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="areasActiveOnly"
-                           checked onchange="filterAreasPaneRows(this.checked)">
-                    <label class="form-check-label small" for="areasActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
                     <thead class="table-light">
@@ -234,7 +219,6 @@
                     {# ── Group row (clickable trigger) ── #}
                     <tbody>
                         <tr class="cursor-pointer table-light fw-semibold"
-                            data-active="{{ '1' if g.active else '0' }}"
                             data-bs-toggle="collapse"
                             data-bs-target="#aoi-group-{{ g.area_of_interest_group_id }}"
                             aria-expanded="false">
@@ -269,8 +253,8 @@
                     </tbody>
                     {# ── AOI child rows (collapsed by default) ── #}
                     <tbody class="collapse" id="aoi-group-{{ g.area_of_interest_group_id }}">
-                        {% for a in g.areas | sort(attribute='area_of_interest') %}
-                        <tr data-active="{{ '1' if a.active else '0' }}" class="table-secondary">
+                        {% for a in aois | selectattr('area_of_interest_group_id', 'equalto', g.area_of_interest_group_id) | list | sort(attribute='area_of_interest') %}
+                        <tr class="table-secondary">
                             <td class="ps-4">{{ a.area_of_interest }}</td>
                             <td class="text-muted small">{{ a.projects|length }} project{{ 's' if a.projects|length != 1 else '' }}</td>
                             <td>
@@ -313,13 +297,6 @@
         <!-- ── Contracts tab (sources collapsed, contracts expand on click) ── -->
         <div class="tab-pane fade" id="contracts-pane" role="tabpanel"
              aria-labelledby="contracts-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="contractsActiveOnly"
-                           checked onchange="filterContractsPaneRows(this.checked)">
-                    <label class="form-check-label small" for="contractsActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
                     <thead class="table-light">
@@ -338,7 +315,6 @@
                     {# ── Source row (clickable trigger) ── #}
                     <tbody>
                         <tr class="cursor-pointer table-light fw-semibold"
-                            data-active="{{ '1' if cs.active else '0' }}"
                             data-bs-toggle="collapse"
                             data-bs-target="#contract-source-{{ cs.contract_source_id }}"
                             aria-expanded="false">
@@ -347,7 +323,8 @@
                                    style="transition: transform 0.2s;"></i>
                                 {{ cs.contract_source }}
                             </td>
-                            <td class="text-muted small">{{ cs.contracts|length }} contract{{ 's' if cs.contracts|length != 1 else '' }}</td>
+                            {% set cs_contracts = contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list %}
+                            <td class="text-muted small">{{ cs_contracts|length }} contract{{ 's' if cs_contracts|length != 1 else '' }}</td>
                             <td></td>
                             <td></td>
                             <td></td>
@@ -376,8 +353,8 @@
                     </tbody>
                     {# ── Contract child rows (collapsed by default) ── #}
                     <tbody class="collapse" id="contract-source-{{ cs.contract_source_id }}">
-                        {% for c in cs.contracts | sort(attribute='contract_number') %}
-                        <tr data-active="{{ '1' if c.is_active else '0' }}" class="table-secondary">
+                        {% for c in contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list | sort(attribute='contract_number') %}
+                        <tr class="table-secondary">
                             <td class="ps-4 fw-semibold text-nowrap">{{ c.contract_number }}</td>
                             <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
                                 title="{{ c.title }}">{{ c.title }}</td>
@@ -430,13 +407,6 @@
         <!-- ── NSF Programs tab ───────────────────────────────────────── -->
         <div class="tab-pane fade" id="nsf-programs-pane" role="tabpanel"
              aria-labelledby="nsf-programs-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="nsfProgramsActiveOnly"
-                           checked onchange="filterOrgRows('nsf-programs-tbody', this.checked)">
-                    <label class="form-check-label small" for="nsfProgramsActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
                     <thead class="table-light">
@@ -449,7 +419,7 @@
                     </thead>
                     <tbody id="nsf-programs-tbody">
                         {% for p in nsf_programs %}
-                        <tr data-active="{{ '1' if p.active else '0' }}">
+                        <tr>
                             <td data-sort-value="{{ p.nsf_program_name }}">{{ p.nsf_program_name }}</td>
                             <td data-sort-value="{{ p.contracts|length }}">{{ p.contracts|length }}</td>
                             <td data-sort-value="{{ 'Active' if p.active else 'Inactive' }}">
@@ -486,37 +456,12 @@
 
 <script>
 (function() {
-    function filterOrgRows(tbodyId, activeOnly) {
-        var tbody = document.getElementById(tbodyId);
-        if (!tbody) return;
-        tbody.querySelectorAll('tr[data-active]').forEach(function(row) {
-            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
-        });
-    }
-    window.filterOrgRows = filterOrgRows;
-
     // ── Organization tree expand/collapse ─────────────────────────────────
-
-    function orgRowVisible(row) {
-        // A row is shown when BOTH active filter AND tree state allow it
-        var activeOnly = document.getElementById('orgsActiveOnly').checked;
-        var passesFilter = !activeOnly || row.dataset.active === '1';
-        var treeVisible = !row.classList.contains('org-tree-collapsed');
-        row.style.display = (passesFilter && treeVisible) ? '' : 'none';
-    }
-
-    function filterOrgsPaneRows(activeOnly) {
-        document.querySelectorAll('#orgs-tbody tr[data-org-id]').forEach(function(row) {
-            orgRowVisible(row);
-        });
-    }
-    window.filterOrgsPaneRows = filterOrgsPaneRows;
 
     function collapseOrgDescendants(parentOrgId) {
         document.querySelectorAll('#orgs-tbody tr[data-parent-id="' + parentOrgId + '"]').forEach(function(row) {
             row.classList.add('org-tree-collapsed');
-            orgRowVisible(row);
-            // Collapse grandchildren and reset their chevrons
+            row.style.display = 'none';
             var childId = row.dataset.orgId;
             var chevron = row.querySelector('.org-tree-chevron');
             if (chevron) chevron.style.transform = '';
@@ -531,34 +476,17 @@
         document.querySelectorAll('#orgs-tbody tr[data-parent-id="' + orgId + '"]').forEach(function(row) {
             if (isExpanding) {
                 row.classList.remove('org-tree-collapsed');
+                row.style.display = '';
             } else {
                 row.classList.add('org-tree-collapsed');
+                row.style.display = 'none';
                 collapseOrgDescendants(row.dataset.orgId);
                 var childChevron = row.querySelector('.org-tree-chevron');
                 if (childChevron) childChevron.style.transform = '';
             }
-            orgRowVisible(row);
         });
     }
     window.toggleOrgChildren = toggleOrgChildren;
-
-    function filterAreasPaneRows(activeOnly) {
-        var pane = document.getElementById('areas-pane');
-        if (!pane) return;
-        pane.querySelectorAll('tr[data-active]').forEach(function(row) {
-            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
-        });
-    }
-    window.filterAreasPaneRows = filterAreasPaneRows;
-
-    function filterContractsPaneRows(activeOnly) {
-        var pane = document.getElementById('contracts-pane');
-        if (!pane) return;
-        pane.querySelectorAll('tr[data-active]').forEach(function(row) {
-            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
-        });
-    }
-    window.filterContractsPaneRows = filterContractsPaneRows;
 
     function attachSorting(table) {
         table.querySelectorAll('th.sortable-header').forEach(function(th) {
@@ -571,7 +499,7 @@
                 });
                 th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
                 var tbody = table.querySelector('tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr[data-active]'));
+                var rows = Array.from(tbody.querySelectorAll('tr'));
                 rows.sort(function(a, b) {
                     var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
                     var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
@@ -590,12 +518,6 @@
     }
 
     document.querySelectorAll('#organizationsTabsContent table').forEach(attachSorting);
-
-    // Apply default active-only filter (skip institutions — no active flag)
-    filterOrgsPaneRows(true);
-    filterOrgRows('nsf-programs-tbody', true);
-    filterAreasPaneRows(true);
-    filterContractsPaneRows(true);
 
     // Chevron rotation helper
     function attachChevronRotation(paneId, iconClass) {

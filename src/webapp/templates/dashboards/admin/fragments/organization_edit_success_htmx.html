@@ -15,12 +15,12 @@
             if (modal) modal.hide();
         }
     });
-    // Refresh the organization card body
+    // Refresh the organization card body (preserving active_only state)
     setTimeout(function() {
-        htmx.ajax('GET', '{{ url_for("admin_dashboard.htmx_organizations_card") }}', {
-            target: '#organizationsSection',
-            swap: 'innerHTML'
-        });
+        var cb = document.getElementById('organizationsCardActiveOnly');
+        var url = '{{ url_for("admin_dashboard.htmx_organizations_card") }}';
+        if (cb && cb.checked) url += '?active_only=1';
+        htmx.ajax('GET', url, {target: '#organizationsSection', swap: 'innerHTML'});
     }, 300);
 })();
 </script>

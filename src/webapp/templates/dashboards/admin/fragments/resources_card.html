@@ -1,6 +1,7 @@
 {#
   Admin: Resources Card Body (lazy-loaded into the Resources collapsible section)
-  Contains three tabs: Resources (types+resources combined), Machines, Queues
+  Contains three tabs: Resources (types+resources combined), Machines, Queues.
+  Active-only filtering is applied server-side via ?active_only=1 query param.
 #}
 <div class="card-body p-0">
     <!-- Tab navigation -->
@@ -36,13 +37,6 @@
         <!-- ── Resources tab (types collapsed, resources expand on click) ── -->
         <div class="tab-pane fade show active" id="resources-pane" role="tabpanel"
              aria-labelledby="resources-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="resourcesActiveOnly"
-                           checked onchange="filterResourcesPaneRows(this.checked)">
-                    <label class="form-check-label small" for="resourcesActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
                     <thead class="table-light">
@@ -56,6 +50,7 @@
                     </thead>
                     {% if resource_types %}
                     {% for rt in resource_types %}
+                    {% set type_resources = resources | selectattr('resource_type_id', 'equalto', rt.resource_type_id) | list | sort(attribute='resource_name') %}
                     {# ── Resource Type row (clickable trigger) ── #}
                     <tbody>
                         <tr class="cursor-pointer table-light fw-semibold"
@@ -70,7 +65,7 @@
                             <td class="text-muted small">
                                 {% if rt.grace_period_days is not none %}Grace: {{ rt.grace_period_days }}d{% endif %}
                             </td>
-                            <td class="text-muted small">{{ rt.resources|length }} resource{{ 's' if rt.resources|length != 1 else '' }}</td>
+                            <td class="text-muted small">{{ type_resources|length }} resource{{ 's' if type_resources|length != 1 else '' }}</td>
                             <td></td>
                             <td class="text-end">
                                 {% if is_admin %}
@@ -90,8 +85,8 @@
                     </tbody>
                     {# ── Resource child rows (collapsed by default) ── #}
                     <tbody class="collapse" id="res-type-{{ rt.resource_type_id }}">
-                        {% for r in rt.resources | sort(attribute='resource_name') %}
-                        <tr data-active="{{ '1' if r.is_active else '0' }}" class="table-secondary">
+                        {% for r in type_resources %}
+                        <tr class="table-secondary">
                             <td class="ps-4 fw-semibold">{{ r.resource_name }}</td>
                             <td class="text-muted small">{{ r.description or '—' }}</td>
                             <td class="text-muted small text-nowrap">
@@ -137,13 +132,6 @@
         <!-- ── Machines tab ────────────────────────────────────────────── -->
         <div class="tab-pane fade" id="machines-pane" role="tabpanel"
              aria-labelledby="machines-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="machinesActiveOnly"
-                           checked onchange="filterResourceRows('machines-tbody', this.checked)">
-                    <label class="form-check-label small" for="machinesActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
                     <thead class="table-light">
@@ -159,8 +147,7 @@
                     </thead>
                     <tbody id="machines-tbody">
                         {% for m in machines %}
-                        {% set m_active = (m.decommission_date is none) or (m.decommission_date > now) %}
-                        <tr data-active="{{ '1' if m_active else '0' }}">
+                        <tr>
                             <td class="fw-semibold" data-sort-value="{{ m.name }}">{{ m.name }}</td>
                             <td data-sort-value="{{ m.resource.resource_name if m.resource else '' }}">
                                 <span class="text-muted">
@@ -202,13 +189,6 @@
         <!-- ── Queues tab ──────────────────────────────────────────────── -->
         <div class="tab-pane fade" id="queues-pane" role="tabpanel"
              aria-labelledby="queues-tab">
-            <div class="px-3 pt-2 pb-1">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="queuesActiveOnly"
-                           checked onchange="filterResourceRows('queues-tbody', this.checked)">
-                    <label class="form-check-label small" for="queuesActiveOnly">Active only</label>
-                </div>
-            </div>
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
                     <thead class="table-light">
@@ -225,7 +205,7 @@
                     <tbody id="queues-tbody">
                         {% for q in queues %}
                         {% set q_active = (q.end_date is none) or (q.end_date > now) %}
-                        <tr data-active="{{ '1' if q_active else '0' }}">
+                        <tr>
                             <td class="fw-semibold" data-sort-value="{{ q.queue_name }}">{{ q.queue_name }}</td>
                             <td data-sort-value="{{ q.resource.resource_name if q.resource else '' }}">
                                 <span class="text-muted">
@@ -275,27 +255,6 @@
 
 <script>
 (function() {
-    /* Active-only row filter */
-    function filterResourceRows(tbodyId, activeOnly) {
-        var tbody = document.getElementById(tbodyId);
-        if (!tbody) return;
-        tbody.querySelectorAll('tr[data-active]').forEach(function(row) {
-            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
-        });
-    }
-    window.filterResourceRows = filterResourceRows;
-
-    function filterResourcesPaneRows(activeOnly) {
-        var pane = document.getElementById('resources-pane');
-        if (!pane) return;
-        // Only resource child rows carry data-active; type rows are always shown
-        pane.querySelectorAll('tr[data-active]').forEach(function(row) {
-            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
-        });
-    }
-    window.filterResourcesPaneRows = filterResourcesPaneRows;
-
-    /* Sortable column headers */
     function attachSorting(table) {
         table.querySelectorAll('th.sortable-header').forEach(function(th) {
             th.addEventListener('click', function() {
@@ -307,7 +266,7 @@
                 });
                 th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
                 var tbody = table.querySelector('tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr[data-active]'));
+                var rows = Array.from(tbody.querySelectorAll('tr'));
                 rows.sort(function(a, b) {
                     var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
                     var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
@@ -325,14 +284,7 @@
         });
     }
 
-    /* Attach sorting to all tables in this fragment */
     document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
-
-    /* Apply default active-only filter on load */
-    filterResourcesPaneRows(true);
-    ['machines-tbody', 'queues-tbody'].forEach(function(id) {
-        filterResourceRows(id, true);
-    });
 
     /* Chevron rotation for resource type collapse rows */
     document.querySelectorAll('#resources-pane [data-bs-toggle="collapse"]').forEach(function(trigger) {

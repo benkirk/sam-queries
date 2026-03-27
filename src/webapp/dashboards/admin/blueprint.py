@@ -748,18 +748,29 @@ def htmx_resources_card():
     from sam.resources.resources import Resource, ResourceType
     from sam.resources.machines import Machine, Queue
 
-    resources = db.session.query(Resource).order_by(Resource.resource_name).all()
+    active_only = request.args.get('active_only') == '1'
+    now = datetime.now()
+
+    resource_q = db.session.query(Resource).order_by(Resource.resource_name)
+    if active_only:
+        resource_q = resource_q.filter(Resource.is_active)
+    resources = resource_q.all()
+
     resource_types = db.session.query(ResourceType).order_by(ResourceType.resource_type).all()
-    machines = (
-        db.session.query(Machine)
-        .order_by(Machine.resource_id, Machine.name)
-        .all()
-    )
-    queues = (
-        db.session.query(Queue)
-        .order_by(Queue.resource_id, Queue.queue_name)
-        .all()
-    )
+
+    machine_q = db.session.query(Machine).order_by(Machine.resource_id, Machine.name)
+    if active_only:
+        machine_q = machine_q.filter(
+            (Machine.decommission_date == None) | (Machine.decommission_date > now)
+        )
+    machines = machine_q.all()
+
+    queue_q = db.session.query(Queue).order_by(Queue.resource_id, Queue.queue_name)
+    if active_only:
+        queue_q = queue_q.filter(
+            (Queue.end_date == None) | (Queue.end_date >= now)
+        )
+    queues = queue_q.all()
 
     return render_template(
         'dashboards/admin/fragments/resources_card.html',
@@ -768,7 +779,8 @@ def htmx_resources_card():
         machines=machines,
         queues=queues,
         is_admin=True,
-        now=datetime.now(),
+        now=now,
+        active_only=active_only,
     )
 
 
@@ -1129,18 +1141,30 @@ def htmx_facilities_card():
     from sam.resources.facilities import Facility, Panel, PanelSession
     from sam.accounting.allocations import AllocationType
 
-    facilities = db.session.query(Facility).order_by(Facility.facility_name).all()
-    panels = db.session.query(Panel).order_by(Panel.panel_name).all()
-    panel_sessions = (
-        db.session.query(PanelSession)
-        .order_by(PanelSession.start_date.desc())
-        .all()
-    )
-    allocation_types = (
-        db.session.query(AllocationType)
-        .order_by(AllocationType.allocation_type)
-        .all()
-    )
+    active_only = request.args.get('active_only') == '1'
+    now = datetime.now()
+
+    facility_q = db.session.query(Facility).order_by(Facility.facility_name)
+    if active_only:
+        facility_q = facility_q.filter(Facility.active == True)
+    facilities = facility_q.all()
+
+    panel_q = db.session.query(Panel).order_by(Panel.panel_name)
+    if active_only:
+        panel_q = panel_q.filter(Panel.active == True)
+    panels = panel_q.all()
+
+    ps_q = db.session.query(PanelSession).order_by(PanelSession.start_date.desc())
+    if active_only:
+        ps_q = ps_q.filter(
+            (PanelSession.end_date == None) | (PanelSession.end_date >= now)
+        )
+    panel_sessions = ps_q.all()
+
+    at_q = db.session.query(AllocationType).order_by(AllocationType.allocation_type)
+    if active_only:
+        at_q = at_q.filter(AllocationType.active == True)
+    allocation_types = at_q.all()
 
     return render_template(
         'dashboards/admin/fragments/facility_card.html',
@@ -1149,7 +1173,8 @@ def htmx_facilities_card():
         panel_sessions=panel_sessions,
         allocation_types=allocation_types,
         is_admin=True,
-        now=datetime.now(),
+        now=now,
+        active_only=active_only,
     )
 
 
@@ -1485,7 +1510,10 @@ def htmx_organizations_card():
     from sam.projects.contracts import Contract, ContractSource, NSFProgram
     from sqlalchemy.orm import subqueryload
 
-    # Load all orgs with children pre-fetched to avoid N+1 queries
+    active_only = request.args.get('active_only') == '1'
+    now = datetime.now()
+
+    # Org tree: always full hierarchy regardless of active_only
     organizations = (
         db.session.query(Organization)
         .options(subqueryload(Organization.children))
@@ -1509,17 +1537,35 @@ def htmx_organizations_card():
         return result
 
     org_tree = _dfs(None, 0)
+
+    # InstitutionType and Institution have no active flag — always show all
     institution_types = db.session.query(InstitutionType).order_by(InstitutionType.type).all()
     institutions = db.session.query(Institution).order_by(Institution.name).all()
-    aoi_groups = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
-    aois = db.session.query(AreaOfInterest).order_by(AreaOfInterest.area_of_interest).all()
-    contract_sources = db.session.query(ContractSource).order_by(ContractSource.contract_source).all()
-    contracts = (
-        db.session.query(Contract)
-        .order_by(Contract.contract_number)
-        .all()
-    )
-    nsf_programs = db.session.query(NSFProgram).order_by(NSFProgram.nsf_program_name).all()
+
+    aoi_group_q = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name)
+    if active_only:
+        aoi_group_q = aoi_group_q.filter(AreaOfInterestGroup.active == True)
+    aoi_groups = aoi_group_q.all()
+
+    aoi_q = db.session.query(AreaOfInterest).order_by(AreaOfInterest.area_of_interest)
+    if active_only:
+        aoi_q = aoi_q.filter(AreaOfInterest.active == True)
+    aois = aoi_q.all()
+
+    cs_q = db.session.query(ContractSource).order_by(ContractSource.contract_source)
+    if active_only:
+        cs_q = cs_q.filter(ContractSource.active == True)
+    contract_sources = cs_q.all()
+
+    contract_q = db.session.query(Contract).order_by(Contract.contract_number)
+    if active_only:
+        contract_q = contract_q.filter(Contract.is_active)
+    contracts = contract_q.all()
+
+    nsf_q = db.session.query(NSFProgram).order_by(NSFProgram.nsf_program_name)
+    if active_only:
+        nsf_q = nsf_q.filter(NSFProgram.active == True)
+    nsf_programs = nsf_q.all()
 
     return render_template(
         'dashboards/admin/fragments/organization_card.html',
@@ -1533,7 +1579,8 @@ def htmx_organizations_card():
         contracts=contracts,
         nsf_programs=nsf_programs,
         is_admin=True,
-        now=datetime.now(),
+        now=now,
+        active_only=active_only,
     )
 
 
