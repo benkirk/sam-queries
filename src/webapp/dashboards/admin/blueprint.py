@@ -760,16 +760,12 @@ def htmx_resources_card():
 
     machine_q = db.session.query(Machine).order_by(Machine.resource_id, Machine.name)
     if active_only:
-        machine_q = machine_q.filter(
-            (Machine.decommission_date == None) | (Machine.decommission_date > now)
-        )
+        machine_q = machine_q.filter(Machine.is_active)
     machines = machine_q.all()
 
     queue_q = db.session.query(Queue).order_by(Queue.resource_id, Queue.queue_name)
     if active_only:
-        queue_q = queue_q.filter(
-            (Queue.end_date == None) | (Queue.end_date >= now)
-        )
+        queue_q = queue_q.filter(Queue.is_active)
     queues = queue_q.all()
 
     return render_template(
@@ -1146,24 +1142,22 @@ def htmx_facilities_card():
 
     facility_q = db.session.query(Facility).order_by(Facility.facility_name)
     if active_only:
-        facility_q = facility_q.filter(Facility.active == True)
+        facility_q = facility_q.filter(Facility.is_active)
     facilities = facility_q.all()
 
     panel_q = db.session.query(Panel).order_by(Panel.panel_name)
     if active_only:
-        panel_q = panel_q.filter(Panel.active == True)
+        panel_q = panel_q.filter(Panel.is_active)
     panels = panel_q.all()
 
     ps_q = db.session.query(PanelSession).order_by(PanelSession.start_date.desc())
     if active_only:
-        ps_q = ps_q.filter(
-            (PanelSession.end_date == None) | (PanelSession.end_date >= now)
-        )
+        ps_q = ps_q.filter(PanelSession.is_active)
     panel_sessions = ps_q.all()
 
     at_q = db.session.query(AllocationType).order_by(AllocationType.allocation_type)
     if active_only:
-        at_q = at_q.filter(AllocationType.active == True)
+        at_q = at_q.filter(AllocationType.is_active)
     allocation_types = at_q.all()
 
     return render_template(
@@ -1544,17 +1538,17 @@ def htmx_organizations_card():
 
     aoi_group_q = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name)
     if active_only:
-        aoi_group_q = aoi_group_q.filter(AreaOfInterestGroup.active == True)
+        aoi_group_q = aoi_group_q.filter(AreaOfInterestGroup.is_active)
     aoi_groups = aoi_group_q.all()
 
     aoi_q = db.session.query(AreaOfInterest).order_by(AreaOfInterest.area_of_interest)
     if active_only:
-        aoi_q = aoi_q.filter(AreaOfInterest.active == True)
+        aoi_q = aoi_q.filter(AreaOfInterest.is_active)
     aois = aoi_q.all()
 
     cs_q = db.session.query(ContractSource).order_by(ContractSource.contract_source)
     if active_only:
-        cs_q = cs_q.filter(ContractSource.active == True)
+        cs_q = cs_q.filter(ContractSource.is_active)
     contract_sources = cs_q.all()
 
     contract_q = db.session.query(Contract).order_by(Contract.contract_number)
@@ -1564,7 +1558,7 @@ def htmx_organizations_card():
 
     nsf_q = db.session.query(NSFProgram).order_by(NSFProgram.nsf_program_name)
     if active_only:
-        nsf_q = nsf_q.filter(NSFProgram.active == True)
+        nsf_q = nsf_q.filter(NSFProgram.is_active)
     nsf_programs = nsf_q.all()
 
     return render_template(

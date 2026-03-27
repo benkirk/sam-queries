@@ -170,7 +170,7 @@ def get_projects_by_allocation_end_date(
 
     # Filter by project active status
     if not include_inactive_projects:
-        query = query.filter(Project.active == True)
+        query = query.filter(Project.is_active)
 
     # Build date range filters
     date_filters = []
@@ -347,7 +347,7 @@ def get_all_expiring_allocations(
 
     # Filter by project active status
     if not include_inactive_projects:
-        query = query.filter(Project.active == True)
+        query = query.filter(Project.is_active)
 
     # Build date range filters
     date_filters = [Allocation.end_date.isnot(None)]

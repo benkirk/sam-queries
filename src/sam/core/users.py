@@ -486,6 +486,21 @@ class User(Base, TimestampMixin):
         """Check if user can access the system (SQL side)."""
         return and_(cls.active == True, cls.locked == False)
 
+    def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
+        """Check if user is active at a given date (date-insensitive).
+        A user is active if the active flag is set and the account is not locked."""
+        return bool(self.active) and not bool(self.locked)
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if user is currently active (Python side). Equivalent to is_accessible."""
+        return bool(self.active) and not bool(self.locked)
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if user is currently active (SQL side). Equivalent to is_accessible."""
+        return and_(cls.active == True, cls.locked == False)
+
     def __str__(self):
         return f"{self.username} ({self.display_name})"
 
@@ -550,6 +565,20 @@ class EmailAddress(Base, TimestampMixin):
     active = Column(Boolean)
 
     user = relationship('User', back_populates='email_addresses')
+
+    def is_active_at(self, check_date=None) -> bool:
+        """Check if email address is active (date-insensitive). None is treated as active."""
+        return self.active is None or bool(self.active)
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if email address is active (Python side). None is treated as active."""
+        return self.active is None or bool(self.active)
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if email address is active (SQL side). None is treated as active."""
+        return or_(cls.active.is_(None), cls.active == True)
 
     def __str__(self):
         return f"{self.email_address}"
@@ -676,6 +705,20 @@ class AcademicStatus(Base, TimestampMixin, SoftDeleteMixin, ActiveFlagMixin):
     description = Column(String(100), nullable=False)
 
     users = relationship('User', back_populates='academic_status')
+
+    def is_active_at(self, check_date=None) -> bool:
+        """Check if academic status is active (date-insensitive). Must be active AND not deleted."""
+        return bool(self.active) and not bool(self.deleted)
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if academic status is active (Python side). Must be active AND not deleted."""
+        return bool(self.active) and not bool(self.deleted)
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if academic status is active (SQL side). Must be active AND not deleted."""
+        return and_(cls.active == True, cls.deleted == False)
 
     def __str__(self):
         return f"{self.academic_status_code}"

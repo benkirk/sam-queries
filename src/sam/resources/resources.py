@@ -97,6 +97,10 @@ class Resource(Base, TimestampMixin):
 
         return True
 
+    def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
+        """Check if resource is active at a given date. Delegates to is_commissioned_at()."""
+        return self.is_commissioned_at(check_date)
+
     @hybrid_property
     def is_commissioned(self) -> bool:
         """

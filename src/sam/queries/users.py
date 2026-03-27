@@ -95,7 +95,7 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
                 AccountUser.end_date.is_(None),
                 AccountUser.end_date >= datetime.now()
             ),
-            User.active == True
+            User.is_active
         )\
         .distinct()\
         .all()
@@ -206,7 +206,7 @@ def search_users_by_pattern(
         query = query.filter(~User.user_id.in_(exclude_user_ids))
 
     if active_only:
-        query = query.filter(User.active == True)
+        query = query.filter(User.is_active)
 
     return query.order_by(User.last_name, User.first_name, User.username).limit(limit).all()
 
@@ -229,7 +229,7 @@ def get_active_users(session: Session, limit: int = 100) -> List[User]:
     return session.query(User)\
         .options(selectinload(User.institutions))\
         .filter(
-            User.active == True,
+            User.is_active,
             User.deleted.in_([False, None])
         )\
         .limit(limit)\
@@ -256,7 +256,7 @@ def get_users_by_institution(session: Session, institution_name: str) -> List[Us
         .join(User.institutions)\
         .join(Institution)\
         .filter(Institution.name.like(f"%{institution_name}%"))\
-        .filter(User.active == True)\
+        .filter(User.is_active)\
         .all()
 
 
@@ -266,7 +266,7 @@ def get_users_by_organization(session: Session, org_acronym: str) -> List[User]:
         .join(User.organizations)\
         .join(Organization)\
         .filter(Organization.acronym == org_acronym)\
-        .filter(User.active == True)\
+        .filter(User.is_active)\
         .all()
 
 
@@ -337,7 +337,7 @@ def get_users_without_primary_email(session: Session) -> List[User]:
 
     return session.query(User)\
                   .filter(
-                      User.active == True,
+                      User.is_active,
                       has_email,
                       ~has_primary
                   )\

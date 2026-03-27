@@ -32,6 +32,10 @@ from sam.accounting.accounts import Account, AccountUser
 def get_user_statistics(session: Session) -> Dict:
     """Get overall user statistics."""
     total = session.query(func.count(User.user_id)).scalar()
+    # Use User.active (not User.is_active) so locked users count as active here.
+    # active_users + locked_users are tracked as separate counters; using is_active
+    # would exclude locked users from active, causing inactive = total - active to
+    # double-count them.
     active = session.query(func.count(User.user_id))\
         .filter(User.active == True).scalar()
     locked = session.query(func.count(User.user_id))\
@@ -49,7 +53,7 @@ def get_project_statistics(session: Session) -> Dict:
     """Get overall project statistics."""
     total = session.query(func.count(Project.project_id)).scalar()
     active = session.query(func.count(Project.project_id))\
-        .filter(Project.active == True).scalar()
+        .filter(Project.is_active).scalar()
 
     by_facility = session.query(
         Facility.facility_name,
@@ -58,7 +62,7 @@ def get_project_statistics(session: Session) -> Dict:
         .join(Panel, Facility.facility_id == Panel.facility_id)\
         .join(AllocationType, Panel.panel_id == AllocationType.panel_id)\
         .join(Project, AllocationType.allocation_type_id == Project.allocation_type_id)\
-        .filter(Project.active == True)\
+        .filter(Project.is_active)\
         .group_by(Facility.facility_name)\
         .all()
 
@@ -113,7 +117,7 @@ def get_user_project_access(session: Session, username: str) -> List[Dict]:
                 Project.project_lead_user_id == user.user_id,
                 Project.project_admin_user_id == user.user_id
             ),
-            Project.active == True
+            Project.is_active
         ).all()
 
     # Projects where user has account access
@@ -126,7 +130,7 @@ def get_user_project_access(session: Session, username: str) -> List[Dict]:
                 AccountUser.end_date.is_(None),
                 AccountUser.end_date >= datetime.now()
             ),
-            Project.active == True
+            Project.is_active
         ).all()
 
     access_list = []

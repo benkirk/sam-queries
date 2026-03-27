@@ -117,6 +117,30 @@ class PanelSession(Base, TimestampMixin):
 
     panel = relationship('Panel', back_populates='panel_sessions')
 
+    def is_active_at(self, check_date=None) -> bool:
+        """Check if panel session is active at a given date."""
+        if check_date is None:
+            check_date = datetime.now()
+        if self.start_date > check_date:
+            return False
+        if self.end_date is not None and self.end_date < check_date:
+            return False
+        return True
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if panel session is currently active (Python side)."""
+        return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if panel session is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            cls.start_date <= now,
+            or_(cls.end_date.is_(None), cls.end_date >= now)
+        )
+
 
 #----------------------------------------------------------------------------
 class ProjectCode(Base):

@@ -56,7 +56,7 @@ def search_projects_by_title(session: Session, search_term: str) -> List[Project
 def get_active_projects(session: Session, facility_name: str = None) -> List[Project]:
     """Get all active projects, optionally filtered by facility."""
     query = session.query(Project)\
-        .filter(Project.active == True)
+        .filter(Project.is_active)
 
     if facility_name:
         query = query\
@@ -73,7 +73,7 @@ def get_projects_by_lead(session: Session, username: str) -> List[Project]:
     return session.query(Project)\
         .join(User, Project.project_lead_user_id == User.user_id)\
         .filter(User.username == username)\
-        .filter(Project.active == True)\
+        .filter(Project.is_active)\
         .all()
 
 

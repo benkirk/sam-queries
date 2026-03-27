@@ -78,7 +78,7 @@ def get_project_charges(projcode):
     # Get account for this project/resource
     accounts_query = db.session.query(Account).filter(
         Account.project_id == project.project_id,
-        Account.deleted == False
+        Account.is_active
     )
 
     if resource_name:
@@ -182,7 +182,7 @@ def get_project_charges_summary(projcode):
     # Get all accounts
     accounts = db.session.query(Account).filter(
         Account.project_id == project.project_id,
-        Account.deleted == False
+        Account.is_active
     ).all()
 
     summary_by_resource = {}

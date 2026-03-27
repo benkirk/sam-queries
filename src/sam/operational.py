@@ -114,6 +114,20 @@ class WallclockExemption(Base, TimestampMixin):
             cls.end_date >= now
         )
 
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if exemption is currently active (Python side). Alias for is_currently_active."""
+        return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if exemption is currently active (SQL side). Alias for is_currently_active."""
+        now = func.now()
+        return and_(
+            cls.start_date <= now,
+            cls.end_date >= now
+        )
+
     def __str__(self):
         return f"{self.user_id} / {self.queue_id} / {self.time_limit_hours}"
 

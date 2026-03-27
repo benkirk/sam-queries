@@ -293,7 +293,7 @@ def get_project_allocations(projcode):
     # Get accounts with allocations
     query = db.session.query(Account).filter(
         Account.project_id == project.project_id,
-        Account.deleted == False
+        Account.is_active
     )
 
     if resource_name:
