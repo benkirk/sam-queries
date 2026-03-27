@@ -1,6 +1,6 @@
 {#
   Admin: Resources Card Body (lazy-loaded into the Resources collapsible section)
-  Contains four tabs: Resources, Resource Types, Machines, Queues
+  Contains three tabs: Resources (types+resources combined), Machines, Queues
 #}
 <div class="card-body p-0">
     <!-- Tab navigation -->
@@ -11,14 +11,6 @@
                     aria-controls="resources-pane" aria-selected="true">
                 <i class="fas fa-server me-1"></i> Resources
                 <span class="badge bg-secondary ms-1">{{ resources|length }}</span>
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="resource-types-tab" data-bs-toggle="tab"
-                    data-bs-target="#resource-types-pane" type="button" role="tab"
-                    aria-controls="resource-types-pane" aria-selected="false">
-                <i class="fas fa-tags me-1"></i> Resource Types
-                <span class="badge bg-secondary ms-1">{{ resource_types|length }}</span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -41,46 +33,71 @@
 
     <div class="tab-content" id="resourcesTabsContent">
 
-        <!-- ── Resources tab ───────────────────────────────────────────── -->
+        <!-- ── Resources tab (types collapsed, resources expand on click) ── -->
         <div class="tab-pane fade show active" id="resources-pane" role="tabpanel"
              aria-labelledby="resources-tab">
             <div class="px-3 pt-2 pb-1">
                 <div class="form-check form-check-inline">
                     <input class="form-check-input" type="checkbox" id="resourcesActiveOnly"
-                           checked onchange="filterResourceRows('resources-tbody', this.checked)">
+                           checked onchange="filterResourcesPaneRows(this.checked)">
                     <label class="form-check-label small" for="resourcesActiveOnly">Active only</label>
                 </div>
             </div>
             <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
+                <table class="table table-sm mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th class="sortable-header" data-sort="text">Name</th>
-                            <th class="sortable-header" data-sort="text">Type</th>
-                            <th class="sortable-header" data-sort="text">Description</th>
-                            <th class="sortable-header" data-sort="date">Commissioned</th>
-                            <th class="sortable-header" data-sort="date">Decommissioned</th>
-                            <th class="sortable-header" data-sort="text">Status</th>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Commissioned</th>
+                            <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="resources-tbody">
-                        {% for r in resources %}
-                        <tr data-active="{{ '1' if r.is_active else '0' }}">
-                            <td class="fw-semibold" data-sort-value="{{ r.resource_name }}">{{ r.resource_name }}</td>
-                            <td data-sort-value="{{ r.resource_type.resource_type if r.resource_type else '' }}">
-                                <span class="badge bg-light text-dark border">
-                                    {{ r.resource_type.resource_type if r.resource_type else '—' }}
-                                </span>
+                    {% if resource_types %}
+                    {% for rt in resource_types %}
+                    {# ── Resource Type row (clickable trigger) ── #}
+                    <tbody>
+                        <tr class="cursor-pointer table-light fw-semibold"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#res-type-{{ rt.resource_type_id }}"
+                            aria-expanded="false">
+                            <td>
+                                <i class="fas fa-chevron-right small text-muted me-1 res-type-collapse-icon"
+                                   style="transition: transform 0.2s;"></i>
+                                {{ rt.resource_type }}
                             </td>
-                            <td class="text-muted" data-sort-value="{{ r.description or '' }}">{{ r.description or '—' }}</td>
-                            <td class="text-nowrap" data-sort-value="{{ r.commission_date.strftime('%Y-%m-%d') if r.commission_date else '' }}">
+                            <td class="text-muted small">
+                                {% if rt.grace_period_days is not none %}Grace: {{ rt.grace_period_days }}d{% endif %}
+                            </td>
+                            <td class="text-muted small">{{ rt.resources|length }} resource{{ 's' if rt.resources|length != 1 else '' }}</td>
+                            <td></td>
+                            <td class="text-end">
+                                {% if is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editResourceTypeModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_resource_type_edit_form', resource_type_id=rt.resource_type_id) }}"
+                                        hx-target="#editResourceTypeFormContainer"
+                                        hx-trigger="click"
+                                        title="Edit resource type"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                    {# ── Resource child rows (collapsed by default) ── #}
+                    <tbody class="collapse" id="res-type-{{ rt.resource_type_id }}">
+                        {% for r in rt.resources | sort(attribute='resource_name') %}
+                        <tr data-active="{{ '1' if r.is_active else '0' }}" class="table-secondary">
+                            <td class="ps-4 fw-semibold">{{ r.resource_name }}</td>
+                            <td class="text-muted small">{{ r.description or '—' }}</td>
+                            <td class="text-muted small text-nowrap">
                                 {{ r.commission_date.strftime('%Y-%m-%d') if r.commission_date else '—' }}
                             </td>
-                            <td class="text-nowrap" data-sort-value="{{ r.decommission_date.strftime('%Y-%m-%d') if r.decommission_date else 'Z' }}">
-                                {{ r.decommission_date.strftime('%Y-%m-%d') if r.decommission_date else '—' }}
-                            </td>
-                            <td data-sort-value="{{ 'Active' if r.is_active else 'Inactive' }}">
+                            <td>
                                 {% if r.is_active %}
                                 <span class="badge bg-success">Active</span>
                                 {% else %}
@@ -102,56 +119,17 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr>
-                            <td colspan="7" class="text-center text-muted py-3">No resources found.</td>
+                        <tr class="table-secondary">
+                            <td colspan="5" class="ps-4 text-muted fst-italic">No resources of this type.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- ── Resource Types tab ──────────────────────────────────────── -->
-        <div class="tab-pane fade" id="resource-types-pane" role="tabpanel"
-             aria-labelledby="resource-types-tab">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="sortable-header" data-sort="text">Type</th>
-                            <th class="sortable-header" data-sort="numeric">Grace Period (days)</th>
-                            <th class="sortable-header" data-sort="numeric"># Resources</th>
-                            <th class="text-end">Actions</th>
-                        </tr>
-                    </thead>
+                    {% endfor %}
+                    {% else %}
                     <tbody>
-                        {% for rt in resource_types %}
-                        <tr>
-                            <td class="fw-semibold" data-sort-value="{{ rt.resource_type }}">{{ rt.resource_type }}</td>
-                            <td data-sort-value="{{ rt.grace_period_days if rt.grace_period_days is not none else -1 }}">
-                                {{ rt.grace_period_days if rt.grace_period_days is not none else '—' }}
-                            </td>
-                            <td data-sort-value="{{ rt.resources|length }}">{{ rt.resources|length }}</td>
-                            <td class="text-end">
-                                {% if is_admin %}
-                                <button class="btn btn-sm btn-outline-secondary"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#editResourceTypeModal"
-                                        hx-get="{{ url_for('admin_dashboard.htmx_resource_type_edit_form', resource_type_id=rt.resource_type_id) }}"
-                                        hx-target="#editResourceTypeFormContainer"
-                                        hx-trigger="click"
-                                        title="Edit resource type">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="4" class="text-center text-muted py-3">No resource types found.</td>
-                        </tr>
-                        {% endfor %}
+                        <tr><td colspan="5" class="text-center text-muted py-3">No resource types found.</td></tr>
                     </tbody>
+                    {% endif %}
                 </table>
             </div>
         </div>
@@ -307,6 +285,16 @@
     }
     window.filterResourceRows = filterResourceRows;
 
+    function filterResourcesPaneRows(activeOnly) {
+        var pane = document.getElementById('resources-pane');
+        if (!pane) return;
+        // Only resource child rows carry data-active; type rows are always shown
+        pane.querySelectorAll('tr[data-active]').forEach(function(row) {
+            row.style.display = (activeOnly && row.dataset.active === '0') ? 'none' : '';
+        });
+    }
+    window.filterResourcesPaneRows = filterResourcesPaneRows;
+
     /* Sortable column headers */
     function attachSorting(table) {
         table.querySelectorAll('th.sortable-header').forEach(function(th) {
@@ -341,8 +329,19 @@
     document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
 
     /* Apply default active-only filter on load */
-    ['resources-tbody', 'machines-tbody', 'queues-tbody'].forEach(function(id) {
+    filterResourcesPaneRows(true);
+    ['machines-tbody', 'queues-tbody'].forEach(function(id) {
         filterResourceRows(id, true);
+    });
+
+    /* Chevron rotation for resource type collapse rows */
+    document.querySelectorAll('#resources-pane [data-bs-toggle="collapse"]').forEach(function(trigger) {
+        var target = document.querySelector(trigger.dataset.bsTarget);
+        if (!target) return;
+        var icon = trigger.querySelector('.res-type-collapse-icon');
+        if (!icon) return;
+        target.addEventListener('show.bs.collapse', function() { icon.style.transform = 'rotate(90deg)'; });
+        target.addEventListener('hide.bs.collapse', function() { icon.style.transform = ''; });
     });
 })();
 </script>
