@@ -44,7 +44,6 @@
                             <th>Name</th>
                             <th>Description</th>
                             <th>Commissioned</th>
-                            <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -66,7 +65,6 @@
                                 {% if rt.grace_period_days is not none %}Grace: {{ rt.grace_period_days }}d{% endif %}
                             </td>
                             <td class="text-muted small">{{ type_resources|length }} resource{{ 's' if type_resources|length != 1 else '' }}</td>
-                            <td></td>
                             <td class="text-end">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
@@ -86,18 +84,11 @@
                     {# ── Resource child rows (collapsed by default) ── #}
                     <tbody class="collapse" id="res-type-{{ rt.resource_type_id }}">
                         {% for r in type_resources %}
-                        <tr class="table-secondary">
+                        <tr class="table-secondary{% if not r.is_active %} opacity-50{% endif %}">
                             <td class="ps-4 fw-semibold">{{ r.resource_name }}</td>
                             <td class="text-muted small">{{ r.description or '—' }}</td>
                             <td class="text-muted small text-nowrap">
                                 {{ r.commission_date.strftime('%Y-%m-%d') if r.commission_date else '—' }}
-                            </td>
-                            <td>
-                                {% if r.is_active %}
-                                <span class="badge bg-success">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactive</span>
-                                {% endif %}
                             </td>
                             <td class="text-end">
                                 {% if is_admin %}
@@ -115,14 +106,14 @@
                         </tr>
                         {% else %}
                         <tr class="table-secondary">
-                            <td colspan="5" class="ps-4 text-muted fst-italic">No resources of this type.</td>
+                            <td colspan="4" class="ps-4 text-muted fst-italic">No resources of this type.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     {% endfor %}
                     {% else %}
                     <tbody>
-                        <tr><td colspan="5" class="text-center text-muted py-3">No resource types found.</td></tr>
+                        <tr><td colspan="4" class="text-center text-muted py-3">No resource types found.</td></tr>
                     </tbody>
                     {% endif %}
                 </table>
@@ -147,7 +138,7 @@
                     </thead>
                     <tbody id="machines-tbody">
                         {% for m in machines %}
-                        <tr>
+                        <tr{% if not m.is_active %} class="opacity-50"{% endif %}>
                             <td class="fw-semibold" data-sort-value="{{ m.name }}">{{ m.name }}</td>
                             <td data-sort-value="{{ m.resource.resource_name if m.resource else '' }}">
                                 <span class="text-muted">
@@ -198,14 +189,13 @@
                             <th class="sortable-header" data-sort="numeric">WC Limit (hrs)</th>
                             <th class="sortable-header" data-sort="date">Start Date</th>
                             <th class="sortable-header" data-sort="date">End Date</th>
-                            <th class="sortable-header" data-sort="text">Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="queues-tbody">
                         {% for q in queues %}
                         {% set q_active = (q.end_date is none) or (q.end_date > now) %}
-                        <tr>
+                        <tr{% if not q_active %} class="opacity-50"{% endif %}>
                             <td class="fw-semibold" data-sort-value="{{ q.queue_name }}">{{ q.queue_name }}</td>
                             <td data-sort-value="{{ q.resource.resource_name if q.resource else '' }}">
                                 <span class="text-muted">
@@ -218,13 +208,6 @@
                             </td>
                             <td class="text-nowrap" data-sort-value="{{ q.end_date.strftime('%Y-%m-%d') if q.end_date else 'Z' }}">
                                 {{ q.end_date.strftime('%Y-%m-%d') if q.end_date else '—' }}
-                            </td>
-                            <td data-sort-value="{{ 'Active' if q_active else 'Inactive' }}">
-                                {% if q_active %}
-                                <span class="badge bg-success">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactive</span>
-                                {% endif %}
                             </td>
                             <td class="text-end">
                                 {% if is_admin %}
@@ -242,7 +225,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center text-muted py-3">No queues found.</td>
+                            <td colspan="6" class="text-center text-muted py-3">No queues found.</td>
                         </tr>
                         {% endfor %}
                     </tbody>

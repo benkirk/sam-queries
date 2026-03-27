@@ -1125,26 +1125,15 @@ def htmx_facilities_card():
     Facilities, Panels, Panel Sessions, Allocation Types.
     Lazy-loaded when the Facility collapsible section is first expanded.
     """
-    from sam.resources.facilities import Facility, Panel, PanelSession
+    from sam.resources.facilities import Facility
     from sam.accounting.allocations import AllocationType
 
     active_only = request.args.get('active_only') == '1'
-    now = datetime.now()
 
     facility_q = db.session.query(Facility).order_by(Facility.facility_name)
     if active_only:
         facility_q = facility_q.filter(Facility.is_active)
     facilities = facility_q.all()
-
-    panel_q = db.session.query(Panel).order_by(Panel.panel_name)
-    if active_only:
-        panel_q = panel_q.filter(Panel.is_active)
-    panels = panel_q.all()
-
-    ps_q = db.session.query(PanelSession).order_by(PanelSession.start_date.desc())
-    if active_only:
-        ps_q = ps_q.filter(PanelSession.is_active)
-    panel_sessions = ps_q.all()
 
     at_q = db.session.query(AllocationType).order_by(AllocationType.allocation_type)
     if active_only:
@@ -1154,11 +1143,8 @@ def htmx_facilities_card():
     return render_template(
         'dashboards/admin/fragments/facility_card.html',
         facilities=facilities,
-        panels=panels,
-        panel_sessions=panel_sessions,
         allocation_types=allocation_types,
         is_admin=True,
-        now=now,
         active_only=active_only,
     )
 
@@ -1490,12 +1476,10 @@ def htmx_organizations_card():
     active_only = request.args.get('active_only') == '1'
     now = datetime.now()
 
-    # Org tree: always full hierarchy regardless of active_only
-    organizations = (
-        db.session.query(Organization)
-        .options(subqueryload(Organization.children))
-        .all()
-    )
+    org_q = db.session.query(Organization).options(subqueryload(Organization.children))
+    if active_only:
+        org_q = org_q.filter(Organization.is_active)
+    organizations = org_q.all()
 
     # Build DFS-ordered flat tree: [(org, depth, has_children)]
     _children = {}
