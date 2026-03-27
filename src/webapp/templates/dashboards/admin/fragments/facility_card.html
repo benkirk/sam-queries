@@ -38,7 +38,6 @@
                             <th>Description</th>
                             <th>Fair Share %</th>
                             <th>Count</th>
-                            <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -47,7 +46,7 @@
                     {% set visible_panels = (f.panels | selectattr('active') if active_only else f.panels) | sort(attribute='panel_name') %}
                     {# ── Facility row (clickable collapse trigger) ── #}
                     <tbody>
-                        <tr class="cursor-pointer table-light fw-semibold"
+                        <tr class="cursor-pointer table-light fw-semibold{% if not f.active %} opacity-50{% endif %}"
                             data-bs-toggle="collapse"
                             data-bs-target="#facility-panels-{{ f.facility_id }}"
                             aria-expanded="false">
@@ -67,13 +66,6 @@
                             </td>
                             <td class="text-muted small">
                                 {{ visible_panels|length }} panel{{ 's' if visible_panels|length != 1 else '' }}
-                            </td>
-                            <td>
-                                {% if f.active %}
-                                <span class="badge bg-success">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactive</span>
-                                {% endif %}
                             </td>
                             <td class="text-end">
                                 {% if is_admin %}
@@ -95,7 +87,7 @@
                     <tbody class="collapse" id="facility-panels-{{ f.facility_id }}">
                         {% for p in visible_panels %}
                         {% set visible_ats = (p.allocation_types | selectattr('active') if active_only else p.allocation_types) | list %}
-                        <tr class="table-secondary">
+                        <tr class="table-secondary{% if not p.active %} opacity-50{% endif %}">
                             <td class="ps-4">
                                 <i class="fas fa-users-cog small text-muted me-1"></i>
                                 {{ p.panel_name }}
@@ -105,13 +97,6 @@
                             <td>—</td>
                             <td class="text-muted small">
                                 {{ visible_ats|length }} type{{ 's' if visible_ats|length != 1 else '' }}
-                            </td>
-                            <td>
-                                {% if p.active %}
-                                <span class="badge bg-success">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactive</span>
-                                {% endif %}
                             </td>
                             <td class="text-end">
                                 {% if is_admin %}
@@ -129,14 +114,14 @@
                         </tr>
                         {% else %}
                         <tr class="table-secondary">
-                            <td colspan="7" class="ps-4 text-muted fst-italic">No panels.</td>
+                            <td colspan="6" class="ps-4 text-muted fst-italic">No panels.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     {% endfor %}
                     {% else %}
                     <tbody>
-                        <tr><td colspan="7" class="text-center text-muted py-3">No facilities found.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted py-3">No facilities found.</td></tr>
                     </tbody>
                     {% endif %}
                 </table>
@@ -159,7 +144,6 @@
                             <th>Default Amount</th>
                             <th>Fair Share %</th>
                             <th># Projects</th>
-                            <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -168,7 +152,7 @@
                     {% for f in facilities %}
                     {% set at_visible_panels = (f.panels | selectattr('active') if active_only else f.panels) | sort(attribute='panel_name') %}
                     {# ── Level 0: Facility row (collapsible trigger) ── #}
-                    <tr class="cursor-pointer table-light fw-semibold"
+                    <tr class="cursor-pointer table-light fw-semibold{% if not f.active %} opacity-50{% endif %}"
                         data-at-facility="{{ f.facility_id }}">
                         <td style="padding-left: 0.4rem;">
                             <i class="fas fa-chevron-right small text-muted me-1 at-facility-icon"
@@ -177,38 +161,26 @@
                             {{ f.facility_name }}
                         </td>
                         <td></td><td></td><td></td>
-                        <td>
-                            {% if f.active %}<span class="badge bg-success">Active</span>
-                            {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
-                        </td>
                         <td></td>
                     </tr>
                     {% for p in at_visible_panels %}
                     {% set visible_ats = (p.allocation_types | selectattr('active') if active_only else p.allocation_types) | sort(attribute='allocation_type') %}
                     {# ── Level 1: Panel row (always visible when facility is open) ── #}
-                    <tr class="table-secondary fw-semibold at-child-{{ f.facility_id }}" style="display:none;">
+                    <tr class="table-secondary fw-semibold at-child-{{ f.facility_id }}{% if not p.active %} opacity-50{% endif %}" style="display:none;">
                         <td style="padding-left: 1.8rem;">
                             <i class="fas fa-users-cog small text-muted me-1"></i>
                             {{ p.panel_name }}
                         </td>
                         <td></td><td></td><td></td>
-                        <td>
-                            {% if p.active %}<span class="badge bg-success">Active</span>
-                            {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
-                        </td>
                         <td></td>
                     </tr>
                     {# ── Level 2: AllocationType leaf rows ── #}
                     {% for at in visible_ats %}
-                    <tr class="at-child-{{ f.facility_id }}" style="display:none;">
+                    <tr class="at-child-{{ f.facility_id }}{% if not at.active %} opacity-50{% endif %}" style="display:none;">
                         <td style="padding-left: 3.2rem;">{{ at.allocation_type }}</td>
                         <td>{{ '{:,.0f}'.format(at.default_allocation_amount) if at.default_allocation_amount is not none else '—' }}</td>
                         <td>{{ '%.2f'|format(at.fair_share_percentage) if at.fair_share_percentage is not none else '—' }}</td>
                         <td>{{ at.projects|length }}</td>
-                        <td>
-                            {% if at.active %}<span class="badge bg-success">Active</span>
-                            {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
-                        </td>
                         <td class="text-end">
                             {% if is_admin %}
                             <button class="btn btn-sm btn-outline-secondary"
@@ -225,17 +197,17 @@
                     </tr>
                     {% else %}
                     <tr class="at-child-{{ f.facility_id }}" style="display:none;">
-                        <td colspan="6" style="padding-left: 3.2rem;" class="text-muted fst-italic">No allocation types.</td>
+                        <td colspan="5" style="padding-left: 3.2rem;" class="text-muted fst-italic">No allocation types.</td>
                     </tr>
                     {% endfor %}
                     {% else %}
                     <tr class="at-child-{{ f.facility_id }}" style="display:none;">
-                        <td colspan="6" style="padding-left: 1.8rem;" class="text-muted fst-italic">No panels.</td>
+                        <td colspan="5" style="padding-left: 1.8rem;" class="text-muted fst-italic">No panels.</td>
                     </tr>
                     {% endfor %}
                     {% endfor %}
                     {% else %}
-                    <tr><td colspan="6" class="text-center text-muted py-3">No facilities found.</td></tr>
+                    <tr><td colspan="5" class="text-center text-muted py-3">No facilities found.</td></tr>
                     {% endif %}
                     </tbody>
                 </table>

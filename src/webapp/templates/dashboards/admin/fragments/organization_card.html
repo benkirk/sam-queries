@@ -61,7 +61,6 @@
                             <th>Organization</th>
                             <th>Description</th>
                             <th># Users</th>
-                            <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -69,7 +68,7 @@
                         {% for org, depth, has_children in org_tree %}
                         <tr data-org-id="{{ org.organization_id }}"
                             data-parent-id="{{ org.parent_org_id or '' }}"
-                            {% if depth > 0 %}class="org-tree-collapsed"{% endif %}>
+                            class="{% if depth > 0 %}org-tree-collapsed {% endif %}{% if not org.active %}opacity-50{% endif %}">
                             <td style="padding-left: {{ (depth * 1.4 + 0.4) }}rem; white-space: nowrap;">
                                 {% if has_children %}
                                 <i class="fas fa-chevron-right small text-muted me-1 org-tree-chevron"
@@ -83,13 +82,6 @@
                             </td>
                             <td class="text-muted small">{{ org.description or '—' }}</td>
                             <td>{{ org.users|length }}</td>
-                            <td>
-                                {% if org.active %}
-                                <span class="badge bg-success">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactive</span>
-                                {% endif %}
-                            </td>
                             <td class="text-end">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
@@ -105,7 +97,7 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="5" class="text-center text-muted py-3">No organizations found.</td></tr>
+                        <tr><td colspan="4" class="text-center text-muted py-3">No organizations found.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -210,7 +202,6 @@
                         <tr>
                             <th>Name</th>
                             <th>Count</th>
-                            <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -218,7 +209,7 @@
                     {% for g in aoi_groups %}
                     {# ── Group row (clickable trigger) ── #}
                     <tbody>
-                        <tr class="cursor-pointer table-light fw-semibold"
+                        <tr class="cursor-pointer table-light fw-semibold{% if not g.active %} opacity-50{% endif %}"
                             data-bs-toggle="collapse"
                             data-bs-target="#aoi-group-{{ g.area_of_interest_group_id }}"
                             aria-expanded="false">
@@ -228,13 +219,6 @@
                                 {{ g.name }}
                             </td>
                             <td class="text-muted small">{{ g.areas|length }} area{{ 's' if g.areas|length != 1 else '' }}</td>
-                            <td>
-                                {% if g.active %}
-                                <span class="badge bg-success">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactive</span>
-                                {% endif %}
-                            </td>
                             <td class="text-end">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
@@ -254,16 +238,9 @@
                     {# ── AOI child rows (collapsed by default) ── #}
                     <tbody class="collapse" id="aoi-group-{{ g.area_of_interest_group_id }}">
                         {% for a in aois | selectattr('area_of_interest_group_id', 'equalto', g.area_of_interest_group_id) | list | sort(attribute='area_of_interest') %}
-                        <tr class="table-secondary">
+                        <tr class="table-secondary{% if not a.active %} opacity-50{% endif %}">
                             <td class="ps-4">{{ a.area_of_interest }}</td>
                             <td class="text-muted small">{{ a.projects|length }} project{{ 's' if a.projects|length != 1 else '' }}</td>
-                            <td>
-                                {% if a.active %}
-                                <span class="badge bg-success">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactive</span>
-                                {% endif %}
-                            </td>
                             <td class="text-end">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
@@ -280,14 +257,14 @@
                         </tr>
                         {% else %}
                         <tr class="table-secondary">
-                            <td colspan="4" class="ps-4 text-muted fst-italic">No areas in this group.</td>
+                            <td colspan="3" class="ps-4 text-muted fst-italic">No areas in this group.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     {% endfor %}
                     {% else %}
                     <tbody>
-                        <tr><td colspan="4" class="text-center text-muted py-3">No AOI groups found.</td></tr>
+                        <tr><td colspan="3" class="text-center text-muted py-3">No AOI groups found.</td></tr>
                     </tbody>
                     {% endif %}
                 </table>
@@ -306,7 +283,6 @@
                             <th>PI</th>
                             <th>Start Date</th>
                             <th>End Date</th>
-                            <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -314,7 +290,7 @@
                     {% for cs in contract_sources %}
                     {# ── Source row (clickable trigger) ── #}
                     <tbody>
-                        <tr class="cursor-pointer table-light fw-semibold"
+                        <tr class="cursor-pointer table-light fw-semibold{% if not cs.active %} opacity-50{% endif %}"
                             data-bs-toggle="collapse"
                             data-bs-target="#contract-source-{{ cs.contract_source_id }}"
                             aria-expanded="false">
@@ -328,13 +304,6 @@
                             <td></td>
                             <td></td>
                             <td></td>
-                            <td>
-                                {% if cs.active %}
-                                <span class="badge bg-success">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactive</span>
-                                {% endif %}
-                            </td>
                             <td class="text-end">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
@@ -354,7 +323,7 @@
                     {# ── Contract child rows (collapsed by default) ── #}
                     <tbody class="collapse" id="contract-source-{{ cs.contract_source_id }}">
                         {% for c in contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list | sort(attribute='contract_number') %}
-                        <tr class="table-secondary">
+                        <tr class="table-secondary{% if not c.is_active %} opacity-50{% endif %}">
                             <td class="ps-4 fw-semibold text-nowrap">{{ c.contract_number }}</td>
                             <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
                                 title="{{ c.title }}">{{ c.title }}</td>
@@ -366,13 +335,6 @@
                             </td>
                             <td class="text-muted small text-nowrap">
                                 {{ c.end_date.strftime('%Y-%m-%d') if c.end_date else '—' }}
-                            </td>
-                            <td>
-                                {% if c.is_active %}
-                                <span class="badge bg-success">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactive</span>
-                                {% endif %}
                             </td>
                             <td class="text-end">
                                 {% if is_admin %}
@@ -390,14 +352,14 @@
                         </tr>
                         {% else %}
                         <tr class="table-secondary">
-                            <td colspan="7" class="ps-4 text-muted fst-italic">No contracts for this source.</td>
+                            <td colspan="6" class="ps-4 text-muted fst-italic">No contracts for this source.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     {% endfor %}
                     {% else %}
                     <tbody>
-                        <tr><td colspan="7" class="text-center text-muted py-3">No contract sources found.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted py-3">No contract sources found.</td></tr>
                     </tbody>
                     {% endif %}
                 </table>
@@ -413,22 +375,14 @@
                         <tr>
                             <th class="sortable-header" data-sort="text">Program Name</th>
                             <th class="sortable-header" data-sort="numeric"># Contracts</th>
-                            <th class="sortable-header" data-sort="text">Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="nsf-programs-tbody">
                         {% for p in nsf_programs %}
-                        <tr>
+                        <tr{% if not p.active %} class="opacity-50"{% endif %}>
                             <td data-sort-value="{{ p.nsf_program_name }}">{{ p.nsf_program_name }}</td>
                             <td data-sort-value="{{ p.contracts|length }}">{{ p.contracts|length }}</td>
-                            <td data-sort-value="{{ 'Active' if p.active else 'Inactive' }}">
-                                {% if p.active %}
-                                <span class="badge bg-success">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactive</span>
-                                {% endif %}
-                            </td>
                             <td class="text-end">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
@@ -444,7 +398,7 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="4" class="text-center text-muted py-3">No NSF programs found.</td></tr>
+                        <tr><td colspan="3" class="text-center text-muted py-3">No NSF programs found.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
