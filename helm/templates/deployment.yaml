@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.webapp.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.webapp.name }}
+    group: {{ .Values.webapp.group }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.webapp.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.webapp.name }}
+    spec:
+      containers:
+      - name: {{ .Values.webapp.name }}
+        image: {{ .Values.webapp.container.image }}
+        imagePullPolicy: IfNotPresent
+        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled .Values.webapp.jupyterhubCredentials.enabled)) }}
+        env:
+          {{- range $key, $value := .Values.webapp.env }}
+          - name: {{ $key }}
+            value: {{ $value | quote }}
+          {{- end }}
+          {{- if .Values.webapp.dbCredentials.enabled }}
+          - name: STATUS_DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-db-credentials
+                key: username
+          - name: STATUS_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-db-credentials
+                key: password
+          {{- end }}
+          {{- if .Values.webapp.samDbCredentials.enabled }}
+          - name: SAM_DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-sam-db-credentials
+                key: username
+          - name: SAM_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-sam-db-credentials
+                key: password
+          {{- end }}
+          {{- if .Values.webapp.jupyterhubCredentials.enabled }}
+          - name: JUPYTERHUB_API_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-jh-credentials
+                key: token
+          {{- end }}
+        {{- end }}
+        resources:
+          requests:
+            memory: {{ .Values.webapp.container.requests.memory }}
+            cpu: {{ .Values.webapp.container.requests.cpu }}
+          limits:
+            memory: {{ .Values.webapp.container.limits.memory }}
+            cpu: {{ .Values.webapp.container.limits.cpu }}
+        ports:
+        - containerPort: {{ .Values.webapp.container.port }}

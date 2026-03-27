@@ -1,0 +1,40 @@
+replicaCount: 1                           # Save local resources
+
+webapp:
+  tls:
+    fqdn: localhost
+    secretName: samuel-tls-local
+  ingress:
+    visibility: nginx
+  container:
+    requests:
+      memory: 512M
+      cpu: "0.5"
+    limits:
+      memory: 2G
+      cpu: "2"
+  env:
+    DISABLE_AUTH: "1"                     # Skip auth for local dev
+    FLASK_DEBUG: "1"
+    FLASK_SECRET_KEY: "68e6044431211026738c8c77d7696046e9d6c440b14993557c576d66e6d03fe3"
+    AUDIT_ENABLED: "0"
+    AUDIT_LOG_PATH: "/tmp/model_audit.log"
+    SAM_DB_SERVER: "host.docker.internal" # 127.0.0.1 unreachable from k8s pods; use this instead
+    SAM_DB_REQUIRE_SSL: "false"
+    STATUS_DB_DRIVER: "mysql+pymysql"
+    STATUS_DB_SERVER: "host.docker.internal"
+    JUPYTERHUB_API_URL: "https://jupyterhub.hpc.ucar.edu"
+    JUPYTERHUB_INSTANCE: "stable"
+    JUPYTERHUB_CACHE_TTL: "300"
+
+  dbCredentials:
+    enabled: true
+    useExternalSecret: false              # Don't create ExternalSecret CRD; secret injected by local-secrets.sh
+
+  samDbCredentials:
+    enabled: true
+    useExternalSecret: false
+
+  jupyterhubCredentials:
+    enabled: true
+    useExternalSecret: false

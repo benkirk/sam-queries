@@ -385,6 +385,8 @@ docker compose up
 
 Access at `http://localhost:5050`
 
+For Kubernetes deployment (local Docker Desktop or CIRRUS production), see **[docs/README-k8s.md](docs/README-k8s.md)**.
+
 Alternatively, run directly (requires database configuration):
 ```bash
 cd src/webapp
@@ -573,6 +575,7 @@ sam-queries/
 - **[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)** - Complete local development setup guide
 - **[docs/CREDENTIALS.md](docs/CREDENTIALS.md)** - Credential configuration guide
 - **[docs/DATABASE_SWITCHING.md](docs/DATABASE_SWITCHING.md)** - Switching between local and production databases
+- **[docs/README-k8s.md](docs/README-k8s.md)** - Kubernetes deployment guide (local Docker Desktop + CIRRUS production)
 - **[docs/SETUP_SUMMARY.md](docs/SETUP_SUMMARY.md)** - Quick reference for setup
 - **[docs/SCRIPTS.md](docs/SCRIPTS.md)** - Setup script reference
 - **[docs/DOCKER_TROUBLESHOOTING.md](docs/DOCKER_TROUBLESHOOTING.md)** - Docker issues and solutions
