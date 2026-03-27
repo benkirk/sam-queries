@@ -53,6 +53,52 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
     projects = relationship('ProjectOrganization', back_populates='organization')
     users = relationship('UserOrganization', back_populates='organization')
 
+    def update(
+        self,
+        *,
+        name: Optional[str] = None,
+        acronym: Optional[str] = None,
+        description: Optional[str] = None,
+        active: Optional[bool] = None,
+    ) -> 'Organization':
+        """
+        Update this Organization record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        NOTE: Never touches tree columns (tree_left, tree_right, level, level_code,
+              parent_org_id) — those are managed by the NestedSetMixin.
+
+        Args:
+            name: New name (NOT NULL)
+            acronym: New acronym (NOT NULL, unique)
+            description: New description (nullable — pass empty string to clear)
+            active: Whether the organization is active
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If required fields are empty
+        """
+        if name is not None:
+            if not name.strip():
+                raise ValueError("name is required")
+            self.name = name.strip()
+
+        if acronym is not None:
+            if not acronym.strip():
+                raise ValueError("acronym is required")
+            self.acronym = acronym.strip()
+
+        if description is not None:
+            self.description = description.strip() if description.strip() else None
+
+        if active is not None:
+            self.active = active
+
+        self.session.flush()
+        return self
+
     def __str__(self):
         return f"{self.name} ({self.acronym})"
 
@@ -85,7 +131,7 @@ class UserOrganization(Base, TimestampMixin, DateRangeMixin):
 
 
 #----------------------------------------------------------------------------
-class Institution(Base, TimestampMixin):
+class Institution(Base, TimestampMixin, SessionMixin):
     """Educational and research institutions."""
     __tablename__ = 'institution'
 
@@ -117,6 +163,71 @@ class Institution(Base, TimestampMixin):
     state_prov_id = Column(Integer, ForeignKey('state_prov.ext_state_prov_id'))
     users = relationship('UserInstitution', back_populates='institution')
 
+    def update(
+        self,
+        *,
+        name: Optional[str] = None,
+        acronym: Optional[str] = None,
+        nsf_org_code: Optional[str] = None,
+        address: Optional[str] = None,
+        city: Optional[str] = None,
+        zip: Optional[str] = None,
+        code: Optional[str] = None,
+        institution_type_id: Optional[int] = None,
+    ) -> 'Institution':
+        """
+        Update this Institution record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        NOTE: Institution has no active flag.
+
+        Args:
+            name: New name (NOT NULL)
+            acronym: New acronym (NOT NULL)
+            nsf_org_code: NSF organization code (nullable)
+            address: Street address (nullable)
+            city: City (nullable)
+            zip: ZIP/postal code (nullable)
+            code: Short code (nullable, max 3 chars)
+            institution_type_id: FK to institution_type (nullable)
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If required fields are empty
+        """
+        if name is not None:
+            if not name.strip():
+                raise ValueError("name is required")
+            self.name = name.strip()
+
+        if acronym is not None:
+            if not acronym.strip():
+                raise ValueError("acronym is required")
+            self.acronym = acronym.strip()
+
+        if nsf_org_code is not None:
+            self.nsf_org_code = nsf_org_code.strip() if nsf_org_code.strip() else None
+
+        if address is not None:
+            self.address = address.strip() if address.strip() else None
+
+        if city is not None:
+            self.city = city.strip() if city.strip() else None
+
+        if zip is not None:
+            self.zip = zip.strip() if zip.strip() else None
+
+        if code is not None:
+            self.code = code.strip() if code.strip() else None
+
+        if institution_type_id is not None:
+            self.institution_type_id = institution_type_id
+
+        self.session.flush()
+        return self
+
     def __str__(self):
         return f"{self.name}"
 
@@ -125,7 +236,7 @@ class Institution(Base, TimestampMixin):
 
 
 #----------------------------------------------------------------------------
-class InstitutionType(Base, TimestampMixin):
+class InstitutionType(Base, TimestampMixin, SessionMixin):
     """Types of institutions (University, Government, etc.)."""
     __tablename__ = 'institution_type'
 
@@ -133,6 +244,33 @@ class InstitutionType(Base, TimestampMixin):
     type = Column(String(45), nullable=False)
 
     institutions = relationship('Institution', back_populates='institution_type')
+
+    def update(
+        self,
+        *,
+        type: Optional[str] = None,
+    ) -> 'InstitutionType':
+        """
+        Update this InstitutionType record.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            type: New type name (NOT NULL)
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If type name is empty
+        """
+        if type is not None:
+            if not type.strip():
+                raise ValueError("type name is required")
+            self.type = type.strip()
+
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.type}"

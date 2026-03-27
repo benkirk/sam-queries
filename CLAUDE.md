@@ -408,6 +408,41 @@ __table_args__ = (
 - `SoftDeleteMixin`: Adds deleted flag + `is_active` hybrid (not deleted)
 - `ActiveFlagMixin`: Adds active flag + `is_active` hybrid (active == True)
 - `DateRangeMixin`: Adds start_date, end_date + `is_active` / `is_currently_active` hybrids
+- `SessionMixin`: Adds `self.session` property (`Session.object_session(self)`) — required for `update()` instance methods
+
+### 6. Write Operations on ORM Models
+Prefer co-locating write logic with the model definition:
+- **`update()` → instance method**: validate fields + `self.session.flush()`, return `self`
+- **`create()` → classmethod**: takes `session` explicitly, validates, does `session.add(obj)` + `session.flush()`, returns instance
+
+```python
+# Instance method pattern (most update ops)
+def update(self, *, description=None, active=None):
+    if description is not None:
+        self.description = description if description.strip() else None
+    if active is not None:
+        self.active = active
+    self.session.flush()
+    return self
+
+# Classmethod pattern (creation only)
+@classmethod
+def create(cls, session, *, required_field, optional_field=None):
+    obj = cls(required_field=required_field, optional_field=optional_field)
+    session.add(obj)
+    session.flush()
+    return obj
+```
+
+**Caller pattern**: load object first, then call method:
+```python
+resource = session.get(Resource, resource_id)
+if not resource:
+    raise ValueError(...)       # caller handles not-found
+resource.update(description="new")
+```
+
+**What stays in `sam.manage`**: complex multi-entity ops (`add_user_to_project`), audit-trail-heavy ops (`update_allocation` + `log_allocation_transaction`), summary upserts (`summaries.py`), and the `management_transaction` context manager.
 
 ### 5. Universal `is_active` Interface
 Every ORM model exposes `Model.is_active` as a SQLAlchemy hybrid property.
@@ -760,12 +795,13 @@ docker compose up
 ```
 
 ### Adding New ORM Models
-1. Create model in appropriate domain module
-2. Add to `sam/__init__.py` imports
-3. Create comprehensive tests in `tests/unit/test_new_models.py`
-4. Run schema validation: `pytest tests/integration/test_schema_validation.py`
-5. Verify all tests pass: `pytest tests/ --no-cov` (fast)
-6. Commit with detailed message
+1. Create model in appropriate domain module; add `SessionMixin` if write methods are needed
+2. Add `update()` instance method and/or `create()` classmethod for any write operations (do NOT create standalone functions in `sam/manage/`)
+3. Add to `sam/__init__.py` imports
+4. Create comprehensive tests in `tests/unit/test_new_models.py`
+5. Run schema validation: `pytest tests/integration/test_schema_validation.py`
+6. Verify all tests pass: `pytest tests/ --no-cov` (fast)
+7. Commit with detailed message
 
 ### Fixing Schema Mismatches
 1. Check actual DB schema: `mysql ... -e "SHOW CREATE TABLE tablename\G"`
@@ -834,6 +870,7 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ❌ **DON'T** use raw column comparisons (`Model.active == True`, `Model.deleted == False`, raw date checks) — use `Model.is_active` instead (universal hybrid property across all models)
 ❌ **DON'T** pass `session` to `project.get_detailed_allocation_usage()` - it uses SessionMixin internally
 ❌ **DON'T** forget to unpack tuples from `get_projects_by_allocation_end_date()` - returns `(project, allocation, resource_name, days)`
+❌ **DON'T** add standalone `update_*(session, id, ...)` functions to `sam/manage/` — put `update()` instance methods and `create()` classmethods directly on the ORM model instead
 
 ✅ **DO** use schema validation tests before committing model changes
 ✅ **DO** check actual database schema when in doubt
@@ -843,10 +880,11 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ✅ **DO** run `pytest tests/ --no-cov` for fast iteration (32s vs 97s)
 ✅ **DO** use `Model.is_active` for any active check — it's a hybrid property on every model (works in Python and SQL, supports `~Model.is_active` inversion)
 ✅ **DO** unpack query result tuples properly when using `get_projects_by_allocation_end_date()`
+✅ **DO** add `SessionMixin` to any ORM model that needs an `update()` method (provides `self.session`)
 
 ---
 
 *Last Updated: 2026-03-27*
-*Current Branch: consistent_active*
-*Test Status: 807 passed, 25 skipped, 2 xpassed*
-*Parallel Execution: ~143s (no coverage)*
+*Current Branch: prefer_class_methods*
+*Test Status: 791 passed, 25 skipped, 2 xpassed*
+*Parallel Execution: ~148s (no coverage)*
