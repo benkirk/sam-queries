@@ -27,6 +27,30 @@ class Machine(Base, TimestampMixin):
     machine_factors = relationship('MachineFactor', back_populates='machine')
     resource = relationship('Resource', back_populates='machines')
 
+    def is_active_at(self, check_date=None) -> bool:
+        """Check if machine is active (commissioned, not decommissioned) at a given date."""
+        if check_date is None:
+            check_date = datetime.now()
+        if self.commission_date and self.commission_date > check_date:
+            return False
+        if self.decommission_date and self.decommission_date <= check_date:
+            return False
+        return True
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if machine is currently active (Python side)."""
+        return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if machine is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            or_(cls.commission_date.is_(None), cls.commission_date <= now),
+            or_(cls.decommission_date.is_(None), cls.decommission_date > now)
+        )
+
     def __str__(self):
         return f"{self.name}"
 

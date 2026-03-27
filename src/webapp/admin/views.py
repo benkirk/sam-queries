@@ -26,8 +26,8 @@ class MyAdminIndexView(AdminIndexView):
         session = db.session
 
         # Get some stats
-        user_count = session.query(User).filter(User.active == True).count()
-        project_count = session.query(Project).filter(Project.active == True).count()
+        user_count = session.query(User).filter(User.is_active).count()
+        project_count = session.query(Project).filter(Project.is_active).count()
 
         # Get active resource count
         resource_count = session.query(Resource).filter(
