@@ -88,6 +88,30 @@ class Queue(Base, TimestampMixin):
     wallclock_exemptions = relationship('WallclockExemption', back_populates='queue')
     comp_charge_summaries = relationship('CompChargeSummary', foreign_keys='CompChargeSummary.queue_id', back_populates='queue_ref')
 
+    def is_active_at(self, check_date=None) -> bool:
+        """Check if queue is active at a given date. Null start_date means active from the beginning."""
+        if check_date is None:
+            check_date = datetime.now()
+        if self.start_date is not None and self.start_date > check_date:
+            return False
+        if self.end_date is not None and self.end_date < check_date:
+            return False
+        return True
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Check if queue is currently active (Python side)."""
+        return self.is_active_at()
+
+    @is_active.expression
+    def is_active(cls):
+        """Check if queue is currently active (SQL side)."""
+        now = func.now()
+        return and_(
+            or_(cls.start_date.is_(None), cls.start_date <= now),
+            or_(cls.end_date.is_(None), cls.end_date >= now)
+        )
+
     def __str__(self):
         return f"{self.queue_name}"
 
