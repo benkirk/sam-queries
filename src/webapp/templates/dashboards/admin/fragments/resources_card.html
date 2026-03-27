@@ -138,7 +138,7 @@
                     </thead>
                     <tbody id="machines-tbody">
                         {% for m in machines %}
-                        <tr>
+                        <tr{% if not m.is_active %} class="opacity-50"{% endif %}>
                             <td class="fw-semibold" data-sort-value="{{ m.name }}">{{ m.name }}</td>
                             <td data-sort-value="{{ m.resource.resource_name if m.resource else '' }}">
                                 <span class="text-muted">
