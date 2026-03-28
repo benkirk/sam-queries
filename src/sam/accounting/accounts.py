@@ -120,6 +120,12 @@ class AccountUser(Base, TimestampMixin, DateRangeMixin):
     account = relationship('Account', back_populates='users', lazy='selectin')
     user = relationship('User', back_populates='accounts', lazy='selectin')
 
+    def __repr__(self):
+        username = self.user.username if self.user else None
+        projcode = self.account.project.projcode if (self.account and self.account.project) else None
+        resource = self.account.resource.resource_name if (self.account and self.account.resource) else None
+        return f"<AccountUser {self.account_user_id} user={username!r} project={projcode!r} resource={resource!r}>"
+
     @hybrid_property
     def is_active(self) -> bool:
         """Check if this account-user mapping is currently active (Python side)."""
