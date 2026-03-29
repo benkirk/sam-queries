@@ -345,8 +345,8 @@ class TestMatplotlibCaching:
             {'allocation_type': 'NSC', 'total_amount': 1000, 'count': 5, 'avg_amount': 200},
             {'allocation_type': 'Small', 'total_amount': 500, 'count': 10, 'avg_amount': 50},
         ]
-        r1 = generate_allocation_type_pie_chart_matplotlib(data, 'HPC', 'UNIV')
-        r2 = generate_allocation_type_pie_chart_matplotlib(data, 'HPC', 'UNIV')
+        r1 = generate_allocation_type_pie_chart_matplotlib(data, 'HPC', 'Derecho', 'UNIV')
+        r2 = generate_allocation_type_pie_chart_matplotlib(data, 'HPC', 'Derecho', 'UNIV')
         assert r1 is r2
         assert generate_allocation_type_pie_chart_matplotlib.cache_info().hits >= 1
 
