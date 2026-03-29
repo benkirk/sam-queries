@@ -79,14 +79,17 @@ while true; do
 
         echo "  - ${NAME}..."
 
+        t0=$(date +%s)
         if timeout "${TIMEOUT}" "./${COLLECTOR}" --log-file="${LOGFILE}" > /dev/null 2>&1; then
-            echo "    ✓ ${NAME} completed"
+            elapsed=$(( $(date +%s) - t0 ))
+            echo "    ✓ ${NAME} completed in ${elapsed}s"
         else
             status=$?
+            elapsed=$(( $(date +%s) - t0 ))
             if [[ $status -eq 124 ]]; then
-                echo "    ✗ ${NAME} TIMED OUT after ${TIMEOUT}"
+                echo "    ✗ ${NAME} TIMED OUT in ${elapsed}s"
             else
-                echo "    ✗ ${NAME} failed (see ${LOGFILE})"
+                echo "    ✗ ${NAME} failed in ${elapsed}s (see ${LOGFILE})"
             fi
         fi
     done
