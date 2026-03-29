@@ -156,7 +156,7 @@ The collectors intelligently infer node types from PBS `pbsnodes -aj -F json` ou
 # API Configuration
 STATUS_API_URL=http://localhost:5050
 STATUS_API_USER=collector
-STATUS_API_PASSWORD=your_password
+STATUS_API_KEY=your_password
 
 # Optional timeouts (seconds)
 PBS_COMMAND_TIMEOUT=30

@@ -18,6 +18,7 @@ scripts/
 │   ├── ssh-staging.sh          # SSH into staging ECS container
 │   ├── query-staging-db.sh     # Connect to staging RDS MySQL
 │   └── deploy-staging.sh       # Manual staging deployment
+├── gen_api_key.py              # Generate API key + bcrypt hash for collector auth
 ├── setup_status_db.py          # System status database setup
 ├── test_status_db.py           # System status database testing
 ├── cleanup_status_data.py      # System status data cleanup
@@ -46,6 +47,24 @@ AWS staging environment management:
 - `deploy-staging.sh` - Manual build and deploy to staging
 
 See [infra scripts documentation](../docs/SCRIPTS.md#infrastructure-scripts-scriptsinfra) for details.
+
+### API Key Management
+
+- `gen_api_key.py` - Generate a new API key and its bcrypt hash for machine-to-machine auth (e.g., HPC status collectors)
+
+```bash
+# Generate a new key for the default 'collector' username
+python scripts/gen_api_key.py
+
+# Generate for a named service
+python scripts/gen_api_key.py --username my_service
+
+# Output:
+#   API Key  → set as STATUS_API_KEY in collectors/.env
+#   Hash     → add to API_KEYS dict in src/webapp/config.py
+```
+
+Run this whenever you create or rotate collector credentials.
 
 ### System Status Scripts
 

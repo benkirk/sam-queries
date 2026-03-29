@@ -21,6 +21,7 @@ classifiers = [
 
 dependencies = [
     # ... other dependencies from PyPI
+    "bcrypt",
     "click",
     "cryptography",
     "flask",

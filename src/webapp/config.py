@@ -17,6 +17,12 @@ class SAMWebappConfig(SAMConfig):
     FLASK_ADMIN_SWATCH = 'lumen'
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB
 
+    # API key authentication for machine-to-machine routes (status collectors, etc.)
+    # Values are bcrypt hashes of the actual keys — safe to commit.
+    # Use tools/gen_api_key.py to generate new key/hash pairs.
+    # Format: {'username': '$2b$12$...bcrypt_hash...'}
+    API_KEYS: dict = {}
+
     # Auth provider ('stub' | 'ldap' | 'saml')
     AUTH_PROVIDER = os.getenv('AUTH_PROVIDER', 'stub')
 
@@ -40,6 +46,12 @@ class SAMWebappConfig(SAMConfig):
 class DevelopmentConfig(SAMWebappConfig):
     DEBUG = True
     SESSION_COOKIE_SECURE = False   # no HTTPS required in dev
+
+    # Development API keys — rotate with: python scripts/gen_api_key.py
+    # Actual key goes in collectors/.env as STATUS_API_KEY
+    API_KEYS = {
+        'collector': '$2b$12$Fdys1eMNbIGiGBjuaOtW/.y1ToE2R3C69Iq3vecjyyLuLrHUCmXau',
+    }
 
     # Development role mapping (bypasses role DB tables)
     DEV_ROLE_MAPPING = {
@@ -75,6 +87,12 @@ class TestingConfig(SAMWebappConfig):
     DEBUG = False
     SESSION_COOKIE_SECURE = False
     WTF_CSRF_ENABLED = False
+
+    # Low-cost bcrypt hash for fast test execution (rounds=4)
+    # Key value: 'test-api-key'
+    API_KEYS = {
+        'collector': '$2b$04$lEZO8EBAKbpGIUYMenFeOui8tvzj44hXlgWnbkkznBVe8oX1uQyE6',
+    }
 
 
 _configs = {

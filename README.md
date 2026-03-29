@@ -51,7 +51,8 @@ This repository provides tools to interact with SAM data programmatically, repla
 - RESTful endpoints for users, projects, allocations, charges
 - JSON responses using Marshmallow-SQLAlchemy schemas
 - Real-time allocation balances with charge breakdowns
-- Session-based authentication with RBAC
+- Session-based authentication with RBAC for browser clients
+- HTTP Basic Auth with bcrypt-hashed API keys for machine-to-machine routes (status collectors)
 
 ---
 
@@ -495,6 +496,7 @@ sam-queries/
 │   └── config_env.sh            # Environment configuration script
 │
 ├── scripts/                     # Utility scripts
+│   ├── gen_api_key.py           # Generate API key + bcrypt hash for collector auth
 │   ├── setup_status_db.py       # Create system_status database tables
 │   ├── test_status_db.py        # Test system_status database connection
 │   ├── cleanup_status_data.py   # Clean up old status snapshots (7-day retention)
@@ -839,7 +841,8 @@ For additional troubleshooting, see **[CONTRIBUTING.md](CONTRIBUTING.md#troubles
 - **MySQL/MariaDB** - Production database (97 tables, 91+ ORM models)
 - **Flask** - Web framework for admin UI and REST API
 - **Flask-Admin** - Admin interface with CRUD operations
-- **Flask-Login** - Session-based authentication
+- **Flask-Login** - Session-based authentication (browser clients)
+- **bcrypt** - Password/API key hashing for machine-to-machine auth
 - **Marshmallow-SQLAlchemy** - JSON serialization schemas
 - **pytest** - Comprehensive test framework (380+ tests, 77.47% coverage)
 - **pytest-xdist** - Parallel test execution (3x speedup)
