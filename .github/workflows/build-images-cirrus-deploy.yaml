@@ -1,4 +1,4 @@
-name: Build Docker Images
+name: Build Docker Images and CIRRUS Deploy
 
 on:
   push:
@@ -215,5 +215,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -B cirrus
           git add helm/values.yaml
-          git commit -m "ci: pin webapp image to sha-${GITHUB_SHA:0:7} [skip ci]"
+          git commit -m "ci: pin webapp image to sha-${GITHUB_SHA:0:7} ($(date -u '+%Y-%m-%d %H:%M UTC')) [skip ci]"
           git push origin cirrus --force

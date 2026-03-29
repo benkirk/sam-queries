@@ -36,10 +36,10 @@ class CollectorConfig:
 
         self.api_url = os.getenv('STATUS_API_URL', 'http://localhost:5050')
         self.api_user = os.getenv('STATUS_API_USER', 'collector')
-        self.api_password = os.getenv('STATUS_API_PASSWORD')
+        self.api_password = os.getenv('STATUS_API_KEY')
 
         if not self.api_password:
-            raise ConfigError("STATUS_API_PASSWORD required in .env or environment")
+            raise ConfigError("STATUS_API_KEY required in .env or environment")
 
         # Optional overrides
         self.pbs_timeout = int(os.getenv('PBS_COMMAND_TIMEOUT', '30'))

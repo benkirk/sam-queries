@@ -19,7 +19,8 @@ GET endpoints (status retrieval, public with login):
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
-from webapp.utils.rbac import require_permission, require_any_permission, Permission
+from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.api_auth import api_key_required
 from webapp.api.helpers import register_error_handlers
 from webapp.extensions import db
 from datetime import datetime
@@ -198,8 +199,7 @@ def _ingest_system_status(system_name, StatusSchema, id_mappers):
 # ============================================================================
 
 @bp.route('/derecho', methods=['POST'])
-@login_required
-@require_permission(Permission.MANAGE_SYSTEM_STATUS)
+@api_key_required
 def ingest_derecho():
     """
     POST /api/v1/status/derecho - Ingest Derecho system metrics.
@@ -230,8 +230,7 @@ def ingest_derecho():
 
 
 @bp.route('/casper', methods=['POST'])
-@login_required
-@require_permission(Permission.MANAGE_SYSTEM_STATUS)
+@api_key_required
 def ingest_casper():
     """
     POST /api/v1/status/casper - Ingest Casper system metrics.
@@ -263,8 +262,7 @@ def ingest_casper():
 
 
 @bp.route('/jupyterhub', methods=['POST'])
-@login_required
-@require_permission(Permission.MANAGE_SYSTEM_STATUS)
+@api_key_required
 def ingest_jupyterhub():
     """
     POST /api/v1/status/jupyterhub - Ingest JupyterHub metrics.
@@ -307,8 +305,7 @@ def ingest_jupyterhub():
 
 
 @bp.route('/outage', methods=['POST'])
-@login_required
-@require_any_permission(Permission.MANAGE_SYSTEM_STATUS, Permission.EDIT_SYSTEM_STATUS)
+@api_key_required
 def report_outage():
     """
     POST /api/v1/status/outage - Report a system outage or degradation.
