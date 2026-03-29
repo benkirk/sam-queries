@@ -40,6 +40,22 @@
     </div>
 </div>
 
+<!-- Facility Pie: single container above tabs, swaps when active tab changes -->
+{% if grouped_data %}
+<div id="facilityPieContainer" class="chart-container mb-3">
+    {% for resource_name, _ in grouped_data.items()|sort %}
+    {% set overview = resource_overviews[resource_name] %}
+    {% if overview.table_data|length > 1 %}
+    <div class="facility-pie-panel"
+         data-resource="{{ resource_name|replace(' ', '_') }}"
+         style="display:none;">
+        {{ overview.chart|safe }}
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+
 <!-- Resource Tabs -->
 {% if grouped_data %}
 <ul class="nav nav-tabs" id="resourceTabs" role="tablist">
@@ -62,166 +78,119 @@
          id="{{ resource_name|replace(' ', '_') }}"
          role="tabpanel">
 
-        <!-- Resource Overview Section -->
+        <!-- Combined Facility / Allocation-Type Table -->
         {% set overview = resource_overviews[resource_name] %}
-        <div class="overview-section mt-3">
-            <h4>Resource Overview - {{ resource_name }}</h4>
+        {% set is_storage = resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
+        <div class="mt-3">
 
-            <!-- Facility Pie Chart -->
-            {% if overview.table_data|length > 1 %}
-            <div class="chart-container">
-                {{ overview.chart|safe }}
-            </div>
-            {% endif %}
+            <!-- Flat table: facility rows + interleaved type/detail rows for column alignment -->
+            <table class="table table-sm table-bordered summary-table">
+                <thead>
+                    <tr>
+                        <th class="table-col-expand"></th>
+                        <th>Facility / Type</th>
+                        <th>{{ 'Data Volume' if is_storage else 'Annual Rate' }}</th>
+                        <th>Count</th>
+                        <th>% / Avg</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for facility_data in overview.table_data|sort(attribute='facility') %}
+                    {% set facility_name = facility_data.facility %}
+                    {% set fac_id = 'fac-' ~ resource_name|replace(' ', '_') ~ '-' ~ facility_name|replace(' ', '_') %}
+                    {% set types = grouped_data[resource_name].get(facility_name, []) %}
 
-            <!-- Facility Summary Table -->
-            <div class="overview-table">
-                <table class="table table-sm table-bordered">
-                    <thead>
-                        <tr>
-                            <th>Facility</th>
-                            <th>
-                                {% if resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
-                                    Data Volume
-                                {% else %}
-                                    Annual Rate
-                                {% endif %}
-                            </th>
-                            <th>Count</th>
-                            <th>% Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for facility_data in overview.table_data %}
-                        <tr>
-                            <td><strong>{{ facility_data.facility }}</strong></td>
-                            <td>
-                                {% if resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
-                                    {{ "{:,.0f}".format(facility_data.total_amount) }}
-                                {% else %}
-                                    {{ "{:,.0f}".format(facility_data.annualized_rate) }}
-                                {% endif %}
-                            </td>
-                            <td>{{ facility_data.count }}</td>
-                            <td>{{ "%.1f"|format(facility_data.percent) }}%</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                    {% if overview.table_data|length > 1 %}
-                    <tfoot class="table-secondary">
-                        <tr>
-                            <th>Total</th>
-                            <th>
-                                {% if resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
-                                    {{ "{:,.0f}".format(overview.table_data|sum(attribute='total_amount')) }}
-                                {% else %}
-                                    {{ "{:,.0f}".format(overview.table_data|sum(attribute='annualized_rate')) }}
-                                {% endif %}
-                            </th>
-                            <th>{{ overview.table_data|sum(attribute='count') }}</th>
-                            <th>100%</th>
-                        </tr>
-                    </tfoot>
+                    <!-- Facility Row (collapsible, default collapsed) -->
+                    <tr class="expandable-row facility-row"
+                        onclick="toggleFacility(this, '{{ fac_id }}')">
+                        <td>
+                            <i class="fas fa-chevron-right expand-icon"></i>
+                        </td>
+                        <td><strong>{{ facility_name }}</strong></td>
+                        <td>
+                            {% if is_storage %}
+                                {{ "{:,.0f}".format(facility_data.total_amount) }}
+                            {% else %}
+                                {{ "{:,.0f}".format(facility_data.annualized_rate) }}
+                            {% endif %}
+                        </td>
+                        <td>{{ facility_data.count }}</td>
+                        <td>{{ "%.1f"|format(facility_data.percent) }}%</td>
+                    </tr>
+
+                    <!-- Allocation Type Rows (hidden; expand icon in col 1, type name in col 2) -->
+                    {% for type_data in types %}
+                    {% set details_id = 'details-' ~ resource_name|replace(' ', '_') ~ '-' ~ facility_name|replace(' ', '_') ~ '-' ~ type_data.allocation_type|replace(' ', '_') %}
+                    <tr class="expandable-row alloc-type-row"
+                        data-fac-id="{{ fac_id }}"
+                        onclick="toggleDetails(this, '{{ details_id }}')">
+                        <td>
+                            <i class="fas fa-chevron-right expand-icon"></i>
+                        </td>
+                        <td class="ps-4"><strong>{{ type_data.allocation_type }}</strong></td>
+                        <td>{{ "{:,.0f}".format(type_data.total_amount) }}</td>
+                        <td>{{ type_data.count }}</td>
+                        <td>{{ "{:,.0f}".format(type_data.avg_amount) }}</td>
+                    </tr>
+                    <tr class="project-details-row" data-fac-id="{{ fac_id }}" id="{{ details_id }}">
+                        <td colspan="5"
+                            hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}"
+                            hx-trigger="load-details"
+                            hx-swap="innerHTML">
+                            <div class="p-3 text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="sr-only">Loading...</span>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    <!-- Type Subtotal Row (if >1 type) -->
+                    {% if types|length > 1 %}
+                    {% set total_allocated = types|sum(attribute='total_amount') %}
+                    {% set total_count = types|sum(attribute='count') %}
+                    <tr class="alloc-type-subtotal-row table-secondary" data-fac-id="{{ fac_id }}">
+                        <th></th>
+                        <th class="ps-4">Subtotal</th>
+                        <th>{{ "{:,.0f}".format(total_allocated) }}</th>
+                        <th>{{ total_count }}</th>
+                        <th>{{ "{:,.0f}".format(total_allocated / total_count if total_count > 0 else 0) }}</th>
+                    </tr>
                     {% endif %}
-                </table>
-            </div>
-        </div>
 
-        <!-- Facility Tabs (nested) -->
-        <div class="nested-tabs">
-            <ul class="nav nav-pills mb-3" role="tablist">
-                {% for facility_name in facilities.keys()|sort %}
-                <li class="nav-item">
-                    <a class="nav-link {% if loop.first %}active{% endif %}"
-                       id="{{ resource_name|replace(' ', '_') }}-{{ facility_name }}-tab"
-                       data-bs-toggle="pill"
-                       href="#{{ resource_name|replace(' ', '_') }}-{{ facility_name }}"
-                       role="tab">
-                        {{ facility_name }}
-                    </a>
-                </li>
-                {% endfor %}
-            </ul>
-
-            <div class="tab-content">
-                {% for facility_name, types in facilities.items()|sort %}
-                <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
-                     id="{{ resource_name|replace(' ', '_') }}-{{ facility_name }}"
-                     role="tabpanel">
-
-                    <!-- Allocation Summary Table -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">Allocation Summary - {{ facility_name }}</h5>
-                        </div>
-                        <div class="card-body">
-                            <table class="table table-sm table-hover summary-table">
-                                <thead>
-                                    <tr>
-                                        <th class="table-col-expand"></th>
-                                        <th>Type</th>
-                                        <th>Total Allocated</th>
-                                        <th>Count</th>
-                                        <th>Avg Amount</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for type_data in types %}
-                                    {% set details_id = 'details-' ~ resource_name|replace(' ', '_') ~ '-' ~ facility_name ~ '-' ~ type_data.allocation_type|replace(' ', '_') %}
-                                    <tr class="expandable-row"
-                                        onclick="toggleDetails(this, '{{ details_id }}')">
-                                        <td>
-                                            <i class="fas fa-chevron-right expand-icon"></i>
-                                        </td>
-                                        <td><strong>{{ type_data.allocation_type }}</strong></td>
-                                        <td>{{ "{:,.0f}".format(type_data.total_amount) }}</td>
-                                        <td>{{ type_data.count }}</td>
-                                        <td>{{ "{:,.0f}".format(type_data.avg_amount) }}</td>
-                                    </tr>
-                                    <tr class="project-details-row" id="{{ details_id }}">
-                                        <td colspan="5"
-                                            hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}"
-                                            hx-trigger="load-details"
-                                            hx-swap="innerHTML">
-                                            <div class="p-3 text-center">
-                                                <div class="spinner-border text-primary" role="status">
-                                                    <span class="sr-only">Loading...</span>
-                                                </div>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                                {% if types|length > 1 %}
-                                <tfoot class="table-secondary">
-                                    {% set total_allocated = types|sum(attribute='total_amount') %}
-                                    {% set total_count = types|sum(attribute='count') %}
-                                    <tr>
-                                        <th></th>
-                                        <th>Total</th>
-                                        <th>{{ "{:,.0f}".format(total_allocated) }}</th>
-                                        <th>{{ total_count }}</th>
-                                        <th>{{ "{:,.0f}".format(total_allocated / total_count if total_count > 0 else 0) }}</th>
-                                    </tr>
-                                </tfoot>
-                                {% endif %}
-                            </table>
-
-                            <!-- Allocation Type Pie Chart -->
-                            {% if types|length > 1 %}
-                            {% set type_chart = allocation_type_charts.get(resource_name, {}).get(facility_name) %}
-                            {% if type_chart %}
-                            <div class="chart-container mt-4">
+                    <!-- Type Pie Chart Row (if >1 type and chart available) -->
+                    {% set type_chart = allocation_type_charts.get(resource_name, {}).get(facility_name) %}
+                    {% if types|length > 1 and type_chart %}
+                    <tr class="alloc-type-chart-row" data-fac-id="{{ fac_id }}">
+                        <td colspan="5" class="p-0">
+                            <div class="chart-container p-3">
                                 {{ type_chart|safe }}
                             </div>
-                            {% endif %}
-                            {% endif %}
-                        </div>
-                    </div>
+                        </td>
+                    </tr>
+                    {% endif %}
 
-                </div>
-                {% endfor %}
-            </div>
+                    {% endfor %}
+                </tbody>
+                {% if overview.table_data|length > 1 %}
+                <tfoot class="table-secondary">
+                    <tr>
+                        <th></th>
+                        <th>Total</th>
+                        <th>
+                            {% if is_storage %}
+                                {{ "{:,.0f}".format(overview.table_data|sum(attribute='total_amount')) }}
+                            {% else %}
+                                {{ "{:,.0f}".format(overview.table_data|sum(attribute='annualized_rate')) }}
+                            {% endif %}
+                        </th>
+                        <th>{{ overview.table_data|sum(attribute='count') }}</th>
+                        <th>100%</th>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
         </div>
 
     </div>
@@ -277,6 +246,26 @@
 
 {% block extra_js %}
 <script>
+/* Toggle facility rows — shows/hides interleaved type rows in the flat table */
+function toggleFacility(clickedRow, facId) {
+    var icon = clickedRow.querySelector('.expand-icon');
+    var isExpanding = !icon.classList.contains('expanded');
+    icon.classList.toggle('expanded');
+    document.querySelectorAll('[data-fac-id="' + facId + '"]').forEach(function(row) {
+        if (row.classList.contains('project-details-row')) {
+            /* Always collapse project detail rows when facility toggles */
+            row.classList.remove('show');
+        } else {
+            row.classList.toggle('show', isExpanding);
+            /* Ensure type row chevrons appear collapsed when facility expands */
+            if (isExpanding && row.classList.contains('alloc-type-row')) {
+                var typeIcon = row.querySelector('.expand-icon');
+                if (typeIcon) typeIcon.classList.remove('expanded');
+            }
+        }
+    });
+}
+
 /* Toggle expandable detail rows and lazy-load on first expand */
 function toggleDetails(clickedRow, detailsId) {
     var icon = clickedRow.querySelector('.expand-icon');
@@ -327,5 +316,24 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
         });
     });
 });
+
+/* Swap facility pie chart above the tabs when the active resource tab changes */
+(function () {
+    function showPieForResource(resourceId) {
+        document.querySelectorAll('.facility-pie-panel').forEach(function (p) {
+            p.style.display = p.dataset.resource === resourceId ? '' : 'none';
+        });
+    }
+    /* Show pie for the initially active tab */
+    var activeTab = document.querySelector('#resourceTabs .nav-link.active');
+    if (activeTab) showPieForResource(activeTab.getAttribute('href').slice(1));
+
+    /* Swap on subsequent tab clicks */
+    document.querySelectorAll('#resourceTabs .nav-link').forEach(function (tab) {
+        tab.addEventListener('shown.bs.tab', function (e) {
+            showPieForResource(e.target.getAttribute('href').slice(1));
+        });
+    });
+}());
 </script>
 {% endblock %}
