@@ -215,6 +215,20 @@ The existing `charts.py` uses `functools.lru_cache` (no TTL, LRU eviction). For 
 
 ### Implementation
 
+#### Config: `src/webapp/config.py` — add to `SAMWebappConfig`
+
+```python
+# Usage calculation cache (TTLCache wrapping get_allocation_summary_with_usage)
+ALLOCATION_USAGE_CACHE_TTL  = int(os.getenv('ALLOCATION_USAGE_CACHE_TTL', 3600))   # seconds; 0 = disable
+ALLOCATION_USAGE_CACHE_SIZE = int(os.getenv('ALLOCATION_USAGE_CACHE_SIZE', 200))    # max entries
+```
+
+`TestingConfig` should override both to 0 to prevent cross-test cache pollution:
+```python
+ALLOCATION_USAGE_CACHE_TTL  = 0
+ALLOCATION_USAGE_CACHE_SIZE = 0
+```
+
 #### New file: `src/sam/queries/usage_cache.py`
 
 ```python
@@ -223,23 +237,40 @@ In-memory TTL cache for get_allocation_summary_with_usage() results.
 
 Sits transparently behind the query function. Works in both webapp and CLI.
 Bypass with force_refresh=True; purge programmatically with purge_usage_cache().
+
+Configuration is read from Flask app.config when available, falling back to
+environment variables so the module works outside a Flask context (CLI, tests).
 """
 import os
 import threading
-from datetime import datetime, date
-from typing import Optional, Union, List
+from datetime import datetime
+from typing import Optional
 
 from cachetools import TTLCache
 
 from sam.queries.allocations import get_allocation_summary_with_usage
 
-# Configurable via environment variables
-_TTL     = int(os.environ.get('ALLOCATION_USAGE_CACHE_TTL', 3600))   # default 1 hour
-_MAXSIZE = int(os.environ.get('ALLOCATION_USAGE_CACHE_SIZE', 200))
+def _get_config(key: str, default: int) -> int:
+    """Read config from Flask app context if available, else env var, else default."""
+    try:
+        from flask import current_app
+        return int(current_app.config.get(key, default))
+    except RuntimeError:
+        return int(os.environ.get(key, default))
 
-_cache: TTLCache = TTLCache(maxsize=_MAXSIZE, ttl=_TTL)
+# Lazy-initialized: cache is built on first use so Flask config is available
+_cache: Optional[TTLCache] = None
 _lock = threading.RLock()
 
+
+def _get_cache() -> TTLCache:
+    global _cache
+    with _lock:
+        if _cache is None:
+            ttl  = _get_config('ALLOCATION_USAGE_CACHE_TTL', 3600)
+            size = _get_config('ALLOCATION_USAGE_CACHE_SIZE', 200)
+            _cache = TTLCache(maxsize=max(size, 1), ttl=max(ttl, 1))
+        return _cache
 
 def _normalize(value):
     """Make list/string/None values hashable for use as cache key component."""
@@ -276,11 +307,12 @@ def cached_allocation_usage(
         include_adjustments,
     )
 
+    cache = _get_cache()
     with _lock:
         if force_refresh:
-            _cache.pop(key, None)
-        elif key in _cache:
-            return _cache[key]
+            cache.pop(key, None)
+        elif key in cache:
+            return cache[key]
 
     result = get_allocation_summary_with_usage(
         session=session,
@@ -294,26 +326,27 @@ def cached_allocation_usage(
     )
 
     with _lock:
-        _cache[key] = result
+        cache[key] = result
     return result
 
 
 def purge_usage_cache() -> int:
     """Clear all cached usage data. Returns number of entries cleared."""
+    cache = _get_cache()
     with _lock:
-        n = len(_cache)
-        _cache.clear()
+        n = len(cache)
+        cache.clear()
     return n
 
 
 def usage_cache_info() -> dict:
     """Return cache statistics for monitoring/admin display."""
+    cache = _get_cache()
     with _lock:
         return {
-            'size': len(_cache),
-            'maxsize': _cache.maxsize,
-            'ttl': _cache.ttl,
-            'currsize': _cache.currsize,
+            'currsize': len(cache),
+            'maxsize': cache.maxsize,
+            'ttl': cache.ttl,
         }
 ```
 
@@ -340,9 +373,10 @@ def purge_cache():
 
 | File | Change |
 |------|--------|
-| `src/sam/queries/usage_cache.py` | **New file** — TTL cache wrapper |
-| `src/webapp/dashboards/allocations/blueprint.py` | Replace 4 call sites; add purge route |
-| `src/sam/queries/__init__.py` | Export `cached_allocation_usage`, `purge_usage_cache` |
+| `src/webapp/config.py` | Add `ALLOCATION_USAGE_CACHE_TTL` + `ALLOCATION_USAGE_CACHE_SIZE` to `SAMWebappConfig`; set both to 0 in `TestingConfig` |
+| `src/sam/queries/usage_cache.py` | **New file** — lazy-init TTLCache wrapper, reads config from Flask app context |
+| `src/webapp/dashboards/allocations/blueprint.py` | Replace 4 `get_allocation_summary_with_usage()` call sites with `cached_allocation_usage()`; add admin purge route |
+| `src/sam/queries/__init__.py` | Export `cached_allocation_usage`, `purge_usage_cache`, `usage_cache_info` |
 
 ### Cache Key Correctness
 
@@ -358,7 +392,7 @@ def purge_cache():
 - **Per-request bypass**: append `?force_refresh=true` to any allocations URL
 - **Admin purge endpoint**: `POST /allocations/cache/purge` (admin permission)
 - **Programmatic**: `purge_usage_cache()` importable from `sam.queries.usage_cache`
-- **Testing**: `ALLOCATION_USAGE_CACHE_TTL=0` or `ALLOCATION_USAGE_CACHE_SIZE=0` disables effectively; test fixtures can call `purge_usage_cache()` directly
+- **Testing**: `TestingConfig` sets both to 0 in `config.py`; the cache is effectively disabled (TTLCache with size=1, ttl=1 — entries expire immediately); test fixtures can also call `purge_usage_cache()` between tests if needed
 
 ### Verification
 
