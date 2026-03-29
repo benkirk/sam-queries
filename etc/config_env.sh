@@ -62,5 +62,13 @@ while true; do
     dir=$(dirname "$dir")
 done
 
+# check for a collectors specific .env
+if [[ -f "${ROOT_DIR}/collectors/.env" ]]; then
+    set +a
+    source "${ROOT_DIR}/collectors/.env"
+    set -a
+    echo "Loaded .env from ${ROOT_DIR}/collectors"
+fi
+
 # prevent leakage
 unset SAM_DB_PASSWORD TEST_SAM_DB_PASSWORD LOCAL_SAM_DB_PASSWORD
