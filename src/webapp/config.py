@@ -50,7 +50,7 @@ class DevelopmentConfig(SAMWebappConfig):
     # Development API keys — rotate with: python scripts/gen_api_key.py
     # Actual key goes in collectors/.env as STATUS_API_KEY
     API_KEYS = {
-        'collector': '$2b$12$Fdys1eMNbIGiGBjuaOtW/.y1ToE2R3C69Iq3vecjyyLuLrHUCmXau',
+        'collector': '$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2',
     }
 
     # Development role mapping (bypasses role DB tables)
