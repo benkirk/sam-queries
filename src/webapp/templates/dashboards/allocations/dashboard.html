@@ -40,6 +40,22 @@
     </div>
 </div>
 
+<!-- Facility Pie: single container above tabs, swaps when active tab changes -->
+{% if grouped_data %}
+<div id="facilityPieContainer" class="chart-container mb-3">
+    {% for resource_name, _ in grouped_data.items()|sort %}
+    {% set overview = resource_overviews[resource_name] %}
+    {% if overview.table_data|length > 1 %}
+    <div class="facility-pie-panel"
+         data-resource="{{ resource_name|replace(' ', '_') }}"
+         style="display:none;">
+        {{ overview.chart|safe }}
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+
 <!-- Resource Tabs -->
 {% if grouped_data %}
 <ul class="nav nav-tabs" id="resourceTabs" role="tablist">
@@ -66,13 +82,6 @@
         {% set overview = resource_overviews[resource_name] %}
         {% set is_storage = resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
         <div class="mt-3">
-
-            <!-- Facility Pie Chart above table (as before) -->
-            {% if overview.table_data|length > 1 %}
-            <div class="chart-container mb-3">
-                {{ overview.chart|safe }}
-            </div>
-            {% endif %}
 
             <!-- Flat table: facility rows + interleaved type/detail rows for column alignment -->
             <table class="table table-sm table-bordered summary-table">
@@ -307,5 +316,24 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
         });
     });
 });
+
+/* Swap facility pie chart above the tabs when the active resource tab changes */
+(function () {
+    function showPieForResource(resourceId) {
+        document.querySelectorAll('.facility-pie-panel').forEach(function (p) {
+            p.style.display = p.dataset.resource === resourceId ? '' : 'none';
+        });
+    }
+    /* Show pie for the initially active tab */
+    var activeTab = document.querySelector('#resourceTabs .nav-link.active');
+    if (activeTab) showPieForResource(activeTab.getAttribute('href').slice(1));
+
+    /* Swap on subsequent tab clicks */
+    document.querySelectorAll('#resourceTabs .nav-link').forEach(function (tab) {
+        tab.addEventListener('shown.bs.tab', function (e) {
+            showPieForResource(e.target.getAttribute('href').slice(1));
+        });
+    });
+}());
 </script>
 {% endblock %}
