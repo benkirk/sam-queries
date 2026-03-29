@@ -211,16 +211,16 @@ def index():
         active_at: Date to check for active status (YYYY-MM-DD), default: today
         resources: List of resource names to display
     """
-    # Parse active_at parameter (default to today)
+    # Parse active_at parameter (default to today at midnight)
     active_at_str = request.args.get('active_at')
     if active_at_str:
         try:
             active_at = datetime.strptime(active_at_str, '%Y-%m-%d')
         except ValueError:
             flash('Invalid date format. Please use YYYY-MM-DD.', 'error')
-            active_at = datetime.now()
+            active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     else:
-        active_at = datetime.now()
+        active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Parse show_usage toggle (default: off)
     show_usage = request.args.get('show_usage', 'false').lower() == 'true'
@@ -400,7 +400,7 @@ def projects_fragment():
         except ValueError:
             return '<p class="text-danger mb-0">Invalid date format</p>'
     else:
-        active_at = datetime.now()
+        active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Fetch projects — with or without usage data
     if show_usage:
@@ -475,7 +475,7 @@ def usage_modal(projcode: str, resource: str):
         except ValueError:
             return '<p class="text-danger mb-0">Invalid date format</p>'
     else:
-        active_at = datetime.now()
+        active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Get project
     project = find_project_by_code(db.session, projcode)
