@@ -12,6 +12,9 @@
                     Annual Rate
                 {% endif %}
             </th>
+            {% if show_usage %}
+            <th class="sortable-header" data-sort="numeric">Usage</th>
+            {% endif %}
             <th class="sortable-header" data-sort="date">Start Date</th>
             <th class="sortable-header" data-sort="date">End Date</th>
             <th class="sortable-header" data-sort="numeric">Duration (days)</th>
@@ -20,6 +23,7 @@
     </thead>
     <tbody>
         {% for project in projects %}
+        {% set pct = project.get('percent_used') or 0 %}
         <tr>
             <td data-sort-value="{{ project['projcode'] }}">
                 <button class="btn btn-link p-0"
@@ -45,6 +49,22 @@
                     {% endif %}
                 {% endif %}
             </td>
+            {% if show_usage %}
+            <td data-sort-value="{{ pct }}">
+                {% if project.get('total_used') is not none %}
+                <div class="progress progress-medium mb-1" style="min-width: 100px;">
+                    <div class="progress-bar {% if pct >= 90 %}bg-danger{% elif pct >= 75 %}bg-warning{% else %}bg-success{% endif %}"
+                         role="progressbar"
+                         style="width: {{ [pct, 100]|min }}%">
+                        {{ "%.1f"|format(pct) }}%
+                    </div>
+                </div>
+                <small class="text-muted">{{ "{:,.0f}".format(project['total_used']) }} used</small>
+                {% else %}
+                <span class="text-muted small">N/A</span>
+                {% endif %}
+            </td>
+            {% endif %}
             <td data-sort-value="{{ project['start_date'].strftime('%Y-%m-%d') if project['start_date'] else '' }}">{{ project['start_date'].strftime('%Y-%m-%d') if project['start_date'] else 'N/A' }}</td>
             <td data-sort-value="{{ project['end_date'].strftime('%Y-%m-%d') if project['end_date'] else ('Z' if project['is_open_ended'] else '') }}">
                 {% if project['end_date'] %}
