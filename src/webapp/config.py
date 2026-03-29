@@ -18,10 +18,14 @@ class SAMWebappConfig(SAMConfig):
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB
 
     # API key authentication for machine-to-machine routes (status collectors, etc.)
-    # Values are bcrypt hashes of the actual keys — safe to commit.
-    # Use tools/gen_api_key.py to generate new key/hash pairs.
-    # Format: {'username': '$2b$12$...bcrypt_hash...'}
-    API_KEYS: dict = {}
+    # Populated from API_KEYS_<USERNAME> environment variables at startup.
+    # e.g., API_KEYS_COLLECTOR=$2b$12$...  →  {'collector': '$2b$12$...'}
+    # Use scripts/gen_api_key.py to generate new key/hash pairs.
+    API_KEYS: dict = {
+        k[9:].lower(): v          # strip 'API_KEYS_' prefix (9 chars), lowercase username
+        for k, v in os.environ.items()
+        if k.startswith('API_KEYS_') and v
+    }
 
     # Auth provider ('stub' | 'ldap' | 'saml')
     AUTH_PROVIDER = os.getenv('AUTH_PROVIDER', 'stub')
@@ -80,6 +84,14 @@ class ProductionConfig(SAMWebappConfig):
             )
         if len(key) < 32:
             raise EnvironmentError("FLASK_SECRET_KEY must be at least 32 characters.")
+        if not cls.API_KEYS:
+            import warnings
+            warnings.warn(
+                "No API_KEYS_* environment variables are set. "
+                "Status collector routes will reject all requests. "
+                "Generate keys with: python scripts/gen_api_key.py",
+                stacklevel=2,
+            )
 
 
 class TestingConfig(SAMWebappConfig):

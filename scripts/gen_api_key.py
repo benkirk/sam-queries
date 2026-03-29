@@ -12,12 +12,8 @@ Usage:
 
 Output:
     API Key  → set as STATUS_API_KEY in the collector's .env
-    Hash     → add to API_KEYS dict in src/webapp/config.py
-
-Example config.py entry:
-    API_KEYS = {
-        'collector': '$2b$12$abc123...the_hash_printed_below...',
-    }
+    Hash     → set as API_KEYS_<USERNAME> env var in the webapp environment
+               (compose.yaml, Helm values.yaml, or SSM Parameter Store)
 """
 
 import argparse
@@ -48,9 +44,11 @@ def main():
     key = secrets.token_urlsafe(32)
     hashed = bcrypt.hashpw(key.encode(), bcrypt.gensalt(rounds=args.rounds))
 
+    env_var = f"API_KEYS_{args.username.upper()}"
+
     print(f"\nGenerated API key for '{args.username}':")
-    print(f"  API Key  (→ STATUS_API_KEY in .env):               {key}")
-    print(f"  Hash     (→ API_KEYS['{args.username}'] in config.py):  {hashed.decode()}")
+    print(f"  Collector .env  →  STATUS_API_KEY={key}")
+    print(f"  Webapp env var  →  {env_var}={hashed.decode()}")
     print()
 
 
