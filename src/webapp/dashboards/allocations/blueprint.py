@@ -5,13 +5,14 @@ Provides drill-down allocation dashboard showing allocation summaries
 grouped hierarchically by Resource → Facility → Allocation Type → Projects.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for
+from flask import Blueprint, render_template, request, flash, redirect, url_for, jsonify
 from flask_login import login_required
 from datetime import datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache
-from sam.queries.allocations import get_allocation_summary, get_allocation_summary_with_usage
+from sam.queries.allocations import get_allocation_summary
+from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
 from webapp.utils.rbac import require_permission, Permission
 from sam.resources.resources import Resource
@@ -58,7 +59,7 @@ def group_by_resource_facility(summary_data: List[Dict]) -> Dict:
     return grouped
 
 
-def get_all_facility_usage_overviews(session, resource_names: List[str], active_at: datetime) -> Dict[str, List[Dict]]:
+def get_all_facility_usage_overviews(session, resource_names: List[str], active_at: datetime, force_refresh: bool = False) -> Dict[str, List[Dict]]:
     """
     Calculate facility-level usage summaries for multiple resources.
 
@@ -71,14 +72,15 @@ def get_all_facility_usage_overviews(session, resource_names: List[str], active_
     if not resource_names:
         return {}
 
-    individual_allocations = get_allocation_summary_with_usage(
+    individual_allocations = cached_allocation_usage(
         session=session,
         resource_name=resource_names,
         facility_name=None,
         allocation_type=None,
         projcode=None,
         active_only=True,
-        active_at=active_at
+        active_at=active_at,
+        force_refresh=force_refresh,
     )
 
     # Group by resource, then aggregate total_used by facility
@@ -223,6 +225,9 @@ def index():
     # Parse show_usage toggle (default: off)
     show_usage = request.args.get('show_usage', 'false').lower() == 'true'
 
+    # Allow cache bypass for debugging / stale data
+    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+
     # Get all active resources for the selector
     all_resources = [
         r.resource_name for r in db.session.query(Resource.resource_name)
@@ -288,14 +293,15 @@ def index():
     # When show_usage is enabled, build usage-based allocation type pie charts
     allocation_type_usage_charts = {}
     if show_usage:
-        usage_type_data = get_allocation_summary_with_usage(
+        usage_type_data = cached_allocation_usage(
             session=db.session,
             resource_name=selected_resources,
             facility_name=None,
             allocation_type=None,
             projcode="TOTAL",   # Sum across projects, group by resource+facility+type
             active_only=True,
-            active_at=active_at
+            active_at=active_at,
+            force_refresh=force_refresh,
         )
         # Index by resource → facility
         usage_by_resource_facility: Dict[str, Dict[str, List]] = {}
@@ -331,7 +337,7 @@ def index():
     # When show_usage is enabled, build usage-based facility pie charts for the second tab
     resource_usage_overviews = {}
     if show_usage:
-        all_usage_overviews = get_all_facility_usage_overviews(db.session, list(grouped_data.keys()), active_at)
+        all_usage_overviews = get_all_facility_usage_overviews(db.session, list(grouped_data.keys()), active_at, force_refresh=force_refresh)
         for rn in grouped_data.keys():
             usage_overview_data = all_usage_overviews.get(rn, [])
             # Only pass facilities that have actual usage (pie requires positive values)
@@ -381,6 +387,7 @@ def projects_fragment():
     allocation_type = request.args.get('allocation_type')
     active_at_str = request.args.get('active_at')
     show_usage = request.args.get('show_usage', 'false').lower() == 'true'
+    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
 
     # Validate required params
     if not resource or not facility or not allocation_type:
@@ -397,14 +404,15 @@ def projects_fragment():
 
     # Fetch projects — with or without usage data
     if show_usage:
-        projects = get_allocation_summary_with_usage(
+        projects = cached_allocation_usage(
             session=db.session,
             resource_name=resource,
             facility_name=facility,
             allocation_type=allocation_type,
             projcode=None,
             active_only=True,
-            active_at=active_at
+            active_at=active_at,
+            force_refresh=force_refresh,
         )
     else:
         projects = get_allocation_summary(
@@ -475,7 +483,7 @@ def usage_modal(projcode: str, resource: str):
         return '<p class="text-danger mb-0">Project not found</p>'
 
     # Get allocation with usage details
-    usage_data = get_allocation_summary_with_usage(
+    usage_data = cached_allocation_usage(
         session=db.session,
         resource_name=resource,
         projcode=projcode,
@@ -496,3 +504,27 @@ def usage_modal(projcode: str, resource: str):
         allocation=allocation_info,
         active_at=active_at.strftime('%Y-%m-%d')
     )
+
+
+@bp.route('/cache/purge', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_ALLOCATIONS)
+def purge_cache():
+    """
+    Purge the usage calculation cache (requires edit_allocations permission).
+
+    Accepts JSON (returns JSON) or form POST (redirects with flash message).
+    """
+    n = purge_usage_cache()
+    if request.is_json or request.headers.get('HX-Request'):
+        return jsonify({'status': 'ok', 'entries_cleared': n})
+    flash(f'Usage cache cleared ({n} entries removed).', 'success')
+    return redirect(url_for('allocations_dashboard.index'))
+
+
+@bp.route('/cache/status')
+@login_required
+@require_permission(Permission.EDIT_ALLOCATIONS)
+def cache_status():
+    """Return usage cache statistics as JSON (admin/staff only)."""
+    return jsonify(usage_cache_info())
