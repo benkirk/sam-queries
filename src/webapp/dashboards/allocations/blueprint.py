@@ -58,6 +58,66 @@ def group_by_resource_facility(summary_data: List[Dict]) -> Dict:
     return grouped
 
 
+def get_all_facility_usage_overviews(session, resource_names: List[str], active_at: datetime) -> Dict[str, List[Dict]]:
+    """
+    Calculate facility-level usage summaries for multiple resources.
+
+    Like get_all_facility_overviews() but aggregates total_used (actual charges)
+    instead of total_amount (allocated). Used to build usage-based pie charts.
+
+    Returns:
+        Dict mapping resource_name -> list of facility overview dicts with total_used
+    """
+    if not resource_names:
+        return {}
+
+    individual_allocations = get_allocation_summary_with_usage(
+        session=session,
+        resource_name=resource_names,
+        facility_name=None,
+        allocation_type=None,
+        projcode=None,
+        active_only=True,
+        active_at=active_at
+    )
+
+    # Group by resource, then aggregate total_used by facility
+    resource_facility_totals: Dict[str, Dict[str, Dict]] = {}
+    for alloc in individual_allocations:
+        resource = alloc['resource']
+        facility = alloc['facility']
+        if resource not in resource_facility_totals:
+            resource_facility_totals[resource] = {}
+        if facility not in resource_facility_totals[resource]:
+            resource_facility_totals[resource][facility] = {
+                'total_amount': 0.0, 'total_used': 0.0, 'count': 0
+            }
+
+        bucket = resource_facility_totals[resource][facility]
+        bucket['total_amount'] += alloc.get('total_amount', 0.0)
+        bucket['total_used'] += alloc.get('total_used', 0.0)
+        bucket['count'] += alloc.get('count', 0)
+
+    overviews = {}
+    for resource, facilities in resource_facility_totals.items():
+        grand_total_used = sum(f['total_used'] for f in facilities.values())
+        overview = []
+        for facility, data in facilities.items():
+            percent = (data['total_used'] / grand_total_used * 100) if grand_total_used > 0 else 0
+            overview.append({
+                'facility': facility,
+                'total_amount': data['total_amount'],
+                'total_used': data['total_used'],
+                'annualized_rate': data['total_used'],  # chart fn reads this field
+                'count': data['count'],
+                'percent': percent
+            })
+        overview.sort(key=lambda x: x['total_used'], reverse=True)
+        overviews[resource] = overview
+
+    return overviews
+
+
 def get_all_facility_overviews(session, resource_names: List[str], active_at: datetime) -> Dict[str, List[Dict]]:
     """
     Calculate facility-level summaries for multiple resources in a single query.
@@ -160,6 +220,9 @@ def index():
     else:
         active_at = datetime.now()
 
+    # Parse show_usage toggle (default: off)
+    show_usage = request.args.get('show_usage', 'false').lower() == 'true'
+
     # Get all active resources for the selector
     all_resources = [
         r.resource_name for r in db.session.query(Resource.resource_name)
@@ -222,15 +285,77 @@ def index():
             else:
                 allocation_type_charts[resource_name][facility_name] = None
 
+    # When show_usage is enabled, build usage-based allocation type pie charts
+    allocation_type_usage_charts = {}
+    if show_usage:
+        usage_type_data = get_allocation_summary_with_usage(
+            session=db.session,
+            resource_name=selected_resources,
+            facility_name=None,
+            allocation_type=None,
+            projcode="TOTAL",   # Sum across projects, group by resource+facility+type
+            active_only=True,
+            active_at=active_at
+        )
+        # Index by resource → facility
+        usage_by_resource_facility: Dict[str, Dict[str, List]] = {}
+        for row in usage_type_data:
+            usage_by_resource_facility\
+                .setdefault(row['resource'], {})\
+                .setdefault(row['facility'], [])\
+                .append(row)
+
+        for resource_name, facilities in grouped_data.items():
+            allocation_type_usage_charts[resource_name] = {}
+            rt = resource_types.get(resource_name, 'HPC')
+            for facility_name, types in facilities.items():
+                usage_rows = usage_by_resource_facility.get(resource_name, {}).get(facility_name, [])
+                # Reuse allocation type chart fn — build minimal dicts with total_used as value
+                # (must exclude non-hashable fields like charges_by_type)
+                chartable = [
+                    {
+                        'allocation_type': row['allocation_type'],
+                        'total_amount': row.get('total_used', 0.0),
+                        'count': row.get('count', 0),
+                        'avg_amount': row.get('total_used', 0.0),
+                    }
+                    for row in usage_rows
+                    if row.get('total_used', 0.0) > 0
+                ]
+                if len(chartable) > 1:
+                    allocation_type_usage_charts[resource_name][facility_name] = \
+                        generate_allocation_type_pie_chart_matplotlib(chartable, rt, resource_name, facility_name)
+                else:
+                    allocation_type_usage_charts[resource_name][facility_name] = None
+
+    # When show_usage is enabled, build usage-based facility pie charts for the second tab
+    resource_usage_overviews = {}
+    if show_usage:
+        all_usage_overviews = get_all_facility_usage_overviews(db.session, list(grouped_data.keys()), active_at)
+        for rn in grouped_data.keys():
+            usage_overview_data = all_usage_overviews.get(rn, [])
+            # Only pass facilities that have actual usage (pie requires positive values)
+            chartable = [d for d in usage_overview_data if d.get('total_used', 0.0) > 0]
+            resource_usage_overviews[rn] = {
+                'table_data': usage_overview_data,
+                'chart': generate_facility_pie_chart_matplotlib(
+                    chartable,
+                    title=f'Usage by Facility\n{rn}'
+                ) if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
+            }
+
     return render_template(
         'dashboards/allocations/dashboard.html',
         grouped_data=grouped_data,
         resource_overviews=resource_overviews,
+        resource_usage_overviews=resource_usage_overviews,
         allocation_type_charts=allocation_type_charts,
+        allocation_type_usage_charts=allocation_type_usage_charts,
         active_at=active_at.strftime('%Y-%m-%d'),
         all_resources=all_resources,
         selected_resources=selected_resources,
-        resource_types=resource_types
+        resource_types=resource_types,
+        show_usage=show_usage
     )
 
 
@@ -255,6 +380,7 @@ def projects_fragment():
     facility = request.args.get('facility')
     allocation_type = request.args.get('allocation_type')
     active_at_str = request.args.get('active_at')
+    show_usage = request.args.get('show_usage', 'false').lower() == 'true'
 
     # Validate required params
     if not resource or not facility or not allocation_type:
@@ -269,16 +395,27 @@ def projects_fragment():
     else:
         active_at = datetime.now()
 
-    # Get individual projects (projcode=None means group by projects)
-    projects = get_allocation_summary(
-        session=db.session,
-        resource_name=resource,
-        facility_name=facility,
-        allocation_type=allocation_type,
-        projcode=None,  # Group by individual projects
-        active_only=True,
-        active_at=active_at
-    )
+    # Fetch projects — with or without usage data
+    if show_usage:
+        projects = get_allocation_summary_with_usage(
+            session=db.session,
+            resource_name=resource,
+            facility_name=facility,
+            allocation_type=allocation_type,
+            projcode=None,
+            active_only=True,
+            active_at=active_at
+        )
+    else:
+        projects = get_allocation_summary(
+            session=db.session,
+            resource_name=resource,
+            facility_name=facility,
+            allocation_type=allocation_type,
+            projcode=None,  # Group by individual projects
+            active_only=True,
+            active_at=active_at
+        )
 
     if not projects:
         return '<p class="text-muted mb-0">No active projects found</p>'
@@ -289,8 +426,11 @@ def projects_fragment():
         project = find_project_by_code(db.session, project_data['projcode'])
         project_data['title'] = project.title if project else None
 
-    # Sort by amount descending
-    projects.sort(key=lambda p: p['total_amount'], reverse=True)
+    # Sort by amount descending (usage mode: sort by used desc, then amount)
+    if show_usage:
+        projects.sort(key=lambda p: p.get('total_used', 0.0), reverse=True)
+    else:
+        projects.sort(key=lambda p: p['total_amount'], reverse=True)
 
     # Get resource type for conditional display
     resource_types = get_resource_types(db.session)
@@ -303,7 +443,8 @@ def projects_fragment():
         facility=facility,
         allocation_type=allocation_type,
         active_at=active_at.strftime('%Y-%m-%d'),
-        resource_type=resource_type
+        resource_type=resource_type,
+        show_usage=show_usage
     )
 
 
