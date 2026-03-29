@@ -14,12 +14,47 @@ LOG_DIR="${SCRIPT_DIR}/logs"
 
 mkdir -p "$LOG_DIR"
 
-# Define collectors as "name:relative_path"
-COLLECTORS=(
-    "Derecho:derecho/collector.py"
-    "Casper:casper/collector.py"
-    "JupyterHub:jupyterhub/collector.py"
-)
+# Parse arguments
+RUN_DERECHO=0
+RUN_CASPER=0
+RUN_JUPYTERHUB=0
+RUN_ONCE=0
+
+usage() {
+    echo "Usage: $(basename "$0") [--derecho] [--casper] [--jupyterhub] [--once]"
+    echo ""
+    echo "  --derecho      Run the Derecho collector"
+    echo "  --casper       Run the Casper collector"
+    echo "  --jupyterhub   Run the JupyterHub collector"
+    echo "  --once         Run selected collectors once instead of looping"
+    echo ""
+    echo "  Default (no flags): run all collectors in a loop"
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --derecho)    RUN_DERECHO=1 ;;
+        --casper)     RUN_CASPER=1 ;;
+        --jupyterhub) RUN_JUPYTERHUB=1 ;;
+        --once)       RUN_ONCE=1 ;;
+        --help|-h)    usage; exit 0 ;;
+        *) echo "Unknown option: $1"; usage; exit 1 ;;
+    esac
+    shift
+done
+
+# Default: run all collectors if none specified
+if [[ $RUN_DERECHO -eq 0 && $RUN_CASPER -eq 0 && $RUN_JUPYTERHUB -eq 0 ]]; then
+    RUN_DERECHO=1
+    RUN_CASPER=1
+    RUN_JUPYTERHUB=1
+fi
+
+# Build collector list dynamically
+COLLECTORS=()
+[[ $RUN_DERECHO    -eq 1 ]] && COLLECTORS+=("Derecho:derecho/collector.py")
+[[ $RUN_CASPER     -eq 1 ]] && COLLECTORS+=("Casper:casper/collector.py")
+[[ $RUN_JUPYTERHUB -eq 1 ]] && COLLECTORS+=("JupyterHub:jupyterhub/collector.py")
 
 cat <<EOF
 ============================================================
@@ -55,6 +90,13 @@ while true; do
             fi
         fi
     done
+
+    echo ""
+
+    # Exit after one pass if --once was requested
+    if [[ $RUN_ONCE -eq 1 ]]; then
+        break
+    fi
 
     # Sleep remainder of interval
     now=$(date +%s)
