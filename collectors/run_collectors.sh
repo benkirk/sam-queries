@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 INTERVAL=300    # 5 minutes
-TIMEOUT="2m"    # timeout for each collector
+TIMEOUT="1m"    # timeout for each collector
 LOG_DIR="${SCRIPT_DIR}/logs"
 
 mkdir -p "$LOG_DIR"
