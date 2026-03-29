@@ -748,10 +748,10 @@ class CollectorConfig:
 
         self.api_url = os.getenv('STATUS_API_URL', 'http://localhost:5050')
         self.api_user = os.getenv('STATUS_API_USER')
-        self.api_password = os.getenv('STATUS_API_PASSWORD')
+        self.api_password = os.getenv('STATUS_API_KEY')
 
         if not self.api_user or not self.api_password:
-            raise ConfigError("STATUS_API_USER and STATUS_API_PASSWORD required in .env")
+            raise ConfigError("STATUS_API_USER and STATUS_API_KEY required in .env")
 
     def _load_yaml(self):
         """Load system-specific YAML configuration."""
@@ -1584,7 +1584,7 @@ def test_api_retry_logic(mock_post):
 # Set test credentials
 export STATUS_API_URL=http://localhost:5050
 export STATUS_API_USER=test_collector
-export STATUS_API_PASSWORD=test_password
+export STATUS_API_KEY=test_password
 
 # Run collector
 ./derecho/collector.py --verbose
@@ -1782,7 +1782,7 @@ make install
 
 # 5. Configure credentials
 cp .env.example .env
-vim .env  # Edit STATUS_API_USER, STATUS_API_PASSWORD, STATUS_API_URL
+vim .env  # Edit STATUS_API_USER, STATUS_API_KEY, STATUS_API_URL
 make config
 
 # 6. Test collectors
@@ -1805,7 +1805,7 @@ tail -f /var/log/derecho_collector.log
 # SAM API Configuration
 STATUS_API_URL=https://sam.ucar.edu
 STATUS_API_USER=derecho_collector
-STATUS_API_PASSWORD=YOUR_SECURE_PASSWORD_HERE
+STATUS_API_KEY=YOUR_SECURE_PASSWORD_HERE
 
 # Optional: Override log locations
 DERECHO_LOG_FILE=/var/log/derecho_collector.log

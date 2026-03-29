@@ -201,9 +201,9 @@ def index():
         overview_data = all_overviews.get(rn, [])
         rt = resource_types.get(rn, 'HPC')
         if rt in ['DISK', 'ARCHIVE']:
-            chart_title = 'Data Volume Distribution by Facility'
+            chart_title = f'Data Volume by Facility\n{rn}'
         else:
-            chart_title = 'Annual Rate Distribution by Facility'
+            chart_title = f'Annual Rate by Facility\n{rn}'
 
         resource_overviews[rn] = {
             'table_data': overview_data,
@@ -218,7 +218,7 @@ def index():
         for facility_name, types in facilities.items():
             if len(types) > 1:
                 allocation_type_charts[resource_name][facility_name] = \
-                    generate_allocation_type_pie_chart_matplotlib(types, rt, facility_name)
+                    generate_allocation_type_pie_chart_matplotlib(types, rt, resource_name, facility_name)
             else:
                 allocation_type_charts[resource_name][facility_name] = None
 

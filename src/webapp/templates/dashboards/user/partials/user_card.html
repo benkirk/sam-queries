@@ -40,6 +40,21 @@
                             {% endfor %}
                         </td>
                     </tr>
+                    {% if sam_user.phones %}
+                    <tr>
+                        <th>Phone(s):</th>
+                        <td>
+                            {% for phone in sam_user.phones %}
+                            <div>
+                                {{ phone.phone_number }}
+                                {% if phone.phone_type %}
+                                <small class="text-muted">({{ phone.phone_type.phone_type }})</small>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endif %}
                     <tr>
                         <th>UID:</th>
                         <td>{{ sam_user.unix_uid or 'N/A' }}</td>

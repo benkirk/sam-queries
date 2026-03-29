@@ -32,6 +32,9 @@ webapp:
     STATUS_DB_DRIVER: "postgresql"
     STATUS_DB_SERVER: "csg-postgres.k8s.ucar.edu"
     GOOGLE_CALENDAR_EMBED_URL: "https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver"
+    # API keys for HPC status collectors (bcrypt hashes — safe to store here).
+    # Generate with: python scripts/gen_api_key.py --username collector
+    # API_KEYS_COLLECTOR: "$2b$12$replace_with_real_hash_from_gen_script"
 
   dbCredentials:
     enabled: true                         # Enable syncing credentials from OpenBao

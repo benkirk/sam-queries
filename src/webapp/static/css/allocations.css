@@ -62,31 +62,41 @@
 }
 
 /* ===================================================================
-   Nested Tabs
+   Hierarchical Facility / Allocation-Type Table (flat, interleaved rows)
    =================================================================== */
 
-.nested-tabs {
-    margin-top: 1.5rem;
+/* Facility header rows (top-level collapsible) */
+.facility-row {
+    background-color: #edf2f7;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
 }
 
-/* ===================================================================
-   Resource Overview Section
-   =================================================================== */
-
-.overview-section {
-    background: #ffffff;
-    border: 1px solid #dee2e6;
-    border-radius: var(--radius-sm);
-    padding: 1.5rem;
-    margin-bottom: 2rem;
+.facility-row:hover {
+    background-color: #d0dce9;
 }
 
-.overview-table {
-    margin-bottom: 1.5rem;
+/* Allocation type rows — hidden by default, revealed when facility expands */
+.alloc-type-row,
+.alloc-type-subtotal-row,
+.alloc-type-chart-row {
+    display: none;
+}
+
+.alloc-type-row.show,
+.alloc-type-subtotal-row.show,
+.alloc-type-chart-row.show {
+    display: table-row;
 }
 
 .chart-container {
     text-align: center;
+}
+
+.chart-container svg {
+    width: 100%;
+    max-width: 720px;
+    height: auto;
 }
 
 /* ===================================================================

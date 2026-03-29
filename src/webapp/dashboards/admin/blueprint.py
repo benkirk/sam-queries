@@ -1126,7 +1126,6 @@ def htmx_facilities_card():
     Lazy-loaded when the Facility collapsible section is first expanded.
     """
     from sam.resources.facilities import Facility
-    from sam.accounting.allocations import AllocationType
 
     active_only = request.args.get('active_only') == '1'
 
@@ -1135,15 +1134,9 @@ def htmx_facilities_card():
         facility_q = facility_q.filter(Facility.is_active)
     facilities = facility_q.all()
 
-    at_q = db.session.query(AllocationType).order_by(AllocationType.allocation_type)
-    if active_only:
-        at_q = at_q.filter(AllocationType.is_active)
-    allocation_types = at_q.all()
-
     return render_template(
         'dashboards/admin/fragments/facility_card.html',
         facilities=facilities,
-        allocation_types=allocation_types,
         is_admin=True,
         active_only=active_only,
     )

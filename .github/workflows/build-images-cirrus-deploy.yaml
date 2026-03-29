@@ -1,4 +1,4 @@
-name: Build Docker Images
+name: Build Docker Images and CIRRUS Deploy
 
 on:
   push:
@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      webapp_built: ${{ steps.matrix.outputs.webapp_built }}
 
     steps:
       - name: Build matrix
@@ -107,6 +108,13 @@ jobs:
           echo "Building: $IMAGES_TO_BUILD"
           echo "Matrix: $MATRIX"
 
+          # Indicate whether webapp is included (used by update-helm job)
+          if echo "$IMAGES_TO_BUILD" | grep -qw "webapp"; then
+            echo "webapp_built=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "webapp_built=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # -----------------------------------------------------------------------
   # build: multi-platform image build and push (one job per matrix entry)
   # -----------------------------------------------------------------------
@@ -170,3 +178,42 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # -----------------------------------------------------------------------
+  # update-helm: pin helm/values.yaml to the built SHA tag, push to cirrus
+  # -----------------------------------------------------------------------
+  update-helm:
+    name: Pin Helm image tag → cirrus
+    needs: [setup, build]
+    if: needs.setup.outputs.webapp_built == 'true'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # required to push the cirrus branch
+
+    steps:
+      - name: Checkout triggering ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 1
+          # persist-credentials: true (default) wires GITHUB_TOKEN into git remote
+
+      - name: Patch helm/values.yaml with SHA image tag
+        run: |
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          NEW_IMAGE="ghcr.io/${{ github.repository }}/webapp:sha-${SHORT_SHA}"
+          echo "Pinning webapp image → ${NEW_IMAGE}"
+          sed -i \
+            "s|image: ghcr.io/${{ github.repository }}/webapp:.*|image: ${NEW_IMAGE}|" \
+            helm/values.yaml
+          grep "image:" helm/values.yaml   # sanity-check
+
+      - name: Commit and force-push cirrus branch
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B cirrus
+          git add helm/values.yaml
+          git commit -m "ci: pin webapp image to sha-${GITHUB_SHA:0:7} ($(date -u '+%Y-%m-%d %H:%M UTC')) [skip ci]"
+          git push origin cirrus --force

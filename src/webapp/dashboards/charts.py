@@ -78,7 +78,7 @@ def _cached_usage_timeseries(data_key: tuple) -> str:
     fig.autofmt_xdate()
 
     svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight')
+    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
     plt.close(fig)
     return svg_io.getvalue()
 
@@ -148,7 +148,7 @@ def _cached_nodetype_history(data_key: tuple, node_type: str) -> str:
     fig.autofmt_xdate()
 
     svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight')
+    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
     plt.close(fig)
     return svg_io.getvalue()
 
@@ -220,7 +220,7 @@ def _cached_queue_history(data_key: tuple, queue_name: str, system_name: str) ->
     fig.autofmt_xdate()
 
     svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight')
+    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
     plt.close(fig)
     return svg_io.getvalue()
 
@@ -249,33 +249,54 @@ _attach_cache_methods(generate_queue_history_matplotlib, _cached_queue_history)
 # 4. Facility pie chart (allocations dashboard)
 # ---------------------------------------------------------------------------
 
+_PIE_START_ANGLE = 60
+_PIE_MAX_ENTITIES = 10
+
+
+def _pie_trim(names: list, values: list) -> tuple[list, list]:
+    """Sort by value descending, cap at _PIE_MAX_ENTITIES, group remainder as 'Others (N)'."""
+    paired = sorted(zip(names, values), key=lambda x: x[1], reverse=True)
+    names_s = [p[0] for p in paired]
+    values_s = [p[1] for p in paired]
+    if len(names_s) > _PIE_MAX_ENTITIES:
+        n_others = len(names_s) - _PIE_MAX_ENTITIES
+        others_sum = sum(values_s[_PIE_MAX_ENTITIES:])
+        names_s = names_s[:_PIE_MAX_ENTITIES] + [f'Others ({n_others})']
+        values_s = values_s[:_PIE_MAX_ENTITIES] + [others_sum]
+    return names_s, values_s
+
+
 @lru_cache(maxsize=32)
 def _cached_facility_pie(data_key: tuple, title: str) -> str:
     facility_data = [dict(items) for items in data_key]
 
-    facilities = [d['facility'] for d in facility_data]
-    rates = [d['annualized_rate'] for d in facility_data]
+    raw_names = [d['facility'] for d in facility_data]
+    raw_values = [d['annualized_rate'] for d in facility_data]
+    names, values = _pie_trim(raw_names, raw_values)
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    legend_labels = [f'{n} ({v:,.0f})' for n, v in zip(names, values)]
+    colors = plt.cm.tab20.colors[:len(names)]
 
-    colors = plt.cm.tab10.colors[:len(facilities)]
-    wedges, texts, autotexts = ax.pie(
-        rates,
-        labels=facilities,
-        autopct='%1.1f%%',
-        startangle=90,
+    fig, ax = plt.subplots(figsize=(7, 4))
+    wedges, _texts, autotexts = ax.pie(
+        values,
+        labels=None,
+        autopct=lambda pct: f'{pct:.1f}%' if pct >= 5 else '',
+        startangle=_PIE_START_ANGLE,
+        counterclock=False,
         colors=colors,
-        textprops={'fontsize': 11}
+        pctdistance=0.85,
     )
+    for at in autotexts:
+        at.set_color('white')
+        at.set_fontweight('bold')
+        at.set_fontsize(8)
 
-    for autotext in autotexts:
-        autotext.set_color('white')
-        autotext.set_fontweight('bold')
-
-    ax.set_title(title, fontsize=13, fontweight='bold', pad=20)
+    ax.set_title(title, fontsize=11, fontweight='bold', pad=12)
+    ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
 
     svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight')
+    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
     plt.close(fig)
     return svg_io.getvalue()
 
@@ -304,48 +325,53 @@ _attach_cache_methods(generate_facility_pie_chart_matplotlib, _cached_facility_p
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=64)
-def _cached_alloc_type_pie(data_key: tuple, resource_type: str, facility_name: str) -> str:
+def _cached_alloc_type_pie(data_key: tuple, resource_type: str, resource_name: str, facility_name: str) -> str:
     type_data = [dict(items) for items in data_key]
 
-    allocation_types = [d['allocation_type'] for d in type_data]
-    amounts = [d['total_amount'] for d in type_data]
+    raw_names = [d['allocation_type'] for d in type_data]
+    raw_values = [d['total_amount'] for d in type_data]
+    names, values = _pie_trim(raw_names, raw_values)
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    colors = plt.cm.tab10.colors[:len(allocation_types)]
-    wedges, texts, autotexts = ax.pie(
-        amounts,
-        labels=allocation_types,
-        autopct='%1.1f%%',
-        startangle=90,
-        colors=colors,
-        textprops={'fontsize': 11}
-    )
-
-    for autotext in autotexts:
-        autotext.set_color('white')
-        autotext.set_fontweight('bold')
+    legend_labels = [f'{n} ({v:,.0f})' for n, v in zip(names, values)]
+    colors = plt.cm.tab20.colors[:len(names)]
 
     if resource_type in ['DISK', 'ARCHIVE']:
-        chart_title = f'Data Volume Distribution by Type - {facility_name}'
+        chart_title = f'Data Volume by Type\n{resource_name} — {facility_name}'
     else:
-        chart_title = f'Allocation Distribution by Type - {facility_name}'
+        chart_title = f'Allocation by Type\n{resource_name} — {facility_name}'
 
-    ax.set_title(chart_title, fontsize=13, fontweight='bold', pad=20)
+    fig, ax = plt.subplots(figsize=(7, 4))
+    wedges, _texts, autotexts = ax.pie(
+        values,
+        labels=None,
+        autopct=lambda pct: f'{pct:.1f}%' if pct >= 5 else '',
+        startangle=_PIE_START_ANGLE,
+        counterclock=False,
+        colors=colors,
+        pctdistance=0.85,
+    )
+    for at in autotexts:
+        at.set_color('white')
+        at.set_fontweight('bold')
+        at.set_fontsize(8)
+
+    ax.set_title(chart_title, fontsize=11, fontweight='bold', pad=12)
+    ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
 
     svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight')
+    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
     plt.close(fig)
     return svg_io.getvalue()
 
 
-def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict], resource_type: str, facility_name: str) -> str:
+def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict], resource_type: str, resource_name: str, facility_name: str) -> str:
     """
     Generate pie chart showing allocation distribution by type within a facility.
 
     Args:
         type_data: List of dicts with allocation_type, total_amount, count, avg_amount
         resource_type: Resource type string ('HPC', 'DAV', 'DISK', 'ARCHIVE')
+        resource_name: Resource name for chart title
         facility_name: Facility name for chart title
 
     Returns:
@@ -353,7 +379,7 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict], resourc
     """
     if not type_data:
         return '<div class="text-center text-muted">No allocation type data available</div>'
-    return _cached_alloc_type_pie(_hashable_list_of_dicts(type_data), resource_type, facility_name)
+    return _cached_alloc_type_pie(_hashable_list_of_dicts(type_data), resource_type, resource_name, facility_name)
 
 
 _attach_cache_methods(generate_allocation_type_pie_chart_matplotlib, _cached_alloc_type_pie)

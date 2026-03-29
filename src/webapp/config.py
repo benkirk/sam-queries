@@ -17,6 +17,16 @@ class SAMWebappConfig(SAMConfig):
     FLASK_ADMIN_SWATCH = 'lumen'
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB
 
+    # API key authentication for machine-to-machine routes (status collectors, etc.)
+    # Populated from API_KEYS_<USERNAME> environment variables at startup.
+    # e.g., API_KEYS_COLLECTOR=$2b$12$...  →  {'collector': '$2b$12$...'}
+    # Use scripts/gen_api_key.py to generate new key/hash pairs.
+    API_KEYS: dict = {
+        k[9:].lower(): v          # strip 'API_KEYS_' prefix (9 chars), lowercase username
+        for k, v in os.environ.items()
+        if k.startswith('API_KEYS_') and v
+    }
+
     # Auth provider ('stub' | 'ldap' | 'saml')
     AUTH_PROVIDER = os.getenv('AUTH_PROVIDER', 'stub')
 
@@ -40,6 +50,12 @@ class SAMWebappConfig(SAMConfig):
 class DevelopmentConfig(SAMWebappConfig):
     DEBUG = True
     SESSION_COOKIE_SECURE = False   # no HTTPS required in dev
+
+    # Development API keys — rotate with: python scripts/gen_api_key.py
+    # Actual key goes in collectors/.env as STATUS_API_KEY
+    API_KEYS = {
+        'collector': '$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2',
+    }
 
     # Development role mapping (bypasses role DB tables)
     DEV_ROLE_MAPPING = {
@@ -68,6 +84,14 @@ class ProductionConfig(SAMWebappConfig):
             )
         if len(key) < 32:
             raise EnvironmentError("FLASK_SECRET_KEY must be at least 32 characters.")
+        if not cls.API_KEYS:
+            import warnings
+            warnings.warn(
+                "No API_KEYS_* environment variables are set. "
+                "Status collector routes will reject all requests. "
+                "Generate keys with: python scripts/gen_api_key.py",
+                stacklevel=2,
+            )
 
 
 class TestingConfig(SAMWebappConfig):
@@ -75,6 +99,12 @@ class TestingConfig(SAMWebappConfig):
     DEBUG = False
     SESSION_COOKIE_SECURE = False
     WTF_CSRF_ENABLED = False
+
+    # Low-cost bcrypt hash for fast test execution (rounds=4)
+    # Key value: 'test-api-key'
+    API_KEYS = {
+        'collector': '$2b$04$lEZO8EBAKbpGIUYMenFeOui8tvzj44hXlgWnbkkznBVe8oX1uQyE6',
+    }
 
 
 _configs = {
