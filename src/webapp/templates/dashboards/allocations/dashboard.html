@@ -202,7 +202,13 @@
                         <td>{% if type_rate and not is_storage %}{{ "{:,.0f}".format(type_rate) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td>{{ type_data.count }}</td>
                         <td>{{ "{:,.0f}".format(type_data.avg_amount) }}</td>
-                        <td class="text-muted">—</td>
+                        <td>
+                            {% if type_rate and facility_data.annualized_rate and not is_storage %}
+                                {{ "%.1f"|format(type_rate / facility_data.annualized_rate * 100) }}%
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr class="project-details-row" data-fac-id="{{ fac_id }}" id="{{ details_id }}">
                         <td colspan="7"
