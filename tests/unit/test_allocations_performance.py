@@ -71,7 +71,7 @@ class TestGetAllFacilityOverviews:
     def test_returns_dict_keyed_by_resource(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        result, _ = get_all_facility_overviews(session, ['Derecho'], datetime.now())
         assert isinstance(result, dict)
         if result:
             assert 'Derecho' in result
@@ -79,25 +79,27 @@ class TestGetAllFacilityOverviews:
     def test_multiple_resources_single_query(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['Derecho', 'Casper'], datetime.now())
+        result, _ = get_all_facility_overviews(session, ['Derecho', 'Casper'], datetime.now())
         assert isinstance(result, dict)
 
     def test_empty_resource_list(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, [], datetime.now())
+        result, type_rates = get_all_facility_overviews(session, [], datetime.now())
         assert result == {}
+        assert type_rates == {}
 
     def test_nonexistent_resource(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['NonexistentResource123'], datetime.now())
+        result, type_rates = get_all_facility_overviews(session, ['NonexistentResource123'], datetime.now())
         assert result == {}
+        assert type_rates == {}
 
     def test_facility_overview_has_required_keys(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        result, _ = get_all_facility_overviews(session, ['Derecho'], datetime.now())
         if result.get('Derecho'):
             for item in result['Derecho']:
                 assert 'facility' in item
@@ -109,7 +111,7 @@ class TestGetAllFacilityOverviews:
     def test_percentages_sum_to_100(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        result, _ = get_all_facility_overviews(session, ['Derecho'], datetime.now())
         if result.get('Derecho') and len(result['Derecho']) > 1:
             total_pct = sum(f['percent'] for f in result['Derecho'])
             assert abs(total_pct - 100.0) < 0.1
@@ -117,7 +119,7 @@ class TestGetAllFacilityOverviews:
     def test_sorted_by_annualized_rate_desc(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        result, _ = get_all_facility_overviews(session, ['Derecho'], datetime.now())
         if result.get('Derecho') and len(result['Derecho']) > 1:
             rates = [f['annualized_rate'] for f in result['Derecho']]
             assert rates == sorted(rates, reverse=True)
@@ -126,15 +128,41 @@ class TestGetAllFacilityOverviews:
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
         past = datetime(2024, 1, 1)
-        result = get_all_facility_overviews(session, ['Derecho'], past)
+        result, _ = get_all_facility_overviews(session, ['Derecho'], past)
         assert isinstance(result, dict)
 
     def test_future_date_returns_empty_or_less(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
         future = datetime.now() + timedelta(days=3650)
-        result = get_all_facility_overviews(session, ['Derecho'], future)
+        result, _ = get_all_facility_overviews(session, ['Derecho'], future)
         assert isinstance(result, dict)
+
+    def test_type_rates_keyed_by_resource_facility_type(self, session):
+        from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
+
+        _, type_rates = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        assert isinstance(type_rates, dict)
+        for key, rate in type_rates.items():
+            assert len(key) == 3          # (resource, facility, allocation_type)
+            assert isinstance(rate, float)
+            assert rate >= 0.0
+
+    def test_type_rates_sum_equals_facility_rate(self, session):
+        """Sum of per-type annualized rates within a facility must equal the facility rate."""
+        from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
+
+        overviews, type_rates = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        if not overviews.get('Derecho'):
+            return
+        for fac_overview in overviews['Derecho']:
+            facility = fac_overview['facility']
+            facility_rate = fac_overview['annualized_rate']
+            type_sum = sum(
+                r for (res, fac, _), r in type_rates.items()
+                if res == 'Derecho' and fac == facility
+            )
+            assert abs(type_sum - facility_rate) < 0.01
 
 
 class TestGetResourceTypes:

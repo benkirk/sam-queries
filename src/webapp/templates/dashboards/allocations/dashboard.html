@@ -198,10 +198,17 @@
                         </td>
                         <td class="ps-4"><strong>{{ type_data.allocation_type }}</strong></td>
                         <td>{{ "{:,.0f}".format(type_data.total_amount) }}</td>
-                        <td class="text-muted">—</td>
+                        {% set type_rate = type_annualized_rates.get((resource_name, facility_name, type_data.allocation_type)) %}
+                        <td>{% if type_rate and not is_storage %}{{ "{:,.0f}".format(type_rate) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td>{{ type_data.count }}</td>
                         <td>{{ "{:,.0f}".format(type_data.avg_amount) }}</td>
-                        <td class="text-muted">—</td>
+                        <td>
+                            {% if type_rate and facility_data.annualized_rate and not is_storage %}
+                                {{ "%.1f"|format(type_rate / facility_data.annualized_rate * 100) }}%
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr class="project-details-row" data-fac-id="{{ fac_id }}" id="{{ details_id }}">
                         <td colspan="7"
@@ -225,7 +232,7 @@
                         <th></th>
                         <th class="ps-4">Subtotal</th>
                         <th>{{ "{:,.0f}".format(total_allocated) }}</th>
-                        <th class="text-muted">—</th>
+                        <th>{% if not is_storage %}{{ "{:,.0f}".format(facility_data.annualized_rate) }}{% else %}<span class="text-muted">—</span>{% endif %}</th>
                         <th>{{ total_count }}</th>
                         <th>{{ "{:,.0f}".format(total_allocated / total_count if total_count > 0 else 0) }}</th>
                         <th class="text-muted">—</th>
@@ -408,14 +415,24 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
             th.addEventListener('click', function() {
                 var colIndex = Array.from(th.parentNode.children).indexOf(th);
                 var sortType = th.dataset.sort;
+                var sortAttr = th.dataset.sortAttr;  // e.g. "sort-start" for colspan bar cells
                 var isAsc = !th.classList.contains('sort-asc');
                 table.querySelectorAll('th').forEach(function(h) { h.classList.remove('sort-asc', 'sort-desc'); });
                 th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
                 var tbody = table.querySelector('tbody');
                 var rows = Array.from(tbody.querySelectorAll('tr'));
                 rows.sort(function(a, b) {
-                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
-                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    var aVal, bVal;
+                    if (sortAttr) {
+                        // Named-attribute sort: works across colspan cells
+                        var aCell = a.querySelector('[data-' + sortAttr + ']');
+                        var bCell = b.querySelector('[data-' + sortAttr + ']');
+                        aVal = aCell ? (aCell.getAttribute('data-' + sortAttr) || '') : '';
+                        bVal = bCell ? (bCell.getAttribute('data-' + sortAttr) || '') : '';
+                    } else {
+                        aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
+                        bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    }
                     if (sortType === 'numeric') {
                         aVal = parseFloat(aVal) || 0; bVal = parseFloat(bVal) || 0;
                         return isAsc ? aVal - bVal : bVal - aVal;

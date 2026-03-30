@@ -120,7 +120,7 @@ def get_all_facility_usage_overviews(session, resource_names: List[str], active_
     return overviews
 
 
-def get_all_facility_overviews(session, resource_names: List[str], active_at: datetime) -> Dict[str, List[Dict]]:
+def get_all_facility_overviews(session, resource_names: List[str], active_at: datetime):
     """
     Calculate facility-level summaries for multiple resources in a single query.
 
@@ -128,10 +128,13 @@ def get_all_facility_overviews(session, resource_names: List[str], active_at: da
     aggregates by resource and facility. Avoids N+1 queries.
 
     Returns:
-        Dict mapping resource_name -> list of facility overview dicts
+        Tuple of:
+          - Dict mapping resource_name -> list of facility overview dicts
+          - Dict mapping (resource, facility, allocation_type) -> annualized_rate float
+            (summed from the same per-project rows; sum of type rates == facility rate)
     """
     if not resource_names:
-        return {}
+        return {}, {}
 
     individual_allocations = get_allocation_summary(
         session=session,
@@ -143,11 +146,16 @@ def get_all_facility_overviews(session, resource_names: List[str], active_at: da
         active_at=active_at
     )
 
-    # Group by resource, then aggregate by facility
+    # Group by resource+facility (for pie charts / overview table)
+    # and by resource+facility+type (for per-type annual rate column)
     resource_facility_totals: Dict[str, Dict[str, Dict]] = {}
+    type_rate_totals: Dict[tuple, float] = {}
+
     for alloc in individual_allocations:
         resource = alloc['resource']
         facility = alloc['facility']
+        alloc_type = alloc['allocation_type']
+
         if resource not in resource_facility_totals:
             resource_facility_totals[resource] = {}
         if facility not in resource_facility_totals[resource]:
@@ -160,6 +168,8 @@ def get_all_facility_overviews(session, resource_names: List[str], active_at: da
         bucket['count'] += alloc['count']
         if alloc.get('annualized_rate') is not None:
             bucket['annualized_rate'] += alloc['annualized_rate']
+            type_key = (resource, facility, alloc_type)
+            type_rate_totals[type_key] = type_rate_totals.get(type_key, 0.0) + alloc['annualized_rate']
 
     overviews = {}
     for resource, facilities in resource_facility_totals.items():
@@ -177,7 +187,7 @@ def get_all_facility_overviews(session, resource_names: List[str], active_at: da
         overview.sort(key=lambda x: x['annualized_rate'], reverse=True)
         overviews[resource] = overview
 
-    return overviews
+    return overviews, type_rate_totals
 
 
 def get_resource_types(session) -> Dict[str, str]:
@@ -261,7 +271,8 @@ def index():
     resource_types = get_resource_types(db.session)
 
     # Batch-fetch all facility overviews in a single query
-    all_overviews = get_all_facility_overviews(db.session, list(grouped_data.keys()), active_at)
+    # Also returns per-type annualized rates (same query, grouped one level deeper)
+    all_overviews, type_annualized_rates = get_all_facility_overviews(db.session, list(grouped_data.keys()), active_at)
 
     # Generate facility pie chart SVGs (cached via lru_cache)
     resource_overviews = {}
@@ -357,6 +368,7 @@ def index():
         resource_usage_overviews=resource_usage_overviews,
         allocation_type_charts=allocation_type_charts,
         allocation_type_usage_charts=allocation_type_usage_charts,
+        type_annualized_rates=type_annualized_rates,
         active_at=active_at.strftime('%Y-%m-%d'),
         all_resources=all_resources,
         selected_resources=selected_resources,
@@ -451,6 +463,7 @@ def projects_fragment():
         facility=facility,
         allocation_type=allocation_type,
         active_at=active_at.strftime('%Y-%m-%d'),
+        active_at_dt=active_at,
         resource_type=resource_type,
         show_usage=show_usage
     )
