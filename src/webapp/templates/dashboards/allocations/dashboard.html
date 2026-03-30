@@ -198,7 +198,8 @@
                         </td>
                         <td class="ps-4"><strong>{{ type_data.allocation_type }}</strong></td>
                         <td>{{ "{:,.0f}".format(type_data.total_amount) }}</td>
-                        <td class="text-muted">—</td>
+                        {% set type_rate = type_annualized_rates.get((resource_name, facility_name, type_data.allocation_type)) %}
+                        <td>{% if type_rate and not is_storage %}{{ "{:,.0f}".format(type_rate) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td>{{ type_data.count }}</td>
                         <td>{{ "{:,.0f}".format(type_data.avg_amount) }}</td>
                         <td class="text-muted">—</td>
@@ -225,7 +226,7 @@
                         <th></th>
                         <th class="ps-4">Subtotal</th>
                         <th>{{ "{:,.0f}".format(total_allocated) }}</th>
-                        <th class="text-muted">—</th>
+                        <th>{% if not is_storage %}{{ "{:,.0f}".format(facility_data.annualized_rate) }}{% else %}<span class="text-muted">—</span>{% endif %}</th>
                         <th>{{ total_count }}</th>
                         <th>{{ "{:,.0f}".format(total_allocated / total_count if total_count > 0 else 0) }}</th>
                         <th class="text-muted">—</th>
