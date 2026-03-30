@@ -52,13 +52,40 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
     resources = []
     usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
 
+    now = datetime.now()
+
     for resource_name, usage in usage_data.items():
+        start_date = usage.get('start_date')
         end_date = usage.get('end_date')
 
         # Calculate days until expiration
         days_until_expiration = None
         if end_date:
-            days_until_expiration = (end_date - datetime.now()).days
+            days_until_expiration = (end_date - now).days
+
+        # Sortable group key for grouping resources with identical date bounds
+        start_str = start_date.strftime('%Y-%m-%d') if start_date else '0000-00-00'
+        end_str   = end_date.strftime('%Y-%m-%d')   if end_date   else 'open'
+        date_group_key = f"{start_str}_{end_str}"
+
+        # Timeline progress (mirrors allocations dashboard project_table.html logic)
+        if not start_date:
+            elapsed_pct = 0
+            bar_state   = 'no-dates'
+        elif not end_date:
+            elapsed_pct = 50
+            bar_state   = 'open-ended'
+        elif end_date < now:
+            elapsed_pct = 100
+            bar_state   = 'expired'
+        else:
+            duration_days = (end_date - start_date).days
+            if duration_days > 0:
+                elapsed_pct = max(0.0, min(100.0, round((now - start_date).days / duration_days * 100, 1)))
+                bar_state   = 'active'
+            else:
+                elapsed_pct = 0
+                bar_state   = 'no-duration'
 
         resources.append({
             'resource_name': resource_name,
@@ -71,9 +98,12 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
             'charges_by_type': usage.get('charges_by_type', {}),
             'adjustments': usage.get('adjustments', 0.0),
             'status': usage.get('status', 'Unknown'),
-            'start_date': usage.get('start_date'),
+            'start_date': start_date,
             'end_date': end_date,
-            'days_until_expiration': days_until_expiration
+            'days_until_expiration': days_until_expiration,
+            'date_group_key': date_group_key,
+            'elapsed_pct': elapsed_pct,
+            'bar_state': bar_state,
         })
 
     return resources
