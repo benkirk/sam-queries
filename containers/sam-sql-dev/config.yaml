@@ -18,7 +18,7 @@ local:
 
 settings:
   # --- Sampling behavior ---
-  size_threshold_mb: 500           # tables smaller than this (MB) are copied fully
+  size_threshold_mb: 250           # tables smaller than this (MB) are copied fully
   row_limit: 10000                 # initial sample size for large tables
   max_refill_multiplier: 8         # will retry with up to 8x row_limit if empty
 
