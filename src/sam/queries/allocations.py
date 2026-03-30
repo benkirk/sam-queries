@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Tuple, Union
 
 from sqlalchemy import or_, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, noload
 
 from sam.core.users import User
 from sam.projects.projects import Project
@@ -454,6 +454,132 @@ def get_allocation_summary(
     return output
 
 
+def _fetch_all_allocations(
+    session: Session,
+    resource_name: Optional[Union[str, List[str]]],
+    facility_name: Optional[Union[str, List[str]]],
+    allocation_type: Optional[Union[str, List[str]]],
+    projcode: Optional[Union[str, List[str]]],
+    active_only: bool,
+    check_date: datetime,
+) -> List[tuple]:
+    """
+    Fetch all active allocations matching the given filters in a single query.
+
+    Returns list of (Allocation, resource_name, resource_type, facility_name,
+    allocation_type_name, projcode, Project, Account) tuples.
+    Account.users selectin is suppressed via lazyload — the caller never needs it.
+    The facility, allocation_type, and projcode columns are fetched as explicit scalars
+    to avoid triggering lazy-loads when building grouping keys.
+    """
+    query = session.query(
+        Allocation,
+        Resource.resource_name,
+        ResourceType.resource_type,
+        Facility.facility_name,
+        AllocationType.allocation_type,
+        Project.projcode,
+        Project,
+        Account
+    ).join(Account, Allocation.account_id == Account.account_id)\
+     .join(Project, Account.project_id == Project.project_id)\
+     .join(Resource, Account.resource_id == Resource.resource_id)\
+     .join(ResourceType, Resource.resource_type_id == ResourceType.resource_type_id)\
+     .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+     .join(Panel, AllocationType.panel_id == Panel.panel_id)\
+     .join(Facility, Panel.facility_id == Facility.facility_id)\
+     .filter(
+         Allocation.deleted == False,
+         Resource.is_active,
+     )\
+     .options(noload(Account.users))  # prevent selectin — account.users never accessed here
+
+    # Apply shared filters (same semantics as get_allocation_summary)
+    if resource_name and resource_name != "TOTAL":
+        if isinstance(resource_name, list):
+            query = query.filter(Resource.resource_name.in_(resource_name))
+        else:
+            query = query.filter(Resource.resource_name == resource_name)
+
+    if facility_name and facility_name != "TOTAL":
+        if isinstance(facility_name, list):
+            query = query.filter(Facility.facility_name.in_(facility_name))
+        else:
+            query = query.filter(Facility.facility_name == facility_name)
+
+    if allocation_type and allocation_type != "TOTAL":
+        if isinstance(allocation_type, list):
+            query = query.filter(AllocationType.allocation_type.in_(allocation_type))
+        else:
+            query = query.filter(AllocationType.allocation_type == allocation_type)
+
+    if projcode and projcode != "TOTAL":
+        if isinstance(projcode, list):
+            query = query.filter(Project.projcode.in_(projcode))
+        else:
+            query = query.filter(Project.projcode == projcode)
+
+    if active_only:
+        query = query.filter(
+            Allocation.start_date <= check_date,
+            or_(
+                Allocation.end_date.is_(None),
+                Allocation.end_date >= check_date
+            )
+        )
+
+    return query.all()
+
+
+def _group_allocations_by_summary_key(
+    allocations: List[tuple],
+    resource_name,
+    facility_name,
+    allocation_type,
+    projcode,
+) -> Dict[tuple, List[tuple]]:
+    """
+    Group a flat list of allocation tuples by the same dimensions used in get_allocation_summary().
+
+    Key components follow the same "group by" logic: a dimension is included in the key
+    when it is NOT "TOTAL".  The inner-loop charge methods only need (Allocation, res_name,
+    res_type, Project, Account), so each bucket stores those 5-tuples.
+    """
+    grouped: Dict[tuple, List[tuple]] = {}
+    for row in allocations:
+        alloc, res_name, res_type, fac_name, at_name, proj_code, project, account = row
+
+        key_parts = []
+        if resource_name != "TOTAL":
+            key_parts.append(res_name)
+        if facility_name != "TOTAL":
+            key_parts.append(fac_name)
+        if allocation_type != "TOTAL":
+            key_parts.append(at_name)
+        if projcode != "TOTAL":
+            key_parts.append(proj_code)
+
+        key = tuple(key_parts)
+        # Store only the 5-tuple the charge loop needs
+        grouped.setdefault(key, []).append((alloc, res_name, res_type, project, account))
+
+    return grouped
+
+
+def _summary_item_key(item: Dict, resource_name, facility_name, allocation_type, projcode) -> tuple:
+    """Build the grouping key for a summary item, matching _group_allocations_by_summary_key."""
+    key_parts = []
+    if resource_name != "TOTAL":
+        key_parts.append(item.get('resource'))
+    if facility_name != "TOTAL":
+        key_parts.append(item.get('facility'))
+    if allocation_type != "TOTAL":
+        key_parts.append(item.get('allocation_type'))
+    if projcode != "TOTAL":
+        key_parts.append(item.get('projcode'))
+    return tuple(key_parts)
+
+
 def get_allocation_summary_with_usage(
     session: Session,
     resource_name: Optional[Union[str, List[str]]] = None,
@@ -462,7 +588,8 @@ def get_allocation_summary_with_usage(
     projcode: Optional[Union[str, List[str]]] = None,
     active_only: bool = True,
     active_at: Optional[datetime] = None,
-    include_adjustments: bool = True
+    include_adjustments: bool = True,
+    _summary: Optional[List[Dict]] = None,
 ) -> List[Dict]:
     """
     Get allocation summary statistics with usage information.
@@ -475,6 +602,10 @@ def get_allocation_summary_with_usage(
         include_adjustments: If True (default), include manual charge adjustments in
             total_used. When False, only raw charge summaries are included and
             charges_by_type will never contain an 'adjustments' key.
+        _summary: Optional pre-computed result of get_allocation_summary() with the same
+            parameters. When provided, the internal get_allocation_summary() call is
+            skipped. Callers that already have the summary can pass it here to avoid a
+            redundant database round-trip.
 
     Returns:
         List of dicts with same keys as get_allocation_summary() plus:
@@ -489,70 +620,43 @@ def get_allocation_summary_with_usage(
         >>> for r in results:
         ...     print(f"{r['facility']}: {r['percent_used']:.1f}% used")
     """
-    # First get the basic summary
-    summary = get_allocation_summary(
+    # Use pre-computed summary when available (avoids a redundant DB round-trip)
+    summary = _summary if _summary is not None else get_allocation_summary(
         session, resource_name, facility_name, allocation_type, projcode,
         active_only, active_at
     )
 
+    if not summary:
+        return summary
+
     check_date = active_at if active_at is not None else datetime.now()
 
-    # Now enrich with usage data
+    # Fetch ALL matching allocations in a single query, then group in Python.
+    # This replaces the previous per-summary-row query loop (N+1 problem).
+    all_allocations = _fetch_all_allocations(
+        session, resource_name, facility_name, allocation_type, projcode,
+        active_only, check_date
+    )
+    alloc_by_key = _group_allocations_by_summary_key(
+        all_allocations, resource_name, facility_name, allocation_type, projcode
+    )
+
+    # Enrich each summary item with usage data
     for item in summary:
-        # Build query to find matching allocations
-        query = session.query(
-            Allocation,
-            Resource.resource_name,
-            ResourceType.resource_type,
-            Project,
-            Account
-        ).join(Account, Allocation.account_id == Account.account_id)\
-         .join(Project, Account.project_id == Project.project_id)\
-         .join(Resource, Account.resource_id == Resource.resource_id)\
-         .join(ResourceType, Resource.resource_type_id == ResourceType.resource_type_id)\
-         .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
-         .join(Panel, AllocationType.panel_id == Panel.panel_id)\
-         .join(Facility, Panel.facility_id == Facility.facility_id)\
-         .filter(
-             Allocation.deleted == False,
-             Resource.is_active  # Exclude decommissioned resources
-         )
+        key = _summary_item_key(item, resource_name, facility_name, allocation_type, projcode)
+        item_allocations = alloc_by_key.get(key, [])
 
-        # Apply filters based on what's in this summary item
-        if 'resource' in item:
-            query = query.filter(Resource.resource_name == item['resource'])
-        if 'facility' in item:
-            query = query.filter(Facility.facility_name == item['facility'])
-        if 'allocation_type' in item:
-            query = query.filter(AllocationType.allocation_type == item['allocation_type'])
-        if 'projcode' in item:
-            query = query.filter(Project.projcode == item['projcode'])
-
-        # Apply active_only filter
-        if active_only:
-            query = query.filter(
-                Allocation.start_date <= check_date,
-                or_(
-                    Allocation.end_date.is_(None),
-                    Allocation.end_date >= check_date
-                )
-            )
-
-        allocations = query.all()
-
-        # Calculate total usage across all allocations in this group
         total_used = 0.0
         charges_by_type_total = {}
 
-        for alloc, res_name, res_type, project, account in allocations:
-            # Use the end_date from allocation, or current date if None
+        for alloc, res_name, res_type, project, account in item_allocations:
             end_date = alloc.end_date if alloc.end_date else check_date
             start_date = alloc.start_date
 
             # Check if we should use hierarchical charging
             # Mimic logic from Project.get_detailed_allocation_usage
             is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
-            use_hierarchy = is_tree_valid  # Always default to hierarchical if structure exists
+            use_hierarchy = is_tree_valid
 
             # Calculate charges
             if use_hierarchy:
@@ -566,12 +670,10 @@ def get_allocation_summary_with_usage(
                                                                start_date,
                                                                end_date)
 
-            # Accumulate charges
             for charge_type, amount in charges.items():
                 charges_by_type_total[charge_type] = charges_by_type_total.get(charge_type, 0.0) + amount
                 total_used += amount
 
-            # Calculate and add adjustments (when requested)
             if include_adjustments:
                 if use_hierarchy:
                     adjustment_amount = project.get_subtree_adjustments(account.resource_id,
@@ -582,12 +684,10 @@ def get_allocation_summary_with_usage(
                                                                 start_date,
                                                                 end_date)
 
-                # Add adjustments to total_used (they affect the balance)
                 total_used += adjustment_amount
                 if adjustment_amount != 0:
                     charges_by_type_total['adjustments'] = charges_by_type_total.get('adjustments', 0.0) + adjustment_amount
 
-        # Add usage fields to item
         item['total_used'] = total_used
         item['total_allocated'] = item['total_amount']  # Alias for clarity
         item['percent_used'] = (total_used / item['total_allocated'] * 100) if item['total_allocated'] > 0 else 0

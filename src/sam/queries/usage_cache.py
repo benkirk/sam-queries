@@ -84,6 +84,7 @@ def cached_allocation_usage(
     active_at: Optional[datetime] = None,
     include_adjustments: bool = True,
     force_refresh: bool = False,
+    _summary=None,
 ) -> List[Dict]:
     """
     Cached wrapper for get_allocation_summary_with_usage().
@@ -94,6 +95,9 @@ def cached_allocation_usage(
     Args:
         force_refresh: Bypass the cache and recompute from DB.  The fresh result
                        is stored back into the cache for subsequent callers.
+        _summary: Optional pre-computed get_allocation_summary() result to pass through
+                  to get_allocation_summary_with_usage(), skipping that internal call.
+                  Only effective on a cache miss (cached results are returned as-is).
 
     All other args are forwarded unchanged to get_allocation_summary_with_usage().
     """
@@ -110,6 +114,7 @@ def cached_allocation_usage(
             active_only=active_only,
             active_at=active_at,
             include_adjustments=include_adjustments,
+            _summary=_summary,
         )
 
     key = (
@@ -137,6 +142,7 @@ def cached_allocation_usage(
         active_only=active_only,
         active_at=active_at,
         include_adjustments=include_adjustments,
+        _summary=_summary,
     )
 
     with _lock:

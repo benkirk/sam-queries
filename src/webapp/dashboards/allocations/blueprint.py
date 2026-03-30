@@ -313,6 +313,7 @@ def index():
             active_only=True,
             active_at=active_at,
             force_refresh=force_refresh,
+            _summary=summary_data,  # reuse already-computed summary, skip redundant DB call
         )
         # Index by resource → facility
         usage_by_resource_facility: Dict[str, Dict[str, List]] = {}
