@@ -154,9 +154,11 @@
                     <tr>
                         <th class="table-col-expand"></th>
                         <th>Facility / Type</th>
+                        <th>Amount</th>
                         <th>{{ 'Data Volume' if is_storage else 'Annual Rate' }}</th>
                         <th>Count</th>
-                        <th>% / Avg</th>
+                        <th>Avg</th>
+                        <th>%</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -172,14 +174,16 @@
                             <i class="fas fa-chevron-right expand-icon"></i>
                         </td>
                         <td><strong>{{ facility_name }}</strong></td>
+                        <td>{{ "{:,.0f}".format(facility_data.total_amount) }}</td>
                         <td>
                             {% if is_storage %}
-                                {{ "{:,.0f}".format(facility_data.total_amount) }}
+                                <span class="text-muted">—</span>
                             {% else %}
                                 {{ "{:,.0f}".format(facility_data.annualized_rate) }}
                             {% endif %}
                         </td>
                         <td>{{ facility_data.count }}</td>
+                        <td class="text-muted">—</td>
                         <td>{{ "%.1f"|format(facility_data.percent) }}%</td>
                     </tr>
 
@@ -194,11 +198,13 @@
                         </td>
                         <td class="ps-4"><strong>{{ type_data.allocation_type }}</strong></td>
                         <td>{{ "{:,.0f}".format(type_data.total_amount) }}</td>
+                        <td class="text-muted">—</td>
                         <td>{{ type_data.count }}</td>
                         <td>{{ "{:,.0f}".format(type_data.avg_amount) }}</td>
+                        <td class="text-muted">—</td>
                     </tr>
                     <tr class="project-details-row" data-fac-id="{{ fac_id }}" id="{{ details_id }}">
-                        <td colspan="5"
+                        <td colspan="7"
                             hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}&show_usage={{ 'true' if show_usage else 'false' }}"
                             hx-trigger="load-details"
                             hx-swap="innerHTML">
@@ -219,8 +225,10 @@
                         <th></th>
                         <th class="ps-4">Subtotal</th>
                         <th>{{ "{:,.0f}".format(total_allocated) }}</th>
+                        <th class="text-muted">—</th>
                         <th>{{ total_count }}</th>
                         <th>{{ "{:,.0f}".format(total_allocated / total_count if total_count > 0 else 0) }}</th>
+                        <th class="text-muted">—</th>
                     </tr>
                     {% endif %}
 
@@ -229,7 +237,7 @@
                     {% set usage_type_chart = allocation_type_usage_charts.get(resource_name, {}).get(facility_name) if show_usage else none %}
                     {% if types|length > 1 and (type_chart or usage_type_chart) %}
                     <tr class="alloc-type-chart-row" data-fac-id="{{ fac_id }}">
-                        <td colspan="5" class="p-0">
+                        <td colspan="7" class="p-0">
                             {% if show_usage %}
                             <div class="p-2 pb-0">
                                 <ul class="nav nav-pills nav-fill mb-2 justify-content-center"
@@ -280,14 +288,16 @@
                     <tr>
                         <th></th>
                         <th>Total</th>
+                        <th>{{ "{:,.0f}".format(overview.table_data|sum(attribute='total_amount')) }}</th>
                         <th>
                             {% if is_storage %}
-                                {{ "{:,.0f}".format(overview.table_data|sum(attribute='total_amount')) }}
+                                <span class="text-muted">—</span>
                             {% else %}
                                 {{ "{:,.0f}".format(overview.table_data|sum(attribute='annualized_rate')) }}
                             {% endif %}
                         </th>
                         <th>{{ overview.table_data|sum(attribute='count') }}</th>
+                        <th class="text-muted">—</th>
                         <th>100%</th>
                     </tr>
                 </tfoot>
