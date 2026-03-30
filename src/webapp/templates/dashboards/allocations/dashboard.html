@@ -415,14 +415,24 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
             th.addEventListener('click', function() {
                 var colIndex = Array.from(th.parentNode.children).indexOf(th);
                 var sortType = th.dataset.sort;
+                var sortAttr = th.dataset.sortAttr;  // e.g. "sort-start" for colspan bar cells
                 var isAsc = !th.classList.contains('sort-asc');
                 table.querySelectorAll('th').forEach(function(h) { h.classList.remove('sort-asc', 'sort-desc'); });
                 th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
                 var tbody = table.querySelector('tbody');
                 var rows = Array.from(tbody.querySelectorAll('tr'));
                 rows.sort(function(a, b) {
-                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
-                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    var aVal, bVal;
+                    if (sortAttr) {
+                        // Named-attribute sort: works across colspan cells
+                        var aCell = a.querySelector('[data-' + sortAttr + ']');
+                        var bCell = b.querySelector('[data-' + sortAttr + ']');
+                        aVal = aCell ? (aCell.getAttribute('data-' + sortAttr) || '') : '';
+                        bVal = bCell ? (bCell.getAttribute('data-' + sortAttr) || '') : '';
+                    } else {
+                        aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
+                        bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    }
                     if (sortType === 'numeric') {
                         aVal = parseFloat(aVal) || 0; bVal = parseFloat(bVal) || 0;
                         return isAsc ? aVal - bVal : bVal - aVal;

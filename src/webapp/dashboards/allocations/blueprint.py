@@ -463,6 +463,7 @@ def projects_fragment():
         facility=facility,
         allocation_type=allocation_type,
         active_at=active_at.strftime('%Y-%m-%d'),
+        active_at_dt=active_at,
         resource_type=resource_type,
         show_usage=show_usage
     )
