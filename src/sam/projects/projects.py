@@ -11,9 +11,22 @@ from ..summaries.comp_summaries import *
 from ..summaries.dav_summaries import *
 from ..accounting.calculator import calculate_charges, get_charge_models_for_resource
 
+import logging
+from typing import Any
+
 from sqlalchemy.orm import joinedload
+from sqlalchemy import text
+import sqlalchemy.exc as sa_exc
 
 from datetime import timedelta
+
+_logger = logging.getLogger(__name__)
+
+# Lazily detected on first call to batch_get_subtree_charges.
+# True  = DB supports VALUES ROW() CTEs (primary path).
+# False = DB does not support VALUES ROW() CTEs (fallback path; warning is logged once).
+# None  = not yet tested.
+_values_cte_supported: Optional[bool] = None
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
 class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixin):
@@ -572,6 +585,304 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                 ChargeAdjustment.adjustment_date <= end_date
             ).scalar()
         return float(adj_val)
+
+
+    @classmethod
+    def batch_get_subtree_charges(
+        cls,
+        session,
+        alloc_infos: List[Dict],
+        include_adjustments: bool = True,
+    ) -> Dict[Any, Dict]:
+        """
+        Batch version of get_subtree_charges() + get_subtree_adjustments().
+
+        Primary path (VALUES CTE): one SQL query per charge model, with all anchor
+        coordinates passed as an inlined VALUES table. The database resolves the MPTT
+        range JOIN and returns one charge total per anchor_key.  Requires MariaDB ≥10.3.3
+        or MySQL ≥8.0.19 (VALUES ROW() in CTEs).
+
+        Fallback path: if the DB does not support VALUES CTE, the same charge/adjustment
+        tables are queried with a resource_id IN filter and grouped by descendant project
+        coordinates; attribution back to anchors is done in Python via range containment.
+        A WARNING is logged once per process so the deployment team can act on it.
+
+        Parallel to batch_get_account_charges() — both use the same charge model lookup
+        (get_charge_models_for_resource) and summary tables; this version follows project
+        MPTT tree coordinates while batch_get_account_charges() uses direct account_id.
+
+        Args:
+            alloc_infos: List of dicts, each with keys:
+                key           — unique identifier (usually allocation_id)
+                resource_id   — account.resource_id
+                resource_type — e.g. 'HPC', 'DAV', 'DISK', 'ARCHIVE'
+                tree_root     — project.tree_root
+                tree_left     — project.tree_left
+                tree_right    — project.tree_right
+                start_date    — allocation start datetime
+                end_date      — allocation end datetime (already resolved from check_date)
+            include_adjustments: Include ChargeAdjustment amounts in 'adjustment'.
+
+        Returns:
+            Dict mapping key -> {'charges_by_type': {charge_key: float}, 'adjustment': float}
+        """
+        from collections import defaultdict
+
+        global _values_cte_supported
+
+        result = {info['key']: {'charges_by_type': {}, 'adjustment': 0.0} for info in alloc_infos}
+
+        if not alloc_infos:
+            return result
+
+        # Probe for VALUES CTE support on the very first call (result cached module-wide)
+        if _values_cte_supported is None:
+            try:
+                session.execute(text("SELECT * FROM (VALUES ROW(1)) AS t(n)"))
+                _values_cte_supported = True
+            except (sa_exc.OperationalError, sa_exc.ProgrammingError):
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
+                _values_cte_supported = False
+                _logger.warning(
+                    "batch_get_subtree_charges: VALUES ROW() CTEs are not supported by this "
+                    "database version (requires MariaDB ≥10.3.3 or MySQL ≥8.0.19). "
+                    "Falling back to resource_id range-scan with Python-side MPTT attribution. "
+                    "Results are correct but slightly less efficient. "
+                    "Upgrade the database to enable the optimal CTE path."
+                )
+
+        # Group by (resource_type, start_date, end_date) — one DB pass per group per charge model
+        date_groups: Dict[tuple, List[Dict]] = defaultdict(list)
+        for info in alloc_infos:
+            date_groups[(info['resource_type'], info['start_date'], info['end_date'])].append(info)
+
+        for (rt, start_date, end_date), group_infos in date_groups.items():
+            models = get_charge_models_for_resource(rt)
+
+            if _values_cte_supported:
+                # ----------------------------------------------------------------
+                # PRIMARY PATH: VALUES CTE — anchor_key returned directly by the DB
+                # ----------------------------------------------------------------
+                # Build parameterized VALUES rows: one row per allocation info entry.
+                # Each entry is (anchor_key=index, tree_root, tree_left, tree_right, resource_id).
+                # Using positional index as anchor_key; mapped back to info['key'] below.
+                values_parts = ", ".join(
+                    f"ROW(:ak{i}, :tr{i}, :tl{i}, :rr{i}, :ri{i})"
+                    for i in range(len(group_infos))
+                )
+                idx_to_key = {}
+                params: Dict[str, Any] = {'start_date': start_date, 'end_date': end_date}
+                for i, info in enumerate(group_infos):
+                    params[f'ak{i}'] = i
+                    params[f'tr{i}'] = info['tree_root']
+                    params[f'tl{i}'] = info['tree_left']
+                    params[f'rr{i}'] = info['tree_right']
+                    params[f'ri{i}'] = info['resource_id']
+                    idx_to_key[i] = info['key']
+
+                for charge_key, ModelClass in models.items():
+                    sql = text(f"""
+                        WITH anchors (anchor_key, tree_root, tree_left, tree_right, resource_id) AS (
+                            VALUES {values_parts}
+                        )
+                        SELECT a.anchor_key, SUM(COALESCE(cs.charges, 0))
+                        FROM {ModelClass.__tablename__} cs
+                        JOIN account acc ON cs.account_id = acc.account_id
+                        JOIN project p   ON acc.project_id = p.project_id
+                        JOIN anchors a   ON p.tree_root      =  a.tree_root
+                                        AND p.tree_left      >= a.tree_left
+                                        AND p.tree_right     <= a.tree_right
+                                        AND acc.resource_id  =  a.resource_id
+                                        AND cs.activity_date BETWEEN :start_date AND :end_date
+                        GROUP BY a.anchor_key
+                    """)
+                    for anchor_key, amount in session.execute(sql, params).all():
+                        if amount:
+                            k = idx_to_key[anchor_key]
+                            result[k]['charges_by_type'][charge_key] = (
+                                result[k]['charges_by_type'].get(charge_key, 0.0) + float(amount)
+                            )
+
+                if include_adjustments:
+                    adj_sql = text(f"""
+                        WITH anchors (anchor_key, tree_root, tree_left, tree_right, resource_id) AS (
+                            VALUES {values_parts}
+                        )
+                        SELECT a.anchor_key, SUM(COALESCE(ca.amount, 0))
+                        FROM charge_adjustment ca
+                        JOIN account acc ON ca.account_id  = acc.account_id
+                        JOIN project p   ON acc.project_id = p.project_id
+                        JOIN anchors a   ON p.tree_root      =  a.tree_root
+                                        AND p.tree_left      >= a.tree_left
+                                        AND p.tree_right     <= a.tree_right
+                                        AND acc.resource_id  =  a.resource_id
+                                        AND ca.adjustment_date BETWEEN :start_date AND :end_date
+                        GROUP BY a.anchor_key
+                    """)
+                    for anchor_key, amount in session.execute(adj_sql, params).all():
+                        if amount:
+                            result[idx_to_key[anchor_key]]['adjustment'] += float(amount)
+
+            else:
+                # ----------------------------------------------------------------
+                # FALLBACK PATH: resource_id IN filter + Python-side MPTT attribution
+                # ----------------------------------------------------------------
+                resource_ids = list({info['resource_id'] for info in group_infos})
+
+                # Build anchor-coord → list-of-keys map to handle duplicate anchor coords
+                anchor_to_keys: Dict[tuple, List] = defaultdict(list)
+                for info in group_infos:
+                    coord = (info['tree_root'], info['tree_left'], info['tree_right'], info['resource_id'])
+                    anchor_to_keys[coord].append(info['key'])
+
+                for charge_key, ModelClass in models.items():
+                    rows = session.query(
+                        Project.tree_root,
+                        Project.tree_left,
+                        Project.tree_right,
+                        Account.resource_id,
+                        func.coalesce(func.sum(ModelClass.charges), 0),
+                    ).join(Account, ModelClass.account_id == Account.account_id)\
+                     .join(Project, Account.project_id == Project.project_id)\
+                     .filter(
+                         Account.resource_id.in_(resource_ids),
+                         ModelClass.activity_date >= start_date,
+                         ModelClass.activity_date <= end_date,
+                     )\
+                     .group_by(Project.tree_root, Project.tree_left, Project.tree_right, Account.resource_id)\
+                     .all()
+
+                    desc_charges = [(r[0], r[1], r[2], r[3], float(r[4])) for r in rows if r[4]]
+
+                    for d_root, d_left, d_right, d_res, amount in desc_charges:
+                        for (a_root, a_left, a_right, a_res), keys in anchor_to_keys.items():
+                            if (d_root == a_root and d_res == a_res
+                                    and d_left >= a_left and d_right <= a_right):
+                                for k in keys:
+                                    result[k]['charges_by_type'][charge_key] = (
+                                        result[k]['charges_by_type'].get(charge_key, 0.0) + amount
+                                    )
+
+                if include_adjustments:
+                    adj_rows = session.query(
+                        Project.tree_root,
+                        Project.tree_left,
+                        Project.tree_right,
+                        Account.resource_id,
+                        func.coalesce(func.sum(ChargeAdjustment.amount), 0),
+                    ).join(Account, ChargeAdjustment.account_id == Account.account_id)\
+                     .join(Project, Account.project_id == Project.project_id)\
+                     .filter(
+                         Account.resource_id.in_(resource_ids),
+                         ChargeAdjustment.adjustment_date >= start_date,
+                         ChargeAdjustment.adjustment_date <= end_date,
+                     )\
+                     .group_by(Project.tree_root, Project.tree_left, Project.tree_right, Account.resource_id)\
+                     .all()
+
+                    desc_adjs = [(r[0], r[1], r[2], r[3], float(r[4])) for r in adj_rows if r[4]]
+
+                    for d_root, d_left, d_right, d_res, amount in desc_adjs:
+                        for (a_root, a_left, a_right, a_res), keys in anchor_to_keys.items():
+                            if (d_root == a_root and d_res == a_res
+                                    and d_left >= a_left and d_right <= a_right):
+                                for k in keys:
+                                    result[k]['adjustment'] += amount
+
+        return result
+
+
+    @classmethod
+    def batch_get_account_charges(
+        cls,
+        session,
+        alloc_infos: List[Dict],
+        include_adjustments: bool = True,
+    ) -> Dict[Any, Dict]:
+        """
+        Batch version of get_charges_by_resource_type() + get_adjustments().
+
+        Replaces per-allocation scalar queries with one query per charge model type
+        per unique (resource_type, start_date, end_date) group.
+
+        Parallel to batch_get_subtree_charges() — both use the same charge model lookup
+        (get_charge_models_for_resource) and summary tables; this version filters by
+        direct account_id while batch_get_subtree_charges() uses MPTT tree coordinates.
+
+        Args:
+            alloc_infos: List of dicts, each with keys:
+                key           — unique identifier (usually allocation_id)
+                account_id    — direct account_id filter
+                resource_type — e.g. 'HPC', 'DAV', 'DISK', 'ARCHIVE'
+                start_date    — allocation start datetime
+                end_date      — allocation end datetime (already resolved from check_date)
+            include_adjustments: Include ChargeAdjustment amounts in 'adjustment'.
+
+        Returns:
+            Dict mapping key -> {'charges_by_type': {charge_key: float}, 'adjustment': float}
+        """
+        from collections import defaultdict
+
+        result = {info['key']: {'charges_by_type': {}, 'adjustment': 0.0} for info in alloc_infos}
+
+        if not alloc_infos:
+            return result
+
+        # Group by (resource_type, start_date, end_date) — one DB pass per group per charge model
+        date_groups: Dict[tuple, List[Dict]] = defaultdict(list)
+        for info in alloc_infos:
+            date_groups[(info['resource_type'], info['start_date'], info['end_date'])].append(info)
+
+        for (rt, start_date, end_date), group_infos in date_groups.items():
+            account_ids = list({info['account_id'] for info in group_infos})
+
+            # account_id → list of keys (handles multiple allocations per account)
+            acct_to_keys: Dict[int, List] = defaultdict(list)
+            for info in group_infos:
+                acct_to_keys[info['account_id']].append(info['key'])
+
+            models = get_charge_models_for_resource(rt)
+
+            for charge_key, ModelClass in models.items():
+                rows = session.query(
+                    ModelClass.account_id,
+                    func.coalesce(func.sum(ModelClass.charges), 0),
+                ).filter(
+                    ModelClass.account_id.in_(account_ids),
+                    ModelClass.activity_date >= start_date,
+                    ModelClass.activity_date <= end_date,
+                )\
+                 .group_by(ModelClass.account_id)\
+                 .all()
+
+                for account_id, amount in rows:
+                    if amount:
+                        for k in acct_to_keys.get(account_id, []):
+                            result[k]['charges_by_type'][charge_key] = (
+                                result[k]['charges_by_type'].get(charge_key, 0.0) + float(amount)
+                            )
+
+            if include_adjustments:
+                adj_rows = session.query(
+                    ChargeAdjustment.account_id,
+                    func.coalesce(func.sum(ChargeAdjustment.amount), 0),
+                ).filter(
+                    ChargeAdjustment.account_id.in_(account_ids),
+                    ChargeAdjustment.adjustment_date >= start_date,
+                    ChargeAdjustment.adjustment_date <= end_date,
+                )\
+                 .group_by(ChargeAdjustment.account_id)\
+                 .all()
+
+                for account_id, amount in adj_rows:
+                    if amount:
+                        for k in acct_to_keys.get(account_id, []):
+                            result[k]['adjustment'] += float(amount)
+
+        return result
 
 
     def get_job_statistics(self,

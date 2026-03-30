@@ -17,7 +17,7 @@ Functions:
 """
 
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Tuple, Union
+from typing import Any, List, Optional, Dict, Tuple, Union
 
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session, noload
@@ -580,6 +580,60 @@ def _summary_item_key(item: Dict, resource_name, facility_name, allocation_type,
     return tuple(key_parts)
 
 
+def _aggregate_usage_to_total(per_project_usage: List[Dict]) -> List[Dict]:
+    """
+    Derive projcode="TOTAL" rows from a projcode=None usage list.
+
+    Groups per-project usage rows by (resource, facility, allocation_type) and
+    sums all numeric fields. Eliminates the need for a separate
+    cached_allocation_usage(projcode="TOTAL") database round-trip.
+
+    Args:
+        per_project_usage: Result from get_allocation_summary_with_usage(projcode=None)
+
+    Returns:
+        List of dicts with same keys as projcode="TOTAL" result, minus 'projcode'.
+    """
+    groups: Dict[tuple, Dict] = {}
+
+    for row in per_project_usage:
+        key = (row.get('resource'), row.get('facility'), row.get('allocation_type'))
+
+        if key not in groups:
+            groups[key] = {
+                'resource': row.get('resource'),
+                'facility': row.get('facility'),
+                'allocation_type': row.get('allocation_type'),
+                'count': 0,
+                'total_amount': 0.0,
+                'avg_amount': None,        # not meaningful across projects
+                'start_date': None,        # not meaningful across projects
+                'end_date': None,          # not meaningful across projects
+                'duration_days': None,
+                'annualized_rate': None,
+                'is_open_ended': False,
+                'total_used': 0.0,
+                'total_allocated': 0.0,
+                'percent_used': 0.0,
+                'charges_by_type': {},
+            }
+
+        g = groups[key]
+        g['count'] += row.get('count', 0)
+        g['total_amount'] += row.get('total_amount', 0.0)
+        g['total_used'] += row.get('total_used', 0.0)
+        g['total_allocated'] += row.get('total_allocated', 0.0)
+        for charge_key, amount in row.get('charges_by_type', {}).items():
+            g['charges_by_type'][charge_key] = g['charges_by_type'].get(charge_key, 0.0) + amount
+
+    result = list(groups.values())
+    for item in result:
+        total_alloc = item['total_allocated']
+        item['percent_used'] = (item['total_used'] / total_alloc * 100) if total_alloc > 0 else 0.0
+
+    return result
+
+
 def get_allocation_summary_with_usage(
     session: Session,
     resource_name: Optional[Union[str, List[str]]] = None,
@@ -641,52 +695,61 @@ def get_allocation_summary_with_usage(
         all_allocations, resource_name, facility_name, allocation_type, projcode
     )
 
-    # Enrich each summary item with usage data
+    # Collect all allocation infos for batch charge computation.
+    # This replaces per-allocation project.get_subtree_charges() / get_charges_by_resource_type()
+    # calls (N scalar queries) with one query per charge model covering all allocations at once.
+    subtree_infos: List[Dict[str, Any]] = []
+    account_infos: List[Dict[str, Any]] = []
+
+    for alloc_list in alloc_by_key.values():
+        for alloc, res_name, res_type, project, account in alloc_list:
+            end_date = alloc.end_date if alloc.end_date else check_date
+            is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
+            info = {
+                'key': alloc.allocation_id,
+                'resource_type': res_type,
+                'resource_id': account.resource_id,
+                'account_id': alloc.account_id,
+                'tree_root': project.tree_root,
+                'tree_left': project.tree_left,
+                'tree_right': project.tree_right,
+                'start_date': alloc.start_date,
+                'end_date': end_date,
+            }
+            if is_tree_valid:
+                subtree_infos.append(info)
+            else:
+                account_infos.append(info)
+
+    # Batch compute all charges in O(charge_models × date_groups) SQL queries
+    all_charges: Dict[Any, Dict] = {}
+    if subtree_infos:
+        all_charges.update(Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments))
+    if account_infos:
+        all_charges.update(Project.batch_get_account_charges(session, account_infos, include_adjustments))
+
+    # Enrich each summary item with pre-computed usage data
     for item in summary:
         key = _summary_item_key(item, resource_name, facility_name, allocation_type, projcode)
         item_allocations = alloc_by_key.get(key, [])
 
         total_used = 0.0
-        charges_by_type_total = {}
+        charges_by_type_total: Dict[str, float] = {}
 
         for alloc, res_name, res_type, project, account in item_allocations:
-            end_date = alloc.end_date if alloc.end_date else check_date
-            start_date = alloc.start_date
+            charge_result = all_charges.get(alloc.allocation_id, {'charges_by_type': {}, 'adjustment': 0.0})
 
-            # Check if we should use hierarchical charging
-            # Mimic logic from Project.get_detailed_allocation_usage
-            is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
-            use_hierarchy = is_tree_valid
-
-            # Calculate charges
-            if use_hierarchy:
-                charges = project.get_subtree_charges(account.resource_id,
-                                                      res_type,
-                                                      start_date,
-                                                      end_date)
-            else:
-                charges = project.get_charges_by_resource_type(alloc.account_id,
-                                                               res_type,
-                                                               start_date,
-                                                               end_date)
-
-            for charge_type, amount in charges.items():
+            for charge_type, amount in charge_result['charges_by_type'].items():
                 charges_by_type_total[charge_type] = charges_by_type_total.get(charge_type, 0.0) + amount
                 total_used += amount
 
             if include_adjustments:
-                if use_hierarchy:
-                    adjustment_amount = project.get_subtree_adjustments(account.resource_id,
-                                                                        start_date,
-                                                                        end_date)
-                else:
-                    adjustment_amount = project.get_adjustments(alloc.account_id,
-                                                                start_date,
-                                                                end_date)
-
+                adjustment_amount = charge_result['adjustment']
                 total_used += adjustment_amount
                 if adjustment_amount != 0:
-                    charges_by_type_total['adjustments'] = charges_by_type_total.get('adjustments', 0.0) + adjustment_amount
+                    charges_by_type_total['adjustments'] = (
+                        charges_by_type_total.get('adjustments', 0.0) + adjustment_amount
+                    )
 
         item['total_used'] = total_used
         item['total_allocated'] = item['total_amount']  # Alias for clarity

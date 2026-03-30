@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache
-from sam.queries.allocations import get_allocation_summary
+from sam.queries.allocations import get_allocation_summary, _aggregate_usage_to_total
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
 from webapp.utils.rbac import require_permission, Permission
@@ -59,12 +59,17 @@ def group_by_resource_facility(summary_data: List[Dict]) -> Dict:
     return grouped
 
 
-def get_all_facility_usage_overviews(session, resource_names: List[str], active_at: datetime, force_refresh: bool = False) -> Dict[str, List[Dict]]:
+def get_all_facility_usage_overviews(session, resource_names: List[str], active_at: datetime,
+                                      force_refresh: bool = False, _usage=None) -> Dict[str, List[Dict]]:
     """
     Calculate facility-level usage summaries for multiple resources.
 
     Like get_all_facility_overviews() but aggregates total_used (actual charges)
     instead of total_amount (allocated). Used to build usage-based pie charts.
+
+    Args:
+        _usage: Optional pre-computed per-project usage list from cached_allocation_usage
+                (projcode=None). When provided, skips the internal DB call.
 
     Returns:
         Dict mapping resource_name -> list of facility overview dicts with total_used
@@ -72,16 +77,21 @@ def get_all_facility_usage_overviews(session, resource_names: List[str], active_
     if not resource_names:
         return {}
 
-    individual_allocations = cached_allocation_usage(
-        session=session,
-        resource_name=resource_names,
-        facility_name=None,
-        allocation_type=None,
-        projcode=None,
-        active_only=True,
-        active_at=active_at,
-        force_refresh=force_refresh,
-    )
+    if _usage is not None:
+        # Filter pre-fetched data to only the requested resources
+        resource_set = set(resource_names)
+        individual_allocations = [a for a in _usage if a.get('resource') in resource_set]
+    else:
+        individual_allocations = cached_allocation_usage(
+            session=session,
+            resource_name=resource_names,
+            facility_name=None,
+            allocation_type=None,
+            projcode=None,
+            active_only=True,
+            active_at=active_at,
+            force_refresh=force_refresh,
+        )
 
     # Group by resource, then aggregate total_used by facility
     resource_facility_totals: Dict[str, Dict[str, Dict]] = {}
@@ -301,21 +311,27 @@ def index():
             else:
                 allocation_type_charts[resource_name][facility_name] = None
 
-    # When show_usage is enabled, build usage-based allocation type pie charts
+    # When show_usage is enabled, build usage-based charts.
+    # Compute per-project usage ONCE; derive projcode="TOTAL" grouping Python-side
+    # to avoid a second _fetch_all_allocations + full charge query pass.
     allocation_type_usage_charts = {}
+    resource_usage_overviews = {}
     if show_usage:
-        usage_type_data = cached_allocation_usage(
+        per_project_usage = cached_allocation_usage(
             session=db.session,
             resource_name=selected_resources,
             facility_name=None,
             allocation_type=None,
-            projcode="TOTAL",   # Sum across projects, group by resource+facility+type
+            projcode=None,      # Per-project rows; covers both usage views
             active_only=True,
             active_at=active_at,
             force_refresh=force_refresh,
-            _summary=summary_data,  # reuse already-computed summary, skip redundant DB call
         )
-        # Index by resource → facility
+
+        # Derive TOTAL grouping (resource+facility+type, no projcode) Python-side
+        usage_type_data = _aggregate_usage_to_total(per_project_usage)
+
+        # Index by resource → facility for allocation-type chart generation
         usage_by_resource_facility: Dict[str, Dict[str, List]] = {}
         for row in usage_type_data:
             usage_by_resource_facility\
@@ -346,10 +362,11 @@ def index():
                 else:
                     allocation_type_usage_charts[resource_name][facility_name] = None
 
-    # When show_usage is enabled, build usage-based facility pie charts for the second tab
-    resource_usage_overviews = {}
-    if show_usage:
-        all_usage_overviews = get_all_facility_usage_overviews(db.session, list(grouped_data.keys()), active_at, force_refresh=force_refresh)
+        # Build usage-based facility pie charts — reuse per_project_usage (no second DB call)
+        all_usage_overviews = get_all_facility_usage_overviews(
+            db.session, list(grouped_data.keys()), active_at,
+            _usage=per_project_usage,
+        )
         for rn in grouped_data.keys():
             usage_overview_data = all_usage_overviews.get(rn, [])
             # Only pass facilities that have actual usage (pie requires positive values)
