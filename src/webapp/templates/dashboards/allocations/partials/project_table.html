@@ -7,9 +7,9 @@
             <th class="sortable-header" data-sort="numeric">Amount</th>
             <th class="sortable-header" data-sort="numeric">
                 {% if resource_type in ['DISK', 'ARCHIVE'] %}
-                    Data Volume
+                    Data<br>Volume
                 {% else %}
-                    Annual Rate
+                    Annual<br>Rate
                 {% endif %}
             </th>
             {% if show_usage %}
@@ -17,7 +17,7 @@
             {% endif %}
             <th class="sortable-header" data-sort="date">Start Date</th>
             <th class="sortable-header" data-sort="date">End Date</th>
-            <th class="sortable-header" data-sort="numeric">Duration (days)</th>
+            <th class="sortable-header" data-sort="numeric">Duration<br>(days)</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -56,7 +56,7 @@
                     <div class="progress-bar {% if pct >= 90 %}bg-danger{% elif pct >= 75 %}bg-warning{% else %}bg-success{% endif %}"
                          role="progressbar"
                          style="width: {{ [pct, 100]|min }}%">
-                        {{ "%.1f"|format(pct) }}%
+                        {{ "%.0f"|format(pct) }}%
                     </div>
                 </div>
                 <small class="text-muted">{{ "{:,.0f}".format(project['total_used']) }} used</small>
