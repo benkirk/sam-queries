@@ -428,13 +428,15 @@ def get_allocation_summary(
             is_open_ended = (end is None)
 
             if is_open_ended:
-                # For open-ended allocations, assume end date is 365 days from now
+                # For open-ended allocations, assume end date is 365 days from now.
+                # No +1 here — this is an approximation, not an inclusive date range.
                 assumed_end = datetime.now() + timedelta(days=365)
                 duration_days = (assumed_end - start).days
             else:
-                duration_days = (end - start).days
+                # +1: end_date is inclusive (both start and end days count)
+                duration_days = (end - start).days + 1
 
-            # Avoid division by zero
+            # Avoid division by zero; actual/365 annualization convention
             if duration_days > 0:
                 annualized_rate = (item['total_amount'] / duration_days) * 365
             else:
