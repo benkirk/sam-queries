@@ -49,7 +49,7 @@ from webapp.run import create_app
 from webapp.extensions import db
 
 # Query functions (called directly, bypassing @cache.cached on the route)
-from sam.queries.allocations import get_allocation_summary, get_allocation_summary_with_usage
+from sam.queries.allocations import get_allocation_summary, get_allocation_summary_with_usage, _aggregate_usage_to_total
 from sam.queries.usage_cache import cached_allocation_usage
 from sam.resources.resources import Resource
 
@@ -277,19 +277,24 @@ def run_scenario_with_usage(session, selected_resources, active_at) -> Dict[str,
                 )
     phases['alloc-type pie chart generation (lru cold)'] = time.perf_counter() - t
 
-    # Phase 7 — usage data: N+1 queries (projcode=TOTAL groups by res+fac+type)
+    # Phase 7 — per-project usage: single fetch (projcode=None), mirrors refactored blueprint
     t = time.perf_counter()
-    usage_type_data = cached_allocation_usage(
+    per_project_usage = cached_allocation_usage(
         session=session,
         resource_name=selected_resources,
         facility_name=None,
         allocation_type=None,
-        projcode='TOTAL',
+        projcode=None,        # Per-project rows; covers both usage views
         active_only=True,
         active_at=active_at,
         force_refresh=True,   # TTLCache disabled anyway; belt-and-suspenders
     )
-    phases['cached_allocation_usage (projcode=TOTAL)  [N+1 hotspot #1]'] = time.perf_counter() - t
+    phases['cached_allocation_usage (projcode=None)  [single fetch, per-project rows]'] = time.perf_counter() - t
+
+    # Phase 7b — derive projcode=TOTAL grouping Python-side (no DB call)
+    t = time.perf_counter()
+    usage_type_data = _aggregate_usage_to_total(per_project_usage)
+    phases['_aggregate_usage_to_total (Python aggregation, derives TOTAL grouping)'] = time.perf_counter() - t
 
     # Phase 8 — usage type pie charts
     _clear_chart_caches()
@@ -318,12 +323,12 @@ def run_scenario_with_usage(session, selected_resources, active_at) -> Dict[str,
                 )
     phases['usage type pie chart generation'] = time.perf_counter() - t
 
-    # Phase 9 — facility usage overviews (projcode=None → different cache key → 2nd N+1 run)
+    # Phase 9 — facility usage overviews from pre-fetched data (no DB call)
     t = time.perf_counter()
     all_usage_overviews = get_all_facility_usage_overviews(
-        session, list(grouped_data.keys()), active_at, force_refresh=True
+        session, list(grouped_data.keys()), active_at, _usage=per_project_usage
     )
-    phases['get_all_facility_usage_overviews (projcode=None) [N+1 hotspot #2]'] = time.perf_counter() - t
+    phases['get_all_facility_usage_overviews (from pre-fetched usage, no DB call)'] = time.perf_counter() - t
 
     # Phase 10 — usage facility pie charts
     t = time.perf_counter()

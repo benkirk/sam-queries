@@ -22,11 +22,39 @@ from datetime import timedelta
 
 _logger = logging.getLogger(__name__)
 
-# Lazily detected on first call to batch_get_subtree_charges.
+# Lazily detected on first call to either batch charge method.
 # True  = DB supports VALUES ROW() CTEs (primary path).
 # False = DB does not support VALUES ROW() CTEs (fallback path; warning is logged once).
 # None  = not yet tested.
 _values_cte_supported: Optional[bool] = None
+
+
+def _ensure_values_cte_probed(session) -> None:
+    """Probe for VALUES ROW() CTE support and cache the result module-wide.
+
+    Called once by both batch_get_subtree_charges and batch_get_account_charges.
+    Sets _values_cte_supported to True or False and emits a WARNING on failure so
+    the deployment team can treat an unsupported DB version as an actionable issue.
+    """
+    global _values_cte_supported
+    if _values_cte_supported is not None:
+        return
+    try:
+        session.execute(text("SELECT * FROM (VALUES ROW(1)) AS t(n)"))
+        _values_cte_supported = True
+    except (sa_exc.OperationalError, sa_exc.ProgrammingError):
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        _values_cte_supported = False
+        _logger.warning(
+            "Batch charge queries: VALUES ROW() CTEs are not supported by this database "
+            "version (requires MariaDB ≥10.3.3 or MySQL ≥8.0.19). "
+            "Falling back to less-efficient query strategies. "
+            "Results are correct but performance is degraded. "
+            "Upgrade the database to enable the optimal CTE path."
+        )
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
 class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixin):
@@ -628,31 +656,12 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         """
         from collections import defaultdict
 
-        global _values_cte_supported
-
         result = {info['key']: {'charges_by_type': {}, 'adjustment': 0.0} for info in alloc_infos}
 
         if not alloc_infos:
             return result
 
-        # Probe for VALUES CTE support on the very first call (result cached module-wide)
-        if _values_cte_supported is None:
-            try:
-                session.execute(text("SELECT * FROM (VALUES ROW(1)) AS t(n)"))
-                _values_cte_supported = True
-            except (sa_exc.OperationalError, sa_exc.ProgrammingError):
-                try:
-                    session.rollback()
-                except Exception:
-                    pass
-                _values_cte_supported = False
-                _logger.warning(
-                    "batch_get_subtree_charges: VALUES ROW() CTEs are not supported by this "
-                    "database version (requires MariaDB ≥10.3.3 or MySQL ≥8.0.19). "
-                    "Falling back to resource_id range-scan with Python-side MPTT attribution. "
-                    "Results are correct but slightly less efficient. "
-                    "Upgrade the database to enable the optimal CTE path."
-                )
+        _ensure_values_cte_probed(session)
 
         # Group by (resource_type, start_date, end_date) — one DB pass per group per charge model
         date_groups: Dict[tuple, List[Dict]] = defaultdict(list)
@@ -805,8 +814,13 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         """
         Batch version of get_charges_by_resource_type() + get_adjustments().
 
-        Replaces per-allocation scalar queries with one query per charge model type
-        per unique (resource_type, start_date, end_date) group.
+        Primary path (VALUES CTE): groups by resource_type only, issuing one query per
+        charge model with all account_ids and their individual date ranges as an inlined
+        VALUES table. The per-anchor date range is enforced in the JOIN ON clause, so
+        allocations with diverse date ranges are handled in a single pass.
+
+        Fallback path: groups by (resource_type, start_date, end_date) and issues one
+        query per charge model per date group (correct but more queries for diverse ranges).
 
         Parallel to batch_get_subtree_charges() — both use the same charge model lookup
         (get_charge_models_for_resource) and summary tables; this version filters by
@@ -831,56 +845,120 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         if not alloc_infos:
             return result
 
-        # Group by (resource_type, start_date, end_date) — one DB pass per group per charge model
-        date_groups: Dict[tuple, List[Dict]] = defaultdict(list)
-        for info in alloc_infos:
-            date_groups[(info['resource_type'], info['start_date'], info['end_date'])].append(info)
+        _ensure_values_cte_probed(session)
 
-        for (rt, start_date, end_date), group_infos in date_groups.items():
-            account_ids = list({info['account_id'] for info in group_infos})
+        if _values_cte_supported:
+            # ----------------------------------------------------------------
+            # PRIMARY PATH: VALUES CTE — group by resource_type only.
+            # All accounts and their individual date ranges are inlined as a
+            # VALUES table; the JOIN ON clause enforces per-anchor date filtering.
+            # Reduces queries to: N_resource_types × N_charge_models + adjustments.
+            # ----------------------------------------------------------------
+            rt_groups: Dict[str, List[Dict]] = defaultdict(list)
+            for info in alloc_infos:
+                rt_groups[info['resource_type']].append(info)
 
-            # account_id → list of keys (handles multiple allocations per account)
-            acct_to_keys: Dict[int, List] = defaultdict(list)
-            for info in group_infos:
-                acct_to_keys[info['account_id']].append(info['key'])
+            for rt, group_infos in rt_groups.items():
+                values_parts = ", ".join(
+                    f"ROW(:ak{i}, :acct{i}, :sd{i}, :ed{i})"
+                    for i in range(len(group_infos))
+                )
+                idx_to_key: Dict[int, Any] = {}
+                params: Dict[str, Any] = {}
+                for i, info in enumerate(group_infos):
+                    params[f'ak{i}']   = i
+                    params[f'acct{i}'] = info['account_id']
+                    params[f'sd{i}']   = info['start_date']
+                    params[f'ed{i}']   = info['end_date']
+                    idx_to_key[i]      = info['key']
 
-            models = get_charge_models_for_resource(rt)
+                models = get_charge_models_for_resource(rt)
 
-            for charge_key, ModelClass in models.items():
-                rows = session.query(
-                    ModelClass.account_id,
-                    func.coalesce(func.sum(ModelClass.charges), 0),
-                ).filter(
-                    ModelClass.account_id.in_(account_ids),
-                    ModelClass.activity_date >= start_date,
-                    ModelClass.activity_date <= end_date,
-                )\
-                 .group_by(ModelClass.account_id)\
-                 .all()
-
-                for account_id, amount in rows:
-                    if amount:
-                        for k in acct_to_keys.get(account_id, []):
+                for charge_key, ModelClass in models.items():
+                    sql = text(f"""
+                        WITH anchors (anchor_key, account_id, start_date, end_date) AS (
+                            VALUES {values_parts}
+                        )
+                        SELECT a.anchor_key, SUM(COALESCE(cs.charges, 0))
+                        FROM {ModelClass.__tablename__} cs
+                        JOIN anchors a ON cs.account_id       =  a.account_id
+                                       AND cs.activity_date BETWEEN a.start_date AND a.end_date
+                        GROUP BY a.anchor_key
+                    """)
+                    for anchor_key, amount in session.execute(sql, params).all():
+                        if amount:
+                            k = idx_to_key[anchor_key]
                             result[k]['charges_by_type'][charge_key] = (
                                 result[k]['charges_by_type'].get(charge_key, 0.0) + float(amount)
                             )
 
-            if include_adjustments:
-                adj_rows = session.query(
-                    ChargeAdjustment.account_id,
-                    func.coalesce(func.sum(ChargeAdjustment.amount), 0),
-                ).filter(
-                    ChargeAdjustment.account_id.in_(account_ids),
-                    ChargeAdjustment.adjustment_date >= start_date,
-                    ChargeAdjustment.adjustment_date <= end_date,
-                )\
-                 .group_by(ChargeAdjustment.account_id)\
-                 .all()
+                if include_adjustments:
+                    adj_sql = text(f"""
+                        WITH anchors (anchor_key, account_id, start_date, end_date) AS (
+                            VALUES {values_parts}
+                        )
+                        SELECT a.anchor_key, SUM(COALESCE(ca.amount, 0))
+                        FROM charge_adjustment ca
+                        JOIN anchors a ON ca.account_id        =  a.account_id
+                                       AND ca.adjustment_date BETWEEN a.start_date AND a.end_date
+                        GROUP BY a.anchor_key
+                    """)
+                    for anchor_key, amount in session.execute(adj_sql, params).all():
+                        if amount:
+                            result[idx_to_key[anchor_key]]['adjustment'] += float(amount)
 
-                for account_id, amount in adj_rows:
-                    if amount:
-                        for k in acct_to_keys.get(account_id, []):
-                            result[k]['adjustment'] += float(amount)
+        else:
+            # ----------------------------------------------------------------
+            # FALLBACK PATH: date-group bucketing (correct but more queries)
+            # ----------------------------------------------------------------
+            date_groups: Dict[tuple, List[Dict]] = defaultdict(list)
+            for info in alloc_infos:
+                date_groups[(info['resource_type'], info['start_date'], info['end_date'])].append(info)
+
+            for (rt, start_date, end_date), group_infos in date_groups.items():
+                account_ids = list({info['account_id'] for info in group_infos})
+
+                acct_to_keys: Dict[int, List] = defaultdict(list)
+                for info in group_infos:
+                    acct_to_keys[info['account_id']].append(info['key'])
+
+                models = get_charge_models_for_resource(rt)
+
+                for charge_key, ModelClass in models.items():
+                    rows = session.query(
+                        ModelClass.account_id,
+                        func.coalesce(func.sum(ModelClass.charges), 0),
+                    ).filter(
+                        ModelClass.account_id.in_(account_ids),
+                        ModelClass.activity_date >= start_date,
+                        ModelClass.activity_date <= end_date,
+                    )\
+                     .group_by(ModelClass.account_id)\
+                     .all()
+
+                    for account_id, amount in rows:
+                        if amount:
+                            for k in acct_to_keys.get(account_id, []):
+                                result[k]['charges_by_type'][charge_key] = (
+                                    result[k]['charges_by_type'].get(charge_key, 0.0) + float(amount)
+                                )
+
+                if include_adjustments:
+                    adj_rows = session.query(
+                        ChargeAdjustment.account_id,
+                        func.coalesce(func.sum(ChargeAdjustment.amount), 0),
+                    ).filter(
+                        ChargeAdjustment.account_id.in_(account_ids),
+                        ChargeAdjustment.adjustment_date >= start_date,
+                        ChargeAdjustment.adjustment_date <= end_date,
+                    )\
+                     .group_by(ChargeAdjustment.account_id)\
+                     .all()
+
+                    for account_id, amount in adj_rows:
+                        if amount:
+                            for k in acct_to_keys.get(account_id, []):
+                                result[k]['adjustment'] += float(amount)
 
         return result
 

@@ -716,7 +716,10 @@ def get_allocation_summary_with_usage(
                 'start_date': alloc.start_date,
                 'end_date': end_date,
             }
-            if is_tree_valid:
+            # Leaf nodes (no children) have no descendants — their subtree query is
+            # identical to a direct account_id query. Route them to the faster account
+            # path; only genuine non-leaf projects need the CTE subtree approach.
+            if is_tree_valid and not project.is_leaf():
                 subtree_infos.append(info)
             else:
                 account_infos.append(info)

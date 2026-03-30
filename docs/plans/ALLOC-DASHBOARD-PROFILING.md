@@ -2,7 +2,7 @@
 
 **Branch:** `alloc-dashboard-profiling`
 **Date:** 2026-03-30
-**Status:** Phase 1 complete (3.1× speedup). Phase 2 planned.
+**Status:** Phase 2 complete (19× total speedup over baseline). No further active work planned.
 
 ---
 
@@ -137,64 +137,102 @@ Tests: **851 passed, 25 skipped, 2 xpassed** (no regressions).
 
 ---
 
-## Remaining Bottlenecks (Phase 2)
+## Phase 2 Fixes (Implemented — this branch)
 
-After Phase 1, the show_usage=True profile shows:
+Addressed the three remaining bottlenecks from Phase 1, plus two follow-up fixes identified during profiling.
 
-| Phase | Time | % |
-|---|---|---|
-| `cached_allocation_usage` (projcode=TOTAL) | 53.8s | 47% |
-| `get_all_facility_usage_overviews` (projcode=None) | 55.4s | 48% |
-| Charts, metadata | 5.2s | 5% |
+### Fix B: Account.users Lazy Loading
 
-The time within each `cached_allocation_usage` call breaks down as:
-- `_fetch_all_allocations()` (1 bulk query + ORM materialization + residual account_user selectins): **~28s** for 2 calls
-- `get_subtree_charges()` × 7,644 allocations × 2 calls: **~58s** total
-- `get_subtree_adjustments()` × 7,644 allocations × 2 calls: **~20s** total
+**File:** `src/sam/accounting/accounts.py`
 
-### Bottleneck A: `get_subtree_charges` / `get_subtree_adjustments` Per-Allocation Queries
+Changed `Account.users` and `AccountUser.account` from `lazy='selectin'` to `lazy='select'`.
+Eliminated ~6 large `account_user` batch SELECTs (~12s) that fired whenever any Account
+object was hydrated into the session identity map by scalar JOIN queries.
 
-**~21,000 scalar SQL queries** across the two `get_allocation_summary_with_usage()` calls.
+### Fix C: Single Allocation Fetch for Both projcode Variants
 
-Each call to `get_subtree_charges()` issues 1-2 scalar aggregate queries per allocation (one per charge summary table), using MPTT tree coordinates (`tree_root`, `tree_left`, `tree_right`) to aggregate across a project subtree. Currently issued sequentially.
+**Files:** `src/sam/queries/allocations.py`, `src/sam/queries/usage_cache.py`, `src/webapp/dashboards/allocations/blueprint.py`
 
-**Proposed fix:** Replace with a single batch query per charge table type that aggregates across ALL allocations at once, using a subquery or JOIN against a values list of (account_id, start_date, end_date) tuples. Returns a dict keyed by allocation, which is then looked up in Python. This would replace ~21,000 queries with ~8 (one per charge table type per `get_summary_with_usage` call).
+Added `_aggregate_usage_to_total()` helper that derives projcode="TOTAL" grouping from
+per-project usage data in Python. `index()` now calls `cached_allocation_usage(projcode=None)`
+once and passes pre-fetched data into `get_all_facility_usage_overviews()` via new `_usage`
+parameter. Eliminated one full `_fetch_all_allocations` pass and one full charge query set.
 
-This is a significant refactor — `get_subtree_charges` would need to become a batch operation accepting a list of `(project, account, start_date, end_date)` tuples.
+### Fix A: Batch Charge Queries — PRIMARY PATH (VALUES CTE)
 
-### Bottleneck B: Residual `account_user` Selectin from Scalar JOIN Hydration
+**Files:** `src/sam/projects/projects.py`
 
-~6 large batch selectin queries (`account_user`) still fire, totaling ~12s. These are triggered because `get_subtree_charges` scalar queries JOIN Account, causing SQLAlchemy to hydrate Account objects into the session identity map — and those Account objects are subject to the `lazy='selectin'` on `Account.users` (which our `noload` query option on `_fetch_all_allocations` cannot suppress).
+Added `Project.batch_get_subtree_charges()` and `Project.batch_get_account_charges()` classmethods.
 
-**Option A:** Change `Account.users` in `src/sam/accounting/accounts.py` from `lazy='selectin'` to `lazy='select'`. Lower-risk — users is only loaded on explicit attribute access. Check all callers to ensure they don't rely on eager loading.
+**Primary path** (MariaDB ≥10.3.3 / MySQL ≥8.0.19): all anchor coordinates inlined as a
+VALUES CTE; database resolves the date-range JOIN and returns one aggregate per anchor_key.
 
-**Option B:** Use `aliased(Account)` in `get_subtree_charges` scalar queries to prevent SQLAlchemy from hydrating Account into the identity map.
+**Fallback path**: Python-side MPTT range attribution (subtree) or date-group bucketing
+(account). A WARNING is logged once per process on fallback so the deployment team can
+act on it.
 
-**Option C:** Move charge queries to raw SQL (bypasses ORM identity map entirely).
+`get_allocation_summary_with_usage()` pre-builds all `alloc_infos`, dispatches to both
+batch methods, then does a single Python-side enrichment loop over the results.
 
-### Bottleneck C: Two separate `cached_allocation_usage` calls with different keys
+### Fix A follow-up: Leaf Node Routing
 
-`cached_allocation_usage(projcode="TOTAL")` and `cached_allocation_usage(projcode=None)` produce different cache keys, so a cold-cache request must compute both. The two calls are currently independent, meaning `_fetch_all_allocations` runs twice with only the grouping dimension differing.
+**File:** `src/sam/queries/allocations.py`
 
-**Proposed fix:** Fetch allocations once (projcode=None bulk fetch), then derive projcode="TOTAL" results in Python by aggregating over the already-loaded allocation list. This eliminates one full `_fetch_all_allocations` call (~14s) and one set of charge queries (~40s).
+Phase 2 profiling revealed that `batch_get_subtree_charges` was receiving all 7,644
+allocations (including leaf nodes). Leaf projects have no descendants — their subtree
+query is identical to a direct account_id query. Fixed routing to use `project.is_leaf()`
+(existing `NestedSetMixin` method) — only 131 genuine non-leaf projects now take the
+CTE subtree path; the remaining 3,691 go to the faster account path.
 
-### Bottleneck D: Matplotlib SVG Rendering (show_usage=False)
+### Fix A follow-up: batch_get_account_charges VALUES CTE
 
-For the no-usage path, 86% of the 1.47s total is Matplotlib rendering (16 allocation-type charts + 10 facility charts). The `lru_cache` handles warm hits efficiently.
+After routing leaves to `batch_get_account_charges`, it became the new bottleneck (6,955
+queries, 26s) because it still grouped by `(resource_type, start_date, end_date)`. Applied
+the same VALUES CTE strategy: per-anchor `start_date`/`end_date` inlined in the VALUES
+table and enforced in the JOIN ON clause, reducing queries from ~6,900 to ~10 regardless
+of date range diversity.
 
-**Option:** Pre-render charts in a background Celery/APScheduler task and cache as static SVG files. Low priority — 1.47s is acceptable and the lru_cache already handles steady-state.
+### Phase 2 Results
+
+| Metric | Phase 1 | Phase 2 final | Change |
+|---|---|---|---|
+| Total time (show_usage=True, cold cache) | **114s** | **18.2s** | **84% faster (6.3×)** |
+| Total time vs original baseline | **348s** | **18.2s** | **95% faster (19×)** |
+| SQL queries issued | 21,689 | 42 | −99.8% |
+| `account_user` selectin batches | ~6 | 0 | eliminated |
+| `_fetch_all_allocations` calls | 2 | 1 | eliminated duplicate |
+| Charge scalar queries | ~21,000 | ~18 | eliminated |
+
+**Profiler confirmed**: 42 SQL queries, 18.2s cold-cache total. In production (warm TTL
+cache), user-facing latency for the show_usage path is well under 1s.
+
+Tests: **851 passed, 25 skipped, 2 xpassed** (no regressions).
 
 ---
 
-## Estimated Impact of Phase 2
+## Remaining Cold-Cache Breakdown (Phase 2 final, 18.2s)
 
-If Bottleneck A (batched charge queries) and Bottleneck C (single bulk fetch covering both projcode variants) are implemented:
+| Component | Time | % | Notes |
+|---|---|---|---|
+| `batch_get_account_charges` (CTE) | 6.2s | 34% | 3,691 accounts, ~10 CTE queries |
+| `batch_get_subtree_charges` (CTE) | 4.1s | 23% | 131 non-leaf projects, ~8 CTE queries |
+| `_fetch_all_allocations` | 2.1s | 12% | Single bulk ORM query, 3,822 rows |
+| Charts (cold lru_cache) | 4.7s | 26% | Disappears on warm cache in production |
+| Python overhead | 1.1s | 6% | Negligible |
 
-- `get_subtree_charges` queries: 21,000 → ~8 (eliminates ~78s)
-- Second `_fetch_all_allocations` call: eliminated (~14s)
-- Residual account_user selectins: reduced proportionally
+### Remaining Opportunities (not pursued — diminishing returns)
 
-Projected show_usage=True cold-cache time: **~20s** (from 114s → **~6×** improvement over baseline).
+**Temp table for large CTEs**: The largest VALUES CTEs (3,691 rows) take ~2.8s each.
+MySQL must parse the entire parameter list before executing. Inserting anchors into a
+temporary table and JOINing against it would amortize this overhead and allow indexing.
+Estimated gain: ~3–5s. Medium complexity.
+
+**`_fetch_all_allocations` ORM hydration**: 2.1s to materialize 3,822 ORM rows + joins.
+Could use `yield_per` or a lighter column selection. Estimated gain: ~0.5–1s. Low priority.
+
+**Matplotlib SVG rendering (show_usage=False)**: 1.4s total, 86% charts. Handled well by
+`lru_cache` in steady state. Pre-rendering in a background task is an option if cold-cache
+latency becomes a concern.
 
 ---
 
@@ -205,6 +243,6 @@ Projected show_usage=True cold-cache time: **~20s** (from 114s → **~6×** impr
 | `src/sam/queries/allocations.py` | Main query logic — `get_allocation_summary_with_usage`, `_fetch_all_allocations`, `_group_allocations_by_summary_key` |
 | `src/sam/queries/usage_cache.py` | TTL cache wrapper — `cached_allocation_usage` |
 | `src/webapp/dashboards/allocations/blueprint.py` | Route handler — `index()`, `get_all_facility_usage_overviews()` |
-| `src/sam/accounting/accounts.py` | Account model — `lazy='selectin'` on `Account.users` |
-| `src/sam/projects/projects.py` | `get_subtree_charges`, `get_subtree_adjustments` |
+| `src/sam/accounting/accounts.py` | Account model — `lazy='select'` on `Account.users` (Phase 2) |
+| `src/sam/projects/projects.py` | `get_subtree_charges`, `get_subtree_adjustments`, `batch_get_subtree_charges`, `batch_get_account_charges` (Phase 2) |
 | `utils/profiling/profile_allocations.py` | Profiling script — run to measure progress |
