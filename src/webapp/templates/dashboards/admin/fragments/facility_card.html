@@ -38,7 +38,7 @@
                     </td>
                     <td class="text-muted">{{ f.description or '—' }}</td>
                     <td>
-                        {{ '%.2f'|format(f.fair_share_percentage) if f.fair_share_percentage is not none else '—' }}
+                        {{ f.fair_share_percentage | fmt_pct(decimals=2) }}
                     </td>
                     <td class="text-end">
                         {% if is_admin %}
@@ -104,8 +104,8 @@
                                 {% for at in visible_ats %}
                                 <tr{% if not at.active %} class="opacity-50"{% endif %}>
                                     <td>{{ at.allocation_type }}</td>
-                                    <td>{{ '{:,.0f}'.format(at.default_allocation_amount) if at.default_allocation_amount is not none else '—' }}</td>
-                                    <td>{{ '%.2f'|format(at.fair_share_percentage) if at.fair_share_percentage is not none else '—' }}</td>
+                                    <td>{{ at.default_allocation_amount | fmt_number }}</td>
+                                    <td>{{ at.fair_share_percentage | fmt_pct(decimals=2) }}</td>
                                     <td>{{ at.projects | length }}</td>
                                     <td class="text-end">
                                         {% if is_admin %}

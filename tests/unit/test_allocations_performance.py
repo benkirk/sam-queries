@@ -71,7 +71,7 @@ class TestGetAllFacilityOverviews:
     def test_returns_dict_keyed_by_resource(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        result, _ = get_all_facility_overviews(session, ['Derecho'], datetime.now())
         assert isinstance(result, dict)
         if result:
             assert 'Derecho' in result
@@ -79,25 +79,27 @@ class TestGetAllFacilityOverviews:
     def test_multiple_resources_single_query(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['Derecho', 'Casper'], datetime.now())
+        result, _ = get_all_facility_overviews(session, ['Derecho', 'Casper'], datetime.now())
         assert isinstance(result, dict)
 
     def test_empty_resource_list(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, [], datetime.now())
+        result, type_rates = get_all_facility_overviews(session, [], datetime.now())
         assert result == {}
+        assert type_rates == {}
 
     def test_nonexistent_resource(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['NonexistentResource123'], datetime.now())
+        result, type_rates = get_all_facility_overviews(session, ['NonexistentResource123'], datetime.now())
         assert result == {}
+        assert type_rates == {}
 
     def test_facility_overview_has_required_keys(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        result, _ = get_all_facility_overviews(session, ['Derecho'], datetime.now())
         if result.get('Derecho'):
             for item in result['Derecho']:
                 assert 'facility' in item
@@ -109,7 +111,7 @@ class TestGetAllFacilityOverviews:
     def test_percentages_sum_to_100(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        result, _ = get_all_facility_overviews(session, ['Derecho'], datetime.now())
         if result.get('Derecho') and len(result['Derecho']) > 1:
             total_pct = sum(f['percent'] for f in result['Derecho'])
             assert abs(total_pct - 100.0) < 0.1
@@ -117,7 +119,7 @@ class TestGetAllFacilityOverviews:
     def test_sorted_by_annualized_rate_desc(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
-        result = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        result, _ = get_all_facility_overviews(session, ['Derecho'], datetime.now())
         if result.get('Derecho') and len(result['Derecho']) > 1:
             rates = [f['annualized_rate'] for f in result['Derecho']]
             assert rates == sorted(rates, reverse=True)
@@ -126,15 +128,41 @@ class TestGetAllFacilityOverviews:
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
         past = datetime(2024, 1, 1)
-        result = get_all_facility_overviews(session, ['Derecho'], past)
+        result, _ = get_all_facility_overviews(session, ['Derecho'], past)
         assert isinstance(result, dict)
 
     def test_future_date_returns_empty_or_less(self, session):
         from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
 
         future = datetime.now() + timedelta(days=3650)
-        result = get_all_facility_overviews(session, ['Derecho'], future)
+        result, _ = get_all_facility_overviews(session, ['Derecho'], future)
         assert isinstance(result, dict)
+
+    def test_type_rates_keyed_by_resource_facility_type(self, session):
+        from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
+
+        _, type_rates = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        assert isinstance(type_rates, dict)
+        for key, rate in type_rates.items():
+            assert len(key) == 3          # (resource, facility, allocation_type)
+            assert isinstance(rate, float)
+            assert rate >= 0.0
+
+    def test_type_rates_sum_equals_facility_rate(self, session):
+        """Sum of per-type annualized rates within a facility must equal the facility rate."""
+        from webapp.dashboards.allocations.blueprint import get_all_facility_overviews
+
+        overviews, type_rates = get_all_facility_overviews(session, ['Derecho'], datetime.now())
+        if not overviews.get('Derecho'):
+            return
+        for fac_overview in overviews['Derecho']:
+            facility = fac_overview['facility']
+            facility_rate = fac_overview['annualized_rate']
+            type_sum = sum(
+                r for (res, fac, _), r in type_rates.items()
+                if res == 'Derecho' and fac == facility
+            )
+            assert abs(type_sum - facility_rate) < 0.01
 
 
 class TestGetResourceTypes:
@@ -527,3 +555,390 @@ class TestAllocationSummaryEdgeCases:
             assert m['annualized_rate'] is None
 
 
+# ============================================================================
+# Module-level cache reset fixture
+# ============================================================================
+
+@pytest.fixture(autouse=True)
+def _reset_usage_cache_globals():
+    """
+    Reset usage_cache module globals before/after every test in this file.
+
+    Several tests (TestGetAllFacilityUsageOverviews, TestShowUsageToggle, etc.)
+    call helpers or routes that lazily initialize the TTLCache singleton.  Without
+    this reset the first test to run outside a Flask context initializes the cache
+    with env-var defaults (TTL=3600) and that TTLCache bleeds into later tests that
+    expect the cache to be disabled (TestingConfig sets TTL=0).
+    """
+    import sam.queries.usage_cache as uc
+    uc._cache = None
+    uc._disabled = False
+    yield
+    uc._cache = None
+    uc._disabled = False
+
+
+# ============================================================================
+# Usage Facility Overview Helper
+# ============================================================================
+
+class TestGetAllFacilityUsageOverviews:
+    """Tests for get_all_facility_usage_overviews()."""
+
+    def test_empty_resource_list_returns_empty(self, session):
+        from webapp.dashboards.allocations.blueprint import get_all_facility_usage_overviews
+        result = get_all_facility_usage_overviews(session, [], datetime.now())
+        assert result == {}
+
+    def test_returns_dict_keyed_by_resource(self, session):
+        from webapp.dashboards.allocations.blueprint import get_all_facility_usage_overviews
+        result = get_all_facility_usage_overviews(session, ['Derecho'], datetime.now())
+        assert isinstance(result, dict)
+
+    def test_nonexistent_resource_returns_empty(self, session):
+        from webapp.dashboards.allocations.blueprint import get_all_facility_usage_overviews
+        result = get_all_facility_usage_overviews(session, ['FakeResource999'], datetime.now())
+        assert result == {}
+
+    def test_usage_overview_has_required_keys(self, session):
+        from webapp.dashboards.allocations.blueprint import get_all_facility_usage_overviews
+        result = get_all_facility_usage_overviews(session, ['Derecho'], datetime.now())
+        if result.get('Derecho'):
+            for item in result['Derecho']:
+                assert 'facility' in item
+                assert 'total_used' in item
+                assert 'annualized_rate' in item  # aliased to total_used for chart compat
+                assert 'count' in item
+                assert 'percent' in item
+
+    def test_annualized_rate_equals_total_used(self, session):
+        """annualized_rate must equal total_used so the chart function reads correct values."""
+        from webapp.dashboards.allocations.blueprint import get_all_facility_usage_overviews
+        result = get_all_facility_usage_overviews(session, ['Derecho'], datetime.now())
+        if result.get('Derecho'):
+            for item in result['Derecho']:
+                assert item['annualized_rate'] == item['total_used']
+
+    def test_percentages_sum_to_100_when_usage_exists(self, session):
+        from webapp.dashboards.allocations.blueprint import get_all_facility_usage_overviews
+        result = get_all_facility_usage_overviews(session, ['Derecho'], datetime.now())
+        if result.get('Derecho'):
+            # Only facilities with actual usage are included
+            used = [f for f in result['Derecho'] if f['total_used'] > 0]
+            if len(used) > 1:
+                total_pct = sum(f['percent'] for f in result['Derecho'])
+                assert abs(total_pct - 100.0) < 0.1
+
+
+# ============================================================================
+# TTLCache Module (sam.queries.usage_cache)
+# ============================================================================
+
+class TestUsageCacheModule:
+    """
+    Tests for sam.queries.usage_cache module.
+
+    These tests operate outside a Flask request context so _get_config()
+    falls back to env vars (default TTL=3600, SIZE=200 → cache *enabled*).
+    The module-level _reset_usage_cache_globals autouse fixture ensures a
+    clean (None, False) state before each test.
+    """
+
+    # --- usage_cache_info() ---
+
+    def test_info_has_required_fields(self):
+        from sam.queries.usage_cache import usage_cache_info
+        info = usage_cache_info()
+        assert set(info.keys()) >= {'enabled', 'currsize', 'maxsize', 'ttl'}
+
+    def test_info_disabled_when_flag_set(self):
+        import sam.queries.usage_cache as uc
+        uc._disabled = True
+        info = uc.usage_cache_info()
+        assert info['enabled'] is False
+
+    def test_info_enabled_after_initialization(self):
+        import sam.queries.usage_cache as uc
+        uc._get_cache()  # triggers initialization using env-var defaults (TTL=3600)
+        info = uc.usage_cache_info()
+        assert info['enabled'] is True
+        assert info['currsize'] == 0
+
+    # --- _get_cache() disabled path ---
+
+    def test_get_cache_returns_none_when_ttl_zero(self):
+        import sam.queries.usage_cache as uc
+        from unittest.mock import patch
+        with patch.object(uc, '_get_config', side_effect=lambda k, d: 0):
+            cache = uc._get_cache()
+        assert cache is None
+        assert uc._disabled is True
+
+    def test_get_cache_returns_none_when_size_zero(self):
+        import sam.queries.usage_cache as uc
+        from unittest.mock import patch
+        with patch.object(uc, '_get_config', side_effect=lambda k, d: 0):
+            cache = uc._get_cache()
+        assert cache is None
+
+    # --- purge_usage_cache() ---
+
+    def test_purge_disabled_cache_returns_zero(self):
+        import sam.queries.usage_cache as uc
+        uc._disabled = True
+        n = uc.purge_usage_cache()
+        assert n == 0
+
+    def test_purge_empty_enabled_cache_returns_zero(self, session):
+        from sam.queries.usage_cache import purge_usage_cache
+        n = purge_usage_cache()
+        assert n == 0
+
+    def test_purge_clears_all_entries(self, session):
+        import sam.queries.usage_cache as uc
+        from unittest.mock import patch
+        uc._get_cache()  # initialize
+        with patch('sam.queries.usage_cache.get_allocation_summary_with_usage', return_value=[]):
+            uc.cached_allocation_usage(session=session, resource_name='Derecho')
+            uc.cached_allocation_usage(session=session, resource_name='Casper')
+        n = uc.purge_usage_cache()
+        assert n == 2
+        assert len(uc._cache) == 0
+
+    # --- cached_allocation_usage() cache hit/miss ---
+
+    def test_cache_hit_avoids_second_db_call(self, session):
+        import sam.queries.usage_cache as uc
+        from unittest.mock import patch
+        uc._get_cache()
+        with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
+            mock_fn.return_value = [{'resource': 'Derecho', 'total_amount': 100}]
+            r1 = uc.cached_allocation_usage(session=session, resource_name='Derecho')
+            r2 = uc.cached_allocation_usage(session=session, resource_name='Derecho')
+        assert mock_fn.call_count == 1
+        assert r1 == r2
+
+    def test_different_resources_are_separate_cache_keys(self, session):
+        import sam.queries.usage_cache as uc
+        from unittest.mock import patch
+        uc._get_cache()
+        with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
+            mock_fn.return_value = []
+            uc.cached_allocation_usage(session=session, resource_name='Derecho')
+            uc.cached_allocation_usage(session=session, resource_name='Casper')
+        assert mock_fn.call_count == 2
+
+    def test_list_order_does_not_affect_cache_key(self, session):
+        """['Derecho', 'Casper'] and ['Casper', 'Derecho'] must hit the same entry."""
+        import sam.queries.usage_cache as uc
+        from unittest.mock import patch
+        uc._get_cache()
+        with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
+            mock_fn.return_value = []
+            uc.cached_allocation_usage(session=session, resource_name=['Derecho', 'Casper'])
+            uc.cached_allocation_usage(session=session, resource_name=['Casper', 'Derecho'])
+        assert mock_fn.call_count == 1
+
+    def test_disabled_cache_calls_db_every_time(self, session):
+        import sam.queries.usage_cache as uc
+        from unittest.mock import patch
+        uc._disabled = True
+        with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
+            mock_fn.return_value = []
+            uc.cached_allocation_usage(session=session, resource_name='Derecho')
+            uc.cached_allocation_usage(session=session, resource_name='Derecho')
+        assert mock_fn.call_count == 2
+
+    # --- force_refresh ---
+
+    def test_force_refresh_bypasses_cache_hit(self, session):
+        import sam.queries.usage_cache as uc
+        from unittest.mock import patch
+        uc._get_cache()
+        with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
+            mock_fn.return_value = []
+            uc.cached_allocation_usage(session=session, resource_name='Derecho')
+            uc.cached_allocation_usage(session=session, resource_name='Derecho', force_refresh=True)
+        assert mock_fn.call_count == 2
+
+    def test_force_refresh_updates_cached_value(self, session):
+        import sam.queries.usage_cache as uc
+        from unittest.mock import patch
+        uc._get_cache()
+        first_result  = [{'resource': 'Derecho', 'total_amount': 100}]
+        second_result = [{'resource': 'Derecho', 'total_amount': 200}]
+        with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
+            mock_fn.return_value = first_result
+            uc.cached_allocation_usage(session=session, resource_name='Derecho')
+            mock_fn.return_value = second_result
+            r = uc.cached_allocation_usage(session=session, resource_name='Derecho', force_refresh=True)
+        assert r == second_result
+
+    def test_force_refresh_on_disabled_cache_still_calls_db(self, session):
+        import sam.queries.usage_cache as uc
+        from unittest.mock import patch
+        uc._disabled = True
+        with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
+            mock_fn.return_value = []
+            uc.cached_allocation_usage(session=session, resource_name='Derecho', force_refresh=True)
+        assert mock_fn.call_count == 1
+
+
+# ============================================================================
+# Cache Admin Routes
+# ============================================================================
+
+class TestCachePurgeRoute:
+    """Tests for POST /allocations/cache/purge."""
+
+    def test_requires_login(self, client):
+        response = client.post('/allocations/cache/purge')
+        assert response.status_code in (302, 401)
+
+    def test_json_request_returns_json(self, auth_client):
+        response = auth_client.post(
+            '/allocations/cache/purge',
+            content_type='application/json'
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'ok'
+        assert isinstance(data['entries_cleared'], int)
+        assert data['entries_cleared'] >= 0
+
+    def test_htmx_request_returns_json(self, auth_client):
+        response = auth_client.post(
+            '/allocations/cache/purge',
+            headers={'HX-Request': 'true'}
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data is not None
+        assert data['status'] == 'ok'
+
+    def test_form_post_redirects_to_index(self, auth_client):
+        response = auth_client.post('/allocations/cache/purge')
+        assert response.status_code == 302
+        assert '/allocations/' in response.headers['Location']
+
+
+class TestCacheStatusRoute:
+    """Tests for GET /allocations/cache/status."""
+
+    def test_requires_login(self, client):
+        response = client.get('/allocations/cache/status')
+        assert response.status_code in (302, 401)
+
+    def test_returns_200_json(self, auth_client):
+        response = auth_client.get('/allocations/cache/status')
+        assert response.status_code == 200
+        assert response.content_type.startswith('application/json')
+
+    def test_response_has_required_fields(self, auth_client):
+        response = auth_client.get('/allocations/cache/status')
+        data = response.get_json()
+        assert 'enabled' in data
+        assert 'currsize' in data
+        assert 'maxsize' in data
+        assert 'ttl' in data
+
+    def test_cache_config_keys_present(self, app):
+        """App config must expose the cache sizing knobs (set via SAMWebappConfig defaults)."""
+        assert app.config.get('ALLOCATION_USAGE_CACHE_TTL') is not None
+        assert app.config.get('ALLOCATION_USAGE_CACHE_SIZE') is not None
+
+    def test_enabled_field_is_boolean(self, auth_client):
+        """enabled field must be a bool regardless of whether the cache is on or off."""
+        response = auth_client.get('/allocations/cache/status')
+        data = response.get_json()
+        assert isinstance(data['enabled'], bool)
+
+
+# ============================================================================
+# force_refresh Integration (Route Smoke Tests)
+# ============================================================================
+
+class TestForceRefreshParameter:
+    """Smoke tests: routes accept force_refresh without error."""
+
+    def test_dashboard_force_refresh_true(self, auth_client):
+        response = auth_client.get('/allocations/?force_refresh=true')
+        assert response.status_code == 200
+
+    def test_dashboard_force_refresh_false(self, auth_client):
+        response = auth_client.get('/allocations/?force_refresh=false')
+        assert response.status_code == 200
+
+    def test_projects_fragment_force_refresh(self, auth_client):
+        response = auth_client.get(
+            '/allocations/projects?resource=Derecho&facility=UNIV'
+            '&allocation_type=Small&force_refresh=true'
+        )
+        assert response.status_code == 200
+
+    def test_usage_modal_force_refresh(self, auth_client):
+        response = auth_client.get('/allocations/usage/SCSG0001/Derecho?force_refresh=true')
+        assert response.status_code == 200
+
+
+# ============================================================================
+# active_at Midnight Normalization
+# ============================================================================
+
+class TestActiveAtNormalization:
+    """Tests for the midnight normalization applied to default active_at."""
+
+    def test_default_renders_todays_date(self, auth_client):
+        """Dashboard with no active_at param should render today's date."""
+        today = datetime.now().strftime('%Y-%m-%d')
+        response = auth_client.get('/allocations/')
+        assert today.encode() in response.data
+
+    def test_explicit_date_preserved(self, auth_client):
+        """An explicit ?active_at= param should appear verbatim in the response."""
+        response = auth_client.get('/allocations/?active_at=2025-06-01')
+        assert b'2025-06-01' in response.data
+
+    def test_projects_fragment_default_date_is_today(self, auth_client):
+        today = datetime.now().strftime('%Y-%m-%d')
+        response = auth_client.get(
+            '/allocations/projects?resource=Derecho&facility=UNIV&allocation_type=Small'
+        )
+        assert today.encode() in response.data
+
+
+# ============================================================================
+# Show Usage Toggle (Route Integration)
+# ============================================================================
+
+class TestShowUsageToggle:
+    """Tests for ?show_usage=true toggle on dashboard routes."""
+
+    def test_dashboard_show_usage_false(self, auth_client):
+        response = auth_client.get('/allocations/?show_usage=false')
+        assert response.status_code == 200
+
+    def test_dashboard_show_usage_true(self, auth_client):
+        response = auth_client.get('/allocations/?show_usage=true')
+        assert response.status_code == 200
+
+    def test_projects_fragment_show_usage_true(self, auth_client):
+        response = auth_client.get(
+            '/allocations/projects?resource=Derecho&facility=UNIV'
+            '&allocation_type=Small&show_usage=true'
+        )
+        assert response.status_code == 200
+
+    def test_projects_fragment_usage_renders_progress_or_empty(self, auth_client):
+        """show_usage=true produces progress bars or the empty-state message."""
+        response = auth_client.get(
+            '/allocations/projects?resource=Derecho&facility=UNIV'
+            '&allocation_type=Small&show_usage=true'
+        )
+        html = response.data.decode()
+        assert 'progress' in html or 'No active projects' in html
+
+    def test_usage_no_crash_on_zero_usage_facilities(self, auth_client):
+        """Facilities with zero usage must not crash the chart renderer."""
+        response = auth_client.get('/allocations/?show_usage=true&resources=Derecho')
+        assert response.status_code == 200

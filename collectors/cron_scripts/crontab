@@ -1,0 +1,4 @@
+#--------------------------------
+# status dashboard collectors
+*/5 * * * * flock -xn /tmp/benkirk-casper-status-collector.lock  ssh -tt casper.hpc.ucar.edu  "cd /glade/work/benkirk/repos/sam-queries/collectors/cron_scripts && ./run_ncar_collectors.sh 1>casper-collectors.log  2>casper-collectors.err"
+*/5 * * * * flock -xn /tmp/benkirk-derecho-status-collector.lock ssh -tt derecho.hpc.ucar.edu "cd /glade/work/benkirk/repos/sam-queries/collectors/cron_scripts && ./run_ncar_collectors.sh 1>derecho-collectors.log 2>derecho-collectors.err"

@@ -52,7 +52,7 @@ class Account(Base, SoftDeleteMixin):
     hpc_charges = relationship('HPCCharge', back_populates='account')
     project = relationship('Project', back_populates='accounts')
     resource = relationship('Resource', back_populates='accounts')
-    users = relationship('AccountUser', back_populates='account', lazy='selectin', cascade='all')
+    users = relationship('AccountUser', back_populates='account', lazy='select', cascade='all')
     responsible_parties = relationship('ResponsibleParty', back_populates='account', cascade='all, delete-orphan')
 
     @classmethod
@@ -117,7 +117,7 @@ class AccountUser(Base, TimestampMixin, DateRangeMixin):
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
 
-    account = relationship('Account', back_populates='users', lazy='selectin')
+    account = relationship('Account', back_populates='users', lazy='select')
     user = relationship('User', back_populates='accounts', lazy='selectin')
 
     def __repr__(self):

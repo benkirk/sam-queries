@@ -7,19 +7,24 @@
             <th class="sortable-header" data-sort="numeric">Amount</th>
             <th class="sortable-header" data-sort="numeric">
                 {% if resource_type in ['DISK', 'ARCHIVE'] %}
-                    Data Volume
+                    Data<br>Volume
                 {% else %}
-                    Annual Rate
+                    Annual<br>Rate
                 {% endif %}
             </th>
-            <th class="sortable-header" data-sort="date">Start Date</th>
-            <th class="sortable-header" data-sort="date">End Date</th>
-            <th class="sortable-header" data-sort="numeric">Duration (days)</th>
+            {% if show_usage %}
+            <th class="sortable-header" data-sort="numeric">Usage</th>
+            {% endif %}
+            <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-start">Start</th>
+            <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-end">End</th>
+            <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-duration">Dur<br><small class="fw-normal">(days)</small></th>
+            <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-remaining">Left<br><small class="fw-normal">(days)</small></th>
             <th>Actions</th>
         </tr>
     </thead>
     <tbody>
         {% for project in projects %}
+        {% set pct = project.get('percent_used') or 0 %}
         <tr>
             <td data-sort-value="{{ project['projcode'] }}">
                 <button class="btn btn-link p-0"
@@ -33,36 +38,83 @@
                 </button>
             </td>
             <td data-sort-value="{{ project['title'] or '' }}">{{ project['title'] if project['title'] else 'N/A' }}</td>
-            <td data-sort-value="{{ project['total_amount'] }}">{{ "{:,.0f}".format(project['total_amount']) }}</td>
+            <td data-sort-value="{{ project['total_amount'] }}">{{ project['total_amount'] | fmt_number }}</td>
             <td data-sort-value="{{ project['annualized_rate'] if project['annualized_rate'] is not none else project['total_amount'] if resource_type in ['DISK', 'ARCHIVE'] else 0 }}">
                 {% if resource_type in ['DISK', 'ARCHIVE'] %}
-                    {{ "{:,.0f}".format(project['total_amount']) }}
+                    {{ project['total_amount'] | fmt_number }}
                 {% else %}
                     {% if project['annualized_rate'] is not none %}
-                        {{ "{:,.0f}".format(project['annualized_rate']) }}
+                        {{ project['annualized_rate'] | fmt_number }}
                     {% else %}
                         N/A
                     {% endif %}
                 {% endif %}
             </td>
-            <td data-sort-value="{{ project['start_date'].strftime('%Y-%m-%d') if project['start_date'] else '' }}">{{ project['start_date'].strftime('%Y-%m-%d') if project['start_date'] else 'N/A' }}</td>
-            <td data-sort-value="{{ project['end_date'].strftime('%Y-%m-%d') if project['end_date'] else ('Z' if project['is_open_ended'] else '') }}">
-                {% if project['end_date'] %}
-                    {{ project['end_date'].strftime('%Y-%m-%d') }}
-                {% elif project['is_open_ended'] %}
-                    <span class="badge bg-info text-dark">Open-ended</span>
+            {% if show_usage %}
+            <td data-sort-value="{{ pct }}">
+                {% if project.get('total_used') is not none %}
+                <div class="progress progress-medium mb-1" style="min-width: 100px;">
+                    <div class="progress-bar {% if pct >= 90 %}bg-danger{% elif pct >= 75 %}bg-warning{% else %}bg-success{% endif %}"
+                         role="progressbar"
+                         style="width: {{ [pct, 100]|min }}%">
+                        {{ pct | fmt_pct(decimals=0) }}
+                    </div>
+                </div>
+                <small class="text-muted">{{ project['total_used'] | fmt_number }} used</small>
                 {% else %}
-                    N/A
+                <span class="text-muted small">N/A</span>
                 {% endif %}
             </td>
-            <td data-sort-value="{{ project['duration_days'] or 0 }}">
-                {% if project['duration_days'] %}
-                    {{ project['duration_days'] }}
-                    {% if project['is_open_ended'] %}
-                        <span class="text-muted small">(est.)</span>
-                    {% endif %}
+            {% endif %}
+            {# ── Duration progress bar ─────────────────────────────────────────── #}
+            {% set sd = project['start_date'] %}
+            {% set ed = project['end_date'] %}
+            {% set dd = project['duration_days'] %}
+            {% set open_ended = project['is_open_ended'] %}
+            {% set sort_start    = sd.strftime('%Y-%m-%d') if sd else '0000-00-00' %}
+            {% set sort_end      = ed.strftime('%Y-%m-%d') if ed else ('ZZZZ-ZZ-ZZ' if open_ended else '0000-00-00') %}
+            {% set sort_duration = dd|string if dd is not none else ('99999' if open_ended else '0') %}
+            {% if open_ended %}
+                {% set sort_remaining = '99999' %}
+            {% elif ed and ed >= active_at_dt %}
+                {% set sort_remaining = (ed - active_at_dt).days|string %}
+            {% else %}
+                {% set sort_remaining = '0' %}
+            {% endif %}
+            {% if not sd %}
+                {% set elapsed_pct = 0 %}{% set bar_state = 'no-dates' %}
+            {% elif open_ended %}
+                {% set elapsed_pct = 50 %}{% set bar_state = 'open-ended' %}
+            {% elif ed and ed < active_at_dt %}
+                {% set elapsed_pct = 100 %}{% set bar_state = 'expired' %}
+            {% elif dd and dd > 0 %}
+                {% set elapsed_pct = [[((active_at_dt - sd).days / dd * 100)|round(1), 100]|min, 0]|max %}
+                {% set bar_state = 'active' %}
+            {% else %}
+                {% set elapsed_pct = 0 %}{% set bar_state = 'no-duration' %}
+            {% endif %}
+            <td colspan="4" style="min-width:260px; padding:4px 8px;"
+                data-sort-start="{{ sort_start }}"
+                data-sort-end="{{ sort_end }}"
+                data-sort-duration="{{ sort_duration }}"
+                data-sort-remaining="{{ sort_remaining }}">
+                {% if bar_state == 'no-dates' %}
+                    <span class="text-muted small">N/A</span>
                 {% else %}
-                    N/A
+                    <div class="progress progress-small mb-1">
+                        <div class="progress-bar bg-secondary{% if bar_state in ['expired', 'open-ended'] %} opacity-50{% endif %}"
+                             role="progressbar" style="width:{{ elapsed_pct }}%;"></div>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <small class="text-muted">{{ sd | fmt_date if sd else '?' }}</small>
+                        <small>
+                            {% if bar_state == 'expired' %}<span class="badge bg-secondary" style="font-size:.7em;">Expired</span>
+                            {% elif bar_state == 'open-ended' %}<span class="badge bg-info text-dark" style="font-size:.7em;">Open-ended</span>
+                            {% elif bar_state == 'active' %}<span class="text-muted">{{ sort_remaining }}d left</span>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </small>
+                        <small class="text-muted">{% if ed %}{{ ed | fmt_date }}{% elif open_ended %}∞{% else %}?{% endif %}</small>
+                    </div>
                 {% endif %}
             </td>
             <td>

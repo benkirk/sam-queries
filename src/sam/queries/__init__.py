@@ -94,6 +94,13 @@ from .allocations import (
     get_allocation_summary_with_usage,
 )
 
+# Usage cache
+from .usage_cache import (
+    cached_allocation_usage,
+    purge_usage_cache,
+    usage_cache_info,
+)
+
 # Statistics
 from .statistics import (
     get_user_statistics,
@@ -155,6 +162,10 @@ __all__ = [
     'get_allocation_summary_by_facility',
     'get_allocation_summary',
     'get_allocation_summary_with_usage',
+    # Usage cache
+    'cached_allocation_usage',
+    'purge_usage_cache',
+    'usage_cache_info',
     # Statistics
     'get_user_statistics',
     'get_project_statistics',

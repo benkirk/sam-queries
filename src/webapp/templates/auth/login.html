@@ -18,12 +18,6 @@
             <p>Systems Accounting Manager</p>
         </div>
 
-        <!-- Development mode warning -->
-        <div class="alert-dev">
-            <strong>Development Mode:</strong> Using stub authentication.
-            Any password will work for existing users.
-        </div>
-
         <!-- Flash messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -35,6 +29,23 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
+
+        {% if oidc_enabled %}
+        {# ---- OIDC SSO mode ---- #}
+        <div class="text-center mb-4">
+            <p class="text-muted">Sign in with your institutional account</p>
+        </div>
+
+        <a href="{{ url_for('auth.oidc_login') }}" class="btn btn-primary btn-login btn-lg w-100">
+            Sign in with UCAR SSO
+        </a>
+
+        {% else %}
+        {# ---- Stub / dev mode ---- #}
+        <div class="alert-dev">
+            <strong>Development Mode:</strong> Using stub authentication.
+            Any password will work for existing users.
+        </div>
 
         <form method="POST" action="{{ url_for('auth.login') }}">
             <div class="mb-3">
@@ -89,6 +100,7 @@
             </form>
             {% endfor %}
         </div>
+        {% endif %}
         {% endif %}
 
         <div class="text-center mt-3">

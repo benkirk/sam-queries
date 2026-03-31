@@ -13,7 +13,7 @@
             </div>
             {% if status.cpu_cores_allocated is defined and status.cpu_cores_total is defined %}
             <div class="text-muted small mt-1">
-                {{ '{:,}'.format(status.cpu_cores_allocated) }} / {{ '{:,}'.format(status.cpu_cores_total) }} cores
+                {{ status.cpu_cores_allocated | fmt_number }} / {{ status.cpu_cores_total | fmt_number }} cores
             </div>
             {% endif %}
         </div>
@@ -63,7 +63,7 @@
             </div>
             {% if status.memory_allocated_gb is defined and status.memory_total_gb is defined %}
             <div class="text-muted small mt-1">
-                {{ '{:,.0f}'.format(status.memory_allocated_gb) }} / {{ '{:,.0f}'.format(status.memory_total_gb) }} GB
+                {{ status.memory_allocated_gb | fmt_number }} / {{ status.memory_total_gb | fmt_number }} GB
             </div>
             {% endif %}
         </div>

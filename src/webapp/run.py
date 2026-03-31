@@ -126,6 +126,22 @@ def create_app():
         return response
     # =========================================================================
 
+    # Initialize OIDC (Authlib) when configured
+    if app.config.get('AUTH_PROVIDER') == 'oidc':
+        from authlib.integrations.flask_client import OAuth
+        oauth = OAuth(app)
+        oauth.register(
+            'entra',
+            client_id=app.config['OIDC_CLIENT_ID'],
+            client_secret=app.config['OIDC_CLIENT_SECRET'],
+            server_metadata_url=app.config['OIDC_ISSUER'] + '/.well-known/openid-configuration',
+            client_kwargs={
+                'scope': app.config.get('OIDC_SCOPES', 'openid email profile'),
+                'code_challenge_method': 'S256',
+            },
+        )
+        app.extensions['oauth'] = oauth
+
     # Initialize Flask-Login
     login_manager = LoginManager()
     login_manager.init_app(app)
@@ -164,6 +180,10 @@ def create_app():
     app.register_blueprint(api_status_bp, url_prefix='/api/v1/status')
     app.register_blueprint(api_allocations_bp, url_prefix='/api/v1/allocations')
     app.register_blueprint(api_health_bp, url_prefix='/api/v1/health')
+
+    # Register centralized formatting filters (fmt_number, fmt_pct, fmt_date, fmt_size)
+    import sam.fmt as fmt
+    fmt.register_jinja_filters(app)
 
     # Initialize Flask-Admin
     init_admin(app)

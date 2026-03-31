@@ -9,7 +9,7 @@
                 </h6>
             </div>
             <div class="text-muted">
-                {{ res.start_time.strftime('%Y-%m-%d %H:%M') }} - {{ res.end_time.strftime('%Y-%m-%d %H:%M') }}
+                {{ res.start_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} - {{ res.end_time | fmt_date(fmt='%Y-%m-%d %H:%M') }}
             </div>
         </div>
         {% if res.description %}

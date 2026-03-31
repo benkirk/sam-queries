@@ -31,9 +31,19 @@
                     <label for="active_at"><strong>Active at:</strong></label>
                     <input type="date" class="form-control" id="active_at" name="active_at" value="{{ active_at }}">
                     <br>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-search"></i> Update
-                    </button>
+                    <div class="d-flex align-items-center gap-3">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Update
+                        </button>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="showUsage"
+                                   name="show_usage" value="true"
+                                   {% if show_usage %}checked{% endif %}>
+                            <label class="form-check-label small text-muted fw-normal" for="showUsage">
+                                Show usage
+                            </label>
+                        </div>
+                    </div>
                 </div>
             </div>
         </form>
@@ -42,6 +52,60 @@
 
 <!-- Facility Pie: single container above tabs, swaps when active tab changes -->
 {% if grouped_data %}
+{% if show_usage %}
+<!-- 2-tab interface: Allocated | Usage -->
+<div class="mb-3">
+    <ul class="nav nav-pills nav-fill mb-2 justify-content-center" id="pieChartTabs" role="tablist" style="max-width:320px; margin-left:auto; margin-right:auto;">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active py-1 px-3 small" id="pie-allocated-tab"
+                    data-bs-toggle="pill" data-bs-target="#pie-allocated"
+                    type="button" role="tab">Allocated</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link py-1 px-3 small" id="pie-usage-tab"
+                    data-bs-toggle="pill" data-bs-target="#pie-usage"
+                    type="button" role="tab">Usage</button>
+        </li>
+    </ul>
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="pie-allocated" role="tabpanel">
+            <div id="facilityPieContainer" class="chart-container">
+                {% for resource_name, _ in grouped_data.items()|sort %}
+                {% set overview = resource_overviews[resource_name] %}
+                {% if overview.table_data|length > 1 %}
+                <div class="facility-pie-panel"
+                     data-resource="{{ resource_name|replace(' ', '_') }}"
+                     style="display:none;">
+                    {{ overview.chart|safe }}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        <div class="tab-pane fade" id="pie-usage" role="tabpanel">
+            <div id="facilityUsagePieContainer" class="chart-container">
+                {% for resource_name, _ in grouped_data.items()|sort %}
+                {% set usage_overview = resource_usage_overviews.get(resource_name, {}) %}
+                {% if usage_overview and usage_overview.table_data|length > 1 %}
+                <div class="facility-usage-pie-panel"
+                     data-resource="{{ resource_name|replace(' ', '_') }}"
+                     style="display:none;">
+                    {{ usage_overview.chart|safe }}
+                </div>
+                {% elif usage_overview and usage_overview.table_data|length == 1 %}
+                <div class="facility-usage-pie-panel"
+                     data-resource="{{ resource_name|replace(' ', '_') }}"
+                     style="display:none;">
+                    <div class="text-center text-muted small py-3">Single facility — no pie chart</div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- Standard single pie chart (no usage toggle) -->
 <div id="facilityPieContainer" class="chart-container mb-3">
     {% for resource_name, _ in grouped_data.items()|sort %}
     {% set overview = resource_overviews[resource_name] %}
@@ -54,6 +118,7 @@
     {% endif %}
     {% endfor %}
 </div>
+{% endif %}
 {% endif %}
 
 <!-- Resource Tabs -->
@@ -89,9 +154,11 @@
                     <tr>
                         <th class="table-col-expand"></th>
                         <th>Facility / Type</th>
+                        <th>Amount</th>
                         <th>{{ 'Data Volume' if is_storage else 'Annual Rate' }}</th>
                         <th>Count</th>
-                        <th>% / Avg</th>
+                        <th>Avg</th>
+                        <th>%</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -107,15 +174,17 @@
                             <i class="fas fa-chevron-right expand-icon"></i>
                         </td>
                         <td><strong>{{ facility_name }}</strong></td>
+                        <td>{{ facility_data.total_amount | fmt_number }}</td>
                         <td>
                             {% if is_storage %}
-                                {{ "{:,.0f}".format(facility_data.total_amount) }}
+                                <span class="text-muted">—</span>
                             {% else %}
-                                {{ "{:,.0f}".format(facility_data.annualized_rate) }}
+                                {{ facility_data.annualized_rate | fmt_number }}
                             {% endif %}
                         </td>
                         <td>{{ facility_data.count }}</td>
-                        <td>{{ "%.1f"|format(facility_data.percent) }}%</td>
+                        <td class="text-muted">—</td>
+                        <td>{{ facility_data.percent | fmt_pct }}</td>
                     </tr>
 
                     <!-- Allocation Type Rows (hidden; expand icon in col 1, type name in col 2) -->
@@ -128,13 +197,22 @@
                             <i class="fas fa-chevron-right expand-icon"></i>
                         </td>
                         <td class="ps-4"><strong>{{ type_data.allocation_type }}</strong></td>
-                        <td>{{ "{:,.0f}".format(type_data.total_amount) }}</td>
+                        <td>{{ type_data.total_amount | fmt_number }}</td>
+                        {% set type_rate = type_annualized_rates.get((resource_name, facility_name, type_data.allocation_type)) %}
+                        <td>{% if type_rate and not is_storage %}{{ type_rate | fmt_number }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td>{{ type_data.count }}</td>
-                        <td>{{ "{:,.0f}".format(type_data.avg_amount) }}</td>
+                        <td>{{ type_data.avg_amount | fmt_number }}</td>
+                        <td>
+                            {% if type_rate and facility_data.annualized_rate and not is_storage %}
+                                {{ (type_rate / facility_data.annualized_rate * 100) | fmt_pct }}
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr class="project-details-row" data-fac-id="{{ fac_id }}" id="{{ details_id }}">
-                        <td colspan="5"
-                            hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}"
+                        <td colspan="7"
+                            hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}&show_usage={{ 'true' if show_usage else 'false' }}"
                             hx-trigger="load-details"
                             hx-swap="innerHTML">
                             <div class="p-3 text-center">
@@ -153,20 +231,59 @@
                     <tr class="alloc-type-subtotal-row table-secondary" data-fac-id="{{ fac_id }}">
                         <th></th>
                         <th class="ps-4">Subtotal</th>
-                        <th>{{ "{:,.0f}".format(total_allocated) }}</th>
+                        <th>{{ total_allocated | fmt_number }}</th>
+                        <th>{% if not is_storage %}{{ facility_data.annualized_rate | fmt_number }}{% else %}<span class="text-muted">—</span>{% endif %}</th>
                         <th>{{ total_count }}</th>
-                        <th>{{ "{:,.0f}".format(total_allocated / total_count if total_count > 0 else 0) }}</th>
+                        <th>{{ (total_allocated / total_count if total_count > 0 else 0) | fmt_number }}</th>
+                        <th class="text-muted">—</th>
                     </tr>
                     {% endif %}
 
                     <!-- Type Pie Chart Row (if >1 type and chart available) -->
                     {% set type_chart = allocation_type_charts.get(resource_name, {}).get(facility_name) %}
-                    {% if types|length > 1 and type_chart %}
+                    {% set usage_type_chart = allocation_type_usage_charts.get(resource_name, {}).get(facility_name) if show_usage else none %}
+                    {% if types|length > 1 and (type_chart or usage_type_chart) %}
                     <tr class="alloc-type-chart-row" data-fac-id="{{ fac_id }}">
-                        <td colspan="5" class="p-0">
+                        <td colspan="7" class="p-0">
+                            {% if show_usage %}
+                            <div class="p-2 pb-0">
+                                <ul class="nav nav-pills nav-fill mb-2 justify-content-center"
+                                    style="max-width:320px; margin-left:auto; margin-right:auto;">
+                                    <li class="nav-item">
+                                        <button class="nav-link active py-1 px-3 small"
+                                                data-bs-toggle="pill"
+                                                data-bs-target="#type-alloc-{{ fac_id }}"
+                                                type="button">Allocated</button>
+                                    </li>
+                                    <li class="nav-item">
+                                        <button class="nav-link py-1 px-3 small"
+                                                data-bs-toggle="pill"
+                                                data-bs-target="#type-usage-{{ fac_id }}"
+                                                type="button">Usage</button>
+                                    </li>
+                                </ul>
+                                <div class="tab-content">
+                                    <div class="tab-pane fade show active" id="type-alloc-{{ fac_id }}">
+                                        {% if type_chart %}
+                                        <div class="chart-container p-3">{{ type_chart|safe }}</div>
+                                        {% else %}
+                                        <div class="text-center text-muted small py-3">No chart available</div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="tab-pane fade" id="type-usage-{{ fac_id }}">
+                                        {% if usage_type_chart %}
+                                        <div class="chart-container p-3">{{ usage_type_chart|safe }}</div>
+                                        {% else %}
+                                        <div class="text-center text-muted small py-3">No usage data yet</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% else %}
                             <div class="chart-container p-3">
                                 {{ type_chart|safe }}
                             </div>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endif %}
@@ -178,14 +295,16 @@
                     <tr>
                         <th></th>
                         <th>Total</th>
+                        <th>{{ "{:,.0f}".format(overview.table_data|sum(attribute='total_amount')) }}</th>
                         <th>
                             {% if is_storage %}
-                                {{ "{:,.0f}".format(overview.table_data|sum(attribute='total_amount')) }}
+                                <span class="text-muted">—</span>
                             {% else %}
                                 {{ "{:,.0f}".format(overview.table_data|sum(attribute='annualized_rate')) }}
                             {% endif %}
                         </th>
                         <th>{{ overview.table_data|sum(attribute='count') }}</th>
+                        <th class="text-muted">—</th>
                         <th>100%</th>
                     </tr>
                 </tfoot>
@@ -296,14 +415,24 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
             th.addEventListener('click', function() {
                 var colIndex = Array.from(th.parentNode.children).indexOf(th);
                 var sortType = th.dataset.sort;
+                var sortAttr = th.dataset.sortAttr;  // e.g. "sort-start" for colspan bar cells
                 var isAsc = !th.classList.contains('sort-asc');
                 table.querySelectorAll('th').forEach(function(h) { h.classList.remove('sort-asc', 'sort-desc'); });
                 th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
                 var tbody = table.querySelector('tbody');
                 var rows = Array.from(tbody.querySelectorAll('tr'));
                 rows.sort(function(a, b) {
-                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
-                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    var aVal, bVal;
+                    if (sortAttr) {
+                        // Named-attribute sort: works across colspan cells
+                        var aCell = a.querySelector('[data-' + sortAttr + ']');
+                        var bCell = b.querySelector('[data-' + sortAttr + ']');
+                        aVal = aCell ? (aCell.getAttribute('data-' + sortAttr) || '') : '';
+                        bVal = bCell ? (bCell.getAttribute('data-' + sortAttr) || '') : '';
+                    } else {
+                        aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
+                        bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
+                    }
                     if (sortType === 'numeric') {
                         aVal = parseFloat(aVal) || 0; bVal = parseFloat(bVal) || 0;
                         return isAsc ? aVal - bVal : bVal - aVal;
@@ -321,6 +450,9 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
 (function () {
     function showPieForResource(resourceId) {
         document.querySelectorAll('.facility-pie-panel').forEach(function (p) {
+            p.style.display = p.dataset.resource === resourceId ? '' : 'none';
+        });
+        document.querySelectorAll('.facility-usage-pie-panel').forEach(function (p) {
             p.style.display = p.dataset.resource === resourceId ? '' : 'none';
         });
     }

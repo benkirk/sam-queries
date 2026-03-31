@@ -1,0 +1,217 @@
+"""Unit tests for sam.fmt — centralized display formatting."""
+import pytest
+from datetime import date, datetime
+
+import sam.fmt as fmt
+from sam.fmt import number, pct, date_str, size, configure, COMPACT_THRESHOLD
+
+
+# ── Fixtures ──────────────────────────────────────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def reset_fmt_config():
+    """Reset module-level config to defaults before each test."""
+    configure(raw=False, sig_figs=3, size_units='iec')
+    yield
+    configure(raw=False, sig_figs=3, size_units='iec')
+
+
+# ── number() ─────────────────────────────────────────────────────────────────
+
+class TestNumber:
+    def test_zero(self):
+        assert number(0) == '0'
+
+    def test_small_integers_exact(self):
+        assert number(1) == '1'
+        assert number(99) == '99'
+        assert number(2) == '2'
+
+    def test_below_threshold_exact_with_commas(self):
+        assert number(1_000) == '1,000'
+        assert number(99_999) == '99,999'
+
+    def test_at_threshold_exact(self):
+        # Exactly at threshold stays exact
+        assert number(COMPACT_THRESHOLD) == f"{COMPACT_THRESHOLD:,}"
+
+    def test_just_above_threshold_compact(self):
+        assert number(100_001) == '100K'
+
+    def test_thousands(self):
+        assert number(123_456) == '123K'
+        assert number(999_999) == '1,000K'   # rounds up at boundary
+
+    def test_millions_3sig(self):
+        assert number(1_000_000) == '1.00M'
+        assert number(1_234_567) == '1.23M'
+        assert number(18_275_655) == '18.3M'
+        assert number(68_567_808) == '68.6M'
+        assert number(100_000_000) == '100M'
+
+    def test_billions(self):
+        assert number(1_234_567_890) == '1.23B'
+
+    def test_trillions(self):
+        assert number(1_234_567_890_123) == '1.23T'
+
+    def test_negative(self):
+        assert number(-68_567_808) == '-68.6M'
+        assert number(-500) == '-500'
+
+    def test_float_input(self):
+        assert number(68_567_808.0) == '68.6M'
+
+    def test_none_returns_null(self):
+        assert number(None) == '—'
+        assert number(None, null='N/A') == 'N/A'
+
+    def test_raw_override_per_call(self):
+        assert number(68_567_808, raw=True) == '68,567,808'
+        assert number(1_234_567, raw=True) == '1,234,567'
+
+    def test_raw_below_threshold_unchanged(self):
+        # raw=True on a small number has no effect (already exact)
+        assert number(1_000, raw=True) == '1,000'
+
+    def test_sig_figs_override(self):
+        assert number(68_567_808, sig_figs=4) == '68.57M'
+        assert number(68_567_808, sig_figs=2) == '69M'
+        assert number(1_234_567, sig_figs=2) == '1.2M'
+
+    def test_configure_raw_global(self):
+        configure(raw=True)
+        assert number(68_567_808) == '68,567,808'
+
+    def test_configure_sig_figs_global(self):
+        configure(sig_figs=2)
+        assert number(68_567_808) == '69M'
+        assert number(18_275_655) == '18M'
+
+    def test_per_call_overrides_global(self):
+        configure(raw=True)
+        assert number(68_567_808, raw=False) == '68.6M'
+
+
+# ── pct() ─────────────────────────────────────────────────────────────────────
+
+class TestPct:
+    def test_typical(self):
+        assert pct(0.4) == '0.4%'
+        assert pct(75.0) == '75.0%'
+        assert pct(100.0) == '100.0%'
+
+    def test_zero(self):
+        assert pct(0) == '0.0%'
+        assert pct(0.0) == '0.0%'
+
+    def test_decimals_override(self):
+        assert pct(33.333, decimals=2) == '33.33%'
+        assert pct(0.4, decimals=0) == '0%'
+
+    def test_none_returns_null(self):
+        assert pct(None) == '—'
+        assert pct(None, null='N/A') == 'N/A'
+
+    def test_raw_returns_bare_string(self):
+        assert pct(0.4, raw=True) == '0.4'
+        assert pct(100.0, raw=True) == '100.0'
+
+    def test_configure_raw_global(self):
+        configure(raw=True)
+        assert pct(0.4) == '0.4'
+
+
+# ── date_str() ────────────────────────────────────────────────────────────────
+
+class TestDateStr:
+    def test_datetime(self):
+        assert date_str(datetime(2024, 10, 1, 12, 30)) == '2024-10-01'
+
+    def test_date(self):
+        assert date_str(date(2026, 9, 30)) == '2026-09-30'
+
+    def test_none_returns_null(self):
+        assert date_str(None) == '—'
+        assert date_str(None, null='N/A') == 'N/A'
+
+    def test_custom_format(self):
+        assert date_str(datetime(2024, 10, 1), fmt='%b %Y') == 'Oct 2024'
+        assert date_str(datetime(2024, 10, 1), fmt='%Y-%m-%d %H:%M') == '2024-10-01 00:00'
+
+    def test_not_affected_by_raw(self):
+        # raw mode has no meaning for dates; format is always applied
+        configure(raw=True)
+        assert date_str(date(2024, 10, 1)) == '2024-10-01'
+
+
+# ── size() ────────────────────────────────────────────────────────────────────
+
+class TestSize:
+    def test_bytes(self):
+        assert size(0) == '0 B'
+        assert size(512) == '512 B'
+        assert size(1_023) == '1,023 B'
+
+    def test_kib(self):
+        assert size(1_024) == '1.00 KiB'
+        assert size(1_536) == '1.50 KiB'
+
+    def test_mib(self):
+        assert size(1_048_576) == '1.00 MiB'
+        assert size(10_485_760) == '10.0 MiB'
+
+    def test_gib(self):
+        assert size(1_073_741_824) == '1.00 GiB'
+
+    def test_tib(self):
+        assert size(1_099_511_627_776) == '1.00 TiB'
+        assert size(1_234_567_890_123) == '1.12 TiB'
+
+    def test_pib(self):
+        pib = 2**50
+        assert size(pib) == '1.00 PiB'
+
+    def test_none_returns_null(self):
+        assert size(None) == '—'
+        assert size(None, null='N/A') == 'N/A'
+
+    def test_raw_returns_integer_bytes(self):
+        assert size(1_099_511_627_776, raw=True) == '1099511627776'
+
+    def test_configure_raw_global(self):
+        configure(raw=True)
+        assert size(1_073_741_824) == '1073741824'
+
+    def test_sig_figs_override(self):
+        assert size(1_234_567_890_123, sig_figs=4) == '1.123 TiB'
+        assert size(1_234_567_890_123, sig_figs=2) == '1.1 TiB'
+
+    def test_si_units_via_configure(self):
+        configure(size_units='si')
+        assert size(1_000_000_000_000) == '1.00 TB'
+        assert size(1_000_000) == '1.00 MB'
+
+    def test_iec_restored_after_si(self):
+        configure(size_units='si')
+        configure(size_units='iec')
+        assert size(1_099_511_627_776) == '1.00 TiB'
+
+
+# ── configure() ──────────────────────────────────────────────────────────────
+
+class TestConfigure:
+    def test_sig_figs_persists(self):
+        configure(sig_figs=5)
+        assert number(68_567_808) == '68.568M'
+
+    def test_raw_persists(self):
+        configure(raw=True)
+        assert number(68_567_808) == '68,567,808'
+        assert pct(0.4) == '0.4'
+
+    def test_reset_restores_defaults(self):
+        configure(raw=True, sig_figs=5)
+        configure(raw=False, sig_figs=3)
+        assert number(68_567_808) == '68.6M'
+        assert pct(0.4) == '0.4%'

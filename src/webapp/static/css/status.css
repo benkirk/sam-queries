@@ -112,6 +112,38 @@
 .border-status-warning { border-left: 4px solid #ffc107 !important; }
 
 /* ===================================================================
+   Login Node Load Stack
+   Three tightly-stacked micro progress bars (1min / 5min / 15min).
+   When all three values are equal they read as a single bar.
+   =================================================================== */
+
+.load-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 80px;
+}
+
+.load-stack .progress {
+    height: 5px;
+    border-radius: 0;
+    background-color: var(--bg-gray-medium, #e9ecef);
+    overflow: hidden;
+}
+
+.load-stack .progress:first-child {
+    border-radius: 3px 3px 0 0;
+}
+
+.load-stack .progress:last-child {
+    border-radius: 0 0 3px 3px;
+}
+
+.load-stack .progress-bar {
+    transition: width 0.4s ease;
+}
+
+/* ===================================================================
    Utility Styles
    =================================================================== */
 

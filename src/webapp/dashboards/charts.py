@@ -19,6 +19,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+from sam import fmt
+
 
 def format_number(value: float, decimals: int = 2) -> str:
     """Format a number with thousands separators."""
@@ -274,7 +276,7 @@ def _cached_facility_pie(data_key: tuple, title: str) -> str:
     raw_values = [d['annualized_rate'] for d in facility_data]
     names, values = _pie_trim(raw_names, raw_values)
 
-    legend_labels = [f'{n} ({v:,.0f})' for n, v in zip(names, values)]
+    legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(names, values)]
     colors = plt.cm.tab20.colors[:len(names)]
 
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -332,7 +334,7 @@ def _cached_alloc_type_pie(data_key: tuple, resource_type: str, resource_name: s
     raw_values = [d['total_amount'] for d in type_data]
     names, values = _pie_trim(raw_names, raw_values)
 
-    legend_labels = [f'{n} ({v:,.0f})' for n, v in zip(names, values)]
+    legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(names, values)]
     colors = plt.cm.tab20.colors[:len(names)]
 
     if resource_type in ['DISK', 'ARCHIVE']:

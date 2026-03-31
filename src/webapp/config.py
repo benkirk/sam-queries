@@ -27,8 +27,16 @@ class SAMWebappConfig(SAMConfig):
         if k.startswith('API_KEYS_') and v
     }
 
-    # Auth provider ('stub' | 'ldap' | 'saml')
+    # Auth provider ('stub' | 'ldap' | 'oidc')
     AUTH_PROVIDER = os.getenv('AUTH_PROVIDER', 'stub')
+
+    # OIDC configuration (active when AUTH_PROVIDER='oidc')
+    OIDC_CLIENT_ID = os.getenv('OIDC_CLIENT_ID', '')
+    OIDC_CLIENT_SECRET = os.getenv('OIDC_CLIENT_SECRET', '')
+    OIDC_ISSUER = os.getenv('OIDC_ISSUER', '')
+    OIDC_SCOPES = os.getenv('OIDC_SCOPES', 'openid email profile')
+    OIDC_USERNAME_CLAIM = os.getenv('OIDC_USERNAME_CLAIM', 'preferred_username')
+    OIDC_REDIRECT_URI = os.getenv('OIDC_REDIRECT_URI', '')
 
     # Audit logging
     AUDIT_ENABLED  = os.getenv('AUDIT_ENABLED', '1').lower() in ('1', 'true', 'yes')
@@ -40,6 +48,11 @@ class SAMWebappConfig(SAMConfig):
 
     # Google Calendar embed URL (public calendar shown on reservations tab; empty = hidden)
     GOOGLE_CALENDAR_EMBED_URL = os.getenv('GOOGLE_CALENDAR_EMBED_URL', '')
+
+    # Usage calculation cache (TTLCache wrapping get_allocation_summary_with_usage)
+    # TTL=0 disables caching; SIZE controls max LRU entries
+    ALLOCATION_USAGE_CACHE_TTL  = int(os.getenv('ALLOCATION_USAGE_CACHE_TTL', 3600))   # seconds
+    ALLOCATION_USAGE_CACHE_SIZE = int(os.getenv('ALLOCATION_USAGE_CACHE_SIZE', 200))    # max entries
 
     # Session cookies (common defaults; subclasses tighten for prod)
     SESSION_COOKIE_HTTPONLY    = True
@@ -92,6 +105,13 @@ class ProductionConfig(SAMWebappConfig):
                 "Generate keys with: python scripts/gen_api_key.py",
                 stacklevel=2,
             )
+        if cls.AUTH_PROVIDER == 'oidc':
+            missing = [v for v in ('OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_ISSUER')
+                       if not os.getenv(v)]
+            if missing:
+                raise EnvironmentError(
+                    f"AUTH_PROVIDER=oidc but missing required env vars: {', '.join(missing)}"
+                )
 
 
 class TestingConfig(SAMWebappConfig):
@@ -105,6 +125,10 @@ class TestingConfig(SAMWebappConfig):
     API_KEYS = {
         'collector': '$2b$04$lEZO8EBAKbpGIUYMenFeOui8tvzj44hXlgWnbkkznBVe8oX1uQyE6',
     }
+
+    # Disable usage cache in tests to prevent cross-test pollution
+    ALLOCATION_USAGE_CACHE_TTL  = 0
+    ALLOCATION_USAGE_CACHE_SIZE = 0
 
 
 _configs = {

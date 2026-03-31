@@ -822,6 +822,32 @@ docker compose up
 
 ---
 
+## Display Formatting — `sam.fmt`
+
+All number, date, percentage, and size formatting goes through `src/sam/fmt.py`.
+Jinja2 filters are registered in `create_app()` — use them in every template.
+
+| Need | Jinja2 filter | Python (CLI) |
+|---|---|---|
+| Integer / compact number | `{{ x \| fmt_number }}` | `fmt.number(x)` |
+| Percentage (0–100) | `{{ x \| fmt_pct }}` | `fmt.pct(x)` |
+| Date / datetime | `{{ x \| fmt_date }}` | `fmt.date_str(x)` |
+| Byte size | `{{ x \| fmt_size }}` | `fmt.size(x)` |
+
+**Key behaviours**
+- Numbers ≤ 100,000 → exact with commas (`34,283`); above → compact (`68.6M`)
+- `None` → `'—'` by default for all filters (no manual `if x else '—'` needed)
+- `fmt_pct(decimals=N)`, `fmt_date(fmt='%b %Y')`, `fmt_number(raw=True)` for overrides
+- `SAM_RAW_OUTPUT=1` env-var forces exact integers everywhere (scripting/grepping)
+- `fmt.mpl_number_formatter()` for matplotlib y-axis tick labels
+
+**Do NOT** use raw `'{:,.0f}'.format(x)`, `'%.1f'|format(x)%`, or `.strftime(…)` in
+templates or CLI display code — route through `sam.fmt` instead.
+
+The migration plan is documented in `docs/plans/FORMAT_DISPLAY.md`.
+
+---
+
 ## Code Style & Preferences
 
 1. **Imports**: Use `from ..base import *` for common ORM imports
