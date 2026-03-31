@@ -187,6 +187,24 @@ def init_audit_events(app, db, logfile_path):
     # We filter by engine inside the handler for better control
     event.listen(Session, "before_flush", before_flush)
 
+    def _flush_view_cache(session):
+        """Clear the Flask view cache after any successful commit.
+
+        Fires on every session after_commit. Using the database-layer hook
+        means all edit paths (current and future) get automatic invalidation
+        with no per-handler wiring required. Only fires when an app context
+        is active — skips commits during test teardown or CLI usage.
+        """
+        from flask import current_app
+        try:
+            current_app._get_current_object()  # raises RuntimeError outside app context
+            from webapp.extensions import cache
+            cache.clear()
+        except RuntimeError:
+            pass  # No app context — CLI, test teardown, etc.
+
+    event.listen(Session, "after_commit", _flush_view_cache)
+
     # Mark as registered
     _AUDIT_EVENTS_REGISTERED = True
 

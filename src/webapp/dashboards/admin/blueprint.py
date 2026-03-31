@@ -12,7 +12,7 @@ from typing import List, Tuple, Dict
 import csv
 import io
 
-from webapp.extensions import db
+from webapp.extensions import db, cache
 from sam.queries.dashboard import get_project_dashboard_data
 from sam.queries.expirations import get_projects_by_allocation_end_date, get_projects_with_expired_allocations
 from sam.queries.lookups import find_project_by_code
@@ -1454,6 +1454,7 @@ def htmx_allocation_type_edit(allocation_type_id):
 @bp.route('/htmx/organizations-card')
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
+@cache.cached(timeout=300, query_string=True)
 def htmx_organizations_card():
     """
     Return the Organization card body fragment with seven tabs:
