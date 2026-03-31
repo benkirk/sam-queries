@@ -11,7 +11,6 @@
                     data-bs-target="#resources-pane" type="button" role="tab"
                     aria-controls="resources-pane" aria-selected="true">
                 <i class="fas fa-server me-1"></i> Resources
-                <span class="badge bg-secondary ms-1">{{ resources|length }}</span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -19,7 +18,6 @@
                     data-bs-target="#machines-pane" type="button" role="tab"
                     aria-controls="machines-pane" aria-selected="false">
                 <i class="fas fa-microchip me-1"></i> Machines
-                <span class="badge bg-secondary ms-1">{{ machines|length }}</span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -27,7 +25,6 @@
                     data-bs-target="#queues-pane" type="button" role="tab"
                     aria-controls="queues-pane" aria-selected="false">
                 <i class="fas fa-list-ol me-1"></i> Queues
-                <span class="badge bg-secondary ms-1">{{ queues|length }}</span>
             </button>
         </li>
     </ul>
@@ -42,6 +39,7 @@
                     <thead class="table-light">
                         <tr>
                             <th>Name</th>
+                            <th>Count</th>
                             <th>Description</th>
                             <th>Commissioned</th>
                             <th class="text-end">Actions</th>
@@ -61,10 +59,11 @@
                                    style="transition: transform 0.2s;"></i>
                                 {{ rt.resource_type }}
                             </td>
+                            <td class="text-muted small">{{ type_resources|length }} resource{{ 's' if type_resources|length != 1 else '' }}</td>
                             <td class="text-muted small">
                                 {% if rt.grace_period_days is not none %}Grace: {{ rt.grace_period_days }}d{% endif %}
                             </td>
-                            <td class="text-muted small">{{ type_resources|length }} resource{{ 's' if type_resources|length != 1 else '' }}</td>
+                            <td></td>
                             <td class="text-end">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
@@ -86,6 +85,7 @@
                         {% for r in type_resources %}
                         <tr class="table-secondary{% if not r.is_active %} opacity-50{% endif %}">
                             <td class="ps-4 fw-semibold">{{ r.resource_name }}</td>
+                            <td></td>
                             <td class="text-muted small">{{ r.description or '—' }}</td>
                             <td class="text-muted small text-nowrap">
                                 {{ r.commission_date.strftime('%Y-%m-%d') if r.commission_date else '—' }}
@@ -106,17 +106,20 @@
                         </tr>
                         {% else %}
                         <tr class="table-secondary">
-                            <td colspan="4" class="ps-4 text-muted fst-italic">No resources of this type.</td>
+                            <td colspan="5" class="ps-4 text-muted fst-italic">No resources of this type.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     {% endfor %}
                     {% else %}
                     <tbody>
-                        <tr><td colspan="4" class="text-center text-muted py-3">No resource types found.</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted py-3">No resource types found.</td></tr>
                     </tbody>
                     {% endif %}
                 </table>
+            </div>
+            <div class="text-muted small px-3 py-2">
+                Showing {{ resource_types|length }} type{{ 's' if resource_types|length != 1 else '' }}, {{ resources|length }} resource{{ 's' if resources|length != 1 else '' }}
             </div>
         </div>
 
@@ -129,6 +132,7 @@
                         <tr>
                             <th class="sortable-header" data-sort="text">Name</th>
                             <th class="sortable-header" data-sort="text">Resource</th>
+                            <th class="sortable-header" data-sort="text">Type</th>
                             <th class="sortable-header" data-sort="numeric">CPUs/Node</th>
                             <th class="sortable-header" data-sort="text">Description</th>
                             <th class="sortable-header" data-sort="date">Commissioned</th>
@@ -144,6 +148,9 @@
                                 <span class="text-muted">
                                     {{ m.resource.resource_name if m.resource else '—' }}
                                 </span>
+                            </td>
+                            <td class="text-muted small" data-sort-value="{{ m.resource.resource_type.resource_type if m.resource and m.resource.resource_type else '' }}">
+                                {{ m.resource.resource_type.resource_type if m.resource and m.resource.resource_type else '—' }}
                             </td>
                             <td data-sort-value="{{ m.cpus_per_node or 0 }}">{{ m.cpus_per_node or '—' }}</td>
                             <td class="text-muted" data-sort-value="{{ m.description or '' }}">{{ m.description or '—' }}</td>
@@ -169,44 +176,66 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center text-muted py-3">No machines found.</td>
+                            <td colspan="8" class="text-center text-muted py-3">No machines found.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            <div class="text-muted small px-3 py-2">
+                Showing {{ machines|length }} machine{{ 's' if machines|length != 1 else '' }}
+            </div>
         </div>
 
-        <!-- ── Queues tab ──────────────────────────────────────────────── -->
+        <!-- ── Queues tab (resources collapsed, queues expand on click) ──── -->
         <div class="tab-pane fade" id="queues-pane" role="tabpanel"
              aria-labelledby="queues-tab">
             <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
+                <table class="table table-sm mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th class="sortable-header" data-sort="text">Queue Name</th>
-                            <th class="sortable-header" data-sort="text">Resource</th>
-                            <th class="sortable-header" data-sort="numeric">WC Limit (hrs)</th>
-                            <th class="sortable-header" data-sort="date">Start Date</th>
-                            <th class="sortable-header" data-sort="date">End Date</th>
+                            <th>Queue Name</th>
+                            <th>Queues</th>
+                            <th>WC Limit (hrs)</th>
+                            <th>Start Date</th>
+                            <th>End Date</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="queues-tbody">
-                        {% for q in queues %}
-                        {% set q_active = (q.end_date is none) or (q.end_date > now) %}
-                        <tr{% if not q_active %} class="opacity-50"{% endif %}>
-                            <td class="fw-semibold" data-sort-value="{{ q.queue_name }}">{{ q.queue_name }}</td>
-                            <td data-sort-value="{{ q.resource.resource_name if q.resource else '' }}">
-                                <span class="text-muted">
-                                    {{ q.resource.resource_name if q.resource else '—' }}
-                                </span>
+                    {% if resources %}
+                    {% for r in resources | sort(attribute='resource_name') %}
+                    {% set r_queues = queues | selectattr('resource_id', 'equalto', r.resource_id) | list | sort(attribute='queue_name') %}
+                    {% if r_queues %}
+                    {# ── Resource row (clickable trigger) ── #}
+                    <tbody>
+                        <tr class="cursor-pointer table-light fw-semibold"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#queue-res-{{ r.resource_id }}"
+                            aria-expanded="false">
+                            <td>
+                                <i class="fas fa-chevron-right small text-muted me-1 queue-res-collapse-icon"
+                                   style="transition: transform 0.2s;"></i>
+                                {{ r.resource_name }}
                             </td>
-                            <td data-sort-value="{{ q.wall_clock_hours_limit or 0 }}">{{ q.wall_clock_hours_limit or '—' }}</td>
-                            <td class="text-nowrap" data-sort-value="{{ q.start_date.strftime('%Y-%m-%d') if q.start_date else '' }}">
+                            <td class="text-muted small">{{ r_queues|length }} queue{{ 's' if r_queues|length != 1 else '' }}</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                    {# ── Queue child rows (collapsed by default) ── #}
+                    <tbody class="collapse" id="queue-res-{{ r.resource_id }}">
+                        {% for q in r_queues %}
+                        {% set q_active = (q.end_date is none) or (q.end_date > now) %}
+                        <tr class="table-secondary{% if not q_active %} opacity-50{% endif %}">
+                            <td class="ps-4 fw-semibold">{{ q.queue_name }}</td>
+                            <td></td>
+                            <td class="text-muted small">{{ q.wall_clock_hours_limit or '—' }}</td>
+                            <td class="text-muted small text-nowrap">
                                 {{ q.start_date.strftime('%Y-%m-%d') if q.start_date else '—' }}
                             </td>
-                            <td class="text-nowrap" data-sort-value="{{ q.end_date.strftime('%Y-%m-%d') if q.end_date else 'Z' }}">
+                            <td class="text-muted small text-nowrap">
                                 {{ q.end_date.strftime('%Y-%m-%d') if q.end_date else '—' }}
                             </td>
                             <td class="text-end">
@@ -223,13 +252,19 @@
                                 {% endif %}
                             </td>
                         </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="6" class="text-center text-muted py-3">No queues found.</td>
-                        </tr>
                         {% endfor %}
                     </tbody>
+                    {% endif %}
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr><td colspan="6" class="text-center text-muted py-3">No queues found.</td></tr>
+                    </tbody>
+                    {% endif %}
                 </table>
+            </div>
+            <div class="text-muted small px-3 py-2">
+                Showing {{ queues|length }} queue{{ 's' if queues|length != 1 else '' }}
             </div>
         </div>
 
@@ -269,14 +304,18 @@
 
     document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
 
-    /* Chevron rotation for resource type collapse rows */
-    document.querySelectorAll('#resources-pane [data-bs-toggle="collapse"]').forEach(function(trigger) {
-        var target = document.querySelector(trigger.dataset.bsTarget);
-        if (!target) return;
-        var icon = trigger.querySelector('.res-type-collapse-icon');
-        if (!icon) return;
-        target.addEventListener('show.bs.collapse', function() { icon.style.transform = 'rotate(90deg)'; });
-        target.addEventListener('hide.bs.collapse', function() { icon.style.transform = ''; });
-    });
+    /* Chevron rotation for collapse rows */
+    function attachChevronRotation(paneId, iconClass) {
+        document.querySelectorAll('#' + paneId + ' [data-bs-toggle="collapse"]').forEach(function(trigger) {
+            var target = document.querySelector(trigger.dataset.bsTarget);
+            if (!target) return;
+            var icon = trigger.querySelector('.' + iconClass);
+            if (!icon) return;
+            target.addEventListener('show.bs.collapse', function() { icon.style.transform = 'rotate(90deg)'; });
+            target.addEventListener('hide.bs.collapse', function() { icon.style.transform = ''; });
+        });
+    }
+    attachChevronRotation('resources-pane', 'res-type-collapse-icon');
+    attachChevronRotation('queues-pane', 'queue-res-collapse-icon');
 })();
 </script>

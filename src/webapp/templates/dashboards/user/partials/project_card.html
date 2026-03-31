@@ -98,10 +98,7 @@
             <thead class="thead-light">
                 <tr>
                     <th>Resource</th>
-                    <th>Allocated</th>
-                    <th>Used</th>
-                    <th>Remaining</th>
-                    <th class="table-col-usage">Usage</th>
+                    <th style="min-width: 220px;">Allocation</th>
                     {% if can_edit_allocations %}
                     <th class="text-center" style="width: 80px;">Actions</th>
                     {% endif %}
@@ -111,7 +108,7 @@
                 {% for key, group_resources in resources | groupby('date_group_key') %}
                     {# ── Date-bounds group header ──────────────────────────────────── #}
                     {% set first = group_resources | first %}
-                    {% set colspan = 6 if can_edit_allocations else 5 %}
+                    {% set colspan = 3 if can_edit_allocations else 2 %}
                     <tr class="date-group-header">
                         <td colspan="{{ colspan }}" style="padding: 4px 10px;">
                             {% if first.bar_state == 'no-dates' %}
@@ -157,10 +154,11 @@
                         <tr class="{% if show_clickable_rows %}resource-row cursor-pointer {% endif %}{{ row_class }}{% if is_expired %} expired-allocation{% endif %}"
                             {% if show_clickable_rows %}onclick="location.href='{{ url_for('user_dashboard.resource_details', projcode=project.projcode, resource=resource.resource_name) }}'"{% endif %}>
                             <td><strong>{{ resource.resource_name }}</strong></td>
-                            <td class="{% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }}</td>
-                            <td class="{% if not is_expired %}text-warning{% endif %}">{{ resource.used | fmt_number }}</td>
-                            <td class="{% if not is_expired %}text-success{% endif %}">{{ resource.remaining | fmt_number }}</td>
                             <td>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span class="fw-semibold {% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }} allocated</span>
+                                    <span class="text-muted">{{ percent | fmt_pct }}</span>
+                                </div>
                                 <div class="progress progress-large">
                                     <div class="progress-bar {{ progress_class }}"
                                          role="progressbar"
@@ -168,8 +166,11 @@
                                          aria-valuenow="{{ percent }}"
                                          aria-valuemin="0"
                                          aria-valuemax="100">
-                                        {{ percent | fmt_pct }}
                                     </div>
+                                </div>
+                                <div class="d-flex justify-content-between small mt-1">
+                                    <span class="{% if not is_expired %}text-warning{% endif %}">{{ resource.used | fmt_number }} used</span>
+                                    <span class="{% if not is_expired %}text-success{% endif %}">{{ resource.remaining | fmt_number }} rem</span>
                                 </div>
                             </td>
                             {% if can_edit_allocations %}
