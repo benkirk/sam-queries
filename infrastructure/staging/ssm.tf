@@ -29,3 +29,28 @@ resource "aws_ssm_parameter" "flask_secret_key" {
 
   tags = { Name = "${local.name_prefix}-flask-secret-key" }
 }
+
+# OIDC SSO credentials (populated when IT provides Entra registration)
+resource "aws_ssm_parameter" "oidc_client_id" {
+  name  = "/sam/${var.environment}/oidc-client-id"
+  type  = "SecureString"
+  value = var.oidc_client_id
+
+  tags = { Name = "${local.name_prefix}-oidc-client-id" }
+}
+
+resource "aws_ssm_parameter" "oidc_client_secret" {
+  name  = "/sam/${var.environment}/oidc-client-secret"
+  type  = "SecureString"
+  value = var.oidc_client_secret
+
+  tags = { Name = "${local.name_prefix}-oidc-client-secret" }
+}
+
+resource "aws_ssm_parameter" "oidc_issuer" {
+  name  = "/sam/${var.environment}/oidc-issuer"
+  type  = "SecureString"
+  value = var.oidc_issuer
+
+  tags = { Name = "${local.name_prefix}-oidc-issuer" }
+}

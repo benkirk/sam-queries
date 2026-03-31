@@ -28,7 +28,6 @@ def auto_login_middleware(app, db):
     @app.before_request
     def before_request():
         """Auto-login configured user if DISABLE_AUTH is set."""
-        # Only run if explicitly enabled
         if os.environ.get('DISABLE_AUTH') != '1':
             return
 

@@ -17,14 +17,14 @@ resource "aws_alb_target_group" "webapp" {
 
   health_check {
     enabled             = true
-    path                = "/auth/login"
+    path                = "/api/v1/health/"
     port                = "traffic-port"
     protocol            = "HTTP"
     healthy_threshold   = 3
     unhealthy_threshold = 3
     timeout             = 10
     interval            = 30
-    matcher             = "200,302"
+    matcher             = "200"
   }
 
   tags = { Name = "${local.name_prefix}-webapp-tg" }
@@ -41,3 +41,19 @@ resource "aws_alb_listener" "http" {
     target_group_arn = aws_alb_target_group.webapp.arn
   }
 }
+
+# HTTPS listener — required before enabling AUTH_PROVIDER=oidc
+# Uncomment when ACM certificate and DNS are ready:
+#
+# resource "aws_alb_listener" "https" {
+#   load_balancer_arn = aws_alb.main.arn
+#   port              = 443
+#   protocol          = "HTTPS"
+#   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+#   certificate_arn   = aws_acm_certificate.webapp.arn
+#
+#   default_action {
+#     type             = "forward"
+#     target_group_arn = aws_alb_target_group.webapp.arn
+#   }
+# }

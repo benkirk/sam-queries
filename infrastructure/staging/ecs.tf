@@ -45,6 +45,7 @@ resource "aws_ecs_task_definition" "webapp" {
       { name = "AUDIT_ENABLED", value = "1" },
       { name = "AUDIT_LOG_PATH", value = "/var/log/sam/model_audit.log" },
       { name = "SAM_DB_REQUIRE_SSL", value = "false" },
+      { name = "AUTH_PROVIDER", value = "stub" },
     ]
 
     secrets = [
@@ -55,6 +56,9 @@ resource "aws_ecs_task_definition" "webapp" {
       { name = "STATUS_DB_USERNAME", valueFrom = aws_ssm_parameter.db_username.arn },
       { name = "STATUS_DB_PASSWORD", valueFrom = aws_ssm_parameter.db_password.arn },
       { name = "FLASK_SECRET_KEY", valueFrom = aws_ssm_parameter.flask_secret_key.arn },
+      { name = "OIDC_CLIENT_ID", valueFrom = aws_ssm_parameter.oidc_client_id.arn },
+      { name = "OIDC_CLIENT_SECRET", valueFrom = aws_ssm_parameter.oidc_client_secret.arn },
+      { name = "OIDC_ISSUER", valueFrom = aws_ssm_parameter.oidc_issuer.arn },
     ]
 
     logConfiguration = {
