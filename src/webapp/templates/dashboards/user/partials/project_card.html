@@ -123,7 +123,7 @@
                                          style="width: {{ first.elapsed_pct }}%;"></div>
                                 </div>
                                 <div class="d-flex justify-content-between">
-                                    <small class="text-muted">{{ first.start_date.strftime('%Y-%m-%d') if first.start_date else '?' }}</small>
+                                    <small class="text-muted">{{ first.start_date | fmt_date if first.start_date else '?' }}</small>
                                     <small>
                                         {% if first.bar_state == 'expired' %}
                                             <span class="badge bg-secondary" style="font-size:.7em;">Expired</span>
@@ -133,7 +133,7 @@
                                             <span class="text-muted small">{{ first.days_until_expiration }}d left</span>
                                         {% endif %}
                                     </small>
-                                    <small class="text-muted">{% if first.end_date %}{{ first.end_date.strftime('%Y-%m-%d') }}{% elif first.bar_state == 'open-ended' %}∞{% else %}?{% endif %}</small>
+                                    <small class="text-muted">{% if first.end_date %}{{ first.end_date | fmt_date }}{% elif first.bar_state == 'open-ended' %}∞{% else %}?{% endif %}</small>
                                 </div>
                             {% endif %}
                         </td>
@@ -157,9 +157,9 @@
                         <tr class="{% if show_clickable_rows %}resource-row cursor-pointer {% endif %}{{ row_class }}{% if is_expired %} expired-allocation{% endif %}"
                             {% if show_clickable_rows %}onclick="location.href='{{ url_for('user_dashboard.resource_details', projcode=project.projcode, resource=resource.resource_name) }}'"{% endif %}>
                             <td><strong>{{ resource.resource_name }}</strong></td>
-                            <td class="{% if not is_expired %}text-primary{% endif %}">{{ '{:,.0f}'.format(resource.allocated) }}</td>
-                            <td class="{% if not is_expired %}text-warning{% endif %}">{{ '{:,.0f}'.format(resource.used) }}</td>
-                            <td class="{% if not is_expired %}text-success{% endif %}">{{ '{:,.0f}'.format(resource.remaining) }}</td>
+                            <td class="{% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }}</td>
+                            <td class="{% if not is_expired %}text-warning{% endif %}">{{ resource.used | fmt_number }}</td>
+                            <td class="{% if not is_expired %}text-success{% endif %}">{{ resource.remaining | fmt_number }}</td>
                             <td>
                                 <div class="progress progress-large">
                                     <div class="progress-bar {{ progress_class }}"
@@ -168,7 +168,7 @@
                                          aria-valuenow="{{ percent }}"
                                          aria-valuemin="0"
                                          aria-valuemax="100">
-                                        {{ percent }}%
+                                        {{ percent | fmt_pct }}
                                     </div>
                                 </div>
                             </td>

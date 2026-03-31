@@ -4,6 +4,7 @@ from typing import List, Dict, Optional, Union
 from cli.core.context import Context
 from rich.table import Table
 from rich import box
+from sam import fmt
 
 
 def parse_comma_list(value: Optional[str]) -> Optional[Union[str, List[str]]]:
@@ -103,9 +104,9 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
 
         # Add dates if showing dates (after project, before usage/amounts)
         if show_dates:
-            start_str = row['start_date'].strftime("%Y-%m-%d") if row.get('start_date') else "N/A"
-            end_str = row['end_date'].strftime("%Y-%m-%d") if row.get('end_date') else "N/A"
-            duration = '{:,}'.format(row['duration_days']) if row['duration_days'] else "N/A"
+            start_str = fmt.date_str(row.get('start_date'), null='N/A')
+            end_str   = fmt.date_str(row.get('end_date'), null='N/A')
+            duration  = fmt.number(row['duration_days']) if row['duration_days'] else 'N/A'
             table_row.extend([start_str, end_str, duration])
 
         count = row['count']
@@ -127,21 +128,21 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
             if pct > 100: pct_style = "red bold"
 
             table_row.extend([
-                f"{allocated:,.0f}",
-                f"{used:,.0f}",
-                f"{remaining:,.0f}",
-                f"[{pct_style}]{pct:,.1f}%[/]"
+                fmt.number(allocated),
+                fmt.number(used),
+                fmt.number(remaining),
+                f"[{pct_style}]{fmt.pct(pct)}[/]"
             ])
         else:
             # Standard mode: amounts
-            table_row.append(f"{amount:,.0f}")
+            table_row.append(fmt.number(amount))
             if ctx.verbose and not all_single_allocations:
-                table_row.append(f"{row['avg_amount']:,.0f}")
+                table_row.append(fmt.number(row['avg_amount']))
 
         # Add annual rate column if present
         if has_annual_rate:
             if row.get('annualized_rate') is not None:
-                rate_str = f"{row['annualized_rate']:,.0f}"
+                rate_str = fmt.number(row['annualized_rate'])
                 if row.get('is_open_ended', False):
                     rate_str += "*"  # Mark open-ended allocations
                 table_row.append(rate_str)
@@ -167,17 +168,17 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
     if show_usage:
         total_remaining = total_amount - total_used
         total_pct = (total_used / total_amount * 100) if total_amount > 0 else 0
-        ctx.console.print(f"\n[bold]Grand Total:[/] {total_count:,} allocations")
-        ctx.console.print(f"  Allocated: {total_amount:,.0f}")
-        ctx.console.print(f"  Used: {total_used:,.0f}")
-        ctx.console.print(f"  Remaining: {total_remaining:,.0f}")
-        ctx.console.print(f"  Percent Used: {total_pct:.1f}%")
+        ctx.console.print(f"\n[bold]Grand Total:[/] {fmt.number(total_count)} allocations")
+        ctx.console.print(f"  Allocated: {fmt.number(total_amount)}")
+        ctx.console.print(f"  Used: {fmt.number(total_used)}")
+        ctx.console.print(f"  Remaining: {fmt.number(total_remaining)}")
+        ctx.console.print(f"  Percent Used: {fmt.pct(total_pct)}")
         if has_annual_rate and total_annual_rate > 0:
-            ctx.console.print(f"  Annualized Rate: {total_annual_rate:,.0f}")
+            ctx.console.print(f"  Annualized Rate: {fmt.number(total_annual_rate)}")
     else:
-        ctx.console.print(f"\n[bold]Grand Total:[/] {total_count:,} allocations, {total_amount:,.0f} total allocation units")
+        ctx.console.print(f"\n[bold]Grand Total:[/] {fmt.number(total_count)} allocations, {fmt.number(total_amount)} total allocation units")
         if has_annual_rate and total_annual_rate > 0:
-            ctx.console.print(f"  Annualized Rate: {total_annual_rate:,.0f}")
+            ctx.console.print(f"  Annualized Rate: {fmt.number(total_annual_rate)}")
 
     # Add footnote if any open-ended allocations
     if has_annual_rate and any(row.get('is_open_ended', False) for row in results):

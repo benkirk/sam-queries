@@ -55,11 +55,11 @@
 
                     <tr>
                         <td><strong>{{ resource_name }}</strong></td>
-                        <td>{{ summary.start_date.strftime('%Y-%m-%d') if summary.start_date else 'N/A' }}</td>
-                        <td>{{ summary.end_date.strftime('%Y-%m-%d') if summary.end_date else 'N/A' }}</td>
-                        <td class="text-primary">{{ '{:,.0f}'.format(summary.allocated) }}</td>
-                        <td class="text-warning">{{ '{:,.0f}'.format(summary.used) }}</td>
-                        <td class="text-success">{{ '{:,.0f}'.format(summary.remaining) }}</td>
+                        <td>{{ summary.start_date | fmt_date }}</td>
+                        <td>{{ summary.end_date | fmt_date }}</td>
+                        <td class="text-primary">{{ summary.allocated | fmt_number }}</td>
+                        <td class="text-warning">{{ summary.used | fmt_number }}</td>
+                        <td class="text-success">{{ summary.remaining | fmt_number }}</td>
                         <td>
                             <div class="progress progress-large">
                                 <div class="progress-bar {{ progress_class }}"
@@ -68,7 +68,7 @@
                                      aria-valuenow="{{ percent }}"
                                      aria-valuemin="0"
                                      aria-valuemax="100">
-                                    {{ percent }}%
+                                    {{ percent | fmt_pct }}
                                 </div>
                             </div>
                         </td>
@@ -146,9 +146,9 @@
                     <tbody>
                         <tr class="table-info fw-bold">
                             <td>Total</td>
-                            <td class="text-end">{{ '{:,}'.format(user_breakdown|sum(attribute='jobs')) }}</td>
+                            <td class="text-end">{{ user_breakdown|sum(attribute='jobs') | fmt_number }}</td>
                             <td class="text-end">{{ '{:,.1f}'.format(user_breakdown|sum(attribute='core_hours')) }}</td>
-                            <td class="text-end">{{ '{:,.0f}'.format(user_breakdown|sum(attribute='charges')) }}</td>
+                            <td class="text-end">{{ user_breakdown|sum(attribute='charges') | fmt_number }}</td>
                         </tr>
                     </tbody>
                     {% for user in user_breakdown %}
@@ -161,9 +161,9 @@
                                 <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
                                 {% endif %}
                             </td>
-                            <td class="text-end">{{ '{:,}'.format(user.jobs) }}</td>
+                            <td class="text-end">{{ user.jobs | fmt_number }}</td>
                             <td class="text-end">{{ '{:,.1f}'.format(user.core_hours) }}</td>
-                            <td class="text-end">{{ '{:,.0f}'.format(user.charges) }}</td>
+                            <td class="text-end">{{ user.charges | fmt_number }}</td>
                         </tr>
                     </tbody>
                     {% if user.queues|length > 1 %}
@@ -177,17 +177,17 @@
                                 <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
                                 {% endif %}
                             </td>
-                            <td class="text-end">{{ '{:,}'.format(q.jobs) }}</td>
+                            <td class="text-end">{{ q.jobs | fmt_number }}</td>
                             <td class="text-end">{{ '{:,.1f}'.format(q.core_hours) }}</td>
-                            <td class="text-end">{{ '{:,.0f}'.format(q.charges) }}</td>
+                            <td class="text-end">{{ q.charges | fmt_number }}</td>
                         </tr>
                         {% if q.dates|length > 1 %}
                         {% for d in q.dates %}
                         <tr class="collapse table-light" id="user-queue-dates-{{ qid }}">
                             <td class="ps-5 text-muted"><i class="fas fa-angle-right me-1"></i><small>{{ d.date }}</small></td>
-                            <td class="text-end"><small>{{ '{:,}'.format(d.jobs) }}</small></td>
+                            <td class="text-end"><small>{{ d.jobs | fmt_number }}</small></td>
                             <td class="text-end"><small>{{ '{:,.1f}'.format(d.core_hours) }}</small></td>
-                            <td class="text-end"><small>{{ '{:,.0f}'.format(d.charges) }}</small></td>
+                            <td class="text-end"><small>{{ d.charges | fmt_number }}</small></td>
                         </tr>
                         {% endfor %}
                         {% endif %}
@@ -245,9 +245,9 @@
                         <tr class="table-primary cursor-pointer fw-semibold" data-bs-toggle="collapse" data-bs-target="#month-days-{{ mid }}" aria-expanded="false">
                             <td>{{ month_key }} <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i></td>
                             <td class="text-end">{{ ns.u | length }}</td>
-                            <td class="text-end">{{ '{:,}'.format(m_jobs) }}</td>
+                            <td class="text-end">{{ m_jobs | fmt_number }}</td>
                             <td class="text-end">{{ '{:,.1f}'.format(m_core_hours) }}</td>
-                            <td class="text-end">{{ '{:,.0f}'.format(m_charges) }}</td>
+                            <td class="text-end">{{ m_charges | fmt_number }}</td>
                         </tr>
                     </tbody>
                     <tbody class="collapse" id="month-days-{{ mid }}">
@@ -259,17 +259,17 @@
                                 <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
                             </td>
                             <td class="text-end">{{ day.user_count }}</td>
-                            <td class="text-end">{{ '{:,}'.format(day.jobs) }}</td>
+                            <td class="text-end">{{ day.jobs | fmt_number }}</td>
                             <td class="text-end">{{ '{:,.1f}'.format(day.core_hours) }}</td>
-                            <td class="text-end">{{ '{:,.0f}'.format(day.charges) }}</td>
+                            <td class="text-end">{{ day.charges | fmt_number }}</td>
                         </tr>
                         {% for sub in day.rows %}
                         <tr class="collapse table-light" id="day-detail-{{ did }}">
                             <td class="ps-5 text-muted"><i class="fas fa-angle-right me-1"></i><code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em></td>
                             <td></td>
-                            <td class="text-end"><small>{{ '{:,}'.format(sub.total_jobs) }}</small></td>
+                            <td class="text-end"><small>{{ sub.total_jobs | fmt_number }}</small></td>
                             <td class="text-end"><small>{{ '{:,.1f}'.format(sub.total_core_hours) }}</small></td>
-                            <td class="text-end"><small>{{ '{:,.0f}'.format(sub.total_charges) }}</small></td>
+                            <td class="text-end"><small>{{ sub.total_charges | fmt_number }}</small></td>
                         </tr>
                         {% endfor %}
                         {% endfor %}
@@ -286,9 +286,9 @@
                                 <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
                             </td>
                             <td class="text-end">{{ day.user_count }}</td>
-                            <td class="text-end">{{ '{:,}'.format(day.jobs) }}</td>
+                            <td class="text-end">{{ day.jobs | fmt_number }}</td>
                             <td class="text-end">{{ '{:,.1f}'.format(day.core_hours) }}</td>
-                            <td class="text-end">{{ '{:,.0f}'.format(day.charges) }}</td>
+                            <td class="text-end">{{ day.charges | fmt_number }}</td>
                         </tr>
                     </tbody>
                     <tbody class="collapse" id="day-detail-{{ did }}">
@@ -296,9 +296,9 @@
                         <tr class="table-light">
                             <td class="ps-4 text-muted"><i class="fas fa-angle-right me-1"></i><code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em></td>
                             <td></td>
-                            <td class="text-end">{{ '{:,}'.format(sub.total_jobs) }}</td>
+                            <td class="text-end">{{ sub.total_jobs | fmt_number }}</td>
                             <td class="text-end">{{ '{:,.1f}'.format(sub.total_core_hours) }}</td>
-                            <td class="text-end">{{ '{:,.0f}'.format(sub.total_charges) }}</td>
+                            <td class="text-end">{{ sub.total_charges | fmt_number }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

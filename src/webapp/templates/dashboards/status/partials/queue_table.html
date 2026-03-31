@@ -35,9 +35,9 @@
                 <td>{{ queue.running_jobs }}</td>
                 <td>{{ queue.pending_jobs }}</td>
                 <td>{{ queue.held_jobs }}</td>
-                <td>{{ '{:,}'.format(queue.cores_allocated) }}</td>
-                <td>{{ '{:,}'.format(queue.cores_pending) }}</td>
-                <td>{{ '{:,}'.format(queue.cores_held) }}</td>
+                <td>{{ queue.cores_allocated | fmt_number }}</td>
+                <td>{{ queue.cores_pending | fmt_number }}</td>
+                <td>{{ queue.cores_held | fmt_number }}</td>
                 {% if show_gpus %}<td>{{ queue.gpus_allocated }}</td>{% endif %}
                 {% if show_gpus %}<td>{{ queue.gpus_pending }}</td>{% endif %}
                 {% if show_gpus %}<td>{{ queue.gpus_held }}</td>{% endif %}

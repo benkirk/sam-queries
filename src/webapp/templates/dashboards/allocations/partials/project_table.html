@@ -38,13 +38,13 @@
                 </button>
             </td>
             <td data-sort-value="{{ project['title'] or '' }}">{{ project['title'] if project['title'] else 'N/A' }}</td>
-            <td data-sort-value="{{ project['total_amount'] }}">{{ "{:,.0f}".format(project['total_amount']) }}</td>
+            <td data-sort-value="{{ project['total_amount'] }}">{{ project['total_amount'] | fmt_number }}</td>
             <td data-sort-value="{{ project['annualized_rate'] if project['annualized_rate'] is not none else project['total_amount'] if resource_type in ['DISK', 'ARCHIVE'] else 0 }}">
                 {% if resource_type in ['DISK', 'ARCHIVE'] %}
-                    {{ "{:,.0f}".format(project['total_amount']) }}
+                    {{ project['total_amount'] | fmt_number }}
                 {% else %}
                     {% if project['annualized_rate'] is not none %}
-                        {{ "{:,.0f}".format(project['annualized_rate']) }}
+                        {{ project['annualized_rate'] | fmt_number }}
                     {% else %}
                         N/A
                     {% endif %}
@@ -57,10 +57,10 @@
                     <div class="progress-bar {% if pct >= 90 %}bg-danger{% elif pct >= 75 %}bg-warning{% else %}bg-success{% endif %}"
                          role="progressbar"
                          style="width: {{ [pct, 100]|min }}%">
-                        {{ "%.0f"|format(pct) }}%
+                        {{ pct | fmt_pct(decimals=0) }}
                     </div>
                 </div>
-                <small class="text-muted">{{ "{:,.0f}".format(project['total_used']) }} used</small>
+                <small class="text-muted">{{ project['total_used'] | fmt_number }} used</small>
                 {% else %}
                 <span class="text-muted small">N/A</span>
                 {% endif %}
@@ -106,14 +106,14 @@
                              role="progressbar" style="width:{{ elapsed_pct }}%;"></div>
                     </div>
                     <div class="d-flex justify-content-between">
-                        <small class="text-muted">{{ sd.strftime('%Y-%m-%d') if sd else '?' }}</small>
+                        <small class="text-muted">{{ sd | fmt_date if sd else '?' }}</small>
                         <small>
                             {% if bar_state == 'expired' %}<span class="badge bg-secondary" style="font-size:.7em;">Expired</span>
                             {% elif bar_state == 'open-ended' %}<span class="badge bg-info text-dark" style="font-size:.7em;">Open-ended</span>
                             {% elif bar_state == 'active' %}<span class="text-muted">{{ sort_remaining }}d left</span>
                             {% else %}<span class="text-muted">—</span>{% endif %}
                         </small>
-                        <small class="text-muted">{% if ed %}{{ ed.strftime('%Y-%m-%d') }}{% elif open_ended %}∞{% else %}?{% endif %}</small>
+                        <small class="text-muted">{% if ed %}{{ ed | fmt_date }}{% elif open_ended %}∞{% else %}?{% endif %}</small>
                     </div>
                 {% endif %}
             </td>
