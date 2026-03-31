@@ -8,9 +8,7 @@
    hx-on::after-request="document.getElementById('projectSearchResults').innerHTML = ''; document.getElementById('projectSearchInput').value = '';">
     <div>
         <strong>{{ project.projcode }}</strong>
-        {% if project.active %}
-        <span class="badge bg-success ms-2">Active</span>
-        {% else %}
+        {% if not project.active %}
         <span class="badge bg-secondary ms-2">Inactive</span>
         {% endif %}
     </div>
