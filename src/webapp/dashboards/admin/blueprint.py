@@ -1461,15 +1461,19 @@ def htmx_organizations_card():
     Contract Sources, Contracts, NSF Programs.
     Lazy-loaded when the Organization collapsible section is first expanded.
     """
-    from sam.core.organizations import Organization, Institution, InstitutionType
+    from sam.core.organizations import Organization, Institution, InstitutionType, UserInstitution
     from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
     from sam.projects.contracts import Contract, ContractSource, NSFProgram
-    from sqlalchemy.orm import subqueryload
+    from sam.projects.projects import Project
+    from sqlalchemy.orm import subqueryload, selectinload, lazyload
 
     active_only = request.args.get('active_only') == '1'
     now = datetime.now()
 
-    org_q = db.session.query(Organization).options(subqueryload(Organization.children))
+    org_q = db.session.query(Organization).options(
+        subqueryload(Organization.children),
+        selectinload(Organization.users),           # org.users|length accessed in template
+    )
     if active_only:
         org_q = org_q.filter(Organization.is_active)
     organizations = org_q.all()
@@ -1492,16 +1496,43 @@ def htmx_organizations_card():
 
     org_tree = _dfs(None, 0)
 
-    # InstitutionType and Institution have no active flag — always show all
-    institution_types = db.session.query(InstitutionType).order_by(InstitutionType.type).all()
-    institutions = db.session.query(Institution).order_by(Institution.name).all()
+    # InstitutionType and Institution have no active flag — always show all.
+    # The template sorts inst.users by sort(attribute='user.username'), so we must
+    # chain all the way to User. Suppress User.accounts and User.email_addresses
+    # selectin cascades (lazy='selectin' on both) with per-query lazyload overrides.
+    # Note: sibling options on the same entity need separate chain arguments — you
+    # cannot chain .lazyload(User.email_addresses) after .lazyload(User.accounts)
+    # because that would try to link email_addresses from AccountUser, not from User.
+    institution_types = db.session.query(InstitutionType).options(
+        selectinload(InstitutionType.institutions)
+            .selectinload(Institution.users)
+            .selectinload(UserInstitution.user)
+            .lazyload(User.accounts),
+        selectinload(InstitutionType.institutions)
+            .selectinload(Institution.users)
+            .selectinload(UserInstitution.user)
+            .lazyload(User.email_addresses),
+    ).order_by(InstitutionType.type).all()
+    institutions = db.session.query(Institution).options(
+        selectinload(Institution.users)
+            .selectinload(UserInstitution.user)
+            .lazyload(User.accounts),
+        selectinload(Institution.users)
+            .selectinload(UserInstitution.user)
+            .lazyload(User.email_addresses),
+    ).order_by(Institution.name).all()
 
-    aoi_group_q = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name)
+    aoi_group_q = db.session.query(AreaOfInterestGroup).options(
+        selectinload(AreaOfInterestGroup.areas),    # g.areas|length accessed in template
+    ).order_by(AreaOfInterestGroup.name)
     if active_only:
         aoi_group_q = aoi_group_q.filter(AreaOfInterestGroup.is_active)
     aoi_groups = aoi_group_q.all()
 
-    aoi_q = db.session.query(AreaOfInterest).order_by(AreaOfInterest.area_of_interest)
+    aoi_q = db.session.query(AreaOfInterest).options(
+        # Suppress Project.accounts lazy='selectin' cascade — we only need len(a.projects)
+        selectinload(AreaOfInterest.projects).lazyload(Project.accounts),
+    ).order_by(AreaOfInterest.area_of_interest)
     if active_only:
         aoi_q = aoi_q.filter(AreaOfInterest.is_active)
     aois = aoi_q.all()
@@ -1511,12 +1542,20 @@ def htmx_organizations_card():
         cs_q = cs_q.filter(ContractSource.is_active)
     contract_sources = cs_q.all()
 
-    contract_q = db.session.query(Contract).order_by(Contract.contract_number)
+    contract_q = db.session.query(Contract).options(
+        # c.principal_investigator.username in template; suppress User cascade selectins
+        selectinload(Contract.principal_investigator)
+            .lazyload(User.accounts),
+        selectinload(Contract.principal_investigator)
+            .lazyload(User.email_addresses),
+    ).order_by(Contract.contract_number)
     if active_only:
         contract_q = contract_q.filter(Contract.is_active)
     contracts = contract_q.all()
 
-    nsf_q = db.session.query(NSFProgram).order_by(NSFProgram.nsf_program_name)
+    nsf_q = db.session.query(NSFProgram).options(
+        selectinload(NSFProgram.contracts),         # p.contracts|length accessed in template
+    ).order_by(NSFProgram.nsf_program_name)
     if active_only:
         nsf_q = nsf_q.filter(NSFProgram.is_active)
     nsf_programs = nsf_q.all()
