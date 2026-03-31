@@ -54,6 +54,7 @@
                         <tr>
                             <th>Organization</th>
                             <th>Description</th>
+                            <th>Mnemonic</th>
                             <th># Users</th>
                             <th class="text-end">Actions</th>
                         </tr>
@@ -75,6 +76,11 @@
                                 <span class="ms-1">{{ org.name }}</span>
                             </td>
                             <td class="text-muted small">{{ org.description or '—' }}</td>
+                            <td>
+                                {% set mc = org_to_mnemonic.get(org.organization_id) %}
+                                {% if mc %}<span class="badge bg-primary font-monospace">{{ mc }}</span>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
                             <td>{{ org.users|length }}</td>
                             <td class="text-end">
                                 {% if is_admin %}
@@ -111,7 +117,7 @@
                             <th>Name / Acronym</th>
                             <th>Count</th>
                             <th>City</th>
-                            <th>Code</th>
+                            <th>Mnemonic</th>
                             <th># Users</th>
                             <th class="text-end">Actions</th>
                         </tr>
@@ -169,7 +175,11 @@
                             </td>
                             <td></td>
                             <td class="text-muted small">{{ inst.city or '—' }}</td>
-                            <td class="text-muted small">{{ inst.code or '—' }}</td>
+                            <td>
+                                {% set mc = inst_to_mnemonic.get(inst.institution_id) %}
+                                {% if mc %}<span class="badge bg-primary font-monospace">{{ mc }}</span>
+                                {% else %}<span class="badge bg-warning text-dark" title="No mnemonic match — project routing may fail"><i class="fas fa-exclamation-triangle"></i> Missing</span>{% endif %}
+                            </td>
                             <td class="text-muted small">{{ inst.users|length }}</td>
                             <td class="text-end" onclick="event.stopPropagation();">
                                 {% if is_admin %}

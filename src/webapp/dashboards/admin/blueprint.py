@@ -1561,6 +1561,27 @@ def htmx_organizations_card():
         nsf_q = nsf_q.filter(NSFProgram.is_active)
     nsf_programs = nsf_q.all()
 
+    # Resolve MnemonicCodes via "soft link" string matching (same strategy as legacy Java).
+    # Load all active codes once (336 rows) then do Python-side lookups — no N+1.
+    from sam.core.organizations import MnemonicCode
+    _mc_lookup = {
+        mc.description: mc.code
+        for mc in db.session.query(MnemonicCode).filter(MnemonicCode.is_active).all()
+    }
+    # Institutions: match "Name, City" first, fall back to "Name" alone
+    inst_to_mnemonic = {
+        inst.institution_id: (
+            _mc_lookup.get(f"{inst.name}, {inst.city}" if inst.city else inst.name)
+            or _mc_lookup.get(inst.name)
+        )
+        for inst in institutions
+    }
+    # Organizations: match by name only (UserOrganizationStrategy)
+    org_to_mnemonic = {
+        org.organization_id: _mc_lookup.get(org.name)
+        for org in organizations
+    }
+
     return render_template(
         'dashboards/admin/fragments/organization_card.html',
         organizations=organizations,
@@ -1572,6 +1593,8 @@ def htmx_organizations_card():
         contract_sources=contract_sources,
         contracts=contracts,
         nsf_programs=nsf_programs,
+        inst_to_mnemonic=inst_to_mnemonic,
+        org_to_mnemonic=org_to_mnemonic,
         is_admin=True,
         now=now,
         active_only=active_only,
