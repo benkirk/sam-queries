@@ -7,43 +7,27 @@ via configuration without code changes.
 Available providers:
 - StubAuthProvider: Development/testing authentication (accepts any password)
 - LDAPAuthProvider: LDAP authentication (future implementation)
-- SAMLAuthProvider: SAML SSO authentication (future implementation)
+- OIDCAuthProvider: OpenID Connect SSO via Authlib (Microsoft Entra, CILogon, etc.)
 """
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional
 from sam.core.users import User
 from sam.queries.lookups import find_user_by_username
 
+logger = logging.getLogger(__name__)
+
 
 class AuthProvider(ABC):
-    """
-    Abstract base class for authentication providers.
-
-    All authentication providers must implement these methods.
-    """
+    """Abstract base class for authentication providers."""
 
     def __init__(self, db_session):
-        """
-        Initialize the provider with database session access.
-
-        Args:
-            db_session: SQLAlchemy session (Flask-SQLAlchemy db.session)
-        """
         self.db_session = db_session
 
     @abstractmethod
     def authenticate(self, username: str, password: str) -> Optional[User]:
-        """
-        Authenticate user credentials.
-
-        Args:
-            username: Username to authenticate
-            password: Password to verify
-
-        Returns:
-            SAM User object if authentication succeeds, None otherwise
-        """
+        """Authenticate user with username/password credentials."""
         pass
 
     @abstractmethod
@@ -51,162 +35,143 @@ class AuthProvider(ABC):
         """Return True if this provider allows password changes."""
         pass
 
+    def supports_redirect_auth(self) -> bool:
+        """Override to True for SSO providers that use redirect-based auth."""
+        return False
+
+    def initiate_login(self, redirect_uri: str):
+        """SSO providers: return a redirect response to the IdP."""
+        raise NotImplementedError("This provider does not support redirect-based auth")
+
+    def handle_callback(self) -> Optional[User]:
+        """SSO providers: process the IdP callback and resolve a SAM user."""
+        raise NotImplementedError("This provider does not support redirect-based auth")
+
 
 class StubAuthProvider(AuthProvider):
     """
     Stub authentication provider for development and testing.
 
-    WARNING: This provider accepts ANY non-empty password for existing users.
+    WARNING: Accepts ANY non-empty password for existing users.
     DO NOT use in production!
-
-    Features:
-    - Authenticates any existing SAM user with any password
-    - Useful for RBAC testing without enterprise auth setup
-    - Can be configured to require specific test passwords
     """
 
     def __init__(self, db_session, require_password: str = None):
-        """
-        Initialize stub auth provider.
-
-        Args:
-            db_session: SQLAlchemy session
-            require_password: Optional password to require (default: accept any)
-        """
         super().__init__(db_session)
         self.require_password = require_password
 
     def authenticate(self, username: str, password: str) -> Optional[User]:
-        """
-        Stub authentication - accepts any password for existing users.
-
-        Args:
-            username: Username to authenticate
-            password: Password (ignored in default stub mode)
-
-        Returns:
-            User object if user exists in database, None otherwise
-        """
-        # Check password if required
         if self.require_password and password != self.require_password:
             return None
-
-        # Otherwise just check if password is non-empty
         if not password:
             return None
 
-        # Look up user in SAM database
         user = find_user_by_username(self.db_session, username)
-
-        # Only authenticate active, non-locked users
         if user and user.active and not user.locked:
             return user
-
         return None
 
     def supports_password_change(self) -> bool:
-        """Stub provider does not support password changes."""
         return False
 
 
 class LDAPAuthProvider(AuthProvider):
-    """
-    LDAP authentication provider (future implementation).
-
-    Will support:
-    - LDAP bind authentication
-    - User attribute syncing
-    - Group mapping to SAM roles
-    """
+    """LDAP authentication provider (future implementation)."""
 
     def __init__(self, db_session, ldap_url: str, base_dn: str, **kwargs):
-        """
-        Initialize LDAP provider.
-
-        Args:
-            db_session: SQLAlchemy session
-            ldap_url: LDAP server URL (e.g., 'ldap://ldap.example.org')
-            base_dn: Base DN for user searches (e.g., 'ou=users,dc=example,dc=org')
-            **kwargs: Additional LDAP configuration
-        """
         super().__init__(db_session)
         self.ldap_url = ldap_url
         self.base_dn = base_dn
         self.config = kwargs
 
     def authenticate(self, username: str, password: str) -> Optional[User]:
-        """
-        Authenticate against LDAP server.
-
-        TODO: Implement LDAP bind and user sync.
-        """
         raise NotImplementedError("LDAP authentication not yet implemented")
 
     def supports_password_change(self) -> bool:
-        """LDAP passwords are managed externally."""
         return False
 
 
-class SAMLAuthProvider(AuthProvider):
+class OIDCAuthProvider(AuthProvider):
     """
-    SAML SSO authentication provider (future implementation).
+    OpenID Connect authentication via Authlib.
 
-    Will support:
-    - SAML 2.0 assertions
-    - Shibboleth integration
-    - Attribute-based role mapping
+    Uses redirect-based authorization code flow with PKCE.
+    Resolves OIDC claims to existing SAM users (no auto-provisioning).
     """
 
-    def __init__(self, db_session, entity_id: str, sso_url: str, **kwargs):
-        """
-        Initialize SAML provider.
-
-        Args:
-            db_session: SQLAlchemy session
-            entity_id: SAML entity ID
-            sso_url: SSO service URL
-            **kwargs: Additional SAML configuration
-        """
+    def __init__(self, db_session, oauth_client=None, username_claim: str = 'preferred_username'):
         super().__init__(db_session)
-        self.entity_id = entity_id
-        self.sso_url = sso_url
-        self.config = kwargs
+        self.oauth_client = oauth_client
+        self.username_claim = username_claim
 
     def authenticate(self, username: str, password: str) -> Optional[User]:
-        """
-        SAML authentication (redirects to SSO, doesn't use username/password directly).
-
-        TODO: Implement SAML assertion validation.
-        """
-        raise NotImplementedError("SAML authentication not yet implemented")
+        raise NotImplementedError("OIDC uses redirect-based auth, not password auth")
 
     def supports_password_change(self) -> bool:
-        """SAML uses external identity provider."""
         return False
 
+    def supports_redirect_auth(self) -> bool:
+        return True
 
-# Factory function for getting configured provider
+    def initiate_login(self, redirect_uri: str):
+        """Redirect the user to the OIDC IdP authorization endpoint."""
+        return self.oauth_client.authorize_redirect(redirect_uri)
+
+    def handle_callback(self) -> Optional[User]:
+        """Exchange the authorization code for tokens, validate, and resolve SAM user."""
+        token = self.oauth_client.authorize_access_token()
+        userinfo = token.get('userinfo', {})
+        if not userinfo:
+            logger.warning("OIDC callback: no userinfo in token response")
+            return None
+        return self.resolve_user_from_claims(userinfo)
+
+    def resolve_user_from_claims(self, claims: dict) -> Optional[User]:
+        """Map OIDC claims to an existing SAM User.
+
+        Resolution order:
+        1. username_claim (default: preferred_username)
+        2. email prefix (before @)
+        """
+        username = claims.get(self.username_claim)
+        if not username:
+            email = claims.get('email', '')
+            username = email.split('@')[0] if email else None
+
+        if not username:
+            logger.warning("OIDC claims missing both '%s' and 'email': %s",
+                           self.username_claim, list(claims.keys()))
+            return None
+
+        user = find_user_by_username(self.db_session, username)
+        if not user:
+            logger.warning("OIDC login denied: SAM user '%s' not found", username)
+            return None
+        if not user.active or user.locked:
+            logger.warning("OIDC login denied: SAM user '%s' is inactive or locked", username)
+            return None
+
+        logger.info("OIDC login success: '%s' resolved from claim '%s'",
+                     username, self.username_claim)
+        return user
+
+
 def get_auth_provider(provider_type: str = 'stub', db_session=None, **config):
     """
     Get an authentication provider instance.
 
     Args:
-        provider_type: Type of provider ('stub', 'ldap', 'saml')
+        provider_type: Type of provider ('stub', 'ldap', 'oidc')
         db_session: SQLAlchemy session
         **config: Provider-specific configuration
 
     Returns:
         Configured AuthProvider instance
-
-    Example:
-        >>> from webapp.extensions import db
-        >>> provider = get_auth_provider('stub', db_session=db.session)
-        >>> user = provider.authenticate('johndoe', 'any-password')
     """
     providers = {
         'stub': StubAuthProvider,
         'ldap': LDAPAuthProvider,
-        'saml': SAMLAuthProvider,
+        'oidc': OIDCAuthProvider,
     }
 
     if provider_type not in providers:

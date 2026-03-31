@@ -1,12 +1,12 @@
 """
 Authentication module for SAM Web UI.
 
-Provides pluggable authentication providers (stub, LDAP, SAML, etc.)
+Provides pluggable authentication providers (stub, LDAP, OIDC)
 and Flask-Login integration.
 """
 
 from .models import AuthUser
-from .providers import get_auth_provider
+from .providers import get_auth_provider, OIDCAuthProvider
 from .blueprint import bp
 
-__all__ = ['AuthUser', 'get_auth_provider', 'bp']
+__all__ = ['AuthUser', 'get_auth_provider', 'OIDCAuthProvider', 'bp']

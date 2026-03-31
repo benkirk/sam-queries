@@ -76,3 +76,24 @@ variable "flask_secret_key" {
   type        = string
   sensitive   = true
 }
+
+variable "oidc_client_id" {
+  description = "OIDC client ID from Microsoft Entra app registration"
+  type        = string
+  sensitive   = true
+  default     = "placeholder"
+}
+
+variable "oidc_client_secret" {
+  description = "OIDC client secret from Microsoft Entra app registration"
+  type        = string
+  sensitive   = true
+  default     = "placeholder"
+}
+
+variable "oidc_issuer" {
+  description = "OIDC issuer URL (e.g. https://login.microsoftonline.com/{tenant-id}/v2.0)"
+  type        = string
+  sensitive   = true
+  default     = "placeholder"
+}
