@@ -165,6 +165,10 @@ def create_app():
     app.register_blueprint(api_allocations_bp, url_prefix='/api/v1/allocations')
     app.register_blueprint(api_health_bp, url_prefix='/api/v1/health')
 
+    # Register centralized formatting filters (fmt_number, fmt_pct, fmt_date, fmt_size)
+    import sam.fmt as fmt
+    fmt.register_jinja_filters(app)
+
     # Initialize Flask-Admin
     init_admin(app)
 

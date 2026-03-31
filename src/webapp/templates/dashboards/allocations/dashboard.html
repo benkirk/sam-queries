@@ -174,17 +174,17 @@
                             <i class="fas fa-chevron-right expand-icon"></i>
                         </td>
                         <td><strong>{{ facility_name }}</strong></td>
-                        <td>{{ "{:,.0f}".format(facility_data.total_amount) }}</td>
+                        <td>{{ facility_data.total_amount | fmt_number }}</td>
                         <td>
                             {% if is_storage %}
                                 <span class="text-muted">—</span>
                             {% else %}
-                                {{ "{:,.0f}".format(facility_data.annualized_rate) }}
+                                {{ facility_data.annualized_rate | fmt_number }}
                             {% endif %}
                         </td>
                         <td>{{ facility_data.count }}</td>
                         <td class="text-muted">—</td>
-                        <td>{{ "%.1f"|format(facility_data.percent) }}%</td>
+                        <td>{{ facility_data.percent | fmt_pct }}</td>
                     </tr>
 
                     <!-- Allocation Type Rows (hidden; expand icon in col 1, type name in col 2) -->
@@ -197,14 +197,14 @@
                             <i class="fas fa-chevron-right expand-icon"></i>
                         </td>
                         <td class="ps-4"><strong>{{ type_data.allocation_type }}</strong></td>
-                        <td>{{ "{:,.0f}".format(type_data.total_amount) }}</td>
+                        <td>{{ type_data.total_amount | fmt_number }}</td>
                         {% set type_rate = type_annualized_rates.get((resource_name, facility_name, type_data.allocation_type)) %}
-                        <td>{% if type_rate and not is_storage %}{{ "{:,.0f}".format(type_rate) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        <td>{% if type_rate and not is_storage %}{{ type_rate | fmt_number }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td>{{ type_data.count }}</td>
-                        <td>{{ "{:,.0f}".format(type_data.avg_amount) }}</td>
+                        <td>{{ type_data.avg_amount | fmt_number }}</td>
                         <td>
                             {% if type_rate and facility_data.annualized_rate and not is_storage %}
-                                {{ "%.1f"|format(type_rate / facility_data.annualized_rate * 100) }}%
+                                {{ (type_rate / facility_data.annualized_rate * 100) | fmt_pct }}
                             {% else %}
                                 <span class="text-muted">—</span>
                             {% endif %}
@@ -231,10 +231,10 @@
                     <tr class="alloc-type-subtotal-row table-secondary" data-fac-id="{{ fac_id }}">
                         <th></th>
                         <th class="ps-4">Subtotal</th>
-                        <th>{{ "{:,.0f}".format(total_allocated) }}</th>
-                        <th>{% if not is_storage %}{{ "{:,.0f}".format(facility_data.annualized_rate) }}{% else %}<span class="text-muted">—</span>{% endif %}</th>
+                        <th>{{ total_allocated | fmt_number }}</th>
+                        <th>{% if not is_storage %}{{ facility_data.annualized_rate | fmt_number }}{% else %}<span class="text-muted">—</span>{% endif %}</th>
                         <th>{{ total_count }}</th>
-                        <th>{{ "{:,.0f}".format(total_allocated / total_count if total_count > 0 else 0) }}</th>
+                        <th>{{ (total_allocated / total_count if total_count > 0 else 0) | fmt_number }}</th>
                         <th class="text-muted">—</th>
                     </tr>
                     {% endif %}

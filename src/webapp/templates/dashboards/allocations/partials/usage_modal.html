@@ -20,12 +20,12 @@
             <div class="row">
                 <div class="col-md-4">
                     <strong>Start Date:</strong><br>
-                    {{ allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else 'N/A' }}
+                    {{ allocation.start_date | fmt_date }}
                 </div>
                 <div class="col-md-4">
                     <strong>End Date:</strong><br>
                     {% if allocation.end_date %}
-                        {{ allocation.end_date.strftime('%Y-%m-%d') }}
+                        {{ allocation.end_date | fmt_date }}
                     {% elif allocation.is_open_ended %}
                         <span class="badge bg-info text-dark">Open-ended</span>
                     {% else %}
@@ -56,22 +56,22 @@
             <div class="row mb-3">
                 <div class="col-md-3">
                     <div class="text-muted small">Allocated</div>
-                    <div class="h5 mb-0">{{ "{:,.0f}".format(allocation.total_allocated) }}</div>
+                    <div class="h5 mb-0">{{ allocation.total_allocated | fmt_number }}</div>
                 </div>
                 <div class="col-md-3">
                     <div class="text-muted small">Used</div>
-                    <div class="h5 mb-0">{{ "{:,.0f}".format(allocation.total_used) }}</div>
+                    <div class="h5 mb-0">{{ allocation.total_used | fmt_number }}</div>
                 </div>
                 <div class="col-md-3">
                     <div class="text-muted small">Remaining</div>
-                    <div class="h5 mb-0">{{ "{:,.0f}".format(allocation.total_allocated - allocation.total_used) }}</div>
+                    <div class="h5 mb-0">{{ (allocation.total_allocated - allocation.total_used) | fmt_number }}</div>
                 </div>
                 <div class="col-md-3">
                     <div class="text-muted small">% Used</div>
                     <div class="h5 mb-0">
                         {% set percent = allocation.percent_used %}
                         <span class="badge bg-{% if percent >= 90 %}danger{% elif percent >= 75 %}warning text-dark{% else %}success{% endif %}">
-                            {{ "%.1f"|format(percent) }}%
+                            {{ percent | fmt_pct }}
                         </span>
                     </div>
                 </div>

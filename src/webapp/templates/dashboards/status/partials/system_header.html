@@ -3,7 +3,7 @@
     <h5>
         {{ title|safe }}
         <span class="float-end last-updated">
-            Last updated: {{ timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+            Last updated: {{ timestamp | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}
         </span>
     </h5>
 </div>

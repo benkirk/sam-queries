@@ -12,7 +12,7 @@ from cli.project.display import (
     display_notification_results,
     display_notification_preview
 )
-from sam import Project
+from sam import Project, fmt
 from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
     get_projects_with_expired_allocations,
@@ -269,7 +269,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
 
                 resources.append({
                     'resource_name': resource_name,
-                    'expiration_date': item['allocation'].end_date.strftime("%Y-%m-%d") if item['allocation'].end_date else 'N/A',
+                    'expiration_date': fmt.date_str(item['allocation'].end_date, null='N/A'),
                     'days_remaining': item['days_remaining'],
                     'allocated_amount': resource_usage.get('allocated', 0),
                     'used_amount': resource_usage.get('used', 0),

@@ -1,7 +1,7 @@
 """Display functions for project commands."""
 
 from cli.core.context import Context
-from sam import Project
+from sam import Project, fmt
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
@@ -70,13 +70,13 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
         if project.ext_alias:
             grid.add_row("External Alias", project.ext_alias)
         if project.creation_time:
-            grid.add_row("Created", project.creation_time.strftime("%Y-%m-%d %H:%M:%S"))
+            grid.add_row("Created", fmt.date_str(project.creation_time, fmt="%Y-%m-%d %H:%M:%S"))
         if project.modified_time:
-            grid.add_row("Modified", project.modified_time.strftime("%Y-%m-%d %H:%M:%S"))
+            grid.add_row("Modified", fmt.date_str(project.modified_time, fmt="%Y-%m-%d %H:%M:%S"))
         if project.membership_change_time:
-            grid.add_row("Membership Changed", project.membership_change_time.strftime("%Y-%m-%d %H:%M:%S"))
+            grid.add_row("Membership Changed", fmt.date_str(project.membership_change_time, fmt="%Y-%m-%d %H:%M:%S"))
         if project.inactivate_time:
-            grid.add_row("Inactivated", project.inactivate_time.strftime("%Y-%m-%d %H:%M:%S"))
+            grid.add_row("Inactivated", fmt.date_str(project.inactivate_time, fmt="%Y-%m-%d %H:%M:%S"))
 
         # Show latest allocation end date
         latest_end = None
@@ -85,7 +85,7 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
                 if alloc.end_date and (latest_end is None or alloc.end_date > latest_end):
                     latest_end = alloc.end_date
         if latest_end:
-            grid.add_row("Allocation End", latest_end.strftime("%Y-%m-%d"))
+            grid.add_row("Allocation End", fmt.date_str(latest_end))
 
     # Main Panel
     panel = Panel(grid, title=f"Project Information: [bold]{project.projcode}[/]{extra_title_info}", expand=False, border_style="green")
@@ -129,8 +129,8 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
                 # Format dates
                 start_date = resource_usage.get('start_date')
                 end_date = resource_usage.get('end_date')
-                start_str = start_date.strftime("%Y-%m-%d") if start_date else "N/A"
-                end_str = end_date.strftime("%Y-%m-%d") if end_date else "N/A"
+                start_str = fmt.date_str(start_date, null='N/A')
+                end_str   = fmt.date_str(end_date, null='N/A')
                 date_range = f"[{date_style}]{start_str}\n{end_str}[/]"
 
                 # Calculate percentage used styling
@@ -146,20 +146,24 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
                 # Format allocation amount
                 allocated = resource_usage.get('allocated', 0)
 
+                alloc_str     = fmt.number(allocated)
+                remaining_str = fmt.number(resource_usage['remaining'])
+                used_str      = fmt.number(resource_usage['used'])
                 row = [
                     f"[{resource_style}]{resource_name}{expired_indicator}[/]",
                     f"[{resource_style}]{resource_usage['resource_type']}[/]" if is_expired else resource_usage['resource_type'],
                     date_range,
-                    f"[{resource_style}]{allocated:,.0f}[/]" if is_expired else f"{allocated:,.0f}",
-                    f"[{resource_style}]{resource_usage['remaining']:,.0f}[/]" if is_expired else f"{resource_usage['remaining']:,.0f}",
-                    f"[{resource_style}]{resource_usage['used']:,.0f}[/]" if is_expired else f"{resource_usage['used']:,.0f}",
-                    f"[{pct_style}]{pct:,.1f}%[/]"
+                    f"[{resource_style}]{alloc_str}[/]" if is_expired else alloc_str,
+                    f"[{resource_style}]{remaining_str}[/]" if is_expired else remaining_str,
+                    f"[{resource_style}]{used_str}[/]" if is_expired else used_str,
+                    f"[{pct_style}]{fmt.pct(pct)}[/]"
                 ]
 
                 # Very verbose: add jobs and days remaining
                 if ctx.very_verbose:
                     jobs = resource_usage.get('total_jobs')
-                    row.append(f"[{resource_style}]{jobs:,}[/]" if jobs is not None and is_expired else (f"{jobs:,}" if jobs is not None else "N/A"))
+                    jobs_str = fmt.number(jobs) if jobs is not None else 'N/A'
+                    row.append(f"[{resource_style}]{jobs_str}[/]" if jobs is not None and is_expired else jobs_str)
                     row.append(f"[{resource_style}]{days_remaining}[/]" if days_remaining is not None and is_expired else (str(days_remaining) if days_remaining is not None else "N/A"))
 
                 alloc_table.add_row(*row)

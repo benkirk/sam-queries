@@ -343,6 +343,12 @@ body {
     transform: scale(1.01);
 }
 
+/* Date-bounds group header row in resources table */
+.date-group-header td {
+    background-color: #f1f3f5;
+    border-top: 2px solid #dee2e6 !important;
+}
+
 /* ============================================================================
    ALERTS
    ========================================================================= */

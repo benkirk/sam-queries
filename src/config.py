@@ -36,6 +36,12 @@ class SAMConfig:
     MAIL_PASSWORD     = os.getenv('MAIL_PASSWORD', '')
     MAIL_DEFAULT_FROM = os.getenv('MAIL_DEFAULT_FROM', 'sam-admin@ucar.edu')
 
+    # ------------------------------------------------------------ Formatting
+    # SAM_RAW_OUTPUT=1  → bypass compact notation; emit bare comma-separated numbers
+    # SAM_SIG_FIGS=3    → significant figures used by compact number / size display
+    SAM_RAW_OUTPUT = os.getenv('SAM_RAW_OUTPUT', 'false').lower() in ('true', '1', 'yes')
+    SAM_SIG_FIGS   = int(os.getenv('SAM_SIG_FIGS', '3'))
+
     # ---------------------------------------------------------------- Validate
     @classmethod
     def validate(cls):

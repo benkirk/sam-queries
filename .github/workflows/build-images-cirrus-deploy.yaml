@@ -1,4 +1,4 @@
-name: Build Docker Images and CIRRUS Deploy
+name: Publish Images and CIRRUS Deploy
 
 on:
   push:
@@ -48,7 +48,7 @@ jobs:
           DOCKERFILE[mysql]="containers/sam-sql-dev/Dockerfile"
           CONTEXT[mysql]="containers/sam-sql-dev"
           TARGET[mysql]=""
-          DEFAULT[mysql]="true"
+          DEFAULT[mysql]="false"
 
           DOCKERFILE[webapp]="containers/webapp/Dockerfile"
           CONTEXT[webapp]="."

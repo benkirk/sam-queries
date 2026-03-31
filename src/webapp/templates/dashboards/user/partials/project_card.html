@@ -98,8 +98,6 @@
             <thead class="thead-light">
                 <tr>
                     <th>Resource</th>
-                    <th>Start Date</th>
-                    <th>End Date</th>
                     <th>Allocated</th>
                     <th>Used</th>
                     <th>Remaining</th>
@@ -110,58 +108,89 @@
                 </tr>
             </thead>
             <tbody>
-                {% for resource in resources %}
-                    {% set percent = resource.percent_used | round(1) %}
-                    {% if percent >= 90 %}
-                        {% set progress_class = 'bg-danger' %}
-                    {% elif percent >= 75 %}
-                        {% set progress_class = 'bg-warning' %}
-                    {% else %}
-                        {% set progress_class = 'bg-success' %}
-                    {% endif %}
-
-                    {# Check if resource is expired #}
-                    {% set is_expired = resource.days_until_expiration is not none and resource.days_until_expiration < 0 %}
-                    {% set row_class = 'text-muted' if is_expired else '' %}
-
-                    <tr class="{% if show_clickable_rows %}resource-row cursor-pointer {% endif %}{{ row_class }}{% if is_expired %} expired-allocation{% endif %}"
-                        {% if show_clickable_rows %}onclick="location.href='{{ url_for('user_dashboard.resource_details', projcode=project.projcode, resource=resource.resource_name) }}'"{% endif %}>
-                        <td><strong>{{ resource.resource_name }}</strong></td>
-                        <td>{{ resource.start_date.strftime('%Y-%m-%d') if resource.start_date else 'N/A' }}</td>
-                        <td>{{ resource.end_date.strftime('%Y-%m-%d') if resource.end_date else 'N/A' }}</td>
-                        <td class="{% if not is_expired %}text-primary{% endif %}">{{ '{:,.0f}'.format(resource.allocated) }}</td>
-                        <td class="{% if not is_expired %}text-warning{% endif %}">{{ '{:,.0f}'.format(resource.used) }}</td>
-                        <td class="{% if not is_expired %}text-success{% endif %}">{{ '{:,.0f}'.format(resource.remaining) }}</td>
-                        <td>
-                            <div class="progress progress-large">
-                                <div class="progress-bar {{ progress_class }}"
-                                     role="progressbar"
-                                     style="width: {{ [0, [percent, 100] | min] | max }}%"
-                                     aria-valuenow="{{ percent }}"
-                                     aria-valuemin="0"
-                                     aria-valuemax="100">
-                                    {{ percent }}%
-                                </div>
-                            </div>
-                        </td>
-                        {% if can_edit_allocations %}
-                        <td class="text-center" onclick="event.stopPropagation();">
-                            {% if resource.allocation_id %}
-                            <button class="btn btn-xs btn-outline-primary"
-                                    title="Edit allocation"
-                                    data-bs-toggle="modal" data-bs-target="#editAllocationModal"
-                                    hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=resource.allocation_id) }}?projcode={{ project.projcode }}"
-                                    hx-target="#editAllocationFormContainer"
-                                    hx-swap="innerHTML"
-                                    onclick="event.stopPropagation()">
-                                <i class="fas fa-edit"></i>
-                            </button>
+                {% for key, group_resources in resources | groupby('date_group_key') %}
+                    {# ── Date-bounds group header ──────────────────────────────────── #}
+                    {% set first = group_resources | first %}
+                    {% set colspan = 6 if can_edit_allocations else 5 %}
+                    <tr class="date-group-header">
+                        <td colspan="{{ colspan }}" style="padding: 4px 10px;">
+                            {% if first.bar_state == 'no-dates' %}
+                                <span class="text-muted small">No date information</span>
                             {% else %}
-                            <span class="text-muted small">No allocation</span>
+                                <div class="progress progress-small mb-1">
+                                    <div class="progress-bar bg-secondary{% if first.bar_state in ['expired', 'open-ended'] %} opacity-50{% endif %}"
+                                         role="progressbar"
+                                         style="width: {{ first.elapsed_pct }}%;"></div>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">{{ first.start_date | fmt_date if first.start_date else '?' }}</small>
+                                    <small>
+                                        {% if first.bar_state == 'expired' %}
+                                            <span class="badge bg-secondary" style="font-size:.7em;">Expired</span>
+                                        {% elif first.bar_state == 'open-ended' %}
+                                            <span class="badge bg-info text-dark" style="font-size:.7em;">Open-ended</span>
+                                        {% elif first.days_until_expiration is not none and first.days_until_expiration >= 0 %}
+                                            <span class="text-muted small">{{ first.days_until_expiration }}d left</span>
+                                        {% endif %}
+                                    </small>
+                                    <small class="text-muted">{% if first.end_date %}{{ first.end_date | fmt_date }}{% elif first.bar_state == 'open-ended' %}∞{% else %}?{% endif %}</small>
+                                </div>
                             {% endif %}
                         </td>
-                        {% endif %}
                     </tr>
+
+                    {# ── Resource rows (no date columns) ──────────────────────────── #}
+                    {% for resource in group_resources %}
+                        {% set percent = resource.percent_used | round(1) %}
+                        {% if percent >= 90 %}
+                            {% set progress_class = 'bg-danger' %}
+                        {% elif percent >= 75 %}
+                            {% set progress_class = 'bg-warning' %}
+                        {% else %}
+                            {% set progress_class = 'bg-success' %}
+                        {% endif %}
+
+                        {# Check if resource is expired #}
+                        {% set is_expired = resource.days_until_expiration is not none and resource.days_until_expiration < 0 %}
+                        {% set row_class = 'text-muted' if is_expired else '' %}
+
+                        <tr class="{% if show_clickable_rows %}resource-row cursor-pointer {% endif %}{{ row_class }}{% if is_expired %} expired-allocation{% endif %}"
+                            {% if show_clickable_rows %}onclick="location.href='{{ url_for('user_dashboard.resource_details', projcode=project.projcode, resource=resource.resource_name) }}'"{% endif %}>
+                            <td><strong>{{ resource.resource_name }}</strong></td>
+                            <td class="{% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }}</td>
+                            <td class="{% if not is_expired %}text-warning{% endif %}">{{ resource.used | fmt_number }}</td>
+                            <td class="{% if not is_expired %}text-success{% endif %}">{{ resource.remaining | fmt_number }}</td>
+                            <td>
+                                <div class="progress progress-large">
+                                    <div class="progress-bar {{ progress_class }}"
+                                         role="progressbar"
+                                         style="width: {{ [0, [percent, 100] | min] | max }}%"
+                                         aria-valuenow="{{ percent }}"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100">
+                                        {{ percent | fmt_pct }}
+                                    </div>
+                                </div>
+                            </td>
+                            {% if can_edit_allocations %}
+                            <td class="text-center" onclick="event.stopPropagation();">
+                                {% if resource.allocation_id %}
+                                <button class="btn btn-xs btn-outline-primary"
+                                        title="Edit allocation"
+                                        data-bs-toggle="modal" data-bs-target="#editAllocationModal"
+                                        hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=resource.allocation_id) }}?projcode={{ project.projcode }}"
+                                        hx-target="#editAllocationFormContainer"
+                                        hx-swap="innerHTML"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% else %}
+                                <span class="text-muted small">No allocation</span>
+                                {% endif %}
+                            </td>
+                            {% endif %}
+                        </tr>
+                    {% endfor %}
                 {% endfor %}
             </tbody>
         </table>

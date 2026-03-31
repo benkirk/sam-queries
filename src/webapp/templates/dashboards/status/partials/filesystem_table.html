@@ -35,14 +35,14 @@
                         </td>
                         <td>
                             {% if fs.used_tb is not none %}
-                                {{ '{:,.0f}'.format(fs.used_tb) }}
+                                {{ fs.used_tb | fmt_number }}
                             {% else %}
                                 N/A
                             {% endif %}
                         </td>
                         <td>
                             {% if fs.capacity_tb is not none %}
-                                {{ '{:,.0f}'.format(fs.capacity_tb) }}
+                                {{ fs.capacity_tb | fmt_number }}
                             {% else %}
                                 N/A
                             {% endif %}
@@ -52,7 +52,7 @@
                             <div class="progress progress-large">
                                 <div class="progress-bar bg-{{ 'danger' if fs.utilization_percent >= 90 else 'warning' if fs.utilization_percent >= 75 else 'success' }}"
                                      style="width: {{ fs.utilization_percent }}%">
-                                    {{ fs.utilization_percent|round(1) }}%
+                                    {{ fs.utilization_percent | fmt_pct }}
                                 </div>
                             </div>
                             {% else %}
@@ -88,14 +88,14 @@
                         </td>
                         <td>
                             {% if fs.used_inodes is not none %}
-                                {{ '{:,.0f}'.format(fs.used_inodes) }}
+                                {{ fs.used_inodes | fmt_number }}
                             {% else %}
                                 N/A
                             {% endif %}
                         </td>
                         <td>
                             {% if fs.capacity_inodes is not none %}
-                                {{ '{:,.0f}'.format(fs.capacity_inodes) }}
+                                {{ fs.capacity_inodes | fmt_number }}
                             {% else %}
                                 N/A
                             {% endif %}
@@ -105,7 +105,7 @@
                             <div class="progress progress-large">
                                 <div class="progress-bar bg-{{ 'danger' if fs.inodes_utilization_percent >= 90 else 'warning' if fs.inodes_utilization_percent >= 75 else 'success' }}"
                                      style="width: {{ fs.inodes_utilization_percent }}%">
-                                    {{ fs.inodes_utilization_percent|round(1) }}%
+                                    {{ fs.inodes_utilization_percent | fmt_pct }}
                                 </div>
                             </div>
                             {% else %}

@@ -17,37 +17,59 @@
 {% endif %}
 {% endmacro %}
 
+{% macro _load_color(pct) %}{{ 'danger' if pct >= 90 else 'warning' if pct >= 75 else 'success' }}{% endmacro %}
+
 {% macro _render_login_table(nodes) %}
 <table class="table table-sm table-bordered">
     <thead class="thead-light">
         <tr>
             <th>Node</th>
-            <th>Status</th>
             <th>Users</th>
-            <th>Load (1, 5, 15 min)</th>
+            <th title="CPU load average — 1, 5, and 15 minute">Load avg</th>
         </tr>
     </thead>
     <tbody>
         {% for node in nodes %}
+        {% if node.available %}
         <tr>
-            <td><code>{{ node.node_name }}</code></td>
             <td>
-                <span class="status-badge status-{{ 'online' if node.available else 'offline' }}">
-                    {{ 'Online' if node.available else 'Offline' }}
-                </span>
+                <code>{{ node.node_name }}</code>
                 {% if node.degraded %}
-                <span class="badge bg-warning text-dark">Degraded</span>
+                <span class="badge bg-warning text-dark ms-1">Degraded</span>
                 {% endif %}
             </td>
             <td>{{ node.user_count if node.user_count is not none else 'N/A' }}</td>
             <td>
                 {% if node.load_1min is not none %}
-                    {{ '%.0f'|format(node.load_1min) }}%, {{ '%.0f'|format(node.load_5min) }}%, {{ '%.0f'|format(node.load_15min) }}%
+                {% set l1 = node.load_1min | round | int %}
+                {% set l5 = node.load_5min | round | int %}
+                {% set l15 = node.load_15min | round | int %}
+                <div class="load-stack"
+                     title="Load avg — 1min: {{ l1 }}%  5min: {{ l5 }}%  15min: {{ l15 }}%">
+                    <div class="progress">
+                        <div class="progress-bar bg-{{ _load_color(l1) }}" style="width:{{ [l1, 100] | min }}%"></div>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar bg-{{ _load_color(l5) }}" style="width:{{ [l5, 100] | min }}%"></div>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar bg-{{ _load_color(l15) }}" style="width:{{ [l15, 100] | min }}%"></div>
+                    </div>
+                </div>
+                {% if l1 > 100 or l5 > 100 or l15 > 100 %}
+                <div class="text-danger small lh-1 mt-1">{{ l1 }}% · {{ l5 }}% · {{ l15 }}%</div>
+                {% endif %}
                 {% else %}
-                    N/A
+                <span class="text-muted fst-italic">N/A</span>
                 {% endif %}
             </td>
         </tr>
+        {% else %}
+        <tr class="text-muted">
+            <td><code>{{ node.node_name }}</code></td>
+            <td colspan="2" class="fst-italic">Inaccessible</td>
+        </tr>
+        {% endif %}
         {% endfor %}
     </tbody>
 </table>

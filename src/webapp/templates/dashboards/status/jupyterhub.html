@@ -154,7 +154,7 @@
                             </div>
                         </div>
                         <div class="text-muted">
-                            {{ '{:,}'.format(cpus_used) }} / {{ '{:,}'.format(cpus_total) }} cores in use
+                            {{ cpus_used | fmt_number }} / {{ cpus_total | fmt_number }} cores in use
                         </div>
                     </div>
                 </div>
@@ -181,7 +181,7 @@
                             </div>
                         </div>
                         <div class="text-muted">
-                            {{ '{:,.0f}'.format(mem_used) }} / {{ '{:,.0f}'.format(mem_total) }} GB in use
+                            {{ mem_used | fmt_number }} / {{ mem_total | fmt_number }} GB in use
                         </div>
                     </div>
                 </div>
