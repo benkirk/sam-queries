@@ -31,7 +31,7 @@ jobs:
 
           # Target packages managed by this repo
           packages = [f"{repo}/mysql", f"{repo}/webapp", f"{repo}/collectors"]
-          
+
           # Retention policy
           keep_sha_count = 10
           protected_regex = re.compile(r"^(latest|main|staging|v[0-9].*)$")
@@ -61,27 +61,27 @@ jobs:
               print(f"\n=================================================")
               print(f"Processing package: {pkg}")
               pkg_encoded = urllib.parse.quote(pkg, safe="")
-              
+
               versions = fetch_versions(pkg_encoded)
               print(f"Found {len(versions)} versions.")
-              
+
               sha_count = 0
-              
+
               for v in versions:
                   v_id = v["id"]
                   tags = v.get("metadata", {}).get("container", {}).get("tags", [])
-                  
+
                   if not tags:
                       print(f"Deleting {v_id} (untagged)")
                       if delete_version(pkg_encoded, v_id):
                           total_deleted += 1
                       continue
-                      
+
                   # Keep if it matches protected tags
                   if any(protected_regex.match(t) for t in tags):
                       print(f"Keeping {v_id} (protected: {tags})")
                       continue
-                      
+
                   # Keep up to N recent sha- tags
                   if any(t.startswith("sha-") for t in tags):
                       if sha_count < keep_sha_count:
@@ -92,7 +92,7 @@ jobs:
                           if delete_version(pkg_encoded, v_id):
                               total_deleted += 1
                       continue
-                      
+
                   # Keep anything else we dont explicitly handle
                   print(f"Keeping {v_id} (unknown tags: {tags})")
 
