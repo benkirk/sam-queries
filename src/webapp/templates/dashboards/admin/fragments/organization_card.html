@@ -109,9 +109,10 @@
                     <thead class="table-light">
                         <tr>
                             <th>Name / Acronym</th>
+                            <th>Count</th>
                             <th>City</th>
                             <th>Code</th>
-                            <th># Users / Count</th>
+                            <th># Users</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -128,9 +129,10 @@
                                    style="transition: transform 0.2s;"></i>
                                 {{ it.type }}
                             </td>
-                            <td></td>
-                            <td></td>
                             <td class="text-muted small">{{ it.institutions|length }} institution{{ 's' if it.institutions|length != 1 else '' }}</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
                             <td class="text-end">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
@@ -150,17 +152,26 @@
                     {# ── Institution child rows (collapsed by default) ── #}
                     <tbody class="collapse" id="inst-type-{{ it.institution_type_id }}">
                         {% for inst in it.institutions | sort(attribute='name') %}
-                        <tr class="table-secondary">
+                        {# ── Institution row — clickable if it has users ── #}
+                        <tr class="table-secondary{% if inst.users %} cursor-pointer inst-expand-trigger{% endif %}"
+                            {% if inst.users %}data-inst-target="inst-users-{{ inst.institution_id }}"{% endif %}>
                             <td class="ps-4">
+                                {% if inst.users %}
+                                <i class="fas fa-chevron-right small text-muted me-1 inst-expand-icon"
+                                   style="transition: transform 0.2s;"></i>
+                                {% else %}
+                                <i class="fas fa-circle small me-1" style="font-size:0.35em; color:#ccc; vertical-align:middle;"></i>
+                                {% endif %}
                                 {{ inst.name }}
                                 {% if inst.acronym %}
                                 <span class="text-muted small ms-1">({{ inst.acronym }})</span>
                                 {% endif %}
                             </td>
+                            <td></td>
                             <td class="text-muted small">{{ inst.city or '—' }}</td>
                             <td class="text-muted small">{{ inst.code or '—' }}</td>
                             <td class="text-muted small">{{ inst.users|length }}</td>
-                            <td class="text-end">
+                            <td class="text-end" onclick="event.stopPropagation();">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
                                         data-bs-toggle="modal"
@@ -174,16 +185,34 @@
                                 {% endif %}
                             </td>
                         </tr>
+                        {# ── User sub-row (hidden by default, toggled via JS) ── #}
+                        {% if inst.users %}
+                        <tr id="inst-users-{{ inst.institution_id }}" style="display: none;">
+                            <td colspan="6" class="ps-5 pt-1 pb-2">
+                                {% for ui in inst.users | sort(attribute='user.username') %}
+                                <a href="#"
+                                   class="me-3 small text-decoration-none"
+                                   data-bs-toggle="modal"
+                                   data-bs-target="#userDetailsModal"
+                                   hx-get="{{ url_for('admin_dashboard.user_card', username=ui.user.username) }}"
+                                   hx-target="#userDetailsModalBody"
+                                   hx-swap="innerHTML">
+                                    <i class="fas fa-user fa-xs me-1 text-muted"></i>{{ ui.user.username }}
+                                </a>
+                                {% endfor %}
+                            </td>
+                        </tr>
+                        {% endif %}
                         {% else %}
                         <tr class="table-secondary">
-                            <td colspan="5" class="ps-4 text-muted fst-italic">No institutions of this type.</td>
+                            <td colspan="6" class="ps-4 text-muted fst-italic">No institutions of this type.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     {% endfor %}
                     {% else %}
                     <tbody>
-                        <tr><td colspan="5" class="text-center text-muted py-3">No institution types found.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted py-3">No institution types found.</td></tr>
                     </tbody>
                     {% endif %}
                 </table>
@@ -500,5 +529,18 @@
     attachChevronRotation('institutions-pane', 'inst-type-collapse-icon');
     attachChevronRotation('areas-pane', 'collapse-icon');
     attachChevronRotation('contracts-pane', 'contract-collapse-icon');
+
+    // Institution row expand/collapse (JS toggle — keeps user rows inside the parent
+    // tbody so they disappear naturally when the institution type is collapsed)
+    document.querySelectorAll('.inst-expand-trigger').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var userRow = document.getElementById(this.dataset.instTarget);
+            if (!userRow) return;
+            var icon = this.querySelector('.inst-expand-icon');
+            var isHidden = userRow.style.display === 'none';
+            userRow.style.display = isHidden ? '' : 'none';
+            if (icon) icon.style.transform = isHidden ? 'rotate(90deg)' : '';
+        });
+    });
 })();
 </script>

@@ -132,6 +132,7 @@
                         <tr>
                             <th class="sortable-header" data-sort="text">Name</th>
                             <th class="sortable-header" data-sort="text">Resource</th>
+                            <th class="sortable-header" data-sort="text">Type</th>
                             <th class="sortable-header" data-sort="numeric">CPUs/Node</th>
                             <th class="sortable-header" data-sort="text">Description</th>
                             <th class="sortable-header" data-sort="date">Commissioned</th>
@@ -147,6 +148,9 @@
                                 <span class="text-muted">
                                     {{ m.resource.resource_name if m.resource else '—' }}
                                 </span>
+                            </td>
+                            <td class="text-muted small" data-sort-value="{{ m.resource.resource_type.resource_type if m.resource and m.resource.resource_type else '' }}">
+                                {{ m.resource.resource_type.resource_type if m.resource and m.resource.resource_type else '—' }}
                             </td>
                             <td data-sort-value="{{ m.cpus_per_node or 0 }}">{{ m.cpus_per_node or '—' }}</td>
                             <td class="text-muted" data-sort-value="{{ m.description or '' }}">{{ m.description or '—' }}</td>
@@ -172,7 +176,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center text-muted py-3">No machines found.</td>
+                            <td colspan="8" class="text-center text-muted py-3">No machines found.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
