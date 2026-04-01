@@ -392,7 +392,7 @@ class UserInstitution(Base, TimestampMixin, DateRangeMixin):
 
 
 #----------------------------------------------------------------------------
-class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin):
+class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Mnemonic codes for project naming."""
     __tablename__ = 'mnemonic_code'
 
@@ -448,6 +448,29 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin):
             3-letter mnemonic string, or None if no match.
         """
         return lookup.get(org.name)
+
+    @classmethod
+    def create(cls, session, *, code: str, description: str) -> 'MnemonicCode':
+        """Create a new mnemonic code.
+
+        Args:
+            session: SQLAlchemy session.
+            code: 3-letter uppercase code (e.g. 'UCB').
+            description: Matching description string (e.g. 'University of Colorado, Boulder').
+
+        Returns:
+            New MnemonicCode instance (flushed, not committed).
+
+        Raises:
+            ValueError: if code is not exactly 3 uppercase letters.
+        """
+        import re
+        if not re.fullmatch(r'[A-Z]{3}', code):
+            raise ValueError(f"Code must be exactly 3 uppercase letters, got: {code!r}")
+        obj = cls(code=code, description=description, active=True)
+        session.add(obj)
+        session.flush()
+        return obj
 
     def __str__(self):
         return f"{self.code} - {self.description}"

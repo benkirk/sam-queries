@@ -555,6 +555,90 @@ def htmx_institution_create():
     return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
 
 
+# ── Mnemonic Code Create ───────────────────────────────────────────────────
+
+
+@bp.route('/htmx/mnemonic-code-create-form')
+@login_required
+@require_permission(Permission.CREATE_RESOURCES)
+def htmx_mnemonic_code_create_form():
+    """Return the mnemonic code create form fragment (loaded into modal)."""
+    from sam.core.organizations import Institution, Organization
+
+    prefill_description = request.args.get('description', '')
+
+    institutions = (
+        db.session.query(Institution)
+        .order_by(Institution.name)
+        .all()
+    )
+    organizations = (
+        db.session.query(Organization)
+        .filter(Organization.is_active)
+        .order_by(Organization.name)
+        .all()
+    )
+    return render_template(
+        'dashboards/admin/fragments/create_mnemonic_code_form_htmx.html',
+        institutions=institutions,
+        organizations=organizations,
+        prefill_description=prefill_description,
+    )
+
+
+@bp.route('/htmx/mnemonic-code-create', methods=['POST'])
+@login_required
+@require_permission(Permission.CREATE_RESOURCES)
+def htmx_mnemonic_code_create():
+    """Create a new mnemonic code."""
+    import re
+    from sam.core.organizations import Institution, MnemonicCode, Organization
+
+    errors = []
+    code = request.form.get('code', '').strip().upper()
+    description = request.form.get('description', '').strip()
+
+    if not code:
+        errors.append('Code is required.')
+    elif not re.fullmatch(r'[A-Z]{3}', code):
+        errors.append('Code must be exactly 3 uppercase letters (A–Z).')
+    elif db.session.query(MnemonicCode).filter_by(code=code).first():
+        errors.append(f'Code "{code}" already exists.')
+
+    if not description:
+        errors.append('Description is required.')
+    elif db.session.query(MnemonicCode).filter_by(description=description).first():
+        errors.append(f'Description "{description}" is already in use by another mnemonic code.')
+
+    def _reload_form(extra_errors=None):
+        institutions = db.session.query(Institution).order_by(Institution.name).all()
+        organizations = (
+            db.session.query(Organization)
+            .filter(Organization.is_active)
+            .order_by(Organization.name)
+            .all()
+        )
+        return render_template(
+            'dashboards/admin/fragments/create_mnemonic_code_form_htmx.html',
+            institutions=institutions,
+            organizations=organizations,
+            prefill_description='',
+            errors=(extra_errors or []) + errors,
+            form=request.form,
+        )
+
+    if errors:
+        return _reload_form()
+
+    try:
+        with management_transaction(db.session):
+            MnemonicCode.create(db.session, code=code, description=description)
+    except Exception as e:
+        return _reload_form([f'Error creating mnemonic code: {e}'])
+
+    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+
+
 # ── AOI Group Edit ─────────────────────────────────────────────────────────
 
 

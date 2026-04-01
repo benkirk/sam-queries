@@ -1,0 +1,120 @@
+{# htmx: Create Mnemonic Code Form #}
+<form hx-post="{{ url_for('admin_dashboard.htmx_mnemonic_code_create') }}"
+      hx-target="#createMnemonicCodeFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+    <div class="modal-body">
+        {# ── Code field ── #}
+        <div class="mb-3">
+            <label for="createMcCode" class="form-label">
+                Code <span class="text-danger">*</span>
+                <span class="text-muted small">(3 uppercase letters, e.g. <code>UCB</code>)</span>
+            </label>
+            <input type="text" class="form-control font-monospace text-uppercase"
+                   id="createMcCode" name="code" required maxlength="3"
+                   value="{{ (form.get('code') if form else '') | upper }}"
+                   placeholder="ABC"
+                   pattern="[A-Za-z]{3}"
+                   oninput="this.value = this.value.toUpperCase()"
+                   style="max-width: 8rem;">
+        </div>
+
+        {# ── Quick-fill from Institution ── #}
+        <div class="mb-3">
+            <label for="createMcInstitution" class="form-label">
+                Fill description from Institution <span class="text-muted">(optional)</span>
+            </label>
+            <select class="form-select" id="createMcInstitution"
+                    onchange="mnemonicFillDescription('institution', this)">
+                <option value="">— None —</option>
+                {% for inst in institutions %}
+                <option value="{{ inst.institution_id }}"
+                        data-description="{{ (inst.name ~ ', ' ~ inst.city) if inst.city else inst.name }}">
+                    {{ inst.name }}{% if inst.city %} ({{ inst.city }}){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            <div class="form-text">
+                Selects the description that will be matched for project routing (Name, City format if city is set).
+            </div>
+        </div>
+
+        {# ── Quick-fill from NCAR Organization ── #}
+        <div class="mb-3">
+            <label for="createMcOrganization" class="form-label">
+                Fill description from NCAR Organization <span class="text-muted">(optional)</span>
+            </label>
+            <select class="form-select" id="createMcOrganization"
+                    onchange="mnemonicFillDescription('organization', this)">
+                <option value="">— None —</option>
+                {% for org in organizations %}
+                <option value="{{ org.organization_id }}"
+                        data-description="{{ org.name }}">
+                    {{ org.name }}{% if org.acronym %} ({{ org.acronym }}){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        {# ── Description field (auto-populated, editable) ── #}
+        <div class="mb-3">
+            <label for="createMcDescription" class="form-label">
+                Description <span class="text-danger">*</span>
+            </label>
+            <input type="text" class="form-control" id="createMcDescription"
+                   name="description" required maxlength="200"
+                   value="{{ form.get('description') if form else prefill_description }}"
+                   placeholder="e.g. University of Colorado, Boulder">
+            <div class="form-text">
+                Must exactly match the institution or organization name used for project routing.
+                Auto-populated when you select from the dropdowns above.
+            </div>
+        </div>
+
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for error in errors %}
+            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-success">
+            <i class="fas fa-plus"></i> Create Mnemonic Code
+        </button>
+    </div>
+</form>
+
+<script>
+(function() {
+    // Populate description from the selected dropdown option's data-description attribute.
+    // Resets the other dropdown so only one source is active at a time.
+    window.mnemonicFillDescription = function(source, selectEl) {
+        var opt = selectEl.options[selectEl.selectedIndex];
+        var desc = opt.dataset.description || '';
+        if (desc) {
+            document.getElementById('createMcDescription').value = desc;
+            var otherId = source === 'institution' ? 'createMcOrganization' : 'createMcInstitution';
+            document.getElementById(otherId).value = '';
+        }
+    };
+
+    // If a prefill description was passed (e.g. from clicking a missing-mnemonic badge),
+    // set it and try to pre-select the matching institution in the dropdown.
+    var prefill = {{ prefill_description | tojson }};
+    if (prefill) {
+        document.getElementById('createMcDescription').value = prefill;
+        var instSel = document.getElementById('createMcInstitution');
+        for (var i = 0; i < instSel.options.length; i++) {
+            if (instSel.options[i].dataset.description === prefill) {
+                instSel.selectedIndex = i;
+                break;
+            }
+        }
+    }
+})();
+</script>
