@@ -314,6 +314,53 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin):
 
     project_codes = relationship('ProjectCode', back_populates='mnemonic_code')
 
+    @classmethod
+    def build_lookup(cls, session) -> dict:
+        """Return a {description: code} dict for all active mnemonic codes.
+
+        Intended as the single fetch for bulk resolution — call once, then
+        pass the result to ``resolve_for_institution`` / ``resolve_for_org``.
+        """
+        return {
+            mc.description: mc.code
+            for mc in session.query(cls).filter(cls.is_active).all()
+        }
+
+    @staticmethod
+    def resolve_for_institution(inst, lookup: dict) -> str | None:
+        """Resolve the mnemonic code for an Institution using the soft-link strategy.
+
+        Mirrors the legacy Java UserInstitutionStrategy: tries "Name, City"
+        first, then falls back to "Name" alone.
+
+        Args:
+            inst: Institution ORM instance (needs .name and .city attributes).
+            lookup: dict returned by ``build_lookup()``.
+
+        Returns:
+            3-letter mnemonic string, or None if no match.
+        """
+        if inst.city:
+            result = lookup.get(f"{inst.name}, {inst.city}")
+            if result:
+                return result
+        return lookup.get(inst.name)
+
+    @staticmethod
+    def resolve_for_organization(org, lookup: dict) -> str | None:
+        """Resolve the mnemonic code for an Organization using the soft-link strategy.
+
+        Mirrors the legacy Java UserOrganizationStrategy: matches on name only.
+
+        Args:
+            org: Organization ORM instance (needs .name attribute).
+            lookup: dict returned by ``build_lookup()``.
+
+        Returns:
+            3-letter mnemonic string, or None if no match.
+        """
+        return lookup.get(org.name)
+
     def __str__(self):
         return f"{self.code} - {self.description}"
 
