@@ -5,13 +5,10 @@
 </div>
 <script>
 (function() {
-    // Close whichever resource modal is open
-    ['editResourceModal', 'editResourceTypeModal', 'editMachineModal', 'editQueueModal'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) {
-            var modal = bootstrap.Modal.getInstance(el);
-            if (modal) modal.hide();
-        }
+    // Close whichever modal is currently open
+    document.querySelectorAll('.modal.show').forEach(function(el) {
+        var modal = bootstrap.Modal.getInstance(el);
+        if (modal) modal.hide();
     });
     // Refresh the resources card body (preserving active_only state)
     setTimeout(function() {

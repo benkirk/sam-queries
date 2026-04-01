@@ -113,6 +113,44 @@ class Contract(Base, TimestampMixin, SessionMixin):
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        contract_number: str,
+        title: str,
+        start_date: datetime,
+        contract_source_id: int,
+        principal_investigator_user_id: int,
+        url: Optional[str] = None,
+        end_date: Optional[datetime] = None,
+    ) -> 'Contract':
+        """
+        Create a new Contract.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not contract_number or not contract_number.strip():
+            raise ValueError("contract_number is required")
+        if not title or not title.strip():
+            raise ValueError("title is required")
+        if end_date is not None and end_date <= start_date:
+            raise ValueError("end_date must be after start_date")
+
+        obj = cls(
+            contract_number=contract_number.strip(),
+            title=title.strip(),
+            start_date=start_date,
+            end_date=end_date,
+            url=url.strip() if url and url.strip() else None,
+            contract_source_id=contract_source_id,
+            principal_investigator_user_id=principal_investigator_user_id,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.contract_number}: {self.title[:50]}..."
 
@@ -171,6 +209,26 @@ class ContractSource(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         self.session.flush()
         return self
+
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        contract_source: str,
+    ) -> 'ContractSource':
+        """
+        Create a new ContractSource.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not contract_source or not contract_source.strip():
+            raise ValueError("contract_source name is required")
+
+        obj = cls(contract_source=contract_source.strip())
+        session.add(obj)
+        session.flush()
+        return obj
 
     def __str__(self):
         return f"{self.contract_source}"
@@ -244,6 +302,26 @@ class NSFProgram(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         self.session.flush()
         return self
+
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        nsf_program_name: str,
+    ) -> 'NSFProgram':
+        """
+        Create a new NSFProgram.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not nsf_program_name or not nsf_program_name.strip():
+            raise ValueError("nsf_program_name is required")
+
+        obj = cls(nsf_program_name=nsf_program_name.strip())
+        session.add(obj)
+        session.flush()
+        return obj
 
     def __str__(self):
         return f"{self.nsf_program_name}"

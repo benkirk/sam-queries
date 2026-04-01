@@ -99,6 +99,40 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        name: str,
+        acronym: str,
+        description: Optional[str] = None,
+        parent_org_id: Optional[int] = None,
+    ) -> 'Organization':
+        """
+        Create a new Organization and append it as a leaf node.
+
+        The nested-set tree positions (tree_left, tree_right) are managed by the
+        NestedSetMixin.  New records are appended at the end of the root level (or
+        as children of parent_org_id if supplied).
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not name or not name.strip():
+            raise ValueError("name is required")
+        if not acronym or not acronym.strip():
+            raise ValueError("acronym is required")
+
+        obj = cls(
+            name=name.strip(),
+            acronym=acronym.strip(),
+            description=description.strip() if description and description.strip() else None,
+            parent_org_id=parent_org_id,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.name} ({self.acronym})"
 
@@ -228,6 +262,40 @@ class Institution(Base, TimestampMixin, SessionMixin):
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        name: str,
+        acronym: str,
+        nsf_org_code: Optional[str] = None,
+        city: Optional[str] = None,
+        code: Optional[str] = None,
+        institution_type_id: Optional[int] = None,
+    ) -> 'Institution':
+        """
+        Create a new Institution.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not name or not name.strip():
+            raise ValueError("name is required")
+        if not acronym or not acronym.strip():
+            raise ValueError("acronym is required")
+
+        obj = cls(
+            name=name.strip(),
+            acronym=acronym.strip(),
+            nsf_org_code=nsf_org_code.strip() if nsf_org_code and nsf_org_code.strip() else None,
+            city=city.strip() if city and city.strip() else None,
+            code=code.strip() if code and code.strip() else None,
+            institution_type_id=institution_type_id,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.name}"
 
@@ -271,6 +339,26 @@ class InstitutionType(Base, TimestampMixin, SessionMixin):
 
         self.session.flush()
         return self
+
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        type: str,
+    ) -> 'InstitutionType':
+        """
+        Create a new InstitutionType.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not type or not type.strip():
+            raise ValueError("type name is required")
+
+        obj = cls(type=type.strip())
+        session.add(obj)
+        session.flush()
+        return obj
 
     def __str__(self):
         return f"{self.type}"

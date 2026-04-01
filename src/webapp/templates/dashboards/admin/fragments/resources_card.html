@@ -76,6 +76,17 @@
                                         onclick="event.stopPropagation()">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        title="Deactivate resource type"
+                                        hx-delete="{{ url_for('admin_dashboard.htmx_resource_type_delete', resource_type_id=rt.resource_type_id) }}"
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Deactivate resource type '{{ rt.resource_type }}'?"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                {% endif %}
                                 {% endif %}
                             </td>
                         </tr>
@@ -101,6 +112,16 @@
                                         title="Edit resource">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        title="Decommission resource"
+                                        hx-delete="{{ url_for('admin_dashboard.htmx_resource_delete', resource_id=r.resource_id) }}"
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Decommission resource '{{ r.resource_name }}'? This sets the decommission date to today.">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                {% endif %}
                                 {% endif %}
                             </td>
                         </tr>
@@ -118,8 +139,30 @@
                     {% endif %}
                 </table>
             </div>
-            <div class="text-muted small px-3 py-2">
-                Showing {{ resource_types|length }} type{{ 's' if resource_types|length != 1 else '' }}, {{ resources|length }} resource{{ 's' if resources|length != 1 else '' }}
+            <div class="d-flex justify-content-between align-items-center px-3 py-2">
+                <span class="text-muted small">
+                    Showing {{ resource_types|length }} type{{ 's' if resource_types|length != 1 else '' }}, {{ resources|length }} resource{{ 's' if resources|length != 1 else '' }}
+                </span>
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#createResourceTypeModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_resource_type_create_form') }}"
+                            hx-target="#createResourceTypeFormContainer"
+                            hx-trigger="click">
+                        <i class="fas fa-plus"></i> Create Type
+                    </button>
+                    <button class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#createResourceModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_resource_create_form') }}"
+                            hx-target="#createResourceFormContainer"
+                            hx-trigger="click">
+                        <i class="fas fa-plus"></i> Create Resource
+                    </button>
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -171,6 +214,16 @@
                                         title="Edit machine">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        title="Decommission machine"
+                                        hx-delete="{{ url_for('admin_dashboard.htmx_machine_delete', machine_id=m.machine_id) }}"
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Decommission machine '{{ m.name }}'? This sets the decommission date to today.">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                {% endif %}
                                 {% endif %}
                             </td>
                         </tr>
@@ -182,8 +235,20 @@
                     </tbody>
                 </table>
             </div>
-            <div class="text-muted small px-3 py-2">
-                Showing {{ machines|length }} machine{{ 's' if machines|length != 1 else '' }}
+            <div class="d-flex justify-content-between align-items-center px-3 py-2">
+                <span class="text-muted small">
+                    Showing {{ machines|length }} machine{{ 's' if machines|length != 1 else '' }}
+                </span>
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <button class="btn btn-sm btn-outline-success"
+                        data-bs-toggle="modal"
+                        data-bs-target="#createMachineModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_machine_create_form') }}"
+                        hx-target="#createMachineFormContainer"
+                        hx-trigger="click">
+                    <i class="fas fa-plus"></i> Create Machine
+                </button>
+                {% endif %}
             </div>
         </div>
 

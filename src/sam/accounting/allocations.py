@@ -190,6 +190,38 @@ class AllocationType(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        allocation_type: str,
+        panel_id: Optional[int] = None,
+        default_allocation_amount: Optional[float] = None,
+        fair_share_percentage: Optional[float] = None,
+    ) -> 'AllocationType':
+        """
+        Create a new AllocationType.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not allocation_type or not allocation_type.strip():
+            raise ValueError("allocation_type is required")
+        if default_allocation_amount is not None and default_allocation_amount < 0:
+            raise ValueError("default_allocation_amount must be >= 0")
+        if fair_share_percentage is not None and not (0 <= fair_share_percentage <= 100):
+            raise ValueError("fair_share_percentage must be between 0 and 100")
+
+        obj = cls(
+            allocation_type=allocation_type.strip(),
+            panel_id=panel_id,
+            default_allocation_amount=default_allocation_amount,
+            fair_share_percentage=fair_share_percentage,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.allocation_type}"
 
