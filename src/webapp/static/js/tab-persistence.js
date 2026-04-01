@@ -66,4 +66,53 @@
         restoreTabs(event.target);
     });
 
+    // ── Collapse (expanded row) persistence ──────────────────────────────────
+
+    var COLLAPSE_PREFIX = 'collapse:';
+
+    /** Save expanded state when a collapse opens. */
+    function saveCollapse(event) {
+        var id = event.target.id;
+        if (!id) return;
+        try { localStorage.setItem(COLLAPSE_PREFIX + id, '1'); } catch (_) {}
+    }
+
+    /** Clear saved state when a collapse closes. */
+    function clearCollapse(event) {
+        var id = event.target.id;
+        if (!id) return;
+        try { localStorage.removeItem(COLLAPSE_PREFIX + id); } catch (_) {}
+    }
+
+    /** Restore saved collapse state within a root element. */
+    function restoreCollapses(root) {
+        root.querySelectorAll('.collapse[id]').forEach(function (el) {
+            var saved = null;
+            try { saved = localStorage.getItem(COLLAPSE_PREFIX + el.id); } catch (_) {}
+            if (!saved) return;
+            if (!el.classList.contains('show')) {
+                try { new bootstrap.Collapse(el, { toggle: false }).show(); } catch (_) {}
+            }
+        });
+    }
+
+    // 5. On page load: restore all collapse state in initial DOM
+    document.addEventListener('DOMContentLoaded', function () {
+        restoreCollapses(document);
+    });
+
+    // 6. Save / clear as collapses open and close
+    document.addEventListener('show.bs.collapse',  saveCollapse);
+    document.addEventListener('hide.bs.collapse',  clearCollapse);
+
+    // 7. After HTMX swap: restore within the newly-settled fragment
+    document.addEventListener('htmx:afterSettle', function (event) {
+        restoreCollapses(event.detail.elt);
+    });
+
+    // 8. After modal close: restore within the modal
+    document.addEventListener('hidden.bs.modal', function (event) {
+        restoreCollapses(event.target);
+    });
+
 })();
