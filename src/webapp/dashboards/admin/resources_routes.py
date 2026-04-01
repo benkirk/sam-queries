@@ -684,6 +684,29 @@ def htmx_queue_edit(queue_id):
     return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
 
 
+# ── Queue Delete ───────────────────────────────────────────────────────────
+
+
+@bp.route('/htmx/queue-delete/<int:queue_id>', methods=['DELETE'])
+@login_required
+@require_permission(Permission.DELETE_RESOURCES)
+def htmx_queue_delete(queue_id):
+    """Soft-delete (expire) a queue by setting end_date to now."""
+    from sam.resources.machines import Queue
+
+    queue = db.session.get(Queue, queue_id)
+    if not queue:
+        return '<div class="alert alert-danger">Queue not found</div>', 404
+
+    try:
+        with management_transaction(db.session):
+            queue.update(end_date=datetime.now())
+    except Exception as e:
+        return f'<div class="alert alert-danger">Error: {e}</div>', 500
+
+    return ''
+
+
 # ── Search helpers ─────────────────────────────────────────────────────────
 
 

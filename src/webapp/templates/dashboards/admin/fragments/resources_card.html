@@ -42,7 +42,7 @@
                             <th>Count</th>
                             <th>Description</th>
                             <th>Commissioned</th>
-                            <th class="text-end">Actions</th>
+                            <th class="text-end text-nowrap">Actions</th>
                         </tr>
                     </thead>
                     {% if resource_types %}
@@ -101,7 +101,7 @@
                             <td class="text-muted small text-nowrap">
                                 {{ r.commission_date.strftime('%Y-%m-%d') if r.commission_date else '—' }}
                             </td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
                                         data-bs-toggle="modal"
@@ -180,7 +180,7 @@
                             <th class="sortable-header" data-sort="text">Description</th>
                             <th class="sortable-header" data-sort="date">Commissioned</th>
                             <th class="sortable-header" data-sort="date">Decommissioned</th>
-                            <th class="text-end">Actions</th>
+                            <th class="text-end text-nowrap">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="machines-tbody">
@@ -203,7 +203,7 @@
                             <td class="text-nowrap" data-sort-value="{{ m.decommission_date.strftime('%Y-%m-%d') if m.decommission_date else 'Z' }}">
                                 {{ m.decommission_date.strftime('%Y-%m-%d') if m.decommission_date else '—' }}
                             </td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 {% if is_admin %}
                                 <button class="btn btn-sm btn-outline-secondary"
                                         data-bs-toggle="modal"
@@ -314,6 +314,16 @@
                                         title="Edit queue">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        title="Expire queue"
+                                        hx-delete="{{ url_for('admin_dashboard.htmx_queue_delete', queue_id=q.queue_id) }}"
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Expire queue '{{ q.queue_name }}'? This sets the end date to today.">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                {% endif %}
                                 {% endif %}
                             </td>
                         </tr>
