@@ -96,6 +96,38 @@ class Machine(Base, TimestampMixin, SessionMixin):
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        name: str,
+        resource_id: int,
+        description: Optional[str] = None,
+        cpus_per_node: Optional[int] = None,
+        commission_date: Optional[datetime] = None,
+    ) -> 'Machine':
+        """
+        Create a new Machine.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not name or not name.strip():
+            raise ValueError("name is required")
+        if cpus_per_node is not None and cpus_per_node <= 0:
+            raise ValueError("cpus_per_node must be a positive integer")
+
+        obj = cls(
+            name=name.strip(),
+            resource_id=resource_id,
+            description=description.strip() if description and description.strip() else None,
+            cpus_per_node=cpus_per_node,
+            commission_date=commission_date,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.name}"
 

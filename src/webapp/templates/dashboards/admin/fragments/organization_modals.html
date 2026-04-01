@@ -1,8 +1,212 @@
 {#
   Admin: Organization Management Modals
-  These containers live in the page DOM so HTMX can load edit forms into them
-  when the edit buttons in the Organization card are clicked.
+  Edit modals: loaded lazily when an edit button is clicked.
+  Create modals: loaded lazily when a create button is clicked.
 #}
+
+<!-- ══════════════════════════════════════════════════════════ CREATE MODALS -->
+
+{% if has_permission(Permission.CREATE_RESOURCES) %}
+<!-- Create Organization Modal -->
+<div class="modal fade" id="createOrganizationModal" tabindex="-1"
+     aria-labelledby="createOrganizationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createOrganizationModalLabel">
+                    <i class="fas fa-plus"></i> New Organization
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createOrganizationFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Institution Type Modal -->
+<div class="modal fade" id="createInstitutionTypeModal" tabindex="-1"
+     aria-labelledby="createInstitutionTypeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createInstitutionTypeModalLabel">
+                    <i class="fas fa-plus"></i> New Institution Type
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createInstitutionTypeFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Institution Modal -->
+<div class="modal fade" id="createInstitutionModal" tabindex="-1"
+     aria-labelledby="createInstitutionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createInstitutionModalLabel">
+                    <i class="fas fa-plus"></i> New Institution
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createInstitutionFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Mnemonic Code Modal -->
+<div class="modal fade" id="createMnemonicCodeModal" tabindex="-1"
+     aria-labelledby="createMnemonicCodeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createMnemonicCodeModalLabel">
+                    <i class="fas fa-plus"></i> New Mnemonic Code
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createMnemonicCodeFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create AOI Group Modal -->
+<div class="modal fade" id="createAoiGroupModal" tabindex="-1"
+     aria-labelledby="createAoiGroupModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createAoiGroupModalLabel">
+                    <i class="fas fa-plus"></i> New AOI Group
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createAoiGroupFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create AOI Modal -->
+<div class="modal fade" id="createAoiModal" tabindex="-1"
+     aria-labelledby="createAoiModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createAoiModalLabel">
+                    <i class="fas fa-plus"></i> New Area of Interest
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createAoiFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Contract Source Modal -->
+<div class="modal fade" id="createContractSourceModal" tabindex="-1"
+     aria-labelledby="createContractSourceModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createContractSourceModalLabel">
+                    <i class="fas fa-plus"></i> New Contract Source
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createContractSourceFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Contract Modal -->
+<div class="modal fade" id="createContractModal" tabindex="-1"
+     aria-labelledby="createContractModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createContractModalLabel">
+                    <i class="fas fa-plus"></i> New Contract
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createContractFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create NSF Program Modal -->
+<div class="modal fade" id="createNsfProgramModal" tabindex="-1"
+     aria-labelledby="createNsfProgramModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createNsfProgramModalLabel">
+                    <i class="fas fa-plus"></i> New NSF Program
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createNsfProgramFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════════ EDIT MODALS -->
 
 <!-- Edit Institution Type Modal -->
 <div class="modal fade" id="editInstitutionTypeModal" tabindex="-1"

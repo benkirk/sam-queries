@@ -1,0 +1,73 @@
+{# htmx: Create Allocation Type Form #}
+<form hx-post="{{ url_for('admin_dashboard.htmx_allocation_type_create') }}"
+      hx-target="#createAllocationTypeFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+    <div class="modal-body">
+        <div class="mb-3">
+            <label for="createAllocTypeName" class="form-label">
+                Allocation Type <span class="text-danger">*</span>
+            </label>
+            <input type="text" class="form-control" id="createAllocTypeName"
+                   name="allocation_type" required maxlength="20"
+                   value="{{ form.get('allocation_type') if form else '' }}"
+                   placeholder="e.g. NSC">
+        </div>
+
+        <div class="mb-3">
+            <label for="createAllocTypePanel" class="form-label">
+                Panel <span class="text-muted">(optional)</span>
+            </label>
+            <select class="form-select" id="createAllocTypePanel" name="panel_id">
+                <option value="">— None —</option>
+                {% for p in panels %}
+                <option value="{{ p.panel_id }}"
+                    {% if form and form.get('panel_id') == p.panel_id|string %}selected{% endif %}>
+                    {{ p.panel_name }}{% if p.facility %} ({{ p.facility.facility_name }}){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="createAllocTypeAmount" class="form-label">
+                        Default Amount <span class="text-muted">(optional)</span>
+                    </label>
+                    <input type="number" class="form-control" id="createAllocTypeAmount"
+                           name="default_allocation_amount" min="0" step="any"
+                           value="{{ form.get('default_allocation_amount') if form else '' }}"
+                           placeholder="e.g. 400000">
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="createAllocTypeFairShare" class="form-label">
+                        Fair Share % <span class="text-muted">(optional, 0–100)</span>
+                    </label>
+                    <input type="number" class="form-control" id="createAllocTypeFairShare"
+                           name="fair_share_percentage" min="0" max="100" step="0.01"
+                           value="{{ form.get('fair_share_percentage') if form else '' }}"
+                           placeholder="e.g. 10.0">
+                </div>
+            </div>
+        </div>
+
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for error in errors %}
+            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-success">
+            <i class="fas fa-plus"></i> Create Allocation Type
+        </button>
+    </div>
+</form>

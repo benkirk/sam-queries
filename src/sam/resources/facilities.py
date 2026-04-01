@@ -58,6 +58,38 @@ class Facility(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        facility_name: str,
+        description: str,
+        code: Optional[str] = None,
+        fair_share_percentage: Optional[float] = None,
+    ) -> 'Facility':
+        """
+        Create a new Facility.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not facility_name or not facility_name.strip():
+            raise ValueError("facility_name is required")
+        if not description or not description.strip():
+            raise ValueError("description is required")
+        if fair_share_percentage is not None and not (0 <= fair_share_percentage <= 100):
+            raise ValueError("fair_share_percentage must be between 0 and 100")
+
+        obj = cls(
+            facility_name=facility_name.strip(),
+            description=description.strip(),
+            code=code.strip() if code and code.strip() else None,
+            fair_share_percentage=fair_share_percentage,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.facility_name} - {self.code}"
 
@@ -145,6 +177,32 @@ class Panel(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         self.session.flush()
         return self
+
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        panel_name: str,
+        facility_id: int,
+        description: Optional[str] = None,
+    ) -> 'Panel':
+        """
+        Create a new Panel.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not panel_name or not panel_name.strip():
+            raise ValueError("panel_name is required")
+
+        obj = cls(
+            panel_name=panel_name.strip(),
+            facility_id=facility_id,
+            description=description.strip() if description and description.strip() else None,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
 
     def __str__(self):
         return f"{self.panel_name}"
