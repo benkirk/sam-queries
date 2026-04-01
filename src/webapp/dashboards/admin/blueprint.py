@@ -1462,7 +1462,7 @@ def htmx_organizations_card():
     Contract Sources, Contracts, NSF Programs.
     Lazy-loaded when the Organization collapsible section is first expanded.
     """
-    from sam.core.organizations import Organization, Institution, InstitutionType, UserInstitution
+    from sam.core.organizations import Organization, Institution, InstitutionType, UserInstitution, MnemonicCode
     from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
     from sam.projects.contracts import Contract, ContractSource, NSFProgram
     from sam.projects.projects import Project
