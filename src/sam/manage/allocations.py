@@ -10,13 +10,17 @@ from typing import Optional, Dict, Any
 
 from sqlalchemy.orm import Session
 
-from sam.accounting.allocations import Allocation, AllocationTransaction, AllocationTransactionType
+from sam.accounting.allocations import (
+    Allocation, AllocationTransaction, AllocationTransactionType,
+    InheritingAllocationException,
+)
 
 
 __all__ = [
     'validate_allocation_dates',
     'log_allocation_transaction',
     'update_allocation',
+    'InheritingAllocationException',
 ]
 
 
@@ -41,7 +45,8 @@ def log_allocation_transaction(
     user_id: int,
     transaction_type: str,
     comment: Optional[str] = None,
-    old_values: Optional[Dict[str, Any]] = None
+    old_values: Optional[Dict[str, Any]] = None,
+    propagated: bool = False,
 ) -> AllocationTransaction:
     """
     Create an audit log entry for an allocation change.
@@ -116,7 +121,7 @@ def log_allocation_transaction(
         transaction_amount=allocation.amount,
         requested_amount=allocation.amount,  # Same as transaction_amount for EDIT
         transaction_comment=final_comment,
-        propagated=False
+        propagated=propagated,
     )
 
     session.add(transaction)
@@ -170,6 +175,13 @@ def update_allocation(
     if not allocation:
         raise ValueError(f"Allocation {allocation_id} not found")
 
+    # Block direct mutation of inheriting (child) allocations
+    if allocation.is_inheriting:
+        raise InheritingAllocationException(
+            f"Allocation {allocation_id} is a child (inheriting) allocation. "
+            "Updates must be applied to the master parent allocation."
+        )
+
     # Validate update fields
     allowed_fields = {'amount', 'start_date', 'end_date', 'description'}
     provided_fields = set(updates.keys())
@@ -209,7 +221,28 @@ def update_allocation(
         allocation,
         user_id,
         AllocationTransactionType.EDIT,
-        old_values=old_values
+        old_values=old_values,
     )
+
+    # Cascade amount and date changes to all inheriting descendants.
+    # description is NOT cascaded — children belong to different projects.
+    cascadable = {'amount', 'start_date', 'end_date'} & provided_fields
+    if cascadable and allocation.children:
+        child_updates = {f: updates[f] for f in cascadable}
+        child_old = {f: old_values[f] for f in cascadable}
+
+        def _cascade_to_child(child: Allocation) -> None:
+            for field, value in child_updates.items():
+                setattr(child, field, value)
+            log_allocation_transaction(
+                session, child, user_id,
+                AllocationTransactionType.EDIT,
+                old_values=child_old,
+                propagated=True,
+            )
+
+        for child in allocation.children:
+            child._walk_tree(_cascade_to_child)
+        session.flush()
 
     return allocation
