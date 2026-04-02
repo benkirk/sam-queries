@@ -442,6 +442,18 @@ def htmx_edit_allocation_form(allocation_id):
     resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
     projcode = request.args.get('projcode', account.project.projcode if account and account.project else '')
 
+    # Shared (inheriting) allocations are read-only — block direct edits
+    if allocation.is_inheriting:
+        return render_template(
+            'dashboards/user/fragments/edit_allocation_form_htmx.html',
+            allocation=allocation,
+            resource_name=resource_name,
+            projcode=projcode,
+            errors=["This is a shared (inherited) allocation. "
+                    "To modify it, edit the master parent allocation."],
+            read_only=True,
+        )
+
     return render_template(
         'dashboards/user/fragments/edit_allocation_form_htmx.html',
         allocation=allocation,
@@ -496,7 +508,7 @@ def htmx_edit_allocation(allocation_id):
         if start_date_str:
             updates['start_date'] = datetime.strptime(start_date_str, '%Y-%m-%d')
         if end_date_str:
-            updates['end_date'] = datetime.strptime(end_date_str, '%Y-%m-%d')
+            updates['end_date'] = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
         else:
             updates['end_date'] = None  # Explicitly clear end date
     except ValueError:
@@ -506,8 +518,8 @@ def htmx_edit_allocation(allocation_id):
         if updates['end_date'] <= updates['start_date']:
             errors.append('End date must be after start date')
 
-    description = request.form.get('description', '')
-    updates['description'] = description
+    description = request.form.get('description', '').strip()
+    updates['description'] = description if description else None
 
     if errors:
         return render_template(

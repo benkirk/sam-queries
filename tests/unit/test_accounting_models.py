@@ -48,7 +48,11 @@ class TestAllocationTransactionType:
         """Test AllocationTransactionType is a StrEnum with expected values."""
         assert AllocationTransactionType.CREATE == "CREATE"
         assert isinstance(AllocationTransactionType.CREATE, str)
-        expected = {"CREATE", "EDIT", "TRANSFER", "ADJUSTMENT", "EXPIRE", "DELETE"}
+        # Python-side types (new operations)
+        expected_new = {"CREATE", "EDIT", "TRANSFER", "ADJUSTMENT", "EXPIRE", "DELETE"}
+        # Legacy Java-side types present in existing DB data
+        expected_legacy = {"NEW", "EXTENSION", "SUPPLEMENT"}
+        expected = expected_new | expected_legacy
         actual = {m.value for m in AllocationTransactionType}
         assert actual == expected
         print(f"✅ AllocationTransactionType has {len(expected)} members: {sorted(expected)}")

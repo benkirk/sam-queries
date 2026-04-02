@@ -72,8 +72,9 @@
                                 </div>
                             </div>
                         </td>
-                        {% if has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) and summary.allocation_id %}
+                        {% if has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) %}
                         <td class="text-center">
+                            {% if summary.allocation_id and not summary.is_inheriting %}
                             <button class="btn btn-xs btn-outline-primary"
                                     title="Edit allocation"
                                     data-bs-toggle="modal" data-bs-target="#editAllocationModal"
@@ -82,10 +83,13 @@
                                     hx-swap="innerHTML">
                                 <i class="fas fa-edit"></i>
                             </button>
-                        </td>
-                        {% elif has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) %}
-                        <td class="text-center text-muted">
-                            <small>No allocation</small>
+                            {% elif summary.allocation_id and summary.is_inheriting %}
+                            <span class="badge bg-secondary"
+                                  style="font-size:0.65rem;"
+                                  title="Shared allocation — edit via the master parent project">Shared</span>
+                            {% else %}
+                            <small class="text-muted">No allocation</small>
+                            {% endif %}
                         </td>
                         {% endif %}
                     </tr>

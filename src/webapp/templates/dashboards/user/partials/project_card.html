@@ -175,7 +175,7 @@
                             </td>
                             {% if can_edit_allocations %}
                             <td class="text-center" onclick="event.stopPropagation();">
-                                {% if resource.allocation_id %}
+                                {% if resource.allocation_id and not resource.is_inheriting %}
                                 <button class="btn btn-xs btn-outline-primary"
                                         title="Edit allocation"
                                         data-bs-toggle="modal" data-bs-target="#editAllocationModal"
@@ -185,6 +185,10 @@
                                         onclick="event.stopPropagation()">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% elif resource.allocation_id and resource.is_inheriting %}
+                                <span class="badge bg-secondary"
+                                      style="font-size:0.65rem;"
+                                      title="Shared allocation — edit via the master parent project">Shared</span>
                                 {% else %}
                                 <span class="text-muted small">No allocation</span>
                                 {% endif %}
