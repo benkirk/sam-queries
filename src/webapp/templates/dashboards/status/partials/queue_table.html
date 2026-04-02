@@ -31,17 +31,17 @@
             {% for queue in queues %}
             <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.queue_history', system=system, queue_name=queue.queue_name) }}';" title="Click to view history for {{ queue.queue_name }}">
                 <td><strong>{{ queue.queue_name }}</strong></td>
-                <td>{{ queue.active_users }}</td>
-                <td>{{ queue.running_jobs }}</td>
-                <td>{{ queue.pending_jobs }}</td>
-                <td>{{ queue.held_jobs }}</td>
+                <td>{{ queue.active_users | fmt_number }}</td>
+                <td>{{ queue.running_jobs | fmt_number }}</td>
+                <td>{{ queue.pending_jobs | fmt_number }}</td>
+                <td>{{ queue.held_jobs | fmt_number }}</td>
                 <td>{{ queue.cores_allocated | fmt_number }}</td>
                 <td>{{ queue.cores_pending | fmt_number }}</td>
                 <td>{{ queue.cores_held | fmt_number }}</td>
-                {% if show_gpus %}<td>{{ queue.gpus_allocated }}</td>{% endif %}
-                {% if show_gpus %}<td>{{ queue.gpus_pending }}</td>{% endif %}
-                {% if show_gpus %}<td>{{ queue.gpus_held }}</td>{% endif %}
-                <td>{{ queue.nodes_allocated }}</td>
+                {% if show_gpus %}<td>{{ queue.gpus_allocated | fmt_number }}</td>{% endif %}
+                {% if show_gpus %}<td>{{ queue.gpus_pending | fmt_number }}</td>{% endif %}
+                {% if show_gpus %}<td>{{ queue.gpus_held | fmt_number }}</td>{% endif %}
+                <td>{{ queue.nodes_allocated | fmt_number }}</td>
             </tr>
             {% endfor %}
         </tbody>

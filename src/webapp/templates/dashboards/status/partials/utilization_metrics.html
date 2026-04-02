@@ -29,7 +29,7 @@
             </div>
             {% if status.gpu_count_allocated is defined and status.gpu_count_total is defined %}
             <div class="text-muted small mt-1">
-                {{ status.gpu_count_allocated }} / {{ status.gpu_count_total }} GPUs
+                {{ status.gpu_count_allocated | fmt_number }} / {{ status.gpu_count_total | fmt_number }} GPUs
             </div>
             {% endif %}
         </div>
@@ -46,7 +46,7 @@
             </div>
             {% if status.viz_count_allocated is defined and status.viz_count_total is defined %}
             <div class="text-muted small mt-1">
-                {{ status.viz_count_allocated }} / {{ status.viz_count_total }} VIZ GPUs
+                {{ status.viz_count_allocated | fmt_number }} / {{ status.viz_count_total | fmt_number }} VIZ GPUs
             </div>
             {% endif %}
         </div>

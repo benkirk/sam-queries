@@ -181,6 +181,7 @@ def tree_fragment(projcode):
         return '<p class="text-danger mb-0">Project not found</p>'
 
     # Get the root of the project tree
+    active_only = request.args.get('active_only') == '1'
     root = project.get_root() if hasattr(project, 'get_root') else project
     can_view_projects = has_permission(current_user, Permission.VIEW_PROJECTS)
 
@@ -221,6 +222,8 @@ def tree_fragment(projcode):
 
         # Recursively render children
         children = node.children if hasattr(node, 'children') and node.children else []
+        if active_only:
+            children = [c for c in children if getattr(c, 'active', True)]
         if children:
             html += '<ul class="tree-list">'
             for child in sorted(children, key=lambda c: c.projcode):

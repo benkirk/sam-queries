@@ -32,7 +32,7 @@ def get_latest_derecho_queues(session: Session, timestamp: datetime) -> List[Que
     return session.query(QueueStatus).filter_by(
         timestamp=timestamp,
         system_name='derecho'
-    ).all()
+    ).order_by(QueueStatus.queue_name).all()
 
 
 def get_latest_derecho_filesystems(session: Session, timestamp: datetime) -> List[FilesystemStatus]:
@@ -40,7 +40,7 @@ def get_latest_derecho_filesystems(session: Session, timestamp: datetime) -> Lis
     return session.query(FilesystemStatus).filter_by(
         timestamp=timestamp,
         system_name='derecho'
-    ).all()
+    ).order_by(FilesystemStatus.filesystem_name).all()
 
 
 def get_latest_derecho_login_nodes(session: Session, timestamp: datetime) -> List[LoginNodeStatus]:
@@ -62,7 +62,7 @@ def get_latest_casper_node_types(session: Session, timestamp: datetime) -> List[
     """Get Casper node type status for a specific timestamp."""
     return session.query(CasperNodeTypeStatus).filter_by(
         timestamp=timestamp
-    ).all()
+    ).order_by(CasperNodeTypeStatus.node_type).all()
 
 
 def get_latest_casper_queues(session: Session, timestamp: datetime) -> List[QueueStatus]:
@@ -70,7 +70,7 @@ def get_latest_casper_queues(session: Session, timestamp: datetime) -> List[Queu
     return session.query(QueueStatus).filter_by(
         timestamp=timestamp,
         system_name='casper'
-    ).all()
+    ).order_by(QueueStatus.queue_name).all()
 
 
 def get_latest_casper_login_nodes(session: Session, timestamp: datetime) -> List[LoginNodeStatus]:
@@ -86,7 +86,7 @@ def get_latest_casper_filesystems(session: Session, timestamp: datetime) -> List
     return session.query(FilesystemStatus).filter_by(
         timestamp=timestamp,
         system_name='casper'
-    ).all()
+    ).order_by(FilesystemStatus.filesystem_name).all()
 
 
 def get_latest_jupyterhub_status(session: Session) -> Optional[JupyterHubStatus]:

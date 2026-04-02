@@ -23,10 +23,10 @@
                         {% if nt.gpu_model %}<br>{{ nt.gpus_per_node }}x {{ nt.gpu_model }}{% endif %}
                     </small>
                 </td>
-                <td>{{ nt.nodes_total }}</td>
-                <td class="text-success">{{ nt.nodes_available }}</td>
-                <td class="text-danger">{{ nt.nodes_down }}</td>
-                <td class="text-warning">{{ nt.nodes_allocated }}</td>
+                <td>{{ nt.nodes_total | fmt_number }}</td>
+                <td class="text-success">{{ nt.nodes_available | fmt_number }}</td>
+                <td class="text-danger">{{ nt.nodes_down | fmt_number }}</td>
+                <td class="text-warning">{{ nt.nodes_allocated | fmt_number }}</td>
                 <td>
                     {% if nt.utilization_percent is not none %}
                     <div class="mb-1">
