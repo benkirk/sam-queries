@@ -27,6 +27,10 @@ class Contract(Base, TimestampMixin, SessionMixin):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
 
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
+
     principal_investigator_user_id = Column(Integer, ForeignKey('users.user_id'),
                                            nullable=False)
     contract_monitor_user_id = Column(Integer, ForeignKey('users.user_id'))

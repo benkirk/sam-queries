@@ -7,6 +7,7 @@ Covers: Resources, Resource Types, Machines, Queues.
 from flask import render_template, request
 from flask_login import login_required
 from datetime import datetime
+from webapp.api.helpers import parse_input_end_date
 
 from webapp.extensions import db
 from webapp.utils.rbac import require_permission, Permission
@@ -112,7 +113,7 @@ def htmx_resource_edit(resource_id):
     decommission_date = None
     if decommission_str:
         try:
-            decommission_date = datetime.strptime(decommission_str, '%Y-%m-%d')
+            decommission_date = parse_input_end_date(decommission_str)
             if commission_date and decommission_date <= commission_date:
                 errors.append('Decommission date must be after commission date.')
         except ValueError:
@@ -446,7 +447,7 @@ def htmx_machine_edit(machine_id):
     decommission_date = None
     if decommission_str:
         try:
-            decommission_date = datetime.strptime(decommission_str, '%Y-%m-%d')
+            decommission_date = parse_input_end_date(decommission_str)
             if commission_date and decommission_date <= commission_date:
                 errors.append('Decommission date must be after commission date.')
         except ValueError:
@@ -652,7 +653,7 @@ def htmx_queue_edit(queue_id):
     end_date = None
     if end_date_str:
         try:
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            end_date = parse_input_end_date(end_date_str)
             if queue.start_date and end_date <= queue.start_date:
                 errors.append('End date must be after start date.')
         except ValueError:

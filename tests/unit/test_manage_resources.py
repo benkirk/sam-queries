@@ -86,7 +86,8 @@ class TestUpdateResource:
 
         updated = r.update(commission_date=commission, decommission_date=decommission)
 
-        assert updated.decommission_date == decommission
+        # normalize_end_date converts midnight to 23:59:59 per project convention
+        assert updated.decommission_date == decommission.replace(hour=23, minute=59, second=59)
         session.rollback()
 
     def test_decommission_before_commission_raises(self, session):
@@ -235,7 +236,8 @@ class TestUpdateMachine:
 
         updated = m.update(commission_date=commission, decommission_date=decommission)
 
-        assert updated.decommission_date == decommission
+        # normalize_end_date converts midnight to 23:59:59 per project convention
+        assert updated.decommission_date == decommission.replace(hour=23, minute=59, second=59)
         session.rollback()
 
     def test_decommission_before_commission_raises(self, session):

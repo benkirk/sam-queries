@@ -18,7 +18,7 @@ from sam.schemas import (
     ProjectSchema, ProjectListSchema, ProjectSummarySchema,
     AllocationWithUsageSchema, UserSummarySchema, CompJobSchema
 )
-from webapp.api.helpers import register_error_handlers, get_project_or_404, parse_date_range
+from webapp.api.helpers import register_error_handlers, get_project_or_404, parse_date_range, parse_input_end_date
 from webapp.api.access_control import require_project_member_access
 from datetime import datetime, timedelta
 
@@ -474,7 +474,7 @@ def add_member(projcode):
 
         end_date_str = data.get('end_date', '').strip() if data.get('end_date') else ''
         if end_date_str:
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            end_date = parse_input_end_date(end_date_str)
     except ValueError:
         return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
 

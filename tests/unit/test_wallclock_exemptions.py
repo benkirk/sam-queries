@@ -94,7 +94,8 @@ class TestWallclockExemption:
         new_end = datetime(2025, 12, 31)
         updated = ex.update(end_date=new_end)
 
-        assert updated.end_date == new_end
+        # normalize_end_date converts midnight to 23:59:59 per project convention
+        assert updated.end_date == new_end.replace(hour=23, minute=59, second=59)
         assert updated.time_limit_hours == 48.0   # unchanged
         session.rollback()
 
@@ -112,7 +113,8 @@ class TestWallclockExemption:
 
         assert updated.time_limit_hours == 72.0
         assert updated.comment == "updated reason"
-        assert updated.end_date == end   # unchanged
+        # normalize_end_date converts midnight to 23:59:59 per project convention
+        assert updated.end_date == end.replace(hour=23, minute=59, second=59)   # unchanged (normalized)
         session.rollback()
 
     def test_update_clear_comment(self, session):

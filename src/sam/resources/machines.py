@@ -23,6 +23,10 @@ class Machine(Base, TimestampMixin, SessionMixin):
     commission_date = Column(DateTime)
     decommission_date = Column(DateTime)
 
+    @validates('decommission_date')
+    def _validate_decommission_date(self, key, value):
+        return normalize_end_date(value)
+
     comp_charge_summaries = relationship('CompChargeSummary', foreign_keys='CompChargeSummary.machine_id', back_populates='machine_ref')
     machine_factors = relationship('MachineFactor', back_populates='machine')
     resource = relationship('Resource', back_populates='machines')
@@ -161,6 +165,10 @@ class MachineFactor(Base, TimestampMixin):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
 
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
+
     machine = relationship('Machine', back_populates='machine_factors')
 
 
@@ -183,6 +191,10 @@ class Queue(Base, TimestampMixin, SessionMixin):
 
     start_date = Column(DateTime)
     end_date = Column(DateTime)
+
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
 
     resource = relationship('Resource', back_populates='queues')
     queue_factors = relationship('QueueFactor', back_populates='queue')
@@ -285,6 +297,10 @@ class QueueFactor(Base, TimestampMixin):
     factor_value = Column(Float, nullable=False)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
+
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
 
     queue = relationship('Queue', back_populates='queue_factors')
 

@@ -46,6 +46,10 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
 
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
+
     account = relationship('Account', back_populates='allocations')
     children = relationship('Allocation', back_populates='parent', cascade='all')
     parent = relationship('Allocation', remote_side=[allocation_id], back_populates='children')
@@ -169,6 +173,10 @@ class AllocationTransaction(Base):
 
     alloc_start_date = Column(DateTime)
     alloc_end_date = Column(DateTime)
+
+    @validates('alloc_end_date')
+    def _validate_alloc_end_date(self, key, value):
+        return normalize_end_date(value)
 
     auth_at_panel_mtg = Column(Boolean)
     transaction_comment = Column(Text)

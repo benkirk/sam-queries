@@ -7,6 +7,7 @@ Covers: Facilities, Panels, Panel Sessions, Allocation Types.
 from flask import render_template, request
 from flask_login import login_required
 from datetime import datetime
+from webapp.api.helpers import parse_input_end_date
 
 from webapp.extensions import db
 from webapp.utils.rbac import require_permission, Permission
@@ -398,7 +399,7 @@ def htmx_panel_session_edit(panel_session_id):
     end_date = None
     if end_str:
         try:
-            end_date = datetime.strptime(end_str, '%Y-%m-%d')
+            end_date = parse_input_end_date(end_str)
             effective_start = start_date or panel_session.start_date
             if effective_start and end_date <= effective_start:
                 errors.append('End date must be after start date.')

@@ -91,6 +91,10 @@ class WallclockExemption(Base, TimestampMixin, SessionMixin):
     end_date = Column(DateTime, nullable=False)
     comment = Column(Text)
 
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
+
     user = relationship('User', back_populates='wallclock_exemptions')
     queue = relationship('Queue', back_populates='wallclock_exemptions')
 

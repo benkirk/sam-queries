@@ -235,6 +235,10 @@ class PanelSession(Base, TimestampMixin, SessionMixin):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
     panel_meeting_date = Column(DateTime)
+
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
     description = Column(String(255))
     panel_id = Column(Integer, ForeignKey('panel.panel_id'), nullable=False)
 

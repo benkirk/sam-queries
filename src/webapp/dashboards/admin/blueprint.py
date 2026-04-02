@@ -13,6 +13,7 @@ Domain-specific routes are split into sub-modules imported at the bottom:
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response
 from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
+from webapp.api.helpers import parse_input_end_date
 from typing import List, Tuple, Dict
 import csv
 import io
@@ -554,7 +555,7 @@ def htmx_add_exemption(username):
             errors.append('Invalid start date format.')
     if end_date_str:
         try:
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            end_date = parse_input_end_date(end_date_str)
         except ValueError:
             errors.append('Invalid end date format.')
 
@@ -657,7 +658,7 @@ def htmx_edit_exemption(exemption_id):
     end_date = None
     if end_date_str:
         try:
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            end_date = parse_input_end_date(end_date_str)
             if end_date <= exemption.start_date:
                 errors.append('End date must be after start date.')
         except ValueError:

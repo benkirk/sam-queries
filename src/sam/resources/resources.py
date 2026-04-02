@@ -39,6 +39,10 @@ class Resource(Base, TimestampMixin, SessionMixin):
     commission_date = Column(DateTime)
     decommission_date = Column(DateTime)
 
+    @validates('decommission_date')
+    def _validate_decommission_date(self, key, value):
+        return normalize_end_date(value)
+
     prim_sys_admin_user_id = Column(Integer, ForeignKey('users.user_id'))
     prim_responsible_org_id = Column(Integer, ForeignKey('organization.organization_id'))
 
