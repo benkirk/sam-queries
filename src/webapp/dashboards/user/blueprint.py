@@ -10,6 +10,7 @@ JavaScript API calls for improved performance and simplicity.
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify, make_response
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
+from webapp.api.helpers import parse_input_end_date
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
@@ -371,7 +372,7 @@ def htmx_add_member(projcode):
         if start_date_str:
             start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
         if end_date_str:
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            end_date = parse_input_end_date(end_date_str)
     except ValueError:
         errors.append('Invalid date format. Use YYYY-MM-DD.')
 
@@ -511,7 +512,7 @@ def htmx_edit_allocation(allocation_id):
         if start_date_str:
             updates['start_date'] = datetime.strptime(start_date_str, '%Y-%m-%d')
         if end_date_str:
-            updates['end_date'] = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+            updates['end_date'] = parse_input_end_date(end_date_str)
         else:
             updates['end_date'] = None  # Explicitly clear end date
     except ValueError:
