@@ -511,6 +511,8 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
             result = {
                 'allocation_id': query_alloc.allocation_id,
+                'parent_allocation_id': query_alloc.parent_allocation_id,
+                'is_inheriting': query_alloc.is_inheriting,
                 'account_id': account.account_id,
                 'resource_type': resource_type,
                 'allocated': allocated,

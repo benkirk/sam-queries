@@ -90,6 +90,8 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
         resources.append({
             'resource_name': resource_name,
             'allocation_id': usage.get('allocation_id'),  # Required for edit functionality
+            'parent_allocation_id': usage.get('parent_allocation_id'),
+            'is_inheriting': usage.get('is_inheriting', False),
             'account_id': usage.get('account_id'),  # Required for permission checks
             'allocated': usage.get('allocated', 0.0),
             'used': usage.get('used', 0.0),
