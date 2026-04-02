@@ -330,15 +330,26 @@
                 <!-- Project Tree Section (Lazy Loaded) -->
                 {% if project_data.has_children or project.parent_id %}
                 <div class="mt-3">
-                    <h6 class="mb-2">
-                        <i class="fas fa-sitemap"></i> Project Hierarchy
-                        <button class="btn btn-sm btn-link" data-bs-toggle="collapse" data-bs-target="#tree-{{ card_id }}" aria-expanded="false">
-                            <i class="fas fa-chevron-down"></i>
-                        </button>
+                    <h6 class="mb-2 d-flex align-items-center">
+                        <span><i class="fas fa-sitemap me-1"></i> Project Hierarchy</span>
+                        <div class="ms-auto d-flex align-items-center gap-2">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox"
+                                       id="treeActiveOnly-{{ card_id }}" checked
+                                       onchange="samTreeToggleActiveOnly(this, '{{ card_id }}', '{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode) }}')">
+                                <label class="form-check-label small text-muted fw-normal"
+                                       for="treeActiveOnly-{{ card_id }}">Active only</label>
+                            </div>
+                            <button class="btn btn-sm btn-link p-0" data-bs-toggle="collapse"
+                                    data-bs-target="#tree-{{ card_id }}" aria-expanded="false">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </div>
                     </h6>
                     <div id="tree-{{ card_id }}" class="collapse">
                         <div class="tree-container p-3 bg-light rounded"
-                             data-load-url="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode) }}"
+                             id="tree-container-{{ card_id }}"
+                             data-load-url="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode, active_only=1) }}"
                              data-loaded="false">
                             <div class="spinner-border spinner-border-sm text-primary" role="status">
                                 <span class="sr-only">Loading tree...</span>
@@ -346,6 +357,19 @@
                         </div>
                     </div>
                 </div>
+                <script>
+                if (!window.samTreeToggleActiveOnly) {
+                    window.samTreeToggleActiveOnly = function (checkbox, cardId, baseUrl) {
+                        var container = document.getElementById('tree-container-' + cardId);
+                        var url = checkbox.checked ? baseUrl + '?active_only=1' : baseUrl;
+                        if (container && container.dataset.loaded === 'true') {
+                            htmx.ajax('GET', url, { target: container, swap: 'innerHTML' });
+                        } else if (container) {
+                            container.dataset.loadUrl = url;  // update before lazy-load fires
+                        }
+                    };
+                }
+                </script>
                 {% endif %}
 
             </div>
