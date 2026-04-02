@@ -17,10 +17,17 @@
 <!-- Top-level tab navigation -->
 <ul class="nav nav-tabs mb-3" id="adminDashboardTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="admin-tab"
-                data-bs-toggle="tab" data-bs-target="#tab-administration"
-                type="button" role="tab" aria-controls="tab-administration" aria-selected="true">
-            <i class="fas fa-user-shield me-1"></i> Administration
+        <button class="nav-link active" id="projects-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-projects"
+                type="button" role="tab" aria-controls="tab-projects" aria-selected="true">
+            <i class="fas fa-folder-open me-1"></i> Projects
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="users-groups-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-users-groups"
+                type="button" role="tab" aria-controls="tab-users-groups" aria-selected="false">
+            <i class="fas fa-users me-1"></i> Users &amp; Groups
         </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -48,42 +55,10 @@
 
 <div class="tab-content" id="adminDashboardTabsContent">
 
-    <!-- Tab 1: Administration -->
-    <div class="tab-pane fade show active" id="tab-administration" role="tabpanel" aria-labelledby="admin-tab">
+    <!-- Tab 1: Projects -->
+    <div class="tab-pane fade show active" id="tab-projects" role="tabpanel" aria-labelledby="projects-tab">
 
         <div class="row">
-            <!-- Search Users Section -->
-            <div class="col-md-6">
-                <div class="card mb-3">
-                    <div class="card-header">
-                        <h5><i class="fas fa-users"></i> Search Users</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <label for="userSearchInput">Search by username, first, or last name</label>
-                            <input type="search" class="form-control" id="userSearchInput"
-                                   name="q"
-                                   placeholder="Start typing a username, first, or last name..."
-                                   autocomplete="off"
-                                   hx-get="{{ url_for('admin_dashboard.htmx_search_users_impersonate') }}"
-                                   hx-trigger="input changed delay:300ms"
-                                   hx-target="#userSearchResults"
-                                   hx-swap="innerHTML"
-                                   hx-params="q,active_only"
-                                   hx-include="#activeUsersOnly">
-                            <div id="userSearchResults" class="list-group mt-2"></div>
-                        </div>
-                        <div class="form-check mb-3">
-                            <input type="checkbox" class="form-check-input" id="activeUsersOnly"
-                                   name="active_only" value="true" checked>
-                            <label class="form-check-label" for="activeUsersOnly">
-                                Active users only
-                            </label>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Search Projects Section -->
             <div class="col-md-6">
                 <div class="card mb-3">
@@ -114,13 +89,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- User Card Display Area -->
-        <div class="row">
-            <div class="col-12">
-                <div id="userCardContainer"></div>
             </div>
         </div>
 
@@ -259,9 +227,55 @@
             </div>
         </div>
 
-    </div><!-- /#admin-pane -->
+    </div><!-- /#tab-projects -->
 
-    <!-- Tab 2: Resources -->
+    <!-- Tab 2: Users & Groups -->
+    <div class="tab-pane fade" id="tab-users-groups" role="tabpanel" aria-labelledby="users-groups-tab">
+
+        <div class="row">
+            <!-- Search Users Section -->
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-users"></i> Search Users</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="userSearchInput">Search by username, first, or last name</label>
+                            <input type="search" class="form-control" id="userSearchInput"
+                                   name="q"
+                                   placeholder="Start typing a username, first, or last name..."
+                                   autocomplete="off"
+                                   hx-get="{{ url_for('admin_dashboard.htmx_search_users_impersonate') }}"
+                                   hx-trigger="input changed delay:300ms"
+                                   hx-target="#userSearchResults"
+                                   hx-swap="innerHTML"
+                                   hx-params="q,active_only"
+                                   hx-include="#activeUsersOnly">
+                            <div id="userSearchResults" class="list-group mt-2"></div>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input type="checkbox" class="form-check-input" id="activeUsersOnly"
+                                   name="active_only" value="true" checked>
+                            <label class="form-check-label" for="activeUsersOnly">
+                                Active users only
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Card Display Area -->
+        <div class="row">
+            <div class="col-12">
+                <div id="userCardContainer"></div>
+            </div>
+        </div>
+
+    </div><!-- /#tab-users-groups -->
+
+    <!-- Tab 3: Resources -->
     <div class="tab-pane fade" id="tab-resources" role="tabpanel" aria-labelledby="resources-tab">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -434,6 +448,17 @@ function exportExpirationsCsv() {
     params.set('export_type', view);
     window.open('/admin/expirations/export?' + params.toString(), '_blank');
 }
+
+/* Switch to Projects tab whenever a project card is loaded from any context (e.g. user card badges) */
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.detail.target && e.detail.target.id === 'projectCardContainer') {
+        var projectsTabBtn = document.getElementById('projects-tab');
+        if (projectsTabBtn && !projectsTabBtn.classList.contains('active')) {
+            bootstrap.Tab.getOrCreateInstance(projectsTabBtn).show();
+        }
+        e.detail.target.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
+});
 
 /* Delegated handlers for dynamically loaded expiration content */
 document.addEventListener('click', function(e) {
