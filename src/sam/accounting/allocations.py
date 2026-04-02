@@ -189,6 +189,13 @@ class AllocationTransaction(Base):
     related_transactions = relationship('AllocationTransaction', back_populates='related_transaction')
     user = relationship('User', back_populates='allocation_transactions')
 
+    def __repr__(self):
+        return (
+            f"<AllocationTransaction id={self.allocation_transaction_id} "
+            f"type={self.transaction_type!r} amount={self.transaction_amount} "
+            f"allocation_id={self.allocation_id}>"
+        )
+
 
 #----------------------------------------------------------------------------
 class AllocationTransactionType(enum.StrEnum):

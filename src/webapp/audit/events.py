@@ -166,7 +166,7 @@ def init_audit_events(app, db, logfile_path):
                     if changes:
                         logger.info(
                             f"user={user} action=UPDATE model={model_name} "
-                            f"pk={pk} changes={changes}"
+                            f"pk={pk} obj={obj} changes={changes}"
                         )
 
             # Track DELETE operations
