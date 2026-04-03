@@ -269,7 +269,8 @@
         <!-- User Card Display Area -->
         <div class="row">
             <div class="col-12">
-                <div id="userCardContainer"></div>
+                <div id="userCardContainer"
+                     data-reload-url="{{ url_for('admin_dashboard.user_card', username='') }}"></div>
             </div>
         </div>
 

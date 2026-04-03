@@ -27,3 +27,57 @@ document.body.addEventListener('htmx:sendError', function() {
         alert(msg);
     }
 });
+
+// ── Modal management via HX-Trigger ──────────────────────────────────────────
+
+// Close any currently visible Bootstrap modal
+document.body.addEventListener('closeActiveModal', function() {
+    document.querySelectorAll('.modal.show').forEach(function(el) {
+        var m = bootstrap.Modal.getInstance(el);
+        if (m) m.hide();
+    });
+});
+
+// Close a specific Bootstrap modal by ID
+document.body.addEventListener('closeModal', function(evt) {
+    var el = document.getElementById(evt.detail.value);
+    if (el) { var m = bootstrap.Modal.getInstance(el); if (m) m.hide(); }
+});
+
+// Reload an admin card section after a modal save, respecting the active_only checkbox.
+// URL is read from the section's hx-get attribute — no hardcoded paths.
+function _reloadAdminCard(sectionId, checkboxId) {
+    var s = document.getElementById(sectionId); if (!s) return;
+    var url = (s.getAttribute('hx-get') || '').split('?')[0]; if (!url) return;
+    var cb = document.getElementById(checkboxId);
+    // 300ms matches Bootstrap's modal close animation so the reload lands
+    // after the modal has fully animated out of view.
+    setTimeout(function() {
+        htmx.ajax('GET', (cb && cb.checked) ? url + '?active_only=1' : url,
+                  {target: '#' + sectionId, swap: 'innerHTML'});
+    }, 300);
+}
+
+document.body.addEventListener('reloadFacilitiesCard', function() {
+    _reloadAdminCard('facilitiesSection', 'facilitiesCardActiveOnly');
+});
+document.body.addEventListener('reloadOrganizationsCard', function() {
+    _reloadAdminCard('organizationsSection', 'organizationsCardActiveOnly');
+});
+document.body.addEventListener('reloadResourcesCard', function() {
+    _reloadAdminCard('resourcesSection', 'resourcesCardActiveOnly');
+});
+
+// Reload the user card after an exemption change.
+// Base URL is read from a data-reload-url attribute on the container.
+document.body.addEventListener('reloadUserCard', function(evt) {
+    var username = evt.detail.value;
+    var container = document.getElementById('userCardContainer');
+    var baseUrl = container ? container.getAttribute('data-reload-url') : null;
+    if (baseUrl && username) {
+        setTimeout(function() {
+            htmx.ajax('GET', baseUrl + username,
+                      {target: '#userCardContainer', swap: 'innerHTML'});
+        }, 300);
+    }
+});

@@ -5,6 +5,7 @@ Covers: Facilities, Panels, Panel Sessions, Allocation Types.
 """
 
 from flask import render_template, request
+from webapp.utils.htmx import htmx_success
 from flask_login import login_required
 from datetime import datetime
 from webapp.api.helpers import parse_input_end_date
@@ -117,7 +118,7 @@ def htmx_facility_edit(facility_id):
             form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
 
 
 # ── Facility Create ────────────────────────────────────────────────────────
@@ -180,7 +181,7 @@ def htmx_facility_create():
             errors=[f'Error creating facility: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
 
 
 # ── Facility Delete ────────────────────────────────────────────────────────
@@ -254,7 +255,7 @@ def htmx_panel_edit(panel_id):
             form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
 
 
 # ── Panel Create ───────────────────────────────────────────────────────────
@@ -323,7 +324,7 @@ def htmx_panel_create():
     except Exception as e:
         return _reload_form([f'Error creating panel: {e}'])
 
-    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
 
 
 # ── Panel Delete ───────────────────────────────────────────────────────────
@@ -437,7 +438,7 @@ def htmx_panel_session_edit(panel_session_id):
             form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
 
 
 # ── Allocation Type Edit ───────────────────────────────────────────────────
@@ -520,7 +521,7 @@ def htmx_allocation_type_edit(allocation_type_id):
             form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
 
 
 # ── Allocation Type Create ─────────────────────────────────────────────────
@@ -608,7 +609,7 @@ def htmx_allocation_type_create():
     except Exception as e:
         return _reload_form([f'Error creating allocation type: {e}'])
 
-    return render_template('dashboards/admin/fragments/facility_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
 
 
 # ── Allocation Type Delete ─────────────────────────────────────────────────

@@ -5,6 +5,7 @@ Covers: Resources, Resource Types, Machines, Queues.
 """
 
 from flask import render_template, request
+from webapp.utils.htmx import htmx_success
 from flask_login import login_required
 from datetime import datetime
 from webapp.api.helpers import parse_input_end_date
@@ -143,7 +144,7 @@ def htmx_resource_edit(resource_id):
             form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/resource_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadResourcesCard': {}})
 
 
 # ── Resource Create ────────────────────────────────────────────────────────
@@ -223,7 +224,7 @@ def htmx_resource_create():
     except Exception as e:
         return _reload_form([f'Error creating resource: {e}'])
 
-    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/resource_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadResourcesCard': {}})
 
 
 # ── Resource Delete ────────────────────────────────────────────────────────
@@ -314,7 +315,7 @@ def htmx_resource_type_edit(resource_type_id):
             form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/resource_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadResourcesCard': {}})
 
 
 # ── Resource Type Create ───────────────────────────────────────────────────
@@ -371,7 +372,7 @@ def htmx_resource_type_create():
             errors=[f'Error creating resource type: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/resource_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadResourcesCard': {}})
 
 
 # ── Resource Type Delete ───────────────────────────────────────────────────
@@ -486,7 +487,7 @@ def htmx_machine_edit(machine_id):
             form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/resource_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadResourcesCard': {}})
 
 
 # ── Machine Create ─────────────────────────────────────────────────────────
@@ -576,7 +577,7 @@ def htmx_machine_create():
     except Exception as e:
         return _reload_form([f'Error creating machine: {e}'])
 
-    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/resource_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadResourcesCard': {}})
 
 
 # ── Machine Delete ─────────────────────────────────────────────────────────
@@ -682,7 +683,7 @@ def htmx_queue_edit(queue_id):
             form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/resource_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/resource_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadResourcesCard': {}})
 
 
 # ── Queue Delete ───────────────────────────────────────────────────────────

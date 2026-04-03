@@ -3,19 +3,3 @@
     <i class="fas fa-check-circle text-success fa-2x"></i>
     <p class="mt-2 text-success">Exemption saved successfully.</p>
 </div>
-<script>
-(function() {
-    // Close whichever modal is currently open
-    document.querySelectorAll('.modal.show').forEach(function(el) {
-        var modal = bootstrap.Modal.getInstance(el);
-        if (modal) modal.hide();
-    });
-    // Refresh the user card
-    setTimeout(function() {
-        htmx.ajax('GET', '{{ url_for("admin_dashboard.user_card", username=username) }}', {
-            target: '#userCardContainer',
-            swap: 'innerHTML'
-        });
-    }, 300);
-})();
-</script>
