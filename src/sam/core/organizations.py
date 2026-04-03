@@ -158,6 +158,12 @@ class UserOrganization(Base, TimestampMixin, DateRangeMixin):
     user = relationship('User', back_populates='organizations')
     organization = relationship('Organization', back_populates='users')
 
+    def __str__(self):
+        return f"UserOrganization {self.user_organization_id}: user={self.user_id} / org={self.organization_id}"
+
+    def __repr__(self):
+        return f"<UserOrganization(id={self.user_organization_id}, user_id={self.user_id}, org_id={self.organization_id})>"
+
 
 # ============================================================================
 # Group Management
@@ -385,6 +391,12 @@ class UserInstitution(Base, TimestampMixin, DateRangeMixin):
     user = relationship('User', back_populates='institutions')
     institution = relationship('Institution', back_populates='users')
 
+    def __str__(self):
+        return f"UserInstitution {self.user_institution_id}: user={self.user_id} / inst={self.institution_id}"
+
+    def __repr__(self):
+        return f"<UserInstitution(id={self.user_institution_id}, user_id={self.user_id}, inst_id={self.institution_id})>"
+
 
 # ============================================================================
 # Organization Management
@@ -497,6 +509,12 @@ class ProjectOrganization(Base, TimestampMixin, DateRangeMixin):
 
     project = relationship('Project', back_populates='organizations')
     organization = relationship('Organization', back_populates='projects')
+
+    def __str__(self):
+        return f"ProjectOrganization {self.project_organization_id}: project={self.project_id} / org={self.organization_id}"
+
+    def __repr__(self):
+        return f"<ProjectOrganization(id={self.project_organization_id}, project_id={self.project_id}, org_id={self.organization_id})>"
 
 
 #-------------------------------------------------------------------------em-

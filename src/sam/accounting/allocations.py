@@ -189,6 +189,9 @@ class AllocationTransaction(Base):
     related_transactions = relationship('AllocationTransaction', back_populates='related_transaction')
     user = relationship('User', back_populates='allocation_transactions')
 
+    def __str__(self):
+        return f"{self.transaction_type}: {self.transaction_amount} (allocation {self.allocation_id})"
+
     def __repr__(self):
         return (
             f"<AllocationTransaction id={self.allocation_transaction_id} "

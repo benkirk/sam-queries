@@ -37,6 +37,12 @@ class ArchiveChargeSummary(Base):
     user = relationship('User', back_populates='archive_charge_summaries')
     account = relationship('Account', back_populates='archive_charge_summaries')
 
+    def __str__(self):
+        return f"ArchiveChargeSummary {self.archive_charge_summary_id}: {self.username}/{self.projcode} {self.activity_date}"
+
+    def __repr__(self):
+        return f"<ArchiveChargeSummary(id={self.archive_charge_summary_id}, user='{self.username}', proj='{self.projcode}', date={self.activity_date})>"
+
 
 #----------------------------------------------------------------------------
 class ArchiveChargeSummaryStatus(Base):
@@ -45,6 +51,12 @@ class ArchiveChargeSummaryStatus(Base):
 
     activity_date = Column(Date, primary_key=True)
     current = Column(Boolean)
+
+    def __str__(self):
+        return f"ArchiveChargeSummaryStatus: {self.activity_date} (current={self.current})"
+
+    def __repr__(self):
+        return f"<ArchiveChargeSummaryStatus(date={self.activity_date}, current={self.current})>"
 
 
 # ============================================================================

@@ -30,6 +30,12 @@ class ChargeAdjustment(Base):
     adjustment_type = relationship('ChargeAdjustmentType', back_populates='adjustments')
     adjusted_by = relationship('User', back_populates='charge_adjustments_made')
 
+    def __str__(self):
+        return f"ChargeAdjustment {self.charge_adjustment_id}: {self.amount} ({self.adjustment_date})"
+
+    def __repr__(self):
+        return f"<ChargeAdjustment(id={self.charge_adjustment_id}, account_id={self.account_id}, amount={self.amount})>"
+
 
 # ============================================================================
 # Access Control

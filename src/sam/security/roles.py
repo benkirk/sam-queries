@@ -51,6 +51,14 @@ class RoleUser(Base):
     role = relationship('Role', back_populates='users')
     user = relationship('User', back_populates='role_assignments')
 
+    def __str__(self):
+        username = self.user.username if self.user else self.user_id
+        role_name = self.role.name if self.role else self.role_id
+        return f"{username} -> {role_name}"
+
+    def __repr__(self):
+        return f"<RoleUser(id={self.role_user_id}, role_id={self.role_id}, user_id={self.user_id})>"
+
 
 #----------------------------------------------------------------------------
 class ApiCredentials(Base):
@@ -107,6 +115,11 @@ class RoleApiCredentials(Base):
     # Relationships
     role = relationship('Role', back_populates='api_credentials')
     api_credentials = relationship('ApiCredentials', back_populates='role_assignments')
+
+    def __str__(self):
+        cred = self.api_credentials.username if self.api_credentials else self.api_credentials_id
+        role_name = self.role.name if self.role else self.role_id
+        return f"{cred} -> {role_name}"
 
     def __repr__(self):
         return f"<RoleApiCredentials(role_id={self.role_id}, api_credentials_id={self.api_credentials_id})>"

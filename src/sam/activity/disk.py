@@ -48,6 +48,12 @@ class DiskActivity(Base, TimestampMixin):
         return (hash(self.disk_activity_id) if self.disk_activity_id is not None
                 else hash(id(self)))
 
+    def __str__(self):
+        return f"DiskActivity {self.disk_activity_id}: {self.username}/{self.projcode} ({self.activity_date})"
+
+    def __repr__(self):
+        return f"<DiskActivity(id={self.disk_activity_id}, user='{self.username}', proj='{self.projcode}', date={self.activity_date})>"
+
 
 #----------------------------------------------------------------------------
 class DiskCharge(Base):
@@ -75,6 +81,12 @@ class DiskCharge(Base):
     activity = relationship('DiskActivity', back_populates='charges')
     user = relationship('User', back_populates='disk_charges')
 
+    def __str__(self):
+        return f"DiskCharge {self.disk_charge_id}: {self.charge} ({self.charge_date})"
+
+    def __repr__(self):
+        return f"<DiskCharge(id={self.disk_charge_id}, account_id={self.account_id}, charge={self.charge})>"
+
 
 #----------------------------------------------------------------------------
 class DiskCos(Base, TimestampMixin):
@@ -88,5 +100,8 @@ class DiskCos(Base, TimestampMixin):
 
     def __str__(self):
         return f"{self.description}"
+
+    def __repr__(self):
+        return f"<DiskCos(id={self.disk_cos_id}, desc='{self.description}')>"
 
 #-------------------------------------------------------------------------em-

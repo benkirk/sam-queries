@@ -120,6 +120,11 @@ class AccountUser(Base, TimestampMixin, DateRangeMixin):
     account = relationship('Account', back_populates='users', lazy='select')
     user = relationship('User', back_populates='accounts', lazy='selectin')
 
+    def __str__(self):
+        username = self.user.username if self.user else None
+        projcode = self.account.project.projcode if (self.account and self.account.project) else None
+        return f"AccountUser: {username} on {projcode}"
+
     def __repr__(self):
         username = self.user.username if self.user else None
         projcode = self.account.project.projcode if (self.account and self.account.project) else None

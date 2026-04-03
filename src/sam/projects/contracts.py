@@ -259,6 +259,14 @@ class ProjectContract(Base):
     project = relationship('Project', back_populates='contracts')
     contract = relationship('Contract', back_populates='projects')
 
+    def __str__(self):
+        projcode = self.project.projcode if self.project else self.project_id
+        contract_num = self.contract.contract_number if self.contract else self.contract_id
+        return f"{projcode} / {contract_num}"
+
+    def __repr__(self):
+        return f"<ProjectContract(id={self.project_contract_id}, project_id={self.project_id}, contract_id={self.contract_id})>"
+
 
 # ============================================================================
 # Role/Permission Management

@@ -271,6 +271,9 @@ class CompActivity(Base):
             cls.external_charge > 0
         )
 
+    def __str__(self):
+        return f"CompActivity: {self.job_id}/{self.util_idx} on {self.machine} ({self.activity_date})"
+
     def __repr__(self):
         return (f"<CompActivity(job_id='{self.job_id}', util_idx={self.util_idx}, "
                 f"core_hours={self.core_hours}, charge={self.charge})>")
@@ -340,6 +343,9 @@ class CompActivityChargeView(Base):
     external_charge = Column(Float(22))  # float(22,8) in DB
     core_hours = Column(Float(22))  # float(22,8) in DB
     charge = Column(Float(22))  # float(22,8) in DB
+
+    def __str__(self):
+        return f"CompActivityCharge: {self.job_id} {self.username}/{self.projcode} charge={self.charge}"
 
     def __repr__(self):
         return f"<CompActivityChargeView(job='{self.job_id}', user='{self.username}', project='{self.projcode}', charge={self.charge})>"

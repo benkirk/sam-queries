@@ -113,6 +113,9 @@ class CompChargeSummary(Base):
         """Check if this summary has any charges."""
         return bool(self.charges and self.charges > 0)
 
+    def __str__(self):
+        return f"CompChargeSummary {self.charge_summary_id}: {self.machine}/{self.queue} {self.activity_date}"
+
     def __repr__(self):
         return (f"<CompChargeSummary(id={self.charge_summary_id}, "
                 f"date={self.activity_date if self.activity_date else None}, "
@@ -173,6 +176,9 @@ class CompChargeSummaryStatus(Base):
             delta = datetime.now() - self.modified
             return delta.total_seconds() / 86400
         return None
+
+    def __str__(self):
+        return f"CompChargeSummaryStatus {self.charge_summary_status_id}: {self.command_id}"
 
     def __repr__(self):
         return (f"<CompChargeSummaryStatus(summary_id={self.charge_summary_id}, "
