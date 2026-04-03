@@ -4,7 +4,7 @@ import uuid
 import time
 os.environ['FLASK_ACTIVE'] = '1'
 
-from flask import Flask, redirect, url_for
+from flask import Flask, redirect, request, make_response, url_for
 from flask_login import LoginManager, current_user
 import sam.session
 import system_status.session
@@ -147,6 +147,15 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Please log in to access this page.'
+
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        """Handle unauthorized access — return HX-Redirect for HTMX requests."""
+        if request.headers.get('HX-Request'):
+            response = make_response('', 401)
+            response.headers['HX-Redirect'] = url_for('auth.login')
+            return response
+        return redirect(url_for('auth.login'))
 
     @login_manager.user_loader
     def load_user(user_id):

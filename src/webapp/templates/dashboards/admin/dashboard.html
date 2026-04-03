@@ -297,8 +297,8 @@
                  hx-get="{{ url_for('admin_dashboard.htmx_resources_card') }}?active_only=1"
                  hx-trigger="intersect once"
                  hx-swap="innerHTML">
-                <div class="card-body text-center text-muted py-4">
-                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                <div class="card-body text-center text-muted py-4" role="status">
+                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
                     <p class="mt-2">Loading...</p>
                 </div>
             </div>
@@ -327,8 +327,8 @@
                  hx-get="{{ url_for('admin_dashboard.htmx_organizations_card') }}?active_only=1"
                  hx-trigger="intersect once"
                  hx-swap="innerHTML">
-                <div class="card-body text-center text-muted py-4">
-                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                <div class="card-body text-center text-muted py-4" role="status">
+                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
                     <p class="mt-2">Loading...</p>
                 </div>
             </div>
@@ -357,8 +357,8 @@
                  hx-get="{{ url_for('admin_dashboard.htmx_facilities_card') }}?active_only=1"
                  hx-trigger="intersect once"
                  hx-swap="innerHTML">
-                <div class="card-body text-center text-muted py-4">
-                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                <div class="card-body text-center text-muted py-4" role="status">
+                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
                     <p class="mt-2">Loading...</p>
                 </div>
             </div>
