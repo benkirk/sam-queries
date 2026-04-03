@@ -89,6 +89,9 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
     casper_status = relationship('CasperStatus', back_populates='login_nodes',
                                 foreign_keys=[casper_status_id])
 
+    def __str__(self):
+        return f"{self.node_name} ({self.system_name}, {self.node_type})"
+
     def __repr__(self):
         load_str = f"{self.load_1min:.1f}%" if self.load_1min is not None else "N/A"
         return (f"<LoginNodeStatus(node_name='{self.node_name}', "

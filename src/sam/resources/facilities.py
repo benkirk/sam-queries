@@ -131,7 +131,7 @@ class FacilityResource(Base):
         return f"<{self.facility.facility_name}/{self.resource.resource_name}>"
 
     def __repr__(self):
-        return f"<FacilityResource(id={self.facility_resource_id}>"
+        return f"<FacilityResource(id={self.facility_resource_id})>"
 
 #----------------------------------------------------------------------------
 class Panel(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
@@ -310,6 +310,12 @@ class PanelSession(Base, TimestampMixin, SessionMixin):
             cls.start_date <= now,
             or_(cls.end_date.is_(None), cls.end_date >= now)
         )
+
+    def __str__(self):
+        return f"{self.name} ({self.start_date} - {self.end_date})"
+
+    def __repr__(self):
+        return f"<PanelSession(id={self.panel_session_id}, name='{self.name}', start={self.start_date})>"
 
 
 #----------------------------------------------------------------------------

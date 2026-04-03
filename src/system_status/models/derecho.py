@@ -42,3 +42,9 @@ class DerechoStatus(StatusBase, StatusSnapshotMixin, SessionMixin, SystemStatusM
                                back_populates='derecho_status',
                                cascade='all, delete-orphan',
                                lazy='selectin')
+
+    def __str__(self):
+        return f"DerechoStatus {self.status_id} ({self.timestamp})"
+
+    def __repr__(self):
+        return f"<DerechoStatus(id={self.status_id}, timestamp={self.timestamp}, cpu_util={self.cpu_utilization_percent})>"

@@ -42,6 +42,12 @@ class HPCChargeSummary(Base):
     user = relationship('User', back_populates='hpc_charge_summaries')
     account = relationship('Account', back_populates='hpc_charge_summaries')
 
+    def __str__(self):
+        return f"HPCChargeSummary {self.hpc_charge_summary_id}: {self.machine}/{self.queue_name} {self.activity_date}"
+
+    def __repr__(self):
+        return f"<HPCChargeSummary(id={self.hpc_charge_summary_id}, machine='{self.machine}', date={self.activity_date}, charges={self.charges})>"
+
 
 #----------------------------------------------------------------------------
 class HPCChargeSummaryStatus(Base):
@@ -50,6 +56,12 @@ class HPCChargeSummaryStatus(Base):
 
     activity_date = Column(Date, primary_key=True)
     current = Column(Boolean)
+
+    def __str__(self):
+        return f"HPCChargeSummaryStatus: {self.activity_date} (current={self.current})"
+
+    def __repr__(self):
+        return f"<HPCChargeSummaryStatus(date={self.activity_date}, current={self.current})>"
 
 
 # ============================================================================

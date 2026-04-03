@@ -75,6 +75,12 @@ class AdhocGroupTag(Base):
 
     group = relationship('AdhocGroup', back_populates='tags')
 
+    def __str__(self):
+        return f"'{self.tag}' (group {self.group_id})"
+
+    def __repr__(self):
+        return f"<AdhocGroupTag(id={self.adhoc_group_tag_id}, tag='{self.tag}', group_id={self.group_id})>"
+
 
 #----------------------------------------------------------------------------
 class AdhocSystemAccountEntry(Base):
@@ -92,6 +98,12 @@ class AdhocSystemAccountEntry(Base):
     creation_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
 
     group = relationship('AdhocGroup', back_populates='system_accounts')
+
+    def __str__(self):
+        return f"{self.username} ({self.access_branch_name})"
+
+    def __repr__(self):
+        return f"<AdhocSystemAccountEntry(id={self.entry_id}, username='{self.username}', branch='{self.access_branch_name}')>"
 
 
 # ============================================================================

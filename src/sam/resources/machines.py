@@ -171,6 +171,12 @@ class MachineFactor(Base, TimestampMixin):
 
     machine = relationship('Machine', back_populates='machine_factors')
 
+    def __str__(self):
+        return f"MachineFactor {self.machine_factor_id}: machine={self.machine_id}, value={self.factor_value}"
+
+    def __repr__(self):
+        return f"<MachineFactor(id={self.machine_factor_id}, machine_id={self.machine_id}, value={self.factor_value})>"
+
 
 #----------------------------------------------------------------------------
 class Queue(Base, TimestampMixin, SessionMixin):
@@ -303,6 +309,12 @@ class QueueFactor(Base, TimestampMixin):
         return normalize_end_date(value)
 
     queue = relationship('Queue', back_populates='queue_factors')
+
+    def __str__(self):
+        return f"QueueFactor {self.queue_factor_id}: queue={self.queue_id}, value={self.factor_value}"
+
+    def __repr__(self):
+        return f"<QueueFactor(id={self.queue_factor_id}, queue_id={self.queue_id}, value={self.factor_value})>"
 
 
 # ============================================================================

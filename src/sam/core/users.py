@@ -672,6 +672,12 @@ class UserResourceShell(Base, TimestampMixin):
     user = relationship('User', back_populates='resource_shells')
     resource_shell = relationship('ResourceShell', back_populates='user_shells')
 
+    def __str__(self):
+        return f"UserResourceShell {self.user_resource_shell_id}: user={self.user_id} / shell={self.resource_shell_id}"
+
+    def __repr__(self):
+        return f"<UserResourceShell(id={self.user_resource_shell_id}, user_id={self.user_id}, shell_id={self.resource_shell_id})>"
+
 
 # ============================================================================
 # Institution Management
