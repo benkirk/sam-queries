@@ -7,7 +7,13 @@ import enum
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class Allocation(Base, TimestampMixin, SoftDeleteMixin):
+class InheritingAllocationException(Exception):
+    """Raised when a direct mutation is attempted on an inheriting (child) allocation."""
+    pass
+
+
+#----------------------------------------------------------------------------
+class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
     """Resource allocations for accounts."""
     __tablename__ = 'allocation'
 
@@ -39,6 +45,10 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
 
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
+
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
 
     account = relationship('Account', back_populates='allocations')
     children = relationship('Allocation', back_populates='parent', cascade='all')
@@ -75,6 +85,65 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin):
             or_(cls.end_date.is_(None), cls.end_date >= now)
         )
 
+    @property
+    def is_inheriting(self) -> bool:
+        """True if this allocation is a child node in the shared-allocation tree."""
+        return self.parent_allocation_id is not None
+
+    def _walk_tree(self, action_func, *args, **kwargs) -> None:
+        """
+        Applies action_func to this node and recursively to all descendants.
+        Equivalent to Java's TreeWalker.walk(). Handles trees of any depth.
+        """
+        action_func(self, *args, **kwargs)
+        for child in self.children:
+            child._walk_tree(action_func, *args, **kwargs)
+
+    def extend_allocation(self, new_end_date: datetime, user_id: int) -> None:
+        """
+        Extend end_date across the entire allocation tree.
+        Must be called on the master (root) allocation.
+
+        Sets propagated=True on all child/grandchild transactions. Cascades
+        to all descendants regardless of depth (handles grandchild trees).
+
+        NOTE: Does NOT commit. Caller is responsible for committing.
+
+        Args:
+            new_end_date: New end date to apply to the entire tree.
+            user_id: User performing the extension (for audit trail).
+
+        Raises:
+            InheritingAllocationException: If called on a child allocation.
+            ValueError: If new_end_date is before start_date.
+        """
+        if self.is_inheriting:
+            raise InheritingAllocationException(
+                "extend_allocation() must be called on the master (root) allocation, "
+                "not on an inheriting child."
+            )
+        if new_end_date < self.start_date:
+            raise ValueError(
+                f"new_end_date ({new_end_date}) cannot be before start_date ({self.start_date})"
+            )
+
+        def _do_extend(node: 'Allocation') -> None:
+            node.end_date = new_end_date
+            txn = AllocationTransaction(
+                allocation_id=node.allocation_id,
+                user_id=user_id,
+                transaction_type=AllocationTransactionType.EXTENSION,
+                alloc_start_date=node.start_date,
+                alloc_end_date=new_end_date,
+                transaction_amount=node.amount,
+                propagated=(node.parent_allocation_id is not None),
+                transaction_comment=f"End date extended to {new_end_date.strftime('%Y-%m-%d')}",
+            )
+            node.session.add(txn)
+
+        self._walk_tree(_do_extend)
+        self.session.flush()
+
     def __str__(self):
         return f"{self.allocation_id}"
 
@@ -105,6 +174,10 @@ class AllocationTransaction(Base):
     alloc_start_date = Column(DateTime)
     alloc_end_date = Column(DateTime)
 
+    @validates('alloc_end_date')
+    def _validate_alloc_end_date(self, key, value):
+        return normalize_end_date(value)
+
     auth_at_panel_mtg = Column(Boolean)
     transaction_comment = Column(Text)
     propagated = Column(Boolean, nullable=False, default=False)
@@ -116,16 +189,31 @@ class AllocationTransaction(Base):
     related_transactions = relationship('AllocationTransaction', back_populates='related_transaction')
     user = relationship('User', back_populates='allocation_transactions')
 
+    def __str__(self):
+        return f"{self.transaction_type}: {self.transaction_amount} (allocation {self.allocation_id})"
+
+    def __repr__(self):
+        return (
+            f"<AllocationTransaction id={self.allocation_transaction_id} "
+            f"type={self.transaction_type!r} amount={self.transaction_amount} "
+            f"allocation_id={self.allocation_id}>"
+        )
+
 
 #----------------------------------------------------------------------------
 class AllocationTransactionType(enum.StrEnum):
     """Transaction types for allocation audit trail."""
+    # Python-side types (new operations)
     CREATE = "CREATE"
     EDIT = "EDIT"
     TRANSFER = "TRANSFER"
     ADJUSTMENT = "ADJUSTMENT"
     EXPIRE = "EXPIRE"
     DELETE = "DELETE"
+    # Legacy Java-side types (present in existing DB data)
+    NEW = "NEW"
+    EXTENSION = "EXTENSION"
+    SUPPLEMENT = "SUPPLEMENT"
 
 
 # ============================================================================
@@ -189,6 +277,38 @@ class AllocationType(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         self.session.flush()
         return self
+
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        allocation_type: str,
+        panel_id: Optional[int] = None,
+        default_allocation_amount: Optional[float] = None,
+        fair_share_percentage: Optional[float] = None,
+    ) -> 'AllocationType':
+        """
+        Create a new AllocationType.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not allocation_type or not allocation_type.strip():
+            raise ValueError("allocation_type is required")
+        if default_allocation_amount is not None and default_allocation_amount < 0:
+            raise ValueError("default_allocation_amount must be >= 0")
+        if fair_share_percentage is not None and not (0 <= fair_share_percentage <= 100):
+            raise ValueError("fair_share_percentage must be between 0 and 100")
+
+        obj = cls(
+            allocation_type=allocation_type.strip(),
+            panel_id=panel_id,
+            default_allocation_amount=default_allocation_amount,
+            fair_share_percentage=fair_share_percentage,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
 
     def __str__(self):
         return f"{self.allocation_type}"

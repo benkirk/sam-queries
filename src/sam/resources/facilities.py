@@ -58,6 +58,38 @@ class Facility(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        facility_name: str,
+        description: str,
+        code: Optional[str] = None,
+        fair_share_percentage: Optional[float] = None,
+    ) -> 'Facility':
+        """
+        Create a new Facility.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not facility_name or not facility_name.strip():
+            raise ValueError("facility_name is required")
+        if not description or not description.strip():
+            raise ValueError("description is required")
+        if fair_share_percentage is not None and not (0 <= fair_share_percentage <= 100):
+            raise ValueError("fair_share_percentage must be between 0 and 100")
+
+        obj = cls(
+            facility_name=facility_name.strip(),
+            description=description.strip(),
+            code=code.strip() if code and code.strip() else None,
+            fair_share_percentage=fair_share_percentage,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.facility_name} - {self.code}"
 
@@ -99,7 +131,7 @@ class FacilityResource(Base):
         return f"<{self.facility.facility_name}/{self.resource.resource_name}>"
 
     def __repr__(self):
-        return f"<FacilityResource(id={self.facility_resource_id}>"
+        return f"<FacilityResource(id={self.facility_resource_id})>"
 
 #----------------------------------------------------------------------------
 class Panel(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
@@ -146,6 +178,32 @@ class Panel(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        panel_name: str,
+        facility_id: int,
+        description: Optional[str] = None,
+    ) -> 'Panel':
+        """
+        Create a new Panel.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not panel_name or not panel_name.strip():
+            raise ValueError("panel_name is required")
+
+        obj = cls(
+            panel_name=panel_name.strip(),
+            facility_id=facility_id,
+            description=description.strip() if description and description.strip() else None,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.panel_name}"
 
@@ -177,6 +235,10 @@ class PanelSession(Base, TimestampMixin, SessionMixin):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
     panel_meeting_date = Column(DateTime)
+
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
     description = Column(String(255))
     panel_id = Column(Integer, ForeignKey('panel.panel_id'), nullable=False)
 
@@ -248,6 +310,12 @@ class PanelSession(Base, TimestampMixin, SessionMixin):
             cls.start_date <= now,
             or_(cls.end_date.is_(None), cls.end_date >= now)
         )
+
+    def __str__(self):
+        return f"{self.name} ({self.start_date} - {self.end_date})"
+
+    def __repr__(self):
+        return f"<PanelSession(id={self.panel_session_id}, name='{self.name}', start={self.start_date})>"
 
 
 #----------------------------------------------------------------------------

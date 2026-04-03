@@ -51,6 +51,12 @@ class ArchiveActivity(Base):
         return (hash(self.archive_activity_id) if self.archive_activity_id is not None
                 else hash(id(self)))
 
+    def __str__(self):
+        return f"ArchiveActivity {self.archive_activity_id}: {self.username}/{self.projcode} ({self.activity_date})"
+
+    def __repr__(self):
+        return f"<ArchiveActivity(id={self.archive_activity_id}, user='{self.username}', proj='{self.projcode}', date={self.activity_date})>"
+
 
 #----------------------------------------------------------------------------
 class ArchiveCharge(Base):
@@ -78,6 +84,12 @@ class ArchiveCharge(Base):
     activity = relationship('ArchiveActivity', back_populates='charges')
     user = relationship('User', back_populates='archive_charges')
 
+    def __str__(self):
+        return f"ArchiveCharge {self.archive_charge_id}: {self.charge} ({self.charge_date})"
+
+    def __repr__(self):
+        return f"<ArchiveCharge(id={self.archive_charge_id}, account_id={self.account_id}, charge={self.charge})>"
+
 
 #----------------------------------------------------------------------------
 class ArchiveCos(Base, TimestampMixin):
@@ -92,5 +104,8 @@ class ArchiveCos(Base, TimestampMixin):
 
     def __str__(self):
         return f"{self.description}"
+
+    def __repr__(self):
+        return f"<ArchiveCos(id={self.archive_cos_id}, desc='{self.description}')>"
 
 #-------------------------------------------------------------------------em-

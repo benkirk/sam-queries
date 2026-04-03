@@ -40,6 +40,9 @@ class XrasUserView(Base):
     email = Column(String(255))
     academicStatus = Column(String(100))
 
+    def __str__(self):
+        return f"{self.username} ({self.firstName} {self.lastName})"
+
     def __repr__(self):
         return f"<XrasUserView(username='{self.username}', email='{self.email}')>"
 
@@ -58,6 +61,9 @@ class XrasRoleView(Base):
     projectId = Column(String(30), primary_key=True)
     username = Column(String(35), primary_key=True)
     role = Column(String(17), nullable=False)
+
+    def __str__(self):
+        return f"{self.username} -> {self.role} on {self.projectId}"
 
     def __repr__(self):
         return f"<XrasRoleView(project='{self.projectId}', user='{self.username}', role='{self.role}')>"
@@ -81,6 +87,9 @@ class XrasActionView(Base):
     endDate = Column(DateTime)
     dateApplied = Column(DateTime, nullable=False)
 
+    def __str__(self):
+        return f"XrasAction {self.allocationId}: {self.actionType} {self.amount} for {self.projectId}"
+
     def __repr__(self):
         return f"<XrasActionView(allocation={self.allocationId}, project='{self.projectId}', action='{self.actionType}')>"
 
@@ -103,6 +112,9 @@ class XrasAllocationView(Base):
     remainingAmount = Column(Float(25))  # double(25,8) in DB
     resourceRepositoryKey = Column(Integer)
 
+    def __str__(self):
+        return f"XrasAllocation {self.allocationId}: {self.projectId} allocated={self.allocatedAmount}"
+
     def __repr__(self):
         return f"<XrasAllocationView(id={self.allocationId}, project='{self.projectId}', amount={self.allocatedAmount})>"
 
@@ -121,6 +133,9 @@ class XrasHpcAllocationAmountView(Base):
     allocated = Column(Float(15))  # float(15,2) in DB
     used = Column(Float(22))  # double(22,8) in DB
     remaining = Column(Float(22))  # double(22,8) in DB
+
+    def __str__(self):
+        return f"XrasHpcAmount {self.allocation_id}: allocated={self.allocated}, used={self.used}"
 
     def __repr__(self):
         return f"<XrasHpcAllocationAmountView(allocation={self.allocation_id}, allocated={self.allocated}, used={self.used})>"
@@ -144,6 +159,9 @@ class XrasRequestView(Base):
     allocationType = Column(String(20), nullable=False)
     projectTitle = Column(String(255), nullable=False)
     xrasFosTypeId = Column(Integer, nullable=False)
+
+    def __str__(self):
+        return f"{self.projectId}: {self.allocationType} - {self.projectTitle[:50]}"
 
     def __repr__(self):
         return f"<XrasRequestView(project='{self.projectId}', type='{self.allocationType}')>"

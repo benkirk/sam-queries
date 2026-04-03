@@ -10,6 +10,7 @@ JavaScript API calls for improved performance and simplicity.
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify, make_response
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
+from webapp.api.helpers import parse_input_end_date
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
@@ -181,6 +182,7 @@ def tree_fragment(projcode):
         return '<p class="text-danger mb-0">Project not found</p>'
 
     # Get the root of the project tree
+    active_only = request.args.get('active_only') == '1'
     root = project.get_root() if hasattr(project, 'get_root') else project
     can_view_projects = has_permission(current_user, Permission.VIEW_PROJECTS)
 
@@ -221,6 +223,8 @@ def tree_fragment(projcode):
 
         # Recursively render children
         children = node.children if hasattr(node, 'children') and node.children else []
+        if active_only:
+            children = [c for c in children if getattr(c, 'active', True)]
         if children:
             html += '<ul class="tree-list">'
             for child in sorted(children, key=lambda c: c.projcode):
@@ -368,7 +372,7 @@ def htmx_add_member(projcode):
         if start_date_str:
             start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
         if end_date_str:
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            end_date = parse_input_end_date(end_date_str)
     except ValueError:
         errors.append('Invalid date format. Use YYYY-MM-DD.')
 
@@ -442,6 +446,18 @@ def htmx_edit_allocation_form(allocation_id):
     resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
     projcode = request.args.get('projcode', account.project.projcode if account and account.project else '')
 
+    # Shared (inheriting) allocations are read-only — block direct edits
+    if allocation.is_inheriting:
+        return render_template(
+            'dashboards/user/fragments/edit_allocation_form_htmx.html',
+            allocation=allocation,
+            resource_name=resource_name,
+            projcode=projcode,
+            errors=["This is a shared (inherited) allocation. "
+                    "To modify it, edit the master parent allocation."],
+            read_only=True,
+        )
+
     return render_template(
         'dashboards/user/fragments/edit_allocation_form_htmx.html',
         allocation=allocation,
@@ -496,7 +512,7 @@ def htmx_edit_allocation(allocation_id):
         if start_date_str:
             updates['start_date'] = datetime.strptime(start_date_str, '%Y-%m-%d')
         if end_date_str:
-            updates['end_date'] = datetime.strptime(end_date_str, '%Y-%m-%d')
+            updates['end_date'] = parse_input_end_date(end_date_str)
         else:
             updates['end_date'] = None  # Explicitly clear end date
     except ValueError:
@@ -506,8 +522,8 @@ def htmx_edit_allocation(allocation_id):
         if updates['end_date'] <= updates['start_date']:
             errors.append('End date must be after start date')
 
-    description = request.form.get('description', '')
-    updates['description'] = description
+    description = request.form.get('description', '').strip()
+    updates['description'] = description if description else None
 
     if errors:
         return render_template(

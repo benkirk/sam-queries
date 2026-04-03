@@ -53,6 +53,12 @@ class SystemOutage(StatusBase, SessionMixin):
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     updated_at = Column(DateTime, nullable=True, onupdate=datetime.now)
 
+    def __str__(self):
+        return f"{self.system_name}: {self.title} ({self.severity}/{self.status})"
+
+    def __repr__(self):
+        return f"<SystemOutage(id={self.outage_id}, system='{self.system_name}', severity='{self.severity}', status='{self.status}')>"
+
 
 class ResourceReservation(StatusBase, SessionMixin):
     """
@@ -85,3 +91,9 @@ class ResourceReservation(StatusBase, SessionMixin):
 
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     updated_at = Column(DateTime, nullable=True, onupdate=datetime.now)
+
+    def __str__(self):
+        return f"{self.system_name}: {self.reservation_name} ({self.start_time} - {self.end_time})"
+
+    def __repr__(self):
+        return f"<ResourceReservation(id={self.reservation_id}, system='{self.system_name}', name='{self.reservation_name}')>"

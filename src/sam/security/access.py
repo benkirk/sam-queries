@@ -39,6 +39,12 @@ class AccessBranchResource(Base):
     access_branch = relationship('AccessBranch', back_populates='resources')
     resource = relationship('Resource', back_populates='access_branch_resources')
 
+    def __str__(self):
+        return f"AccessBranchResource: branch={self.access_branch_id} / resource={self.resource_id}"
+
+    def __repr__(self):
+        return f"<AccessBranchResource(branch_id={self.access_branch_id}, resource_id={self.resource_id})>"
+
 # ============================================================================
 # Utility/Operational Tables
 # ============================================================================

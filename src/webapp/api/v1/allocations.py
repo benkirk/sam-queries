@@ -15,7 +15,7 @@ from webapp.extensions import db
 from sam.schemas import AllocationWithUsageSchema
 from sam import Allocation
 from sam.manage import update_allocation, management_transaction
-from webapp.api.helpers import register_error_handlers
+from webapp.api.helpers import register_error_handlers, parse_input_end_date
 from datetime import datetime
 
 bp = Blueprint('api_allocations', __name__)
@@ -103,7 +103,7 @@ def update_allocation_endpoint(allocation_id):
         if 'end_date' in data:
             # Allow null/empty to clear end date
             if data['end_date']:
-                updates['end_date'] = datetime.strptime(data['end_date'], '%Y-%m-%d')
+                updates['end_date'] = parse_input_end_date(data['end_date'])
             else:
                 updates['end_date'] = None
     except ValueError:

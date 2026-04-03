@@ -58,3 +58,9 @@ class JupyterHubStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
 
     # Individual Node Details (JSON array)
     nodes = Column(JSON, nullable=True)  # List of node detail dicts
+
+    def __str__(self):
+        return f"JupyterHubStatus {self.status_id} ({self.timestamp})"
+
+    def __repr__(self):
+        return f"<JupyterHubStatus(id={self.status_id}, timestamp={self.timestamp}, users={self.active_users}, sessions={self.active_sessions})>"

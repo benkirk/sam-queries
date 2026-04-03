@@ -37,6 +37,12 @@ class DiskChargeSummary(Base):
     user = relationship('User', back_populates='disk_charge_summaries')
     account = relationship('Account', back_populates='disk_charge_summaries')
 
+    def __str__(self):
+        return f"DiskChargeSummary {self.disk_charge_summary_id}: {self.username}/{self.projcode} {self.activity_date}"
+
+    def __repr__(self):
+        return f"<DiskChargeSummary(id={self.disk_charge_summary_id}, user='{self.username}', proj='{self.projcode}', date={self.activity_date})>"
+
 
 #----------------------------------------------------------------------------
 class DiskChargeSummaryStatus(Base):
@@ -45,6 +51,12 @@ class DiskChargeSummaryStatus(Base):
 
     activity_date = Column(Date, primary_key=True)
     current = Column(Boolean)
+
+    def __str__(self):
+        return f"DiskChargeSummaryStatus: {self.activity_date} (current={self.current})"
+
+    def __repr__(self):
+        return f"<DiskChargeSummaryStatus(date={self.activity_date}, current={self.current})>"
 
 
 # ============================================================================

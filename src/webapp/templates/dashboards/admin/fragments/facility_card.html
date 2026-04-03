@@ -52,6 +52,17 @@
                                 onclick="event.stopPropagation()">
                             <i class="fas fa-edit"></i>
                         </button>
+                        {% if has_permission(Permission.DELETE_RESOURCES) %}
+                        <button class="btn btn-sm btn-outline-danger ms-1"
+                                title="Deactivate facility"
+                                hx-delete="{{ url_for('admin_dashboard.htmx_facility_delete', facility_id=f.facility_id) }}"
+                                hx-target="closest tr"
+                                hx-swap="outerHTML"
+                                hx-confirm="Deactivate facility '{{ f.facility_name }}'?"
+                                onclick="event.stopPropagation()">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                        {% endif %}
                         {% endif %}
                     </td>
                 </tr>
@@ -82,6 +93,16 @@
                                 title="Edit panel">
                             <i class="fas fa-edit"></i>
                         </button>
+                        {% if has_permission(Permission.DELETE_RESOURCES) %}
+                        <button class="btn btn-sm btn-outline-danger ms-1"
+                                title="Deactivate panel"
+                                hx-delete="{{ url_for('admin_dashboard.htmx_panel_delete', panel_id=p.panel_id) }}"
+                                hx-target="closest tr"
+                                hx-swap="outerHTML"
+                                hx-confirm="Deactivate panel '{{ p.panel_name }}'?">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                        {% endif %}
                         {% endif %}
                     </td>
                 </tr>
@@ -118,6 +139,16 @@
                                                 title="Edit allocation type">
                                             <i class="fas fa-edit"></i>
                                         </button>
+                                        {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                        <button class="btn btn-sm btn-outline-danger ms-1"
+                                                title="Deactivate allocation type"
+                                                hx-delete="{{ url_for('admin_dashboard.htmx_allocation_type_delete', allocation_type_id=at.allocation_type_id) }}"
+                                                hx-target="closest tr"
+                                                hx-swap="outerHTML"
+                                                hx-confirm="Deactivate allocation type '{{ at.allocation_type }}'?">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                        {% endif %}
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -145,6 +176,39 @@
             {% endif %}
 
         </table>
+    </div>
+    <div class="d-flex justify-content-between align-items-center px-3 py-2">
+        <span class="text-muted small">
+            Showing {{ facilities|length }} facilit{{ 'ies' if facilities|length != 1 else 'y' }}
+        </span>
+        {% if has_permission(Permission.CREATE_RESOURCES) %}
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-success"
+                    data-bs-toggle="modal"
+                    data-bs-target="#createFacilityModal"
+                    hx-get="{{ url_for('admin_dashboard.htmx_facility_create_form') }}"
+                    hx-target="#createFacilityFormContainer"
+                    hx-trigger="click">
+                <i class="fas fa-plus"></i> Create Facility
+            </button>
+            <button class="btn btn-sm btn-outline-success"
+                    data-bs-toggle="modal"
+                    data-bs-target="#createPanelModal"
+                    hx-get="{{ url_for('admin_dashboard.htmx_panel_create_form') }}"
+                    hx-target="#createPanelFormContainer"
+                    hx-trigger="click">
+                <i class="fas fa-plus"></i> Create Panel
+            </button>
+            <button class="btn btn-sm btn-outline-success"
+                    data-bs-toggle="modal"
+                    data-bs-target="#createAllocationTypeModal"
+                    hx-get="{{ url_for('admin_dashboard.htmx_allocation_type_create_form') }}"
+                    hx-target="#createAllocationTypeFormContainer"
+                    hx-trigger="click">
+                <i class="fas fa-plus"></i> Create Allocation Type
+            </button>
+        </div>
+        {% endif %}
     </div>
 </div>
 

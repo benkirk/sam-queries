@@ -1,8 +1,80 @@
 {#
   Admin: Resource Management Modals
-  These containers live in the page DOM so HTMX can load edit forms into them
-  when the edit buttons in the Resources card are clicked.
+  Edit modals: loaded lazily when an edit button is clicked.
+  Create modals: loaded lazily when a create button is clicked.
 #}
+
+<!-- ══════════════════════════════════════════════════════════ CREATE MODALS -->
+
+{% if has_permission(Permission.CREATE_RESOURCES) %}
+<!-- Create Resource Type Modal -->
+<div class="modal fade" id="createResourceTypeModal" tabindex="-1"
+     aria-labelledby="createResourceTypeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createResourceTypeModalLabel">
+                    <i class="fas fa-plus"></i> New Resource Type
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createResourceTypeFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Resource Modal -->
+<div class="modal fade" id="createResourceModal" tabindex="-1"
+     aria-labelledby="createResourceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createResourceModalLabel">
+                    <i class="fas fa-plus"></i> New Resource
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createResourceFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Machine Modal -->
+<div class="modal fade" id="createMachineModal" tabindex="-1"
+     aria-labelledby="createMachineModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createMachineModalLabel">
+                    <i class="fas fa-plus"></i> New Machine
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createMachineFormContainer">
+                <div class="modal-body text-center text-muted py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════════ EDIT MODALS -->
 
 <!-- Edit Resource Modal -->
 <div class="modal fade" id="editResourceModal" tabindex="-1"

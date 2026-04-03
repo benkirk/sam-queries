@@ -1,14 +1,14 @@
 #-------------------------------------------------------------------------bh-
 #-------------------------------------------------------------------------eh-
 
-from datetime import datetime
+from datetime import datetime, date as _date, time as _time
 from typing import List, Optional, Dict, Set
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Date, Boolean, Numeric,
     ForeignKey, ForeignKeyConstraint, PrimaryKeyConstraint,
     Text, BigInteger, TIMESTAMP, text, and_, or_, Index, exists, select
 )
-from sqlalchemy.orm import relationship, declarative_base, declared_attr, Session
+from sqlalchemy.orm import relationship, declarative_base, declared_attr, Session, validates
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
@@ -38,6 +38,34 @@ def _get_base_class():
         return declarative_base()
 
 Base = _get_base_class()
+
+# ============================================================================
+# Custom Column Types
+# ============================================================================
+def normalize_end_date(value):
+    """Normalize an end-of-period date value to end-of-day (23:59:59).
+
+    Enforces the SAM convention that end dates are stored at 23:59:59, not
+    midnight. Called by @validates decorators on ORM models whose end-date
+    columns use the end-of-day convention.
+
+    Converts:
+      - pure ``datetime.date`` object  →  datetime at 23:59:59
+      - ``datetime`` at exactly midnight  →  same date at 23:59:59
+      - ``datetime`` with non-zero time  →  unchanged (trust the caller)
+      - None  →  None (open-ended / no expiry)
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.hour == 0 and value.minute == 0 and value.second == 0:
+            return value.replace(hour=23, minute=59, second=59)
+        return value
+    if isinstance(value, _date):
+        # pure date.date (not datetime subclass)
+        return datetime.combine(value, _time(23, 59, 59))
+    return value
+
 
 # ============================================================================
 # Mixins - Common patterns extracted
@@ -117,6 +145,10 @@ class DateRangeMixin:
     @declared_attr
     def end_date(cls):
         return Column(DateTime)
+
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
 
     def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
         """Check if this record is active at a given date."""

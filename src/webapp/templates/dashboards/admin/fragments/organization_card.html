@@ -54,6 +54,7 @@
                         <tr>
                             <th>Organization</th>
                             <th>Description</th>
+                            <th>Mnemonic</th>
                             <th># Users</th>
                             <th class="text-end">Actions</th>
                         </tr>
@@ -75,6 +76,11 @@
                                 <span class="ms-1">{{ org.name }}</span>
                             </td>
                             <td class="text-muted small">{{ org.description or '—' }}</td>
+                            <td>
+                                {% set mc = org_to_mnemonic.get(org.organization_id) %}
+                                {% if mc %}<span class="badge bg-secondary font-monospace">{{ mc }}</span>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
                             <td>{{ org.users|length }}</td>
                             <td class="text-end">
                                 {% if is_admin %}
@@ -87,6 +93,16 @@
                                         title="Edit organization">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        title="Deactivate organization"
+                                        hx-delete="{{ url_for('admin_dashboard.htmx_organization_delete', org_id=org.organization_id) }}"
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Deactivate '{{ org.name }}'? This will mark it as inactive.">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                {% endif %}
                                 {% endif %}
                             </td>
                         </tr>
@@ -96,8 +112,20 @@
                     </tbody>
                 </table>
             </div>
-            <div class="text-muted small px-3 py-2">
-                Showing {{ organizations|length }} organization{{ 's' if organizations|length != 1 else '' }}
+            <div class="d-flex justify-content-between align-items-center px-3 py-2">
+                <span class="text-muted small">
+                    Showing {{ organizations|length }} organization{{ 's' if organizations|length != 1 else '' }}
+                </span>
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <button class="btn btn-sm btn-outline-success"
+                        data-bs-toggle="modal"
+                        data-bs-target="#createOrganizationModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_organization_create_form') }}"
+                        hx-target="#createOrganizationFormContainer"
+                        hx-trigger="click">
+                    <i class="fas fa-plus"></i> Create Organization
+                </button>
+                {% endif %}
             </div>
         </div>
 
@@ -111,7 +139,7 @@
                             <th>Name / Acronym</th>
                             <th>Count</th>
                             <th>City</th>
-                            <th>Code</th>
+                            <th>Mnemonic</th>
                             <th># Users</th>
                             <th class="text-end">Actions</th>
                         </tr>
@@ -169,7 +197,26 @@
                             </td>
                             <td></td>
                             <td class="text-muted small">{{ inst.city or '—' }}</td>
-                            <td class="text-muted small">{{ inst.code or '—' }}</td>
+                            <td>
+                                {% set mc = inst_to_mnemonic.get(inst.institution_id) %}
+                                {% if mc %}
+                                <span class="badge bg-secondary font-monospace">{{ mc }}</span>
+                                {% elif is_admin and has_permission(Permission.CREATE_RESOURCES) %}
+                                <button class="btn btn-link p-0 border-0"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#createMnemonicCodeModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form', description=((inst.name ~ ', ' ~ inst.city) if inst.city else inst.name)) }}"
+                                        hx-target="#createMnemonicCodeFormContainer"
+                                        hx-trigger="click"
+                                        title="No mnemonic match — click to create one">
+                                    <span class="badge bg-warning text-dark font-monospace">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                    </span>
+                                </button>
+                                {% else %}
+                                <span class="badge bg-secondary font-monospace text-white-50" title="No mnemonic match — project routing may fail"><i class="fas fa-exclamation-triangle"></i></span>
+                                {% endif %}
+                            </td>
                             <td class="text-muted small">{{ inst.users|length }}</td>
                             <td class="text-end" onclick="event.stopPropagation();">
                                 {% if is_admin %}
@@ -217,8 +264,38 @@
                     {% endif %}
                 </table>
             </div>
-            <div class="text-muted small px-3 py-2">
-                Showing {{ institution_types|length }} type{{ 's' if institution_types|length != 1 else '' }}, {{ institutions|length }} institution{{ 's' if institutions|length != 1 else '' }}
+            <div class="d-flex justify-content-between align-items-center px-3 py-2">
+                <span class="text-muted small">
+                    Showing {{ institution_types|length }} type{{ 's' if institution_types|length != 1 else '' }}, {{ institutions|length }} institution{{ 's' if institutions|length != 1 else '' }}
+                </span>
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#createInstitutionTypeModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_institution_type_create_form') }}"
+                            hx-target="#createInstitutionTypeFormContainer"
+                            hx-trigger="click">
+                        <i class="fas fa-plus"></i> Create Type
+                    </button>
+                    <button class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#createInstitutionModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_institution_create_form') }}"
+                            hx-target="#createInstitutionFormContainer"
+                            hx-trigger="click">
+                        <i class="fas fa-plus"></i> Create Institution
+                    </button>
+                    <button class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#createMnemonicCodeModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form') }}"
+                            hx-target="#createMnemonicCodeFormContainer"
+                            hx-trigger="click">
+                        <i class="fas fa-plus"></i> Create Mnemonic Code
+                    </button>
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -260,6 +337,17 @@
                                         onclick="event.stopPropagation()">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        title="Deactivate AOI group"
+                                        hx-delete="{{ url_for('admin_dashboard.htmx_aoi_group_delete', group_id=g.area_of_interest_group_id) }}"
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Deactivate group '{{ g.name }}'?"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                {% endif %}
                                 {% endif %}
                             </td>
                         </tr>
@@ -281,6 +369,16 @@
                                         title="Edit area of interest">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        title="Deactivate area of interest"
+                                        hx-delete="{{ url_for('admin_dashboard.htmx_aoi_delete', aoi_id=a.area_of_interest_id) }}"
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Deactivate '{{ a.area_of_interest }}'?">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                {% endif %}
                                 {% endif %}
                             </td>
                         </tr>
@@ -298,8 +396,30 @@
                     {% endif %}
                 </table>
             </div>
-            <div class="text-muted small px-3 py-2">
-                Showing {{ aois|length }} area{{ 's' if aois|length != 1 else '' }}
+            <div class="d-flex justify-content-between align-items-center px-3 py-2">
+                <span class="text-muted small">
+                    Showing {{ aois|length }} area{{ 's' if aois|length != 1 else '' }}
+                </span>
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#createAoiGroupModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_aoi_group_create_form') }}"
+                            hx-target="#createAoiGroupFormContainer"
+                            hx-trigger="click">
+                        <i class="fas fa-plus"></i> Create Group
+                    </button>
+                    <button class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#createAoiModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_aoi_create_form') }}"
+                            hx-target="#createAoiFormContainer"
+                            hx-trigger="click">
+                        <i class="fas fa-plus"></i> Create Area
+                    </button>
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -348,6 +468,17 @@
                                         onclick="event.stopPropagation()">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        title="Deactivate contract source"
+                                        hx-delete="{{ url_for('admin_dashboard.htmx_contract_source_delete', source_id=cs.contract_source_id) }}"
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Deactivate source '{{ cs.contract_source }}'?"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                {% endif %}
                                 {% endif %}
                             </td>
                         </tr>
@@ -379,6 +510,16 @@
                                         title="Edit contract">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        title="Expire contract"
+                                        hx-delete="{{ url_for('admin_dashboard.htmx_contract_delete', contract_id=c.contract_id) }}"
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Expire contract '{{ c.contract_number }}'? This sets the end date to today.">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                {% endif %}
                                 {% endif %}
                             </td>
                         </tr>
@@ -396,8 +537,30 @@
                     {% endif %}
                 </table>
             </div>
-            <div class="text-muted small px-3 py-2">
-                Showing {{ contracts|length }} contract{{ 's' if contracts|length != 1 else '' }}
+            <div class="d-flex justify-content-between align-items-center px-3 py-2">
+                <span class="text-muted small">
+                    Showing {{ contracts|length }} contract{{ 's' if contracts|length != 1 else '' }}
+                </span>
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#createContractSourceModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_contract_source_create_form') }}"
+                            hx-target="#createContractSourceFormContainer"
+                            hx-trigger="click">
+                        <i class="fas fa-plus"></i> Create Source
+                    </button>
+                    <button class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#createContractModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_contract_create_form') }}"
+                            hx-target="#createContractFormContainer"
+                            hx-trigger="click">
+                        <i class="fas fa-plus"></i> Create Contract
+                    </button>
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -429,6 +592,16 @@
                                         title="Edit NSF program">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        title="Deactivate NSF program"
+                                        hx-delete="{{ url_for('admin_dashboard.htmx_nsf_program_delete', nsf_program_id=p.nsf_program_id) }}"
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Deactivate NSF program '{{ p.nsf_program_name }}'?">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                                {% endif %}
                                 {% endif %}
                             </td>
                         </tr>
@@ -438,8 +611,20 @@
                     </tbody>
                 </table>
             </div>
-            <div class="text-muted small px-3 py-2">
-                Showing {{ nsf_programs|length }} program{{ 's' if nsf_programs|length != 1 else '' }}
+            <div class="d-flex justify-content-between align-items-center px-3 py-2">
+                <span class="text-muted small">
+                    Showing {{ nsf_programs|length }} program{{ 's' if nsf_programs|length != 1 else '' }}
+                </span>
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <button class="btn btn-sm btn-outline-success"
+                        data-bs-toggle="modal"
+                        data-bs-target="#createNsfProgramModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_nsf_program_create_form') }}"
+                        hx-target="#createNsfProgramFormContainer"
+                        hx-trigger="click">
+                    <i class="fas fa-plus"></i> Create NSF Program
+                </button>
+                {% endif %}
             </div>
         </div>
 

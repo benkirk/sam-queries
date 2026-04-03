@@ -39,6 +39,10 @@ class Resource(Base, TimestampMixin, SessionMixin):
     commission_date = Column(DateTime)
     decommission_date = Column(DateTime)
 
+    @validates('decommission_date')
+    def _validate_decommission_date(self, key, value):
+        return normalize_end_date(value)
+
     prim_sys_admin_user_id = Column(Integer, ForeignKey('users.user_id'))
     prim_responsible_org_id = Column(Integer, ForeignKey('organization.organization_id'))
 
@@ -212,6 +216,40 @@ class Resource(Base, TimestampMixin, SessionMixin):
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        resource_name: str,
+        resource_type_id: int,
+        description: Optional[str] = None,
+        commission_date: Optional[datetime] = None,
+        charging_exempt: bool = False,
+        prim_sys_admin_user_id: Optional[int] = None,
+        prim_responsible_org_id: Optional[int] = None,
+    ) -> 'Resource':
+        """
+        Create a new Resource.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not resource_name or not resource_name.strip():
+            raise ValueError("resource_name is required")
+
+        obj = cls(
+            resource_name=resource_name.strip(),
+            resource_type_id=resource_type_id,
+            description=description.strip() if description and description.strip() else None,
+            commission_date=commission_date,
+            charging_exempt=charging_exempt,
+            prim_sys_admin_user_id=prim_sys_admin_user_id,
+            prim_responsible_org_id=prim_responsible_org_id,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.resource_name} ({self.resource_type.resource_type if self.resource_type else None})"
 
@@ -259,6 +297,32 @@ class ResourceType(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         self.session.flush()
         return self
+
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        resource_type: str,
+        grace_period_days: Optional[int] = None,
+    ) -> 'ResourceType':
+        """
+        Create a new ResourceType.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not resource_type or not resource_type.strip():
+            raise ValueError("resource_type is required")
+        if grace_period_days is not None and grace_period_days < 0:
+            raise ValueError("grace_period_days must be >= 0")
+
+        obj = cls(
+            resource_type=resource_type.strip(),
+            grace_period_days=grace_period_days,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
 
     def __str__(self):
         return f"{self.resource_type}"

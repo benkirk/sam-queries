@@ -44,6 +44,7 @@ class Permission(Enum):
     VIEW_RESOURCES = "view_resources"
     EDIT_RESOURCES = "edit_resources"
     CREATE_RESOURCES = "create_resources"
+    DELETE_RESOURCES = "delete_resources"
 
     # Reports and analytics
     VIEW_REPORTS = "view_reports"

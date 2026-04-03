@@ -56,3 +56,9 @@ class QueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
                                   foreign_keys=[derecho_status_id])
     casper_status = relationship('CasperStatus', back_populates='queues',
                                 foreign_keys=[casper_status_id])
+
+    def __str__(self):
+        return f"{self.queue_name} ({self.system_name}, {self.timestamp})"
+
+    def __repr__(self):
+        return f"<QueueStatus(id={self.queue_status_id}, queue='{self.queue_name}', system='{self.system_name}', running={self.running_jobs})>"

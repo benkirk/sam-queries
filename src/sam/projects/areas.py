@@ -57,6 +57,30 @@ class AreaOfInterest(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        area_of_interest: str,
+        area_of_interest_group_id: int,
+    ) -> 'AreaOfInterest':
+        """
+        Create a new AreaOfInterest.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not area_of_interest or not area_of_interest.strip():
+            raise ValueError("area_of_interest name is required")
+
+        obj = cls(
+            area_of_interest=area_of_interest.strip(),
+            area_of_interest_group_id=area_of_interest_group_id,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.area_of_interest}"
 
@@ -110,6 +134,26 @@ class AreaOfInterestGroup(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         self.session.flush()
         return self
+
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        name: str,
+    ) -> 'AreaOfInterestGroup':
+        """
+        Create a new AreaOfInterestGroup.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not name or not name.strip():
+            raise ValueError("name is required")
+
+        obj = cls(name=name.strip())
+        session.add(obj)
+        session.flush()
+        return obj
 
     def __str__(self):
         return f"{self.name}"

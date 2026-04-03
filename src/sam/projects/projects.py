@@ -511,6 +511,8 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
             result = {
                 'allocation_id': query_alloc.allocation_id,
+                'parent_allocation_id': query_alloc.parent_allocation_id,
+                'is_inheriting': query_alloc.is_inheriting,
                 'account_id': account.account_id,
                 'resource_type': resource_type,
                 'allocated': allocated,
@@ -1105,6 +1107,12 @@ class ProjectNumber(Base):
 
     project = relationship('Project', back_populates='project_number')
 
+    def __str__(self):
+        return f"ProjectNumber {self.project_number_id}: project={self.project_id}"
+
+    def __repr__(self):
+        return f"<ProjectNumber(id={self.project_number_id}, project_id={self.project_id})>"
+
 
 #----------------------------------------------------------------------------
 class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
@@ -1119,6 +1127,12 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
     project = relationship('Project', back_populates='directories')
     project_directory_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
+
+    def __str__(self):
+        return f"{self.directory_name} (project {self.project_id})"
+
+    def __repr__(self):
+        return f"<ProjectDirectory(id={self.project_directory_id}, dir='{self.directory_name}', project_id={self.project_id})>"
 
 
 #----------------------------------------------------------------------------
@@ -1141,6 +1155,13 @@ class DefaultProject(Base, TimestampMixin):
     user = relationship('User', back_populates='default_projects')
     project = relationship('Project', back_populates='default_projects')
     resource = relationship('Resource', back_populates='default_projects')
+
+    def __str__(self):
+        projcode = self.project.projcode if self.project else self.project_id
+        return f"DefaultProject: user={self.user_id} -> {projcode}"
+
+    def __repr__(self):
+        return f"<DefaultProject(id={self.default_project_id}, user_id={self.user_id}, project_id={self.project_id}, resource_id={self.resource_id})>"
 
 
 # ============================================================================

@@ -47,6 +47,12 @@ class ManualTask(Base):
 
     products = relationship('Product', back_populates='manual_task', cascade='all, delete-orphan')
 
+    def __str__(self):
+        return f"{self.name} ({self.state})"
+
+    def __repr__(self):
+        return f"<ManualTask(id={self.manual_task_id}, name='{self.name}', state='{self.state}', client='{self.client}')>"
+
 
 #----------------------------------------------------------------------------
 class Product(Base):
@@ -65,6 +71,12 @@ class Product(Base):
     timestamp = Column(BigInteger, nullable=False)
 
     manual_task = relationship('ManualTask', back_populates='products')
+
+    def __str__(self):
+        return f"{self.name}: {self.value[:50] if self.value else None}"
+
+    def __repr__(self):
+        return f"<Product(id={self.product_id}, name='{self.name}', task_id={self.manual_task_id})>"
 
 
     # ============================================================================
@@ -90,6 +102,10 @@ class WallclockExemption(Base, TimestampMixin, SessionMixin):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=False)
     comment = Column(Text)
+
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
 
     user = relationship('User', back_populates='wallclock_exemptions')
     queue = relationship('Queue', back_populates='wallclock_exemptions')

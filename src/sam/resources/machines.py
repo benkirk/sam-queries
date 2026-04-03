@@ -23,6 +23,10 @@ class Machine(Base, TimestampMixin, SessionMixin):
     commission_date = Column(DateTime)
     decommission_date = Column(DateTime)
 
+    @validates('decommission_date')
+    def _validate_decommission_date(self, key, value):
+        return normalize_end_date(value)
+
     comp_charge_summaries = relationship('CompChargeSummary', foreign_keys='CompChargeSummary.machine_id', back_populates='machine_ref')
     machine_factors = relationship('MachineFactor', back_populates='machine')
     resource = relationship('Resource', back_populates='machines')
@@ -96,6 +100,38 @@ class Machine(Base, TimestampMixin, SessionMixin):
         self.session.flush()
         return self
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        name: str,
+        resource_id: int,
+        description: Optional[str] = None,
+        cpus_per_node: Optional[int] = None,
+        commission_date: Optional[datetime] = None,
+    ) -> 'Machine':
+        """
+        Create a new Machine.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if not name or not name.strip():
+            raise ValueError("name is required")
+        if cpus_per_node is not None and cpus_per_node <= 0:
+            raise ValueError("cpus_per_node must be a positive integer")
+
+        obj = cls(
+            name=name.strip(),
+            resource_id=resource_id,
+            description=description.strip() if description and description.strip() else None,
+            cpus_per_node=cpus_per_node,
+            commission_date=commission_date,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         return f"{self.name}"
 
@@ -129,7 +165,17 @@ class MachineFactor(Base, TimestampMixin):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
 
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
+
     machine = relationship('Machine', back_populates='machine_factors')
+
+    def __str__(self):
+        return f"MachineFactor {self.machine_factor_id}: machine={self.machine_id}, value={self.factor_value}"
+
+    def __repr__(self):
+        return f"<MachineFactor(id={self.machine_factor_id}, machine_id={self.machine_id}, value={self.factor_value})>"
 
 
 #----------------------------------------------------------------------------
@@ -151,6 +197,10 @@ class Queue(Base, TimestampMixin, SessionMixin):
 
     start_date = Column(DateTime)
     end_date = Column(DateTime)
+
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
 
     resource = relationship('Resource', back_populates='queues')
     queue_factors = relationship('QueueFactor', back_populates='queue')
@@ -254,7 +304,17 @@ class QueueFactor(Base, TimestampMixin):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
 
+    @validates('end_date')
+    def _validate_end_date(self, key, value):
+        return normalize_end_date(value)
+
     queue = relationship('Queue', back_populates='queue_factors')
+
+    def __str__(self):
+        return f"QueueFactor {self.queue_factor_id}: queue={self.queue_id}, value={self.factor_value}"
+
+    def __repr__(self):
+        return f"<QueueFactor(id={self.queue_factor_id}, queue_id={self.queue_id}, value={self.factor_value})>"
 
 
 # ============================================================================

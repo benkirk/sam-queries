@@ -131,7 +131,8 @@ class TestAddUserToProject:
         ).first()
 
         assert membership.start_date == start
-        assert membership.end_date == end
+        # normalize_end_date converts midnight to 23:59:59 per project convention
+        assert membership.end_date == end.replace(hour=23, minute=59, second=59)
 
     def test_skips_existing_member(self, session, test_project, test_user):
         """Does not raise error if user is already a member, just skips."""

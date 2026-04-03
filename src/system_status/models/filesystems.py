@@ -50,3 +50,9 @@ class FilesystemStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessi
                                   foreign_keys=[derecho_status_id])
     casper_status = relationship('CasperStatus', back_populates='filesystems',
                                 foreign_keys=[casper_status_id])
+
+    def __str__(self):
+        return f"{self.filesystem_name} ({self.system_name}, {self.timestamp})"
+
+    def __repr__(self):
+        return f"<FilesystemStatus(id={self.fs_status_id}, fs='{self.filesystem_name}', system='{self.system_name}', util={self.utilization_percent})>"
