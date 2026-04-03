@@ -60,6 +60,12 @@ class CasperStatus(StatusBase, StatusSnapshotMixin, SessionMixin, SystemStatusMi
                                cascade='all, delete-orphan',
                                lazy='selectin')
 
+    def __str__(self):
+        return f"CasperStatus {self.status_id} ({self.timestamp})"
+
+    def __repr__(self):
+        return f"<CasperStatus(id={self.status_id}, timestamp={self.timestamp}, cpu_util={self.cpu_utilization_percent})>"
+
 
 
 class CasperNodeTypeStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
@@ -101,3 +107,9 @@ class CasperNodeTypeStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
 
     # Relationship (back_populates to parent Casper status)
     casper_status = relationship('CasperStatus', back_populates='node_types')
+
+    def __str__(self):
+        return f"CasperNodeTypeStatus {self.node_type_status_id}: {self.node_type} ({self.timestamp})"
+
+    def __repr__(self):
+        return f"<CasperNodeTypeStatus(id={self.node_type_status_id}, type='{self.node_type}', nodes_total={self.nodes_total})>"

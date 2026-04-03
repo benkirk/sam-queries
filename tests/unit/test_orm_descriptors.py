@@ -1,24 +1,28 @@
 """
 ORM Descriptor Coverage Tests
 
-Automatically discovers every SQLAlchemy model registered with Base and
-verifies that each one defines both __str__ and __repr__ — not just the
-inherited no-op versions from object.
+Automatically discovers every SQLAlchemy model registered with Base (sam models)
+and StatusBase (system_status models), and verifies that each one defines both
+__str__ and __repr__ — not just the inherited no-op versions from object.
+
+In Flask context both bases resolve to db.Model (same registry); in standalone
+context they are separate declarative bases. We import both to cover CI and local.
 
 No database connection required: pure Python class introspection.
 """
 
 import pytest
-import sam  # noqa: F401 — side-effect import registers all ORM models with Base
+import sam  # noqa: F401 — side-effect import registers all sam ORM models
+import system_status  # noqa: F401 — side-effect import registers system_status models
 from sam.base import Base
+from system_status.base import StatusBase
 
 
 def _all_orm_classes():
-    """Return every ORM class registered with Base, sorted by name."""
-    return sorted(
-        (mapper.class_ for mapper in Base.registry.mappers),
-        key=lambda cls: cls.__name__,
-    )
+    """Return every ORM class from all known registries, deduplicated, sorted by name."""
+    classes = {mapper.class_ for mapper in Base.registry.mappers}
+    classes |= {mapper.class_ for mapper in StatusBase.registry.mappers}
+    return sorted(classes, key=lambda cls: cls.__name__)
 
 
 def _has_repr(cls) -> bool:
