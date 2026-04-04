@@ -190,8 +190,14 @@ def group_populator(
         {
             "groups": {
                 group_name: {"gid": int, "usernames": set[str]}
+            },
+            "user_groups": {
+                username: [{"group_name": str, "gid": int}, ...]
             }
         }
+
+    The ``user_groups`` key is the symmetric inverse of ``groups``, enabling
+    O(1) lookup of all groups a given username belongs to within a branch.
 
     Includes three group sources (matching legacy pipeline order):
       1. Implicit project groups (projcode-based)
@@ -247,6 +253,18 @@ def group_populator(
         })
         ncar_grp['gid'] = GLOBAL_LDAP_GROUP_UNIX_GID
         ncar_grp['usernames'].update(all_branch_usernames)
+
+    # --- 4. Symmetric username → groups index ---
+    # Invert the groups dict so callers can quickly look up a user's memberships.
+    for branch_name, branch_data in branches.items():
+        user_groups: Dict[str, List[Dict]] = {}
+        for group_name, grp in branch_data['groups'].items():
+            for username in grp['usernames']:
+                user_groups.setdefault(username, []).append({
+                    'group_name': group_name,
+                    'gid': grp['gid'],
+                })
+        branch_data['user_groups'] = user_groups
 
     return branches
 

@@ -93,6 +93,40 @@ class TestGroupPopulator:
             for grp in branch_data['groups'].values():
                 assert len(grp['usernames']) >= 0
 
+    def test_user_groups_key_present(self, session):
+        """Every branch must have a user_groups dict."""
+        result = group_populator(session)
+        for branch_name, branch_data in result.items():
+            assert 'user_groups' in branch_data, \
+                f"user_groups missing from branch {branch_name!r}"
+            assert isinstance(branch_data['user_groups'], dict)
+
+    def test_user_groups_contains_ncar(self, session):
+        """Every user in a branch must appear in the ncar group via user_groups."""
+        result = group_populator(session)
+        for branch_name, branch_data in result.items():
+            ncar_members = branch_data['groups'].get(GLOBAL_LDAP_GROUP, {}).get('usernames', set())
+            for username in ncar_members:
+                user_group_names = {
+                    entry['group_name']
+                    for entry in branch_data['user_groups'].get(username, [])
+                }
+                assert GLOBAL_LDAP_GROUP in user_group_names, \
+                    f"Branch {branch_name!r}: {username!r} not in user_groups ncar entry"
+
+    def test_user_groups_symmetric(self, session):
+        """For every group/username pair in groups, user_groups must have the reverse entry."""
+        result = group_populator(session)
+        for branch_name, branch_data in result.items():
+            for group_name, grp in branch_data['groups'].items():
+                for username in grp['usernames']:
+                    entries = branch_data['user_groups'].get(username, [])
+                    matched = any(e['group_name'] == group_name for e in entries)
+                    assert matched, (
+                        f"Branch {branch_name!r}: user_groups[{username!r}] missing "
+                        f"group {group_name!r}"
+                    )
+
 
 class TestUserPopulator:
     """Tests for user_populator()."""
