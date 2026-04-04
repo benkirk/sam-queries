@@ -20,6 +20,7 @@ Modules:
     users: User-related queries and project membership
     allocations: Allocation queries and history
     statistics: Statistics and reporting
+    directory_access: LDAP directory access (unix groups + accounts by access branch)
 """
 
 # Lookups
@@ -109,6 +110,13 @@ from .statistics import (
     get_user_project_access,
 )
 
+# Directory Access (LDAP population)
+from .directory_access import (
+    group_populator,
+    user_populator,
+    build_directory_access_response,
+)
+
 
 __all__ = [
     # Lookups
@@ -171,4 +179,8 @@ __all__ = [
     'get_project_statistics',
     'get_institution_project_count',
     'get_user_project_access',
+    # Directory Access
+    'group_populator',
+    'user_populator',
+    'build_directory_access_response',
 ]
