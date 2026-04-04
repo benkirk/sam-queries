@@ -76,7 +76,12 @@ _SQL_PROJECT_GROUP_STATUS = text("""
 # Public API
 # ---------------------------------------------------------------------------
 
-DEAD_CUTOFF_DAYS = 365  # projects expired beyond this are not returned at all
+# Constants match legacy Java InfrastructureConfig defaults:
+#   accessBranch.group.query.gracePeriod  = 180  (SQL window)
+#   accessBranch.group.active.gracePeriod = 90   (EXPIRED vs DEAD boundary)
+#   accessBranch.group.warningPeriod      = 30   (ACTIVE vs EXPIRING boundary)
+DEAD_CUTOFF_DAYS   = 180   # projects expired beyond this are not returned at all
+WARNING_PERIOD_DAYS = 30   # projects expiring within this many days are EXPIRING
 
 
 def get_project_group_status(
@@ -84,6 +89,7 @@ def get_project_group_status(
     access_branch: Optional[str] = None,
     grace_period_days: int = ACCESS_GRACE_PERIOD,
     dead_cutoff_days: int = DEAD_CUTOFF_DAYS,
+    warning_period_days: int = WARNING_PERIOD_DAYS,
 ) -> Dict[str, List[Dict]]:
     """
     Build the per-access-branch project group status directory.
@@ -101,7 +107,8 @@ def get_project_group_status(
                         "panel":        "WRAP",          # allocation_type name
                         "autoRenewing": False,           # never set in DB; hardcoded
                         "projectActive": True,           # project.active
-                        "status":       "ACTIVE",        # "ACTIVE", "EXPIRED", or "DEAD"
+                        "status":       "ACTIVE",        # see status semantics below
+                        "days_remaining": 90,            # int when ACTIVE/EXPIRING, else omitted
                         "days_expired": None,            # int when EXPIRED/DEAD, else omitted
                         "expiration":   "2028-07-01",    # max end_date (ISO string)
                         "resourceGroupStatuses": [
@@ -115,19 +122,23 @@ def get_project_group_status(
                 "hpc-dev":  [...],
             }
 
-        Status semantics:
-          - ``ACTIVE``  — max end_date >= today
-          - ``EXPIRED`` — expired 1–grace_period_days ago (default: 1–90 days)
-          - ``DEAD``    — expired more than grace_period_days ago (matches legacy label)
+        Status semantics (matches legacy Java DefaultGroupStatusQuery):
+          - ``ACTIVE``    — expires more than warning_period_days (30) in the future
+          - ``EXPIRING``  — expires within the next warning_period_days days
+          - ``EXPIRED``   — expired 1–grace_period_days ago (default: 1–90 days)
+          - ``DEAD``      — expired more than grace_period_days ago (default: >90 days)
 
-        All statuses include ``days_expired`` when status != ACTIVE.
+        ``days_remaining`` is included for ACTIVE and EXPIRING entries.
+        ``days_expired`` is included for EXPIRED and DEAD entries.
 
     Args:
         session: SQLAlchemy session.
         access_branch: Optional branch name filter.  ``None`` returns all branches.
         grace_period_days: Boundary between EXPIRED and DEAD (default: 90).
         dead_cutoff_days: Projects expired beyond this many days are omitted entirely
-                          (default: 365).
+                          (default: 180, matching legacy Java QUERY_GRACE_PERIOD).
+        warning_period_days: Projects expiring within this many days are EXPIRING
+                             (default: 30, matching legacy Java warningPeriod).
     """
     params = {
         'branch': access_branch,
@@ -176,15 +187,21 @@ def get_project_group_status(
         for group_name, proj in sorted(projects.items()):
             max_end = proj['max_end_date']
 
-            if max_end is not None and max_end >= today:
+            if max_end is None:
                 status = 'ACTIVE'
+                days_remaining = None
                 days_expired = None
-            else:
-                days_expired = (today - max_end).days if max_end is not None else None
-                if days_expired is not None and days_expired > grace_period_days:
-                    status = 'DEAD'
+            elif max_end >= today:
+                days_remaining = (max_end - today).days
+                days_expired = None
+                if days_remaining > warning_period_days:
+                    status = 'ACTIVE'
                 else:
-                    status = 'EXPIRED'
+                    status = 'EXPIRING'
+            else:
+                days_remaining = None
+                days_expired = (today - max_end).days
+                status = 'DEAD' if days_expired > grace_period_days else 'EXPIRED'
 
             entry: Dict = {
                 'groupName':    group_name,
@@ -195,6 +212,8 @@ def get_project_group_status(
                 'expiration':    max_end.isoformat() if max_end else None,
                 'resourceGroupStatuses': proj['resources'],
             }
+            if days_remaining is not None:
+                entry['days_remaining'] = days_remaining
             if days_expired is not None:
                 entry['days_expired'] = days_expired
 

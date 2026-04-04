@@ -64,15 +64,15 @@ class TestGetProjectGroupStatus:
                 assert isinstance(proj['projectActive'], bool), \
                     f'projectActive should be bool for {proj["groupName"]!r}'
 
-    def test_status_is_active_expired_or_dead(self, session):
+    def test_status_values(self, session):
         result = get_project_group_status(session)
-        valid_statuses = {'ACTIVE', 'EXPIRED', 'DEAD'}
+        valid_statuses = {'ACTIVE', 'EXPIRING', 'EXPIRED', 'DEAD'}
         for branch_name, projects in result.items():
             for proj in projects:
                 assert proj['status'] in valid_statuses, \
                     f'Unexpected status {proj["status"]!r} for {proj["groupName"]!r}'
 
-    def test_expired_or_dead_status_has_days_expired(self, session):
+    def test_expired_or_dead_has_days_expired(self, session):
         result = get_project_group_status(session)
         for branch_name, projects in result.items():
             for proj in projects:
@@ -82,13 +82,32 @@ class TestGetProjectGroupStatus:
                     assert isinstance(proj['days_expired'], int)
                     assert proj['days_expired'] >= 0
 
-    def test_active_status_no_days_expired(self, session):
+    def test_active_or_expiring_has_days_remaining(self, session):
         result = get_project_group_status(session)
         for branch_name, projects in result.items():
             for proj in projects:
-                if proj['status'] == 'ACTIVE':
+                if proj['status'] in ('ACTIVE', 'EXPIRING'):
+                    assert 'days_remaining' in proj, \
+                        f'{proj["status"]} project {proj["groupName"]!r} missing days_remaining'
+                    assert isinstance(proj['days_remaining'], int)
+                    assert proj['days_remaining'] >= 0
+
+    def test_future_projects_have_no_days_expired(self, session):
+        result = get_project_group_status(session)
+        for branch_name, projects in result.items():
+            for proj in projects:
+                if proj['status'] in ('ACTIVE', 'EXPIRING'):
                     assert 'days_expired' not in proj, \
-                        f'ACTIVE project {proj["groupName"]!r} should not have days_expired'
+                        f'{proj["status"]} project {proj["groupName"]!r} should not have days_expired'
+
+    def test_expiring_within_warning_period(self, session):
+        from sam.queries.project_access import WARNING_PERIOD_DAYS
+        result = get_project_group_status(session)
+        for branch_name, projects in result.items():
+            for proj in projects:
+                if proj['status'] == 'EXPIRING':
+                    assert proj['days_remaining'] <= WARNING_PERIOD_DAYS, \
+                        f'EXPIRING project {proj["groupName"]!r} days_remaining={proj["days_remaining"]} > {WARNING_PERIOD_DAYS}'
 
     def test_expiration_is_max_of_resource_end_dates(self, session):
         """expiration must equal the latest endDate across all resource entries."""
