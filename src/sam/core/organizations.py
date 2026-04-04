@@ -33,7 +33,7 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
         return (hash(self.organization_id) if self.organization_id is not None
                 else hash(id(self)))
 
-    organization_id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, primary_key=True, autoincrement=False)
     name = Column(String(100), nullable=False)
     acronym = Column(String(15), nullable=False, unique=True)
     description = Column(String(255))
@@ -123,7 +123,12 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
         if not acronym or not acronym.strip():
             raise ValueError("acronym is required")
 
+        # organization_id has no AUTO_INCREMENT — compute next value manually
+        from sqlalchemy import func
+        next_id = (session.query(func.max(cls.organization_id)).scalar() or 0) + 1
+
         obj = cls(
+            organization_id=next_id,
             name=name.strip(),
             acronym=acronym.strip(),
             description=description.strip() if description and description.strip() else None,
@@ -187,7 +192,7 @@ class Institution(Base, TimestampMixin, SessionMixin):
         return (hash(self.institution_id) if self.institution_id is not None
                 else hash(id(self)))
 
-    institution_id = Column(Integer, primary_key=True)
+    institution_id = Column(Integer, primary_key=True, autoincrement=False)
     name = Column(String(80), nullable=False)
     acronym = Column(String(40), nullable=False)
     nsf_org_code = Column(String(200))
@@ -290,7 +295,12 @@ class Institution(Base, TimestampMixin, SessionMixin):
         if not acronym or not acronym.strip():
             raise ValueError("acronym is required")
 
+        # institution_id has no AUTO_INCREMENT — compute next value manually
+        from sqlalchemy import func
+        next_id = (session.query(func.max(cls.institution_id)).scalar() or 0) + 1
+
         obj = cls(
+            institution_id=next_id,
             name=name.strip(),
             acronym=acronym.strip(),
             nsf_org_code=nsf_org_code.strip() if nsf_org_code and nsf_org_code.strip() else None,
@@ -314,7 +324,7 @@ class InstitutionType(Base, TimestampMixin, SessionMixin):
     """Types of institutions (University, Government, etc.)."""
     __tablename__ = 'institution_type'
 
-    institution_type_id = Column(Integer, primary_key=True, autoincrement=True)
+    institution_type_id = Column(Integer, primary_key=True, autoincrement=False)
     type = Column(String(45), nullable=False)
 
     institutions = relationship('Institution', back_populates='institution_type')
@@ -361,7 +371,11 @@ class InstitutionType(Base, TimestampMixin, SessionMixin):
         if not type or not type.strip():
             raise ValueError("type name is required")
 
-        obj = cls(type=type.strip())
+        # institution_type_id has no AUTO_INCREMENT — compute next value manually
+        from sqlalchemy import func
+        next_id = (session.query(func.max(cls.institution_type_id)).scalar() or 0) + 1
+
+        obj = cls(institution_type_id=next_id, type=type.strip())
         session.add(obj)
         session.flush()
         return obj
@@ -408,7 +422,7 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Mnemonic codes for project naming."""
     __tablename__ = 'mnemonic_code'
 
-    mnemonic_code_id = Column(Integer, primary_key=True, autoincrement=True)
+    mnemonic_code_id = Column(Integer, primary_key=True, autoincrement=False)
     code = Column(String(3), nullable=False, unique=True)
     description = Column(String(200), nullable=False, unique=True)
 
@@ -477,9 +491,12 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             ValueError: if code is not exactly 3 uppercase letters.
         """
         import re
+        from sqlalchemy import func
         if not re.fullmatch(r'[A-Z]{3}', code):
             raise ValueError(f"Code must be exactly 3 uppercase letters, got: {code!r}")
-        obj = cls(code=code, description=description, active=True)
+        # mnemonic_code_id has no AUTO_INCREMENT — compute next value manually
+        next_id = (session.query(func.max(cls.mnemonic_code_id)).scalar() or 0) + 1
+        obj = cls(mnemonic_code_id=next_id, code=code, description=description, active=True)
         session.add(obj)
         session.flush()
         return obj
