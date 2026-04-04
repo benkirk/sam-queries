@@ -1,0 +1,22 @@
+Legacy SAM has an API (api/protected/admin/sysacct/groupstatus) that I want to reproduce under a new route api/v1/project_access.
+
+This is a large JSON object, you can see a query in @sam_projects_json_populator.py  Feel free to query it for inspection:
+
+$ python ./sam_projects_json_populator.py
+}, {'resourceName': 'Casper GPU', 'endDate': '2026-02-01'}, {'resourceName': 'Derecho GPU', 'endDate': '2026-02-01'}, {'resourceName': 'Casper', 'endDate': '2026-02-01'}]}, {'groupName': 'wyom0218', 'panel': 'WRAP', 'autoRenewing': False, 'projectActive': True, 'status': 'ACTIVE', 'expiration': '2028-07-01', 'resourceGroupStatuses': [{'resourceName': 'Campaign_Store', 'endDate': '2028-07-01'}, {'resourceName': 'Derecho', 'endDate': '2028-07-01'}, {'resourceName': 'Derecho GPU', 'endDate': '2028-07-01'}, {'resourceName': 'Casper', 'endDate': '2028-07-01'}]}, {'groupName': 'wyom0219', 'panel': 'WRAP', 'autoRenewing': False, 'projectActive': True, 'status': 'ACTIVE', 'expiration': '2028-07-01', 'resourceGroupStatuses': [{'resourceName': 'Campaign_Store', 'endDate': '2028-07-01'}, {'resourceName': 'Derecho', 'endDate': '2028-07-01'}, {'resourceName': 'Casper', 'endDate': '2028-07-01'}]}, {'groupName': 'wyom0220', 'panel': 'WRAP', 'autoRenewing': False, 'projectActive': True, 'status': 'ACTIVE', 'expiration': '2026-07-01', 'resourceGroupStatuses': [{'resourceName': 'Campaign_Store', 'endDate': '2026-07-01'}, {'resourceName': 'Derecho', 'endDate': '2026-07-01'}, {'resourceName': 'Derecho GPU', 'endDate': '2026-07-01'}, {'resourceName': 'Casper', 'endDate': '2026-07-01'}]}, {'groupName': 'wyom0221', 'panel': 'UW', 'autoRenewing': False, 'projectActive': True, 'status': 'ACTIVE', 'expiration': '2026-10-01', 'resourceGroupStatuses': [{'resourceName': 'Campaign_Store', 'endDate': '2026-10-01'}, {'resourceName': 'Derecho', 'endDate': '2026-10-01'}, {'resourceName': 'Derecho GPU', 'endDate': '2026-10-01'}]}, {'groupName': 'wyom0222', 'panel': 'WRAP', 'autoRenewing': False, 'projectActive': True, 'status': 'ACTIVE', 'expiration': '2027-07-01', 'resourceGroupStatuses': [{'resourceName': 'Campaign_Store', 'endDate': '2027-07-01'}, {'resourceName': 'Derecho', 'endDate': '2027-07-01'}, {'resourceName': 'Casper', 'endDate': '2027-07-01'}]},
+...
+
+
+the old API requires an 'access branch' - hpc; hpc-data; hpc-dev
+
+The new API should accept an access branch but return all three if an input is not provided.
+
+Lets design this endpoint and a backend function that we can use both for this API and elsewhere in the project.
+
+We already have much of this data available via other methods; let's evaluate either a faithful port of the legacy approach vs. alternatively gathering the required data from existing sources (e.g. existing API endpoints, query methods; input data to dashboards - allocation, project, etc...)
+
+Let desing this API and additional tests required.
+
+Please inspect the active database "mysql -h sam-sql.ucar.edu sam" and the existing models as well as our current APIs when designing the plan.
+
+When we are done; we should compare the old API output and our new API.  Ideally they match 100%, but if not differences should be explainable.

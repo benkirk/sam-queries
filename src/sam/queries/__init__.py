@@ -117,6 +117,11 @@ from .directory_access import (
     build_directory_access_response,
 )
 
+# Project Access (LDAP project group status)
+from .project_access import (
+    get_project_group_status,
+)
+
 
 __all__ = [
     # Lookups
@@ -183,4 +188,6 @@ __all__ = [
     'group_populator',
     'user_populator',
     'build_directory_access_response',
+    # Project Access
+    'get_project_group_status',
 ]

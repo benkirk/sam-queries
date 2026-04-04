@@ -26,6 +26,7 @@ from webapp.api.v1.status import bp as api_status_bp
 from webapp.api.v1.allocations import bp as api_allocations_bp
 from webapp.api.v1.health import bp as api_health_bp
 from webapp.api.v1.directory_access import bp as api_directory_access_bp
+from webapp.api.v1.project_access import bp as api_project_access_bp
 from webapp.config import get_webapp_config
 from webapp.logging_config import configure_logging
 
@@ -191,6 +192,7 @@ def create_app():
     app.register_blueprint(api_allocations_bp, url_prefix='/api/v1/allocations')
     app.register_blueprint(api_health_bp, url_prefix='/api/v1/health')
     app.register_blueprint(api_directory_access_bp, url_prefix='/api/v1/directory_access')
+    app.register_blueprint(api_project_access_bp, url_prefix='/api/v1/project_access')
 
     # Register centralized formatting filters (fmt_number, fmt_pct, fmt_date, fmt_size)
     import sam.fmt as fmt
