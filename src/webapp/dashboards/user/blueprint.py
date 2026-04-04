@@ -8,6 +8,7 @@ JavaScript API calls for improved performance and simplicity.
 """
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify, make_response
+from webapp.utils.htmx import htmx_success
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
 from webapp.api.helpers import parse_input_end_date
@@ -418,8 +419,9 @@ def htmx_add_member(projcode):
     # Success — render updated members table for OOB swap
     members_html = _render_members_table(projcode, project)
 
-    return render_template(
+    return htmx_success(
         'dashboards/user/fragments/add_member_success_htmx.html',
+        {'closeModal': 'addMemberModal'},
         message=f'Added {user.display_name} to project {projcode}',
         projcode=projcode,
         members_html=members_html

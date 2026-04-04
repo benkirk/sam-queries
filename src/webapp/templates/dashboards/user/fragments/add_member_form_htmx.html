@@ -35,8 +35,8 @@
                    hx-swap="innerHTML"
                    hx-indicator="#searchSpinner">
             <small class="form-text text-muted">Start typing to search (minimum 2 characters)</small>
-            <span id="searchSpinner" class="htmx-indicator">
-                <i class="fas fa-spinner fa-spin text-muted ms-2"></i>
+            <span id="searchSpinner" class="htmx-indicator" role="status" aria-label="Searching...">
+                <i class="fas fa-spinner fa-spin text-muted ms-2" aria-hidden="true"></i>
             </span>
             <div id="htmxUserSearchResults" class="list-group mt-2"></div>
         </div>
