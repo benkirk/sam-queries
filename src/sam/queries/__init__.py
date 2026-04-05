@@ -21,6 +21,8 @@ Modules:
     allocations: Allocation queries and history
     statistics: Statistics and reporting
     directory_access: LDAP directory access (unix groups + accounts by access branch)
+    project_access: LDAP project group status (by access branch)
+    fstree_access: PBS fairshare tree (Facility → AllocationType → Project → Resource)
 """
 
 # Lookups
@@ -122,6 +124,11 @@ from .project_access import (
     get_project_group_status,
 )
 
+# FairShare Tree (PBS fairshare / scheduler tree)
+from .fstree_access import (
+    get_fstree_data,
+)
+
 
 __all__ = [
     # Lookups
@@ -190,4 +197,6 @@ __all__ = [
     'build_directory_access_response',
     # Project Access
     'get_project_group_status',
+    # FairShare Tree
+    'get_fstree_data',
 ]
