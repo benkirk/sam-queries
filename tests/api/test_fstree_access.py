@@ -75,6 +75,15 @@ class TestFstreeSingleResource:
                         assert not missing, \
                             f'Resource {res.get("name")!r} missing: {missing}'
 
+    def test_threshold_key_present(self, auth_client):
+        data = auth_client.get('/api/v1/fstree_access/Derecho').get_json()
+        for fac in data['facilities'][:1]:
+            for at in fac['allocationTypes'][:1]:
+                for proj in at['projects'][:5]:
+                    for res in proj['resources']:
+                        assert 'thresholds' in res, \
+                            f'Resource {res.get("name")!r} missing thresholds key'
+
     def test_account_status_is_valid(self, auth_client):
         data = auth_client.get('/api/v1/fstree_access/Derecho').get_json()
         valid = {'Normal', 'Overspent', 'Exceed One Threshold', 'Exceed Two Thresholds',

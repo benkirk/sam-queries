@@ -288,6 +288,67 @@ class TestSubtreeChargeRollup:
                             )
 
 
+class TestThresholdData:
+    """Tests for the thresholds field on resource entries."""
+
+    def _get_all_resources(self, session, resource_name='Derecho'):
+        result = get_fstree_data(session, resource_name=resource_name)
+        items = []
+        for fac in result['facilities']:
+            for at in fac['allocationTypes']:
+                for proj in at['projects']:
+                    for res in proj['resources']:
+                        items.append((proj['projectCode'], res))
+        return items
+
+    def test_thresholds_key_present_on_all_resources(self, session):
+        """Every resource entry must have a 'thresholds' key."""
+        for projcode, res in self._get_all_resources(session):
+            assert 'thresholds' in res, \
+                f'{projcode}/{res["name"]!r} missing thresholds key'
+
+    def test_thresholds_is_none_or_dict(self, session):
+        for projcode, res in self._get_all_resources(session):
+            assert res['thresholds'] is None or isinstance(res['thresholds'], dict), \
+                f'{projcode}/{res["name"]!r} thresholds should be None or dict'
+
+    def test_threshold_period_has_required_fields(self, session):
+        required = {'days', 'thresholdPct', 'windowCharges', 'useLimitCharges', 'pctUsed'}
+        for projcode, res in self._get_all_resources(session):
+            if res['thresholds']:
+                for period_key, period in res['thresholds'].items():
+                    missing = required - period.keys()
+                    assert not missing, \
+                        f'{projcode}/{res["name"]!r} {period_key} missing: {missing}'
+
+    def test_threshold_pct_used_is_float(self, session):
+        for projcode, res in self._get_all_resources(session):
+            if res['thresholds']:
+                for period in res['thresholds'].values():
+                    assert isinstance(period['pctUsed'], float), \
+                        f'{projcode}/{res["name"]!r} pctUsed should be float'
+
+    def test_window_charges_are_ints(self, session):
+        for projcode, res in self._get_all_resources(session):
+            if res['thresholds']:
+                for period in res['thresholds'].values():
+                    assert isinstance(period['windowCharges'], int), \
+                        f'{projcode}/{res["name"]!r} windowCharges should be int'
+                    assert isinstance(period['useLimitCharges'], int), \
+                        f'{projcode}/{res["name"]!r} useLimitCharges should be int'
+
+    def test_lifecycle_rows_have_null_thresholds(self, session):
+        """Expired and No Account rows must always have thresholds=null."""
+        result = get_fstree_data(session, resource_name='Derecho')
+        for fac in result['facilities']:
+            for at in fac['allocationTypes']:
+                for proj in at['projects']:
+                    for res in proj['resources']:
+                        if res['accountStatus'] in ('Expired', 'No Account'):
+                            assert res['thresholds'] is None, \
+                                f'{proj["projectCode"]}/{res["name"]}: lifecycle row should have null thresholds'
+
+
 class TestParentStatusPropagation:
     """Tests for pre-order parent → child accountStatus propagation."""
 

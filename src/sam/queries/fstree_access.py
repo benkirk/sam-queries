@@ -330,6 +330,61 @@ def _compute_status(
     return 'Normal'
 
 
+def _compute_threshold_data(
+    allocation_amount: float,
+    first_threshold: Optional[int],
+    second_threshold: Optional[int],
+    alloc_start: datetime,
+    alloc_end: Optional[datetime],
+    window_charges_30: float,
+    window_charges_90: float,
+    now: datetime,
+) -> Optional[Dict]:
+    """
+    Build the per-period threshold breakdown for inclusion in the resource dict.
+
+    Called only for the small number of accounts (~12) with first_threshold or
+    second_threshold configured.  Shares the same NDayUsagePeriod.java formula
+    as _compute_status() but returns the full intermediate values.
+
+    Returns:
+        Dict with 'period30' and/or 'period90' sub-dicts, or None if no thresholds
+        are configured / allocation_amount is None.
+
+    Each period dict contains:
+        days           — window length (30 or 90)
+        thresholdPct   — configured threshold percentage (account.first/second_threshold)
+        windowCharges  — actual charges in the clamped window (int AU)
+        useLimitCharges— the maximum allowed charges for the period (int AU)
+        pctUsed        — windowCharges / useLimitCharges × 100, 1 decimal
+    """
+    if allocation_amount is None:
+        return None
+    if first_threshold is None and second_threshold is None:
+        return None
+
+    alloc_end_dt = alloc_end or now
+    duration_days = max((alloc_end_dt - alloc_start).days - 1, 1)
+
+    result: Dict = {}
+    for period_days, threshold_pct, window_charges, key in (
+        (30, first_threshold,  window_charges_30, 'period30'),
+        (90, second_threshold, window_charges_90, 'period90'),
+    ):
+        if threshold_pct is None:
+            continue
+        use_limit = period_days * allocation_amount / duration_days * (threshold_pct / 100.0)
+        pct_used = round(window_charges / use_limit * 100.0, 1) if use_limit > 0 else 0.0
+        result[key] = {
+            'days':            period_days,
+            'thresholdPct':    threshold_pct,
+            'windowCharges':   int(round(window_charges)),
+            'useLimitCharges': int(round(use_limit)),
+            'pctUsed':         pct_used,
+        }
+    return result or None
+
+
 def _query_window_charges(
     session: Session,
     account_ids: List[int],
@@ -629,6 +684,17 @@ def get_fstree_data(
             w30, w90,
         )
 
+        # Threshold breakdown (only for the ~12 accounts with configured thresholds)
+        thresholds = None
+        if th and allocation_amount is not None and row.start_date is not None:
+            thresholds = _compute_threshold_data(
+                allocation_amount,
+                th[0], th[1],
+                row.start_date, row.end_date,
+                w30, w90,
+                now,
+            )
+
         proj['resources'][row.resource_name] = {
             'name':             row.resource_name,
             'accountStatus':    account_status,
@@ -637,6 +703,7 @@ def get_fstree_data(
             'balance':          int(round(balance)) if balance is not None else None,
             'allocationAmount': int(round(allocation_amount)) if allocation_amount is not None else None,
             'users':            user_map.get(account_id, []),
+            'thresholds':       thresholds,
         }
 
     # ------------------------------------------------------------------
@@ -666,6 +733,7 @@ def get_fstree_data(
                 'balance':          0,
                 'allocationAmount': 0,
                 'users':            users,
+                'thresholds':       None,
             }
 
     # ------------------------------------------------------------------
