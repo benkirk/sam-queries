@@ -77,7 +77,7 @@ class TestFstreeSingleResource:
 
     def test_account_status_is_valid(self, auth_client):
         data = auth_client.get('/api/v1/fstree_access/Derecho').get_json()
-        valid = {'Normal', 'Overspent'}
+        valid = {'Normal', 'Overspent', 'Exceed One Threshold', 'Exceed Two Thresholds'}
         for fac in data['facilities'][:2]:
             for at in fac['allocationTypes'][:2]:
                 for proj in at['projects'][:5]:

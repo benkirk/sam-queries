@@ -460,17 +460,32 @@ This matches the legacy Java `ProjectAccountDetailDTO.getDebit()` definition.
 
 **balance** = `allocationAmount - adjustedUsage`.
 
-**accountStatus** values:
+**adjustedUsage** is computed via MPTT subtree rollup — a parent project's usage
+includes charges from all descendant sub-projects.  This matches the legacy Java
+`ProjectAccountTreeQuery` behavior.
 
-| Value | Condition |
-|---|---|
-| `"Normal"` | `adjustedUsage ≤ allocationAmount` (or no allocation) |
-| `"Overspent"` | `adjustedUsage > allocationAmount` |
+**accountStatus** values (priority order, matching `DefaultAccountStatusCalculator.java`):
 
-> **Note**: The legacy Java endpoint computed status from 30-day and 90-day usage
-> trend thresholds (`InfrastructureConfig` defaults).  The new API uses a simpler
-> two-state approximation — `"Normal"` vs `"Overspent"` based on the current
-> cumulative balance.  The trend-based `"Warning"` tier is future work.
+| Priority | Value | Condition |
+|---|---|---|
+| 1 | `"Overspent"` | `adjustedUsage > allocationAmount` |
+| 2 | `"Exceed Two Thresholds"` | both N-day usage windows exceeded per-account thresholds |
+| 3 | `"Exceed One Threshold"` | exactly one N-day window exceeded |
+| 4 | `"Normal"` | default |
+
+**N-day threshold logic** (from `NDayUsagePeriod.java`):
+```
+threshold_alloc = P × allocationAmount / (allocation_duration_days − 1)
+use_limit       = threshold_alloc × (account.first_threshold or second_threshold) / 100
+exceeded        = window_charges_in_P_days > use_limit
+```
+where P ∈ {30, 90} days.  Threshold percentages come from `account.first_threshold`
+(30-day) and `account.second_threshold` (90-day).  Both are `NULL` for ~99.7% of
+accounts, so the threshold check is skipped for almost all accounts.
+
+**Parent → child propagation**: If a parent project's `accountStatus` is non-Normal,
+that status cascades to all child projects on the same resource (pre-order walk,
+matching `DefaultAccountStatusCalculator.defineStatusFromParent()`).
 
 ---
 
