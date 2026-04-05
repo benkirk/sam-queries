@@ -1,10 +1,10 @@
 # Systems Integration APIs
 
-Two read-only API endpoints that serve LDAP provisioning tools and other HPC
-systems integration workflows.  Both reproduce output from the legacy SAM Java
-system (`sam.ucar.edu/api/protected/admin/sysacct/`) and share a common design:
-raw-SQL queries over the `access_branch_resource` join path, 5-minute response
-caching, and the same authentication/authorization model as all other v1 APIs.
+Three read-only API endpoints that serve LDAP provisioning tools, PBS batch
+schedulers, and other HPC systems integration workflows.  All reproduce output
+from the legacy SAM Java system (`sam.ucar.edu/api/protected/admin/`) and share
+a common design: bulk raw-SQL queries, 5-minute response caching, and the same
+authentication/authorization model as all other v1 APIs.
 
 ---
 
@@ -339,12 +339,194 @@ Defined in `src/sam/queries/project_access.py`, all matching
 
 ---
 
+## 3. FairShare Tree API
+
+**Base URL**: `/api/v1/fstree_access/`  
+**Legacy equivalent**: `GET /api/protected/admin/ssg/fairShareTree/v3/<Resource>`  
+**Permission required**: `VIEW_PROJECTS`  
+**Source**: `src/webapp/api/v1/fstree_access.py`, `src/sam/queries/fstree_access.py`
+
+Provides the PBS batch scheduler fairshare tree: a hierarchical grouping of active
+HPC/DAV projects by `Facility → AllocationType → Project → Resource`, with per-node
+fairshare percentages and, at the resource level, allocation amounts, adjusted charge
+usage, balance, and active user rosters.
+
+### Endpoints
+
+#### `GET /api/v1/fstree_access/`
+
+Returns the fairshare tree for **all** HPC+DAV resources.
+
+**Response schema**:
+
+```json
+{
+  "name": "fairShareTree",
+  "facilities": [
+    {
+      "name": "CSL",
+      "description": "Climate Simulation Laboratory",
+      "fairSharePercentage": 31.0,
+      "allocationTypes": [
+        {
+          "name": "C_CSL",
+          "description": "CSL",
+          "fairSharePercentage": 0.0,
+          "projects": [
+            {
+              "projectCode": "P93300041",
+              "active": true,
+              "resources": [
+                {
+                  "name": "Derecho",
+                  "accountStatus": "Normal",
+                  "cutoffThreshold": 100,
+                  "adjustedUsage": 48883597,
+                  "balance": 2616402,
+                  "allocationAmount": 51500000,
+                  "users": [
+                    {"username": "travisa", "uid": 29642},
+                    {"username": "bonan",   "uid": 4681}
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {"name": "NCAR", "...": "..."},
+    {"name": "UNIV", "...": "..."}
+  ]
+}
+```
+
+Projects are sorted alphabetically by `projectCode` within each `AllocationType`.
+
+#### `GET /api/v1/fstree_access/<resource_name>`
+
+Returns the tree filtered to a **single resource**.  Response shape is identical —
+only resource entries matching the requested resource appear under each project.
+
+Resource names with spaces must be URL-encoded by the caller:
+
+```
+GET /api/v1/fstree_access/Derecho
+GET /api/v1/fstree_access/Derecho%20GPU
+GET /api/v1/fstree_access/Casper
+```
+
+Returns **404** if the resource name is not recognized or has no active project data.
+
+#### `POST /api/v1/fstree_access/refresh`
+
+Invalidates the response cache.  The next GET will recompute from the database.
+
+**Response**: `{"status": "ok"}`
+
+---
+
+### Tree Hierarchy
+
+The tree mirrors the `Facility → Panel → AllocationType → Project` taxonomy stored
+in the SAM database:
+
+| Level | DB source | Notes |
+|---|---|---|
+| `facilities[].name` | `facility.facility_name` | Active facilities only |
+| `facilities[].fairSharePercentage` | `facility_resource.fair_share_percentage` (if set) else `facility.fair_share_percentage` | Resource-specific override takes precedence |
+| `allocationTypes[].name` | `{facility.code}_{allocation_type.replaceAll("\\W","")}` | e.g. CSL facility + "CSL" type → `"C_CSL"`, NCAR + "Director Reserve" → `"N_DirectorReserve"` |
+| `allocationTypes[].fairSharePercentage` | `allocation_type.fair_share_percentage` | |
+| `projects[].projectCode` | `project.projcode` | Original case (not lowercased) |
+
+---
+
+### Resource-Level Fields
+
+| Field | Type | Source |
+|---|---|---|
+| `name` | string | `resources.resource_name` |
+| `accountStatus` | string | Computed — see below |
+| `cutoffThreshold` | int | `account.cutoff_threshold` (default: 100) |
+| `adjustedUsage` | int | `SUM(comp+dav charges) + SUM(charge_adjustments)` over active allocation window |
+| `balance` | int | `allocationAmount - adjustedUsage` |
+| `allocationAmount` | int | `allocation.amount` for the current active allocation |
+| `users[].username` | string | `users.username` |
+| `users[].uid` | int | `users.unix_uid` |
+
+**adjustedUsage** includes `comp_charge_summary` + `dav_charge_summary` +
+`charge_adjustment` records within `[allocation.start_date, allocation.end_date]`.
+This matches the legacy Java `ProjectAccountDetailDTO.getDebit()` definition.
+
+**balance** = `allocationAmount - adjustedUsage`.
+
+**accountStatus** values:
+
+| Value | Condition |
+|---|---|
+| `"Normal"` | `adjustedUsage ≤ allocationAmount` (or no allocation) |
+| `"Overspent"` | `adjustedUsage > allocationAmount` |
+
+> **Note**: The legacy Java endpoint computed status from 30-day and 90-day usage
+> trend thresholds (`InfrastructureConfig` defaults).  The new API uses a simpler
+> two-state approximation — `"Normal"` vs `"Overspent"` based on the current
+> cumulative balance.  The trend-based `"Warning"` tier is future work.
+
+---
+
+### Resource Scope
+
+Resources included match `FairshareTreeResourceSelector.java`'s filter of
+`ActivityType IN (HPC, DAV, COMP)` — mapped to `resource_type IN ('HPC', 'DAV')`
+in the Python schema, combined with `configurable = TRUE`:
+
+| Resource | Type |
+|---|---|
+| Derecho, Derecho GPU | HPC |
+| Casper GPU | HPC |
+| Gust, Gust GPU | HPC |
+| Cheyenne, Laramie, DNext | HPC |
+| Casper, Anemone | DAV |
+
+---
+
+### Constants
+
+No grace-period cutoffs apply (unlike `project_access`).  All active projects
+(those with a current non-deleted allocation) appear in the tree.
+
+---
+
+### Scale (production approximate)
+
+| Resource | Facilities | Projects |
+|---|---|---|
+| Derecho | 6 | ~1,260 |
+| Casper | 6 | ~1,430 |
+| All HPC+DAV | 6 | ~1,470 (combined unique) |
+
+---
+
+### Performance
+
+| Request | Uncached | Cached |
+|---|---|---|
+| Single resource (e.g. `Derecho`) | ~0.7s | near-instant |
+| All HPC+DAV resources | ~2.8s | near-instant |
+
+Charge aggregation uses `Project.batch_get_account_charges()` (VALUES CTE primary
+path) — one query per charge model with all account IDs and date windows inlined.
+This avoids the LEFT JOIN fanout on charge summary tables that would otherwise
+produce hundreds of millions of intermediate rows.
+
+---
+
 ## Common Design Notes
 
 ### Shared Infrastructure
 
-Both APIs use the same `access_branch_resource` JOIN pattern to filter by
-branch:
+`directory_access` and `project_access` use the same `access_branch_resource`
+JOIN pattern to filter by branch:
 
 ```sql
 JOIN resources AS r          ON (a.resource_id = r.resource_id AND r.configurable IS TRUE)
@@ -353,20 +535,30 @@ JOIN access_branch AS ab     ON abr.access_branch_id = ab.access_branch_id
 WHERE (:branch IS NULL OR ab.name = :branch)
 ```
 
-Passing `branch = NULL` returns all branches in a single query; passing a
-branch name filters to one.
+`fstree_access` uses a different join path through the facility taxonomy:
+
+```sql
+JOIN facility f
+JOIN panel pa            ON (pa.facility_id = f.facility_id AND pa.active IS TRUE)
+JOIN allocation_type at  ON (at.panel_id    = pa.panel_id   AND at.active IS TRUE)
+JOIN project p           ON (p.allocation_type_id = at.allocation_type_id AND p.active IS TRUE)
+JOIN account a           ON (a.project_id = p.project_id AND a.deleted IS FALSE)
+JOIN resources r         ON (r.resource_id = a.resource_id AND r.configurable IS TRUE)
+JOIN resource_type rt    ON (rt.resource_type_id = r.resource_type_id
+                              AND rt.resource_type IN ('HPC', 'DAV'))
+WHERE (:resource IS NULL OR r.resource_name = :resource)
+```
 
 ### Performance
 
-Both APIs use raw SQL with bulk fetches to avoid N+1 ORM loads across thousands
-of groups and accounts.  Python-side aggregation assembles the nested response
-structure.  Response times are typically under 2 seconds for a full all-branches
-request; cached responses are near-instant.
+All three APIs use raw SQL with bulk fetches to avoid N+1 ORM loads.
+Python-side aggregation assembles the nested response structure.
+Cached responses are near-instant; see per-API scale tables for uncached times.
 
 ### Comparing with the Legacy System
 
 The new APIs were validated against the live legacy system
-(`sam.ucar.edu/api/protected/admin/sysacct/`):
+(`sam.ucar.edu/api/protected/admin/`):
 
 | API              | Legacy count | New count | Gap explanation                          |
 |------------------|-------------|-----------|------------------------------------------|
@@ -374,14 +566,16 @@ The new APIs were validated against the live legacy system
 | directory_access accounts | ~4,300 / branch | ~4,300 / branch | 1 user missing (same DB mirror lag) |
 | project_access hpc        | 1,419       | ~1,463    | New API has wider `DEAD` window (180d vs legacy ~124d effective window); `EXPIRING`/`EXPIRED` states are new |
 | project_access hpc-dev    | 8           | 8         | Exact match                              |
+| fstree_access Derecho     | ~1,260      | ~1,257    | ~3 projects missing (DB mirror lag; same root cause as above) |
 
-The one consistent gap (1 project, 1 user) is a known local database mirror
-sync lag — not a code defect.
+The one consistent gap (1 project, 1 user across LDAP APIs; ~3 projects in fstree)
+is a known local database mirror sync lag — not a code defect.
 
 ### Cache Refresh Workflow
 
 ```bash
-# Invalidate both caches after a bulk SAM update
+# Invalidate all caches after a bulk SAM update
 curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/directory_access/refresh
 curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/project_access/refresh
+curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/fstree_access/refresh
 ```
