@@ -163,6 +163,8 @@ class TestResourceStructure:
             'Overspent',
             'Exceed One Threshold',
             'Exceed Two Thresholds',
+            'Expired',
+            'No Account',
         }
         for res in self._get_first_resources(session):
             assert res['accountStatus'] in valid, \
@@ -320,7 +322,8 @@ class TestParentStatusPropagation:
 
     def test_status_values_are_all_valid(self, session):
         """Every resource entry must have a valid accountStatus string."""
-        valid = {'Normal', 'Overspent', 'Exceed One Threshold', 'Exceed Two Thresholds'}
+        valid = {'Normal', 'Overspent', 'Exceed One Threshold', 'Exceed Two Thresholds',
+                 'Expired', 'No Account'}
         result = get_fstree_data(session, resource_name='Derecho')
         for fac in result['facilities']:
             for at in fac['allocationTypes']:

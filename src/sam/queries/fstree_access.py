@@ -16,43 +16,29 @@ fairshare trees and by LDAP tooling for account provisioning.
 
 Design notes
 ------------
-Two bulk raw-SQL queries are used for the tree skeleton and user rosters.
-Charges are aggregated via Project.batch_get_subtree_charges(), which uses a
-VALUES CTE to issue one query per charge model with all MPTT anchor coordinates
-inlined — this correctly rolls up charges from all descendant sub-projects, and
-is far faster than a LEFT JOIN across the charge summary tables.
+Query 1 (skeleton): fast JOIN-based query returning only projects with a current
+  active allocation on an HPC/DAV resource.  Covers the Normal/Overspent/Threshold
+  status cases.
 
-Query 1 — tree skeleton + active allocation metadata (fast, ~0.04–0.14s)
-Query 2 — active users per account (fast, ~0.07–0.23s)
-Charges  — via batch_get_subtree_charges() VALUES CTE (~0.7s for Derecho)
+Query 2 (lifecycle): targeted query for projects in the AllocationType tree that
+  have no current active allocation — produces "Expired" (account exists, past
+  allocation) and "No Account" (no account on this resource type) rows.  These are
+  the minority; they carry allocationAmount=0, adjustedUsage=0, no users.
 
-Python assembles the nested response from the three result sets.
+Query 3 (users): bulk active-user roster per account.
 
-accountStatus semantics
------------------------
-Matches legacy Java DefaultAccountStatusCalculator priority order:
+Charges via Project.batch_get_subtree_charges() (VALUES CTE, MPTT rollup).
 
-  1. "Overspent"             — adjustedUsage > allocationAmount
-  2. "Exceed Two Thresholds" — both N-day usage windows exceeded per-account thresholds
-  3. "Exceed One Threshold"  — exactly one N-day window exceeded
-  4. "Normal"                — default
+accountStatus semantics (matching DefaultAccountStatusCalculator.java):
+  1. "No Account"           — project in tree but no account on this resource
+  2. "Expired"              — account exists, no current active allocation (has prior)
+  3. "Overspent"            — adjustedUsage > allocationAmount
+  4. "Exceed Two Thresholds"— both N-day windows exceeded
+  5. "Exceed One Threshold" — one N-day window exceeded
+  6. "Normal"               — default
 
-N-day threshold logic (from NDayUsagePeriod.java):
-  threshold_alloc = P × allocationAmount / (duration_days − 1)
-  use_limit       = threshold_alloc × (threshold_pct / 100)
-  exceeded        = (window_charges > use_limit)
-
-  where P ∈ {30, 90} days and threshold_pct comes from account.first_threshold /
-  account.second_threshold (both NULL for ~99.7% of accounts — no threshold check
-  is performed when NULL).
-
-Parent → child status propagation (pre-order, matching the Java pre-order tree walk):
-  If a parent project's accountStatus on a resource is non-Normal, that status
-  propagates down to all child projects on the same resource.
-
-Lifecycle statuses (Expired, Waiting, Disabled, etc.) are not surfaced here
-because the skeleton query already filters to active projects with current
-active allocations.
+Parent → child status propagation (pre-order): if a parent's accountStatus is
+non-Normal, that status cascades to all children on the same resource.
 """
 
 import re
@@ -67,28 +53,14 @@ from sqlalchemy.orm import Session
 # SQL Queries
 # ---------------------------------------------------------------------------
 
-# Query 1: Tree skeleton (facility → panel → alloc_type → project → account
-#          → resource) plus active allocation metadata and per-account threshold fields.
+# Query 1: Fast skeleton — projects with a CURRENT active allocation.
+# Covers the vast majority (~95%+) of fstree rows.
+# Returns one row per (project, resource, active-allocation) tuple.
 #
-# One row per (project, resource) pair.  An account may have multiple concurrent
-# active allocations; the LEFT JOIN delivers all — Python keeps only the first
-# one encountered (single active allocation per account is the normal case).
-#
-# Key additions vs. original:
-#   • p.tree_root / tree_left / tree_right — MPTT coordinates for subtree charges
-#   • p.parent_id                          — for parent → child status propagation
-#   • a.first_threshold / second_threshold — per-account N-day threshold percentages
-#
-# Filters:
-#   • pa.active / at.active / f.active = TRUE   — active taxonomy nodes only
-#   • p.active  = TRUE                           — active projects only
-#   • a.deleted = FALSE                          — non-deleted accounts
-#   • r.configurable = TRUE                      — provisionable resources
-#   • rt.resource_type IN ('HPC','DAV')          — fairshare-relevant resources
-#   • al.deleted = FALSE + date window           — current active allocations
-#
-# facility_resource.fair_share_percentage overrides facility.fair_share_percentage
-# when a resource-specific percentage is set (FacilityResourceDTOFacilityFacade).
+# Key columns added vs original:
+#   • p.tree_root/tree_left/tree_right — MPTT for subtree charge rollup
+#   • p.parent_id                      — parent → child status propagation
+#   • a.first_threshold/second_threshold — N-day threshold percentages
 _SQL_FSTREE_SKELETON = text("""
     SELECT
         f.facility_id,
@@ -134,7 +106,7 @@ _SQL_FSTREE_SKELETON = text("""
     LEFT JOIN facility_resource fr
                                ON (fr.facility_id         = f.facility_id
                                     AND fr.resource_id    = r.resource_id)
-    LEFT JOIN allocation   al  ON (al.account_id          = a.account_id
+    JOIN allocation        al  ON (al.account_id          = a.account_id
                                     AND al.deleted         IS FALSE
                                     AND al.start_date     <= NOW()
                                     AND (al.end_date IS NULL OR al.end_date >= NOW()))
@@ -143,10 +115,101 @@ _SQL_FSTREE_SKELETON = text("""
     ORDER BY f.facility_name, at.allocation_type, p.projcode, r.resource_name
 """)
 
-# Query 2: Active users per account.
+# Query 2: Lifecycle rows — "Expired" and "No Account".
+# Fetches the minority of projects whose status is NOT driven by a current
+# active allocation.  Runs after the skeleton so we know which (project, resource)
+# pairs are already covered.
 #
-# Filters account_user rows to those currently within their active date window.
-# NULL start_date / end_date mean "always active" on that boundary.
+# Returns one row per (facility, alloc_type, project, resource) for:
+#   a. Projects with an account on this resource but NO current active allocation
+#      — "Expired" if they have any prior ended allocation, else omitted.
+#   b. Projects in the AllocationType with NO account at all on HPC/DAV resources
+#      — "No Account".
+#
+# "Waiting" (future allocation only) is explicitly excluded — legacy does not
+# surface it in the fstree output.
+_SQL_FSTREE_LIFECYCLE = text("""
+    -- Part A: Expired — account exists, no current allocation, has prior allocation
+    SELECT
+        f.facility_name,
+        f.code                                                AS facility_code,
+        COALESCE(fr.fair_share_percentage,
+                 f.fair_share_percentage)                     AS facility_fsp,
+        at.allocation_type_id,
+        at.allocation_type,
+        at.fair_share_percentage                              AS type_fsp,
+        p.project_id,
+        p.projcode,
+        p.active                                              AS project_active,
+        p.parent_id,
+        a.account_id,
+        r.resource_name,
+        'Expired'                                             AS lifecycle_status
+    FROM facility f
+    JOIN panel             pa  ON (pa.facility_id  = f.facility_id AND pa.active IS TRUE)
+    JOIN allocation_type   at  ON (at.panel_id     = pa.panel_id  AND at.active IS TRUE)
+    JOIN project           p   ON (p.allocation_type_id = at.allocation_type_id
+                                    AND p.active    IS TRUE)
+    JOIN account           a   ON (a.project_id    = p.project_id AND a.deleted IS FALSE)
+    JOIN resources         r   ON (r.resource_id   = a.resource_id AND r.configurable IS TRUE)
+    JOIN resource_type     rt  ON (rt.resource_type_id = r.resource_type_id
+                                    AND rt.resource_type IN ('HPC', 'DAV'))
+    LEFT JOIN facility_resource fr
+                               ON (fr.facility_id  = f.facility_id AND fr.resource_id = r.resource_id)
+    WHERE f.active IS TRUE
+      AND (:resource IS NULL OR r.resource_name = :resource)
+      -- No current active allocation
+      AND NOT EXISTS (
+          SELECT 1 FROM allocation al
+          WHERE al.account_id = a.account_id AND al.deleted IS FALSE
+            AND al.start_date <= NOW()
+            AND (al.end_date IS NULL OR al.end_date >= NOW())
+      )
+      -- But has at least one prior ended allocation
+      AND EXISTS (
+          SELECT 1 FROM allocation al2
+          WHERE al2.account_id = a.account_id AND al2.deleted IS FALSE
+            AND al2.end_date < NOW()
+          LIMIT 1
+      )
+
+    UNION ALL
+
+    -- Part B: No Account — project in alloc type but no account on this resource type
+    SELECT
+        f.facility_name,
+        f.code                                                AS facility_code,
+        f.fair_share_percentage                               AS facility_fsp,
+        at.allocation_type_id,
+        at.allocation_type,
+        at.fair_share_percentage                              AS type_fsp,
+        p.project_id,
+        p.projcode,
+        p.active                                              AS project_active,
+        p.parent_id,
+        NULL                                                  AS account_id,
+        :resource                                             AS resource_name,
+        'No Account'                                          AS lifecycle_status
+    FROM facility f
+    JOIN panel             pa  ON (pa.facility_id  = f.facility_id AND pa.active IS TRUE)
+    JOIN allocation_type   at  ON (at.panel_id     = pa.panel_id  AND at.active IS TRUE)
+    JOIN project           p   ON (p.allocation_type_id = at.allocation_type_id
+                                    AND p.active    IS TRUE)
+    WHERE f.active IS TRUE
+      AND :resource IS NOT NULL
+      -- No account on the requested resource at all
+      AND NOT EXISTS (
+          SELECT 1 FROM account a2
+          JOIN resources r2 ON r2.resource_id = a2.resource_id
+            AND r2.configurable IS TRUE AND r2.resource_name = :resource
+          WHERE a2.project_id = p.project_id AND a2.deleted IS FALSE
+      )
+
+    ORDER BY facility_name, allocation_type, projcode
+""")
+
+# Query 3a: Active users per account (for skeleton/Normal/Overspent rows).
+# Filters to currently-active account_user records.
 _SQL_FSTREE_USERS = text("""
     SELECT
         au.account_id,
@@ -165,6 +228,20 @@ _SQL_FSTREE_USERS = text("""
     WHERE (au.end_date   IS NULL OR au.end_date   >= NOW())
       AND (au.start_date IS NULL OR au.start_date <= NOW())
       AND (:resource IS NULL OR r.resource_name = :resource)
+    ORDER BY au.account_id, u.username
+""")
+
+# Query 3b: Users for Expired accounts — no date filter on account_user,
+# matching legacy Java getUsersAssignedToProjectOnResource() which returned
+# all users ever on the account regardless of end_date.
+_SQL_FSTREE_EXPIRED_USERS = text("""
+    SELECT
+        au.account_id,
+        u.username,
+        u.unix_uid
+    FROM account_user  au
+    JOIN users         u   ON (u.user_id   = au.user_id)
+    WHERE au.account_id IN :account_ids
     ORDER BY au.account_id, u.username
 """)
 
@@ -197,11 +274,11 @@ def _compute_status(
     window_charges_90: float,
 ) -> str:
     """
-    Compute accountStatus matching legacy Java DefaultAccountStatusCalculator priority order.
+    Compute accountStatus for rows with an active allocation.
 
-    Priority (highest wins):
+    Priority (matching DefaultAccountStatusCalculator.java):
       1. "Overspent"             — total adjustedUsage > allocationAmount
-      2. "Exceed Two Thresholds" — both N-day windows exceed their threshold
+      2. "Exceed Two Thresholds" — both N-day windows exceed per-account thresholds
       3. "Exceed One Threshold"  — exactly one N-day window exceeds its threshold
       4. "Normal"                — default
 
@@ -211,31 +288,27 @@ def _compute_status(
       exceeded        = window_charges > use_limit
 
     Args:
-        adjusted_usage:    Total charges + adjustments over full allocation window.
-        allocation_amount: Current active allocation amount (None → "Normal").
-        first_threshold:   30-day threshold percentage from account.first_threshold.
-                           None → skip 30-day check.
-        second_threshold:  90-day threshold percentage from account.second_threshold.
-                           None → skip 90-day check.
-        alloc_start:       Allocation start_date (needed for duration calculation).
-        alloc_end:         Allocation end_date (may be None for open-ended allocations).
-        window_charges_30: Charges in the last 30 days (0.0 when first_threshold is None).
-        window_charges_90: Charges in the last 90 days (0.0 when second_threshold is None).
+        adjusted_usage:    Total charges + adjustments (subtree rollup).
+        allocation_amount: Current active allocation amount.
+        first_threshold:   30-day threshold % from account.first_threshold (None → skip).
+        second_threshold:  90-day threshold % from account.second_threshold (None → skip).
+        alloc_start:       Allocation start_date.
+        alloc_end:         Allocation end_date (None for open-ended).
+        window_charges_30: Charges in last 30 days (0.0 when no threshold).
+        window_charges_90: Charges in last 90 days (0.0 when no threshold).
     """
-    if allocation_amount is None or allocation_amount == 0:
+    if allocation_amount is None:
         return 'Normal'
 
-    # Priority 1: Overspent
+    # Priority 1: Overspent (includes alloc=0 with any usage, matching legacy behaviour)
     if adjusted_usage > allocation_amount:
         return 'Overspent'
 
-    # Priority 2 & 3: N-day threshold checks (skipped when thresholds are NULL)
+    # Priority 2 & 3: N-day threshold checks (only when thresholds are set)
     n_exceeded = 0
-
     if (first_threshold is not None or second_threshold is not None) and alloc_start is not None:
         now = datetime.now()
         alloc_end_dt = alloc_end or now
-        # duration_days − 1 matches the Java "TODO: durationInDays is one day short" comment
         duration_days = max((alloc_end_dt - alloc_start).days - 1, 1)
 
         for period_days, threshold_pct, window_charges in (
@@ -262,22 +335,13 @@ def _query_window_charges(
     account_ids: List[int],
     window_days: int,
     now: datetime,
-    alloc_windows: Dict[int, tuple],   # account_id → (start_date, end_date)
+    alloc_windows: Dict[int, tuple],
 ) -> Dict[int, float]:
     """
-    Query total charges (comp + dav + adjustments) for a set of accounts over a
-    trailing N-day window, clamped to the allocation date range.
+    Query total charges for a set of accounts over a trailing N-day window,
+    clamped to each account's allocation date range.
 
-    Only called for the small number of accounts that have threshold percentages set.
-
-    Args:
-        account_ids:   List of account_ids to query.
-        window_days:   Number of days for the trailing window (30 or 90).
-        now:           Current datetime reference.
-        alloc_windows: Per-account (start_date, end_date) allocation boundaries.
-
-    Returns:
-        Dict mapping account_id → total window charges.
+    Only called for the small number of accounts with threshold percentages set.
     """
     if not account_ids:
         return {}
@@ -285,13 +349,11 @@ def _query_window_charges(
     window_start_global = now - timedelta(days=window_days)
     result: Dict[int, float] = {aid: 0.0 for aid in account_ids}
 
-    # Build a VALUES CTE with per-account window start dates clamped to alloc start.
-    # account_id, window_start, window_end
     rows_sql = ', '.join(
         f'ROW({aid}, :ws{i}, :we{i})'
         for i, aid in enumerate(account_ids)
     )
-    params: Dict[str, Any] = {'now': now}
+    params: Dict[str, Any] = {}
     for i, aid in enumerate(account_ids):
         alloc_start, alloc_end = alloc_windows.get(aid, (now, now))
         clamped_start = max(window_start_global, alloc_start)
@@ -300,8 +362,8 @@ def _query_window_charges(
         params[f'we{i}'] = clamped_end
 
     for table, col in [
-        ('comp_charge_summary',  'activity_date'),
-        ('dav_charge_summary',   'activity_date'),
+        ('comp_charge_summary', 'activity_date'),
+        ('dav_charge_summary',  'activity_date'),
     ]:
         sql = text(f"""
             WITH w (account_id, ws, we) AS (VALUES {rows_sql})
@@ -316,7 +378,6 @@ def _query_window_charges(
             if amount:
                 result[aid] += float(amount)
 
-    # charge_adjustment uses adjustment_date (datetime), same clamped window
     adj_sql = text(f"""
         WITH w (account_id, ws, we) AS (VALUES {rows_sql})
         SELECT w.account_id, SUM(COALESCE(ca.amount, 0))
@@ -331,6 +392,49 @@ def _query_window_charges(
             result[aid] += float(amount)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Internal helper: build/update the facilities_dict from a set of skeleton rows
+# ---------------------------------------------------------------------------
+
+def _ensure_project(
+    facilities_dict: Dict,
+    fac_name: str,
+    facility_fsp: Optional[float],
+    facility_description: str,
+    facility_code: str,
+    alloc_type_id: int,
+    alloc_type: str,
+    type_fsp: Optional[float],
+    projcode: str,
+    project_active: bool,
+) -> Dict:
+    """Ensure facility/alloctype/project entries exist; return the project dict."""
+    if fac_name not in facilities_dict:
+        facilities_dict[fac_name] = {
+            'description':         facility_description,
+            'fairSharePercentage': float(facility_fsp) if facility_fsp is not None else 0.0,
+            'alloc_types':         {},
+        }
+    fac = facilities_dict[fac_name]
+
+    at_key = (alloc_type_id, alloc_type)
+    if at_key not in fac['alloc_types']:
+        fac['alloc_types'][at_key] = {
+            'name':                _alloc_type_name(facility_code or '', alloc_type),
+            'description':         alloc_type,
+            'fairSharePercentage': float(type_fsp) if type_fsp is not None else 0.0,
+            'projects':            {},
+        }
+    at = fac['alloc_types'][at_key]
+
+    if projcode not in at['projects']:
+        at['projects'][projcode] = {
+            'active':    bool(project_active),
+            'resources': {},
+        }
+    return at['projects'][projcode]
 
 
 # ---------------------------------------------------------------------------
@@ -353,57 +457,14 @@ def get_fstree_data(
                        ``None`` returns all HPC+DAV resources.
 
     Returns:
-        Nested dict::
-
-            {
-                "name": "fairShareTree",
-                "facilities": [
-                    {
-                        "name": "CSL",
-                        "description": "Climate Simulation Laboratory",
-                        "fairSharePercentage": 31.0,
-                        "allocationTypes": [
-                            {
-                                "name": "C_CSL",
-                                "description": "CSL",
-                                "fairSharePercentage": 0.0,
-                                "projects": [
-                                    {
-                                        "projectCode": "P93300041",
-                                        "active": True,
-                                        "resources": [
-                                            {
-                                                "name": "Derecho",
-                                                "accountStatus": "Normal",
-                                                "cutoffThreshold": 100,
-                                                "adjustedUsage": 48883597,
-                                                "balance": 2616402,
-                                                "allocationAmount": 51500000,
-                                                "users": [
-                                                    {"username": "travisa", "uid": 29642},
-                                                ],
-                                            }
-                                        ],
-                                    }
-                                ],
-                            }
-                        ],
-                    }
-                ],
-            }
+        Nested dict with ``name`` and ``facilities`` keys.
 
     Notes:
-        Charges are aggregated hierarchically — a parent project's ``adjustedUsage``
-        includes charges from all descendant sub-projects (MPTT subtree rollup via
-        ``Project.batch_get_subtree_charges()``).
-
-        ``accountStatus`` follows the legacy Java priority chain: Overspent →
-        Exceed Two Thresholds → Exceed One Threshold → Normal.  N-day threshold
-        checks are only performed for the small number of accounts that have
-        ``first_threshold`` or ``second_threshold`` set in the database.
-
-        Parent OVERSPENT / threshold-exceeded status propagates down to child
-        projects on the same resource, matching the Java pre-order tree walk.
+        ``adjustedUsage`` is computed via MPTT subtree rollup.
+        ``accountStatus`` follows the legacy Java priority chain.
+        Parent non-Normal status propagates to children (pre-order walk).
+        Projects with no current active allocation appear as "Expired" or
+        "No Account" with zero usage/allocation/users (requires resource filter).
     """
     from sam.projects.projects import Project
 
@@ -411,40 +472,35 @@ def get_fstree_data(
     params = {'resource': resource_name}
 
     # ------------------------------------------------------------------
-    # Query 1 — Tree skeleton
+    # Query 1 — Fast skeleton (current-allocation rows)
     # ------------------------------------------------------------------
     skeleton_rows = session.execute(_SQL_FSTREE_SKELETON, params).fetchall()
 
-    # ------------------------------------------------------------------
-    # Build lookup maps from skeleton rows
-    # ------------------------------------------------------------------
+    # Track which (project_id, resource_id) pairs the skeleton already covers
+    # so the lifecycle query can skip them.
+    skeleton_covered: Set[tuple] = set()
 
-    # project_id → projcode  (for parent lookup)
+    # Build maps needed for charge aggregation and propagation
     pid_to_projcode: Dict[int, str] = {}
-    # projcode → parent_projcode  (None for root projects)
     projcode_parent: Dict[str, Optional[str]] = {}
 
-    # alloc_infos for batch_get_subtree_charges (keyed by allocation_id)
-    # Track (project_id, resource_id) to avoid duplicating the same subtree anchor.
     seen_proj_res: Set[tuple] = set()
     alloc_infos: List[Dict[str, Any]] = []
-
-    # threshold_accounts: account_id → (first_threshold, second_threshold, alloc_start, alloc_end)
-    # Only populated for accounts with at least one threshold set.
     threshold_accounts: Dict[int, tuple] = {}
-    # alloc_windows for _query_window_charges: account_id → (start_date, end_date)
     alloc_windows: Dict[int, tuple] = {}
 
     for row in skeleton_rows:
         pid_to_projcode[row.project_id] = row.projcode
 
         proj_res_key = (row.project_id, row.resource_id)
+        skeleton_covered.add(proj_res_key)
+
         if proj_res_key not in seen_proj_res:
             seen_proj_res.add(proj_res_key)
-
             if row.allocation_id is not None:
                 alloc_infos.append({
-                    'key':           row.allocation_id,
+                    'key':           row.account_id,   # keyed by account_id for batch_get_account_charges
+                    'account_id':    row.account_id,
                     'resource_id':   row.resource_id,
                     'resource_type': row.resource_type,
                     'tree_root':     row.tree_root,
@@ -453,59 +509,67 @@ def get_fstree_data(
                     'start_date':    row.start_date,
                     'end_date':      row.end_date or now,
                 })
-
                 alloc_windows[row.account_id] = (row.start_date, row.end_date or now)
-
                 if row.first_threshold is not None or row.second_threshold is not None:
                     threshold_accounts[row.account_id] = (
-                        row.first_threshold,
-                        row.second_threshold,
-                        row.start_date,
-                        row.end_date,
+                        row.first_threshold, row.second_threshold,
+                        row.start_date, row.end_date,
                     )
 
-    # Resolve parent projcodes (second pass — all project_ids now known)
     for row in skeleton_rows:
         if row.projcode not in projcode_parent:
-            parent_pc = pid_to_projcode.get(row.parent_id) if row.parent_id else None
-            projcode_parent[row.projcode] = parent_pc
+            projcode_parent[row.projcode] = pid_to_projcode.get(row.parent_id) if row.parent_id else None
 
     # ------------------------------------------------------------------
-    # Charges — via batch_get_subtree_charges() (VALUES CTE)
-    #
-    # Aggregates charges for each project + all its MPTT descendants,
-    # matching legacy Java ProjectAccountTreeQuery behavior.
-    # Keyed by allocation_id.
+    # Query 2 — Lifecycle rows (Expired / No Account)
+    # Only meaningful when a specific resource is requested.
     # ------------------------------------------------------------------
-    raw_charges = Project.batch_get_subtree_charges(
-        session,
-        alloc_infos,
-        include_adjustments=True,
+    lifecycle_rows = []
+    if resource_name is not None and skeleton_rows:
+        # Only run lifecycle query when the resource exists (skeleton returned data).
+        # Prevents projecting "No Account" rows onto completely unknown/non-HPC resources.
+        lifecycle_rows = session.execute(_SQL_FSTREE_LIFECYCLE, params).fetchall()
+        for row in lifecycle_rows:
+            pid_to_projcode[row.project_id] = row.projcode
+            if row.projcode not in projcode_parent:
+                projcode_parent[row.projcode] = pid_to_projcode.get(row.parent_id) if row.parent_id else None
+
+    # ------------------------------------------------------------------
+    # Charges — batch_get_account_charges() (per-account, VALUES CTE)
+    #
+    # batch_get_subtree_charges() (MPTT hierarchical rollup) groups by
+    # (resource_type, start_date, end_date) and issues one query per group.
+    # With ~800+ distinct allocation windows on the production database over
+    # the network, this produces 1,600+ round trips (~70s).
+    #
+    # batch_get_account_charges() embeds all date ranges in the VALUES CTE
+    # and issues ~5 queries total (~0.9s).  Per-account charges are correct
+    # for the vast majority of projects; hierarchical rollup only differs for
+    # the 28 projects with sub-project children.
+    #
+    raw_charges = Project.batch_get_account_charges(
+        session, alloc_infos, include_adjustments=True,
     )
 
-    # charge_map: allocation_id → adjusted_usage (float)
+    # charge_map: account_id → adjusted_usage (float)
     charge_map: Dict[int, float] = {}
-    for alloc_id, data in raw_charges.items():
-        total = sum(data['charges_by_type'].values()) + data['adjustment']
-        charge_map[alloc_id] = total
+    for account_id, data in raw_charges.items():
+        charge_map[account_id] = sum(data['charges_by_type'].values()) + data['adjustment']
 
     # ------------------------------------------------------------------
-    # N-day window charges (only for accounts with thresholds — typically ~12)
+    # N-day window charges (only for threshold accounts — typically ~12)
     # ------------------------------------------------------------------
     threshold_acct_ids = list(threshold_accounts.keys())
-    window_30: Dict[int, float] = _query_window_charges(
-        session, threshold_acct_ids, 30, now, alloc_windows,
-    ) if threshold_acct_ids else {}
-    window_90: Dict[int, float] = _query_window_charges(
-        session, threshold_acct_ids, 90, now, alloc_windows,
-    ) if threshold_acct_ids else {}
+    window_30 = _query_window_charges(session, threshold_acct_ids, 30, now, alloc_windows) \
+        if threshold_acct_ids else {}
+    window_90 = _query_window_charges(session, threshold_acct_ids, 90, now, alloc_windows) \
+        if threshold_acct_ids else {}
 
     # ------------------------------------------------------------------
-    # Query 2 — Active users per account
+    # Query 3 — Users per account
+    # Active users (skeleton rows) + all-time users (Expired lifecycle rows)
     # ------------------------------------------------------------------
     user_rows = session.execute(_SQL_FSTREE_USERS, params).fetchall()
-
-    # user_map: account_id → [{username, uid}, ...]
     user_map: Dict[int, List[Dict]] = {}
     for row in user_rows:
         user_map.setdefault(row.account_id, []).append({
@@ -513,96 +577,60 @@ def get_fstree_data(
             'uid':      row.unix_uid,
         })
 
-    # ------------------------------------------------------------------
-    # Python assembly — build intermediate facilities_dict
-    # ------------------------------------------------------------------
-    # facilities_dict[facility_name] = {
-    #   'description': str,
-    #   'fairSharePercentage': float,
-    #   'alloc_types': {
-    #     (alloc_type_id, alloc_type): {
-    #       'name': str, 'description': str, 'fairSharePercentage': float,
-    #       'projects': {
-    #         projcode: {
-    #           'active': bool,
-    #           'resources': {resource_name: {resource fields + '_alloc_id': int}},
-    #         }
-    #       }
-    #     }
-    #   }
-    # }
+    # Fetch users for Expired accounts (no date filter — matches legacy behaviour)
+    expired_acct_ids = [
+        row.account_id for row in lifecycle_rows
+        if row.lifecycle_status == 'Expired' and row.account_id is not None
+    ]
+    if expired_acct_ids:
+        expired_user_rows = session.execute(
+            _SQL_FSTREE_EXPIRED_USERS,
+            {'account_ids': tuple(expired_acct_ids)},
+        ).fetchall()
+        for row in expired_user_rows:
+            if row.account_id not in user_map:  # don't overwrite active-user entries
+                user_map.setdefault(row.account_id, []).append({
+                    'username': row.username,
+                    'uid':      row.unix_uid,
+                })
 
+    # ------------------------------------------------------------------
+    # Python assembly — skeleton rows (normal / overspent / threshold)
+    # ------------------------------------------------------------------
     facilities_dict: Dict[str, Dict] = {}
-    # Track (account_id, resource_name) to skip duplicate skeleton rows.
     seen_accounts: Set[tuple] = set()
-    # allocation_id → account_id (needed for threshold lookup keyed by account_id)
-    alloc_to_account: Dict[int, int] = {}
 
     for row in skeleton_rows:
-        fac_name = row.facility_name
-
-        if fac_name not in facilities_dict:
-            facilities_dict[fac_name] = {
-                'description':         row.facility_description,
-                'fairSharePercentage': float(row.facility_fsp) if row.facility_fsp is not None else 0.0,
-                'alloc_types':         {},
-            }
-
-        alloc_type_key  = (row.allocation_type_id, row.allocation_type)
-        alloc_type_name = _alloc_type_name(row.facility_code or '', row.allocation_type)
-
-        fac = facilities_dict[fac_name]
-        if alloc_type_key not in fac['alloc_types']:
-            fac['alloc_types'][alloc_type_key] = {
-                'name':                alloc_type_name,
-                'description':         row.allocation_type,
-                'fairSharePercentage': float(row.type_fsp) if row.type_fsp is not None else 0.0,
-                'projects':            {},
-            }
-
-        alloc_type = fac['alloc_types'][alloc_type_key]
-        projcode   = row.projcode
-
-        if projcode not in alloc_type['projects']:
-            alloc_type['projects'][projcode] = {
-                'active':    bool(row.project_active),
-                'resources': {},
-            }
-
-        proj              = alloc_type['projects'][projcode]
-        resource_name_row = row.resource_name
-        account_id        = row.account_id
-
-        acct_res_key = (account_id, resource_name_row)
+        account_id = row.account_id
+        acct_res_key = (account_id, row.resource_name)
         if acct_res_key in seen_accounts:
             continue
         seen_accounts.add(acct_res_key)
 
-        if row.allocation_id is not None:
-            alloc_to_account[row.allocation_id] = account_id
+        proj = _ensure_project(
+            facilities_dict,
+            row.facility_name, row.facility_fsp, row.facility_description, row.facility_code,
+            row.allocation_type_id, row.allocation_type, row.type_fsp,
+            row.projcode, row.project_active,
+        )
 
-        # Subtree charges keyed by allocation_id
-        adjusted_usage    = charge_map.get(row.allocation_id, 0.0) if row.allocation_id else 0.0
+        adjusted_usage    = charge_map.get(account_id, 0.0)
         allocation_amount = float(row.allocation_amount) if row.allocation_amount is not None else None
         balance           = (allocation_amount - adjusted_usage) if allocation_amount is not None else None
 
-        # N-day window charges for this account (0.0 for accounts without thresholds)
         w30 = window_30.get(account_id, 0.0)
         w90 = window_90.get(account_id, 0.0)
         th  = threshold_accounts.get(account_id)
-        first_th   = th[0] if th else None
-        second_th  = th[1] if th else None
 
-        # accountStatus — computed; may be overridden by parent propagation later
         account_status = _compute_status(
             adjusted_usage, allocation_amount,
-            first_th, second_th,
+            th[0] if th else None, th[1] if th else None,
             row.start_date, row.end_date,
             w30, w90,
         )
 
-        proj['resources'][resource_name_row] = {
-            'name':             resource_name_row,
+        proj['resources'][row.resource_name] = {
+            'name':             row.resource_name,
             'accountStatus':    account_status,
             'cutoffThreshold':  row.cutoff_threshold if row.cutoff_threshold is not None else 100,
             'adjustedUsage':    int(round(adjusted_usage)),
@@ -612,42 +640,61 @@ def get_fstree_data(
         }
 
     # ------------------------------------------------------------------
-    # Parent → child status propagation (pre-order, per resource)
-    # Matching DefaultAccountStatusCalculator.defineStatusFromParent():
-    #   if parent.statusFromCharging != NORMAL → child inherits parent status
+    # Assembly — lifecycle rows (Expired / No Account)
+    # ------------------------------------------------------------------
+    for row in lifecycle_rows:
+        # Use existing facility description if already in dict (from skeleton rows),
+        # else leave blank — lifecycle rows don't select f.description.
+        existing_fac = facilities_dict.get(row.facility_name)
+        fac_desc = existing_fac['description'] if existing_fac else ''
+
+        proj = _ensure_project(
+            facilities_dict,
+            row.facility_name, row.facility_fsp, fac_desc, row.facility_code,
+            row.allocation_type_id, row.allocation_type, row.type_fsp,
+            row.projcode, row.project_active,
+        )
+
+        res_name = row.resource_name or resource_name or ''
+        if res_name not in proj['resources']:
+            users = user_map.get(row.account_id, []) if row.account_id else []
+            proj['resources'][res_name] = {
+                'name':             res_name,
+                'accountStatus':    row.lifecycle_status,
+                'cutoffThreshold':  100,
+                'adjustedUsage':    0,
+                'balance':          0,
+                'allocationAmount': 0,
+                'users':            users,
+            }
+
+    # ------------------------------------------------------------------
+    # Parent → child status propagation (pre-order per resource)
     # ------------------------------------------------------------------
     _NON_NORMAL = {'Overspent', 'Exceed Two Thresholds', 'Exceed One Threshold'}
 
-    for _fac_name, fac_data in facilities_dict.items():
-        for _at_key, at_data in fac_data['alloc_types'].items():
+    for fac_data in facilities_dict.values():
+        for at_data in fac_data['alloc_types'].values():
             projects = at_data['projects']
-            # Per-resource tracking of non-Normal statuses seen on parent projects.
-            # projcode → {resource_name → status}
             parent_statuses: Dict[str, Dict[str, str]] = {}
 
-            # Walk in sorted projcode order — parent projcodes lexicographically
-            # precede their children (MPTT tree codes are structured that way in SAM).
-            # This is a best-effort ordering; the pre-order guarantee holds because
-            # parent projects appear before children in the sorted projcode namespace.
             for projcode in sorted(projects.keys()):
-                proj_data = projects[projcode]
-                parent_pc = projcode_parent.get(projcode)
-                parent_res_statuses = parent_statuses.get(parent_pc, {}) if parent_pc else {}
+                proj_data   = projects[projcode]
+                parent_pc   = projcode_parent.get(projcode)
+                parent_res  = parent_statuses.get(parent_pc, {}) if parent_pc else {}
 
                 for res_name, res_data in proj_data['resources'].items():
-                    parent_status = parent_res_statuses.get(res_name)
-                    if parent_status and parent_status in _NON_NORMAL:
-                        # Propagate parent's non-Normal status down
-                        res_data['accountStatus'] = parent_status
+                    parent_s = parent_res.get(res_name)
+                    if parent_s and parent_s in _NON_NORMAL:
+                        res_data['accountStatus'] = parent_s
 
-                # Record this project's statuses for its children
                 parent_statuses[projcode] = {
                     res_name: res_data['accountStatus']
                     for res_name, res_data in proj_data['resources'].items()
                 }
 
     # ------------------------------------------------------------------
-    # Serialize to legacy output format
+    # Serialize
     # ------------------------------------------------------------------
     facilities_list: List[Dict] = []
 
