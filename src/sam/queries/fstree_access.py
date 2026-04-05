@@ -554,7 +554,7 @@ def get_fstree_data(
             seen_proj_res.add(proj_res_key)
             if row.allocation_id is not None:
                 alloc_infos.append({
-                    'key':           row.account_id,   # keyed by account_id for batch_get_account_charges
+                    'key':           row.account_id,   # lookup key in charge_map (account_id)
                     'account_id':    row.account_id,
                     'resource_id':   row.resource_id,
                     'resource_type': row.resource_type,
@@ -590,21 +590,36 @@ def get_fstree_data(
                 projcode_parent[row.projcode] = pid_to_projcode.get(row.parent_id) if row.parent_id else None
 
     # ------------------------------------------------------------------
-    # Charges — batch_get_account_charges() (per-account, VALUES CTE)
+    # Charges — hybrid approach matching allocations.py:
     #
-    # batch_get_subtree_charges() (MPTT hierarchical rollup) groups by
-    # (resource_type, start_date, end_date) and issues one query per group.
-    # With ~800+ distinct allocation windows on the production database over
-    # the network, this produces 1,600+ round trips (~70s).
+    # Non-leaf projects (~28) → batch_get_subtree_charges(): MPTT rollup
+    #   that includes descendant charges.  With only ~28 non-leaf entries,
+    #   the (resource_type, start_date, end_date) grouping yields ~28 date
+    #   groups → ~56 SQL queries (fast).
     #
-    # batch_get_account_charges() embeds all date ranges in the VALUES CTE
-    # and issues ~5 queries total (~0.9s).  Per-account charges are correct
-    # for the vast majority of projects; hierarchical rollup only differs for
-    # the 28 projects with sub-project children.
+    # Leaf projects (~1,455) → batch_get_account_charges(): VALUES CTE that
+    #   embeds all date ranges in ~5 queries (~0.9s).  Correct for leaves
+    #   since their subtree == self.
     #
-    raw_charges = Project.batch_get_account_charges(
-        session, alloc_infos, include_adjustments=True,
-    )
+    subtree_infos: List[Dict[str, Any]] = []
+    account_infos: List[Dict[str, Any]] = []
+    for info in alloc_infos:
+        tl, tr = info['tree_left'], info['tree_right']
+        is_leaf = (not info['tree_root'] or not tl or not tr or tr == tl + 1)
+        if is_leaf:
+            account_infos.append(info)
+        else:
+            subtree_infos.append(info)
+
+    raw_charges: Dict[Any, Dict] = {}
+    if subtree_infos:
+        raw_charges.update(
+            Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments=True)
+        )
+    if account_infos:
+        raw_charges.update(
+            Project.batch_get_account_charges(session, account_infos, include_adjustments=True)
+        )
 
     # charge_map: account_id → adjusted_usage (float)
     charge_map: Dict[int, float] = {}
