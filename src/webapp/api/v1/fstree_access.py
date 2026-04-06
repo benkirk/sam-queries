@@ -11,6 +11,16 @@ Example usage:
     GET /api/v1/fstree_access/Derecho%20GPU — resource with space (URL-encoded)
     POST /api/v1/fstree_access/refresh      — invalidate cache
 
+    GET /api/v1/fstree_access/projects/                      — all projects (project-keyed view)
+    GET /api/v1/fstree_access/projects/SCSG0001              — single project
+    GET /api/v1/fstree_access/projects/?resource=Derecho     — filtered by resource
+    GET /api/v1/fstree_access/projects/SCSG0001?resource=Derecho
+
+    GET /api/v1/fstree_access/users/                         — all users (user-keyed view)
+    GET /api/v1/fstree_access/users/benkirk                  — single user
+    GET /api/v1/fstree_access/users/?resource=Derecho        — filtered by resource
+    GET /api/v1/fstree_access/users/benkirk?resource=Derecho
+
 Response format (partial):
     {
         "name": "fairShareTree",
@@ -50,12 +60,12 @@ Response format (partial):
     }
 """
 
-from flask import Blueprint, jsonify, abort
+from flask import Blueprint, jsonify, abort, request
 from webapp.utils.rbac import Permission
 from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db, cache
 from webapp.api.helpers import register_error_handlers
-from sam.queries.fstree_access import get_fstree_data
+from sam.queries.fstree_access import get_fstree_data, get_project_fsdata, get_user_fsdata
 
 bp = Blueprint('api_fstree_access', __name__)
 register_error_handlers(bp)
@@ -103,6 +113,93 @@ def get_fstree_resource(resource_name: str):
     return jsonify(result)
 
 
+@bp.route('/projects/', methods=['GET'])
+@login_or_token_required(Permission.VIEW_PROJECTS)
+@cache.cached(timeout=300, query_string=True)
+def get_project_fstree():
+    """
+    Return fairshare data reorganized by project code.
+
+    Optional query parameter:
+        resource: Filter to a single resource (e.g. ``?resource=Derecho``).
+
+    Returns:
+        JSON with "name" (``"projectFairShareData"``) and "projects" keys.
+        Each project entry contains active, facility, allocationType,
+        allocationTypeDescription, and resources (sorted by name).
+    """
+    resource_name = request.args.get('resource')
+    return jsonify(get_project_fsdata(db.session, resource_name=resource_name))
+
+
+@bp.route('/projects/<projcode>', methods=['GET'])
+@login_or_token_required(Permission.VIEW_PROJECTS)
+@cache.cached(timeout=300, query_string=True)
+def get_project_fstree_item(projcode: str):
+    """
+    Return fairshare data for a single project.
+
+    Args:
+        projcode: Project code (e.g. "SCSG0001").
+
+    Optional query parameter:
+        resource: Filter to a single resource (e.g. ``?resource=Derecho``).
+
+    Returns:
+        JSON dict keyed by projcode with the project's fairshare entry.
+        404 if the project is not found in the fairshare data.
+    """
+    resource_name = request.args.get('resource')
+    result = get_project_fsdata(db.session, resource_name=resource_name)
+    proj = result['projects'].get(projcode)
+    if proj is None:
+        abort(404, f'Project {projcode!r} not found in fairshare data')
+    return jsonify({projcode: proj})
+
+
+@bp.route('/users/', methods=['GET'])
+@login_or_token_required(Permission.VIEW_PROJECTS)
+@cache.cached(timeout=300, query_string=True)
+def get_user_fstree():
+    """
+    Return fairshare data reorganized by username.
+
+    Optional query parameter:
+        resource: Filter to a single resource (e.g. ``?resource=Derecho``).
+
+    Returns:
+        JSON with "name" (``"userFairShareData"``) and "users" keys.
+        Each user entry contains uid and projects (keyed by projcode).
+    """
+    resource_name = request.args.get('resource')
+    return jsonify(get_user_fsdata(db.session, resource_name=resource_name))
+
+
+@bp.route('/users/<username>', methods=['GET'])
+@login_or_token_required(Permission.VIEW_PROJECTS)
+@cache.cached(timeout=300, query_string=True)
+def get_user_fstree_item(username: str):
+    """
+    Return fairshare data for a single user.
+
+    Args:
+        username: Unix username (e.g. "benkirk").
+
+    Optional query parameter:
+        resource: Filter to a single resource (e.g. ``?resource=Derecho``).
+
+    Returns:
+        JSON dict keyed by username with the user's fairshare entry.
+        404 if the user has no active allocations in the fairshare data.
+    """
+    resource_name = request.args.get('resource')
+    result = get_user_fsdata(db.session, resource_name=resource_name)
+    user = result['users'].get(username)
+    if user is None:
+        abort(404, f'User {username!r} not found in fairshare data')
+    return jsonify({username: user})
+
+
 @bp.route('/refresh', methods=['POST'])
 @login_or_token_required(Permission.VIEW_PROJECTS)
 def refresh_cache():
@@ -116,5 +213,9 @@ def refresh_cache():
     """
     cache.delete_memoized(get_fstree)
     cache.delete_memoized(get_fstree_resource)
+    cache.delete_memoized(get_project_fstree)
+    cache.delete_memoized(get_project_fstree_item)
+    cache.delete_memoized(get_user_fstree)
+    cache.delete_memoized(get_user_fstree_item)
     cache.clear()
     return jsonify({'status': 'ok'})
