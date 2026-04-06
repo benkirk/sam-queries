@@ -51,8 +51,8 @@ Response format (partial):
 """
 
 from flask import Blueprint, jsonify, abort
-from flask_login import login_required
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import Permission
+from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db, cache
 from webapp.api.helpers import register_error_handlers
 from sam.queries.fstree_access import get_fstree_data
@@ -66,8 +66,7 @@ register_error_handlers(bp)
 # ---------------------------------------------------------------------------
 
 @bp.route('/', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@login_or_token_required(Permission.VIEW_PROJECTS)
 @cache.cached(timeout=300, query_string=True)
 def get_fstree():
     """
@@ -82,8 +81,7 @@ def get_fstree():
 
 
 @bp.route('/<path:resource_name>', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@login_or_token_required(Permission.VIEW_PROJECTS)
 @cache.cached(timeout=300, query_string=True)
 def get_fstree_resource(resource_name: str):
     """
@@ -106,8 +104,7 @@ def get_fstree_resource(resource_name: str):
 
 
 @bp.route('/refresh', methods=['POST'])
-@login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@login_or_token_required(Permission.VIEW_PROJECTS)
 def refresh_cache():
     """
     Invalidate the fairshare tree cache.

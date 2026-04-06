@@ -34,8 +34,8 @@ Response format (all-branches):
 """
 
 from flask import Blueprint, jsonify, abort
-from flask_login import login_required
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import Permission
+from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db, cache
 from webapp.api.helpers import register_error_handlers
 from sam.queries.project_access import get_project_group_status, ACCESS_GRACE_PERIOD
@@ -49,8 +49,7 @@ register_error_handlers(bp)
 # ---------------------------------------------------------------------------
 
 @bp.route('/', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@login_or_token_required(Permission.VIEW_PROJECTS)
 @cache.cached(timeout=300, query_string=True)
 def get_project_access():
     """
@@ -66,8 +65,7 @@ def get_project_access():
 
 
 @bp.route('/<access_branch_name>', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@login_or_token_required(Permission.VIEW_PROJECTS)
 @cache.cached(timeout=300, query_string=True)
 def get_project_access_branch(access_branch_name: str):
     """
@@ -89,8 +87,7 @@ def get_project_access_branch(access_branch_name: str):
 
 
 @bp.route('/refresh', methods=['POST'])
-@login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@login_or_token_required(Permission.VIEW_PROJECTS)
 def refresh_cache():
     """
     Invalidate the project access cache.
