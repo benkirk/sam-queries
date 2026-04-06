@@ -12,9 +12,25 @@ Required environment variables (tests skip if absent):
 Optional:
     SAM_LEGACY_URL    Base URL of legacy API (default: https://sam.ucar.edu)
 
+Production DB override (eliminates DB-drift as a source of false failures):
+    If all three PROD_SAM_DB_* variables are set, this module redirects the
+    new API's SAM database connection to the production server for the duration
+    of the test run, then restores the original connection afterward.
+
+    PROD_SAM_DB_USERNAME  production SAM DB username
+    PROD_SAM_DB_SERVER    production SAM DB hostname
+    PROD_SAM_DB_PASSWORD  production SAM DB password
+
+    SAM_DB_REQUIRE_SSL is automatically set to true when using prod credentials.
+    No other test module is affected; only this file overrides engine/app fixtures.
+
 Usage:
     export SAM_LEGACY_USER=ssg
     export SAM_LEGACY_PASS=<password>
+    # optional: point new API at prod DB to eliminate drift-related failures
+    export PROD_SAM_DB_USERNAME=...
+    export PROD_SAM_DB_SERVER=...
+    export PROD_SAM_DB_PASSWORD=...
     source etc/config_env.sh
     pytest tests/integration/test_legacy_api_parity.py -v -n0
 
@@ -25,6 +41,8 @@ Design notes:
     statuses, projects not yet in the local DB mirror); this is expected and OK.
   - Counts and set membership are checked with tolerances to accommodate DB mirror
     sync lag between sam.ucar.edu and the local development database.
+  - When PROD_SAM_DB_* vars are set the tolerance checks may be tightened in the
+    future since drift is no longer a factor.
 """
 
 import os
@@ -44,6 +62,13 @@ _LEGACY_GROUP_URL   = f'{_LEGACY_BASE}/api/protected/admin/sysacct/groupstatus/{
 _LEGACY_FSTREE_URL  = f'{_LEGACY_BASE}/api/protected/admin/ssg/fairShareTree/v3/{{resource}}'
 
 _PROJECT_BRANCHES = ('hpc', 'hpc-data', 'hpc-dev')
+
+# Production DB override — eliminates DB-drift as a failure source.
+# All three must be present; a partial set is ignored.
+_PROD_DB_USERNAME = os.environ.get('PROD_SAM_DB_USERNAME', '')
+_PROD_DB_SERVER   = os.environ.get('PROD_SAM_DB_SERVER',   '')
+_PROD_DB_PASSWORD = os.environ.get('PROD_SAM_DB_PASSWORD', '')
+_USE_PROD_DB      = bool(_PROD_DB_USERNAME and _PROD_DB_SERVER and _PROD_DB_PASSWORD)
 
 pytestmark = [pytest.mark.legacy_parity]
 
@@ -108,6 +133,121 @@ def _assert_subset_with_tolerance(
 def _count_tolerance(count: int, pct: float = 5.0, floor: int = 10) -> int:
     """Return the allowed difference for a count (floor or pct%, whichever is larger)."""
     return max(floor, int(count * pct / 100.0))
+
+
+# ---------------------------------------------------------------------------
+# Prod-DB redirect fixtures (this module only)
+# ---------------------------------------------------------------------------
+
+def _restore_env(key: str, original):
+    """Restore an environment variable to its original value (or remove it)."""
+    if original is None:
+        os.environ.pop(key, None)
+    else:
+        os.environ[key] = original
+
+
+@pytest.fixture(scope='module', autouse=True)
+def _prod_sam_session():
+    """
+    If PROD_SAM_DB_* vars are all set, redirect sam.session to the production
+    SAM database for this module, then restore the original connection afterward.
+
+    autouse=True so it always runs first; engine and app fixtures depend on it
+    explicitly to guarantee ordering.
+    """
+    import sam.session
+
+    if not _USE_PROD_DB:
+        yield
+        return
+
+    # Save originals
+    orig_conn_str  = sam.session.connection_string
+    orig_username  = os.environ.get('SAM_DB_USERNAME')
+    orig_server    = os.environ.get('SAM_DB_SERVER')
+    orig_password  = os.environ.get('SAM_DB_PASSWORD')
+    orig_ssl       = os.environ.get('SAM_DB_REQUIRE_SSL')
+
+    from config import SAMConfig
+
+    # Point sam.session and SAMConfig at prod
+    os.environ['SAM_DB_USERNAME']    = _PROD_DB_USERNAME
+    os.environ['SAM_DB_SERVER']      = _PROD_DB_SERVER
+    os.environ['SAM_DB_PASSWORD']    = _PROD_DB_PASSWORD
+    os.environ['SAM_DB_REQUIRE_SSL'] = 'true'
+    sam.session.init_sam_db_defaults()
+    SAMConfig.reload()                  # unfreeze class attrs (e.g. SAM_DB_REQUIRE_SSL)
+
+    yield  # tests run here
+
+    # Restore
+    sam.session.connection_string = orig_conn_str
+    _restore_env('SAM_DB_USERNAME',    orig_username)
+    _restore_env('SAM_DB_SERVER',      orig_server)
+    _restore_env('SAM_DB_PASSWORD',    orig_password)
+    _restore_env('SAM_DB_REQUIRE_SSL', orig_ssl)
+    SAMConfig.reload()                  # re-freeze class attrs to original env values
+
+
+@pytest.fixture(scope='module')
+def engine(_prod_sam_session):
+    """
+    Module-scoped SAM engine.
+
+    Shadows the session-scoped engine from tests/conftest.py for this module only.
+    - Prod path: after _prod_sam_session has redirected sam.session, create_sam_engine()
+      connects to the production database (SSL enabled).
+    - Local path: falls back to create_test_engine() which uses LOCAL_SAM_DB_* vars
+      (127.0.0.1), identical to the conftest session-scoped engine.
+    """
+    if _USE_PROD_DB:
+        from sam.session import create_sam_engine
+        eng, _ = create_sam_engine()
+    else:
+        from fixtures.test_config import create_test_engine
+        eng = create_test_engine()
+    yield eng
+    eng.dispose()
+
+
+@pytest.fixture(scope='module')
+def app(test_databases, worker_db_name, _prod_sam_session):
+    """
+    Module-scoped Flask app.
+
+    Shadows the session-scoped app from tests/conftest.py for this module only.
+    Creates a fresh Flask app *after* _prod_sam_session has (possibly) updated
+    sam.session.connection_string, so the app's SQLAlchemy pool targets the
+    correct database.
+    - Prod path: app connects to the production SAM database.
+    - Local path: app connects to the local SAM database (same as session-scoped conftest app).
+    """
+    import sam.session
+    import system_status.session
+    from webapp.run import create_app
+
+    if not _USE_PROD_DB:
+        # Ensure sam.session is pointing at the local DB (LOCAL_SAM_DB_* vars)
+        # before creating the app, matching the conftest session-scoped app exactly.
+        sam.session.init_sam_db_defaults()
+
+    # SAMConfig.reload() was already called by _prod_sam_session (or is a no-op
+    # in the local path), so cfg.SAM_DB_REQUIRE_SSL is current here.
+
+    os.environ['FLASK_ENV'] = 'testing'
+    system_status.session.init_status_db_defaults()
+
+    the_app = create_app()
+    the_app.config['TESTING'] = True
+    the_app.config['WTF_CSRF_ENABLED'] = False
+
+    assert worker_db_name in the_app.config['SQLALCHEMY_BINDS']['system_status'], (
+        f"Flask app not using test database '{worker_db_name}': "
+        f"{the_app.config['SQLALCHEMY_BINDS']['system_status']}"
+    )
+
+    return the_app
 
 
 # ---------------------------------------------------------------------------
