@@ -72,6 +72,28 @@ register_error_handlers(bp)
 
 
 # ---------------------------------------------------------------------------
+# Memoized query wrappers
+# (keyed on resource_name so all item endpoints share one cached computation
+#  per resource filter — @cache.memoize differs from @cache.cached in that it
+#  keys on function arguments rather than the request URL)
+# ---------------------------------------------------------------------------
+
+@cache.memoize(timeout=300)
+def _fstree_data(resource_name=None):
+    return get_fstree_data(db.session, resource_name=resource_name)
+
+
+@cache.memoize(timeout=300)
+def _project_fstree_data(resource_name=None):
+    return get_project_fsdata(db.session, resource_name=resource_name)
+
+
+@cache.memoize(timeout=300)
+def _user_fstree_data(resource_name=None):
+    return get_user_fsdata(db.session, resource_name=resource_name)
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -87,7 +109,7 @@ def get_fstree():
         allocationTypes, each with a projects list including per-resource
         balance and user data.
     """
-    return jsonify(get_fstree_data(db.session))
+    return jsonify(_fstree_data())
 
 
 @bp.route('/<path:resource_name>', methods=['GET'])
@@ -107,7 +129,7 @@ def get_fstree_resource(resource_name: str):
         only entries for the specified resource.
         404 if the resource name is not recognized or has no data.
     """
-    result = get_fstree_data(db.session, resource_name=resource_name)
+    result = _fstree_data(resource_name)
     if not result.get('facilities'):
         abort(404, f'Resource {resource_name!r} not found or has no fairshare data')
     return jsonify(result)
@@ -129,7 +151,7 @@ def get_project_fstree():
         allocationTypeDescription, and resources (sorted by name).
     """
     resource_name = request.args.get('resource')
-    return jsonify(get_project_fsdata(db.session, resource_name=resource_name))
+    return jsonify(_project_fstree_data(resource_name))
 
 
 @bp.route('/projects/<projcode>', methods=['GET'])
@@ -150,7 +172,7 @@ def get_project_fstree_item(projcode: str):
         404 if the project is not found in the fairshare data.
     """
     resource_name = request.args.get('resource')
-    result = get_project_fsdata(db.session, resource_name=resource_name)
+    result = _project_fstree_data(resource_name)
     proj = result['projects'].get(projcode)
     if proj is None:
         abort(404, f'Project {projcode!r} not found in fairshare data')
@@ -172,7 +194,7 @@ def get_user_fstree():
         Each user entry contains uid and projects (keyed by projcode).
     """
     resource_name = request.args.get('resource')
-    return jsonify(get_user_fsdata(db.session, resource_name=resource_name))
+    return jsonify(_user_fstree_data(resource_name))
 
 
 @bp.route('/users/<username>', methods=['GET'])
@@ -193,7 +215,7 @@ def get_user_fstree_item(username: str):
         404 if the user has no active allocations in the fairshare data.
     """
     resource_name = request.args.get('resource')
-    result = get_user_fsdata(db.session, resource_name=resource_name)
+    result = _user_fstree_data(resource_name)
     user = result['users'].get(username)
     if user is None:
         abort(404, f'User {username!r} not found in fairshare data')
@@ -217,5 +239,8 @@ def refresh_cache():
     cache.delete_memoized(get_project_fstree_item)
     cache.delete_memoized(get_user_fstree)
     cache.delete_memoized(get_user_fstree_item)
+    cache.delete_memoized(_fstree_data)
+    cache.delete_memoized(_project_fstree_data)
+    cache.delete_memoized(_user_fstree_data)
     cache.clear()
     return jsonify({'status': 'ok'})
