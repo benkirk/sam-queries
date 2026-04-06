@@ -50,7 +50,7 @@ register_error_handlers(bp)
 
 @bp.route('/', methods=['GET'])
 @login_or_token_required(Permission.VIEW_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def get_project_access():
     """
     Return project group status for all access branches.
@@ -66,7 +66,7 @@ def get_project_access():
 
 @bp.route('/<access_branch_name>', methods=['GET'])
 @login_or_token_required(Permission.VIEW_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def get_project_access_branch(access_branch_name: str):
     """
     Return project group status for a single access branch.

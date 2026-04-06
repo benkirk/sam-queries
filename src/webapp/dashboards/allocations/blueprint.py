@@ -219,7 +219,7 @@ def get_resource_types(session) -> Dict[str, str]:
 @bp.route('/')
 @login_required
 @require_permission(Permission.VIEW_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def index():
     """
     Main allocations dashboard page.
@@ -398,7 +398,7 @@ def index():
 @bp.route('/projects')
 @login_required
 @require_permission(Permission.VIEW_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def projects_fragment():
     """
     AJAX fragment showing individual projects for a specific Resource/Facility/Type.

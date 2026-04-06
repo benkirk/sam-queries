@@ -47,7 +47,7 @@ def _build_response(access_branch: str | None = None) -> dict:
 
 @bp.route('/', methods=['GET'])
 @login_or_token_required(Permission.VIEW_USERS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def get_directory_access():
     """
     Return the full directory access data for all access branches.
@@ -61,7 +61,7 @@ def get_directory_access():
 
 @bp.route('/<access_branch_name>', methods=['GET'])
 @login_or_token_required(Permission.VIEW_USERS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def get_directory_access_branch(access_branch_name: str):
     """
     Return directory access data for a single access branch.

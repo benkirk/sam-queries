@@ -78,17 +78,17 @@ register_error_handlers(bp)
 #  keys on function arguments rather than the request URL)
 # ---------------------------------------------------------------------------
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def _fstree_data(resource_name=None):
     return get_fstree_data(db.session, resource_name=resource_name)
 
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def _project_fstree_data(resource_name=None):
     return get_project_fsdata(db.session, resource_name=resource_name)
 
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def _user_fstree_data(resource_name=None):
     return get_user_fsdata(db.session, resource_name=resource_name)
 
@@ -99,7 +99,7 @@ def _user_fstree_data(resource_name=None):
 
 @bp.route('/', methods=['GET'])
 @login_or_token_required(Permission.VIEW_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def get_fstree():
     """
     Return the fairshare tree for all HPC+DAV resources.
@@ -114,7 +114,7 @@ def get_fstree():
 
 @bp.route('/<path:resource_name>', methods=['GET'])
 @login_or_token_required(Permission.VIEW_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def get_fstree_resource(resource_name: str):
     """
     Return the fairshare tree filtered to a single resource.
@@ -137,7 +137,7 @@ def get_fstree_resource(resource_name: str):
 
 @bp.route('/projects/', methods=['GET'])
 @login_or_token_required(Permission.VIEW_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def get_project_fstree():
     """
     Return fairshare data reorganized by project code.
@@ -156,7 +156,7 @@ def get_project_fstree():
 
 @bp.route('/projects/<projcode>', methods=['GET'])
 @login_or_token_required(Permission.VIEW_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def get_project_fstree_item(projcode: str):
     """
     Return fairshare data for a single project.
@@ -181,7 +181,7 @@ def get_project_fstree_item(projcode: str):
 
 @bp.route('/users/', methods=['GET'])
 @login_or_token_required(Permission.VIEW_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def get_user_fstree():
     """
     Return fairshare data reorganized by username.
@@ -199,7 +199,7 @@ def get_user_fstree():
 
 @bp.route('/users/<username>', methods=['GET'])
 @login_or_token_required(Permission.VIEW_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def get_user_fstree_item(username: str):
     """
     Return fairshare data for a single user.
