@@ -7,7 +7,7 @@ verifying structure, field types, and key behaviours.
 
 import re
 import pytest
-from sam.queries.fstree_access import get_fstree_data
+from sam.queries.fstree_access import get_fstree_data, get_project_fsdata, get_user_fsdata
 
 
 class TestGetFstreeDataStructure:
@@ -394,3 +394,192 @@ class TestParentStatusPropagation:
                             f'{proj["projectCode"]}/{res["name"]}: '
                             f'invalid accountStatus {res["accountStatus"]!r}'
                         )
+
+
+# ---------------------------------------------------------------------------
+# get_project_fsdata tests
+# ---------------------------------------------------------------------------
+
+class TestGetProjectFsdata:
+    """Tests for the project-centric remap of fstree data."""
+
+    def test_returns_dict_with_expected_keys(self, session):
+        result = get_project_fsdata(session)
+        assert isinstance(result, dict)
+        assert result['name'] == 'projectFairShareData'
+        assert 'projects' in result
+        assert isinstance(result['projects'], dict)
+
+    def test_projects_keyed_by_projcode(self, session):
+        result = get_project_fsdata(session)
+        for projcode, proj in list(result['projects'].items())[:10]:
+            assert isinstance(projcode, str)
+            assert len(projcode) > 0
+
+    def test_project_has_required_fields(self, session):
+        result = get_project_fsdata(session)
+        required = {'active', 'facility', 'allocationType', 'allocationTypeDescription', 'resources'}
+        for projcode, proj in list(result['projects'].items())[:20]:
+            missing = required - proj.keys()
+            assert not missing, f'Project {projcode!r} missing fields: {missing}'
+
+    def test_project_active_is_bool(self, session):
+        result = get_project_fsdata(session)
+        for projcode, proj in list(result['projects'].items())[:20]:
+            assert isinstance(proj['active'], bool), f'{projcode}: active should be bool'
+
+    def test_resources_is_list(self, session):
+        result = get_project_fsdata(session)
+        for projcode, proj in list(result['projects'].items())[:20]:
+            assert isinstance(proj['resources'], list), f'{projcode}: resources should be list'
+
+    def test_resources_sorted_by_name(self, session):
+        result = get_project_fsdata(session)
+        for projcode, proj in list(result['projects'].items())[:20]:
+            names = [r['name'] for r in proj['resources']]
+            assert names == sorted(names), f'{projcode}: resources not sorted by name'
+
+    def test_resource_has_required_fields(self, session):
+        required = {'name', 'accountStatus', 'adjustedUsage', 'balance',
+                    'allocationAmount', 'cutoffThreshold', 'users', 'thresholds'}
+        result = get_project_fsdata(session)
+        for projcode, proj in list(result['projects'].items())[:10]:
+            for res in proj['resources']:
+                missing = required - res.keys()
+                assert not missing, f'{projcode}/{res.get("name")}: missing {missing}'
+
+    def test_users_list_present_on_resources(self, session):
+        """users list should be preserved from the fstree (same as get_fstree_data)."""
+        result = get_project_fsdata(session)
+        for projcode, proj in list(result['projects'].items())[:10]:
+            for res in proj['resources']:
+                assert isinstance(res['users'], list), \
+                    f'{projcode}/{res["name"]}: users should be a list'
+
+    def test_resource_filter_works(self, session):
+        result = get_project_fsdata(session, resource_name='Derecho')
+        for projcode, proj in result['projects'].items():
+            for res in proj['resources']:
+                assert res['name'] in ('Derecho', ), \
+                    f'{projcode}: unexpected resource {res["name"]!r} with Derecho filter'
+
+    def test_same_projects_as_fstree(self, session):
+        """Project set must match get_fstree_data exactly."""
+        fstree = get_fstree_data(session)
+        fstree_codes = {
+            proj['projectCode']
+            for fac in fstree['facilities']
+            for at in fac['allocationTypes']
+            for proj in at['projects']
+        }
+        pd = get_project_fsdata(session)
+        assert set(pd['projects'].keys()) == fstree_codes
+
+    def test_alloc_type_name_format(self, session):
+        """allocationType should follow the {code}_{type} convention."""
+        result = get_project_fsdata(session)
+        for projcode, proj in list(result['projects'].items())[:20]:
+            at_name = proj['allocationType']
+            assert re.match(r'^[A-Za-z]_', at_name), \
+                f'{projcode}: allocationType {at_name!r} unexpected format'
+
+
+# ---------------------------------------------------------------------------
+# get_user_fsdata tests
+# ---------------------------------------------------------------------------
+
+class TestGetUserFsdata:
+    """Tests for the user-centric remap of fstree data."""
+
+    def test_returns_dict_with_expected_keys(self, session):
+        result = get_user_fsdata(session)
+        assert isinstance(result, dict)
+        assert result['name'] == 'userFairShareData'
+        assert 'users' in result
+        assert isinstance(result['users'], dict)
+
+    def test_users_keyed_by_username(self, session):
+        result = get_user_fsdata(session)
+        for username in list(result['users'].keys())[:10]:
+            assert isinstance(username, str)
+            assert len(username) > 0
+
+    def test_user_has_uid_and_projects(self, session):
+        result = get_user_fsdata(session)
+        for username, user in list(result['users'].items())[:20]:
+            assert 'uid' in user, f'{username}: missing uid'
+            assert 'projects' in user, f'{username}: missing projects'
+            assert isinstance(user['projects'], dict), f'{username}: projects should be dict'
+
+    def test_project_entry_has_required_fields(self, session):
+        required = {'active', 'facility', 'allocationType', 'allocationTypeDescription', 'resources'}
+        result = get_user_fsdata(session)
+        for username, user in list(result['users'].items())[:10]:
+            for projcode, proj in list(user['projects'].items())[:5]:
+                missing = required - proj.keys()
+                assert not missing, f'{username}/{projcode}: missing {missing}'
+
+    def test_resource_entry_has_no_users_key(self, session):
+        """In the user view resources should not have a 'users' list (it's redundant)."""
+        result = get_user_fsdata(session)
+        for username, user in list(result['users'].items())[:10]:
+            for projcode, proj in user['projects'].items():
+                for res in proj['resources']:
+                    assert 'users' not in res, \
+                        f'{username}/{projcode}/{res["name"]}: should not have users key'
+
+    def test_resource_entry_has_required_fields(self, session):
+        required = {'name', 'accountStatus', 'adjustedUsage', 'balance',
+                    'allocationAmount', 'cutoffThreshold', 'thresholds'}
+        result = get_user_fsdata(session)
+        for username, user in list(result['users'].items())[:10]:
+            for projcode, proj in list(user['projects'].items())[:3]:
+                for res in proj['resources']:
+                    missing = required - res.keys()
+                    assert not missing, \
+                        f'{username}/{projcode}/{res["name"]}: missing {missing}'
+
+    def test_resources_sorted_by_name(self, session):
+        result = get_user_fsdata(session)
+        for username, user in list(result['users'].items())[:20]:
+            for projcode, proj in user['projects'].items():
+                names = [r['name'] for r in proj['resources']]
+                assert names == sorted(names), \
+                    f'{username}/{projcode}: resources not sorted by name'
+
+    def test_resource_filter_works(self, session):
+        result = get_user_fsdata(session, resource_name='Derecho')
+        for username, user in result['users'].items():
+            for projcode, proj in user['projects'].items():
+                for res in proj['resources']:
+                    assert res['name'] == 'Derecho', \
+                        f'{username}/{projcode}: unexpected resource {res["name"]!r}'
+
+    def test_users_appear_only_on_their_resources(self, session):
+        """
+        Cross-check: every (user, projcode, resource) in user view must correspond
+        to a resource entry that lists that user in get_fstree_data.
+        """
+        fstree = get_fstree_data(session, resource_name='Derecho')
+        # Build set of (username, projcode, resource_name) from fstree
+        fstree_memberships = set()
+        for fac in fstree['facilities']:
+            for at in fac['allocationTypes']:
+                for proj in at['projects']:
+                    for res in proj['resources']:
+                        for u in res['users']:
+                            fstree_memberships.add(
+                                (u['username'], proj['projectCode'], res['name'])
+                            )
+
+        ud = get_user_fsdata(session, resource_name='Derecho')
+        for username, user in ud['users'].items():
+            for projcode, proj in user['projects'].items():
+                for res in proj['resources']:
+                    key = (username, projcode, res['name'])
+                    assert key in fstree_memberships, \
+                        f'{key} in user view but not in fstree user roster'
+
+    def test_at_least_one_user_present(self, session):
+        result = get_user_fsdata(session)
+        assert len(result['users']) >= 1, 'Expected at least one user'

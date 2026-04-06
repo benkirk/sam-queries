@@ -815,3 +815,160 @@ def get_fstree_data(
         'name':       'fairShareTree',
         'facilities': facilities_list,
     }
+
+
+# ---------------------------------------------------------------------------
+# Remap helpers
+# ---------------------------------------------------------------------------
+
+def _remap_fstree_by_project(fstree_data: Dict) -> Dict:
+    """
+    Remap the fstree dict (from get_fstree_data) into a project-keyed structure.
+
+    Input:  fairShareTree → Facility → AllocationType → Project → Resources
+    Output: projectFairShareData → projects[projcode] → Resources
+
+    Each project entry includes its facility and allocation-type context so
+    callers don't need to traverse the full tree.  The resources list is
+    identical to the fstree output (same fields, same sort order).
+    """
+    projects: Dict[str, Dict] = {}
+
+    for fac in fstree_data['facilities']:
+        for at in fac['allocationTypes']:
+            for proj in at['projects']:
+                projcode = proj['projectCode']
+                projects[projcode] = {
+                    'active':                    proj['active'],
+                    'facility':                  fac['name'],
+                    'allocationType':            at['name'],
+                    'allocationTypeDescription': at['description'],
+                    'resources':                 sorted(proj['resources'], key=lambda r: r['name']),
+                }
+
+    return {
+        'name':     'projectFairShareData',
+        'projects': projects,
+    }
+
+
+def _remap_fstree_by_user(fstree_data: Dict) -> Dict:
+    """
+    Remap the fstree dict (from get_fstree_data) into a user-keyed structure.
+
+    Input:  fairShareTree → Facility → AllocationType → Project → Resources → Users
+    Output: userFairShareData → users[username] → projects[projcode] → Resources
+
+    A user appears under a project/resource only when they are listed in that
+    resource's ``users`` roster.  The per-resource dict omits the ``users``
+    key (redundant when already keyed by user).
+    """
+    users: Dict[str, Dict] = {}
+
+    for fac in fstree_data['facilities']:
+        for at in fac['allocationTypes']:
+            for proj in at['projects']:
+                projcode  = proj['projectCode']
+                proj_meta = {
+                    'active':                    proj['active'],
+                    'facility':                  fac['name'],
+                    'allocationType':            at['name'],
+                    'allocationTypeDescription': at['description'],
+                }
+
+                for resource in proj['resources']:
+                    res_entry = {k: v for k, v in resource.items() if k != 'users'}
+
+                    for user in resource.get('users', []):
+                        username = user['username']
+
+                        if username not in users:
+                            users[username] = {'uid': user['uid'], 'projects': {}}
+                        user_entry = users[username]
+
+                        if projcode not in user_entry['projects']:
+                            user_entry['projects'][projcode] = {**proj_meta, 'resources': []}
+                        user_entry['projects'][projcode]['resources'].append(res_entry)
+
+    # Sort resources within each project by name
+    for user_entry in users.values():
+        for proj_entry in user_entry['projects'].values():
+            proj_entry['resources'].sort(key=lambda r: r['name'])
+
+    return {
+        'name':  'userFairShareData',
+        'users': users,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Public convenience wrappers
+# ---------------------------------------------------------------------------
+
+def get_project_fsdata(
+    session: Session,
+    resource_name: Optional[str] = None,
+) -> Dict:
+    """
+    Return fstree data reorganized by project.
+
+    Calls get_fstree_data() internally then remaps the result so callers can
+    look up any project directly by projcode without traversing the full
+    Facility → AllocationType → Project hierarchy.
+
+    Args:
+        session:       SQLAlchemy session.
+        resource_name: Optional resource filter (e.g. ``"Derecho"``).
+
+    Returns:
+        Dict with ``name`` (``"projectFairShareData"``) and ``projects`` keys.
+        ``projects`` is a dict keyed by projcode; each value contains
+        ``active``, ``facility``, ``allocationType``,
+        ``allocationTypeDescription``, and ``resources`` (same fields as
+        the fstree resource dict, sorted by resource name).
+
+    Example::
+
+        data = get_project_fsdata(session, 'Derecho')
+        proj = data['projects']['SCSG0001']
+        for res in proj['resources']:
+            print(res['name'], res['accountStatus'], res['adjustedUsage'])
+    """
+    return _remap_fstree_by_project(get_fstree_data(session, resource_name))
+
+
+def get_user_fsdata(
+    session: Session,
+    resource_name: Optional[str] = None,
+) -> Dict:
+    """
+    Return fstree data reorganized by user.
+
+    Calls get_fstree_data() internally then remaps the result so callers can
+    look up all projects and resources accessible to a given user.
+
+    A user appears under a project/resource only when they are listed in
+    that resource's active-user roster (or, for Expired accounts, the
+    historical roster).
+
+    Args:
+        session:       SQLAlchemy session.
+        resource_name: Optional resource filter (e.g. ``"Derecho"``).
+
+    Returns:
+        Dict with ``name`` (``"userFairShareData"``) and ``users`` keys.
+        ``users`` is a dict keyed by username; each value contains ``uid``
+        and ``projects``.  ``projects`` is a dict keyed by projcode; each
+        project entry contains ``active``, ``facility``, ``allocationType``,
+        ``allocationTypeDescription``, and ``resources`` (same fields as the
+        fstree resource dict minus ``users``, sorted by resource name).
+
+    Example::
+
+        data = get_user_fsdata(session, 'Derecho')
+        user = data['users']['benkirk']
+        for projcode, proj in user['projects'].items():
+            for res in proj['resources']:
+                print(projcode, res['name'], res['accountStatus'])
+    """
+    return _remap_fstree_by_user(get_fstree_data(session, resource_name))

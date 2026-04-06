@@ -127,6 +127,8 @@ from .project_access import (
 # FairShare Tree (PBS fairshare / scheduler tree)
 from .fstree_access import (
     get_fstree_data,
+    get_project_fsdata,
+    get_user_fsdata,
 )
 
 
@@ -199,4 +201,6 @@ __all__ = [
     'get_project_group_status',
     # FairShare Tree
     'get_fstree_data',
+    'get_project_fsdata',
+    'get_user_fsdata',
 ]
