@@ -170,7 +170,7 @@
                                 </div>
                                 <div class="d-flex justify-content-between small mt-1">
                                     <span class="{% if not is_expired %}text-warning{% endif %}">{{ resource.used | fmt_number }} used</span>
-                                    <span class="{% if not is_expired %}text-success{% endif %}">{{ resource.remaining | fmt_number }} rem</span>
+                                    <span class="{% if not is_expired %}text-success{% endif %}">{{ resource.remaining | fmt_number }} remaining</span>
                                 </div>
                             </td>
                             {% if can_edit_allocations %}
