@@ -180,12 +180,7 @@
                                     <div class="d-flex justify-content-between small">
                                         <span class="text-muted">{{ label }}</span>
                                         <span>{{ win.charges | fmt_number }}
-                                            <span class="text-muted">({{ win.pct_of_prorated | fmt_pct }} of prorated</span>
-                                            {% if win.threshold_pct is not none %}
-                                                {% set lim_class = 'text-danger fw-semibold' if win.pct_of_limit > 100 else 'text-warning' if win.pct_of_limit > 80 else 'text-success' %}
-                                                <span class="text-muted"> · </span><span class="{{ lim_class }}">{{ win.pct_of_limit | fmt_pct }} of {{ win.threshold_pct }}% limit</span>
-                                            {% endif %}
-                                            <span class="text-muted">)</span>
+                                            <span class="text-muted">({{ win.pct_of_prorated | fmt_pct }} of prorated{% if win.threshold_pct is not none %} vs. {{ win.threshold_pct }}% limit{% endif %})</span>
                                         </span>
                                     </div>
                                     {% endif %}
