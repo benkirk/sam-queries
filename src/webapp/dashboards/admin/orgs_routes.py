@@ -25,7 +25,7 @@ from .blueprint import bp
 @bp.route('/htmx/organizations-card')
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def htmx_organizations_card():
     """
     Return the Organization card body fragment with seven tabs:

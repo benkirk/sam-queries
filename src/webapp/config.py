@@ -49,6 +49,11 @@ class SAMWebappConfig(SAMConfig):
     # Google Calendar embed URL (public calendar shown on reservations tab; empty = hidden)
     GOOGLE_CALENDAR_EMBED_URL = os.getenv('GOOGLE_CALENDAR_EMBED_URL', '')
 
+    # Flask-Cache default TTL (seconds) — used by @cache.cached / @cache.memoize
+    # when no explicit timeout= is given.  Applies to all API and dashboard routes.
+    # Distinct from the cachetools TTL below (which wraps a single query function).
+    CACHE_DEFAULT_TIMEOUT = int(os.getenv('CACHE_DEFAULT_TIMEOUT', 300))
+
     # Usage calculation cache (TTLCache wrapping get_allocation_summary_with_usage)
     # TTL=0 disables caching; SIZE controls max LRU entries
     ALLOCATION_USAGE_CACHE_TTL  = int(os.getenv('ALLOCATION_USAGE_CACHE_TTL', 3600))   # seconds

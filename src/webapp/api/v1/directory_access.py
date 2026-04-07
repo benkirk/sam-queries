@@ -13,8 +13,8 @@ Example usage:
 """
 
 from flask import Blueprint, jsonify, abort
-from flask_login import login_required
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import Permission
+from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db, cache
 from webapp.api.helpers import register_error_handlers
 from sam.queries.directory_access import (
@@ -46,9 +46,8 @@ def _build_response(access_branch: str | None = None) -> dict:
 # ---------------------------------------------------------------------------
 
 @bp.route('/', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_USERS)
-@cache.cached(timeout=300, query_string=True)
+@login_or_token_required(Permission.VIEW_USERS)
+@cache.cached(query_string=True)
 def get_directory_access():
     """
     Return the full directory access data for all access branches.
@@ -61,9 +60,8 @@ def get_directory_access():
 
 
 @bp.route('/<access_branch_name>', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_USERS)
-@cache.cached(timeout=300, query_string=True)
+@login_or_token_required(Permission.VIEW_USERS)
+@cache.cached(query_string=True)
 def get_directory_access_branch(access_branch_name: str):
     """
     Return directory access data for a single access branch.
@@ -82,8 +80,7 @@ def get_directory_access_branch(access_branch_name: str):
 
 
 @bp.route('/refresh', methods=['POST'])
-@login_required
-@require_permission(Permission.VIEW_USERS)
+@login_or_token_required(Permission.VIEW_USERS)
 def refresh_cache():
     """
     Invalidate the directory access cache.

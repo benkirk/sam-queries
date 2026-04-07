@@ -84,6 +84,7 @@ def cached_allocation_usage(
     active_at: Optional[datetime] = None,
     include_adjustments: bool = True,
     force_refresh: bool = False,
+    root_only: bool = False,
     _summary=None,
 ) -> List[Dict]:
     """
@@ -114,6 +115,7 @@ def cached_allocation_usage(
             active_only=active_only,
             active_at=active_at,
             include_adjustments=include_adjustments,
+            root_only=root_only,
             _summary=_summary,
         )
 
@@ -125,6 +127,7 @@ def cached_allocation_usage(
         active_only,
         active_at.date() if isinstance(active_at, datetime) else active_at,
         include_adjustments,
+        root_only,
     )
 
     with _lock:
@@ -142,6 +145,7 @@ def cached_allocation_usage(
         active_only=active_only,
         active_at=active_at,
         include_adjustments=include_adjustments,
+        root_only=root_only,
         _summary=_summary,
     )
 

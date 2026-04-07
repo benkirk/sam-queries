@@ -373,8 +373,9 @@ def _compute_threshold_data(
     ):
         if threshold_pct is None:
             continue
-        use_limit = period_days * allocation_amount / duration_days * (threshold_pct / 100.0)
-        pct_used = round(window_charges / use_limit * 100.0, 1) if use_limit > 0 else 0.0
+        steady_usage = period_days * allocation_amount / duration_days
+        use_limit = steady_usage * (threshold_pct / 100.0)
+        pct_used = round(window_charges / steady_usage * 100.0, 1) if steady_usage > 0 else 0.0
         result[key] = {
             'days':            period_days,
             'thresholdPct':    threshold_pct,
@@ -445,6 +446,104 @@ def _query_window_charges(
     for aid, amount in session.execute(adj_sql, params).all():
         if amount:
             result[aid] += float(amount)
+
+    return result
+
+
+def _query_window_subtree_charges(
+    session: Session,
+    subtree_accts: Dict[int, Dict],
+    window_days: int,
+    now: datetime,
+    alloc_windows: Dict[int, tuple],
+) -> Dict[int, float]:
+    """
+    Query total charges for a set of non-leaf accounts over a trailing N-day window,
+    using MPTT subtree rollup so that descendant project charges are included.
+
+    Parallel to _query_window_charges() but joins through project tree coordinates
+    (tree_root/tree_left/tree_right) instead of direct account_id, matching the
+    pattern used by batch_get_subtree_charges().
+
+    Args:
+        subtree_accts: Dict mapping account_id → alloc_info dict (must contain
+                       tree_root, tree_left, tree_right, resource_id keys).
+        window_days:   Trailing window length (30 or 90).
+        now:           Current datetime.
+        alloc_windows: Dict mapping account_id → (alloc_start, alloc_end) for clamping.
+    """
+    if not subtree_accts:
+        return {}
+
+    window_start_global = now - timedelta(days=window_days)
+    result: Dict[int, float] = {aid: 0.0 for aid in subtree_accts}
+
+    # Build VALUES rows: (anchor_key=index, tree_root, tree_left, tree_right, resource_id, ws, we)
+    # anchor_key is the positional index; mapped back to account_id via idx_to_aid.
+    entries = list(subtree_accts.items())  # [(account_id, alloc_info), ...]
+    idx_to_aid: Dict[int, int] = {}
+    values_parts = []
+    params: Dict[str, Any] = {}
+
+    for i, (aid, info) in enumerate(entries):
+        idx_to_aid[i] = aid
+        alloc_start, alloc_end = alloc_windows.get(aid, (now, now))
+        clamped_start = max(window_start_global, alloc_start)
+        clamped_end   = min(now, alloc_end or now)
+        values_parts.append(f'ROW(:ak{i}, :tr{i}, :tl{i}, :rr{i}, :ri{i}, :ws{i}, :we{i})')
+        params[f'ak{i}'] = i
+        params[f'tr{i}'] = info['tree_root']
+        params[f'tl{i}'] = info['tree_left']
+        params[f'rr{i}'] = info['tree_right']
+        params[f'ri{i}'] = info['resource_id']
+        params[f'ws{i}'] = clamped_start
+        params[f'we{i}'] = clamped_end
+
+    values_sql = ', '.join(values_parts)
+
+    for table, col in [
+        ('comp_charge_summary', 'activity_date'),
+        ('dav_charge_summary',  'activity_date'),
+    ]:
+        sql = text(f"""
+            WITH anchors (anchor_key, tree_root, tree_left, tree_right, resource_id, ws, we) AS (
+                VALUES {values_sql}
+            )
+            SELECT a.anchor_key, SUM(COALESCE(cs.charges, 0))
+            FROM {table} cs
+            JOIN account acc ON cs.account_id  = acc.account_id
+            JOIN project p   ON acc.project_id = p.project_id
+            JOIN anchors a   ON p.tree_root      =  a.tree_root
+                            AND p.tree_left      >= a.tree_left
+                            AND p.tree_right     <= a.tree_right
+                            AND acc.resource_id  =  a.resource_id
+                            AND cs.{col}         >= a.ws
+                            AND cs.{col}         <= a.we
+            GROUP BY a.anchor_key
+        """)
+        for anchor_key, amount in session.execute(sql, params).all():
+            if amount:
+                result[idx_to_aid[anchor_key]] += float(amount)
+
+    adj_sql = text(f"""
+        WITH anchors (anchor_key, tree_root, tree_left, tree_right, resource_id, ws, we) AS (
+            VALUES {values_sql}
+        )
+        SELECT a.anchor_key, SUM(COALESCE(ca.amount, 0))
+        FROM charge_adjustment ca
+        JOIN account acc ON ca.account_id  = acc.account_id
+        JOIN project p   ON acc.project_id = p.project_id
+        JOIN anchors a   ON p.tree_root      =  a.tree_root
+                        AND p.tree_left      >= a.tree_left
+                        AND p.tree_right     <= a.tree_right
+                        AND acc.resource_id  =  a.resource_id
+                        AND ca.adjustment_date >= a.ws
+                        AND ca.adjustment_date <= a.we
+        GROUP BY a.anchor_key
+    """)
+    for anchor_key, amount in session.execute(adj_sql, params).all():
+        if amount:
+            result[idx_to_aid[anchor_key]] += float(amount)
 
     return result
 
@@ -628,12 +727,29 @@ def get_fstree_data(
 
     # ------------------------------------------------------------------
     # N-day window charges (only for threshold accounts — typically ~12)
+    #
+    # Non-leaf threshold accounts (roots of an allocation tree) require MPTT
+    # subtree rollup so that descendant project charges are included, matching
+    # the behaviour of batch_get_subtree_charges() used for adjustedUsage.
     # ------------------------------------------------------------------
-    threshold_acct_ids = list(threshold_accounts.keys())
-    window_30 = _query_window_charges(session, threshold_acct_ids, 30, now, alloc_windows) \
-        if threshold_acct_ids else {}
-    window_90 = _query_window_charges(session, threshold_acct_ids, 90, now, alloc_windows) \
-        if threshold_acct_ids else {}
+    subtree_acct_map: Dict[int, Dict] = {info['account_id']: info for info in subtree_infos}
+    threshold_leaf_ids = [aid for aid in threshold_accounts if aid not in subtree_acct_map]
+    threshold_subtree_infos = {
+        aid: subtree_acct_map[aid]
+        for aid in threshold_accounts
+        if aid in subtree_acct_map
+    }
+
+    window_30: Dict[int, float] = {}
+    window_90: Dict[int, float] = {}
+
+    if threshold_leaf_ids:
+        window_30.update(_query_window_charges(session, threshold_leaf_ids, 30, now, alloc_windows))
+        window_90.update(_query_window_charges(session, threshold_leaf_ids, 90, now, alloc_windows))
+
+    if threshold_subtree_infos:
+        window_30.update(_query_window_subtree_charges(session, threshold_subtree_infos, 30, now, alloc_windows))
+        window_90.update(_query_window_subtree_charges(session, threshold_subtree_infos, 90, now, alloc_windows))
 
     # ------------------------------------------------------------------
     # Query 3 — Users per account
