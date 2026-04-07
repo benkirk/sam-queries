@@ -4,7 +4,7 @@ import uuid
 import time
 os.environ['FLASK_ACTIVE'] = '1'
 
-from flask import Flask, redirect, url_for
+from flask import Flask, redirect, request, make_response, url_for
 from flask_login import LoginManager, current_user
 import sam.session
 import system_status.session
@@ -25,6 +25,9 @@ from webapp.api.v1.charges import bp as api_charges_bp
 from webapp.api.v1.status import bp as api_status_bp
 from webapp.api.v1.allocations import bp as api_allocations_bp
 from webapp.api.v1.health import bp as api_health_bp
+from webapp.api.v1.directory_access import bp as api_directory_access_bp
+from webapp.api.v1.project_access import bp as api_project_access_bp
+from webapp.api.v1.fstree_access import bp as api_fstree_access_bp
 from webapp.config import get_webapp_config
 from webapp.logging_config import configure_logging
 
@@ -148,6 +151,15 @@ def create_app():
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Please log in to access this page.'
 
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        """Handle unauthorized access — return HX-Redirect for HTMX requests."""
+        if request.headers.get('HX-Request'):
+            response = make_response('', 401)
+            response.headers['HX-Redirect'] = url_for('auth.login')
+            return response
+        return redirect(url_for('auth.login'))
+
     @login_manager.user_loader
     def load_user(user_id):
         """Load user by ID for Flask-Login."""
@@ -180,6 +192,9 @@ def create_app():
     app.register_blueprint(api_status_bp, url_prefix='/api/v1/status')
     app.register_blueprint(api_allocations_bp, url_prefix='/api/v1/allocations')
     app.register_blueprint(api_health_bp, url_prefix='/api/v1/health')
+    app.register_blueprint(api_directory_access_bp, url_prefix='/api/v1/directory_access')
+    app.register_blueprint(api_project_access_bp, url_prefix='/api/v1/project_access')
+    app.register_blueprint(api_fstree_access_bp, url_prefix='/api/v1/fstree_access')
 
     # Register centralized formatting filters (fmt_number, fmt_pct, fmt_date, fmt_size)
     import sam.fmt as fmt

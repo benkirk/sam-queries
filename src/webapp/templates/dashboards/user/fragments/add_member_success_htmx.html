@@ -24,10 +24,3 @@
     {{ members_html|safe }}
 </div>
 
-{# Auto-close modal after showing success briefly #}
-<script>
-setTimeout(function() {
-    var modal = bootstrap.Modal.getInstance(document.getElementById('addMemberModal'));
-    if (modal) modal.hide();
-}, 1000);
-</script>

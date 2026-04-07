@@ -42,6 +42,24 @@ class SAMConfig:
     SAM_RAW_OUTPUT = os.getenv('SAM_RAW_OUTPUT', 'false').lower() in ('true', '1', 'yes')
     SAM_SIG_FIGS   = int(os.getenv('SAM_SIG_FIGS', '3'))
 
+    # --------------------------------------------------------------- Reload
+    @classmethod
+    def reload(cls):
+        """
+        Re-read all SAM env vars from the current environment.
+
+        Class attributes are frozen at import time, so any code that changes
+        ``os.environ`` after import (e.g. tests redirecting to a different DB)
+        must call ``reload()`` before the new values will be visible through
+        ``cfg.*`` attribute accesses.
+        """
+        load_dotenv(find_dotenv())          # pick up any newly written .env
+        cls.SAM_DB_USERNAME    = os.getenv('SAM_DB_USERNAME', '')
+        cls.SAM_DB_PASSWORD    = os.getenv('SAM_DB_PASSWORD', '')
+        cls.SAM_DB_SERVER      = os.getenv('SAM_DB_SERVER', '')
+        cls.SAM_DB_NAME        = os.getenv('SAM_DB_NAME', 'sam')
+        cls.SAM_DB_REQUIRE_SSL = os.getenv('SAM_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
+
     # ---------------------------------------------------------------- Validate
     @classmethod
     def validate(cls):

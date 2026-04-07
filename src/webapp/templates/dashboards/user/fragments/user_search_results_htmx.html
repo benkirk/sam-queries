@@ -7,14 +7,14 @@
 #}
 {% if users %}
 {% for user in users %}
-<a href="#" class="list-group-item list-group-item-action"
-   onclick="htmxSelectUser('{{ user.username }}', '{{ user.display_name|e }}', '{{ user.primary_email or '' }}'); return false;">
+<button type="button" class="list-group-item list-group-item-action w-100 text-start"
+        onclick="htmxSelectUser('{{ user.username }}', '{{ user.display_name|e }}', '{{ user.primary_email or '' }}');">
     <strong>{{ user.display_name }}</strong>
     <small class="text-muted">({{ user.username }})</small>
     {% if user.primary_email %}
     <br><small class="text-muted">{{ user.primary_email }}</small>
     {% endif %}
-</a>
+</button>
 {% endfor %}
 {% else %}
 <div class="list-group-item text-muted">No users found</div>

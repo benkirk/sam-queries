@@ -20,6 +20,9 @@ Modules:
     users: User-related queries and project membership
     allocations: Allocation queries and history
     statistics: Statistics and reporting
+    directory_access: LDAP directory access (unix groups + accounts by access branch)
+    project_access: LDAP project group status (by access branch)
+    fstree_access: PBS fairshare tree (Facility → AllocationType → Project → Resource)
 """
 
 # Lookups
@@ -109,6 +112,25 @@ from .statistics import (
     get_user_project_access,
 )
 
+# Directory Access (LDAP population)
+from .directory_access import (
+    group_populator,
+    user_populator,
+    build_directory_access_response,
+)
+
+# Project Access (LDAP project group status)
+from .project_access import (
+    get_project_group_status,
+)
+
+# FairShare Tree (PBS fairshare / scheduler tree)
+from .fstree_access import (
+    get_fstree_data,
+    get_project_fsdata,
+    get_user_fsdata,
+)
+
 
 __all__ = [
     # Lookups
@@ -171,4 +193,14 @@ __all__ = [
     'get_project_statistics',
     'get_institution_project_count',
     'get_user_project_access',
+    # Directory Access
+    'group_populator',
+    'user_populator',
+    'build_directory_access_response',
+    # Project Access
+    'get_project_group_status',
+    # FairShare Tree
+    'get_fstree_data',
+    'get_project_fsdata',
+    'get_user_fsdata',
 ]

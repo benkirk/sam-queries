@@ -50,7 +50,7 @@ class AllocationSearchCommand(BaseAllocationCommand):
                     projcode=project,
                     active_only=not inactive,
                     active_at=active_at_date,
-                    include_adjustments=include_adjustments
+                    include_adjustments=include_adjustments,
                 )
             else:
                 results = get_allocation_summary(
@@ -60,7 +60,7 @@ class AllocationSearchCommand(BaseAllocationCommand):
                     allocation_type=allocation_type,
                     projcode=project,
                     active_only=not inactive,
-                    active_at=active_at_date
+                    active_at=active_at_date,
                 )
 
             if not results:

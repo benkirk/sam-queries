@@ -1,0 +1,23 @@
+Legacy SAM has an API that I want to reproduce under a new route api/v1/directory_access.
+
+This is a large JSON object, you can see a query in @sam_ldap_json_populator.py.  Feel free to query it for inspection.
+
+This organizes by a top-level 'Access Branch'; with valid user/groups under each.
+
+Lets design this endpoint and a backend function that we can use both for this API and elsewhere in the project.
+
+I envision the backing funciton(s) as follows:
+
+group_populator():  this one is the most complicated.  Groups are constructed dynamically from two sources:  explicitly from the @src/sam/core/groups.py AdhocGroup and AdhocSystemAccountEntry ORMs; and implicitly from our project list.  The explicit entries are tabulated directly and come from an upstream system.  Selecting groups from the AdhocSystemAccountEntry and getting the GID from the AdhocGroup is sufficient; I think. The implicit groups come from the projects themselves - each project code becomes a group name; whose active users become the members.
+
+The group_populator() shoudl construct the group->user map and also the inverse; user->groups.
+
+The user_populator() should be easier; and simpliy provides the user data necessary for the API.
+
+Both functions should take an access_branch string and active_only flag as input; access_branch defaults to none (returning all) and active_only defaults to true.
+
+Let desing this API and additional tests required.
+
+Please inspect the active database "mysql -h sam-sql.ucar.edu sam" and the existing models as well as our current APIs when designing the plan.
+
+When we are done; we should compare the old API output and our new API.  Ideally they match 100%, but if not differences should be explainable.

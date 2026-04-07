@@ -11,6 +11,7 @@ Domain-specific routes are split into sub-modules imported at the bottom:
 """
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response
+from webapp.utils.htmx import htmx_success
 from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
 from webapp.api.helpers import parse_input_end_date
@@ -608,8 +609,9 @@ def htmx_add_exemption(username):
         )
 
     # Success: close modal + refresh user card
-    return render_template(
+    return htmx_success(
         'dashboards/admin/fragments/exemption_success_htmx.html',
+        {'closeActiveModal': {}, 'reloadUserCard': username},
         username=username
     )
 
@@ -702,8 +704,9 @@ def htmx_edit_exemption(exemption_id):
         )
 
     # Success: close modal + refresh user card
-    return render_template(
+    return htmx_success(
         'dashboards/admin/fragments/exemption_success_htmx.html',
+        {'closeActiveModal': {}, 'reloadUserCard': username},
         username=username
     )
 

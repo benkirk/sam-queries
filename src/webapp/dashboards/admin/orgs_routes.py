@@ -6,6 +6,7 @@ AOI Groups, Contract Sources, Contracts, NSF Programs.
 """
 
 from flask import render_template, request
+from webapp.utils.htmx import htmx_success
 from flask_login import login_required
 from datetime import datetime
 from webapp.api.helpers import parse_input_end_date
@@ -24,7 +25,7 @@ from .blueprint import bp
 @bp.route('/htmx/organizations-card')
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(query_string=True)
 def htmx_organizations_card():
     """
     Return the Organization card body fragment with seven tabs:
@@ -212,7 +213,7 @@ def htmx_organization_edit(org_id):
             org=org, errors=[f'Error updating organization: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── Organization Create ────────────────────────────────────────────────────
@@ -293,7 +294,7 @@ def htmx_organization_create():
     except Exception as e:
         return _reload_form([f'Error creating organization: {e}'])
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── Organization Delete ────────────────────────────────────────────────────
@@ -371,7 +372,7 @@ def htmx_institution_type_edit(institution_type_id):
             inst_type=inst_type, errors=[f'Error updating institution type: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── Institution Type Create ────────────────────────────────────────────────
@@ -413,7 +414,7 @@ def htmx_institution_type_create():
             errors=[f'Error creating institution type: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── Institution Edit ───────────────────────────────────────────────────────
@@ -479,7 +480,7 @@ def htmx_institution_edit(inst_id):
             institution=institution, errors=[f'Error updating institution: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── Institution Create ─────────────────────────────────────────────────────
@@ -553,7 +554,7 @@ def htmx_institution_create():
     except Exception as e:
         return _reload_form([f'Error creating institution: {e}'])
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── Mnemonic Code Create ───────────────────────────────────────────────────
@@ -637,7 +638,7 @@ def htmx_mnemonic_code_create():
     except Exception as e:
         return _reload_form([f'Error creating mnemonic code: {e}'])
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── AOI Group Edit ─────────────────────────────────────────────────────────
@@ -693,7 +694,7 @@ def htmx_aoi_group_edit(group_id):
             group=group, errors=[f'Error updating AOI group: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── AOI Group Create ───────────────────────────────────────────────────────
@@ -735,7 +736,7 @@ def htmx_aoi_group_create():
             errors=[f'Error creating AOI group: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── AOI Group Delete ───────────────────────────────────────────────────────
@@ -834,7 +835,7 @@ def htmx_aoi_edit(aoi_id):
             errors=[f'Error updating area of interest: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── AOI Create ─────────────────────────────────────────────────────────────
@@ -904,7 +905,7 @@ def htmx_aoi_create():
     except Exception as e:
         return _reload_form([f'Error creating area of interest: {e}'])
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── AOI Delete ─────────────────────────────────────────────────────────────
@@ -983,7 +984,7 @@ def htmx_contract_source_edit(source_id):
             source=source, errors=[f'Error updating contract source: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── Contract Source Create ─────────────────────────────────────────────────
@@ -1025,7 +1026,7 @@ def htmx_contract_source_create():
             errors=[f'Error creating contract source: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── Contract Source Delete ─────────────────────────────────────────────────
@@ -1130,7 +1131,7 @@ def htmx_contract_edit(contract_id):
             contract=contract, errors=[f'Error updating contract: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── Contract Create ────────────────────────────────────────────────────────
@@ -1241,7 +1242,7 @@ def htmx_contract_create():
     except Exception as e:
         return _reload_form([f'Error creating contract: {e}'])
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── Contract Delete ────────────────────────────────────────────────────────
@@ -1320,7 +1321,7 @@ def htmx_nsf_program_edit(nsf_program_id):
             program=program, errors=[f'Error updating NSF program: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── NSF Program Create ─────────────────────────────────────────────────────
@@ -1362,7 +1363,7 @@ def htmx_nsf_program_create():
             errors=[f'Error creating NSF program: {e}'], form=request.form,
         )
 
-    return render_template('dashboards/admin/fragments/organization_edit_success_htmx.html')
+    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
 
 
 # ── NSF Program Delete ─────────────────────────────────────────────────────

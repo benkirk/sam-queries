@@ -232,10 +232,14 @@ class WallclockExemption(Base, TimestampMixin, SessionMixin):
         return self
 
     def __str__(self):
-        return f"{self.user_id} / {self.queue_id} / {self.time_limit_hours}"
+        username = self.user.username if self.user else f"user_id={self.user_id}"
+        queue_name = self.queue.queue_name if self.queue else f"queue_id={self.queue_id}"
+        return f"{username} / {queue_name} / {self.time_limit_hours}h"
 
     def __repr__(self):
-        return (f"<WallclockExemption(user_id={self.user_id}, queue_id={self.queue_id}, "
+        username = self.user.username if self.user else self.user_id
+        queue_name = self.queue.queue_name if self.queue else self.queue_id
+        return (f"<WallclockExemption(user={username!r}, queue={queue_name!r}, "
                 f"hours={self.time_limit_hours})>")
 
 
