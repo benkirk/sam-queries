@@ -91,6 +91,7 @@ def get_all_facility_usage_overviews(session, resource_names: List[str], active_
             active_only=True,
             active_at=active_at,
             force_refresh=force_refresh,
+            root_only=True,  # Exclude inheriting child allocations — root amount == total
         )
 
     # Group by resource, then aggregate total_used by facility
@@ -153,7 +154,8 @@ def get_all_facility_overviews(session, resource_names: List[str], active_at: da
         allocation_type=None,
         projcode=None,
         active_only=True,
-        active_at=active_at
+        active_at=active_at,
+        root_only=True,  # Exclude inheriting child allocations — root amount == total
     )
 
     # Group by resource+facility (for pie charts / overview table)
@@ -271,7 +273,8 @@ def index():
         allocation_type=None,    # Group by all types
         projcode="TOTAL",        # Sum across projects
         active_only=True,
-        active_at=active_at
+        active_at=active_at,
+        root_only=True,          # Exclude inheriting child allocations — root amount == total
     )
 
     # Group results hierarchically for tab structure
@@ -326,6 +329,7 @@ def index():
             active_only=True,
             active_at=active_at,
             force_refresh=force_refresh,
+            root_only=True,     # Exclude inheriting child allocations — root amount == total
         )
 
         # Derive TOTAL grouping (resource+facility+type, no projcode) Python-side

@@ -252,7 +252,8 @@ def get_allocation_summary(
     allocation_type: Optional[Union[str, List[str]]] = None,
     projcode: Optional[Union[str, List[str]]] = None,
     active_only: bool = True,
-    active_at: Optional[datetime] = None
+    active_at: Optional[datetime] = None,
+    root_only: bool = False,
 ) -> List[Dict]:
     """
     Get allocation summary statistics with flexible grouping.
@@ -265,6 +266,10 @@ def get_allocation_summary(
         active_only: If True, filter to allocations active at specified date
         active_at: Date to check for active status. If None and active_only=True, uses datetime.now()
                    Useful for historical queries like "what was allocated on 2024-06-15?"
+        root_only: If True, exclude inheriting (child) allocations — only count allocations
+                   where parent_allocation_id IS NULL. Use for dashboard totals/summaries to
+                   avoid double-counting shared-allocation trees where the root amount equals
+                   the sum of all child amounts.
 
     Returns:
         List of dicts with keys depending on grouping:
@@ -385,6 +390,18 @@ def get_allocation_summary(
             )
         )
 
+    # Exclude child allocations and child projects when computing summaries/totals to
+    # avoid double-counting trees where the root amount == sum of child amounts.
+    # Two independent tree structures can cause double-counting:
+    #   1. Allocation-level trees: parent_allocation_id links one allocation to another
+    #   2. Project-level trees: Project.parent_id links child projects to a parent project
+    #      (e.g., CESM0002 → CESM0002_sub1, CESM0002_sub2 each with their own allocations)
+    if root_only:
+        query = query.filter(
+            Allocation.parent_allocation_id.is_(None),  # root-level allocation
+            Project.parent_id.is_(None),                # root or standalone project
+        )
+
     # Group by appropriate fields
     if group_by_fields:
         query = query.group_by(*group_by_fields)
@@ -464,6 +481,7 @@ def _fetch_all_allocations(
     projcode: Optional[Union[str, List[str]]],
     active_only: bool,
     check_date: datetime,
+    root_only: bool = False,
 ) -> List[tuple]:
     """
     Fetch all active allocations matching the given filters in a single query.
@@ -528,6 +546,12 @@ def _fetch_all_allocations(
                 Allocation.end_date.is_(None),
                 Allocation.end_date >= check_date
             )
+        )
+
+    if root_only:
+        query = query.filter(
+            Allocation.parent_allocation_id.is_(None),  # root-level allocation
+            Project.parent_id.is_(None),                # root or standalone project
         )
 
     return query.all()
@@ -646,6 +670,7 @@ def get_allocation_summary_with_usage(
     active_at: Optional[datetime] = None,
     include_adjustments: bool = True,
     _summary: Optional[List[Dict]] = None,
+    root_only: bool = False,
 ) -> List[Dict]:
     """
     Get allocation summary statistics with usage information.
@@ -679,7 +704,7 @@ def get_allocation_summary_with_usage(
     # Use pre-computed summary when available (avoids a redundant DB round-trip)
     summary = _summary if _summary is not None else get_allocation_summary(
         session, resource_name, facility_name, allocation_type, projcode,
-        active_only, active_at
+        active_only, active_at, root_only=root_only
     )
 
     if not summary:
@@ -691,7 +716,7 @@ def get_allocation_summary_with_usage(
     # This replaces the previous per-summary-row query loop (N+1 problem).
     all_allocations = _fetch_all_allocations(
         session, resource_name, facility_name, allocation_type, projcode,
-        active_only, check_date
+        active_only, check_date, root_only=root_only
     )
     alloc_by_key = _group_allocations_by_summary_key(
         all_allocations, resource_name, facility_name, allocation_type, projcode
