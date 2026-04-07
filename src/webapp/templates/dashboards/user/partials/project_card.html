@@ -172,6 +172,21 @@
                                     <span class="{% if not is_expired %}text-warning{% endif %}">{{ resource.used | fmt_number }} used</span>
                                     <span class="{% if not is_expired %}text-success{% endif %}">{{ resource.remaining | fmt_number }} remaining</span>
                                 </div>
+                                {% if not is_expired and (resource.rolling_30 or resource.rolling_90) %}
+                                <div class="mt-2 pt-1 border-top border-secondary-subtle">
+                                    <small class="text-muted d-block mb-1">Rolling usage:</small>
+                                    {% for label, win in [('30d', resource.rolling_30), ('90d', resource.rolling_90)] %}
+                                    {% if win %}
+                                    <div class="d-flex justify-content-between small">
+                                        <span class="text-muted">{{ label }}</span>
+                                        <span>{{ win.charges | fmt_number }}
+                                            <span class="text-muted">({{ win.pct_of_prorated | fmt_pct }} of prorated)</span>
+                                        </span>
+                                    </div>
+                                    {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
                             </td>
                             {% if can_edit_allocations %}
                             <td class="text-center" onclick="event.stopPropagation();">

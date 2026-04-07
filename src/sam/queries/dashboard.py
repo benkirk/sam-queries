@@ -30,6 +30,7 @@ from sam.summaries.dav_summaries import DavChargeSummary
 from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
 from sam.queries.charges import get_adjustment_totals_by_date
+from sam.queries.rolling_usage import get_project_rolling_usage
 
 
 # ============================================================================
@@ -53,6 +54,9 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
     usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
 
     now = datetime.now()
+
+    # Fetch rolling window usage (30d/90d) for all HPC/DAV resources in one call
+    rolling_usage = get_project_rolling_usage(project.session, project.projcode)
 
     for resource_name, usage in usage_data.items():
         start_date = usage.get('start_date')
@@ -87,6 +91,7 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
                 elapsed_pct = 0
                 bar_state   = 'no-duration'
 
+        rwin = rolling_usage.get(resource_name, {}).get('windows', {})
         resources.append({
             'resource_name': resource_name,
             'allocation_id': usage.get('allocation_id'),  # Required for edit functionality
@@ -106,6 +111,8 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
             'date_group_key': date_group_key,
             'elapsed_pct': elapsed_pct,
             'bar_state': bar_state,
+            'rolling_30': rwin.get(30),
+            'rolling_90': rwin.get(90),
         })
 
     return resources

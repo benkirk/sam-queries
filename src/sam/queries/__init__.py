@@ -131,6 +131,9 @@ from .fstree_access import (
     get_user_fsdata,
 )
 
+# Rolling window usage (30/90-day trailing charge analysis)
+from .rolling_usage import get_project_rolling_usage
+
 
 __all__ = [
     # Lookups
@@ -203,4 +206,6 @@ __all__ = [
     'get_fstree_data',
     'get_project_fsdata',
     'get_user_fsdata',
+    # Rolling window usage
+    'get_project_rolling_usage',
 ]
