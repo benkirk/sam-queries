@@ -179,7 +179,13 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
                         if winfo:
                             charges_str = fmt.number(winfo['charges'])
                             pct_str     = fmt.pct(winfo['pct_of_prorated'])
-                            cell = f"{charges_str}\n({pct_str})"
+                            if winfo.get('threshold_pct') is not None:
+                                pct_of_lim = winfo['pct_of_limit']
+                                lim_pct    = winfo['threshold_pct']
+                                lim_style  = "red bold" if pct_of_lim > 100 else "yellow" if pct_of_lim > 80 else "green"
+                                cell = f"{charges_str}\n({pct_str} [dim]|[/] [{lim_style}]{fmt.pct(pct_of_lim)} of {lim_pct}% lim[/])"
+                            else:
+                                cell = f"{charges_str}\n({pct_str})"
                         else:
                             cell = "—"
                         row.append(cell)

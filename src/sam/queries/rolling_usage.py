@@ -224,6 +224,11 @@ def get_project_rolling_usage(
                 charges          – total charges in window (float, AU)
                 prorated_alloc   – prorated allocation for this period (float, AU)
                 pct_of_prorated  – charges / prorated_alloc × 100 (float, %)
+                threshold_pct    – configured threshold % from account (int | None)
+                                   30d window → account.first_threshold
+                                   90d window → account.second_threshold
+                use_limit        – AU ceiling at threshold (int | None)
+                pct_of_limit     – charges / use_limit × 100 (float | None)
 
         Returns ``{}`` if the project does not exist or has no eligible allocations.
 
@@ -292,10 +297,15 @@ def get_project_rolling_usage(
         aid = acct.account_id
         alloc_windows[aid] = (active_alloc.start_date, active_alloc.end_date)
         account_meta[aid] = {
-            'resource_name': res.resource_name,
-            'allocated':     float(active_alloc.amount) if active_alloc.amount is not None else 0.0,
-            'start_date':    active_alloc.start_date,
-            'end_date':      active_alloc.end_date,
+            'resource_name':    res.resource_name,
+            'allocated':        float(active_alloc.amount) if active_alloc.amount is not None else 0.0,
+            'start_date':       active_alloc.start_date,
+            'end_date':         active_alloc.end_date,
+            # Threshold percentages from account — may be None for most accounts.
+            # first_threshold → 30d window, second_threshold → 90d window
+            # (matching DefaultAccountStatusCalculator.java convention)
+            'threshold_30': acct.first_threshold,
+            'threshold_90': acct.second_threshold,
         }
 
         # Leaf vs. non-leaf determines charge rollup strategy.
@@ -350,10 +360,23 @@ def get_project_rolling_usage(
                 prorated = 0.0
                 pct      = 0.0
 
+            # Threshold limit for this window (only defined for w=30 and w=90)
+            threshold_key = {30: 'threshold_30', 90: 'threshold_90'}.get(w)
+            threshold_pct = meta.get(threshold_key) if threshold_key else None
+            if threshold_pct is not None and prorated > 0:
+                use_limit  = round(prorated * threshold_pct / 100.0)
+                pct_of_lim = round(charges / (prorated * threshold_pct / 100.0) * 100.0, 1)
+            else:
+                use_limit  = None
+                pct_of_lim = None
+
             result[rname]['windows'][w] = {
                 'charges':         charges,
                 'prorated_alloc':  prorated,
                 'pct_of_prorated': pct,
+                'threshold_pct':   threshold_pct,   # None when not configured
+                'use_limit':       use_limit,        # AU ceiling; None when no threshold
+                'pct_of_limit':    pct_of_lim,       # % of limit used; None when no threshold
             }
 
     return result

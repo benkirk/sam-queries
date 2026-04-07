@@ -89,7 +89,8 @@ class TestRollingUsageStructure:
         if not projcode:
             pytest.skip('No project with active HPC allocation found in test DB')
         result = get_project_rolling_usage(session, projcode)
-        required = {'charges', 'prorated_alloc', 'pct_of_prorated'}
+        required = {'charges', 'prorated_alloc', 'pct_of_prorated',
+                    'threshold_pct', 'use_limit', 'pct_of_limit'}
         for rname, data in result.items():
             for wdays, winfo in data['windows'].items():
                 missing = required - winfo.keys()
@@ -182,6 +183,101 @@ class TestSubtreeProject:
             w90 = data['windows'][90]['charges']
             assert w90 >= w30, \
                 f'{rname}: 90d charges ({w90}) should be >= 30d charges ({w30})'
+
+
+# ---------------------------------------------------------------------------
+# Threshold limits (NMMM0003 has first_threshold=125, second_threshold=105)
+# ---------------------------------------------------------------------------
+
+class TestThresholdLimits:
+    """Tests for threshold_pct / use_limit / pct_of_limit fields."""
+
+    def test_most_accounts_have_no_threshold(self, session):
+        """The vast majority of accounts have no threshold configured."""
+        projcode = _first_hpc_project(session)
+        if not projcode:
+            pytest.skip('No eligible project found')
+        result = get_project_rolling_usage(session, projcode)
+        for rname, data in result.items():
+            for wdays, winfo in data['windows'].items():
+                # threshold_pct/use_limit/pct_of_limit are all None when not configured
+                if winfo['threshold_pct'] is None:
+                    assert winfo['use_limit'] is None
+                    assert winfo['pct_of_limit'] is None
+
+    def test_nmmm0003_derecho_has_threshold(self, session):
+        """NMMM0003 Derecho has first_threshold=125, second_threshold=105."""
+        result = get_project_rolling_usage(session, _SUBTREE_PROJCODE, resource_name='Derecho')
+        if not result:
+            pytest.skip('NMMM0003 Derecho not found in test DB')
+        data = result['Derecho']
+        w30 = data['windows'][30]
+        w90 = data['windows'][90]
+        assert w30['threshold_pct'] is not None, '30d should have a threshold'
+        assert w90['threshold_pct'] is not None, '90d should have a threshold'
+        assert w30['use_limit'] is not None
+        assert w90['use_limit'] is not None
+        assert w30['pct_of_limit'] is not None
+        assert w90['pct_of_limit'] is not None
+
+    def test_use_limit_equals_prorated_times_threshold(self, session):
+        """use_limit == round(prorated_alloc * threshold_pct / 100)."""
+        result = get_project_rolling_usage(session, _SUBTREE_PROJCODE, resource_name='Derecho')
+        if not result:
+            pytest.skip('NMMM0003 Derecho not found in test DB')
+        for wdays, winfo in result['Derecho']['windows'].items():
+            if winfo['threshold_pct'] is not None:
+                expected = round(winfo['prorated_alloc'] * winfo['threshold_pct'] / 100.0)
+                assert winfo['use_limit'] == expected, \
+                    f'window {wdays}: use_limit {winfo["use_limit"]} != expected {expected}'
+
+    def test_pct_of_limit_consistent_with_charges(self, session):
+        """pct_of_limit == charges / use_limit * 100."""
+        result = get_project_rolling_usage(session, _SUBTREE_PROJCODE, resource_name='Derecho')
+        if not result:
+            pytest.skip('NMMM0003 Derecho not found in test DB')
+        for wdays, winfo in result['Derecho']['windows'].items():
+            if winfo['threshold_pct'] is not None and winfo['use_limit']:
+                expected = round(winfo['charges'] / winfo['use_limit'] * 100.0, 1)
+                assert abs(winfo['pct_of_limit'] - expected) < 1.0, \
+                    f'window {wdays}: pct_of_limit {winfo["pct_of_limit"]} vs expected {expected}'
+
+    def test_fstree_threshold_values_match(self, session):
+        """Values must match the fstree thresholds field for NMMM0003/Derecho."""
+        from sam.queries.fstree_access import get_fstree_data
+        fstree = get_fstree_data(session, 'Derecho')
+        # Find NMMM0003 in fstree
+        fstree_thresholds = None
+        for fac in fstree['facilities']:
+            for at in fac['allocationTypes']:
+                for proj in at['projects']:
+                    if proj['projectCode'] == _SUBTREE_PROJCODE:
+                        for res in proj['resources']:
+                            if res['name'] == 'Derecho' and res.get('thresholds'):
+                                fstree_thresholds = res['thresholds']
+        if not fstree_thresholds:
+            pytest.skip('NMMM0003/Derecho has no threshold data in fstree')
+
+        result = get_project_rolling_usage(session, _SUBTREE_PROJCODE, resource_name='Derecho')
+        if not result:
+            pytest.skip('NMMM0003 Derecho not found in test DB')
+        w30 = result['Derecho']['windows'][30]
+        w90 = result['Derecho']['windows'][90]
+
+        if 'period30' in fstree_thresholds:
+            ft30 = fstree_thresholds['period30']
+            assert w30['threshold_pct'] == ft30['thresholdPct']
+            assert w30['use_limit'] == ft30['useLimitCharges']
+            # fstree pctUsed = charges / prorated_alloc × 100 (same as pct_of_prorated)
+            assert abs(w30['pct_of_prorated'] - ft30['pctUsed']) < 1.0, \
+                f"30d pct_of_prorated {w30['pct_of_prorated']} vs fstree pctUsed {ft30['pctUsed']}"
+
+        if 'period90' in fstree_thresholds:
+            ft90 = fstree_thresholds['period90']
+            assert w90['threshold_pct'] == ft90['thresholdPct']
+            assert w90['use_limit'] == ft90['useLimitCharges']
+            assert abs(w90['pct_of_prorated'] - ft90['pctUsed']) < 1.0, \
+                f"90d pct_of_prorated {w90['pct_of_prorated']} vs fstree pctUsed {ft90['pctUsed']}"
 
 
 # ---------------------------------------------------------------------------
