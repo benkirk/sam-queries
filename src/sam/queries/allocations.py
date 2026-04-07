@@ -328,9 +328,11 @@ def get_allocation_summary(
     # Project code handling
     if projcode != "TOTAL":
         select_fields.append(Project.projcode)
+        select_fields.append(Project.parent_id)  # Expose tree position; is_root = (parent_id is None)
         # Group by project if: None (all), single value, or list (multiple)
         if projcode is None or isinstance(projcode, (str, list)):
             group_by_fields.append(Project.projcode)
+            group_by_fields.append(Project.parent_id)  # Functionally dependent on projcode; required for strict-mode SQL
 
     # Add aggregation fields
     select_fields.extend([
@@ -429,6 +431,8 @@ def get_allocation_summary(
 
         if projcode != "TOTAL":
             item['projcode'] = row[idx]
+            idx += 1
+            item['is_root'] = row[idx] is None  # parent_id is None → root or standalone project
             idx += 1
 
         # Add aggregations

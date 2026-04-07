@@ -51,7 +51,6 @@ class AllocationSearchCommand(BaseAllocationCommand):
                     active_only=not inactive,
                     active_at=active_at_date,
                     include_adjustments=include_adjustments,
-                    root_only=True,  # Exclude child projects/allocations — matches dashboard behavior
                 )
             else:
                 results = get_allocation_summary(
@@ -62,7 +61,6 @@ class AllocationSearchCommand(BaseAllocationCommand):
                     projcode=project,
                     active_only=not inactive,
                     active_at=active_at_date,
-                    root_only=True,  # Exclude child projects/allocations — matches dashboard behavior
                 )
 
             if not results:

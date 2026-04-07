@@ -86,10 +86,6 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
         table.add_column("Count", justify="right", style="dim")
 
     # Add rows
-    total_count = 0
-    total_amount = 0.0
-    total_used = 0.0
-
     for row in results:
         table_row = []
 
@@ -109,10 +105,7 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
             duration  = fmt.number(row['duration_days']) if row['duration_days'] else 'N/A'
             table_row.extend([start_str, end_str, duration])
 
-        count = row['count']
         amount = row['total_amount']
-        total_count += count
-        total_amount += amount
 
         # Show different columns based on mode
         if show_usage:
@@ -120,7 +113,6 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
             allocated = row.get('total_allocated', amount)
             remaining = allocated - used
             pct = row.get('percent_used', 0.0)
-            total_used += used
 
             # Color code percent used
             pct_style = "green"
@@ -151,17 +143,26 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
 
         # Count column always last (only when aggregating)
         if show_count:
-            table_row.append(str(count))
+            table_row.append(str(row['count']))
 
         table.add_row(*table_row)
 
     ctx.console.print(table)
 
-    # Calculate sum of annualized rates
+    # Grand Total: sum only root/standalone projects to avoid double-counting shared trees.
+    # 'is_root' is present when results are grouped by projcode (parent_id IS NULL → root).
+    # When absent (e.g., projcode="TOTAL" aggregations), treat every row as a root.
+    root_rows = [r for r in results if r.get('is_root', True)]
+    # Edge case: user filtered to a specific child project — no root rows → fall back to all
+    totals_rows = root_rows if root_rows else results
+
+    total_count = sum(r['count'] for r in totals_rows)
+    total_amount = sum(r['total_amount'] for r in totals_rows)
+    total_used = sum(r.get('total_used', 0.0) for r in totals_rows)
     total_annual_rate = sum(
-        row.get('annualized_rate', 0.0) or 0.0
-        for row in results
-        if row.get('annualized_rate') is not None
+        r.get('annualized_rate') or 0.0
+        for r in totals_rows
+        if r.get('annualized_rate') is not None
     )
 
     # Print totals
