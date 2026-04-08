@@ -119,6 +119,11 @@
             {%   endif %}
             {% endfor %}
 
+            {# ── Grid wrapper: col1=label(4rem) col2=bar(1fr) col3=annotations(auto)
+                   All rows — both bars + scale — share the same column widths so
+                   0%/100%/200% always align with the bar edges. ── #}
+            <div style="display:grid; grid-template-columns:4rem 1fr auto; column-gap:0.5rem; row-gap:3px; align-items:center;">
+
             {% for label, win in [('30-day', rolling_30), ('90-day', rolling_90)] %}
             {% if win %}
             {%   set pct = win.pct_of_prorated %}
@@ -180,29 +185,21 @@
             {%     set thresh_pos = (win.threshold_pct / scale_max * 100) | round(3) %}
             {%   endif %}
 
-            {# ── Single row: label | bar | badge+usage ── #}
-            <div class="d-flex align-items-center gap-2 mb-1">
+                {# col 1: label #}
+                <span class="fw-semibold text-nowrap" style="font-size:0.82rem;">{{ label }}</span>
 
-                {# Left: window label #}
-                <span class="fw-semibold text-nowrap" style="min-width:4rem; font-size:0.82rem;">{{ label }}</span>
-
-                {# Middle: thermometer bar (flex-grow) #}
-                <div class="position-relative flex-grow-1" style="height:18px; background:#e9ecef; border-radius:4px; overflow:visible;">
-                    {# Cold-side background tint #}
+                {# col 2: thermometer bar #}
+                <div class="position-relative" style="height:18px; background:#e9ecef; border-radius:4px; overflow:visible;">
                     <div style="position:absolute; left:0; top:0; height:100%; width:{{ center_pos }}%; background:rgba(13,202,240,0.08); border-radius:4px 0 0 4px;"></div>
-                    {# Hot-side background tint #}
                     <div style="position:absolute; left:{{ center_pos }}%; top:0; height:100%; width:{{ center_pos }}%; background:rgba(253,126,20,0.08); border-radius:0 4px 4px 0;"></div>
-                    {# Active fill bar #}
                     <div style="position:absolute; left:{{ fill_start }}%; top:0; height:100%; width:{{ fill_width_pct }}%; background:{{ fill_color }}; border-radius:4px; opacity:0.85;"></div>
-                    {# Center / steady-state marker #}
                     <div style="position:absolute; left:{{ center_pos }}%; top:-2px; bottom:-2px; width:2px; background:#343a40; opacity:0.75;" title="100% = steady-state"></div>
-                    {# Per-bar threshold marker #}
                     {% if win.threshold_pct is not none and thresh_pos > center_pos %}
                     <div style="position:absolute; left:{{ thresh_pos }}%; top:-2px; bottom:-2px; width:0; border-left:2px dashed #dc3545; opacity:0.85;" title="{{ win.threshold_pct }}% limit"></div>
                     {% endif %}
                 </div>
 
-                {# Right: badge + usage annotation #}
+                {# col 3: badge + annotation #}
                 <div class="d-flex align-items-center gap-1 text-nowrap">
                     {% if state == 'over_limit' %}
                     <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>over {{ win.threshold_pct }}% lim</span>
@@ -211,14 +208,12 @@
                     <span class="text-muted" style="font-size:0.78rem;">{{ win.charges | fmt_number }} AU &middot; {{ state_label }}</span>
                 </div>
 
-            </div>
             {% endif %}
             {% endfor %}
 
-            {# ── Shared scale: same flex structure — spacer keeps 0% aligned with bar left edge ── #}
-            <div class="d-flex align-items-start gap-2 mt-1">
-                <span style="min-width:4rem;"></span>
-                <div class="position-relative flex-grow-1" style="height:1.1rem; font-size:0.65rem; color:#6c757d;">
+                {# Scale row — col1: empty spacer, col2: tick labels, col3: nothing #}
+                <span></span>
+                <div class="position-relative" style="height:1.1rem; font-size:0.65rem; color:#6c757d; margin-top:1px;">
                     <span style="position:absolute; left:0;">0%</span>
                     <span style="position:absolute; left:{{ center_pos }}%; transform:translateX(-50%);">&#9650; 100%</span>
                     {% for t in thresh_positions %}
@@ -226,7 +221,9 @@
                     {% endfor %}
                     <span style="position:absolute; right:0;">200%</span>
                 </div>
-            </div>
+                <span></span>
+
+            </div>{# /grid #}
 
         </div>
         {% endif %}
