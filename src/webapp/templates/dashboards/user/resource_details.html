@@ -105,18 +105,23 @@
                 <strong>100% = steady state</strong>; left of center is cold, right is hot.
             </p>
 
-            {# ── Axis label row shared by both gauges ── #}
-            <div class="d-flex justify-content-between" style="font-size:0.68rem; color:#6c757d; margin-bottom:2px; padding: 0 1px;">
-                <span>&larr; cold</span>
-                <span>steady</span>
-                <span>hot &rarr;</span>
-            </div>
+            {% set scale_max = 200 %}
+            {% set center_pos = 50 %}
+
+            {# ── Collect threshold positions for the shared scale (may differ per window) ── #}
+            {% set thresh_positions = [] %}
+            {% for _, win in [('30-day', rolling_30), ('90-day', rolling_90)] %}
+            {%   if win and win.threshold_pct is not none %}
+            {%     set thresh_pos = (win.threshold_pct / scale_max * 100) | round(3) %}
+            {%     if thresh_pos > center_pos and thresh_pos not in thresh_positions %}
+            {%       set _ = thresh_positions.append({'pct': win.threshold_pct, 'pos': thresh_pos}) %}
+            {%     endif %}
+            {%   endif %}
+            {% endfor %}
 
             {% for label, win in [('30-day', rolling_30), ('90-day', rolling_90)] %}
             {% if win %}
             {%   set pct = win.pct_of_prorated %}
-            {%   set scale_max = 200 %}
-            {%   set center_pos = 50 %}
 
             {#   ── Hot/cold state ── #}
             {%   if win.threshold_pct is not none and pct >= win.threshold_pct %}
@@ -170,58 +175,59 @@
             {%     set fill_width_pct = (([pct, scale_max] | min) / scale_max * 100 - center_pos) | round(3) %}
             {%   endif %}
 
-            {#   ── Threshold marker position ── #}
+            {#   ── Threshold marker position for this bar ── #}
             {%   if win.threshold_pct is not none %}
             {%     set thresh_pos = (win.threshold_pct / scale_max * 100) | round(3) %}
             {%   endif %}
 
-            <div class="mb-3">
-                {# Label + badge row #}
-                <div class="d-flex align-items-center justify-content-between mb-1">
-                    <span class="fw-semibold" style="min-width:4.5rem; font-size:0.85rem;">{{ label }}</span>
-                    <div class="d-flex align-items-center gap-2">
-                        {% if state == 'over_limit' %}
-                        <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>over {{ win.threshold_pct }}% limit</span>
-                        {% endif %}
-                        <span class="badge {{ badge_class }}">{{ pct | fmt_pct }}</span>
-                        <span class="text-muted" style="font-size:0.8rem;">{{ win.charges | fmt_number }} AU &middot; {{ state_label }}</span>
-                    </div>
-                </div>
+            {# ── Single row: label | bar | badge+usage ── #}
+            <div class="d-flex align-items-center gap-2 mb-1">
 
-                {# Thermometer bar #}
-                <div class="position-relative" style="height:20px; background:#e9ecef; border-radius:4px; overflow:visible;">
+                {# Left: window label #}
+                <span class="fw-semibold text-nowrap" style="min-width:4rem; font-size:0.82rem;">{{ label }}</span>
 
-                    {# Cold-side background tint (left half) #}
+                {# Middle: thermometer bar (flex-grow) #}
+                <div class="position-relative flex-grow-1" style="height:18px; background:#e9ecef; border-radius:4px; overflow:visible;">
+                    {# Cold-side background tint #}
                     <div style="position:absolute; left:0; top:0; height:100%; width:{{ center_pos }}%; background:rgba(13,202,240,0.08); border-radius:4px 0 0 4px;"></div>
-
-                    {# Hot-side background tint (right half) #}
+                    {# Hot-side background tint #}
                     <div style="position:absolute; left:{{ center_pos }}%; top:0; height:100%; width:{{ center_pos }}%; background:rgba(253,126,20,0.08); border-radius:0 4px 4px 0;"></div>
-
                     {# Active fill bar #}
                     <div style="position:absolute; left:{{ fill_start }}%; top:0; height:100%; width:{{ fill_width_pct }}%; background:{{ fill_color }}; border-radius:4px; opacity:0.85;"></div>
-
                     {# Center / steady-state marker #}
-                    <div style="position:absolute; left:{{ center_pos }}%; top:-3px; bottom:-3px; width:2px; background:#343a40; opacity:0.75;" title="100% = steady-state consumption rate"></div>
-
-                    {# Threshold marker (dashed, right side only) #}
+                    <div style="position:absolute; left:{{ center_pos }}%; top:-2px; bottom:-2px; width:2px; background:#343a40; opacity:0.75;" title="100% = steady-state"></div>
+                    {# Per-bar threshold marker #}
                     {% if win.threshold_pct is not none and thresh_pos > center_pos %}
-                    <div style="position:absolute; left:{{ thresh_pos }}%; top:-3px; bottom:-3px; width:0; border-left:2px dashed #dc3545; opacity:0.85;" title="{{ win.threshold_pct }}% limit"></div>
+                    <div style="position:absolute; left:{{ thresh_pos }}%; top:-2px; bottom:-2px; width:0; border-left:2px dashed #dc3545; opacity:0.85;" title="{{ win.threshold_pct }}% limit"></div>
                     {% endif %}
-
                 </div>
 
-                {# Tick labels below the bar #}
-                <div class="position-relative" style="height:1.1rem; font-size:0.65rem; color:#6c757d;">
-                    <span style="position:absolute; left:0;">0%</span>
-                    <span style="position:absolute; left:{{ center_pos }}%; transform:translateX(-50%);">&#9650; 100%</span>
-                    {% if win.threshold_pct is not none and thresh_pos > center_pos %}
-                    <span style="position:absolute; left:{{ thresh_pos }}%; transform:translateX(-50%); color:#dc3545;">&#9650; {{ win.threshold_pct }}%</span>
+                {# Right: badge + usage annotation #}
+                <div class="d-flex align-items-center gap-1 text-nowrap">
+                    {% if state == 'over_limit' %}
+                    <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>over {{ win.threshold_pct }}% lim</span>
                     {% endif %}
-                    <span style="position:absolute; right:0;">200%</span>
+                    <span class="badge {{ badge_class }}">{{ pct | fmt_pct }}</span>
+                    <span class="text-muted" style="font-size:0.78rem;">{{ win.charges | fmt_number }} AU &middot; {{ state_label }}</span>
                 </div>
+
             </div>
             {% endif %}
             {% endfor %}
+
+            {# ── Shared scale: same flex structure — spacer keeps 0% aligned with bar left edge ── #}
+            <div class="d-flex align-items-start gap-2 mt-1">
+                <span style="min-width:4rem;"></span>
+                <div class="position-relative flex-grow-1" style="height:1.1rem; font-size:0.65rem; color:#6c757d;">
+                    <span style="position:absolute; left:0;">0%</span>
+                    <span style="position:absolute; left:{{ center_pos }}%; transform:translateX(-50%);">&#9650; 100%</span>
+                    {% for t in thresh_positions %}
+                    <span style="position:absolute; left:{{ t.pos }}%; transform:translateX(-50%); color:#dc3545;">&#9650; {{ t.pct }}%</span>
+                    {% endfor %}
+                    <span style="position:absolute; right:0;">200%</span>
+                </div>
+            </div>
+
         </div>
         {% endif %}
     </div>
