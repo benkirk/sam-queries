@@ -447,7 +447,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                                             )
                     # Apply date threshold, only query 'most_recent_alloc'
                     # if it has expired within the past 1 year
-                    if (now - most_recent_alloc.end_date) < timedelta(days=365):
+                    if (now - most_recent_alloc.end_date) <= timedelta(days=90):
                         query_alloc = most_recent_alloc
 
             # OK, if we still don't have an allocation to query

@@ -48,6 +48,11 @@ from typing import Any, Dict, List, Optional, Set
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from sam.queries.rolling_usage import (
+    _query_window_charges,
+    _query_window_subtree_charges,
+)
+
 
 # ---------------------------------------------------------------------------
 # SQL Queries
@@ -386,166 +391,10 @@ def _compute_threshold_data(
     return result or None
 
 
-def _query_window_charges(
-    session: Session,
-    account_ids: List[int],
-    window_days: int,
-    now: datetime,
-    alloc_windows: Dict[int, tuple],
-) -> Dict[int, float]:
-    """
-    Query total charges for a set of accounts over a trailing N-day window,
-    clamped to each account's allocation date range.
-
-    Only called for the small number of accounts with threshold percentages set.
-    """
-    if not account_ids:
-        return {}
-
-    window_start_global = now - timedelta(days=window_days)
-    result: Dict[int, float] = {aid: 0.0 for aid in account_ids}
-
-    rows_sql = ', '.join(
-        f'ROW({aid}, :ws{i}, :we{i})'
-        for i, aid in enumerate(account_ids)
-    )
-    params: Dict[str, Any] = {}
-    for i, aid in enumerate(account_ids):
-        alloc_start, alloc_end = alloc_windows.get(aid, (now, now))
-        clamped_start = max(window_start_global, alloc_start)
-        clamped_end   = min(now, alloc_end or now)
-        params[f'ws{i}'] = clamped_start
-        params[f'we{i}'] = clamped_end
-
-    for table, col in [
-        ('comp_charge_summary', 'activity_date'),
-        ('dav_charge_summary',  'activity_date'),
-    ]:
-        sql = text(f"""
-            WITH w (account_id, ws, we) AS (VALUES {rows_sql})
-            SELECT w.account_id, SUM(COALESCE(cs.charges, 0))
-            FROM {table} cs
-            JOIN w ON cs.account_id = w.account_id
-                   AND cs.{col} >= w.ws
-                   AND cs.{col} <= w.we
-            GROUP BY w.account_id
-        """)
-        for aid, amount in session.execute(sql, params).all():
-            if amount:
-                result[aid] += float(amount)
-
-    adj_sql = text(f"""
-        WITH w (account_id, ws, we) AS (VALUES {rows_sql})
-        SELECT w.account_id, SUM(COALESCE(ca.amount, 0))
-        FROM charge_adjustment ca
-        JOIN w ON ca.account_id = w.account_id
-               AND ca.adjustment_date >= w.ws
-               AND ca.adjustment_date <= w.we
-        GROUP BY w.account_id
-    """)
-    for aid, amount in session.execute(adj_sql, params).all():
-        if amount:
-            result[aid] += float(amount)
-
-    return result
-
-
-def _query_window_subtree_charges(
-    session: Session,
-    subtree_accts: Dict[int, Dict],
-    window_days: int,
-    now: datetime,
-    alloc_windows: Dict[int, tuple],
-) -> Dict[int, float]:
-    """
-    Query total charges for a set of non-leaf accounts over a trailing N-day window,
-    using MPTT subtree rollup so that descendant project charges are included.
-
-    Parallel to _query_window_charges() but joins through project tree coordinates
-    (tree_root/tree_left/tree_right) instead of direct account_id, matching the
-    pattern used by batch_get_subtree_charges().
-
-    Args:
-        subtree_accts: Dict mapping account_id → alloc_info dict (must contain
-                       tree_root, tree_left, tree_right, resource_id keys).
-        window_days:   Trailing window length (30 or 90).
-        now:           Current datetime.
-        alloc_windows: Dict mapping account_id → (alloc_start, alloc_end) for clamping.
-    """
-    if not subtree_accts:
-        return {}
-
-    window_start_global = now - timedelta(days=window_days)
-    result: Dict[int, float] = {aid: 0.0 for aid in subtree_accts}
-
-    # Build VALUES rows: (anchor_key=index, tree_root, tree_left, tree_right, resource_id, ws, we)
-    # anchor_key is the positional index; mapped back to account_id via idx_to_aid.
-    entries = list(subtree_accts.items())  # [(account_id, alloc_info), ...]
-    idx_to_aid: Dict[int, int] = {}
-    values_parts = []
-    params: Dict[str, Any] = {}
-
-    for i, (aid, info) in enumerate(entries):
-        idx_to_aid[i] = aid
-        alloc_start, alloc_end = alloc_windows.get(aid, (now, now))
-        clamped_start = max(window_start_global, alloc_start)
-        clamped_end   = min(now, alloc_end or now)
-        values_parts.append(f'ROW(:ak{i}, :tr{i}, :tl{i}, :rr{i}, :ri{i}, :ws{i}, :we{i})')
-        params[f'ak{i}'] = i
-        params[f'tr{i}'] = info['tree_root']
-        params[f'tl{i}'] = info['tree_left']
-        params[f'rr{i}'] = info['tree_right']
-        params[f'ri{i}'] = info['resource_id']
-        params[f'ws{i}'] = clamped_start
-        params[f'we{i}'] = clamped_end
-
-    values_sql = ', '.join(values_parts)
-
-    for table, col in [
-        ('comp_charge_summary', 'activity_date'),
-        ('dav_charge_summary',  'activity_date'),
-    ]:
-        sql = text(f"""
-            WITH anchors (anchor_key, tree_root, tree_left, tree_right, resource_id, ws, we) AS (
-                VALUES {values_sql}
-            )
-            SELECT a.anchor_key, SUM(COALESCE(cs.charges, 0))
-            FROM {table} cs
-            JOIN account acc ON cs.account_id  = acc.account_id
-            JOIN project p   ON acc.project_id = p.project_id
-            JOIN anchors a   ON p.tree_root      =  a.tree_root
-                            AND p.tree_left      >= a.tree_left
-                            AND p.tree_right     <= a.tree_right
-                            AND acc.resource_id  =  a.resource_id
-                            AND cs.{col}         >= a.ws
-                            AND cs.{col}         <= a.we
-            GROUP BY a.anchor_key
-        """)
-        for anchor_key, amount in session.execute(sql, params).all():
-            if amount:
-                result[idx_to_aid[anchor_key]] += float(amount)
-
-    adj_sql = text(f"""
-        WITH anchors (anchor_key, tree_root, tree_left, tree_right, resource_id, ws, we) AS (
-            VALUES {values_sql}
-        )
-        SELECT a.anchor_key, SUM(COALESCE(ca.amount, 0))
-        FROM charge_adjustment ca
-        JOIN account acc ON ca.account_id  = acc.account_id
-        JOIN project p   ON acc.project_id = p.project_id
-        JOIN anchors a   ON p.tree_root      =  a.tree_root
-                        AND p.tree_left      >= a.tree_left
-                        AND p.tree_right     <= a.tree_right
-                        AND acc.resource_id  =  a.resource_id
-                        AND ca.adjustment_date >= a.ws
-                        AND ca.adjustment_date <= a.we
-        GROUP BY a.anchor_key
-    """)
-    for anchor_key, amount in session.execute(adj_sql, params).all():
-        if amount:
-            result[idx_to_aid[anchor_key]] += float(amount)
-
-    return result
+# _query_window_charges and _query_window_subtree_charges are imported from
+# sam.queries.rolling_usage (see import at top of file).  They live there so
+# that get_project_rolling_usage() can share the same SQL helpers without
+# duplicating code.  The fstree behaviour is 100% unchanged.
 
 
 # ---------------------------------------------------------------------------

@@ -96,6 +96,12 @@
                 </tbody>
             </table>
         </div>
+
+        {% if rolling_30 or rolling_90 %}
+        <div id="htmx-rolling-{{ projcode }}-{{ resource_name }}">
+            {% include 'dashboards/user/fragments/rolling_rate_htmx.html' %}
+        </div>
+        {% endif %}
     </div>
 </div>
 

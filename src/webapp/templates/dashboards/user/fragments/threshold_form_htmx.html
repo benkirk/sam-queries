@@ -1,0 +1,43 @@
+{#
+  Inline threshold edit form for a single rolling window.
+
+  Replaces the Add/Edit button via hx-target="this" hx-swap="outerHTML".
+  On save or cancel, targets the outer rolling section wrapper
+  (#htmx-rolling-{projcode}-{resource_name}) and swaps its innerHTML.
+
+  Context variables:
+    projcode           — project code string
+    resource_name      — resource name string
+    window             — 30 or 90
+    current_threshold  — current integer value, or None
+    error              — validation error string, or None
+#}
+<span id="threshold-btn-{{ window }}d-{{ projcode }}"
+      class="d-inline-flex align-items-center gap-1">
+    <form hx-post="{{ url_for('user_dashboard.htmx_save_threshold', projcode=projcode, resource_name=resource_name, window=window) }}"
+          hx-target="#htmx-rolling-{{ projcode }}-{{ resource_name }}"
+          hx-swap="innerHTML"
+          class="d-inline-flex align-items-center gap-1 m-0">
+        {% if error %}
+        <span class="text-danger" style="font-size:0.7rem;">{{ error }}</span>
+        {% endif %}
+        <input type="number" name="threshold_pct"
+               value="{{ current_threshold if current_threshold is not none else '' }}"
+               placeholder="%" min="101" max="999"
+               class="form-control form-control-sm d-inline py-0"
+               style="width:4.5rem; font-size:0.75rem;"
+               title="Consumption rate limit (% of prorated allocation, must be > 100). Leave blank to remove.">
+        <span class="text-muted" style="font-size:0.7rem;">%</span>
+        <button type="submit"
+                class="btn btn-success py-0 px-1"
+                style="font-size:0.7rem;"
+                title="Save limit">&#10003;</button>
+        <button type="button"
+                class="btn btn-secondary py-0 px-1"
+                style="font-size:0.7rem;"
+                title="Cancel"
+                hx-get="{{ url_for('user_dashboard.htmx_rolling_section', projcode=projcode, resource_name=resource_name) }}"
+                hx-target="#htmx-rolling-{{ projcode }}-{{ resource_name }}"
+                hx-swap="innerHTML">&#10007;</button>
+    </form>
+</span>

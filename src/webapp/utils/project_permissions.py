@@ -118,6 +118,35 @@ def can_edit_allocations(user, project) -> bool:
     return has_permission(user, Permission.EDIT_ALLOCATIONS)
 
 
+def can_edit_consumption_threshold(user, project) -> bool:
+    """
+    Check if user can set/change rolling consumption rate thresholds for a project.
+
+    Same authorization as can_manage_project_members: system admin, project lead,
+    or project admin. Regular members may not edit thresholds.
+
+    Args:
+        user: AuthUser object (Flask-Login current_user)
+        project: Project ORM object
+
+    Returns:
+        True if user can edit thresholds, False otherwise
+    """
+    # System-wide permission (admin, facility_manager)
+    if has_permission(user, Permission.EDIT_PROJECT_MEMBERS):
+        return True
+
+    # Project lead
+    if project.project_lead_user_id == user.user_id:
+        return True
+
+    # Project admin
+    if project.project_admin_user_id and project.project_admin_user_id == user.user_id:
+        return True
+
+    return False
+
+
 def get_user_role_in_project(user_id: int, project) -> str:
     """
     Get the role of a user in a project.
