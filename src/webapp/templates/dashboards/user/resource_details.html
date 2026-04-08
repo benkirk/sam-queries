@@ -96,6 +96,134 @@
                 </tbody>
             </table>
         </div>
+
+        {% if rolling_30 or rolling_90 %}
+        <div class="mt-3 pt-3 border-top">
+            <h6 class="mb-1"><i class="fas fa-thermometer-half text-muted me-1"></i> Rolling Consumption Rate</h6>
+            <p class="text-muted small mb-2">
+                Charges over the last 30 and 90 days vs. the prorated steady-state rate.
+                <strong>100% = steady state</strong>; left of center is cold, right is hot.
+            </p>
+
+            {# ── Axis label row shared by both gauges ── #}
+            <div class="d-flex justify-content-between" style="font-size:0.68rem; color:#6c757d; margin-bottom:2px; padding: 0 1px;">
+                <span>&larr; cold</span>
+                <span>steady</span>
+                <span>hot &rarr;</span>
+            </div>
+
+            {% for label, win in [('30-day', rolling_30), ('90-day', rolling_90)] %}
+            {% if win %}
+            {%   set pct = win.pct_of_prorated %}
+            {%   set scale_max = 200 %}
+            {%   set center_pos = 50 %}
+
+            {#   ── Hot/cold state ── #}
+            {%   if win.threshold_pct is not none and pct >= win.threshold_pct %}
+            {%     set state = 'over_limit' %}
+            {%   elif pct < 80 %}
+            {%     set state = 'cold' %}
+            {%   elif pct <= 115 %}
+            {%     set state = 'steady' %}
+            {%   else %}
+            {%     set state = 'hot' %}
+            {%   endif %}
+
+            {#   ── Bar fill color ── #}
+            {%   if state == 'cold' %}
+            {%     set fill_color = '#0dcaf0' %}
+            {%   elif state == 'steady' %}
+            {%     set fill_color = '#198754' %}
+            {%   elif state == 'hot' %}
+            {%     set fill_color = '#fd7e14' %}
+            {%   else %}
+            {%     set fill_color = '#dc3545' %}
+            {%   endif %}
+
+            {#   ── Badge color class ── #}
+            {%   if state == 'cold' %}
+            {%     set badge_class = 'bg-info text-dark' %}
+            {%   elif state == 'steady' %}
+            {%     set badge_class = 'bg-success' %}
+            {%   elif state == 'hot' %}
+            {%     set badge_class = 'bg-warning text-dark' %}
+            {%   else %}
+            {%     set badge_class = 'bg-danger' %}
+            {%   endif %}
+
+            {#   ── Hot/cold label ── #}
+            {%   if state == 'cold' %}
+            {%     set state_label = 'running cold' %}
+            {%   elif state == 'steady' %}
+            {%     set state_label = 'near steady' %}
+            {%   else %}
+            {%     set state_label = 'running hot' %}
+            {%   endif %}
+
+            {#   ── Fill geometry: cold fills left of center; hot fills right ── #}
+            {%   if pct <= 100 %}
+            {%     set fill_left_pct  = (pct / scale_max * 100) | round(3) %}
+            {%     set fill_width_pct = (center_pos - fill_left_pct) | round(3) %}
+            {%     set fill_start     = fill_left_pct %}
+            {%   else %}
+            {%     set fill_start     = center_pos %}
+            {%     set fill_width_pct = (([pct, scale_max] | min) / scale_max * 100 - center_pos) | round(3) %}
+            {%   endif %}
+
+            {#   ── Threshold marker position ── #}
+            {%   if win.threshold_pct is not none %}
+            {%     set thresh_pos = (win.threshold_pct / scale_max * 100) | round(3) %}
+            {%   endif %}
+
+            <div class="mb-3">
+                {# Label + badge row #}
+                <div class="d-flex align-items-center justify-content-between mb-1">
+                    <span class="fw-semibold" style="min-width:4.5rem; font-size:0.85rem;">{{ label }}</span>
+                    <div class="d-flex align-items-center gap-2">
+                        {% if state == 'over_limit' %}
+                        <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>over {{ win.threshold_pct }}% limit</span>
+                        {% endif %}
+                        <span class="badge {{ badge_class }}">{{ pct | fmt_pct }}</span>
+                        <span class="text-muted" style="font-size:0.8rem;">{{ win.charges | fmt_number }} AU &middot; {{ state_label }}</span>
+                    </div>
+                </div>
+
+                {# Thermometer bar #}
+                <div class="position-relative" style="height:20px; background:#e9ecef; border-radius:4px; overflow:visible;">
+
+                    {# Cold-side background tint (left half) #}
+                    <div style="position:absolute; left:0; top:0; height:100%; width:{{ center_pos }}%; background:rgba(13,202,240,0.08); border-radius:4px 0 0 4px;"></div>
+
+                    {# Hot-side background tint (right half) #}
+                    <div style="position:absolute; left:{{ center_pos }}%; top:0; height:100%; width:{{ center_pos }}%; background:rgba(253,126,20,0.08); border-radius:0 4px 4px 0;"></div>
+
+                    {# Active fill bar #}
+                    <div style="position:absolute; left:{{ fill_start }}%; top:0; height:100%; width:{{ fill_width_pct }}%; background:{{ fill_color }}; border-radius:4px; opacity:0.85;"></div>
+
+                    {# Center / steady-state marker #}
+                    <div style="position:absolute; left:{{ center_pos }}%; top:-3px; bottom:-3px; width:2px; background:#343a40; opacity:0.75;" title="100% = steady-state consumption rate"></div>
+
+                    {# Threshold marker (dashed, right side only) #}
+                    {% if win.threshold_pct is not none and thresh_pos > center_pos %}
+                    <div style="position:absolute; left:{{ thresh_pos }}%; top:-3px; bottom:-3px; width:0; border-left:2px dashed #dc3545; opacity:0.85;" title="{{ win.threshold_pct }}% limit"></div>
+                    {% endif %}
+
+                </div>
+
+                {# Tick labels below the bar #}
+                <div class="position-relative" style="height:1.1rem; font-size:0.65rem; color:#6c757d;">
+                    <span style="position:absolute; left:0;">0%</span>
+                    <span style="position:absolute; left:{{ center_pos }}%; transform:translateX(-50%);">&#9650; 100%</span>
+                    {% if win.threshold_pct is not none and thresh_pos > center_pos %}
+                    <span style="position:absolute; left:{{ thresh_pos }}%; transform:translateX(-50%); color:#dc3545;">&#9650; {{ win.threshold_pct }}%</span>
+                    {% endif %}
+                    <span style="position:absolute; right:0;">200%</span>
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
 </div>
 

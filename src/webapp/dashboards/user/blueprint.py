@@ -15,6 +15,7 @@ from webapp.api.helpers import parse_input_end_date
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
+from sam.queries.rolling_usage import get_project_rolling_usage
 from sam.queries.users import get_users_on_project
 from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project
 from sam.queries.lookups import find_project_by_code
@@ -112,6 +113,12 @@ def resource_details():
         flash(f'Project {projcode} or resource {resource_name} not found', 'error')
         return redirect(url_for('user_dashboard.index'))
 
+    # Fetch 30d/90d rolling window usage (HPC/DAV only; None for DISK/ARCHIVE)
+    rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
+    rolling_windows = rolling_usage.get(resource_name, {}).get('windows', {})
+    rolling_30 = rolling_windows.get(30)
+    rolling_90 = rolling_windows.get(90)
+
     # Fetch enriched breakdown data (user+queue and daily+user+queue)
     user_breakdown = get_user_queue_breakdown_for_project(
         db.session, projcode, resource_name, start_date, end_date
@@ -136,6 +143,8 @@ def resource_details():
         daily_breakdown=daily_breakdown,
         date_span_days=(end_date - start_date).days,
         usage_chart=usage_chart,
+        rolling_30=rolling_30,
+        rolling_90=rolling_90,
     )
 
 
