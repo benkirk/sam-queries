@@ -20,7 +20,9 @@ from sam.queries.users import get_users_on_project
 from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project
 from sam.queries.lookups import find_project_by_code
 from sam.projects.projects import Project
-from webapp.utils.project_permissions import can_manage_project_members, can_change_admin
+from webapp.utils.project_permissions import (
+    can_manage_project_members, can_change_admin, can_edit_consumption_threshold
+)
 from webapp.utils.rbac import require_permission, Permission, has_permission
 from ..charts import generate_usage_timeseries_matplotlib
 
@@ -119,6 +121,12 @@ def resource_details():
     rolling_30 = rolling_windows.get(30)
     rolling_90 = rolling_windows.get(90)
 
+    # Determine if current user can edit rolling rate thresholds for this project
+    project = Project.get_by_projcode(db.session, projcode)
+    can_edit_threshold = (
+        can_edit_consumption_threshold(current_user, project) if project else False
+    )
+
     # Fetch enriched breakdown data (user+queue and daily+user+queue)
     user_breakdown = get_user_queue_breakdown_for_project(
         db.session, projcode, resource_name, start_date, end_date
@@ -145,6 +153,7 @@ def resource_details():
         usage_chart=usage_chart,
         rolling_30=rolling_30,
         rolling_90=rolling_90,
+        can_edit_threshold=can_edit_threshold,
     )
 
 
@@ -658,3 +667,137 @@ def htmx_change_admin(projcode):
         return f'<div class="alert alert-danger">{e}</div>', 400
 
     return _render_members_table(projcode, project)
+
+
+# ---------------------------------------------------------------------------
+# Rolling consumption rate threshold editing (htmx)
+# ---------------------------------------------------------------------------
+
+def _get_project_and_account(projcode, resource_name):
+    """Return (project, account) for a given project code and resource name.
+
+    Returns (None, None) if the project is not found.
+    Returns (project, None) if no matching account exists.
+    """
+    from sam import Account
+    from sam.resources.resources import Resource
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return None, None
+
+    account = (
+        db.session.query(Account)
+        .join(Account.resource)
+        .filter(Account.project_id == project.project_id)
+        .filter(Resource.resource_name == resource_name)
+        .filter(Account.deleted == False)
+        .first()
+    )
+    return project, account
+
+
+@bp.route('/htmx/rolling-section/<projcode>/<resource_name>')
+@login_required
+def htmx_rolling_section(projcode, resource_name):
+    """
+    Return the re-rendered Rolling Consumption Rate section fragment.
+
+    Used by the threshold form's cancel button and after a successful save
+    to restore / refresh the rolling section without a full page reload.
+    """
+    project, _ = _get_project_and_account(projcode, resource_name)
+    if not project:
+        return '<div class="alert alert-danger">Project not found</div>', 404
+
+    rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
+    windows = rolling_usage.get(resource_name, {}).get('windows', {})
+
+    return render_template(
+        'dashboards/user/fragments/rolling_rate_htmx.html',
+        projcode=projcode,
+        resource_name=resource_name,
+        rolling_30=windows.get(30),
+        rolling_90=windows.get(90),
+        can_edit_threshold=can_edit_consumption_threshold(current_user, project),
+    )
+
+
+@bp.route('/htmx/threshold-form/<projcode>/<resource_name>/<int:window>')
+@login_required
+def htmx_threshold_form(projcode, resource_name, window):
+    """
+    Return an inline threshold edit form for a specific rolling window.
+
+    The form replaces the Add/Edit button via hx-target="this" hx-swap="outerHTML".
+    window must be 30 or 90.
+    """
+    project, account = _get_project_and_account(projcode, resource_name)
+    if not project or not can_edit_consumption_threshold(current_user, project):
+        return '<span class="text-danger small">Unauthorized</span>', 403
+
+    current = account.first_threshold if window == 30 else account.second_threshold
+
+    return render_template(
+        'dashboards/user/fragments/threshold_form_htmx.html',
+        projcode=projcode,
+        resource_name=resource_name,
+        window=window,
+        current_threshold=current,
+        error=None,
+    )
+
+
+@bp.route('/htmx/threshold/<projcode>/<resource_name>/<int:window>', methods=['POST'])
+@login_required
+def htmx_save_threshold(projcode, resource_name, window):
+    """
+    Save a rolling consumption rate threshold for one window (30 or 90 days).
+
+    Accepts form field: threshold_pct (integer > 100, or empty to clear).
+    Returns the re-rendered rolling section on success, or the form with an
+    error message on validation failure.
+    """
+    from sam.manage import management_transaction
+
+    project, account = _get_project_and_account(projcode, resource_name)
+    if not project or not can_edit_consumption_threshold(current_user, project):
+        return '<div class="alert alert-danger">Unauthorized</div>', 403
+    if not account:
+        return '<div class="alert alert-danger">Account not found for this resource</div>', 404
+
+    raw = request.form.get('threshold_pct', '').strip()
+    if raw == '':
+        new_val = None
+    else:
+        try:
+            new_val = int(raw)
+            if new_val <= 100:
+                raise ValueError
+        except ValueError:
+            return render_template(
+                'dashboards/user/fragments/threshold_form_htmx.html',
+                projcode=projcode,
+                resource_name=resource_name,
+                window=window,
+                current_threshold=raw,
+                error='Must be an integer greater than 100, or leave blank to remove the limit.',
+            )
+
+    with management_transaction(db.session):
+        if window == 30:
+            account.update_thresholds(first_threshold=new_val)
+        else:
+            account.update_thresholds(second_threshold=new_val)
+
+    rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
+    windows = rolling_usage.get(resource_name, {}).get('windows', {})
+
+    return render_template(
+        'dashboards/user/fragments/rolling_rate_htmx.html',
+        projcode=projcode,
+        resource_name=resource_name,
+        rolling_30=windows.get(30),
+        rolling_90=windows.get(90),
+        can_edit_threshold=True,
+    )
