@@ -108,17 +108,6 @@
             {% set scale_max = 200 %}
             {% set center_pos = 50 %}
 
-            {# ── Collect threshold positions for the shared scale (may differ per window) ── #}
-            {% set thresh_positions = [] %}
-            {% for _, win in [('30-day', rolling_30), ('90-day', rolling_90)] %}
-            {%   if win and win.threshold_pct is not none %}
-            {%     set thresh_pos = (win.threshold_pct / scale_max * 100) | round(3) %}
-            {%     if thresh_pos > center_pos and thresh_pos not in thresh_positions %}
-            {%       set _ = thresh_positions.append({'pct': win.threshold_pct, 'pos': thresh_pos}) %}
-            {%     endif %}
-            {%   endif %}
-            {% endfor %}
-
             {# ── Grid wrapper: col1=label(4rem) col2=bar(1fr) col3=annotations(auto)
                    All rows — both bars + scale — share the same column widths so
                    0%/100%/200% always align with the bar edges. ── #}
@@ -196,6 +185,7 @@
                     <div style="position:absolute; left:{{ center_pos }}%; top:-2px; bottom:-2px; width:2px; background:#343a40; opacity:0.75;" title="100% = steady-state"></div>
                     {% if win.threshold_pct is not none and thresh_pos > center_pos %}
                     <div style="position:absolute; left:{{ thresh_pos }}%; top:-2px; bottom:-2px; width:0; border-left:2px dashed #dc3545; opacity:0.85;" title="{{ win.threshold_pct }}% limit"></div>
+                    <span style="position:absolute; left:{{ thresh_pos }}%; top:50%; transform:translate(-50%,-50%); font-size:0.6rem; font-weight:600; color:#dc3545; background:rgba(255,255,255,0.82); padding:0 3px; border-radius:2px; white-space:nowrap; pointer-events:none; z-index:1;">{{ win.threshold_pct }}%</span>
                     {% endif %}
                 </div>
 
@@ -216,9 +206,6 @@
                 <div class="position-relative" style="height:1.1rem; font-size:0.65rem; color:#6c757d; margin-top:1px;">
                     <span style="position:absolute; left:0;">0%</span>
                     <span style="position:absolute; left:{{ center_pos }}%; transform:translateX(-50%);">&#9650; 100%</span>
-                    {% for t in thresh_positions %}
-                    <span style="position:absolute; left:{{ t.pos }}%; transform:translateX(-50%); color:#dc3545;">&#9650; {{ t.pct }}%</span>
-                    {% endfor %}
                     <span style="position:absolute; right:0;">200%</span>
                 </div>
                 <span></span>
