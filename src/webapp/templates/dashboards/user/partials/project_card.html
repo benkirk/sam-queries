@@ -172,7 +172,10 @@
                                     <span class="{% if not is_expired %}text-warning{% endif %}">{{ resource.used | fmt_number }} used</span>
                                     <span class="{% if not is_expired %}text-success{% endif %}">{{ resource.remaining | fmt_number }} remaining</span>
                                 </div>
-                                {% if not is_expired and (resource.rolling_30 or resource.rolling_90) %}
+                                {% if not is_expired and (
+                                    (resource.rolling_30 and resource.rolling_30.threshold_pct is not none) or
+                                    (resource.rolling_90 and resource.rolling_90.threshold_pct is not none)
+                                ) %}
                                 <div class="mt-2 pt-1 border-top border-secondary-subtle">
                                     <small class="text-muted d-block mb-1">Rolling usage:</small>
                                     {% for label, win in [('30d', resource.rolling_30), ('90d', resource.rolling_90)] %}
