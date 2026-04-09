@@ -1,4 +1,4 @@
-{% macro date_range_picker(action, start_date, end_date, hidden_fields={}) %}
+{% macro date_range_picker(action, start_date, end_date, hidden_fields={}, epoch_date=None) %}
 {# Unique ID to allow multiple pickers on the same page without ID collisions #}
 {% set uid = range(100000) | random %}
 {#
@@ -9,6 +9,8 @@
     start_date    - current start date string (YYYY-MM-DD)
     end_date      - current end date string (YYYY-MM-DD)
     hidden_fields - dict of extra hidden form fields (e.g. {'projcode': 'SCSG0001'})
+    epoch_date    - optional YYYY-MM-DD string; when provided adds an "Epoch" button
+                    that navigates to start=epoch_date, end=today (e.g. allocation start)
 #}
 <div class="card mb-4">
     <div class="card-body py-2">
@@ -21,6 +23,11 @@
 
                 <!-- Quick-select preset buttons -->
                 <div class="btn-group btn-group-sm" role="group" aria-label="Date range presets">
+                    {% if epoch_date %}
+                    <button type="button"
+                            class="btn btn-outline-secondary drp-epoch-{{ uid }}"
+                            onclick="drpApplyEpoch_{{ uid }}()">Epoch</button>
+                    {% endif %}
                     {% set presets = [('7d', 7), ('30d', 30), ('90d', 90), ('6mo', 180), ('1yr', 365)] %}
                     {% for label, days in presets %}
                     <button type="button"
@@ -66,15 +73,25 @@
     const hidden   = {{ hidden_fields | tojson }};
     const PRESETS  = [7, 30, 90, 180, 365];
     const curStart = '{{ start_date }}';
+    const epochDate = {{ epoch_date | tojson if epoch_date else 'null' }};
 
-    // Highlight the active preset (if current range matches today - N days)
     function fmtDate(d) {
         return d.toISOString().slice(0, 10);
     }
 
+    function navigateTo(start, end) {
+        const params = new URLSearchParams(hidden);
+        params.set('start_date', start);
+        params.set('end_date', end);
+        window.location.href = action + '?' + params.toString();
+    }
+
+    // Highlight the active preset (if current range matches today - N days)
     (function markActive() {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+
+        // Check N-day presets
         PRESETS.forEach(function (days) {
             const d = new Date(today);
             d.setDate(d.getDate() - days);
@@ -86,14 +103,16 @@
                     });
             }
         });
-    })();
 
-    function navigateTo(start, end) {
-        const params = new URLSearchParams(hidden);
-        params.set('start_date', start);
-        params.set('end_date', end);
-        window.location.href = action + '?' + params.toString();
-    }
+        // Check Epoch preset
+        if (epochDate && curStart === epochDate) {
+            document.querySelectorAll('.drp-epoch-' + uid)
+                .forEach(function (btn) {
+                    btn.classList.remove('btn-outline-secondary');
+                    btn.classList.add('btn-secondary', 'active');
+                });
+        }
+    })();
 
     window['drpApplyDays_' + uid] = function (n) {
         const end   = new Date();
@@ -101,6 +120,12 @@
         start.setDate(start.getDate() - n);
         navigateTo(fmtDate(start), fmtDate(end));
     };
+
+    {% if epoch_date %}
+    window['drpApplyEpoch_' + uid] = function () {
+        navigateTo(epochDate, fmtDate(new Date()));
+    };
+    {% endif %}
 
     window['drpToggleCustom_' + uid] = function () {
         const panel = document.getElementById('drp_custom_' + uid);
