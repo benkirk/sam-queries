@@ -20,7 +20,7 @@
             <tr class="table-info fw-bold">
                 <td>Total</td>
                 <td class="text-end">{{ breakdown|sum(attribute='jobs') | fmt_number }}</td>
-                <td class="text-end">{{ '{:,.1f}'.format(breakdown|sum(attribute='core_hours')) }}</td>
+                <td class="text-end">{{ breakdown|sum(attribute='core_hours') | fmt_number }}</td>
                 <td class="text-end">{{ breakdown|sum(attribute='charges') | fmt_number }}</td>
             </tr>
         </tbody>
@@ -35,7 +35,7 @@
                     {% endif %}
                 </td>
                 <td class="text-end">{{ user.jobs | fmt_number }}</td>
-                <td class="text-end">{{ '{:,.1f}'.format(user.core_hours) }}</td>
+                <td class="text-end">{{ user.core_hours | fmt_number }}</td>
                 <td class="text-end">{{ user.charges | fmt_number }}</td>
             </tr>
         </tbody>
@@ -51,7 +51,7 @@
                     {% endif %}
                 </td>
                 <td class="text-end">{{ q.jobs | fmt_number }}</td>
-                <td class="text-end">{{ '{:,.1f}'.format(q.core_hours) }}</td>
+                <td class="text-end">{{ q.core_hours | fmt_number }}</td>
                 <td class="text-end">{{ q.charges | fmt_number }}</td>
             </tr>
             {% if q.dates|length > 1 %}
@@ -59,7 +59,7 @@
             <tr class="collapse table-light" id="user-queue-dates-{{ qid }}">
                 <td class="ps-5 text-muted"><i class="fas fa-angle-right me-1"></i><small>{{ d.date }}</small></td>
                 <td class="text-end"><small>{{ d.jobs | fmt_number }}</small></td>
-                <td class="text-end"><small>{{ '{:,.1f}'.format(d.core_hours) }}</small></td>
+                <td class="text-end"><small>{{ d.core_hours | fmt_number }}</small></td>
                 <td class="text-end"><small>{{ d.charges | fmt_number }}</small></td>
             </tr>
             {% endfor %}
@@ -109,7 +109,7 @@
                 <td>{{ month_key }} <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i></td>
                 <td class="text-end">{{ ns.u | length }}</td>
                 <td class="text-end">{{ m_jobs | fmt_number }}</td>
-                <td class="text-end">{{ '{:,.1f}'.format(m_core_hours) }}</td>
+                <td class="text-end">{{ m_core_hours | fmt_number }}</td>
                 <td class="text-end">{{ m_charges | fmt_number }}</td>
             </tr>
         </tbody>
@@ -123,7 +123,7 @@
                 </td>
                 <td class="text-end">{{ day.user_count }}</td>
                 <td class="text-end">{{ day.jobs | fmt_number }}</td>
-                <td class="text-end">{{ '{:,.1f}'.format(day.core_hours) }}</td>
+                <td class="text-end">{{ day.core_hours | fmt_number }}</td>
                 <td class="text-end">{{ day.charges | fmt_number }}</td>
             </tr>
             {% for sub in day.rows %}
@@ -131,7 +131,7 @@
                 <td class="ps-5 text-muted"><i class="fas fa-angle-right me-1"></i><code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em></td>
                 <td></td>
                 <td class="text-end"><small>{{ sub.total_jobs | fmt_number }}</small></td>
-                <td class="text-end"><small>{{ '{:,.1f}'.format(sub.total_core_hours) }}</small></td>
+                <td class="text-end"><small>{{ sub.total_core_hours | fmt_number }}</small></td>
                 <td class="text-end"><small>{{ sub.total_charges | fmt_number }}</small></td>
             </tr>
             {% endfor %}
@@ -150,7 +150,7 @@
                 </td>
                 <td class="text-end">{{ day.user_count }}</td>
                 <td class="text-end">{{ day.jobs | fmt_number }}</td>
-                <td class="text-end">{{ '{:,.1f}'.format(day.core_hours) }}</td>
+                <td class="text-end">{{ day.core_hours | fmt_number }}</td>
                 <td class="text-end">{{ day.charges | fmt_number }}</td>
             </tr>
         </tbody>
@@ -160,7 +160,7 @@
                 <td class="ps-4 text-muted"><i class="fas fa-angle-right me-1"></i><code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em></td>
                 <td></td>
                 <td class="text-end">{{ sub.total_jobs | fmt_number }}</td>
-                <td class="text-end">{{ '{:,.1f}'.format(sub.total_core_hours) }}</td>
+                <td class="text-end">{{ sub.total_core_hours | fmt_number }}</td>
                 <td class="text-end">{{ sub.total_charges | fmt_number }}</td>
             </tr>
             {% endfor %}
