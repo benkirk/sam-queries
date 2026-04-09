@@ -17,7 +17,7 @@ from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.rolling_usage import get_project_rolling_usage
 from sam.queries.users import get_users_on_project
-from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project
+from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project, get_charges_by_projcode
 from sam.queries.lookups import find_project_by_code
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import (
@@ -102,42 +102,102 @@ def resource_details():
         flash('Invalid date format. Please use YYYY-MM-DD.', 'error')
         return redirect(url_for('user_dashboard.index'))
 
-    # Fetch resource detail data
-    detail_data = get_resource_detail_data(
-        db.session,
-        projcode,
-        resource_name,
-        start_date,
-        end_date
-    )
-
-    if not detail_data:
-        flash(f'Project {projcode} or resource {resource_name} not found', 'error')
-        return redirect(url_for('user_dashboard.index'))
-
     # Fetch 30d/90d rolling window usage (HPC/DAV only; None for DISK/ARCHIVE)
     rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
     rolling_windows = rolling_usage.get(resource_name, {}).get('windows', {})
     rolling_30 = rolling_windows.get(30)
     rolling_90 = rolling_windows.get(90)
 
-    # Determine if current user can edit rolling rate thresholds for this project
+    # Load root project
     project = Project.get_by_projcode(db.session, projcode)
-    can_edit_threshold = (
-        can_edit_consumption_threshold(current_user, project) if project else False
+    if not project:
+        flash(f'Project {projcode} not found', 'error')
+        return redirect(url_for('user_dashboard.index'))
+
+    can_edit_threshold = can_edit_consumption_threshold(current_user, project)
+    has_children = bool(project.has_children)
+
+    # Scope: which tree node's subtree the analysis cards aggregate.
+    # Defaults to the root projcode (show everything); clicking tree nodes sets scope=<child>.
+    scope = request.args.get('scope', projcode)
+
+    # Validate scope belongs to this project's tree; fall back to root if not
+    if scope != projcode:
+        scope_project = Project.get_by_projcode(db.session, scope)
+        if not scope_project or scope_project.tree_root != project.tree_root:
+            scope = projcode
+            scope_project = project
+    else:
+        scope_project = project
+
+    scope_has_children = bool(scope_project.has_children)
+
+    # All projcodes covered by the selected scope (for user/daily breakdown queries)
+    if scope_has_children:
+        all_projcodes = [p.projcode for p in scope_project.get_descendants(include_self=True)]
+    else:
+        all_projcodes = [scope]
+
+    # Fetch resource detail data; scope controls which subtree the daily trend uses
+    detail_data = get_resource_detail_data(
+        db.session,
+        projcode,
+        resource_name,
+        start_date,
+        end_date,
+        scope_projcode=scope,
     )
 
-    # Fetch enriched breakdown data (user+queue and daily+user+queue)
+    if not detail_data:
+        flash(f'Project {projcode} or resource {resource_name} not found', 'error')
+        return redirect(url_for('user_dashboard.index'))
+
+    # Fetch enriched breakdown data for the current scope
     user_breakdown = get_user_queue_breakdown_for_project(
-        db.session, projcode, resource_name, start_date, end_date
+        db.session, all_projcodes, resource_name, start_date, end_date
     )
     daily_breakdown = get_daily_breakdown_for_project(
-        db.session, projcode, resource_name, start_date, end_date
+        db.session, all_projcodes, resource_name, start_date, end_date
     )
+
+    # Build annotated project tree (only needed when project has children)
+    tree_data = None
+    if has_children:
+        # Get the tree root (may differ from projcode if project itself is a sub-tree node)
+        tree_root = project.get_root() or project
+
+        # Query direct charges for every node in the full tree (one query)
+        all_tree_projcodes = [p.projcode for p in tree_root.get_descendants(include_self=True)]
+        direct_charges = get_charges_by_projcode(
+            db.session, all_tree_projcodes, resource_name, start_date, end_date
+        )
+
+        # Build nested dict — only active children; roll up subtree charge totals
+        def _build_node(node):
+            active_children = sorted(
+                [c for c in node.children if c.active],
+                key=lambda c: c.projcode
+            )
+            child_nodes = [_build_node(c) for c in active_children]
+            subtotal = direct_charges.get(node.projcode, 0.0) + sum(
+                c['subtree_charges'] for c in child_nodes
+            )
+            return {
+                'projcode': node.projcode,
+                'title': node.title,
+                'direct_charges': direct_charges.get(node.projcode, 0.0),
+                'subtree_charges': subtotal,
+                'children': child_nodes,
+            }
+
+        tree_data = _build_node(tree_root)
 
     # Generate charts server-side
     usage_chart = generate_usage_timeseries_matplotlib(detail_data['daily_charges'])
-    #breakdown_chart = generate_charge_breakdown_bars(detail_data['charge_totals'])
+
+    # Extract allocation start date for the "Epoch" date picker preset
+    alloc_start = detail_data['resource_summary'].get('start_date')
+    alloc_start_date = alloc_start.strftime('%Y-%m-%d') if alloc_start else None
 
     return render_template(
         'dashboards/user/resource_details.html',
@@ -154,6 +214,10 @@ def resource_details():
         rolling_30=rolling_30,
         rolling_90=rolling_90,
         can_edit_threshold=can_edit_threshold,
+        has_children=has_children,
+        scope=scope,
+        tree_data=tree_data,
+        alloc_start_date=alloc_start_date,
     )
 
 

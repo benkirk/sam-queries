@@ -13,7 +13,7 @@ Functions:
 """
 
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -245,9 +245,36 @@ def get_user_breakdown_for_project(session, projcode: str,
     ]
 
 
+def get_charges_by_projcode(
+    session: Session,
+    projcodes: List[str],
+    resource: str,
+    start_date: datetime,
+    end_date: datetime,
+) -> Dict[str, float]:
+    """
+    Get total direct charges per project code over a date range.
+
+    Used to annotate project hierarchy trees with per-node charge totals.
+    Returns only direct charges (not subtree aggregates); callers should
+    roll up subtree totals themselves by traversing the tree structure.
+
+    Returns:
+        Dict mapping projcode → total_charges for the period/resource.
+    """
+    rows = query_comp_charge_summaries(
+        session, start_date, end_date, projcode=projcodes, resource=resource
+    )
+    result: Dict[str, float] = {}
+    for row in rows:
+        pc = row['projcode']
+        result[pc] = result.get(pc, 0.0) + row['total_charges']
+    return result
+
+
 def get_user_queue_breakdown_for_project(
     session: Session,
-    projcode: str,
+    projcode: Union[str, List[str]],
     resource: str,
     start_date: datetime,
     end_date: datetime,
@@ -318,7 +345,7 @@ def get_user_queue_breakdown_for_project(
 
 def get_daily_breakdown_for_project(
     session: Session,
-    projcode: str,
+    projcode: Union[str, List[str]],
     resource: str,
     start_date: datetime,
     end_date: datetime,
@@ -366,7 +393,7 @@ def query_comp_charge_summaries(
     start_date,
     end_date,
     username: Optional[str] = None,
-    projcode: Optional[str] = None,
+    projcode: Optional[Union[str, List[str]]] = None,
     resource: Optional[str] = None,
     queue: Optional[str] = None,
     machine: Optional[str] = None,
@@ -432,7 +459,10 @@ def query_comp_charge_summaries(
         query = query.filter(col.like(val) if '%' in val else col == val)
 
     _apply_filter(CompChargeSummary.username, username)
-    _apply_filter(CompChargeSummary.projcode, projcode)
+    if isinstance(projcode, list):
+        query = query.filter(CompChargeSummary.projcode.in_(projcode))
+    else:
+        _apply_filter(CompChargeSummary.projcode, projcode)
     _apply_filter(CompChargeSummary.resource, resource)
     _apply_filter(CompChargeSummary.machine, machine)
     if queue is not None:
