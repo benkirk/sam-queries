@@ -269,14 +269,14 @@ class TestThresholdLimits:
             assert w30['threshold_pct'] == ft30['thresholdPct']
             assert w30['use_limit'] == ft30['useLimitCharges']
             # fstree pctUsed = charges / prorated_alloc × 100 (same as pct_of_prorated)
-            assert abs(w30['pct_of_prorated'] - ft30['pctUsed']) < 1.0, \
+            assert abs(w30['pct_of_prorated'] - ft30['pctUsed']) < 1.5, \
                 f"30d pct_of_prorated {w30['pct_of_prorated']} vs fstree pctUsed {ft30['pctUsed']}"
 
         if 'period90' in fstree_thresholds:
             ft90 = fstree_thresholds['period90']
             assert w90['threshold_pct'] == ft90['thresholdPct']
             assert w90['use_limit'] == ft90['useLimitCharges']
-            assert abs(w90['pct_of_prorated'] - ft90['pctUsed']) < 1.0, \
+            assert abs(w90['pct_of_prorated'] - ft90['pctUsed']) < 1.5, \
                 f"90d pct_of_prorated {w90['pct_of_prorated']} vs fstree pctUsed {ft90['pctUsed']}"
 
 

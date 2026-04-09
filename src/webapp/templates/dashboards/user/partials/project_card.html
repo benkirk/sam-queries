@@ -169,7 +169,7 @@
                                              aria-valuemax="100">
                                         </div>
                                     </div>
-                                    {% if first.bar_state == 'active' %}
+                                    {% if first.bar_state == 'active' and resource.resource_type in ['HPC', 'DAV'] %}
                                     <div class="position-absolute"
                                          style="left: {{ first.elapsed_pct }}%; top: -2px; bottom: -2px; width: 2px; background: rgba(33,37,41,0.55); z-index: 2; pointer-events: none;"
                                          title="{{ first.elapsed_pct | fmt_pct }} of allocation period elapsed"></div>

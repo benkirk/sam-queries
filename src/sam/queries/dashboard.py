@@ -111,6 +111,7 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
             'date_group_key': date_group_key,
             'elapsed_pct': elapsed_pct,
             'bar_state': bar_state,
+            'resource_type': usage.get('resource_type', 'HPC'),
             'rolling_30': rwin.get(30),
             'rolling_90': rwin.get(90),
         })
