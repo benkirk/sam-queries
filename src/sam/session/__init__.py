@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, URL
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
 
@@ -25,10 +25,16 @@ def init_sam_db_defaults():
         'SAM DB: %s:$SAM_DB_PASSWORD@%s/%s', username, server, database
     )
 
-    # Create connection string
-    # Using pymysql driver for consistency with test suite
+    # Create connection URL using URL.create() to safely handle special characters
+    # in the password (e.g. '@', '%', etc.) that would break f-string URL interpolation.
     global connection_string
-    connection_string = f'mysql+pymysql://{username}:{password}@{server}/{database}'
+    connection_string = URL.create(
+        drivername='mysql+pymysql',
+        username=username,
+        password=password,
+        host=server,
+        database=database,
+    )
     #print(connection_string)
 
 # run on import

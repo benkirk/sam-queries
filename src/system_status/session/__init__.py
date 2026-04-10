@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, URL
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
 
@@ -29,8 +29,16 @@ def init_status_db_defaults():
     else:
         dialect = 'mysql+pymysql'
 
+    # Use URL.create() to safely handle special characters in the password
+    # (e.g. '@', '%') that would break f-string URL interpolation.
     global connection_string
-    connection_string = f'{dialect}://{username}:{password}@{server}/{database}'
+    connection_string = URL.create(
+        drivername=dialect,
+        username=username,
+        password=password,
+        host=server,
+        database=database,
+    )
 
 # run on import
 init_status_db_defaults()
