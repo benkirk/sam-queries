@@ -13,13 +13,12 @@
                 {% endif %}
             </th>
             {% if show_usage %}
-            <th class="sortable-header" data-sort="numeric">Usage</th>
+            <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-usage">Usage %</th>
             {% endif %}
             <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-start">Start</th>
             <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-end">End</th>
             <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-duration">Dur<br><small class="fw-normal">(days)</small></th>
             <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-remaining">Left<br><small class="fw-normal">(days)</small></th>
-            <th>Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -50,23 +49,7 @@
                     {% endif %}
                 {% endif %}
             </td>
-            {% if show_usage %}
-            <td data-sort-value="{{ pct }}">
-                {% if project.get('total_used') is not none %}
-                <div class="progress progress-medium mb-1" style="min-width: 100px;">
-                    <div class="progress-bar {% if pct >= 90 %}bg-danger{% elif pct >= 75 %}bg-warning{% else %}bg-success{% endif %}"
-                         role="progressbar"
-                         style="width: {{ [pct, 100]|min }}%">
-                        {{ pct | fmt_pct(decimals=0) }}
-                    </div>
-                </div>
-                <small class="text-muted">{{ project['total_used'] | fmt_number }} used</small>
-                {% else %}
-                <span class="text-muted small">N/A</span>
-                {% endif %}
-            </td>
-            {% endif %}
-            {# ── Duration progress bar ─────────────────────────────────────────── #}
+            {# ── Duration / usage variables ────────────────────────────────────── #}
             {% set sd = project['start_date'] %}
             {% set ed = project['end_date'] %}
             {% set dd = project['duration_days'] %}
@@ -93,6 +76,51 @@
             {% else %}
                 {% set elapsed_pct = 0 %}{% set bar_state = 'no-duration' %}
             {% endif %}
+            {% if show_usage %}
+            {# ── Combined usage + date cell (colspan=5) ────────────────────────── #}
+            <td colspan="5" style="min-width:280px; padding:4px 8px;"
+                data-sort-usage="{{ pct }}"
+                data-sort-start="{{ sort_start }}"
+                data-sort-end="{{ sort_end }}"
+                data-sort-duration="{{ sort_duration }}"
+                data-sort-remaining="{{ sort_remaining }}">
+                {% if project.get('total_used') is not none %}
+                    {% if bar_state != 'no-dates' %}
+                    <div class="d-flex justify-content-between small mb-1">
+                        <small class="text-muted">{{ sd | fmt_date if sd else '?' }}</small>
+                        <small>
+                            {% if bar_state == 'expired' %}<span class="badge bg-secondary" style="font-size:.7em;">Expired</span>
+                            {% elif bar_state == 'open-ended' %}<span class="badge bg-info text-dark" style="font-size:.7em;">Open-ended</span>
+                            {% elif bar_state == 'active' %}<span class="text-muted">{{ sort_remaining }}d left</span>
+                            {% endif %}
+                        </small>
+                        <small class="text-muted">{% if ed %}{{ ed | fmt_date }}{% elif open_ended %}∞{% else %}?{% endif %}</small>
+                    </div>
+                    {% endif %}
+                    <div class="position-relative">
+                        <div class="progress progress-large">
+                            <div class="progress-bar {% if pct >= 90 %}bg-danger{% elif pct >= 75 %}bg-warning{% else %}bg-success{% endif %}"
+                                 role="progressbar"
+                                 style="width: {{ [pct, 100]|min }}%">
+                                {{ pct | fmt_pct(decimals=0) }}
+                            </div>
+                        </div>
+                        {% if bar_state == 'active' %}
+                        <div class="position-absolute"
+                             style="left: {{ elapsed_pct }}%; top: -2px; bottom: -2px; width: 2px; background: rgba(33,37,41,0.55); z-index: 2; pointer-events: none;"
+                             title="{{ elapsed_pct | fmt_pct }} of allocation period elapsed"></div>
+                        {% endif %}
+                    </div>
+                    <div class="d-flex justify-content-between small mt-1">
+                        <span class="text-warning">{{ project['total_used'] | fmt_number }} used</span>
+                        <span class="text-success">{{ (project['total_amount'] - project['total_used']) | fmt_number }} remaining</span>
+                    </div>
+                {% else %}
+                <span class="text-muted small">No usage data</span>
+                {% endif %}
+            </td>
+            {% else %}
+            {# ── Date-only cell (colspan=4) ────────────────────────────────────── #}
             <td colspan="4" style="min-width:260px; padding:4px 8px;"
                 data-sort-start="{{ sort_start }}"
                 data-sort-end="{{ sort_end }}"
@@ -117,16 +145,7 @@
                     </div>
                 {% endif %}
             </td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary"
-                        title="View usage details"
-                        data-bs-toggle="modal" data-bs-target="#usageModal"
-                        hx-get="{{ url_for('allocations_dashboard.usage_modal', projcode=project['projcode'], resource=resource) }}?active_at={{ active_at }}"
-                        hx-target="#usageModalBody"
-                        hx-swap="innerHTML">
-                    <i class="fas fa-eye"></i>
-                </button>
-            </td>
+            {% endif %}
         </tr>
         {% endfor %}
     </tbody>
