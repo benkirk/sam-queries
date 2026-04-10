@@ -14,6 +14,7 @@
             </th>
             {% if show_usage %}
             <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-usage">Usage %</th>
+            <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-alloc-remaining">Alloc<br><small class="fw-normal">remaining</small></th>
             {% endif %}
             <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-start">Start</th>
             <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-end">End</th>
@@ -78,8 +79,9 @@
             {% endif %}
             {% if show_usage %}
             {# ── Combined usage + date cell (colspan=5) ────────────────────────── #}
-            <td colspan="5" style="min-width:280px; padding:4px 8px;"
+            <td colspan="6" style="min-width:280px; padding:4px 8px;"
                 data-sort-usage="{{ pct }}"
+                data-sort-alloc-remaining="{{ (project['total_amount'] - project['total_used']) if project.get('total_used') is not none else 0 }}"
                 data-sort-start="{{ sort_start }}"
                 data-sort-end="{{ sort_end }}"
                 data-sort-duration="{{ sort_duration }}"
