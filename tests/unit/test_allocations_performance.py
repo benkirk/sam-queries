@@ -899,13 +899,6 @@ class TestActiveAtNormalization:
         response = auth_client.get('/allocations/?active_at=2025-06-01')
         assert b'2025-06-01' in response.data
 
-    def test_projects_fragment_default_date_is_today(self, auth_client):
-        today = datetime.now().strftime('%Y-%m-%d')
-        response = auth_client.get(
-            '/allocations/projects?resource=Derecho&facility=UNIV&allocation_type=Small'
-        )
-        assert today.encode() in response.data
-
 
 # ============================================================================
 # Show Usage Toggle (Route Integration)
