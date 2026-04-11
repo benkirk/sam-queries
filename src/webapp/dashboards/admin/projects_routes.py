@@ -465,6 +465,6 @@ def htmx_project_create():
 
     return htmx_success(
         'dashboards/admin/fragments/project_create_success_htmx.html',
-        {'closeActiveModal': {}, 'loadNewProject': {'projcode': project.projcode}},
+        {'closeActiveModal': {}, 'loadNewProject': project.projcode},
         project=project,
     )
