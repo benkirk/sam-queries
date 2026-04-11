@@ -532,13 +532,19 @@ def htmx_allocation_type_edit(allocation_type_id):
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_allocation_type_create_form():
     """Return the allocation type create form fragment (loaded into modal)."""
-    from sam.resources.facilities import Panel
+    from sam.resources.facilities import Facility
 
-    panels = db.session.query(Panel).filter(Panel.is_active).order_by(Panel.panel_name).all()
+    facilities = (
+        db.session.query(Facility)
+        .filter(Facility.is_active)
+        .order_by(Facility.facility_name)
+        .all()
+    )
 
     return render_template(
         'dashboards/admin/fragments/create_allocation_type_form_htmx.html',
-        panels=panels,
+        facilities=facilities,
+        panels_for_facility=[],
     )
 
 
@@ -548,11 +554,12 @@ def htmx_allocation_type_create_form():
 def htmx_allocation_type_create():
     """Create a new allocation type."""
     from sam.accounting.allocations import AllocationType
-    from sam.resources.facilities import Panel
+    from sam.resources.facilities import Facility, Panel
 
     errors = []
 
     allocation_type_name = request.form.get('allocation_type', '').strip()
+    facility_id_str = request.form.get('facility_id', '').strip()
     panel_id_str = request.form.get('panel_id', '').strip()
     amount_str = request.form.get('default_allocation_amount', '').strip()
     fair_share_str = request.form.get('fair_share_percentage', '').strip()
@@ -560,8 +567,13 @@ def htmx_allocation_type_create():
     if not allocation_type_name:
         errors.append('Allocation type name is required.')
 
+    if not facility_id_str:
+        errors.append('Facility is required.')
+
     panel_id = None
-    if panel_id_str:
+    if not panel_id_str:
+        errors.append('Panel is required.')
+    else:
         try:
             panel_id = int(panel_id_str)
         except ValueError:
@@ -586,10 +598,27 @@ def htmx_allocation_type_create():
             errors.append('Fair share percentage must be a number.')
 
     def _reload_form(extra_errors=None):
-        panels = db.session.query(Panel).filter(Panel.is_active).order_by(Panel.panel_name).all()
+        facilities = (
+            db.session.query(Facility)
+            .filter(Facility.is_active)
+            .order_by(Facility.facility_name)
+            .all()
+        )
+        panels_for_facility = []
+        if facility_id_str:
+            try:
+                panels_for_facility = (
+                    db.session.query(Panel)
+                    .filter(Panel.facility_id == int(facility_id_str), Panel.is_active)
+                    .order_by(Panel.panel_name)
+                    .all()
+                )
+            except (ValueError, TypeError):
+                pass
         return render_template(
             'dashboards/admin/fragments/create_allocation_type_form_htmx.html',
-            panels=panels,
+            facilities=facilities,
+            panels_for_facility=panels_for_facility,
             errors=(extra_errors or []) + errors,
             form=request.form,
         )

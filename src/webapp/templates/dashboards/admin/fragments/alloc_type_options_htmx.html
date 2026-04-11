@@ -1,0 +1,8 @@
+{# htmx: <option> elements for the Allocation Type select, filtered by panel #}
+<option value="">— None —</option>
+{% for at in alloc_types %}
+<option value="{{ at.allocation_type_id }}"
+    {% if selected_id and selected_id == at.allocation_type_id %}selected{% endif %}>
+    {{ at.allocation_type }}
+</option>
+{% endfor %}

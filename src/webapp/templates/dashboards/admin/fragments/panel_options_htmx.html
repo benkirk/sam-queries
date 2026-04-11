@@ -1,0 +1,8 @@
+{# htmx: <option> elements for the Panel select, filtered by facility #}
+<option value="">— Select —</option>
+{% for panel in panels %}
+<option value="{{ panel.panel_id }}"
+    {% if selected_id and selected_id == panel.panel_id %}selected{% endif %}>
+    {{ panel.panel_name }}{% if panel.description %} — {{ panel.description }}{% endif %}
+</option>
+{% endfor %}

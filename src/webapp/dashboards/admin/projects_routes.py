@@ -21,11 +21,16 @@ from .blueprint import bp
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _project_form_data() -> dict:
-    """Load form option lists shared by create (and later edit) forms."""
+def _project_form_data(form=None) -> dict:
+    """Load form option lists shared by create (and later edit) forms.
+
+    When *form* is provided (a re-render after validation errors) the
+    panel and alloc-type lists are pre-filtered so the selects repopulate
+    without requiring an htmx round-trip.
+    """
     from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
     from sam.accounting.allocations import AllocationType
-    from sam.resources.facilities import Facility
+    from sam.resources.facilities import Facility, Panel
     from sam.core.organizations import MnemonicCode
 
     areas = (
@@ -37,11 +42,6 @@ def _project_form_data() -> dict:
     aoi_groups = (
         db.session.query(AreaOfInterestGroup)
         .order_by(AreaOfInterestGroup.name)
-        .all()
-    )
-    alloc_types = (
-        db.session.query(AllocationType)
-        .order_by(AllocationType.allocation_type)
         .all()
     )
     facilities = (
@@ -56,12 +56,41 @@ def _project_form_data() -> dict:
         .order_by(MnemonicCode.code)
         .all()
     )
+
+    # Pre-populate dependent selects on error re-render
+    panels_for_facility = []
+    alloc_types_for_panel = []
+    if form:
+        fac_id_str = form.get('facility_id', '').strip()
+        pan_id_str = form.get('panel_id', '').strip()
+        if fac_id_str:
+            try:
+                panels_for_facility = (
+                    db.session.query(Panel)
+                    .filter(Panel.facility_id == int(fac_id_str), Panel.is_active)
+                    .order_by(Panel.panel_name)
+                    .all()
+                )
+            except (ValueError, TypeError):
+                pass
+        if pan_id_str:
+            try:
+                alloc_types_for_panel = (
+                    db.session.query(AllocationType)
+                    .filter(AllocationType.panel_id == int(pan_id_str), AllocationType.is_active)
+                    .order_by(AllocationType.allocation_type)
+                    .all()
+                )
+            except (ValueError, TypeError):
+                pass
+
     return dict(
         areas=areas,
         aoi_groups=aoi_groups,
-        alloc_types=alloc_types,
         facilities=facilities,
         mnemonics=mnemonics,
+        panels_for_facility=panels_for_facility,
+        alloc_types_for_panel=alloc_types_for_panel,
     )
 
 
@@ -78,6 +107,129 @@ def htmx_project_create_form():
     return render_template(
         'dashboards/admin/fragments/create_project_form_htmx.html',
         **_project_form_data(),
+    )
+
+
+@bp.route('/htmx/panels-for-facility')
+@login_required
+@require_permission(Permission.CREATE_PROJECTS)
+def htmx_panels_for_facility():
+    """Return <option> elements for the Panel select, filtered by facility.
+
+    Called via hx-get when the Facility select changes.
+    """
+    from sam.resources.facilities import Panel
+
+    facility_id_str = request.args.get('facility_id', '').strip()
+    if not facility_id_str:
+        return '<option value="">— Select facility first —</option>'
+    try:
+        panels = (
+            db.session.query(Panel)
+            .filter(Panel.facility_id == int(facility_id_str), Panel.is_active)
+            .order_by(Panel.panel_name)
+            .all()
+        )
+    except (ValueError, TypeError):
+        return '<option value="">— Select facility first —</option>'
+
+    return render_template(
+        'dashboards/admin/fragments/panel_options_htmx.html',
+        panels=panels,
+        selected_id=None,
+    )
+
+
+@bp.route('/htmx/alloc-types-for-panel')
+@login_required
+@require_permission(Permission.CREATE_PROJECTS)
+def htmx_alloc_types_for_panel():
+    """Return <option> elements for the AllocationType select, filtered by panel.
+
+    Called via hx-get when the Panel select changes.
+    """
+    from sam.accounting.allocations import AllocationType
+
+    panel_id_str = request.args.get('panel_id', '').strip()
+    if not panel_id_str:
+        return '<option value="">— None —</option>'
+    try:
+        alloc_types = (
+            db.session.query(AllocationType)
+            .filter(AllocationType.panel_id == int(panel_id_str), AllocationType.is_active)
+            .order_by(AllocationType.allocation_type)
+            .all()
+        )
+    except (ValueError, TypeError):
+        return '<option value="">— None —</option>'
+
+    return render_template(
+        'dashboards/admin/fragments/alloc_type_options_htmx.html',
+        alloc_types=alloc_types,
+        selected_id=None,
+    )
+
+
+@bp.route('/htmx/org-search-for-project')
+@login_required
+@require_permission(Permission.CREATE_PROJECTS)
+def htmx_org_search_for_project():
+    """Search organizations for the project create form FK picker.
+
+    Returns an HTML fragment with .fk-search-result items whose click handler
+    (defined in the form template) sets the hidden ``organization_id`` input.
+    """
+    from sam.core.organizations import Organization
+
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return ''
+
+    orgs = (
+        db.session.query(Organization)
+        .filter(
+            Organization.is_active,
+            Organization.name.ilike(f'%{query}%') | Organization.acronym.ilike(f'%{query}%')
+        )
+        .order_by(Organization.name)
+        .limit(15)
+        .all()
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/org_search_results_fk_htmx.html',
+        orgs=orgs,
+    )
+
+
+@bp.route('/htmx/contract-search-for-project')
+@login_required
+@require_permission(Permission.CREATE_PROJECTS)
+def htmx_contract_search_for_project():
+    """Search contracts for the project create form FK picker.
+
+    Returns an HTML fragment with .fk-search-result items whose click handler
+    (defined in the form template) sets the hidden ``contract_id`` input.
+    """
+    from sam.projects.contracts import Contract
+
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return ''
+
+    contracts = (
+        db.session.query(Contract)
+        .filter(
+            Contract.contract_number.ilike(f'%{query}%') | Contract.title.ilike(f'%{query}%')
+        )
+        .order_by(Contract.contract_number)
+        .limit(10)
+        .all()
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/contract_search_results_fk_htmx.html',
+        contracts=contracts,
     )
 
 
@@ -140,9 +292,13 @@ def htmx_project_next_projcode():
 @require_permission(Permission.CREATE_PROJECTS)
 def htmx_project_create():
     """Validate form and create a new project."""
+    from datetime import datetime
     from sam.projects.projects import Project
     from sam.projects.areas import AreaOfInterest
+    from sam.projects.contracts import Contract, ProjectContract
     from sam.core.users import User
+    from sam.core.organizations import Organization, ProjectOrganization
+    from sam.resources.facilities import Facility, Panel
 
     errors = []
 
@@ -150,16 +306,38 @@ def htmx_project_create():
     projcode_raw = request.form.get('projcode', '').strip().upper()
     title = request.form.get('title', '').strip()
     abstract = request.form.get('abstract', '').strip() or None
+    facility_id_str = request.form.get('facility_id', '').strip()
+    panel_id_str = request.form.get('panel_id', '').strip()
     lead_id_str = request.form.get('project_lead_user_id', '').strip()
     admin_id_str = request.form.get('project_admin_user_id', '').strip()
     aoi_id_str = request.form.get('area_of_interest_id', '').strip()
     alloc_type_id_str = request.form.get('allocation_type_id', '').strip()
     parent_id_str = request.form.get('parent_id', '').strip()
+    contract_id_str = request.form.get('contract_id', '').strip()
+    org_id_str = request.form.get('organization_id', '').strip()
     charging_exempt = request.form.get('charging_exempt') == 'on'
     unix_gid_str = request.form.get('unix_gid', '').strip()
     ext_alias = request.form.get('ext_alias', '').strip() or None
 
     # ── Validation ──
+    if not facility_id_str:
+        errors.append('Facility is required.')
+    else:
+        try:
+            if not db.session.get(Facility, int(facility_id_str)):
+                errors.append('Selected facility does not exist.')
+        except ValueError:
+            errors.append('Invalid facility.')
+
+    if not panel_id_str:
+        errors.append('Panel is required.')
+    else:
+        try:
+            if not db.session.get(Panel, int(panel_id_str)):
+                errors.append('Selected panel does not exist.')
+        except ValueError:
+            errors.append('Invalid panel.')
+
     if not projcode_raw:
         errors.append('Project code is required.')
     elif not re.fullmatch(r'[A-Z0-9]{2,30}', projcode_raw):
@@ -219,6 +397,24 @@ def htmx_project_create():
         except ValueError:
             errors.append('Invalid parent project.')
 
+    contract_id = None
+    if contract_id_str:
+        try:
+            contract_id = int(contract_id_str)
+            if not db.session.get(Contract, contract_id):
+                errors.append('Selected contract does not exist.')
+        except ValueError:
+            errors.append('Invalid contract.')
+
+    organization_id = None
+    if org_id_str:
+        try:
+            organization_id = int(org_id_str)
+            if not db.session.get(Organization, organization_id):
+                errors.append('Selected organization does not exist.')
+        except ValueError:
+            errors.append('Invalid organization.')
+
     unix_gid = None
     if unix_gid_str:
         try:
@@ -229,7 +425,7 @@ def htmx_project_create():
     def _reload_form(extra_errors=None):
         return render_template(
             'dashboards/admin/fragments/create_project_form_htmx.html',
-            **_project_form_data(),
+            **_project_form_data(form=request.form),
             errors=(extra_errors or []) + errors,
             form=request.form,
         )
@@ -253,6 +449,17 @@ def htmx_project_create():
                 unix_gid=unix_gid,
                 ext_alias=ext_alias,
             )
+            if contract_id:
+                db.session.add(ProjectContract(
+                    project_id=project.project_id,
+                    contract_id=contract_id,
+                ))
+            if organization_id:
+                db.session.add(ProjectOrganization(
+                    project_id=project.project_id,
+                    organization_id=organization_id,
+                    start_date=datetime.now(),
+                ))
     except Exception as e:
         return _reload_form([f'Error creating project: {e}'])
 
