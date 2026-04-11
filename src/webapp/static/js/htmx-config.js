@@ -82,6 +82,13 @@ document.body.addEventListener('loadNewProject', function(evt) {
     }
 });
 
+// Update the Project Details modal title from the projcode in the loaded response.
+// The project_details_modal route fires this via HX-Trigger on every response.
+document.body.addEventListener('setModalTitle', function(evt) {
+    var el = document.getElementById('projectDetailsModalTitle');
+    if (el) el.textContent = evt.detail.value;
+});
+
 // Reload the user card after an exemption change.
 // Base URL is read from a data-reload-url attribute on the container.
 document.body.addEventListener('reloadUserCard', function(evt) {

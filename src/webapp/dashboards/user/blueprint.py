@@ -291,7 +291,6 @@ def tree_fragment(projcode):
             projcode_html = (
                 f'<button class="btn btn-link p-0" title="View project details"'
                 f" onclick=\"event.stopPropagation();"
-                f" var _t=document.getElementById('projectDetailsModalTitle');if(_t)_t.textContent='Project Details \u2014 {node.projcode}';"
                 f" htmx.ajax('GET', '{detail_url}', {{target: '#projectDetailsModalBody', swap: 'innerHTML'}});"
                 f" bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();\">"
                 f'<strong>{node.projcode}</strong></button>'
@@ -342,13 +341,16 @@ def project_details_modal(projcode):
     # Get full project data
     project_data = get_project_dashboard_data(db.session, projcode)
 
-    return render_template(
+    import json
+    resp = make_response(render_template(
         'dashboards/user/partials/project_details_modal.html',
         project_data=project_data,
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
-    )
+    ))
+    resp.headers['HX-Trigger'] = json.dumps({'setModalTitle': f'Project Details \u2014 {projcode}'})
+    return resp
 
 
 # ============================================================================
