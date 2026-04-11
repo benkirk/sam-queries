@@ -256,8 +256,8 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
             'total_projects': 0
         }
 
-    # Get active projects
-    projects = user.active_projects()
+    # Get active projects, sorted by project code for consistent display order
+    projects = sorted(user.active_projects(), key=lambda p: p.projcode)
 
     # Build project data using helper function to avoid code duplication
     project_data_list = []

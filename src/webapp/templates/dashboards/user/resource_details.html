@@ -185,7 +185,7 @@
 {% block content %}
 <div class="back-link mb-3">
     <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-arrow-left"></i> Back to Dashboard
+        <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Dashboard</span>
     </a>
 </div>
 
@@ -301,25 +301,34 @@
 {# Recursive macro — mimics the existing tree-list style from the project card #}
 {% macro render_tree_node(node) %}
 {% set is_selected = (node.projcode == scope) %}
+{% set is_clickable = node.subtree_charges > 0 %}
 {% set node_url = url_for('user_dashboard.resource_details',
                            projcode=projcode, resource=resource_name,
                            scope=node.projcode,
                            start_date=start_date, end_date=end_date) %}
 <li style="{{ 'background: #fff3cd; border-left-color: #ffc107; font-weight: bold;' if is_selected else '' }}">
+    {% if is_clickable %}
     <a href="{{ node_url }}" class="d-flex align-items-center gap-2 text-decoration-none text-body">
+    {% else %}
+    <span class="d-flex align-items-center gap-2 text-muted" style="cursor: default;" title="No {{ resource_name }} usage">
+    {% endif %}
         {% if is_selected %}
         <i class="fas fa-arrow-right text-warning me-1 flex-shrink-0"></i>
         {% endif %}
         <strong>{{ node.projcode }}</strong>
         {% if node.title %}
-        <span class="text-muted fw-normal text-truncate" style="max-width: 35ch;">- {{ node.title }}</span>
+        <span class="{% if is_clickable %}text-muted{% endif %} fw-normal text-truncate" style="max-width: 35ch;">- {{ node.title }}</span>
         {% endif %}
         {% if node.subtree_charges > 0 %}
         <span class="badge {{ 'bg-warning text-dark' if is_selected else 'bg-secondary' }} ms-auto flex-shrink-0">
             {{ node.subtree_charges | fmt_number }}
         </span>
         {% endif %}
+    {% if is_clickable %}
     </a>
+    {% else %}
+    </span>
+    {% endif %}
     {% if node.children %}
     <ul class="tree-list">
         {% for child in node.children %}
