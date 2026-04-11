@@ -291,6 +291,7 @@ def tree_fragment(projcode):
             projcode_html = (
                 f'<button class="btn btn-link p-0" title="View project details"'
                 f" onclick=\"event.stopPropagation();"
+                f" document.getElementById('projectDetailsModalTitle').textContent = 'Project Details \u2014 {node.projcode}';"
                 f" htmx.ajax('GET', '{detail_url}', {{target: '#projectDetailsModalBody', swap: 'innerHTML'}});"
                 f" bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();\">"
                 f'<strong>{node.projcode}</strong></button>'
