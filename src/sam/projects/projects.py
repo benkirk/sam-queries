@@ -294,6 +294,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         # Set tree coordinates (also sets tree_root and shifts siblings)
         project._ns_place_in_tree(session, parent)
 
+        # Create sequential project number (mirrors legacy SAM createProjectNumber())
+        pn = ProjectNumber(project_id=project.project_id)
+        session.add(pn)
+        session.flush()
+
         return project
 
     # # Active account users (filtered join)
