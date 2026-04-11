@@ -50,6 +50,7 @@ distclean: ## Clean everything including conda-env/
 	conda env create --file $< --prefix $@ && \
 	conda activate ./$@ && \
 	pip install -e ".[test]" && \
+	pip install 'hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git' && \
 	pipdeptree --all 2>/dev/null || true
 
 solve-%: %.yaml ## Dry-run solve for conda environment
