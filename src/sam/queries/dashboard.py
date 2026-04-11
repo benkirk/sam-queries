@@ -30,6 +30,7 @@ from sam.summaries.dav_summaries import DavChargeSummary
 from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
 from sam.queries.charges import get_adjustment_totals_by_date
+from sam.queries.rolling_usage import get_project_rolling_usage
 
 
 # ============================================================================
@@ -53,6 +54,9 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
     usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
 
     now = datetime.now()
+
+    # Fetch rolling window usage (30d/90d) for all HPC/DAV resources in one call
+    rolling_usage = get_project_rolling_usage(project.session, project.projcode)
 
     for resource_name, usage in usage_data.items():
         start_date = usage.get('start_date')
@@ -87,6 +91,7 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
                 elapsed_pct = 0
                 bar_state   = 'no-duration'
 
+        rwin = rolling_usage.get(resource_name, {}).get('windows', {})
         resources.append({
             'resource_name': resource_name,
             'allocation_id': usage.get('allocation_id'),  # Required for edit functionality
@@ -106,6 +111,9 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
             'date_group_key': date_group_key,
             'elapsed_pct': elapsed_pct,
             'bar_state': bar_state,
+            'resource_type': usage.get('resource_type', 'HPC'),
+            'rolling_30': rwin.get(30),
+            'rolling_90': rwin.get(90),
         })
 
     return resources
@@ -248,8 +256,8 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
             'total_projects': 0
         }
 
-    # Get active projects
-    projects = user.active_projects()
+    # Get active projects, sorted by project code for consistent display order
+    projects = sorted(user.active_projects(), key=lambda p: p.projcode)
 
     # Build project data using helper function to avoid code duplication
     project_data_list = []
@@ -273,7 +281,8 @@ def get_resource_detail_data(
     resource_name: str,
     start_date: datetime,
     end_date: datetime,
-    include_adjustments: bool = True
+    include_adjustments: bool = True,
+    scope_projcode: Optional[str] = None,
 ) -> Optional[Dict]:
     """
     Get resource usage details for charts and summary display.
@@ -283,12 +292,18 @@ def get_resource_detail_data(
 
     Args:
         session: SQLAlchemy session
-        projcode: Project code
+        projcode: Root project code (determines allocation / Resource Summary card)
         resource_name: Resource name (e.g., 'Derecho', 'GLADE')
         start_date: Start of date range
         end_date: End of date range
         include_adjustments: If True (default), include manual charge adjustments
                              in both the resource_summary and daily_charges data.
+        scope_projcode: Optional project code for scoping daily charges. When
+                        provided (and different from projcode), the daily charge
+                        trend uses this project's MPTT subtree. When the scope
+                        project has children, subtree aggregation is used; when
+                        it is a leaf, only its direct charges are included.
+                        Defaults to projcode (root — include all descendants).
 
     Returns:
         Dictionary with structure:
@@ -346,76 +361,166 @@ def get_resource_detail_data(
             'status': 'No Allocation'
         }
 
-    # Get account for this project+resource
-    account = Account.get_by_project_and_resource(
-        session,
-        project.project_id,
-        resource.resource_id,
-        exclude_deleted=True
-    )
-
-    if not account:
-        return {
-            'project': project,
-            'resource': resource,
-            'resource_summary': resource_summary,
-            'daily_charges': { 'dates': None, 'values': None }
-        }
-
     # Determine resource type to query appropriate tables
     resource_type = resource.resource_type.resource_type if resource.resource_type else 'HPC'
 
-    results = None
+    # Resolve the scope project (controls daily charge aggregation)
+    if scope_projcode and scope_projcode != projcode:
+        scope_proj = Project.get_by_projcode(session, scope_projcode)
+        if not scope_proj:
+            scope_proj = project
+    else:
+        scope_proj = project  # default: root project = include all descendants
 
-    # Query appropriate charges
-    if resource_type in  [ 'HPC', 'DAV' ]:
-        results = session.query(
-            CompChargeSummary.activity_date,
-            func.sum(CompChargeSummary.charges).label('charges')
-        ).filter(
-            CompChargeSummary.account_id == account.account_id,
-            CompChargeSummary.activity_date >= start_date,
-            CompChargeSummary.activity_date <= end_date
-        ).group_by(CompChargeSummary.activity_date).all()
+    # Use subtree MPPT when the scope project has children and valid tree coords
+    use_subtree = bool(
+        scope_proj.has_children
+        and scope_proj.tree_root
+        and scope_proj.tree_left
+        and scope_proj.tree_right
+    )
 
-    # Query disk charges
-    if resource_type == 'DISK':
-        results = session.query(
-            DiskChargeSummary.activity_date,
-            func.sum(DiskChargeSummary.charges).label('charges')
-        ).filter(
-            DiskChargeSummary.account_id == account.account_id,
-            DiskChargeSummary.activity_date >= start_date,
-            DiskChargeSummary.activity_date <= end_date
-        ).group_by(DiskChargeSummary.activity_date).all()
+    if use_subtree:
+        # Use MPPT join pattern (same as Project.get_subtree_charges) to aggregate
+        # daily charges across this project and all descendants.
+        results = None
+        if resource_type in ('HPC', 'DAV'):
+            results = session.query(
+                CompChargeSummary.activity_date,
+                func.sum(CompChargeSummary.charges).label('charges')
+            ).join(Account, CompChargeSummary.account_id == Account.account_id)\
+             .join(Project, Account.project_id == Project.project_id)\
+             .filter(
+                Project.tree_root == scope_proj.tree_root,
+                Project.tree_left  >= scope_proj.tree_left,
+                Project.tree_right <= scope_proj.tree_right,
+                Account.resource_id == resource.resource_id,
+                Account.deleted == False,
+                CompChargeSummary.activity_date >= start_date,
+                CompChargeSummary.activity_date <= end_date,
+            ).group_by(CompChargeSummary.activity_date).all()
 
-    # Query archive charges
-    if resource_type == 'ARCHIVE':
-        results = session.query(
-            ArchiveChargeSummary.activity_date,
-            func.sum(ArchiveChargeSummary.charges).label('charges')
-        ).filter(
-            ArchiveChargeSummary.account_id == account.account_id,
-            ArchiveChargeSummary.activity_date >= start_date,
-            ArchiveChargeSummary.activity_date <= end_date
-        ).group_by(ArchiveChargeSummary.activity_date).all()
+        elif resource_type == 'DISK':
+            results = session.query(
+                DiskChargeSummary.activity_date,
+                func.sum(DiskChargeSummary.charges).label('charges')
+            ).join(Account, DiskChargeSummary.account_id == Account.account_id)\
+             .join(Project, Account.project_id == Project.project_id)\
+             .filter(
+                Project.tree_root == scope_proj.tree_root,
+                Project.tree_left  >= scope_proj.tree_left,
+                Project.tree_right <= scope_proj.tree_right,
+                Account.resource_id == resource.resource_id,
+                Account.deleted == False,
+                DiskChargeSummary.activity_date >= start_date,
+                DiskChargeSummary.activity_date <= end_date,
+            ).group_by(DiskChargeSummary.activity_date).all()
 
-    daily_map = {}
-    for row in results:
-        d = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
-        daily_map[d] = daily_map.get(d, 0.0) + float(row.charges or 0.0)
+        elif resource_type == 'ARCHIVE':
+            results = session.query(
+                ArchiveChargeSummary.activity_date,
+                func.sum(ArchiveChargeSummary.charges).label('charges')
+            ).join(Account, ArchiveChargeSummary.account_id == Account.account_id)\
+             .join(Project, Account.project_id == Project.project_id)\
+             .filter(
+                Project.tree_root == scope_proj.tree_root,
+                Project.tree_left  >= scope_proj.tree_left,
+                Project.tree_right <= scope_proj.tree_right,
+                Account.resource_id == resource.resource_id,
+                Account.deleted == False,
+                ArchiveChargeSummary.activity_date >= start_date,
+                ArchiveChargeSummary.activity_date <= end_date,
+            ).group_by(ArchiveChargeSummary.activity_date).all()
 
-    if include_adjustments:
-        for d, amount in get_adjustment_totals_by_date(
-            session, [account.account_id], start_date, end_date
-        ).items():
-            daily_map[d] = daily_map.get(d, 0.0) + amount
+        daily_map = {}
+        if results:
+            for row in results:
+                d = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
+                daily_map[d] = daily_map.get(d, 0.0) + float(row.charges or 0.0)
+
+        if include_adjustments:
+            # Collect all subtree account IDs for adjustment lookup
+            subtree_account_ids = [
+                row.account_id for row in
+                session.query(Account.account_id)
+                .join(Project, Account.project_id == Project.project_id)
+                .filter(
+                    Project.tree_root == scope_proj.tree_root,
+                    Project.tree_left  >= scope_proj.tree_left,
+                    Project.tree_right <= scope_proj.tree_right,
+                    Account.resource_id == resource.resource_id,
+                    Account.deleted == False,
+                ).all()
+            ]
+            if subtree_account_ids:
+                for d, amount in get_adjustment_totals_by_date(
+                    session, subtree_account_ids, start_date, end_date
+                ).items():
+                    daily_map[d] = daily_map.get(d, 0.0) + amount
+
+    else:
+        # Single-account path: use the scope project's account (may differ from root)
+        account = Account.get_by_project_and_resource(
+            session,
+            scope_proj.project_id,
+            resource.resource_id,
+            exclude_deleted=True
+        )
+
+        if not account:
+            return {
+                'project': project,
+                'resource': resource,
+                'resource_summary': resource_summary,
+                'daily_charges': { 'dates': None, 'values': None }
+            }
+
+        results = None
+
+        if resource_type in ('HPC', 'DAV'):
+            results = session.query(
+                CompChargeSummary.activity_date,
+                func.sum(CompChargeSummary.charges).label('charges')
+            ).filter(
+                CompChargeSummary.account_id == account.account_id,
+                CompChargeSummary.activity_date >= start_date,
+                CompChargeSummary.activity_date <= end_date
+            ).group_by(CompChargeSummary.activity_date).all()
+
+        elif resource_type == 'DISK':
+            results = session.query(
+                DiskChargeSummary.activity_date,
+                func.sum(DiskChargeSummary.charges).label('charges')
+            ).filter(
+                DiskChargeSummary.account_id == account.account_id,
+                DiskChargeSummary.activity_date >= start_date,
+                DiskChargeSummary.activity_date <= end_date
+            ).group_by(DiskChargeSummary.activity_date).all()
+
+        elif resource_type == 'ARCHIVE':
+            results = session.query(
+                ArchiveChargeSummary.activity_date,
+                func.sum(ArchiveChargeSummary.charges).label('charges')
+            ).filter(
+                ArchiveChargeSummary.account_id == account.account_id,
+                ArchiveChargeSummary.activity_date >= start_date,
+                ArchiveChargeSummary.activity_date <= end_date
+            ).group_by(ArchiveChargeSummary.activity_date).all()
+
+        daily_map = {}
+        if results:
+            for row in results:
+                d = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
+                daily_map[d] = daily_map.get(d, 0.0) + float(row.charges or 0.0)
+
+        if include_adjustments:
+            for d, amount in get_adjustment_totals_by_date(
+                session, [account.account_id], start_date, end_date
+            ).items():
+                daily_map[d] = daily_map.get(d, 0.0) + amount
 
     sorted_dates = sorted(daily_map.keys())
-    dates = sorted_dates
-    values = [daily_map[d] for d in sorted_dates]
-
-    daily_charges = { 'dates': dates, 'values': values }
+    daily_charges = { 'dates': sorted_dates, 'values': [daily_map[d] for d in sorted_dates] }
 
     return {
         'project': project,

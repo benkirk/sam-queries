@@ -21,7 +21,7 @@ source ${TOP_DIR}/etc/config_env.sh
 case "${NCAR_HOST}" in
     "casper")
         machine="${NCAR_HOST}"
-        args="--once"
+        args="--derecho --casper --jupyterhub --once"
         ;;
     "derecho")
         machine="${NCAR_HOST}"

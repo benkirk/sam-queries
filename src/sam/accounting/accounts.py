@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class Account(Base, SoftDeleteMixin):
+class Account(Base, SoftDeleteMixin, SessionMixin):
     """Billing accounts linking projects to resources."""
     __tablename__ = 'account'
 
@@ -82,6 +82,28 @@ class Account(Base, SoftDeleteMixin):
             query = query.filter(cls.deleted == False)
 
         return query.first()
+
+    _SENTINEL = object()
+
+    def update_thresholds(self, *, first_threshold=_SENTINEL, second_threshold=_SENTINEL):
+        """
+        Update rolling consumption rate thresholds.
+
+        Pass None to clear a threshold; omit a keyword argument to leave it unchanged.
+
+        Args:
+            first_threshold: 30-day window threshold percentage (int > 100, or None to clear)
+            second_threshold: 90-day window threshold percentage (int > 100, or None to clear)
+
+        Returns:
+            self
+        """
+        if first_threshold is not Account._SENTINEL:
+            self.first_threshold = first_threshold
+        if second_threshold is not Account._SENTINEL:
+            self.second_threshold = second_threshold
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.project.projcode if self.project else None} - {self.resource.resource_name if self.resource else None}"

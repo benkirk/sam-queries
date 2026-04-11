@@ -15,11 +15,14 @@ from webapp.api.helpers import parse_input_end_date
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
+from sam.queries.rolling_usage import get_project_rolling_usage
 from sam.queries.users import get_users_on_project
-from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project
+from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project, get_charges_by_projcode
 from sam.queries.lookups import find_project_by_code
 from sam.projects.projects import Project
-from webapp.utils.project_permissions import can_manage_project_members, can_change_admin
+from webapp.utils.project_permissions import (
+    can_manage_project_members, can_change_admin, can_edit_consumption_threshold
+)
 from webapp.utils.rbac import require_permission, Permission, has_permission
 from ..charts import generate_usage_timeseries_matplotlib
 
@@ -99,30 +102,102 @@ def resource_details():
         flash('Invalid date format. Please use YYYY-MM-DD.', 'error')
         return redirect(url_for('user_dashboard.index'))
 
-    # Fetch resource detail data
+    # Fetch 30d/90d rolling window usage (HPC/DAV only; None for DISK/ARCHIVE)
+    rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
+    rolling_windows = rolling_usage.get(resource_name, {}).get('windows', {})
+    rolling_30 = rolling_windows.get(30)
+    rolling_90 = rolling_windows.get(90)
+
+    # Load root project
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        flash(f'Project {projcode} not found', 'error')
+        return redirect(url_for('user_dashboard.index'))
+
+    can_edit_threshold = can_edit_consumption_threshold(current_user, project)
+    has_children = bool(project.has_children)
+
+    # Scope: which tree node's subtree the analysis cards aggregate.
+    # Defaults to the root projcode (show everything); clicking tree nodes sets scope=<child>.
+    scope = request.args.get('scope', projcode)
+
+    # Validate scope belongs to this project's tree; fall back to root if not
+    if scope != projcode:
+        scope_project = Project.get_by_projcode(db.session, scope)
+        if not scope_project or scope_project.tree_root != project.tree_root:
+            scope = projcode
+            scope_project = project
+    else:
+        scope_project = project
+
+    scope_has_children = bool(scope_project.has_children)
+
+    # All projcodes covered by the selected scope (for user/daily breakdown queries)
+    if scope_has_children:
+        all_projcodes = [p.projcode for p in scope_project.get_descendants(include_self=True)]
+    else:
+        all_projcodes = [scope]
+
+    # Fetch resource detail data; scope controls which subtree the daily trend uses
     detail_data = get_resource_detail_data(
         db.session,
         projcode,
         resource_name,
         start_date,
-        end_date
+        end_date,
+        scope_projcode=scope,
     )
 
     if not detail_data:
         flash(f'Project {projcode} or resource {resource_name} not found', 'error')
         return redirect(url_for('user_dashboard.index'))
 
-    # Fetch enriched breakdown data (user+queue and daily+user+queue)
+    # Fetch enriched breakdown data for the current scope
     user_breakdown = get_user_queue_breakdown_for_project(
-        db.session, projcode, resource_name, start_date, end_date
+        db.session, all_projcodes, resource_name, start_date, end_date
     )
     daily_breakdown = get_daily_breakdown_for_project(
-        db.session, projcode, resource_name, start_date, end_date
+        db.session, all_projcodes, resource_name, start_date, end_date
     )
+
+    # Build annotated project tree (only needed when project has children)
+    tree_data = None
+    if has_children:
+        # Get the tree root (may differ from projcode if project itself is a sub-tree node)
+        tree_root = project.get_root() or project
+
+        # Query direct charges for every node in the full tree (one query)
+        all_tree_projcodes = [p.projcode for p in tree_root.get_descendants(include_self=True)]
+        direct_charges = get_charges_by_projcode(
+            db.session, all_tree_projcodes, resource_name, start_date, end_date
+        )
+
+        # Build nested dict — only active children; roll up subtree charge totals
+        def _build_node(node):
+            active_children = sorted(
+                [c for c in node.children if c.active],
+                key=lambda c: c.projcode
+            )
+            child_nodes = [_build_node(c) for c in active_children]
+            subtotal = direct_charges.get(node.projcode, 0.0) + sum(
+                c['subtree_charges'] for c in child_nodes
+            )
+            return {
+                'projcode': node.projcode,
+                'title': node.title,
+                'direct_charges': direct_charges.get(node.projcode, 0.0),
+                'subtree_charges': subtotal,
+                'children': child_nodes,
+            }
+
+        tree_data = _build_node(tree_root)
 
     # Generate charts server-side
     usage_chart = generate_usage_timeseries_matplotlib(detail_data['daily_charges'])
-    #breakdown_chart = generate_charge_breakdown_bars(detail_data['charge_totals'])
+
+    # Extract allocation start date for the "Epoch" date picker preset
+    alloc_start = detail_data['resource_summary'].get('start_date')
+    alloc_start_date = alloc_start.strftime('%Y-%m-%d') if alloc_start else None
 
     return render_template(
         'dashboards/user/resource_details.html',
@@ -136,6 +211,13 @@ def resource_details():
         daily_breakdown=daily_breakdown,
         date_span_days=(end_date - start_date).days,
         usage_chart=usage_chart,
+        rolling_30=rolling_30,
+        rolling_90=rolling_90,
+        can_edit_threshold=can_edit_threshold,
+        has_children=has_children,
+        scope=scope,
+        tree_data=tree_data,
+        alloc_start_date=alloc_start_date,
     )
 
 
@@ -649,3 +731,137 @@ def htmx_change_admin(projcode):
         return f'<div class="alert alert-danger">{e}</div>', 400
 
     return _render_members_table(projcode, project)
+
+
+# ---------------------------------------------------------------------------
+# Rolling consumption rate threshold editing (htmx)
+# ---------------------------------------------------------------------------
+
+def _get_project_and_account(projcode, resource_name):
+    """Return (project, account) for a given project code and resource name.
+
+    Returns (None, None) if the project is not found.
+    Returns (project, None) if no matching account exists.
+    """
+    from sam import Account
+    from sam.resources.resources import Resource
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return None, None
+
+    account = (
+        db.session.query(Account)
+        .join(Account.resource)
+        .filter(Account.project_id == project.project_id)
+        .filter(Resource.resource_name == resource_name)
+        .filter(Account.deleted == False)
+        .first()
+    )
+    return project, account
+
+
+@bp.route('/htmx/rolling-section/<projcode>/<resource_name>')
+@login_required
+def htmx_rolling_section(projcode, resource_name):
+    """
+    Return the re-rendered Rolling Consumption Rate section fragment.
+
+    Used by the threshold form's cancel button and after a successful save
+    to restore / refresh the rolling section without a full page reload.
+    """
+    project, _ = _get_project_and_account(projcode, resource_name)
+    if not project:
+        return '<div class="alert alert-danger">Project not found</div>', 404
+
+    rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
+    windows = rolling_usage.get(resource_name, {}).get('windows', {})
+
+    return render_template(
+        'dashboards/user/fragments/rolling_rate_htmx.html',
+        projcode=projcode,
+        resource_name=resource_name,
+        rolling_30=windows.get(30),
+        rolling_90=windows.get(90),
+        can_edit_threshold=can_edit_consumption_threshold(current_user, project),
+    )
+
+
+@bp.route('/htmx/threshold-form/<projcode>/<resource_name>/<int:window>')
+@login_required
+def htmx_threshold_form(projcode, resource_name, window):
+    """
+    Return an inline threshold edit form for a specific rolling window.
+
+    The form replaces the Add/Edit button via hx-target="this" hx-swap="outerHTML".
+    window must be 30 or 90.
+    """
+    project, account = _get_project_and_account(projcode, resource_name)
+    if not project or not can_edit_consumption_threshold(current_user, project):
+        return '<span class="text-danger small">Unauthorized</span>', 403
+
+    current = account.first_threshold if window == 30 else account.second_threshold
+
+    return render_template(
+        'dashboards/user/fragments/threshold_form_htmx.html',
+        projcode=projcode,
+        resource_name=resource_name,
+        window=window,
+        current_threshold=current,
+        error=None,
+    )
+
+
+@bp.route('/htmx/threshold/<projcode>/<resource_name>/<int:window>', methods=['POST'])
+@login_required
+def htmx_save_threshold(projcode, resource_name, window):
+    """
+    Save a rolling consumption rate threshold for one window (30 or 90 days).
+
+    Accepts form field: threshold_pct (integer > 100, or empty to clear).
+    Returns the re-rendered rolling section on success, or the form with an
+    error message on validation failure.
+    """
+    from sam.manage import management_transaction
+
+    project, account = _get_project_and_account(projcode, resource_name)
+    if not project or not can_edit_consumption_threshold(current_user, project):
+        return '<div class="alert alert-danger">Unauthorized</div>', 403
+    if not account:
+        return '<div class="alert alert-danger">Account not found for this resource</div>', 404
+
+    raw = request.form.get('threshold_pct', '').strip()
+    if raw == '':
+        new_val = None
+    else:
+        try:
+            new_val = int(raw)
+            if new_val <= 100:
+                raise ValueError
+        except ValueError:
+            return render_template(
+                'dashboards/user/fragments/threshold_form_htmx.html',
+                projcode=projcode,
+                resource_name=resource_name,
+                window=window,
+                current_threshold=raw,
+                error='Must be an integer greater than 100, or leave blank to remove the limit.',
+            )
+
+    with management_transaction(db.session):
+        if window == 30:
+            account.update_thresholds(first_threshold=new_val)
+        else:
+            account.update_thresholds(second_threshold=new_val)
+
+    rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
+    windows = rolling_usage.get(resource_name, {}).get('windows', {})
+
+    return render_template(
+        'dashboards/user/fragments/rolling_rate_htmx.html',
+        projcode=projcode,
+        resource_name=resource_name,
+        rolling_30=windows.get(30),
+        rolling_90=windows.get(90),
+        can_edit_threshold=True,
+    )

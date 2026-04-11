@@ -159,19 +159,42 @@
                                     <span class="fw-semibold {% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }} allocated</span>
                                     <span class="text-muted">{{ percent | fmt_pct }}</span>
                                 </div>
-                                <div class="progress progress-large">
-                                    <div class="progress-bar {{ progress_class }}"
-                                         role="progressbar"
-                                         style="width: {{ [0, [percent, 100] | min] | max }}%"
-                                         aria-valuenow="{{ percent }}"
-                                         aria-valuemin="0"
-                                         aria-valuemax="100">
+                                <div class="position-relative">
+                                    <div class="progress progress-large">
+                                        <div class="progress-bar {{ progress_class }}"
+                                             role="progressbar"
+                                             style="width: {{ [0, [percent, 100] | min] | max }}%"
+                                             aria-valuenow="{{ percent }}"
+                                             aria-valuemin="0"
+                                             aria-valuemax="100">
+                                        </div>
                                     </div>
+                                    {% if first.bar_state == 'active' and resource.resource_type in ['HPC', 'DAV'] %}
+                                    <div class="position-absolute"
+                                         style="left: {{ first.elapsed_pct }}%; top: -2px; bottom: -2px; width: 2px; background: rgba(33,37,41,0.55); z-index: 2; pointer-events: none;"
+                                         title="{{ first.elapsed_pct | fmt_pct }} of allocation period elapsed"></div>
+                                    {% endif %}
                                 </div>
                                 <div class="d-flex justify-content-between small mt-1">
                                     <span class="{% if not is_expired %}text-warning{% endif %}">{{ resource.used | fmt_number }} used</span>
                                     <span class="{% if not is_expired %}text-success{% endif %}">{{ resource.remaining | fmt_number }} remaining</span>
                                 </div>
+                                {% if not is_expired and (
+                                    (resource.rolling_30 and resource.rolling_30.threshold_pct is not none) or
+                                    (resource.rolling_90 and resource.rolling_90.threshold_pct is not none)
+                                ) %}
+                                <div class="mt-2 pt-1 border-top border-secondary-subtle">
+                                    <small class="text-muted d-block mb-1">Rolling usage:</small>
+                                    {% for label, win in [('30d', resource.rolling_30), ('90d', resource.rolling_90)] %}
+                                    {% if win %}
+                                    <div class="d-flex justify-content-between small">
+                                      <span class="text-muted">{{ win.charges | fmt_number }}</span>
+                                      <span class="text-muted">{{ win.pct_of_prorated | fmt_pct }} of steady {{ label }} usage{% if win.threshold_pct is not none %} (vs. {{ win.threshold_pct }}% limit){% endif %}</span>
+                                    </div>
+                                    {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
                             </td>
                             {% if can_edit_allocations %}
                             <td class="text-center" onclick="event.stopPropagation();">

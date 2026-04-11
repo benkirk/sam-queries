@@ -2,6 +2,7 @@
 
 from cli.core.context import Context
 from sam import Project, fmt
+from sam.queries.rolling_usage import get_project_rolling_usage
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
@@ -105,6 +106,17 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
             alloc_table.add_column("Used", justify="right")
             alloc_table.add_column("% Used", justify="right")
 
+            # Verbose: add rolling window usage columns
+            show_rolling = ctx.verbose or ctx.very_verbose
+            rolling_data = {}
+            if show_rolling:
+                alloc_table.add_column("30d Used", justify="right", style="dim")
+                alloc_table.add_column("90d Used", justify="right", style="dim")
+                try:
+                    rolling_data = get_project_rolling_usage(project.session, project.projcode)
+                except Exception:
+                    pass
+
             # Very verbose: add extra columns for jobs and time metrics
             if ctx.very_verbose:
                 alloc_table.add_column("Jobs", justify="right", style="dim")
@@ -158,6 +170,22 @@ def display_project(ctx: Context, project: Project, extra_title_info: str = "", 
                     f"[{resource_style}]{used_str}[/]" if is_expired else used_str,
                     f"[{pct_style}]{fmt.pct(pct)}[/]"
                 ]
+
+                # Verbose: rolling window usage
+                if show_rolling:
+                    rdata = rolling_data.get(resource_name, {})
+                    for wdays in (30, 90):
+                        winfo = rdata.get('windows', {}).get(wdays)
+                        if winfo:
+                            charges_str = fmt.number(winfo['charges'])
+                            pct_str     = fmt.pct(winfo['pct_of_prorated'])
+                            if winfo.get('threshold_pct') is not None:
+                                cell = f"{charges_str}\n({pct_str} vs. {winfo['threshold_pct']}% lim)"
+                            else:
+                                cell = f"{charges_str}\n({pct_str})"
+                        else:
+                            cell = "—"
+                        row.append(cell)
 
                 # Very verbose: add jobs and days remaining
                 if ctx.very_verbose:
