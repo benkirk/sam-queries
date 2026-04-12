@@ -10,11 +10,11 @@
 
   Layout:
     - Bootstrap pill tabs, one per non-empty resource type (HPC/DAV, Disk, etc.)
-    - Within each tab: Bootstrap accordion, one card per resource (sorted by name)
-    - Within each accordion card: shared render_project_tree macro with usage bars
-    - Each tab has an "Add Allocation" button pre-filtered to that resource type
+    - Within each tab: single table with multiple <tbody> sections
+      - One <tbody> per resource: a header row (collapsible on click) + a tree body
+      - All rows share the same <colgroup> → progress bars align perfectly
 #}
-{% from 'dashboards/shared/project_tree.html' import render_project_tree with context %}
+{% from 'dashboards/shared/project_tree.html' import render_project_tree, render_project_tree_rows with context %}
 
 {% if not resources_by_tab %}
 <div class="alert alert-info">
@@ -53,13 +53,87 @@
        role="tabpanel"
        aria-labelledby="alloc-pill-{{ tab_idx }}">
 
-    {# Accordion: one card per resource, sorted by name ────────────── #}
-    <div class="accordion" id="accordion-tab-{{ tab_idx }}">
-      {% for resource_name in tab_data.names %}
-      {% set resource_slug = resource_name | lower | replace(' ', '-') | replace('/', '-') | replace('_', '-') %}
-      {% set card_id = 'alloc-card-' ~ tab_idx ~ '-' ~ resource_slug %}
+    {#
+      Single table for the whole tab.  Every row — resource headers and project
+      tree rows — shares the same <colgroup>, so progress bars land in the same
+      column regardless of resource name length or tree depth.
 
-      {# Build per-resource {projcode: resource_dict|None} lookup #}
+      Structure per resource:
+        <tbody>   ← header row (clickable, toggles tree body)
+          <tr class="alloc-resource-header"> ... </tr>
+        </tbody>
+        <tbody id="alloc-body-…">  ← tree rows (collapsible)
+          {{ render_project_tree_rows(...) }}
+        </tbody>
+    #}
+    <table class="table table-sm table-hover mb-0 border" style="table-layout:fixed;width:100%;">
+      <colgroup>
+        <col>                        {# resource/project name — fills remaining space #}
+        <col style="width:110px;">   {# progress bar #}
+        <col style="width:60px;">    {# % used #}
+        <col style="width:90px;">    {# allocated amount #}
+        <col style="width:110px;">   {# shared badge + edit button #}
+      </colgroup>
+
+      {% for resource_name in tab_data.names %}
+      {%- set resource_slug = resource_name | lower | replace(' ', '-') | replace('/', '-') | replace('_', '-') -%}
+      {%- set body_id = 'alloc-body-' ~ tab_idx ~ '-' ~ resource_slug -%}
+      {%- set root_alloc = resources_by_projcode.get(root.projcode, {}).get(resource_name) -%}
+      {%- set pct = [root_alloc.percent_used, 100] | min if root_alloc else 0 -%}
+
+      {# ── Resource header row ──────────────────────────────────────── #}
+      <tbody>
+        <tr class="table-secondary alloc-resource-header"
+            style="cursor:pointer; border-top: 2px solid #ced4da;"
+            onclick="(function(row){
+                       var b = document.getElementById('{{ body_id }}');
+                       b.classList.toggle('d-none');
+                       var c = row.querySelector('i.alloc-caret');
+                       c.classList.toggle('fa-chevron-right');
+                       c.classList.toggle('fa-chevron-down');
+                     })(this)">
+
+          {# Col 1: resource name + caret #}
+          <td class="fw-semibold py-2" style="vertical-align:middle;">
+            <i class="fas fa-chevron-right alloc-caret me-2 small text-muted"></i>
+            <i class="fas fa-server text-primary me-1"></i>
+            {{ resource_name }}
+          </td>
+
+          {# Col 2: progress bar — same column as tree rows #}
+          <td style="padding:0.25rem 0.4rem; vertical-align:middle;">
+            {% if root_alloc %}
+            <div class="progress" style="height:8px;">
+              <div class="progress-bar
+                   {%- if root_alloc.percent_used >= 90 %} bg-danger
+                   {%- elif root_alloc.percent_used >= 75 %} bg-warning
+                   {%- else %} bg-success{% endif %}"
+                   role="progressbar" style="width:{{ pct }}%;"></div>
+            </div>
+            {% endif %}
+          </td>
+
+          {# Col 3: % used #}
+          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
+            {% if root_alloc %}{{ root_alloc.percent_used | fmt_pct }} used{% endif %}
+          </td>
+
+          {# Col 4: allocated amount #}
+          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
+            {% if root_alloc %}{{ root_alloc.allocated | fmt_number }}{% endif %}
+          </td>
+
+          {# Col 5: shared badge #}
+          <td style="vertical-align:middle;">
+            {% if root_alloc and root_alloc.is_inheriting %}
+            <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+
+      {# ── Tree rows — collapsible tbody ────────────────────────────── #}
+      {#  Build per-resource {projcode: resource_dict|None} lookup #}
       {%- set alloc_by_projcode = {} -%}
       {%- for pc, res_dict in resources_by_projcode.items() -%}
         {%- if resource_name in res_dict -%}
@@ -69,47 +143,9 @@
         {%- endif -%}
       {%- endfor -%}
 
-      {# Root node's allocation summary for the accordion header #}
-      {%- set root_alloc = resources_by_projcode.get(root.projcode, {}).get(resource_name) -%}
-
-      <div class="accordion-item">
-        <h2 class="accordion-header" id="heading-{{ card_id }}">
-          <button class="accordion-button collapsed py-2" type="button"
-                  data-bs-toggle="collapse"
-                  data-bs-target="#collapse-{{ card_id }}"
-                  aria-expanded="false"
-                  aria-controls="collapse-{{ card_id }}">
-            <span class="me-auto fw-semibold">
-              <i class="fas fa-server text-primary me-2"></i>{{ resource_name }}
-            </span>
-            {# Compact usage summary — fixed-width container so bars align across all rows #}
-            {% if root_alloc %}
-              {% set pct = [root_alloc.percent_used, 100] | min %}
-              <span class="d-flex align-items-center gap-2 me-3 small text-muted flex-shrink-0">
-                <div style="width:100px;flex-shrink:0;">
-                  <div class="progress" style="height:6px;">
-                    <div class="progress-bar
-                         {%- if root_alloc.percent_used >= 90 %} bg-danger
-                         {%- elif root_alloc.percent_used >= 75 %} bg-warning
-                         {%- else %} bg-success{% endif %}"
-                         role="progressbar" style="width:{{ pct }}%;"></div>
-                  </div>
-                </div>
-                <span style="width:80px;flex-shrink:0;text-align:right;">{{ root_alloc.percent_used | fmt_pct }} used</span>
-                {% if root_alloc.is_inheriting %}
-                <span class="badge bg-secondary bg-opacity-25 text-dark border">shared</span>
-                {% endif %}
-              </span>
-            {% endif %}
-          </button>
-        </h2>
-        <div id="collapse-{{ card_id }}"
-             class="accordion-collapse collapse"
-             aria-labelledby="heading-{{ card_id }}"
-             data-bs-parent="#accordion-tab-{{ tab_idx }}">
-          <div class="accordion-body p-2">
-            <ul class="tree-list mb-0">
-              {{ render_project_tree([root],
+      <tbody id="{{ body_id }}" class="d-none">
+        {{ render_project_tree_rows([root],
+                                     depth=0,
                                      current_projcode=projcode,
                                      alloc_by_projcode=alloc_by_projcode,
                                      can_view=true,
@@ -117,12 +153,10 @@
                                      active_only=true,
                                      usage_warning_threshold=75,
                                      usage_critical_threshold=90) }}
-            </ul>
-          </div>
-        </div>
-      </div>
-      {% endfor %}
-    </div>{# /accordion #}
+      </tbody>
+
+      {% endfor %}{# /resource loop #}
+    </table>
 
   </div>{# /tab-pane #}
   {% endfor %}
@@ -131,8 +165,6 @@
 {% endif %}
 
 <style>
-  .tree-list { list-style: none; padding-left: 1.25rem; margin-bottom: 0; }
-  .tree-list > li { border-left: 2px solid #dee2e6; padding: 0.3rem 0.5rem; margin-bottom: 0.15rem; }
   .btn-xs { padding: 0.1rem 0.35rem; font-size: 0.75rem; }
-  .accordion-button:not(.collapsed) { background-color: #f8f9fa; color: inherit; box-shadow: none; }
+  .alloc-resource-header:hover td { filter: brightness(0.96); }
 </style>
