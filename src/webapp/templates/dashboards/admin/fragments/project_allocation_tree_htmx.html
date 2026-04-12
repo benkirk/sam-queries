@@ -20,14 +20,7 @@
 <div class="alert alert-info">
   <i class="fas fa-info-circle"></i>
   No allocations found for this project or its sub-projects.
-  <button class="btn btn-sm btn-success ms-3"
-          hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=projcode) }}"
-          hx-target="#addAllocationFormContainer"
-          hx-trigger="click"
-          data-bs-toggle="modal"
-          data-bs-target="#addAllocationModal">
-    <i class="fas fa-plus-circle"></i> Add First Allocation
-  </button>
+  Use the <strong>Add Allocation</strong> button above to create the first one.
 </div>
 
 {% else %}
@@ -59,18 +52,6 @@
        id="alloc-pane-{{ tab_idx }}"
        role="tabpanel"
        aria-labelledby="alloc-pill-{{ tab_idx }}">
-
-    {# Add Allocation button — pre-filtered to this resource type #}
-    <div class="d-flex justify-content-end mb-2">
-      <button class="btn btn-sm btn-outline-success"
-              hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=projcode) }}?rtypes={{ tab_data.rtypes_str | urlencode }}"
-              hx-target="#addAllocationFormContainer"
-              hx-trigger="click"
-              data-bs-toggle="modal"
-              data-bs-target="#addAllocationModal">
-        <i class="fas fa-plus-circle"></i> Add {{ tab_label }} Allocation
-      </button>
-    </div>
 
     {# Accordion: one card per resource, sorted by name ────────────── #}
     <div class="accordion" id="accordion-tab-{{ tab_idx }}">

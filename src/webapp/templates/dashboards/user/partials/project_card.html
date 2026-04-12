@@ -335,15 +335,6 @@
                             <i class="fas fa-exclamation-triangle"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% endif %}
-                    {# Edit Project button — visible to EDIT_PROJECTS permission holders #}
-                    {% if has_permission(Permission.EDIT_PROJECTS) %}
-                    <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
-                       class="btn btn-xs btn-warning ms-1"
-                       onclick="event.stopPropagation()"
-                       title="Edit project">
-                        <i class="fas fa-edit"></i> Edit
-                    </a>
-                    {% endif %}
                 </div>
             </div>
         </div>
@@ -402,6 +393,16 @@
                     };
                 }
                 </script>
+                {% endif %}
+
+                {# Edit Project button — inside the card body, visible only when expanded #}
+                {% if has_permission(Permission.EDIT_PROJECTS) %}
+                <div class="d-flex justify-content-end mt-3 pt-2 border-top">
+                    <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
+                       class="btn btn-sm btn-warning">
+                        <i class="fas fa-edit"></i> Edit Project
+                    </a>
+                </div>
                 {% endif %}
 
             </div>

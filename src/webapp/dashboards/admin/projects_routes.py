@@ -731,30 +731,20 @@ def htmx_add_allocation_form(projcode):
         acct.resource_id for acct in project.accounts
     }
 
-    # Optional resource-type filter passed from the allocation tab button.
-    # e.g. ?rtypes=HPC,DAV  limits the dropdown to those resource types.
-    rtypes_str = request.args.get('rtypes', '').strip()
-    rtypes_filter = [r.strip() for r in rtypes_str.split(',') if r.strip()]
-
-    # Offer all active resources not yet linked (filtered by type if requested).
+    # Offer all active resources not yet linked to this project.
     available_resources = (
         db.session.query(Resource)
         .filter(Resource.is_active)
         .order_by(Resource.resource_name)
         .all()
     )
-    available_resources = [
-        r for r in available_resources
-        if r.resource_id not in linked_resource_ids
-        and (not rtypes_filter
-             or (r.resource_type and r.resource_type.resource_type in rtypes_filter))
-    ]
+    available_resources = [r for r in available_resources
+                           if r.resource_id not in linked_resource_ids]
 
     return render_template(
         'dashboards/admin/fragments/add_allocation_form_htmx.html',
         project=project,
         available_resources=available_resources,
-        rtypes_str=rtypes_str,
         today=datetime.now().strftime('%Y-%m-%d'),
     )
 
@@ -820,10 +810,6 @@ def htmx_add_allocation(projcode):
         except ValueError:
             errors.append('Invalid end date.')
 
-    # Preserve resource-type filter from the hidden form field on re-render.
-    rtypes_str = request.form.get('rtypes_str', '').strip()
-    rtypes_filter = [r.strip() for r in rtypes_str.split(',') if r.strip()]
-
     def _reload_add_form(extra_errors=None):
         from sam.resources.resources import Resource as R
         linked_ids = {a.resource_id for a in project.accounts}
@@ -833,17 +819,11 @@ def htmx_add_allocation(projcode):
             .order_by(R.resource_name)
             .all()
         )
-        available = [
-            r for r in available
-            if r.resource_id not in linked_ids
-            and (not rtypes_filter
-                 or (r.resource_type and r.resource_type.resource_type in rtypes_filter))
-        ]
+        available = [r for r in available if r.resource_id not in linked_ids]
         return render_template(
             'dashboards/admin/fragments/add_allocation_form_htmx.html',
             project=project,
             available_resources=available,
-            rtypes_str=rtypes_str,
             today=datetime.now().strftime('%Y-%m-%d'),
             errors=(extra_errors or []) + errors,
             form=request.form,
