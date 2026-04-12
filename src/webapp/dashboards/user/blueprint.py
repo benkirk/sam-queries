@@ -258,6 +258,9 @@ def tree_fragment(projcode):
     """
     Lazy-loaded HTML fragment showing project hierarchy tree.
 
+    Renders the shared render_project_tree macro
+    (dashboards/shared/project_tree.html) via a thin wrapper template.
+
     Returns:
         HTML tree structure (no full page layout)
     """
@@ -266,62 +269,17 @@ def tree_fragment(projcode):
     if not project:
         return '<p class="text-danger mb-0">Project not found</p>'
 
-    # Get the root of the project tree
     active_only = request.args.get('active_only') == '1'
     root = project.get_root() if hasattr(project, 'get_root') else project
-    can_view_projects = has_permission(current_user, Permission.VIEW_PROJECTS)
+    can_view = has_permission(current_user, Permission.VIEW_PROJECTS)
 
-    # Render tree structure recursively
-    def render_tree_node(node, current_projcode, level=0):
-        is_current = node.projcode == current_projcode
-        is_active = node.active if hasattr(node, 'active') else True
-
-        # Build style and classes
-        style_parts = []
-        if is_current:
-            style_parts.append('background: #fff3cd; font-weight: bold; border-left-color: #ffc107;')
-        if not is_active:
-            style_parts.append('color: #6c757d; opacity: 0.6;')
-
-        style = ' '.join(style_parts)
-        icon = '<i class="fas fa-arrow-right text-warning mr-1"></i>' if is_current else ''
-        inactive_badge = ' <span class="badge badge-secondary badge-sm">Inactive</span>' if not is_active else ''
-
-        # Make project code clickable if user has VIEW_PROJECTS permission
-        if can_view_projects:
-            detail_url = url_for('user_dashboard.project_details_modal', projcode=node.projcode)
-            projcode_html = (
-                f'<button class="btn btn-link p-0" title="View project details"'
-                f" onclick=\"event.stopPropagation();"
-                f" htmx.ajax('GET', '{detail_url}', {{target: '#projectDetailsModalBody', swap: 'innerHTML'}});"
-                f" bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();\">"
-                f'<strong>{node.projcode}</strong></button>'
-            )
-        else:
-            projcode_html = f'<strong>{node.projcode}</strong>'
-        html = f'<li style="{style}">{icon}{projcode_html}'
-
-        if node.title:
-            html += f' - {node.title}'
-
-        html += inactive_badge
-
-        # Recursively render children
-        children = node.children if hasattr(node, 'children') and node.children else []
-        if active_only:
-            children = [c for c in children if getattr(c, 'active', True)]
-        if children:
-            html += '<ul class="tree-list">'
-            for child in sorted(children, key=lambda c: c.projcode):
-                html += render_tree_node(child, current_projcode, level + 1)
-            html += '</ul>'
-
-        html += '</li>'
-        return html
-
-    tree_html = f'<ul class="tree-list">{render_tree_node(root, projcode)}</ul>'
-
-    return tree_html
+    return render_template(
+        'dashboards/user/fragments/tree_htmx.html',
+        root=root,
+        current_projcode=projcode,
+        active_only=active_only,
+        can_view=can_view,
+    )
 
 
 

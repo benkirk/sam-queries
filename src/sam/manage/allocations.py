@@ -19,6 +19,7 @@ from sam.accounting.allocations import (
 __all__ = [
     'validate_allocation_dates',
     'log_allocation_transaction',
+    'create_allocation',
     'update_allocation',
     'InheritingAllocationException',
 ]
@@ -128,6 +129,92 @@ def log_allocation_transaction(
     session.flush()
 
     return transaction
+
+
+def create_allocation(
+    session: Session,
+    *,
+    project_id: int,
+    resource_id: int,
+    amount: float,
+    start_date: datetime,
+    end_date: Optional[datetime] = None,
+    description: Optional[str] = None,
+    user_id: int,
+) -> 'Allocation':
+    """Create a new allocation for a project + resource pair.
+
+    Gets or creates the Account linking project ↔ resource, instantiates
+    the Allocation record, and logs an AllocationTransaction(CREATE) for
+    audit purposes.
+
+    NOTE: Does NOT commit the session.  The caller is responsible for
+    wrapping the call in ``management_transaction`` (or committing).
+
+    Args:
+        session:     SQLAlchemy session.
+        project_id:  FK to Project.
+        resource_id: FK to Resource.
+        amount:      Allocation amount (must be > 0).
+        start_date:  Start of allocation period.
+        end_date:    End of allocation period (None = open-ended).
+        description: Optional human-readable note.
+        user_id:     FK to User performing the action (for audit log).
+
+    Returns:
+        Newly created and flushed Allocation instance.
+
+    Example::
+
+        with management_transaction(session):
+            alloc = create_allocation(
+                session,
+                project_id=project.project_id,
+                resource_id=resource.resource_id,
+                amount=500_000.0,
+                start_date=datetime(2025, 1, 1),
+                end_date=datetime(2025, 12, 31),
+                user_id=current_user.user_id,
+            )
+    """
+    from sam.accounting.accounts import Account
+    from sam.accounting.allocations import Allocation
+
+    if amount <= 0:
+        raise ValueError(f"Amount must be greater than 0, got {amount}")
+
+    validate_allocation_dates(start_date, end_date)
+
+    # Get or create the Account linking this project to the resource.
+    account = Account.get_by_project_and_resource(
+        session, project_id, resource_id, exclude_deleted=True
+    )
+    if account is None:
+        account = Account(project_id=project_id, resource_id=resource_id)
+        session.add(account)
+        session.flush()
+
+    allocation = Allocation(
+        account_id=account.account_id,
+        amount=amount,
+        start_date=start_date,
+        end_date=end_date,
+        description=description,
+    )
+    session.add(allocation)
+    session.flush()
+
+    log_allocation_transaction(
+        session,
+        allocation,
+        user_id,
+        AllocationTransactionType.CREATE,
+        comment='Allocation created',
+        old_values={},
+        propagated=False,
+    )
+
+    return allocation
 
 
 def update_allocation(

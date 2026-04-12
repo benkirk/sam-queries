@@ -301,6 +301,67 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
         return project
 
+    def update(
+        self,
+        *,
+        title: Optional[str] = None,
+        abstract: Optional[str] = None,
+        area_of_interest_id: Optional[int] = None,
+        allocation_type_id: Optional[int] = None,
+        charging_exempt: Optional[bool] = None,
+        project_lead_user_id: Optional[int] = None,
+        project_admin_user_id: Optional[int] = None,
+        unix_gid: Optional[int] = None,
+        ext_alias: Optional[str] = None,
+        active: Optional[bool] = None,
+    ) -> 'Project':
+        """Update mutable project fields and flush.
+
+        Only keyword arguments explicitly provided (non-None) are written.
+        ``projcode`` and ``parent_id`` are intentionally excluded — projcode
+        is immutable after creation, and tree restructuring is a separate op.
+
+        Uses ``SessionMixin.session`` (``Session.object_session(self)``) for
+        the flush, so no session argument is needed.
+
+        Args:
+            title:                 Human-readable project title.
+            abstract:              Longer project description (pass ``''`` to clear).
+            area_of_interest_id:   FK to AreaOfInterest.
+            allocation_type_id:    FK to AllocationType.
+            charging_exempt:       If True, charges are not assessed.
+            project_lead_user_id:  FK to lead User.
+            project_admin_user_id: FK to admin User.
+            unix_gid:              Unix group ID.
+            ext_alias:             External alias string (pass ``''`` to clear).
+            active:                Active flag.
+
+        Returns:
+            self (for chaining).
+        """
+        if title is not None:
+            self.title = title.strip()
+        if abstract is not None:
+            self.abstract = abstract.strip() or None
+        if area_of_interest_id is not None:
+            self.area_of_interest_id = area_of_interest_id
+        if allocation_type_id is not None:
+            self.allocation_type_id = allocation_type_id
+        if charging_exempt is not None:
+            self.charging_exempt = charging_exempt
+        if project_lead_user_id is not None:
+            self.project_lead_user_id = project_lead_user_id
+        if project_admin_user_id is not None:
+            self.project_admin_user_id = project_admin_user_id
+        if unix_gid is not None:
+            self.unix_gid = unix_gid
+        if ext_alias is not None:
+            self.ext_alias = ext_alias.strip() or None
+        if active is not None:
+            self.active = active
+        self.session.flush()
+        return self
+
     # # Active account users (filtered join)
     # account_users = relationship(
     #     'AccountUser',

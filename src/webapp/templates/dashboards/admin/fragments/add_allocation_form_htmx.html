@@ -1,0 +1,101 @@
+{#
+  Admin: Edit Project — Add Allocation modal form.
+  Loaded lazily into #addAllocationFormContainer when button clicked.
+
+  Context variables:
+    project             — Project ORM object
+    available_resources — list of Resource objects not yet linked to this project
+    today               — date string 'YYYY-MM-DD' for default start date
+    errors              — list of validation error strings (on re-render)
+    form                — request.form on validation error re-render
+#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_add_allocation', projcode=project.projcode),
+    '#addAllocationFormContainer',
+    'Create Allocation',
+    submit_icon='plus-circle'
+) %}
+
+  {% if not available_resources %}
+  <div class="alert alert-info mb-3">
+    <i class="fas fa-info-circle"></i>
+    All active resources are already linked to this project.
+    To add a sub-project allocation, first create the sub-project.
+  </div>
+  {% else %}
+
+  <!-- Resource -->
+  <div class="mb-3">
+    <label for="addAllocResource" class="form-label fw-semibold">
+      Resource <span class="text-danger">*</span>
+    </label>
+    <select class="form-select" id="addAllocResource" name="resource_id" required>
+      <option value="">— Select resource —</option>
+      {% for resource in available_resources %}
+      <option value="{{ resource.resource_id }}"
+          {% if form and form.get('resource_id') == resource.resource_id|string %}selected{% endif %}>
+        {{ resource.resource_name }}
+        {% if resource.resource_type %} ({{ resource.resource_type.resource_type }}){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Amount -->
+  <div class="mb-3">
+    <label for="addAllocAmount" class="form-label fw-semibold">
+      Amount <span class="text-danger">*</span>
+    </label>
+    <input type="number" class="form-control" id="addAllocAmount"
+           name="amount" min="0.01" step="any" required
+           value="{{ form.get('amount', '') if form else '' }}"
+           placeholder="e.g. 500000">
+    <div class="form-text text-muted">Core-hours for HPC; TB for storage resources.</div>
+  </div>
+
+  <!-- Dates -->
+  <div class="row">
+    <div class="col-md-6">
+      <div class="mb-3">
+        <label for="addAllocStart" class="form-label fw-semibold">
+          Start Date <span class="text-danger">*</span>
+        </label>
+        <input type="date" class="form-control" id="addAllocStart"
+               name="start_date" required
+               value="{{ form.get('start_date', today) if form else today }}">
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="mb-3">
+        <label for="addAllocEnd" class="form-label">
+          End Date <span class="text-muted">(optional — leave blank for open-ended)</span>
+        </label>
+        <input type="date" class="form-control" id="addAllocEnd"
+               name="end_date"
+               value="{{ form.get('end_date', '') if form else '' }}">
+      </div>
+    </div>
+  </div>
+
+  <!-- Description -->
+  <div class="mb-3">
+    <label for="addAllocDescription" class="form-label">
+      Description <span class="text-muted">(optional)</span>
+    </label>
+    <input type="text" class="form-control" id="addAllocDescription"
+           name="description"
+           value="{{ form.get('description', '') if form else '' }}"
+           placeholder="e.g. FY2025 allocation">
+  </div>
+
+  <div class="alert alert-info py-2 mb-0 small">
+    <i class="fas fa-info-circle"></i>
+    To allocate to a sub-project, add the parent allocation here first,
+    then return to add child allocations to the sub-project directly.
+  </div>
+
+  {% endif %}
+
+{% endcall %}

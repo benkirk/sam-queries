@@ -1,0 +1,113 @@
+{#
+  Admin: Edit Project — Edit Allocation modal form.
+  Loaded into #editAllocationFormContainer when an edit button is clicked
+  in the allocation tree.
+
+  Context variables:
+    allocation  — Allocation ORM object
+    projcode    — projcode of the owning project
+    errors      — list of validation error strings (on re-render)
+    form        — request.form on validation error re-render
+#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_edit_allocation', alloc_id=allocation.allocation_id),
+    '#editAllocationFormContainer',
+    'Save Changes',
+    submit_icon='save',
+    is_edit=True
+) %}
+
+  {# ── Inherited allocation warning ─────────────────────────────── #}
+  {% if allocation.is_inheriting %}
+  <div class="alert alert-warning py-2 mb-3">
+    <i class="fas fa-lock"></i>
+    <strong>Inherited allocation.</strong>
+    This allocation is linked to a parent. To change its amount or dates,
+    edit the <strong>parent allocation</strong> — changes cascade automatically.
+    The description field below is specific to this allocation only.
+  </div>
+  {% endif %}
+
+  {# ── Child cascade notice ─────────────────────────────────────── #}
+  {% if allocation.children %}
+  <div class="alert alert-info py-2 mb-3">
+    <i class="fas fa-sitemap"></i>
+    This allocation has <strong>{{ allocation.children | length }}</strong>
+    child allocation{{ 's' if allocation.children | length != 1 else '' }}.
+    Changes to amount, start date, or end date will cascade automatically.
+  </div>
+  {% endif %}
+
+  {# ── Read-only context ────────────────────────────────────────── #}
+  <div class="row mb-3 text-muted small">
+    <div class="col-md-6">
+      <strong>Project:</strong> {{ projcode }}
+    </div>
+    <div class="col-md-6">
+      <strong>Resource:</strong>
+      {{ allocation.account.resource.resource_name if allocation.account and allocation.account.resource else '—' }}
+    </div>
+    <div class="col-md-6 mt-1">
+      <strong>Allocation ID:</strong> #{{ allocation.allocation_id }}
+    </div>
+    <div class="col-md-6 mt-1">
+      <strong>Status:</strong>
+      {% if allocation.is_active %}
+        <span class="badge bg-success">Active</span>
+      {% else %}
+        <span class="badge bg-secondary">Inactive</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Editable fields (disabled if inheriting) ─────────────────── #}
+  {% set disabled = allocation.is_inheriting %}
+
+  <!-- Amount -->
+  <div class="mb-3">
+    <label for="editAllocAmount" class="form-label fw-semibold">Amount</label>
+    <input type="number" class="form-control" id="editAllocAmount"
+           name="amount" min="0.01" step="any"
+           {% if disabled %}disabled{% endif %}
+           value="{{ form.get('amount', allocation.amount) if form else allocation.amount }}">
+    {% if disabled %}<div class="form-text text-muted">Edit parent allocation to change this.</div>{% endif %}
+  </div>
+
+  <!-- Dates -->
+  <div class="row">
+    <div class="col-md-6">
+      <div class="mb-3">
+        <label for="editAllocStart" class="form-label fw-semibold">Start Date</label>
+        <input type="date" class="form-control" id="editAllocStart"
+               name="start_date"
+               {% if disabled %}disabled{% endif %}
+               value="{{ form.get('start_date', allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else '') if form else (allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else '') }}">
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="mb-3">
+        <label for="editAllocEnd" class="form-label">
+          End Date <span class="text-muted">(blank = open-ended)</span>
+        </label>
+        <input type="date" class="form-control" id="editAllocEnd"
+               name="end_date"
+               {% if disabled %}disabled{% endif %}
+               value="{{ form.get('end_date', allocation.end_date.strftime('%Y-%m-%d') if allocation.end_date else '') if form else (allocation.end_date.strftime('%Y-%m-%d') if allocation.end_date else '') }}">
+      </div>
+    </div>
+  </div>
+
+  <!-- Description (not cascaded — always editable) -->
+  <div class="mb-3">
+    <label for="editAllocDescription" class="form-label">
+      Description <span class="text-muted">(optional — not cascaded to children)</span>
+    </label>
+    <input type="text" class="form-control" id="editAllocDescription"
+           name="description"
+           value="{{ form.get('description', allocation.description or '') if form else (allocation.description or '') }}"
+           placeholder="Optional note for this allocation">
+  </div>
+
+{% endcall %}

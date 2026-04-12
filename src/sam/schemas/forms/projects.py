@@ -51,3 +51,37 @@ class CreateProjectForm(HtmxFormSchema):
             data['ext_alias'] = None
         # charging_exempt from checkbox comes as 'on' not a bool
         return data
+
+
+class EditProjectForm(HtmxFormSchema):
+    """Partial type-coercion schema for project edit routes.
+
+    All fields are optional so the route can call
+    ``EditProjectForm().load(data, partial=True)`` and only update
+    whatever the user submitted.
+
+    IMPORTANT — checkbox handling: unchecked HTML checkboxes send *no*
+    field at all, so the route must inject explicit ``False`` for boolean
+    fields that are absent from ``request.form`` before passing to this
+    schema (otherwise a missing field would be silently ignored).
+
+    FK existence checks remain in the route (require DB access).
+    """
+    title = f.Str(load_default=None, validate=v.Length(min=1, max=255))
+    abstract = f.Str(load_default=None)
+    area_of_interest_id = f.Int(load_default=None)
+    allocation_type_id = f.Int(load_default=None)
+    charging_exempt = f.Bool(load_default=None)
+    project_lead_user_id = f.Int(load_default=None)
+    project_admin_user_id = f.Int(load_default=None)
+    unix_gid = f.Int(load_default=None)
+    ext_alias = f.Str(load_default=None)
+    active = f.Bool(load_default=None)
+
+    @post_load
+    def normalize(self, data, **kwargs):
+        if data.get('abstract') == '':
+            data['abstract'] = None
+        if data.get('ext_alias') == '':
+            data['ext_alias'] = None
+        return data

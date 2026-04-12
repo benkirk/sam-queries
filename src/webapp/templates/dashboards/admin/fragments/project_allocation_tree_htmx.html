@@ -1,0 +1,111 @@
+{#
+  Admin: Edit Project — Allocations tab fragment.
+  Lazy-loaded when the Allocations tab is first shown.
+
+  Context variables:
+    root                  — Project ORM root node of the tree
+    projcode              — projcode of the project being edited
+    all_resource_names    — sorted list of resource name strings
+    resources_by_projcode — dict {projcode: {resource_name: resource_dict}}
+                            resource_dict is from _build_project_resources_data()
+
+  Displays one card per resource.  Within each card, the shared
+  render_project_tree macro recurses through the project tree, looking up
+  each node's allocation data from resources_by_projcode.
+#}
+{% from 'dashboards/shared/project_tree.html' import render_project_tree with context %}
+
+<!-- Active-only toggle — reloads this fragment via htmx -->
+<div class="d-flex justify-content-end mb-2">
+  <div class="form-check form-switch mb-0">
+    <input class="form-check-input" type="checkbox"
+           id="allocTreeActiveOnly"
+           name="active_only" value="1"
+           {% if active_only %}checked{% endif %}
+           hx-get="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=projcode) }}"
+           hx-target="#allocationTreeContainer"
+           hx-swap="innerHTML"
+           hx-trigger="change"
+           hx-include="#allocTreeActiveOnly">
+    <label class="form-check-label small text-muted fw-normal" for="allocTreeActiveOnly">
+      Active only
+    </label>
+  </div>
+</div>
+
+{% if not all_resource_names %}
+<div class="alert alert-info">
+  <i class="fas fa-info-circle"></i>
+  No allocations found for this project or its sub-projects.
+  <button class="btn btn-sm btn-success ms-3"
+          hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=projcode) }}"
+          hx-target="#addAllocationFormContainer"
+          hx-trigger="click"
+          data-bs-toggle="modal"
+          data-bs-target="#addAllocationModal">
+    <i class="fas fa-plus-circle"></i> Add First Allocation
+  </button>
+</div>
+{% else %}
+
+<!-- One card per resource ─────────────────────────────────────────── -->
+{% for resource_name in all_resource_names %}
+{# Build per-resource lookup: {projcode: resource_dict|None} #}
+{%- set alloc_by_projcode = {} -%}
+{%- for pc, res_dict in resources_by_projcode.items() -%}
+  {%- if resource_name in res_dict -%}
+    {%- set _ = alloc_by_projcode.update({pc: res_dict[resource_name]}) -%}
+  {%- else -%}
+    {%- set _ = alloc_by_projcode.update({pc: none}) -%}
+  {%- endif -%}
+{%- endfor -%}
+
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h6 class="mb-0">
+      <i class="fas fa-server text-primary me-1"></i>
+      {{ resource_name }}
+    </h6>
+    <button class="btn btn-sm btn-outline-success"
+            hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=projcode) }}"
+            hx-target="#addAllocationFormContainer"
+            hx-trigger="click"
+            data-bs-toggle="modal"
+            data-bs-target="#addAllocationModal"
+            title="Add allocation for a new resource">
+      <i class="fas fa-plus-circle"></i> Add Allocation
+    </button>
+  </div>
+  <div class="card-body p-2">
+    <ul class="tree-list mb-0">
+      {{ render_project_tree([root],
+                             current_projcode=projcode,
+                             alloc_by_projcode=alloc_by_projcode,
+                             can_view=true,
+                             can_edit_allocations=true,
+                             active_only=active_only,
+                             usage_warning_threshold=75,
+                             usage_critical_threshold=90) }}
+    </ul>
+  </div>
+</div>
+{% endfor %}
+
+<!-- Add allocation for a resource not yet linked ──────────────────── -->
+<div class="mt-2">
+  <button class="btn btn-outline-success btn-sm"
+          hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=projcode) }}"
+          hx-target="#addAllocationFormContainer"
+          hx-trigger="click"
+          data-bs-toggle="modal"
+          data-bs-target="#addAllocationModal">
+    <i class="fas fa-plus-circle"></i> Add Allocation for Another Resource
+  </button>
+</div>
+{% endif %}
+
+<style>
+  .tree-list { list-style: none; padding-left: 1.25rem; margin-bottom: 0; }
+  .tree-list > li { border-left: 2px solid #dee2e6; padding: 0.3rem 0.5rem; margin-bottom: 0.15rem; }
+  .btn-xs { padding: 0.1rem 0.35rem; font-size: 0.75rem; }
+</style>

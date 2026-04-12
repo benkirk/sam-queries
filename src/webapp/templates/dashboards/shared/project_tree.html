@@ -1,0 +1,117 @@
+{#
+  Shared macro: render_project_tree
+  ===================================
+  Renders a recursive project hierarchy tree using Jinja2's recursive for-loop.
+
+  Usage (simple name-only tree — original tree_fragment behaviour):
+    {% from 'dashboards/shared/project_tree.html' import render_project_tree with context %}
+    <ul class="tree-list">
+      {{ render_project_tree([root], current_projcode=projcode, can_view=can_view,
+                             active_only=active_only) }}
+    </ul>
+
+  Usage (with allocation data — admin edit-project allocations tab):
+    {% from 'dashboards/shared/project_tree.html' import render_project_tree with context %}
+    <ul class="tree-list">
+      {{ render_project_tree([root], current_projcode=projcode, can_view=true,
+                             alloc_by_projcode=alloc_by_projcode,
+                             can_edit_allocations=true) }}
+    </ul>
+
+  Parameters
+  ----------
+  nodes                   List of Project ORM objects forming the top level (typically [root]).
+  current_projcode        Projcode of the currently viewed project (highlighted in yellow).
+  alloc_by_projcode       Optional dict {projcode: resource_dict|None} for ONE resource.
+                          When provided, a compact allocation bar + edit button are shown
+                          for each node that has data.  None → simple name-only tree.
+  can_view                If True, projcodes are rendered as clickable buttons that open
+                          the project-details modal.
+  active_only             If True, inactive child nodes are omitted from the tree.
+  can_edit_allocations    If True (and alloc_by_projcode is set), an edit-allocation
+                          button is shown next to each progress bar.
+  usage_warning_threshold  Progress bar turns yellow above this % (default 75).
+  usage_critical_threshold Progress bar turns red above this %   (default 90).
+#}
+
+{% macro render_project_tree(nodes,
+                              current_projcode='',
+                              alloc_by_projcode=none,
+                              can_view=false,
+                              active_only=false,
+                              can_edit_allocations=false,
+                              usage_warning_threshold=75,
+                              usage_critical_threshold=90) %}
+{%- for node in nodes recursive -%}
+{%- set is_active = node.active if node.active is defined else true -%}
+{%- if not active_only or is_active -%}
+{%- set is_current = (node.projcode == current_projcode) -%}
+<li style="
+    {%- if is_current %}background:#fff3cd;font-weight:bold;border-left-color:#ffc107;{% endif %}
+    {%- if not is_active %}color:#6c757d;opacity:0.6;{% endif %}
+">
+  {%- if is_current %}<i class="fas fa-arrow-right text-warning me-1"></i>{% endif -%}
+
+  {%- if can_view -%}
+  <button class="btn btn-link p-0"
+          title="View project details"
+          onclick="event.stopPropagation();
+                   htmx.ajax('GET','{{ url_for('user_dashboard.project_details_modal', projcode=node.projcode) }}',
+                             {target:'#projectDetailsModalBody',swap:'innerHTML'});
+                   bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();">
+    <strong>{{ node.projcode }}</strong>
+  </button>
+  {%- else -%}
+  <strong>{{ node.projcode }}</strong>
+  {%- endif -%}
+
+  {%- if node.title %} — {{ node.title }}{% endif -%}
+  {%- if not is_active %}<span class="badge bg-secondary ms-1 small">Inactive</span>{% endif -%}
+
+  {%- if alloc_by_projcode is not none -%}
+    {%- set res = alloc_by_projcode.get(node.projcode) -%}
+    {%- if res -%}
+    <div class="d-flex align-items-center gap-2 mt-1 ms-2 small">
+      {%- set pct = [res.percent_used, 100] | min -%}
+      <div class="flex-grow-1" style="min-width:80px;max-width:180px;">
+        <div class="progress" style="height:8px;">
+          <div class="progress-bar
+               {%- if res.percent_used >= usage_critical_threshold %} bg-danger
+               {%- elif res.percent_used >= usage_warning_threshold %} bg-warning
+               {%- else %} bg-success{% endif %}"
+               role="progressbar" style="width:{{ pct }}%;"></div>
+        </div>
+      </div>
+      <span class="text-muted text-nowrap">{{ res.percent_used | fmt_pct }}</span>
+      <span class="text-muted text-nowrap">{{ res.allocated | fmt_number }} alloc</span>
+      {%- if res.is_inheriting -%}
+      <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
+      {%- endif -%}
+      {%- if can_edit_allocations and res.allocation_id -%}
+      <button class="btn btn-xs btn-outline-warning py-0 px-1"
+              style="font-size:0.7rem;"
+              hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', alloc_id=res.allocation_id) }}"
+              hx-target="#editAllocationFormContainer"
+              hx-trigger="click"
+              data-bs-toggle="modal"
+              data-bs-target="#editAllocationModal"
+              title="Edit allocation">
+        <i class="fas fa-pencil-alt"></i>
+      </button>
+      {%- endif -%}
+    </div>
+    {%- else -%}
+    <span class="text-muted ms-2 small"><em>— no allocation —</em></span>
+    {%- endif -%}
+  {%- endif -%}
+
+  {%- set children = node.children | selectattr('active') | list
+      if active_only else node.children | list -%}
+  {%- set children = children | sort(attribute='projcode') -%}
+  {%- if children -%}
+  <ul class="tree-list">{{ loop(children) }}</ul>
+  {%- endif -%}
+</li>
+{%- endif -%}
+{%- endfor -%}
+{% endmacro %}

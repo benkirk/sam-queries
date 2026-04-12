@@ -5,10 +5,11 @@ Covers: Project creation (Phase A).  Edit/allocation management (Phase B).
 """
 
 import re
+from datetime import datetime
 
-from flask import render_template, request
+from flask import render_template, request, redirect, url_for
 from webapp.utils.htmx import htmx_success, htmx_success_message
-from flask_login import login_required
+from flask_login import login_required, current_user
 
 from webapp.extensions import db
 from webapp.utils.rbac import require_permission, Permission
@@ -467,4 +468,469 @@ def htmx_project_create():
         {'closeActiveModal': {}, 'loadNewProject': project.projcode},
         'Project created successfully.',
         detail=f'{project.projcode} — {project.title}',
+    )
+
+
+# ---------------------------------------------------------------------------
+# Edit Project (Phase B)
+# ---------------------------------------------------------------------------
+
+@bp.route('/project/<projcode>/edit')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def edit_project_page(projcode):
+    """Full edit-project page (not a modal).
+
+    Renders a three-tab page: Details | Allocations | Members.
+    The Allocations tab is lazy-loaded on first click.
+    """
+    from sam.projects.projects import Project
+    from sam.queries.dashboard import get_project_dashboard_data
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return redirect(url_for('admin_dashboard.index'))
+
+    project_data = get_project_dashboard_data(db.session, projcode)
+
+    # Reverse-lookup facility_id / panel_id for cascading dropdown pre-population.
+    current_facility_id = None
+    current_panel_id = None
+    if project.allocation_type and project.allocation_type.panel:
+        current_panel_id = project.allocation_type.panel_id
+        if project.allocation_type.panel.facility:
+            current_facility_id = project.allocation_type.panel.facility_id
+
+    form_data = _project_form_data(form=None)
+
+    return render_template(
+        'dashboards/admin/edit_project.html',
+        project=project,
+        project_data=project_data,
+        current_facility_id=current_facility_id,
+        current_panel_id=current_panel_id,
+        **form_data,
+    )
+
+
+@bp.route('/htmx/project-update/<projcode>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_project_update(projcode):
+    """Validate and apply project metadata updates."""
+    from sam.projects.projects import Project
+    from sam.projects.areas import AreaOfInterest
+    from sam.accounting.allocations import AllocationType
+    from sam.core.users import User
+    from sam.resources.facilities import Panel
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found.</div>', 404
+
+    errors = []
+
+    # --- Field extraction ---
+    title = request.form.get('title', '').strip()
+    abstract = request.form.get('abstract', '').strip() or None
+    lead_id_str = request.form.get('project_lead_user_id', '').strip()
+    admin_id_str = request.form.get('project_admin_user_id', '').strip()
+    aoi_id_str = request.form.get('area_of_interest_id', '').strip()
+    alloc_type_id_str = request.form.get('allocation_type_id', '').strip()
+    unix_gid_str = request.form.get('unix_gid', '').strip()
+    ext_alias = request.form.get('ext_alias', '').strip() or None
+
+    # Boolean fields: unchecked checkboxes send nothing, so default to False.
+    charging_exempt = 'charging_exempt' in request.form
+    active = 'active' in request.form
+
+    # --- Validation ---
+    if not title:
+        errors.append('Title is required.')
+    elif len(title) > 255:
+        errors.append('Title must be 255 characters or fewer.')
+
+    project_lead_user_id = None
+    if not lead_id_str:
+        errors.append('Project lead is required.')
+    else:
+        try:
+            project_lead_user_id = int(lead_id_str)
+            if not db.session.get(User, project_lead_user_id):
+                errors.append('Selected project lead does not exist.')
+        except ValueError:
+            errors.append('Invalid project lead.')
+
+    project_admin_user_id = None
+    if admin_id_str:
+        try:
+            project_admin_user_id = int(admin_id_str)
+            if not db.session.get(User, project_admin_user_id):
+                errors.append('Selected project admin does not exist.')
+        except ValueError:
+            errors.append('Invalid project admin.')
+
+    area_of_interest_id = None
+    if not aoi_id_str:
+        errors.append('Area of interest is required.')
+    else:
+        try:
+            area_of_interest_id = int(aoi_id_str)
+            if not db.session.get(AreaOfInterest, area_of_interest_id):
+                errors.append('Selected area of interest does not exist.')
+        except ValueError:
+            errors.append('Invalid area of interest.')
+
+    allocation_type_id = None
+    if alloc_type_id_str:
+        try:
+            allocation_type_id = int(alloc_type_id_str)
+            if not db.session.get(AllocationType, allocation_type_id):
+                errors.append('Selected allocation type does not exist.')
+        except ValueError:
+            errors.append('Invalid allocation type.')
+
+    unix_gid = None
+    if unix_gid_str:
+        try:
+            unix_gid = int(unix_gid_str)
+        except ValueError:
+            errors.append('Unix GID must be a number.')
+
+    def _reload_edit_form(extra_errors=None):
+        current_facility_id = None
+        current_panel_id = None
+        if project.allocation_type and project.allocation_type.panel:
+            current_panel_id = project.allocation_type.panel_id
+            if project.allocation_type.panel.facility:
+                current_facility_id = project.allocation_type.panel.facility_id
+        return render_template(
+            'dashboards/admin/fragments/edit_project_details_htmx.html',
+            project=project,
+            current_facility_id=current_facility_id,
+            current_panel_id=current_panel_id,
+            errors=(extra_errors or []) + errors,
+            form=request.form,
+            **_project_form_data(form=request.form),
+        )
+
+    if errors:
+        return _reload_edit_form()
+
+    try:
+        with management_transaction(db.session):
+            project.update(
+                title=title,
+                abstract=abstract,
+                area_of_interest_id=area_of_interest_id,
+                allocation_type_id=allocation_type_id,
+                charging_exempt=charging_exempt,
+                project_lead_user_id=project_lead_user_id,
+                project_admin_user_id=project_admin_user_id,
+                unix_gid=unix_gid,
+                ext_alias=ext_alias,
+                active=active,
+            )
+    except Exception as e:
+        return _reload_edit_form([f'Error updating project: {e}'])
+
+    return htmx_success_message(
+        {'reloadEditProjectDetails': projcode},
+        'Project updated successfully.',
+        detail=f'{project.projcode} — {project.title}',
+    )
+
+
+@bp.route('/htmx/project-allocation-tree/<projcode>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_project_allocation_tree(projcode):
+    """Lazy-loaded allocation tree for the Edit Project Allocations tab.
+
+    Builds a {projcode: {resource_name: resource_dict}} lookup for all nodes
+    in the project tree, then renders one card per unique resource showing
+    the project hierarchy with compact allocation progress bars.
+    """
+    from sam.projects.projects import Project
+    from sam.queries.dashboard import _build_project_resources_data
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-warning">Project not found.</div>'
+
+    root = project.get_root() if hasattr(project, 'get_root') else project
+    active_only = request.args.get('active_only') == '1'
+
+    # Build {projcode: {resource_name: resource_dict}} for all tree nodes.
+    all_nodes = [root] + root.get_descendants()
+    if active_only:
+        all_nodes = [n for n in all_nodes if n.active]
+    resources_by_projcode = {}
+    for node in all_nodes:
+        node_resources = _build_project_resources_data(node)
+        resources_by_projcode[node.projcode] = {
+            r['resource_name']: r for r in node_resources
+        }
+
+    # Collect unique resource names (sorted) across all nodes.
+    all_resource_names = sorted({
+        rname
+        for res_dict in resources_by_projcode.values()
+        for rname in res_dict
+    })
+
+    return render_template(
+        'dashboards/admin/fragments/project_allocation_tree_htmx.html',
+        root=root,
+        projcode=projcode,
+        all_resource_names=all_resource_names,
+        resources_by_projcode=resources_by_projcode,
+        active_only=active_only,
+    )
+
+
+@bp.route('/htmx/add-allocation-form/<projcode>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_add_allocation_form(projcode):
+    """Return the add-allocation sub-form (loaded into modal on button click)."""
+    from sam.projects.projects import Project
+    from sam.resources.resources import Resource
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-warning">Project not found.</div>'
+
+    # Resources already linked to this project (via any account, even deleted).
+    linked_resource_ids = {
+        acct.resource_id for acct in project.accounts
+    }
+
+    # Offer all active resources not yet linked.
+    available_resources = (
+        db.session.query(Resource)
+        .filter(Resource.is_active)
+        .order_by(Resource.resource_name)
+        .all()
+    )
+    available_resources = [r for r in available_resources
+                           if r.resource_id not in linked_resource_ids]
+
+    return render_template(
+        'dashboards/admin/fragments/add_allocation_form_htmx.html',
+        project=project,
+        available_resources=available_resources,
+        today=datetime.now().strftime('%Y-%m-%d'),
+    )
+
+
+@bp.route('/htmx/add-allocation/<projcode>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_add_allocation(projcode):
+    """Create a new account + allocation for the project."""
+    from sam.projects.projects import Project
+    from sam.resources.resources import Resource
+    from sam.manage.allocations import create_allocation
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found.</div>', 404
+
+    errors = []
+
+    resource_id_str = request.form.get('resource_id', '').strip()
+    amount_str = request.form.get('amount', '').strip()
+    start_date_str = request.form.get('start_date', '').strip()
+    end_date_str = request.form.get('end_date', '').strip()
+    description = request.form.get('description', '').strip() or None
+
+    resource = None
+    if not resource_id_str:
+        errors.append('Resource is required.')
+    else:
+        try:
+            resource = db.session.get(Resource, int(resource_id_str))
+            if not resource:
+                errors.append('Selected resource does not exist.')
+        except ValueError:
+            errors.append('Invalid resource.')
+
+    amount = None
+    if not amount_str:
+        errors.append('Amount is required.')
+    else:
+        try:
+            amount = float(amount_str)
+            if amount <= 0:
+                errors.append('Amount must be greater than zero.')
+        except ValueError:
+            errors.append('Amount must be a number.')
+
+    start_date = end_date = None
+    if not start_date_str:
+        errors.append('Start date is required.')
+    else:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Invalid start date.')
+
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').replace(
+                hour=23, minute=59, second=59)
+            if start_date and end_date < start_date:
+                errors.append('End date must be on or after start date.')
+        except ValueError:
+            errors.append('Invalid end date.')
+
+    def _reload_add_form(extra_errors=None):
+        from sam.resources.resources import Resource as R
+        linked_ids = {a.resource_id for a in project.accounts}
+        available = (
+            db.session.query(R)
+            .filter(R.is_active)
+            .order_by(R.resource_name)
+            .all()
+        )
+        available = [r for r in available if r.resource_id not in linked_ids]
+        return render_template(
+            'dashboards/admin/fragments/add_allocation_form_htmx.html',
+            project=project,
+            available_resources=available,
+            today=datetime.now().strftime('%Y-%m-%d'),
+            errors=(extra_errors or []) + errors,
+            form=request.form,
+        )
+
+    if errors:
+        return _reload_add_form()
+
+    try:
+        with management_transaction(db.session):
+            create_allocation(
+                db.session,
+                project_id=project.project_id,
+                resource_id=resource.resource_id,
+                amount=amount,
+                start_date=start_date,
+                end_date=end_date,
+                description=description,
+                user_id=current_user.user_id,
+            )
+    except Exception as e:
+        return _reload_add_form([f'Error creating allocation: {e}'])
+
+    return htmx_success_message(
+        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
+        'Allocation created successfully.',
+        detail=f'{project.projcode} — {resource.resource_name}',
+    )
+
+
+@bp.route('/htmx/edit-allocation-form/<int:alloc_id>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_edit_allocation_form(alloc_id):
+    """Return the edit-allocation form fragment (loaded into modal)."""
+    from sam.accounting.allocations import Allocation
+
+    allocation = db.session.get(Allocation, alloc_id)
+    if not allocation:
+        return '<div class="alert alert-warning">Allocation not found.</div>'
+
+    projcode = allocation.account.project.projcode if allocation.account else ''
+
+    return render_template(
+        'dashboards/admin/fragments/edit_allocation_form_htmx.html',
+        allocation=allocation,
+        projcode=projcode,
+    )
+
+
+@bp.route('/htmx/edit-allocation/<int:alloc_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_edit_allocation(alloc_id):
+    """Validate and apply allocation edits with cascade + audit logging."""
+    from sam.accounting.allocations import Allocation, InheritingAllocationException
+    from sam.manage.allocations import update_allocation
+
+    allocation = db.session.get(Allocation, alloc_id)
+    if not allocation:
+        return '<div class="alert alert-danger">Allocation not found.</div>', 404
+
+    projcode = allocation.account.project.projcode if allocation.account else ''
+
+    errors = []
+
+    amount_str = request.form.get('amount', '').strip()
+    start_date_str = request.form.get('start_date', '').strip()
+    end_date_str = request.form.get('end_date', '').strip()
+    description = request.form.get('description', '').strip() or None
+
+    updates = {}
+
+    if amount_str:
+        try:
+            updates['amount'] = float(amount_str)
+            if updates['amount'] <= 0:
+                errors.append('Amount must be greater than zero.')
+        except ValueError:
+            errors.append('Amount must be a number.')
+
+    if start_date_str:
+        try:
+            updates['start_date'] = datetime.strptime(start_date_str, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Invalid start date.')
+
+    if end_date_str:
+        try:
+            updates['end_date'] = datetime.strptime(end_date_str, '%Y-%m-%d').replace(
+                hour=23, minute=59, second=59)
+        except ValueError:
+            errors.append('Invalid end date.')
+    elif 'end_date' in request.form:
+        # Explicit empty string → clear end date (open-ended).
+        updates['end_date'] = None
+
+    if 'description' in request.form:
+        updates['description'] = description
+
+    def _reload_edit_form(extra_errors=None):
+        return render_template(
+            'dashboards/admin/fragments/edit_allocation_form_htmx.html',
+            allocation=allocation,
+            projcode=projcode,
+            errors=(extra_errors or []) + errors,
+            form=request.form,
+        )
+
+    if errors:
+        return _reload_edit_form()
+
+    if not updates:
+        return _reload_edit_form(['No changes provided.'])
+
+    try:
+        with management_transaction(db.session):
+            update_allocation(
+                db.session,
+                alloc_id,
+                current_user.user_id,
+                **updates,
+            )
+    except InheritingAllocationException:
+        return _reload_edit_form([
+            'Cannot directly edit an inherited (child) allocation. '
+            'Edit the parent allocation instead — changes will cascade automatically.'
+        ])
+    except Exception as e:
+        return _reload_edit_form([f'Error updating allocation: {e}'])
+
+    return htmx_success_message(
+        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
+        'Allocation updated successfully.',
     )
