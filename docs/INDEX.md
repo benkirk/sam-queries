@@ -68,6 +68,14 @@ Complete index of all documentation in the SAM Queries project.
   - Writing tests
   - Coverage
 
+## 🔌 API Reference
+
+- **[apis/SYSTEMS_INTEGRATION_APIs.md](apis/SYSTEMS_INTEGRATION_APIs.md)** —
+  Directory access, project access & fairshare tree APIs (LDAP provisioning + PBS scheduler integration)
+- **[apis/CHARGING_INTEGRATION.md](apis/CHARGING_INTEGRATION.md)** —
+  HPC charge ingest integration
+- **[src/webapp/README.md](../src/webapp/README.md)** — Full REST API endpoint reference
+
 ## 📚 Quick Reference
 
 ### Setup Flow
@@ -115,6 +123,7 @@ sam-search project SCSG0001
 - **Understand ORM?** → [CLAUDE.md](../CLAUDE.md)
 - **Write tests?** → [tests/docs/README.md](../tests/docs/README.md)
 - **Use the API?** → [src/webapp/README.md](../src/webapp/README.md)
+- **Use systems integration APIs?** → [apis/SYSTEMS_INTEGRATION_APIs.md](apis/SYSTEMS_INTEGRATION_APIs.md)
 
 ### "I'm getting..."
 
@@ -135,7 +144,10 @@ docs/
 ├── DATABASE_SWITCHING.md      # Database switching guide
 ├── SCRIPTS.md                 # Script reference
 ├── DOCKER_TROUBLESHOOTING.md  # Docker issues
-└── WEBAPP_SETUP.md            # Webapp setup
+├── WEBAPP_SETUP.md            # Webapp setup
+└── apis/
+    ├── SYSTEMS_INTEGRATION_APIs.md   # Directory access, project access, fairshare tree
+    └── CHARGING_INTEGRATION.md       # HPC charge ingest integration
 
 ../
 ├── README.md                  # Project overview
