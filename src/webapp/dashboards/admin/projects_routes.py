@@ -501,7 +501,15 @@ def edit_project_page(projcode):
         if project.allocation_type.panel.facility:
             current_facility_id = project.allocation_type.panel.facility_id
 
-    form_data = _project_form_data(form=None)
+    # Feed the current facility_id / panel_id into _project_form_data so it
+    # pre-loads the cascading Panel and Allocation Type option lists — the same
+    # mechanism used by the create form on validation-error re-renders.
+    pre_fill = {}
+    if current_facility_id:
+        pre_fill['facility_id'] = str(current_facility_id)
+    if current_panel_id:
+        pre_fill['panel_id'] = str(current_panel_id)
+    form_data = _project_form_data(form=pre_fill or None)
 
     return render_template(
         'dashboards/admin/edit_project.html',
@@ -647,10 +655,11 @@ def htmx_project_update(projcode):
 def htmx_project_allocation_tree(projcode):
     """Lazy-loaded allocation tree for the Edit Project Allocations tab.
 
-    Builds a {projcode: {resource_name: resource_dict}} lookup for all nodes
-    in the project tree, then renders one card per unique resource showing
-    the project hierarchy with compact allocation progress bars.
+    Builds a {projcode: {resource_name: resource_dict}} lookup for all active
+    nodes in the project tree, groups resources by resource type into tabs, and
+    renders accordion cards within each tab.
     """
+    from collections import OrderedDict
     from sam.projects.projects import Project
     from sam.queries.dashboard import _build_project_resources_data
 
@@ -659,12 +668,9 @@ def htmx_project_allocation_tree(projcode):
         return '<div class="alert alert-warning">Project not found.</div>'
 
     root = project.get_root() if hasattr(project, 'get_root') else project
-    active_only = request.args.get('active_only') == '1'
 
-    # Build {projcode: {resource_name: resource_dict}} for all tree nodes.
-    all_nodes = [root] + root.get_descendants()
-    if active_only:
-        all_nodes = [n for n in all_nodes if n.active]
+    # Always show active projects only in the allocation tree.
+    all_nodes = [n for n in ([root] + root.get_descendants()) if n.active]
     resources_by_projcode = {}
     for node in all_nodes:
         node_resources = _build_project_resources_data(node)
@@ -672,20 +678,39 @@ def htmx_project_allocation_tree(projcode):
             r['resource_name']: r for r in node_resources
         }
 
-    # Collect unique resource names (sorted) across all nodes.
-    all_resource_names = sorted({
-        rname
-        for res_dict in resources_by_projcode.values()
-        for rname in res_dict
-    })
+    # Build resource_type lookup from the data already loaded.
+    resource_type_lookup = {}  # {resource_name: resource_type_string}
+    for res_dict in resources_by_projcode.values():
+        for rname, rdata in res_dict.items():
+            if rname not in resource_type_lookup:
+                resource_type_lookup[rname] = rdata.get('resource_type', 'HPC')
+
+    # Group resources into display tabs (ordered; skip empty tabs).
+    _TAB_CONFIG = [
+        ('HPC / DAV',    ['HPC', 'DAV']),
+        ('Disk',         ['DISK']),
+        ('Archive',      ['ARCHIVE']),
+        ('Data Access',  ['DATA ACCESS']),
+    ]
+    resources_by_tab = OrderedDict()
+    for tab_label, rtypes in _TAB_CONFIG:
+        names = sorted(
+            rname for rname, rtype in resource_type_lookup.items()
+            if rtype in rtypes
+        )
+        if names:
+            resources_by_tab[tab_label] = {
+                'names': names,
+                'rtypes': rtypes,
+                'rtypes_str': ','.join(rtypes),
+            }
 
     return render_template(
         'dashboards/admin/fragments/project_allocation_tree_htmx.html',
         root=root,
         projcode=projcode,
-        all_resource_names=all_resource_names,
+        resources_by_tab=resources_by_tab,
         resources_by_projcode=resources_by_projcode,
-        active_only=active_only,
     )
 
 
@@ -706,20 +731,30 @@ def htmx_add_allocation_form(projcode):
         acct.resource_id for acct in project.accounts
     }
 
-    # Offer all active resources not yet linked.
+    # Optional resource-type filter passed from the allocation tab button.
+    # e.g. ?rtypes=HPC,DAV  limits the dropdown to those resource types.
+    rtypes_str = request.args.get('rtypes', '').strip()
+    rtypes_filter = [r.strip() for r in rtypes_str.split(',') if r.strip()]
+
+    # Offer all active resources not yet linked (filtered by type if requested).
     available_resources = (
         db.session.query(Resource)
         .filter(Resource.is_active)
         .order_by(Resource.resource_name)
         .all()
     )
-    available_resources = [r for r in available_resources
-                           if r.resource_id not in linked_resource_ids]
+    available_resources = [
+        r for r in available_resources
+        if r.resource_id not in linked_resource_ids
+        and (not rtypes_filter
+             or (r.resource_type and r.resource_type.resource_type in rtypes_filter))
+    ]
 
     return render_template(
         'dashboards/admin/fragments/add_allocation_form_htmx.html',
         project=project,
         available_resources=available_resources,
+        rtypes_str=rtypes_str,
         today=datetime.now().strftime('%Y-%m-%d'),
     )
 
@@ -785,6 +820,10 @@ def htmx_add_allocation(projcode):
         except ValueError:
             errors.append('Invalid end date.')
 
+    # Preserve resource-type filter from the hidden form field on re-render.
+    rtypes_str = request.form.get('rtypes_str', '').strip()
+    rtypes_filter = [r.strip() for r in rtypes_str.split(',') if r.strip()]
+
     def _reload_add_form(extra_errors=None):
         from sam.resources.resources import Resource as R
         linked_ids = {a.resource_id for a in project.accounts}
@@ -794,11 +833,17 @@ def htmx_add_allocation(projcode):
             .order_by(R.resource_name)
             .all()
         )
-        available = [r for r in available if r.resource_id not in linked_ids]
+        available = [
+            r for r in available
+            if r.resource_id not in linked_ids
+            and (not rtypes_filter
+                 or (r.resource_type and r.resource_type.resource_type in rtypes_filter))
+        ]
         return render_template(
             'dashboards/admin/fragments/add_allocation_form_htmx.html',
             project=project,
             available_resources=available,
+            rtypes_str=rtypes_str,
             today=datetime.now().strftime('%Y-%m-%d'),
             errors=(extra_errors or []) + errors,
             form=request.form,

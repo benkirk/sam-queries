@@ -317,7 +317,7 @@
                         {% endfor %}
                     </h5>
                 </div>
-                <div>
+                <div class="d-flex align-items-center gap-1">
                     {# Show user's role on this project #}
                     {% if project.lead and project.lead.user_id == user.user_id %}
                         <span class="badge bg-primary"><i class="fas fa-star"></i> Lead</span>
@@ -334,6 +334,15 @@
                         <span class="badge bg-warning text-dark" title="Resource usage above {{ usage_warning_threshold }}%">
                             <i class="fas fa-exclamation-triangle"></i> {{ max_usage | round(0) | int }}% used
                         </span>
+                    {% endif %}
+                    {# Edit Project button — visible to EDIT_PROJECTS permission holders #}
+                    {% if has_permission(Permission.EDIT_PROJECTS) %}
+                    <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
+                       class="btn btn-xs btn-warning ms-1"
+                       onclick="event.stopPropagation()"
+                       title="Edit project">
+                        <i class="fas fa-edit"></i> Edit
+                    </a>
                     {% endif %}
                 </div>
             </div>

@@ -140,15 +140,6 @@ def project_card(projcode):
     if not project_data:
         return '<div class="alert alert-warning">Project not found</div>'
 
-    # Build edit URL defensively — url_for raises BuildError if the route is
-    # not yet registered (e.g., during a hot-reload race). Passing None causes
-    # the template to simply omit the button rather than 500.
-    try:
-        edit_project_url = url_for('admin_dashboard.edit_project_page',
-                                   projcode=projcode)
-    except Exception:
-        edit_project_url = None
-
     # Render a wrapper template that calls the macro
     return render_template(
         'dashboards/admin/fragments/project_card_wrapper.html',
@@ -156,7 +147,6 @@ def project_card(projcode):
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
-        edit_project_url=edit_project_url,
     )
 
 

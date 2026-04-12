@@ -150,6 +150,25 @@
   </div>
 </div>
 
+<!-- Project Details Modal — required by the clickable projcodes in the allocation tree -->
+<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-xl" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="projectDetailsModalTitle">Project Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="projectDetailsModalBody">
+        <div class="text-center">
+          <div class="spinner-border text-primary" role="status">
+            <span class="sr-only">Loading…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Include member management modals (reused from user dashboard) -->
 {% include 'dashboards/user/fragments/member_modals.html' %}
 

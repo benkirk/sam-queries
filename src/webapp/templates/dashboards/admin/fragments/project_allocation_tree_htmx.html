@@ -3,37 +3,20 @@
   Lazy-loaded when the Allocations tab is first shown.
 
   Context variables:
-    root                  — Project ORM root node of the tree
-    projcode              — projcode of the project being edited
-    all_resource_names    — sorted list of resource name strings
+    root                — Project ORM root node of the tree
+    projcode            — projcode of the project being edited
+    resources_by_tab    — OrderedDict {tab_label: {names, rtypes, rtypes_str}}
     resources_by_projcode — dict {projcode: {resource_name: resource_dict}}
-                            resource_dict is from _build_project_resources_data()
 
-  Displays one card per resource.  Within each card, the shared
-  render_project_tree macro recurses through the project tree, looking up
-  each node's allocation data from resources_by_projcode.
+  Layout:
+    - Bootstrap pill tabs, one per non-empty resource type (HPC/DAV, Disk, etc.)
+    - Within each tab: Bootstrap accordion, one card per resource (sorted by name)
+    - Within each accordion card: shared render_project_tree macro with usage bars
+    - Each tab has an "Add Allocation" button pre-filtered to that resource type
 #}
 {% from 'dashboards/shared/project_tree.html' import render_project_tree with context %}
 
-<!-- Active-only toggle — reloads this fragment via htmx -->
-<div class="d-flex justify-content-end mb-2">
-  <div class="form-check form-switch mb-0">
-    <input class="form-check-input" type="checkbox"
-           id="allocTreeActiveOnly"
-           name="active_only" value="1"
-           {% if active_only %}checked{% endif %}
-           hx-get="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=projcode) }}"
-           hx-target="#allocationTreeContainer"
-           hx-swap="innerHTML"
-           hx-trigger="change"
-           hx-include="#allocTreeActiveOnly">
-    <label class="form-check-label small text-muted fw-normal" for="allocTreeActiveOnly">
-      Active only
-    </label>
-  </div>
-</div>
-
-{% if not all_resource_names %}
+{% if not resources_by_tab %}
 <div class="alert alert-info">
   <i class="fas fa-info-circle"></i>
   No allocations found for this project or its sub-projects.
@@ -46,66 +29,127 @@
     <i class="fas fa-plus-circle"></i> Add First Allocation
   </button>
 </div>
+
 {% else %}
 
-<!-- One card per resource ─────────────────────────────────────────── -->
-{% for resource_name in all_resource_names %}
-{# Build per-resource lookup: {projcode: resource_dict|None} #}
-{%- set alloc_by_projcode = {} -%}
-{%- for pc, res_dict in resources_by_projcode.items() -%}
-  {%- if resource_name in res_dict -%}
-    {%- set _ = alloc_by_projcode.update({pc: res_dict[resource_name]}) -%}
-  {%- else -%}
-    {%- set _ = alloc_by_projcode.update({pc: none}) -%}
-  {%- endif -%}
-{%- endfor -%}
-
-<div class="card mb-3">
-  <div class="card-header d-flex justify-content-between align-items-center py-2">
-    <h6 class="mb-0">
-      <i class="fas fa-server text-primary me-1"></i>
-      {{ resource_name }}
-    </h6>
-    <button class="btn btn-sm btn-outline-success"
-            hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=projcode) }}"
-            hx-target="#addAllocationFormContainer"
-            hx-trigger="click"
-            data-bs-toggle="modal"
-            data-bs-target="#addAllocationModal"
-            title="Add allocation for a new resource">
-      <i class="fas fa-plus-circle"></i> Add Allocation
+{# ── Resource Type pill tabs ─────────────────────────────────────────── #}
+<ul class="nav nav-pills mb-3" id="allocResourceTypeTabs" role="tablist">
+  {% for tab_label, tab_data in resources_by_tab.items() %}
+  {% set tab_idx = loop.index %}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if loop.first %}active{% endif %}"
+            id="alloc-pill-{{ tab_idx }}"
+            data-bs-toggle="pill"
+            data-bs-target="#alloc-pane-{{ tab_idx }}"
+            type="button" role="tab"
+            aria-controls="alloc-pane-{{ tab_idx }}"
+            aria-selected="{{ 'true' if loop.first else 'false' }}">
+      <i class="fas fa-server me-1 small"></i>{{ tab_label }}
+      <span class="badge bg-secondary ms-1">{{ tab_data.names | length }}</span>
     </button>
-  </div>
-  <div class="card-body p-2">
-    <ul class="tree-list mb-0">
-      {{ render_project_tree([root],
-                             current_projcode=projcode,
-                             alloc_by_projcode=alloc_by_projcode,
-                             can_view=true,
-                             can_edit_allocations=true,
-                             active_only=active_only,
-                             usage_warning_threshold=75,
-                             usage_critical_threshold=90) }}
-    </ul>
-  </div>
-</div>
-{% endfor %}
+  </li>
+  {% endfor %}
+</ul>
 
-<!-- Add allocation for a resource not yet linked ──────────────────── -->
-<div class="mt-2">
-  <button class="btn btn-outline-success btn-sm"
-          hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=projcode) }}"
-          hx-target="#addAllocationFormContainer"
-          hx-trigger="click"
-          data-bs-toggle="modal"
-          data-bs-target="#addAllocationModal">
-    <i class="fas fa-plus-circle"></i> Add Allocation for Another Resource
-  </button>
-</div>
+{# ── Tab pane content ────────────────────────────────────────────────── #}
+<div class="tab-content" id="allocResourceTypeTabsContent">
+  {% for tab_label, tab_data in resources_by_tab.items() %}
+  {% set tab_idx = loop.index %}
+  <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+       id="alloc-pane-{{ tab_idx }}"
+       role="tabpanel"
+       aria-labelledby="alloc-pill-{{ tab_idx }}">
+
+    {# Add Allocation button — pre-filtered to this resource type #}
+    <div class="d-flex justify-content-end mb-2">
+      <button class="btn btn-sm btn-outline-success"
+              hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=projcode) }}?rtypes={{ tab_data.rtypes_str | urlencode }}"
+              hx-target="#addAllocationFormContainer"
+              hx-trigger="click"
+              data-bs-toggle="modal"
+              data-bs-target="#addAllocationModal">
+        <i class="fas fa-plus-circle"></i> Add {{ tab_label }} Allocation
+      </button>
+    </div>
+
+    {# Accordion: one card per resource, sorted by name ────────────── #}
+    <div class="accordion" id="accordion-tab-{{ tab_idx }}">
+      {% for resource_name in tab_data.names %}
+      {% set resource_slug = resource_name | lower | replace(' ', '-') | replace('/', '-') | replace('_', '-') %}
+      {% set card_id = 'alloc-card-' ~ tab_idx ~ '-' ~ resource_slug %}
+
+      {# Build per-resource {projcode: resource_dict|None} lookup #}
+      {%- set alloc_by_projcode = {} -%}
+      {%- for pc, res_dict in resources_by_projcode.items() -%}
+        {%- if resource_name in res_dict -%}
+          {%- set _ = alloc_by_projcode.update({pc: res_dict[resource_name]}) -%}
+        {%- else -%}
+          {%- set _ = alloc_by_projcode.update({pc: none}) -%}
+        {%- endif -%}
+      {%- endfor -%}
+
+      {# Root node's allocation summary for the accordion header #}
+      {%- set root_alloc = resources_by_projcode.get(root.projcode, {}).get(resource_name) -%}
+
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="heading-{{ card_id }}">
+          <button class="accordion-button collapsed py-2" type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#collapse-{{ card_id }}"
+                  aria-expanded="false"
+                  aria-controls="collapse-{{ card_id }}">
+            <span class="me-auto fw-semibold">
+              <i class="fas fa-server text-primary me-2"></i>{{ resource_name }}
+            </span>
+            {# Compact usage summary in the button #}
+            {% if root_alloc %}
+              {% set pct = [root_alloc.percent_used, 100] | min %}
+              <span class="d-flex align-items-center gap-2 me-3 small text-muted">
+                <div class="progress" style="width:80px;height:6px;">
+                  <div class="progress-bar
+                       {%- if root_alloc.percent_used >= 90 %} bg-danger
+                       {%- elif root_alloc.percent_used >= 75 %} bg-warning
+                       {%- else %} bg-success{% endif %}"
+                       role="progressbar" style="width:{{ pct }}%;"></div>
+                </div>
+                <span class="text-nowrap">{{ root_alloc.percent_used | fmt_pct }} used</span>
+                {% if root_alloc.is_inheriting %}
+                <span class="badge bg-secondary bg-opacity-25 text-dark border">shared</span>
+                {% endif %}
+              </span>
+            {% endif %}
+          </button>
+        </h2>
+        <div id="collapse-{{ card_id }}"
+             class="accordion-collapse collapse"
+             aria-labelledby="heading-{{ card_id }}"
+             data-bs-parent="#accordion-tab-{{ tab_idx }}">
+          <div class="accordion-body p-2">
+            <ul class="tree-list mb-0">
+              {{ render_project_tree([root],
+                                     current_projcode=projcode,
+                                     alloc_by_projcode=alloc_by_projcode,
+                                     can_view=true,
+                                     can_edit_allocations=true,
+                                     active_only=true,
+                                     usage_warning_threshold=75,
+                                     usage_critical_threshold=90) }}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>{# /accordion #}
+
+  </div>{# /tab-pane #}
+  {% endfor %}
+</div>{# /tab-content #}
+
 {% endif %}
 
 <style>
   .tree-list { list-style: none; padding-left: 1.25rem; margin-bottom: 0; }
   .tree-list > li { border-left: 2px solid #dee2e6; padding: 0.3rem 0.5rem; margin-bottom: 0.15rem; }
   .btn-xs { padding: 0.1rem 0.35rem; font-size: 0.75rem; }
+  .accordion-button:not(.collapsed) { background-color: #f8f9fa; color: inherit; box-shadow: none; }
 </style>

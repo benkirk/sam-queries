@@ -18,6 +18,9 @@
     submit_icon='plus-circle'
 ) %}
 
+  {# Preserve the resource-type filter across POST error re-renders #}
+  <input type="hidden" name="rtypes_str" value="{{ rtypes_str or '' }}">
+
   {% if not available_resources %}
   <div class="alert alert-info mb-3">
     <i class="fas fa-info-circle"></i>

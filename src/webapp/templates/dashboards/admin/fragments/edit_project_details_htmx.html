@@ -229,14 +229,12 @@
       </div>
     </div>
     <div class="col-md-3">
-      <!-- ── Unix GID ── -->
+      <!-- ── Unix GID (read-only — changing an established GID would break filesystem permissions) ── -->
       <div class="mb-3">
-        <label for="editProjectGid" class="form-label">
-          Unix GID <span class="text-muted">(optional)</span>
-        </label>
-        <input type="number" class="form-control form-control-sm" id="editProjectGid"
-               name="unix_gid"
-               value="{{ f.get('unix_gid', project.unix_gid or '') if f else (project.unix_gid or '') }}">
+        <label class="form-label">Unix GID</label>
+        <div class="form-control-plaintext text-muted">
+          {{ project.unix_gid or '—' }}
+        </div>
       </div>
     </div>
     <div class="col-md-3">

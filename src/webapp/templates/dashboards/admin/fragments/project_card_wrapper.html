@@ -1,13 +1,5 @@
 {% from 'dashboards/user/partials/project_card.html' import render_project_card with context %}
 
-{% if edit_project_url and has_permission(Permission.EDIT_PROJECTS) %}
-<div class="d-flex justify-content-end mb-2">
-  <a href="{{ edit_project_url }}" class="btn btn-sm btn-warning">
-    <i class="fas fa-edit"></i> Edit Project
-  </a>
-</div>
-{% endif %}
-
 {{ render_project_card(
     project_data,
     0,
