@@ -1,15 +1,16 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   htmx: Edit Allocation Type Form (loaded into #editAllocationTypeFormContainer)
   allocation_type name and panel are read-only.
   Editable: default_allocation_amount, fair_share_percentage, active.
 #}
 
-<form hx-post="{{ url_for('admin_dashboard.htmx_allocation_type_edit', allocation_type_id=allocation_type.allocation_type_id) }}"
-      hx-target="#editAllocationTypeFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_allocation_type_edit', allocation_type_id=allocation_type.allocation_type_id),
+    '#editAllocationTypeFormContainer',
+    'Save Changes',
+    is_edit=True
+) %}
         <!-- Type name / Panel (read-only) -->
         <div class="row mb-3">
             <div class="col-md-6">
@@ -59,20 +60,4 @@
                    {% endif %}>
             <label class="form-check-label" for="editAllocationTypeActive">Active</label>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-warning">
-            <i class="fas fa-save"></i> Save Changes
-        </button>
-    </div>
-</form>
+{% endcall %}

@@ -1,10 +1,11 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {# htmx: Create Institution Form #}
-<form hx-post="{{ url_for('admin_dashboard.htmx_institution_create') }}"
-      hx-target="#createInstitutionFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_institution_create'),
+    '#createInstitutionFormContainer',
+    'Create Institution',
+    submit_icon='plus'
+) %}
         <div class="mb-3">
             <label for="createInstName" class="form-label">
                 Name <span class="text-danger">*</span>
@@ -76,20 +77,4 @@
                 </div>
             </div>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">
-            <i class="fas fa-plus"></i> Create Institution
-        </button>
-    </div>
-</form>
+{% endcall %}

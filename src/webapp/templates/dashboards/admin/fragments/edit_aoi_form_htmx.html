@@ -1,14 +1,15 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   htmx: Edit Area of Interest Form (loaded into #editAoiFormContainer)
   Editable: area_of_interest (required), group (dropdown, required), active.
 #}
 
-<form hx-post="{{ url_for('admin_dashboard.htmx_aoi_edit', aoi_id=aoi.area_of_interest_id) }}"
-      hx-target="#editAoiFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_aoi_edit', aoi_id=aoi.area_of_interest_id),
+    '#editAoiFormContainer',
+    'Save Changes',
+    is_edit=True
+) %}
         <!-- ID (read-only) -->
         <div class="mb-3">
             <label class="form-label">AOI ID</label>
@@ -49,20 +50,4 @@
                    {% elif aoi.active %}checked{% endif %}>
             <label class="form-check-label" for="editAoiActive">Active</label>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-warning">
-            <i class="fas fa-save"></i> Save Changes
-        </button>
-    </div>
-</form>
+{% endcall %}

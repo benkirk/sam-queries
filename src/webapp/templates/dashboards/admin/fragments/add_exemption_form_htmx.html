@@ -1,15 +1,16 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   htmx: Add Wallclock Exemption Form (loaded into #addExemptionFormContainer)
   Resource → Queue cascading via HTMX.
   Submission replaces this container; on success a script closes the modal.
 #}
 
-<form hx-post="{{ url_for('admin_dashboard.htmx_add_exemption', username=sam_user.username) }}"
-      hx-target="#addExemptionFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_add_exemption', username=sam_user.username),
+    '#addExemptionFormContainer',
+    'Add Exemption',
+    submit_icon='plus'
+) %}
         <!-- User (read-only) -->
         <div class="mb-3">
             <label class="form-label">User</label>
@@ -94,20 +95,4 @@
             <textarea class="form-control" id="exemptionComment" name="comment" rows="2"
                       placeholder="Reason for exemption...">{{ form.get('comment') if form else '' }}</textarea>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">
-            <i class="fas fa-plus"></i> Add Exemption
-        </button>
-    </div>
-</form>
+{% endcall %}

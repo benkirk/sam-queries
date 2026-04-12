@@ -7,7 +7,7 @@ Covers: Project creation (Phase A).  Edit/allocation management (Phase B).
 import re
 
 from flask import render_template, request
-from webapp.utils.htmx import htmx_success
+from webapp.utils.htmx import htmx_success, htmx_success_message
 from flask_login import login_required
 
 from webapp.extensions import db
@@ -463,8 +463,8 @@ def htmx_project_create():
     except Exception as e:
         return _reload_form([f'Error creating project: {e}'])
 
-    return htmx_success(
-        'dashboards/admin/fragments/project_create_success_htmx.html',
+    return htmx_success_message(
         {'closeActiveModal': {}, 'loadNewProject': project.projcode},
-        project=project,
+        'Project created successfully.',
+        detail=f'{project.projcode} — {project.title}',
     )

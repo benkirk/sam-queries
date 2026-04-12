@@ -1,14 +1,15 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   htmx: Edit Contract Source Form (loaded into #editContractSourceFormContainer)
   Editable: contract_source (required), active.
 #}
 
-<form hx-post="{{ url_for('admin_dashboard.htmx_contract_source_edit', source_id=source.contract_source_id) }}"
-      hx-target="#editContractSourceFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_contract_source_edit', source_id=source.contract_source_id),
+    '#editContractSourceFormContainer',
+    'Save Changes',
+    is_edit=True
+) %}
         <!-- ID (read-only) -->
         <div class="mb-3">
             <label class="form-label">Source ID</label>
@@ -33,20 +34,4 @@
                    {% elif source.active %}checked{% endif %}>
             <label class="form-check-label" for="editContractSourceActive">Active</label>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-warning">
-            <i class="fas fa-save"></i> Save Changes
-        </button>
-    </div>
-</form>
+{% endcall %}

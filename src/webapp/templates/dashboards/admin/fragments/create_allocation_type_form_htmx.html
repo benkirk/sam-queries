@@ -1,14 +1,14 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {# htmx: Create Allocation Type Form
    Facility → Panel cascade (reuses htmx_panels_for_facility endpoint).
    Auto-selects panel if only one option for the chosen facility.
 #}
-<form hx-post="{{ url_for('admin_dashboard.htmx_allocation_type_create') }}"
-      hx-target="#createAllocationTypeFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
-
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_allocation_type_create'),
+    '#createAllocationTypeFormContainer',
+    'Create Allocation Type',
+    submit_icon='plus'
+) %}
         <!-- ── Facility / Panel cascade ──────────────────────────────────── -->
         <div class="row g-2 mb-3">
             <div class="col-md-6">
@@ -87,23 +87,7 @@
                 </div>
             </div>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">
-            <i class="fas fa-plus"></i> Create Allocation Type
-        </button>
-    </div>
-</form>
+{% endcall %}
 
 <script>
 (function () {
