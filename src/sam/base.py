@@ -334,4 +334,75 @@ class NestedSetMixin:
     def has_children(cls):
         """True if node has children (SQL side)."""
         return cls.tree_right > cls.tree_left + 1
+
+    def _ns_place_in_tree(self, session, parent=None) -> None:
+        """Assign nested-set coordinates to a newly-inserted node.
+
+        Must be called AFTER ``session.flush()`` so that ``self`` has a PK.
+        Handles two cases:
+
+        * **Root node** (``parent=None``): sets ``tree_left=1``, ``tree_right=2``,
+          and (when ``_ns_root_col`` is configured) ``tree_root = self.pk``.
+          This creates a standalone single-node tree.
+
+        * **Child node**: inserts the new node as the *last child* of ``parent``
+          by opening a gap at ``parent.tree_right`` and shifting all affected
+          sibling/ancestor right-boundaries by 2.  Nodes are shifted with two
+          targeted SQL UPDATEs; when ``_ns_root_col`` is set the UPDATEs are
+          scoped to that root so other independent trees are untouched.
+
+        The ``parent`` itself is refreshed from the database after the shifts so
+        that in-memory coordinates stay correct for the caller.
+
+        Args:
+            session: Active SQLAlchemy session (must NOT be in a nested savepoint
+                     or committed state).
+            parent:  Parent instance (must already be flushed and have valid
+                     ``tree_left``/``tree_right`` values), or ``None`` for a root.
+        """
+        cls = type(self)
+        my_pk = getattr(self, self._ns_pk_col)
+        table = cls.__tablename__
+
+        if parent is None:
+            # New standalone root tree
+            self.tree_left = 1
+            self.tree_right = 2
+            if self._ns_root_col:
+                setattr(self, self._ns_root_col, my_pk)
+        else:
+            parent_right = parent.tree_right
+            tree_root_val = getattr(parent, self._ns_root_col) if self._ns_root_col else None
+
+            if self._ns_root_col and tree_root_val:
+                # Scope shifts to this subtree only
+                root_col = self._ns_root_col
+                session.execute(text(
+                    f"UPDATE `{table}` SET tree_left = tree_left + 2 "
+                    f"WHERE tree_left >= :pr AND `{root_col}` = :root"
+                ), {'pr': parent_right, 'root': tree_root_val})
+                session.execute(text(
+                    f"UPDATE `{table}` SET tree_right = tree_right + 2 "
+                    f"WHERE tree_right >= :pr AND `{root_col}` = :root"
+                ), {'pr': parent_right, 'root': tree_root_val})
+            else:
+                # Global tree (no tree_root scoping, e.g. Organization)
+                session.execute(text(
+                    f"UPDATE `{table}` SET tree_left = tree_left + 2 "
+                    f"WHERE tree_left >= :pr"
+                ), {'pr': parent_right})
+                session.execute(text(
+                    f"UPDATE `{table}` SET tree_right = tree_right + 2 "
+                    f"WHERE tree_right >= :pr"
+                ), {'pr': parent_right})
+
+            self.tree_left = parent_right
+            self.tree_right = parent_right + 1
+            if self._ns_root_col:
+                setattr(self, self._ns_root_col, tree_root_val)
+
+            # Refresh parent so its in-memory coordinates reflect the shift
+            session.refresh(parent)
+
+        session.flush()
 #-------------------------------------------------------------------------em-

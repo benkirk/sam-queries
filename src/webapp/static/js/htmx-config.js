@@ -68,6 +68,27 @@ document.body.addEventListener('reloadResourcesCard', function() {
     _reloadAdminCard('resourcesSection', 'resourcesCardActiveOnly');
 });
 
+// Load the newly-created project card into #projectCardContainer so the admin
+// can immediately see the result without re-searching.
+document.body.addEventListener('loadNewProject', function(evt) {
+    var projcode = evt.detail.value;
+    var container = document.getElementById('projectCardContainer');
+    var baseUrl = container ? container.getAttribute('data-reload-url') : null;
+    if (baseUrl && projcode) {
+        setTimeout(function() {
+            htmx.ajax('GET', baseUrl + projcode,
+                      {target: '#projectCardContainer', swap: 'innerHTML'});
+        }, 300);
+    }
+});
+
+// Update the Project Details modal title from the projcode in the loaded response.
+// The project_details_modal route fires this via HX-Trigger on every response.
+document.body.addEventListener('setModalTitle', function(evt) {
+    var el = document.getElementById('projectDetailsModalTitle');
+    if (el) el.textContent = evt.detail.value;
+});
+
 // Reload the user card after an exemption change.
 // Base URL is read from a data-reload-url attribute on the container.
 document.body.addEventListener('reloadUserCard', function(evt) {

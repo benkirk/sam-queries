@@ -341,13 +341,16 @@ def project_details_modal(projcode):
     # Get full project data
     project_data = get_project_dashboard_data(db.session, projcode)
 
-    return render_template(
+    import json
+    resp = make_response(render_template(
         'dashboards/user/partials/project_details_modal.html',
         project_data=project_data,
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
-    )
+    ))
+    resp.headers['HX-Trigger'] = json.dumps({'setModalTitle': f'Project Details \u2014 {projcode}'})
+    return resp
 
 
 # ============================================================================

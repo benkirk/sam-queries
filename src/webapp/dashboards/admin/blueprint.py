@@ -745,4 +745,4 @@ def htmx_queues_for_resource():
 # Domain route modules — must be imported AFTER bp is defined
 # ============================================================================
 
-from . import resources_routes, facilities_routes, orgs_routes  # noqa: E402, F401
+from . import resources_routes, facilities_routes, orgs_routes, projects_routes  # noqa: E402, F401

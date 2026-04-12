@@ -227,6 +227,80 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         # Order by projcode and apply limit
         return query.order_by(cls.projcode).limit(limit).all()
 
+    @classmethod
+    def create(cls, session, *, projcode: str, title: str, project_lead_user_id: int,
+               area_of_interest_id: int, abstract: Optional[str] = None,
+               project_admin_user_id: Optional[int] = None,
+               allocation_type_id: Optional[int] = None,
+               parent_id: Optional[int] = None,
+               charging_exempt: bool = False,
+               unix_gid: Optional[int] = None,
+               ext_alias: Optional[str] = None) -> 'Project':
+        """Create a new project and place it correctly in the nested-set tree.
+
+        All keyword arguments are required or keyword-only to prevent positional
+        mistakes.  ``projcode`` is uppercased and stripped automatically.
+
+        The new project inherits ``tree_root`` from its parent (if provided) and
+        receives correct ``tree_left`` / ``tree_right`` coordinates via
+        ``_ns_place_in_tree``.  Root projects (no parent) start their own
+        single-node tree.
+
+        Args:
+            session: SQLAlchemy session.
+            projcode: Unique project code (e.g. ``'UCSD0001'``).
+            title: Human-readable project title.
+            project_lead_user_id: FK to the project lead User.
+            area_of_interest_id: FK to AreaOfInterest (required).
+            abstract: Optional longer description.
+            project_admin_user_id: Optional FK to project admin User.
+            allocation_type_id: Optional FK to AllocationType.
+            parent_id: Optional FK to parent Project (for sub-projects).
+            charging_exempt: If True, charges are not assessed. Default False.
+            unix_gid: Optional Unix group ID.
+            ext_alias: Optional external alias string.
+
+        Returns:
+            The newly created and flushed Project instance.
+
+        Example::
+
+            project = Project.create(
+                session,
+                projcode='UCSD0042',
+                title='Mesoscale Climate Dynamics',
+                project_lead_user_id=lead_user.user_id,
+                area_of_interest_id=aoi.area_of_interest_id,
+            )
+        """
+        parent = session.get(cls, parent_id) if parent_id else None
+
+        project = cls(
+            projcode=projcode.upper().strip(),
+            title=title.strip(),
+            abstract=abstract.strip() if abstract else None,
+            project_lead_user_id=project_lead_user_id,
+            project_admin_user_id=project_admin_user_id,
+            area_of_interest_id=area_of_interest_id,
+            allocation_type_id=allocation_type_id,
+            parent_id=parent_id,
+            charging_exempt=charging_exempt,
+            unix_gid=unix_gid,
+            ext_alias=ext_alias.strip() if ext_alias else None,
+        )
+        session.add(project)
+        session.flush()  # assigns project_id before tree placement
+
+        # Set tree coordinates (also sets tree_root and shifts siblings)
+        project._ns_place_in_tree(session, parent)
+
+        # Create sequential project number (mirrors legacy SAM createProjectNumber())
+        pn = ProjectNumber(project_id=project.project_id)
+        session.add(pn)
+        session.flush()
+
+        return project
+
     # # Active account users (filtered join)
     # account_users = relationship(
     #     'AccountUser',
@@ -1167,6 +1241,60 @@ class DefaultProject(Base, TimestampMixin):
 # ============================================================================
 # Contract Management
 # ============================================================================
+
+
+# ============================================================================
+# Project Code Generation
+# ============================================================================
+
+def next_projcode(session, facility_id: int, mnemonic_code_id: int) -> str:
+    """Compute the next available project code for a given facility + mnemonic rule.
+
+    Looks up the ``ProjectCode`` rule (which specifies the numeric digit width),
+    scans all existing ``Project.projcode`` values that share the mnemonic prefix,
+    and returns the next unused sequential code.
+
+    Args:
+        session: SQLAlchemy session.
+        facility_id: FK to a Facility row.
+        mnemonic_code_id: FK to a MnemonicCode row.
+
+    Returns:
+        Next projcode string, e.g. ``'UCB0042'``.
+
+    Raises:
+        ValueError: If no ``ProjectCode`` rule exists for the given pair.
+
+    Example::
+
+        code = next_projcode(session, facility_id=1, mnemonic_code_id=7)
+        # → 'UCSD0042'
+    """
+    from ..resources.facilities import ProjectCode
+
+    pc = session.get(ProjectCode, (facility_id, mnemonic_code_id))
+    if not pc:
+        raise ValueError(
+            f"No ProjectCode rule for facility_id={facility_id}, "
+            f"mnemonic_code_id={mnemonic_code_id}"
+        )
+
+    prefix = pc.mnemonic_code.code   # e.g. 'UCB'
+    digits = pc.digits               # e.g. 4 → zero-pad to width 4
+
+    existing = (
+        session.query(Project.projcode)
+        .filter(Project.projcode.like(f'{prefix}%'))
+        .all()
+    )
+
+    max_num = 0
+    for (code,) in existing:
+        suffix = code[len(prefix):]
+        if suffix.isdigit():
+            max_num = max(max_num, int(suffix))
+
+    return f"{prefix}{str(max_num + 1).zfill(digits)}"
 
 
 #-------------------------------------------------------------------------em-

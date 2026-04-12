@@ -1,0 +1,14 @@
+{# htmx: Contract search results for FK picker fields (e.g. project contract) #}
+{% if contracts %}
+{% for contract in contracts %}
+<div class="list-group-item list-group-item-action p-2 fk-search-result"
+     style="cursor:pointer;"
+     data-contract-id="{{ contract.contract_id }}"
+     data-contract-display="{{ contract.contract_number }} — {{ contract.title[:60] }}">
+    <span class="badge bg-light text-dark border me-1 font-monospace">{{ contract.contract_number }}</span>
+    <span class="small">{{ contract.title[:80] }}</span>
+</div>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted small py-2">No contracts found</div>
+{% endif %}

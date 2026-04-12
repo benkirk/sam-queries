@@ -1,0 +1,598 @@
+{#
+  htmx: Create Project Form
+  Facility / Panel / AllocationType: cascade selects on row 1 (Facility required,
+    Panel required, AllocationType optional). Panel options reload on facility change;
+    alloc type options reload on panel change. Auto-selects if only one option.
+  Project code: radio toggle between Auto-generate (facility + mnemonic)
+                and Manual entry.
+  Lead / Admin: search-as-you-type (reuses htmx_search_users_for_org endpoint).
+  Parent Project: search-as-you-type (htmx_project_search_for_parent).
+  Contract / Organization: optional FK pickers (search-as-you-type, badge pattern).
+  All FK selections stored in hidden inputs; badges show the selection.
+#}
+<form hx-post="{{ url_for('admin_dashboard.htmx_project_create') }}"
+      hx-target="#createProjectFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+    <div class="modal-body">
+
+        <!-- ── Facility / Panel / Allocation Type ──────────────────────────── -->
+        <div class="row g-2 mb-3">
+            <div class="col-md-4">
+                <label for="createProjectFacility" class="form-label fw-semibold">
+                    Facility <span class="text-danger">*</span>
+                </label>
+                <select class="form-select form-select-sm" id="createProjectFacility"
+                        name="facility_id" required
+                        hx-get="{{ url_for('admin_dashboard.htmx_panels_for_facility') }}"
+                        hx-target="#createProjectPanel"
+                        hx-swap="innerHTML"
+                        hx-trigger="change"
+                        hx-include="#createProjectFacility">
+                    <option value="">— Select —</option>
+                    {% for facility in facilities %}
+                    <option value="{{ facility.facility_id }}"
+                        {% if form and form.get('facility_id') == facility.facility_id|string %}selected{% endif %}>
+                        {{ facility.facility_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="createProjectPanel" class="form-label fw-semibold">
+                    Panel <span class="text-danger">*</span>
+                </label>
+                <select class="form-select form-select-sm" id="createProjectPanel"
+                        name="panel_id" required
+                        hx-get="{{ url_for('admin_dashboard.htmx_alloc_types_for_panel') }}"
+                        hx-target="#createProjectAllocType"
+                        hx-swap="innerHTML"
+                        hx-trigger="change"
+                        hx-include="#createProjectPanel">
+                    {% if panels_for_facility %}
+                        <option value="">— Select —</option>
+                        {% for panel in panels_for_facility %}
+                        <option value="{{ panel.panel_id }}"
+                            {% if form and form.get('panel_id') == panel.panel_id|string %}selected{% endif %}>
+                            {{ panel.panel_name }}{% if panel.description %} — {{ panel.description }}{% endif %}
+                        </option>
+                        {% endfor %}
+                    {% else %}
+                        <option value="">— Select facility first —</option>
+                    {% endif %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="createProjectAllocType" class="form-label">
+                    Allocation Type <span class="text-muted">(optional)</span>
+                </label>
+                <select class="form-select form-select-sm" id="createProjectAllocType"
+                        name="allocation_type_id">
+                    {% if alloc_types_for_panel %}
+                        <option value="">— None —</option>
+                        {% for at in alloc_types_for_panel %}
+                        <option value="{{ at.allocation_type_id }}"
+                            {% if form and form.get('allocation_type_id') == at.allocation_type_id|string %}selected{% endif %}>
+                            {{ at.allocation_type }}
+                        </option>
+                        {% endfor %}
+                    {% else %}
+                        <option value="">— Select panel first —</option>
+                    {% endif %}
+                </select>
+            </div>
+        </div>
+
+        <!-- ── Project Code ──────────────────────────────────────────────── -->
+        <div class="mb-3">
+            <label class="form-label fw-semibold">
+                Project Code <span class="text-danger">*</span>
+            </label>
+
+            <!-- Mode toggle -->
+            <div class="btn-group btn-group-sm mb-2 w-100" role="group" aria-label="Project code mode">
+                <input type="radio" class="btn-check" name="projcode_mode"
+                       id="projcodeModeAuto" value="auto" autocomplete="off"
+                       {% if not form or form.get('projcode_mode', 'auto') == 'auto' %}checked{% endif %}>
+                <label class="btn btn-outline-secondary" for="projcodeModeAuto">
+                    <i class="fas fa-magic me-1"></i> Auto-generate
+                </label>
+                <input type="radio" class="btn-check" name="projcode_mode"
+                       id="projcodeModeManual" value="manual" autocomplete="off"
+                       {% if form and form.get('projcode_mode') == 'manual' %}checked{% endif %}>
+                <label class="btn btn-outline-secondary" for="projcodeModeManual">
+                    <i class="fas fa-keyboard me-1"></i> Manual
+                </label>
+            </div>
+
+            <!-- Auto-generate section (facility comes from top-level select above) -->
+            <div id="projcodeAutoSection">
+                <div class="row g-2">
+                    <div class="col-12">
+                        <select class="form-select form-select-sm" id="projcodeMnemonic"
+                                name="mnemonic_code_id"
+                                hx-get="{{ url_for('admin_dashboard.htmx_project_next_projcode') }}"
+                                hx-target="#projcodePreview"
+                                hx-swap="innerHTML"
+                                hx-trigger="change"
+                                hx-include="#createProjectFacility, #projcodeMnemonic">
+                            <option value="">— Mnemonic —</option>
+                            {% for mnemo in mnemonics %}
+                            <option value="{{ mnemo.mnemonic_code_id }}"
+                                {% if form and form.get('mnemonic_code_id') == mnemo.mnemonic_code_id|string %}selected{% endif %}>
+                                {{ mnemo.code }} — {{ mnemo.description }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <span class="text-muted small me-1">Next code:</span>
+                    <span id="projcodePreview" class="badge bg-secondary font-monospace">
+                        {% if form and form.get('projcode_mode', 'auto') == 'auto' %}
+                            {{ form.get('projcode', '—') }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Manual entry section -->
+            <div id="projcodeManualSection" style="display:none;">
+                <input type="text" class="form-control font-monospace text-uppercase"
+                       id="projcodeManualInput"
+                       placeholder="e.g. UCSD0042"
+                       maxlength="30"
+                       oninput="this.value = this.value.toUpperCase()"
+                       value="{{ form.get('projcode', '') if form and form.get('projcode_mode') == 'manual' else '' }}">
+            </div>
+
+            <!-- Hidden field submitted with form — populated by JS depending on mode -->
+            <input type="hidden" name="projcode" id="projcodeHidden"
+                   value="{{ form.get('projcode', '') if form else '' }}">
+        </div>
+
+        <!-- ── Title ──────────────────────────────────────────────────────── -->
+        <div class="mb-3">
+            <label for="createProjectTitle" class="form-label fw-semibold">
+                Title <span class="text-danger">*</span>
+            </label>
+            <input type="text" class="form-control" id="createProjectTitle"
+                   name="title" required maxlength="255"
+                   value="{{ form.get('title', '') if form else '' }}"
+                   placeholder="e.g. Mesoscale Climate Dynamics">
+        </div>
+
+        <!-- ── Abstract ───────────────────────────────────────────────────── -->
+        <div class="mb-3">
+            <label for="createProjectAbstract" class="form-label">
+                Abstract <span class="text-muted">(optional)</span>
+            </label>
+            <textarea class="form-control" id="createProjectAbstract"
+                      name="abstract" rows="3"
+                      placeholder="Brief description of the project's scientific goals…">{{ form.get('abstract', '') if form else '' }}</textarea>
+        </div>
+
+        <div class="row">
+            <!-- ── Project Lead ──────────────────────────────────────────── -->
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Project Lead <span class="text-danger">*</span>
+                    </label>
+
+                    <div id="createProjectLeadSelected" class="mb-1"
+                         {% if not form or not form.get('project_lead_user_id') %}style="display:none;"{% endif %}>
+                        <span class="badge bg-primary py-1 px-2" id="createProjectLeadBadge">
+                            {{ form.get('lead_display', '') if form else '' }}
+                        </span>
+                        <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
+                                onclick="clearProjectLeadSelection()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <input type="hidden" name="project_lead_user_id"
+                           id="createProjectLeadId"
+                           value="{{ form.get('project_lead_user_id', '') if form else '' }}">
+
+                    <input type="text" class="form-control form-control-sm"
+                           id="createProjectLeadSearch"
+                           placeholder="Search by name or username…"
+                           autocomplete="off"
+                           hx-get="{{ url_for('admin_dashboard.htmx_search_users_for_org') }}"
+                           hx-target="#createProjectLeadResults"
+                           hx-swap="innerHTML"
+                           hx-trigger="input changed delay:300ms"
+                           hx-include="[id='createProjectLeadSearch']"
+                           name="q">
+                    <div id="createProjectLeadResults" class="list-group mt-1"
+                         style="max-height:180px;overflow-y:auto;"></div>
+                </div>
+            </div>
+
+            <!-- ── Project Admin ─────────────────────────────────────────── -->
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label">
+                        Project Admin <span class="text-muted">(optional)</span>
+                    </label>
+
+                    <div id="createProjectAdminSelected" class="mb-1"
+                         {% if not form or not form.get('project_admin_user_id') %}style="display:none;"{% endif %}>
+                        <span class="badge bg-secondary py-1 px-2" id="createProjectAdminBadge">
+                            {{ form.get('admin_display', '') if form else '' }}
+                        </span>
+                        <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
+                                onclick="clearProjectAdminSelection()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <input type="hidden" name="project_admin_user_id"
+                           id="createProjectAdminId"
+                           value="{{ form.get('project_admin_user_id', '') if form else '' }}">
+
+                    <input type="text" class="form-control form-control-sm"
+                           id="createProjectAdminSearch"
+                           placeholder="Search by name or username…"
+                           autocomplete="off"
+                           hx-get="{{ url_for('admin_dashboard.htmx_search_users_for_org') }}"
+                           hx-target="#createProjectAdminResults"
+                           hx-swap="innerHTML"
+                           hx-trigger="input changed delay:300ms"
+                           hx-include="[id='createProjectAdminSearch']"
+                           name="q">
+                    <div id="createProjectAdminResults" class="list-group mt-1"
+                         style="max-height:180px;overflow-y:auto;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- ── Area of Interest ───────────────────────────────────────── -->
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="createProjectAoi" class="form-label fw-semibold">
+                        Area of Interest <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-select form-select-sm" id="createProjectAoi"
+                            name="area_of_interest_id" required>
+                        <option value="">— Select —</option>
+                        {% for area in areas %}
+                        <option value="{{ area.area_of_interest_id }}"
+                            {% if form and form.get('area_of_interest_id') == area.area_of_interest_id|string %}selected{% endif %}>
+                            {{ area.area_of_interest }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- ── Contract ───────────────────────────────────────────────── -->
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label">
+                        Contract <span class="text-muted">(optional)</span>
+                    </label>
+
+                    <div id="createProjectContractSelected" class="mb-1"
+                         {% if not form or not form.get('contract_id') %}style="display:none;"{% endif %}>
+                        <span class="badge bg-warning text-dark py-1 px-2 font-monospace" id="createProjectContractBadge">
+                            {{ form.get('contract_display', '') if form else '' }}
+                        </span>
+                        <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
+                                onclick="clearProjectContractSelection()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <input type="hidden" name="contract_id"
+                           id="createProjectContractId"
+                           value="{{ form.get('contract_id', '') if form else '' }}">
+
+                    <input type="text" class="form-control form-control-sm"
+                           id="createProjectContractSearch"
+                           placeholder="Search by contract number or title…"
+                           autocomplete="off"
+                           hx-get="{{ url_for('admin_dashboard.htmx_contract_search_for_project') }}"
+                           hx-target="#createProjectContractResults"
+                           hx-swap="innerHTML"
+                           hx-trigger="input changed delay:300ms"
+                           hx-include="[id='createProjectContractSearch']"
+                           name="q">
+                    <div id="createProjectContractResults" class="list-group mt-1"
+                         style="max-height:180px;overflow-y:auto;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- ── Organization ──────────────────────────────────────────── -->
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label">
+                        Organization <span class="text-muted">(optional)</span>
+                    </label>
+
+                    <div id="createProjectOrgSelected" class="mb-1"
+                         {% if not form or not form.get('organization_id') %}style="display:none;"{% endif %}>
+                        <span class="badge bg-info text-dark py-1 px-2" id="createProjectOrgBadge">
+                            {{ form.get('org_display', '') if form else '' }}
+                        </span>
+                        <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
+                                onclick="clearProjectOrgSelection()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <input type="hidden" name="organization_id"
+                           id="createProjectOrgId"
+                           value="{{ form.get('organization_id', '') if form else '' }}">
+
+                    <input type="text" class="form-control form-control-sm"
+                           id="createProjectOrgSearch"
+                           placeholder="Search by name or acronym…"
+                           autocomplete="off"
+                           hx-get="{{ url_for('admin_dashboard.htmx_org_search_for_project') }}"
+                           hx-target="#createProjectOrgResults"
+                           hx-swap="innerHTML"
+                           hx-trigger="input changed delay:300ms"
+                           hx-include="[id='createProjectOrgSearch']"
+                           name="q">
+                    <div id="createProjectOrgResults" class="list-group mt-1"
+                         style="max-height:180px;overflow-y:auto;"></div>
+                </div>
+            </div>
+
+            <!-- ── Parent Project ─────────────────────────────────────────── -->
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label">
+                        Parent Project <span class="text-muted">(optional — makes this a sub-project)</span>
+                    </label>
+
+                    <div id="createProjectParentSelected" class="mb-1"
+                         {% if not form or not form.get('parent_id') %}style="display:none;"{% endif %}>
+                        <span class="badge bg-secondary text-light py-1 px-2 font-monospace" id="createProjectParentBadge">
+                            {{ form.get('parent_display', '') if form else '' }}
+                        </span>
+                        <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
+                                onclick="clearProjectParentSelection()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <input type="hidden" name="parent_id"
+                           id="createProjectParentId"
+                           value="{{ form.get('parent_id', '') if form else '' }}">
+
+                    <input type="text" class="form-control form-control-sm"
+                           id="createProjectParentSearch"
+                           placeholder="Search by project code or title…"
+                           autocomplete="off"
+                           hx-get="{{ url_for('admin_dashboard.htmx_project_search_for_parent') }}"
+                           hx-target="#createProjectParentResults"
+                           hx-swap="innerHTML"
+                           hx-trigger="input changed delay:300ms"
+                           hx-include="[id='createProjectParentSearch']"
+                           name="q">
+                    <div id="createProjectParentResults" class="list-group mt-1"
+                         style="max-height:180px;overflow-y:auto;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Flags & Optional Fields ───────────────────────────────────── -->
+        <div class="row">
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox"
+                               id="createProjectChargingExempt" name="charging_exempt"
+                               {% if form and form.get('charging_exempt') == 'on' %}checked{% endif %}>
+                        <label class="form-check-label" for="createProjectChargingExempt">
+                            Charging Exempt
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <label for="createProjectUnixGid" class="form-label">
+                        Unix GID <span class="text-muted">(optional)</span>
+                    </label>
+                    <input type="number" class="form-control form-control-sm"
+                           id="createProjectUnixGid" name="unix_gid" min="1"
+                           value="{{ form.get('unix_gid', '') if form else '' }}">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <label for="createProjectExtAlias" class="form-label">
+                        External Alias <span class="text-muted">(optional)</span>
+                    </label>
+                    <input type="text" class="form-control form-control-sm"
+                           id="createProjectExtAlias" name="ext_alias" maxlength="64"
+                           value="{{ form.get('ext_alias', '') if form else '' }}">
+                </div>
+            </div>
+        </div>
+
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for error in errors %}
+            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+    </div>{# /modal-body #}
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-success">
+            <i class="fas fa-folder-plus"></i> Create Project
+        </button>
+    </div>
+
+</form>
+
+<script>
+(function () {
+    // ── Facility → Panel → AllocationType cascade ────────────────────────
+    // After panels load: auto-select if only one option, then cascade
+    const panelSelect = document.getElementById('createProjectPanel');
+    const allocSelect = document.getElementById('createProjectAllocType');
+
+    panelSelect.addEventListener('htmx:afterSwap', function () {
+        const opts = Array.from(this.options).filter(function (o) { return o.value !== ''; });
+        if (opts.length === 1) {
+            this.value = opts[0].value;
+            htmx.trigger(this, 'change');  // cascade → alloc types
+        }
+    });
+
+    allocSelect.addEventListener('htmx:afterSwap', function () {
+        const opts = Array.from(this.options).filter(function (o) { return o.value !== ''; });
+        if (opts.length === 1) {
+            this.value = opts[0].value;
+        }
+    });
+
+    // ── Projcode mode toggle ──────────────────────────────────────────────
+    const autoSection   = document.getElementById('projcodeAutoSection');
+    const manualSection = document.getElementById('projcodeManualSection');
+    const manualInput   = document.getElementById('projcodeManualInput');
+    const hiddenCode    = document.getElementById('projcodeHidden');
+    const previewEl     = document.getElementById('projcodePreview');
+
+    function applyProjcodeMode(mode) {
+        if (mode === 'manual') {
+            autoSection.style.display  = 'none';
+            manualSection.style.display = '';
+            hiddenCode.value = manualInput.value.toUpperCase();
+        } else {
+            autoSection.style.display  = '';
+            manualSection.style.display = 'none';
+            hiddenCode.value = previewEl.textContent.trim() !== '—' ? previewEl.textContent.trim() : '';
+        }
+    }
+
+    document.querySelectorAll('[name="projcode_mode"]').forEach(function (radio) {
+        radio.addEventListener('change', function () { applyProjcodeMode(this.value); });
+    });
+
+    // Keep hidden field in sync when manual input changes
+    manualInput.addEventListener('input', function () {
+        hiddenCode.value = this.value.toUpperCase();
+    });
+
+    // Keep hidden field in sync when projcode preview updates (htmx swap)
+    document.getElementById('projcodePreview').addEventListener('htmx:afterSwap', function () {
+        const mode = document.querySelector('[name="projcode_mode"]:checked');
+        if (mode && mode.value === 'auto') {
+            hiddenCode.value = this.textContent.trim() !== '—' ? this.textContent.trim() : '';
+        }
+    });
+
+    // Apply on load (handles form re-render with errors)
+    const currentMode = document.querySelector('[name="projcode_mode"]:checked');
+    if (currentMode) applyProjcodeMode(currentMode.value);
+
+    // ── htmx: update hidden projcode after auto-preview response ────────
+    document.getElementById('projcodeAutoSection').addEventListener('htmx:afterSwap', function (e) {
+        if (e.target.id === 'projcodePreview') {
+            const val = e.target.textContent.trim();
+            hiddenCode.value = (val && val !== '—') ? val : '';
+        }
+    });
+
+    // ── Lead search wire-up ───────────────────────────────────────────────
+    document.getElementById('createProjectLeadResults').addEventListener('click', function (e) {
+        const item = e.target.closest('.fk-search-result');
+        if (!item) return;
+        document.getElementById('createProjectLeadId').value = item.dataset.userId;
+        document.getElementById('createProjectLeadBadge').textContent = item.dataset.userDisplay;
+        document.getElementById('createProjectLeadSelected').style.display = '';
+        document.getElementById('createProjectLeadResults').innerHTML = '';
+        document.getElementById('createProjectLeadSearch').value = '';
+    });
+
+    // ── Admin search wire-up ─────────────────────────────────────────────
+    document.getElementById('createProjectAdminResults').addEventListener('click', function (e) {
+        const item = e.target.closest('.fk-search-result');
+        if (!item) return;
+        document.getElementById('createProjectAdminId').value = item.dataset.userId;
+        document.getElementById('createProjectAdminBadge').textContent = item.dataset.userDisplay;
+        document.getElementById('createProjectAdminSelected').style.display = '';
+        document.getElementById('createProjectAdminResults').innerHTML = '';
+        document.getElementById('createProjectAdminSearch').value = '';
+    });
+
+    // ── Contract search wire-up ──────────────────────────────────────────
+    document.getElementById('createProjectContractResults').addEventListener('click', function (e) {
+        const item = e.target.closest('.fk-search-result');
+        if (!item) return;
+        document.getElementById('createProjectContractId').value = item.dataset.contractId;
+        document.getElementById('createProjectContractBadge').textContent = item.dataset.contractDisplay;
+        document.getElementById('createProjectContractSelected').style.display = '';
+        document.getElementById('createProjectContractResults').innerHTML = '';
+        document.getElementById('createProjectContractSearch').value = '';
+    });
+
+    // ── Organization search wire-up ──────────────────────────────────────
+    document.getElementById('createProjectOrgResults').addEventListener('click', function (e) {
+        const item = e.target.closest('.fk-search-result');
+        if (!item) return;
+        document.getElementById('createProjectOrgId').value = item.dataset.orgId;
+        document.getElementById('createProjectOrgBadge').textContent = item.dataset.orgDisplay;
+        document.getElementById('createProjectOrgSelected').style.display = '';
+        document.getElementById('createProjectOrgResults').innerHTML = '';
+        document.getElementById('createProjectOrgSearch').value = '';
+    });
+
+    // ── Parent project search wire-up ────────────────────────────────────
+    document.getElementById('createProjectParentResults').addEventListener('click', function (e) {
+        const item = e.target.closest('.fk-search-result');
+        if (!item) return;
+        document.getElementById('createProjectParentId').value = item.dataset.projectId;
+        document.getElementById('createProjectParentBadge').textContent = item.dataset.projectDisplay;
+        document.getElementById('createProjectParentSelected').style.display = '';
+        document.getElementById('createProjectParentResults').innerHTML = '';
+        document.getElementById('createProjectParentSearch').value = '';
+    });
+})();
+
+function clearProjectLeadSelection() {
+    document.getElementById('createProjectLeadId').value = '';
+    document.getElementById('createProjectLeadBadge').textContent = '';
+    document.getElementById('createProjectLeadSelected').style.display = 'none';
+}
+
+function clearProjectAdminSelection() {
+    document.getElementById('createProjectAdminId').value = '';
+    document.getElementById('createProjectAdminBadge').textContent = '';
+    document.getElementById('createProjectAdminSelected').style.display = 'none';
+}
+
+function clearProjectContractSelection() {
+    document.getElementById('createProjectContractId').value = '';
+    document.getElementById('createProjectContractBadge').textContent = '';
+    document.getElementById('createProjectContractSelected').style.display = 'none';
+}
+
+function clearProjectOrgSelection() {
+    document.getElementById('createProjectOrgId').value = '';
+    document.getElementById('createProjectOrgBadge').textContent = '';
+    document.getElementById('createProjectOrgSelected').style.display = 'none';
+}
+
+function clearProjectParentSelection() {
+    document.getElementById('createProjectParentId').value = '';
+    document.getElementById('createProjectParentBadge').textContent = '';
+    document.getElementById('createProjectParentSelected').style.display = 'none';
+}
+</script>
