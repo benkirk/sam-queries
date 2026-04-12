@@ -96,6 +96,70 @@ New shared Jinja2 macro:
 
 ---
 
+### Phase B-0b: `create_allocation()` in `sam/manage/allocations.py`
+
+**File**: `src/sam/manage/allocations.py`
+
+The existing `update_allocation()` encapsulates audit-trail-heavy edits. A parallel `create_allocation()` follows the same pattern rather than scattering Account get-or-create + Allocation instantiation + `log_allocation_transaction` inline across route handlers:
+
+```python
+def create_allocation(session, *, project_id, resource_id, amount, start_date,
+                      end_date=None, description=None, user_id):
+    """Create a new allocation for a project+resource pair.
+
+    Gets or creates the Account linking project↔resource, creates the
+    Allocation record, and logs an AllocationTransaction(CREATE).
+
+    Args:
+        session: SQLAlchemy session (caller wraps in management_transaction)
+        project_id: FK to Project
+        resource_id: FK to Resource
+        amount: Allocation amount (must be > 0)
+        start_date: datetime, start of allocation period
+        end_date: datetime or None (open-ended)
+        description: optional string
+        user_id: FK to User performing the action (for audit log)
+
+    Returns:
+        Newly created Allocation instance
+    """
+    from sam.accounting.accounts import Account
+    from sam.accounting.allocations import Allocation, AllocationTransactionType
+
+    validate_allocation_dates(start_date, end_date)
+
+    account = Account.get_by_project_and_resource(
+        session, project_id, resource_id, exclude_deleted=True
+    )
+    if account is None:
+        account = Account(project_id=project_id, resource_id=resource_id)
+        session.add(account)
+        session.flush()
+
+    allocation = Allocation(
+        account_id=account.account_id,
+        amount=amount,
+        start_date=start_date,
+        end_date=end_date,
+        description=description,
+    )
+    session.add(allocation)
+    session.flush()
+
+    log_allocation_transaction(
+        session, allocation, user_id,
+        AllocationTransactionType.CREATE,
+        comment='Allocation created via Edit Project page',
+        old_values={},
+        propagated=False,
+    )
+    return allocation
+```
+
+The `htmx_add_allocation()` route calls `create_allocation(...)` directly; no Account/Allocation/log lines in the handler.
+
+---
+
 ### Phase B-1: `Project.update()` instance method
 
 **File**: `src/sam/projects/projects.py` — add after `Project.create()`:
@@ -173,10 +237,27 @@ POST /admin/htmx/edit-allocation/<int:alloc_id>              → htmx_edit_alloc
 - `@require_permission(Permission.EDIT_PROJECTS)`
 - Calls `get_project_dashboard_data(db.session, projcode)` for the project + its allocation summary
 - Also calls `_project_form_data()` (already exists, reused from create flow)
+- **Cascading dropdown pre-population**: Project stores only `allocation_type_id`, not `facility_id`/`panel_id`. The route must reverse-lookup these so the cascading selects load with the correct initial state:
+  ```python
+  current_facility_id = None
+  current_panel_id = None
+  if project.allocation_type and project.allocation_type.panel:
+      current_panel_id = project.allocation_type.panel_id
+      current_facility_id = project.allocation_type.panel.facility_id
+  ```
+  Pass `current_facility_id`, `current_panel_id` to the template; use them to pre-select the Facility and Panel dropdowns and pre-filter the dependent option lists on initial load.
 - Renders `dashboards/admin/edit_project.html`
 
 **`htmx_project_update(projcode)`**
 - Validates: title required, lead required, AOI required, FK existence checks
+- **Checkbox handling**: HTML unchecked checkboxes send no field at all; `partial=True` would silently ignore them, making it impossible to deactivate a project or remove a charging exemption. Fix: before loading through `EditProjectForm`, inject explicit `False` into the data dict for any boolean field absent from `request.form`:
+  ```python
+  data = request.form.to_dict()
+  for bool_field in ('charging_exempt', 'active'):
+      if bool_field not in data:
+          data[bool_field] = False
+  ```
+  Use `partial=True` for all non-boolean fields only, or gate on `'field' in request.form` for the `updates` dict.
 - Calls `project.update(...)` inside `management_transaction`
 - Error: re-render `fragments/edit_project_details_htmx.html` with errors
 - Success: `htmx_success_message({'reloadEditProjectDetails': projcode}, 'Project updated.')`
@@ -212,6 +293,15 @@ POST /admin/htmx/edit-allocation/<int:alloc_id>              → htmx_edit_alloc
 - Uses `EditAllocationForm().load(data, partial=True)` — already exists!
 - Calls `update_allocation(db.session, alloc_id, current_user.user_id, **updates)` — already exists!
   - `update_allocation` handles: cascade to children, audit log, InheritingAllocationException guard
+- **Explicitly catch `InheritingAllocationException`**: `update_allocation` raises it when called on a child allocation; the route must catch this and return a rendered error fragment rather than letting it bubble into a 500:
+  ```python
+  from sam.accounting.allocations import InheritingAllocationException
+  try:
+      update_allocation(...)
+  except InheritingAllocationException:
+      return render_template('...edit_allocation_form_htmx.html', ...,
+                             errors=['Cannot directly edit an inherited allocation. Edit the parent instead.'])
+  ```
 - Success: `htmx_success_message({'reloadAllocationTree': projcode}, 'Allocation updated.')`
 
 ---
@@ -361,6 +451,7 @@ Template renders one card per resource. Within each card, calls `render_project_
 | `src/webapp/templates/dashboards/shared/project_tree.html` | **Create** | Shared Jinja2 macro (replaces inline Python) |
 | `src/webapp/dashboards/user/blueprint.py` | **Modify** | Simplify `tree_fragment()` to use the shared macro |
 | `src/sam/projects/projects.py` | **Modify** | Add `Project.update()` instance method |
+| `src/sam/manage/allocations.py` | **Modify** | Add `create_allocation()` (encapsulates Account get-or-create + Allocation + audit log) |
 | `src/sam/schemas/forms/projects.py` | **Modify** | Add `EditProjectForm` |
 | `src/webapp/dashboards/admin/projects_routes.py` | **Modify** | Add 7 new routes |
 | `src/webapp/templates/dashboards/admin/edit_project.html` | **Create** | Full edit page |
@@ -394,6 +485,18 @@ Template renders one card per resource. Within each card, calls `render_project_
 8. Members tab → add/remove member → existing routes work as expected
 9. `pytest tests/ --no-cov` — all existing tests pass
 10. Verify user dashboard's `/tree/<projcode>` still works (regression on tree_fragment refactor)
+
+---
+
+## Design Notes
+
+### Members Tab: `/user` ↔ `/admin` namespace crossing
+
+The add/remove member routes live in `src/webapp/dashboards/user/blueprint.py` (mounted at `/user/htmx/...`). Embedding these from an `/admin/project/.../edit` page is a namespace crossing — acceptable because:
+- Permission guards (`can_manage_project_members`) are evaluated server-side regardless of calling URL
+- The pattern is effectively identical to how the user dashboard's project card already exposes member management
+
+**Acknowledged technical debt**: If these member-management routes eventually need to diverge (admin-only options, different UX), they should be extracted to a shared blueprint (e.g., `src/webapp/dashboards/shared/members_routes.py`). Document this in a code comment when wiring the Members tab. Do not "fix" this in the current PR unless it causes a concrete problem.
 
 ---
 
