@@ -37,7 +37,8 @@ from sam.queries.rolling_usage import get_project_rolling_usage
 # Dashboard Query Helpers
 # ============================================================================
 
-def _build_project_resources_data(project: Project) -> List[Dict]:
+def _build_project_resources_data(project: Project,
+                                   active_at: Optional[datetime] = None) -> List[Dict]:
     """
     Helper function to build resource usage data for a project.
 
@@ -46,14 +47,17 @@ def _build_project_resources_data(project: Project) -> List[Dict]:
 
     Args:
         project: Project object
+        active_at: Reference datetime for determining which allocation is "active".
+                   Defaults to now.
 
     Returns:
         List of resource dictionaries with usage details
     """
     resources = []
-    usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
+    usage_data = project.get_detailed_allocation_usage(include_adjustments=True,
+                                                        active_at=active_at)
 
-    now = datetime.now()
+    now = active_at or datetime.now()
 
     # Fetch rolling window usage (30d/90d) for all HPC/DAV resources in one call
     rolling_usage = get_project_rolling_usage(project.session, project.projcode)

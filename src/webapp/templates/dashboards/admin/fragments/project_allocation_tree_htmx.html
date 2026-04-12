@@ -16,6 +16,23 @@
 #}
 {% from 'dashboards/shared/project_tree.html' import render_project_tree, render_project_tree_rows with context %}
 
+{# ── Active at date picker ───────────────────────────────────────────── #}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <label for="alloc-active-at" class="fw-semibold text-nowrap mb-0 small">Active at:</label>
+  <input type="date" id="alloc-active-at" name="active_at"
+         class="form-control form-control-sm" style="width:auto;"
+         value="{{ active_at }}"
+         hx-get="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=projcode) }}"
+         hx-target="#allocationTreeContainer"
+         hx-include="#alloc-active-at"
+         hx-trigger="change">
+  {% if active_at != now_str %}
+  <span class="badge bg-info text-dark">
+    <i class="fas fa-history me-1"></i>Historical view: {{ active_at }}
+  </span>
+  {% endif %}
+</div>
+
 {% if not resources_by_tab %}
 <div class="alert alert-info">
   <i class="fas fa-info-circle"></i>

@@ -529,7 +529,8 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     def get_detailed_allocation_usage(self,
                                       resource_name: Optional[str] = None,
                                       include_adjustments: bool = True,
-                                      hierarchical: bool = True) -> Dict[str, Dict[str, any]]:
+                                      hierarchical: bool = True,
+                                      active_at: Optional[datetime] = None) -> Dict[str, Dict[str, any]]:
         """
         Calculate allocation usage and remaining balance across all resource types.
 
@@ -538,11 +539,13 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             include_adjustments: Whether to include manual charge adjustments
             hierarchical: If True, aggregate usage from this project and all descendants (sub-projects).
                           If False, only count usage for this specific project.
+            active_at: Reference datetime for determining which allocation is "active".
+                       Defaults to now.
 
         Returns:
             Dict mapping resource_name to usage details.
         """
-        now = datetime.now()
+        now = active_at or datetime.now()
         results = {}
 
         # Check if tree structure is valid for hierarchical queries

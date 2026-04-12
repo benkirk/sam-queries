@@ -658,10 +658,23 @@ def htmx_project_allocation_tree(projcode):
     Builds a {projcode: {resource_name: resource_dict}} lookup for all active
     nodes in the project tree, groups resources by resource type into tabs, and
     renders accordion cards within each tab.
+
+    Accepts an optional ?active_at=YYYY-MM-DD query parameter to show
+    allocations as they were (or will be) on a given date.  Defaults to today.
     """
     from collections import OrderedDict
+    from datetime import datetime
     from sam.projects.projects import Project
     from sam.queries.dashboard import _build_project_resources_data
+
+    # Parse optional active_at date; default to today.
+    active_at_str = request.args.get('active_at', '').strip()
+    try:
+        active_at = datetime.strptime(active_at_str, '%Y-%m-%d') if active_at_str else None
+    except ValueError:
+        active_at = None
+    now_str = datetime.now().strftime('%Y-%m-%d')
+    active_at_str = active_at.strftime('%Y-%m-%d') if active_at else now_str
 
     project = Project.get_by_projcode(db.session, projcode)
     if not project:
@@ -673,7 +686,7 @@ def htmx_project_allocation_tree(projcode):
     all_nodes = [n for n in ([root] + root.get_descendants()) if n.active]
     resources_by_projcode = {}
     for node in all_nodes:
-        node_resources = _build_project_resources_data(node)
+        node_resources = _build_project_resources_data(node, active_at=active_at)
         resources_by_projcode[node.projcode] = {
             r['resource_name']: r for r in node_resources
         }
@@ -711,6 +724,8 @@ def htmx_project_allocation_tree(projcode):
         projcode=projcode,
         resources_by_tab=resources_by_tab,
         resources_by_projcode=resources_by_projcode,
+        active_at=active_at_str,
+        now_str=now_str,
     )
 
 
