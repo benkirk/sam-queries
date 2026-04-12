@@ -82,18 +82,20 @@
             <span class="me-auto fw-semibold">
               <i class="fas fa-server text-primary me-2"></i>{{ resource_name }}
             </span>
-            {# Compact usage summary in the button #}
+            {# Compact usage summary — fixed-width container so bars align across all rows #}
             {% if root_alloc %}
               {% set pct = [root_alloc.percent_used, 100] | min %}
-              <span class="d-flex align-items-center gap-2 me-3 small text-muted">
-                <div class="progress" style="width:80px;height:6px;">
-                  <div class="progress-bar
-                       {%- if root_alloc.percent_used >= 90 %} bg-danger
-                       {%- elif root_alloc.percent_used >= 75 %} bg-warning
-                       {%- else %} bg-success{% endif %}"
-                       role="progressbar" style="width:{{ pct }}%;"></div>
+              <span class="d-flex align-items-center gap-2 me-3 small text-muted flex-shrink-0">
+                <div style="width:100px;flex-shrink:0;">
+                  <div class="progress" style="height:6px;">
+                    <div class="progress-bar
+                         {%- if root_alloc.percent_used >= 90 %} bg-danger
+                         {%- elif root_alloc.percent_used >= 75 %} bg-warning
+                         {%- else %} bg-success{% endif %}"
+                         role="progressbar" style="width:{{ pct }}%;"></div>
+                  </div>
                 </div>
-                <span class="text-nowrap">{{ root_alloc.percent_used | fmt_pct }} used</span>
+                <span style="width:80px;flex-shrink:0;text-align:right;">{{ root_alloc.percent_used | fmt_pct }} used</span>
                 {% if root_alloc.is_inheriting %}
                 <span class="badge bg-secondary bg-opacity-25 text-dark border">shared</span>
                 {% endif %}

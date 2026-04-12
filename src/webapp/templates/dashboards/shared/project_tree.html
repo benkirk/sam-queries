@@ -50,60 +50,70 @@
     {%- if is_current %}background:#fff3cd;font-weight:bold;border-left-color:#ffc107;{% endif %}
     {%- if not is_active %}color:#6c757d;opacity:0.6;{% endif %}
 ">
-  {%- if is_current %}<i class="fas fa-arrow-right text-warning me-1"></i>{% endif -%}
+  {#
+    Single flex row: [name col, grows] | [allocation col, fixed width]
+    This keeps progress bars aligned regardless of name length or tree depth.
+  #}
+  <div class="d-flex align-items-center gap-2">
 
-  {%- if can_view -%}
-  <button class="btn btn-link p-0"
-          title="View project details"
-          onclick="event.stopPropagation();
-                   htmx.ajax('GET','{{ url_for('user_dashboard.project_details_modal', projcode=node.projcode) }}',
-                             {target:'#projectDetailsModalBody',swap:'innerHTML'});
-                   bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();">
-    <strong>{{ node.projcode }}</strong>
-  </button>
-  {%- else -%}
-  <strong>{{ node.projcode }}</strong>
-  {%- endif -%}
-
-  {%- if node.title %} — {{ node.title }}{% endif -%}
-  {%- if not is_active %}<span class="badge bg-secondary ms-1 small">Inactive</span>{% endif -%}
-
-  {%- if alloc_by_projcode is not none -%}
-    {%- set res = alloc_by_projcode.get(node.projcode) -%}
-    {%- if res -%}
-    <div class="d-flex align-items-center gap-2 mt-1 ms-2 small">
-      {%- set pct = [res.percent_used, 100] | min -%}
-      <div class="flex-grow-1" style="min-width:80px;max-width:180px;">
-        <div class="progress" style="height:8px;">
-          <div class="progress-bar
-               {%- if res.percent_used >= usage_critical_threshold %} bg-danger
-               {%- elif res.percent_used >= usage_warning_threshold %} bg-warning
-               {%- else %} bg-success{% endif %}"
-               role="progressbar" style="width:{{ pct }}%;"></div>
-        </div>
-      </div>
-      <span class="text-muted text-nowrap">{{ res.percent_used | fmt_pct }}</span>
-      <span class="text-muted text-nowrap">{{ res.allocated | fmt_number }} alloc</span>
-      {%- if res.is_inheriting -%}
-      <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
-      {%- endif -%}
-      {%- if can_edit_allocations and res.allocation_id -%}
-      <button class="btn btn-xs btn-outline-warning py-0 px-1"
-              style="font-size:0.7rem;"
-              hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', alloc_id=res.allocation_id) }}"
-              hx-target="#editAllocationFormContainer"
-              hx-trigger="click"
-              data-bs-toggle="modal"
-              data-bs-target="#editAllocationModal"
-              title="Edit allocation">
-        <i class="fas fa-pencil-alt"></i>
+    {# ── Left: identity ───────────────────────────────────────────── #}
+    <span class="flex-grow-1 text-truncate" style="min-width:0;">
+      {%- if is_current %}<i class="fas fa-arrow-right text-warning me-1"></i>{% endif -%}
+      {%- if can_view -%}
+      <button class="btn btn-link p-0"
+              title="View project details"
+              onclick="event.stopPropagation();
+                       htmx.ajax('GET','{{ url_for('user_dashboard.project_details_modal', projcode=node.projcode) }}',
+                                 {target:'#projectDetailsModalBody',swap:'innerHTML'});
+                       bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();">
+        <strong>{{ node.projcode }}</strong>
       </button>
+      {%- else -%}
+      <strong>{{ node.projcode }}</strong>
       {%- endif -%}
-    </div>
-    {%- else -%}
-    <span class="text-muted ms-2 small"><em>— no allocation —</em></span>
+      {%- if node.title %} — {{ node.title }}{% endif -%}
+      {%- if not is_active %}<span class="badge bg-secondary ms-1 small">Inactive</span>{% endif -%}
+    </span>
+
+    {# ── Right: allocation data (fixed-width column) ──────────────── #}
+    {%- if alloc_by_projcode is not none -%}
+      {%- set res = alloc_by_projcode.get(node.projcode) -%}
+      {%- if res -%}
+      <div class="d-flex align-items-center gap-2 small flex-shrink-0">
+        {%- set pct = [res.percent_used, 100] | min -%}
+        <div style="width:100px;flex-shrink:0;">
+          <div class="progress" style="height:8px;">
+            <div class="progress-bar
+                 {%- if res.percent_used >= usage_critical_threshold %} bg-danger
+                 {%- elif res.percent_used >= usage_warning_threshold %} bg-warning
+                 {%- else %} bg-success{% endif %}"
+                 role="progressbar" style="width:{{ pct }}%;"></div>
+          </div>
+        </div>
+        <span class="text-muted" style="width:40px;flex-shrink:0;text-align:right;">{{ res.percent_used | fmt_pct }}</span>
+        <span class="text-muted" style="width:80px;flex-shrink:0;text-align:right;">{{ res.allocated | fmt_number }}</span>
+        {%- if res.is_inheriting -%}
+        <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
+        {%- endif -%}
+        {%- if can_edit_allocations and res.allocation_id -%}
+        <button class="btn btn-xs btn-outline-warning py-0 px-1 flex-shrink-0"
+                style="font-size:0.7rem;"
+                hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', alloc_id=res.allocation_id) }}"
+                hx-target="#editAllocationFormContainer"
+                hx-trigger="click"
+                data-bs-toggle="modal"
+                data-bs-target="#editAllocationModal"
+                title="Edit allocation">
+          <i class="fas fa-pencil-alt"></i>
+        </button>
+        {%- endif -%}
+      </div>
+      {%- else -%}
+      <span class="text-muted small flex-shrink-0" style="min-width:280px;"><em>— no allocation —</em></span>
+      {%- endif -%}
     {%- endif -%}
-  {%- endif -%}
+
+  </div>{# /flex row #}
 
   {%- set children = node.children | selectattr('active') | list
       if active_only else node.children | list -%}
