@@ -1,15 +1,16 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   htmx: Edit Organization Form (loaded into #editOrganizationFormContainer)
   Tree columns (parent, tree_left/right, level) are read-only — managed by NestedSetMixin.
   Editable: name, acronym, description, active.
 #}
 
-<form hx-post="{{ url_for('admin_dashboard.htmx_organization_edit', org_id=org.organization_id) }}"
-      hx-target="#editOrganizationFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_organization_edit', org_id=org.organization_id),
+    '#editOrganizationFormContainer',
+    'Save Changes',
+    is_edit=True
+) %}
         <!-- Parent / ID (read-only) -->
         <div class="row mb-3">
             <div class="col-md-6">
@@ -62,20 +63,4 @@
                    {% elif org.active %}checked{% endif %}>
             <label class="form-check-label" for="editOrgActive">Active</label>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-warning">
-            <i class="fas fa-save"></i> Save Changes
-        </button>
-    </div>
-</form>
+{% endcall %}

@@ -431,7 +431,14 @@ curl -b cookies.txt "http://localhost:5050/api/v1/projects/recently_expired?min_
 
 # Get account balance
 curl -b cookies.txt http://localhost:5050/api/v1/accounts/12345/balance
+
+# Systems integration APIs (LDAP provisioning, PBS fairshare)
+curl -b cookies.txt http://localhost:5050/api/v1/directory_access/hpc
+curl -b cookies.txt http://localhost:5050/api/v1/project_access/hpc
+curl -b cookies.txt http://localhost:5050/api/v1/fstree_access/Derecho
 ```
+
+See **[docs/apis/SYSTEMS_INTEGRATION_APIs.md](docs/apis/SYSTEMS_INTEGRATION_APIs.md)** for full schema documentation on the directory access, project access, and fairshare tree APIs.
 
 **Example Response:**
 
@@ -600,6 +607,8 @@ sam-queries/
 
 ### API Documentation
 - **REST API endpoints** - See [src/webapp/README.md](src/webapp/README.md#rest-api)
+- **[docs/apis/SYSTEMS_INTEGRATION_APIs.md](docs/apis/SYSTEMS_INTEGRATION_APIs.md)** - Directory access, project access & fairshare tree APIs (legacy SAM replacement for LDAP/PBS)
+- **[docs/apis/CHARGING_INTEGRATION.md](docs/apis/CHARGING_INTEGRATION.md)** - HPC charge ingest integration
 - **Marshmallow schemas** - See [CLAUDE.md](CLAUDE.md#marshmallow-sqlalchemy-schemas)
 - **ORM models** - See [CLAUDE.md](CLAUDE.md#key-orm-models)
 
@@ -607,7 +616,7 @@ sam-queries/
 
 ## Testing
 
-The project includes a comprehensive test suite with 397+ tests covering:
+The project includes a comprehensive test suite covering:
 
 - Query functions - Targeted query function testing (41 tests)
 - Schema validation - Prevents ORM/database drift (18 tests)

@@ -257,7 +257,7 @@
                                    name="q"
                                    placeholder="Start typing a username, first, or last name..."
                                    autocomplete="off"
-                                   hx-get="{{ url_for('admin_dashboard.htmx_search_users_impersonate') }}"
+                                   hx-get="{{ url_for('admin_dashboard.htmx_search_users', context='impersonate') }}"
                                    hx-trigger="input changed delay:300ms"
                                    hx-target="#userSearchResults"
                                    hx-swap="innerHTML"

@@ -11,7 +11,9 @@ from flask import Blueprint, render_template, request, flash, redirect, url_for,
 from webapp.utils.htmx import htmx_success
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
-from webapp.api.helpers import parse_input_end_date
+from marshmallow import ValidationError
+
+from sam.schemas.forms.user import AddMemberForm, EditAllocationForm
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
@@ -385,38 +387,8 @@ def htmx_add_member_form(projcode):
     )
 
 
-@bp.route('/htmx/search-users')
-@login_required
-def htmx_search_users():
-    """
-    Search users and return results as an HTML fragment.
-
-    Replaces the JSON /api/v1/users/search endpoint for htmx usage.
-    Returns clickable list items with inline onclick handlers.
-    """
-    from sam.queries.users import search_users_by_pattern, get_project_member_user_ids
-
-    query = request.args.get('q', '').strip()
-    projcode = request.args.get('projcode', '')
-
-    if len(query) < 2:
-        return ''
-
-    # Exclude users already on the project
-    exclude_ids = None
-    if projcode:
-        project = db.session.query(Project).filter_by(projcode=projcode).first()
-        if project:
-            exclude_ids = get_project_member_user_ids(db.session, project.project_id)
-
-    users = search_users_by_pattern(
-        db.session, query, limit=20, exclude_user_ids=exclude_ids
-    )
-
-    return render_template(
-        'dashboards/user/fragments/user_search_results_htmx.html',
-        users=users
-    )
+# User search is handled by the unified admin_dashboard.htmx_search_users
+# endpoint with context='member'. See admin/blueprint.py.
 
 
 @bp.route('/htmx/add-member/<projcode>', methods=['POST'])
@@ -441,38 +413,20 @@ def htmx_add_member(projcode):
     if not can_manage_project_members(current_user, project):
         return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
 
-    # Parse form fields
-    username = request.form.get('username', '').strip()
-    start_date_str = request.form.get('start_date', '').strip()
-    end_date_str = request.form.get('end_date', '').strip()
-
-    errors = []
-
-    if not username:
-        errors.append('Please select a user first')
-
-    # Parse dates
-    start_date = None
-    end_date = None
     try:
-        if start_date_str:
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-        if end_date_str:
-            end_date = parse_input_end_date(end_date_str)
-    except ValueError:
-        errors.append('Invalid date format. Use YYYY-MM-DD.')
-
-    if start_date and end_date and end_date <= start_date:
-        errors.append('End date must be after start date')
-
-    if errors:
+        form_data = AddMemberForm().load(request.form)
+    except ValidationError as e:
         return render_template(
             'dashboards/user/fragments/add_member_form_htmx.html',
             projcode=projcode,
-            start_date=start_date_str,
-            end_date=end_date_str,
-            errors=errors
+            start_date=request.form.get('start_date', ''),
+            end_date=request.form.get('end_date', ''),
+            errors=AddMemberForm.flatten_errors(e.messages)
         )
+
+    username = form_data['username']
+    start_date = datetime.combine(form_data['start_date'], datetime.min.time()) if form_data.get('start_date') else None
+    end_date = form_data['end_date']
 
     # Look up the user
     user = db.session.query(User).filter_by(username=username).first()
@@ -480,8 +434,8 @@ def htmx_add_member(projcode):
         return render_template(
             'dashboards/user/fragments/add_member_form_htmx.html',
             projcode=projcode,
-            start_date=start_date_str,
-            end_date=end_date_str,
+            start_date=request.form.get('start_date', ''),
+            end_date=request.form.get('end_date', ''),
             errors=[f'User "{username}" not found']
         )
 
@@ -576,50 +530,24 @@ def htmx_edit_allocation(allocation_id):
     resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
     projcode = request.form.get('projcode', '')
 
-    # Parse form fields
-    errors = []
-    updates = {}
-
-    amount_str = request.form.get('amount', '').strip()
-    if amount_str:
-        try:
-            amount = float(amount_str)
-            if amount <= 0:
-                errors.append('Amount must be greater than 0')
-            else:
-                updates['amount'] = amount
-        except ValueError:
-            errors.append('Invalid amount format')
-    else:
-        errors.append('Amount is required')
-
-    start_date_str = request.form.get('start_date', '').strip()
-    end_date_str = request.form.get('end_date', '').strip()
     try:
-        if start_date_str:
-            updates['start_date'] = datetime.strptime(start_date_str, '%Y-%m-%d')
-        if end_date_str:
-            updates['end_date'] = parse_input_end_date(end_date_str)
-        else:
-            updates['end_date'] = None  # Explicitly clear end date
-    except ValueError:
-        errors.append('Invalid date format. Use YYYY-MM-DD.')
-
-    if 'start_date' in updates and 'end_date' in updates and updates['end_date']:
-        if updates['end_date'] <= updates['start_date']:
-            errors.append('End date must be after start date')
-
-    description = request.form.get('description', '').strip()
-    updates['description'] = description if description else None
-
-    if errors:
+        form_data = EditAllocationForm().load(request.form)
+    except ValidationError as e:
         return render_template(
             'dashboards/user/fragments/edit_allocation_form_htmx.html',
             allocation=allocation,
             resource_name=resource_name,
             projcode=projcode,
-            errors=errors
+            errors=EditAllocationForm.flatten_errors(e.messages)
         )
+
+    updates = {
+        'amount': form_data['amount'],
+        'end_date': form_data['end_date'],  # None explicitly clears end date
+        'description': form_data['description'],
+    }
+    if form_data.get('start_date'):
+        updates['start_date'] = datetime.combine(form_data['start_date'], datetime.min.time())
 
     try:
         with management_transaction(db.session):

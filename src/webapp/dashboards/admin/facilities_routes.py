@@ -5,14 +5,18 @@ Covers: Facilities, Panels, Panel Sessions, Allocation Types.
 """
 
 from flask import render_template, request
-from webapp.utils.htmx import htmx_success
+from webapp.utils.htmx import htmx_success, htmx_success_message
 from flask_login import login_required
 from datetime import datetime
-from webapp.api.helpers import parse_input_end_date
+from marshmallow import ValidationError
 
 from webapp.extensions import db
 from webapp.utils.rbac import require_permission, Permission
 from sam.manage import management_transaction
+from sam.schemas.forms.facilities import (
+    EditFacilityForm, CreateFacilityForm, CreatePanelForm,
+    EditPanelSessionForm, EditAllocationTypeForm, CreateAllocationTypeForm,
+)
 
 from .blueprint import bp
 
@@ -77,38 +81,22 @@ def htmx_facility_edit(facility_id):
     if not facility:
         return '<div class="alert alert-danger">Facility not found</div>', 404
 
-    errors = []
-
-    description = request.form.get('description', '').strip()
-    fair_share_str = request.form.get('fair_share_percentage', '').strip()
-    active = bool(request.form.get('active'))
-
-    if not description:
-        errors.append('Description is required.')
-
-    fair_share_percentage = None
-    if fair_share_str:
-        try:
-            fair_share_percentage = float(fair_share_str)
-            if not (0 <= fair_share_percentage <= 100):
-                errors.append('Fair share percentage must be between 0 and 100.')
-        except ValueError:
-            errors.append('Fair share percentage must be a number.')
-
-    if errors:
+    try:
+        data = EditFacilityForm().load(request.form)
+    except ValidationError as e:
         return render_template(
             'dashboards/admin/fragments/edit_facility_form_htmx.html',
             facility=facility,
-            errors=errors,
+            errors=EditFacilityForm.flatten_errors(e.messages),
             form=request.form,
         )
 
     try:
         with management_transaction(db.session):
             facility.update(
-                description=description,
-                fair_share_percentage=fair_share_percentage,
-                active=active,
+                description=data['description'],
+                fair_share_percentage=data['fair_share_percentage'],
+                active=data['active'],
             )
     except Exception as e:
         return render_template(
@@ -118,7 +106,7 @@ def htmx_facility_edit(facility_id):
             form=request.form,
         )
 
-    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
+    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
 
 
 # ── Facility Create ────────────────────────────────────────────────────────
@@ -139,41 +127,22 @@ def htmx_facility_create():
     """Create a new facility."""
     from sam.resources.facilities import Facility
 
-    errors = []
-
-    facility_name = request.form.get('facility_name', '').strip()
-    description = request.form.get('description', '').strip()
-    code = request.form.get('code', '').strip()
-    fair_share_str = request.form.get('fair_share_percentage', '').strip()
-
-    if not facility_name:
-        errors.append('Facility name is required.')
-    if not description:
-        errors.append('Description is required.')
-
-    fair_share_percentage = None
-    if fair_share_str:
-        try:
-            fair_share_percentage = float(fair_share_str)
-            if not (0 <= fair_share_percentage <= 100):
-                errors.append('Fair share percentage must be between 0 and 100.')
-        except ValueError:
-            errors.append('Fair share percentage must be a number.')
-
-    if errors:
+    try:
+        data = CreateFacilityForm().load(request.form)
+    except ValidationError as e:
         return render_template(
             'dashboards/admin/fragments/create_facility_form_htmx.html',
-            errors=errors, form=request.form,
+            errors=CreateFacilityForm.flatten_errors(e.messages), form=request.form,
         )
 
     try:
         with management_transaction(db.session):
             Facility.create(
                 db.session,
-                facility_name=facility_name,
-                description=description,
-                code=code or None,
-                fair_share_percentage=fair_share_percentage,
+                facility_name=data['facility_name'],
+                description=data['description'],
+                code=data['code'],
+                fair_share_percentage=data['fair_share_percentage'],
             )
     except Exception as e:
         return render_template(
@@ -181,7 +150,7 @@ def htmx_facility_create():
             errors=[f'Error creating facility: {e}'], form=request.form,
         )
 
-    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
+    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
 
 
 # ── Facility Delete ────────────────────────────────────────────────────────
@@ -255,7 +224,7 @@ def htmx_panel_edit(panel_id):
             form=request.form,
         )
 
-    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
+    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
 
 
 # ── Panel Create ───────────────────────────────────────────────────────────
@@ -283,48 +252,32 @@ def htmx_panel_create():
     """Create a new panel."""
     from sam.resources.facilities import Facility, Panel
 
-    errors = []
-
-    panel_name = request.form.get('panel_name', '').strip()
-    description = request.form.get('description', '').strip()
-    facility_id_str = request.form.get('facility_id', '').strip()
-
-    if not panel_name:
-        errors.append('Panel name is required.')
-
-    facility_id = None
-    if facility_id_str:
-        try:
-            facility_id = int(facility_id_str)
-        except ValueError:
-            errors.append('Invalid facility selection.')
-    else:
-        errors.append('Facility is required.')
-
     def _reload_form(extra_errors=None):
         facilities = db.session.query(Facility).filter(Facility.is_active).order_by(Facility.facility_name).all()
         return render_template(
             'dashboards/admin/fragments/create_panel_form_htmx.html',
             facilities=facilities,
-            errors=(extra_errors or []) + errors,
+            errors=extra_errors or [],
             form=request.form,
         )
 
-    if errors:
-        return _reload_form()
+    try:
+        data = CreatePanelForm().load(request.form)
+    except ValidationError as e:
+        return _reload_form(CreatePanelForm.flatten_errors(e.messages))
 
     try:
         with management_transaction(db.session):
             Panel.create(
                 db.session,
-                panel_name=panel_name,
-                facility_id=facility_id,
-                description=description or None,
+                panel_name=data['panel_name'],
+                facility_id=data['facility_id'],
+                description=data['description'],
             )
     except Exception as e:
         return _reload_form([f'Error creating panel: {e}'])
 
-    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
+    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
 
 
 # ── Panel Delete ───────────────────────────────────────────────────────────
@@ -381,54 +334,33 @@ def htmx_panel_session_edit(panel_session_id):
     if not panel_session:
         return '<div class="alert alert-danger">Panel session not found</div>', 404
 
-    errors = []
-
-    start_str = request.form.get('start_date', '').strip()
-    end_str = request.form.get('end_date', '').strip()
-    meeting_str = request.form.get('panel_meeting_date', '').strip()
-    description = request.form.get('description', '').strip()
-
-    start_date = None
-    if start_str:
-        try:
-            start_date = datetime.strptime(start_str, '%Y-%m-%d')
-        except ValueError:
-            errors.append('Invalid start date format.')
-    else:
-        errors.append('Start date is required.')
-
-    end_date = None
-    if end_str:
-        try:
-            end_date = parse_input_end_date(end_str)
-            effective_start = start_date or panel_session.start_date
-            if effective_start and end_date <= effective_start:
-                errors.append('End date must be after start date.')
-        except ValueError:
-            errors.append('Invalid end date format.')
-
-    panel_meeting_date = None
-    if meeting_str:
-        try:
-            panel_meeting_date = datetime.strptime(meeting_str, '%Y-%m-%d')
-        except ValueError:
-            errors.append('Invalid panel meeting date format.')
-
-    if errors:
+    try:
+        data = EditPanelSessionForm().load(request.form)
+    except ValidationError as e:
         return render_template(
             'dashboards/admin/fragments/edit_panel_session_form_htmx.html',
             panel_session=panel_session,
-            errors=errors,
+            errors=EditPanelSessionForm.flatten_errors(e.messages),
             form=request.form,
         )
+
+    # Additional cross-field check: end_date vs existing start_date when form start not set
+    if data.get('end_date') and data.get('start_date') is None and panel_session.start_date:
+        if data['end_date'] <= panel_session.start_date:
+            return render_template(
+                'dashboards/admin/fragments/edit_panel_session_form_htmx.html',
+                panel_session=panel_session,
+                errors=['End date must be after start date.'],
+                form=request.form,
+            )
 
     try:
         with management_transaction(db.session):
             panel_session.update(
-                description=description or None,
-                start_date=start_date,
-                end_date=end_date,
-                panel_meeting_date=panel_meeting_date,
+                description=data['description'],
+                start_date=datetime.combine(data['start_date'], datetime.min.time()) if data.get('start_date') else None,
+                end_date=data['end_date'],
+                panel_meeting_date=datetime.combine(data['panel_meeting_date'], datetime.min.time()) if data.get('panel_meeting_date') else None,
             )
     except Exception as e:
         return render_template(
@@ -438,7 +370,7 @@ def htmx_panel_session_edit(panel_session_id):
             form=request.form,
         )
 
-    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
+    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
 
 
 # ── Allocation Type Edit ───────────────────────────────────────────────────
@@ -474,44 +406,22 @@ def htmx_allocation_type_edit(allocation_type_id):
     if not allocation_type:
         return '<div class="alert alert-danger">Allocation type not found</div>', 404
 
-    errors = []
-
-    amount_str = request.form.get('default_allocation_amount', '').strip()
-    fair_share_str = request.form.get('fair_share_percentage', '').strip()
-    active = bool(request.form.get('active'))
-
-    default_allocation_amount = None
-    if amount_str:
-        try:
-            default_allocation_amount = float(amount_str)
-            if default_allocation_amount < 0:
-                errors.append('Default allocation amount must be >= 0.')
-        except ValueError:
-            errors.append('Default allocation amount must be a number.')
-
-    fair_share_percentage = None
-    if fair_share_str:
-        try:
-            fair_share_percentage = float(fair_share_str)
-            if not (0 <= fair_share_percentage <= 100):
-                errors.append('Fair share percentage must be between 0 and 100.')
-        except ValueError:
-            errors.append('Fair share percentage must be a number.')
-
-    if errors:
+    try:
+        data = EditAllocationTypeForm().load(request.form)
+    except ValidationError as e:
         return render_template(
             'dashboards/admin/fragments/edit_allocation_type_form_htmx.html',
             allocation_type=allocation_type,
-            errors=errors,
+            errors=EditAllocationTypeForm.flatten_errors(e.messages),
             form=request.form,
         )
 
     try:
         with management_transaction(db.session):
             allocation_type.update(
-                default_allocation_amount=default_allocation_amount,
-                fair_share_percentage=fair_share_percentage,
-                active=active,
+                default_allocation_amount=data['default_allocation_amount'],
+                fair_share_percentage=data['fair_share_percentage'],
+                active=data['active'],
             )
     except Exception as e:
         return render_template(
@@ -521,7 +431,7 @@ def htmx_allocation_type_edit(allocation_type_id):
             form=request.form,
         )
 
-    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
+    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
 
 
 # ── Allocation Type Create ─────────────────────────────────────────────────
@@ -556,46 +466,7 @@ def htmx_allocation_type_create():
     from sam.accounting.allocations import AllocationType
     from sam.resources.facilities import Facility, Panel
 
-    errors = []
-
-    allocation_type_name = request.form.get('allocation_type', '').strip()
     facility_id_str = request.form.get('facility_id', '').strip()
-    panel_id_str = request.form.get('panel_id', '').strip()
-    amount_str = request.form.get('default_allocation_amount', '').strip()
-    fair_share_str = request.form.get('fair_share_percentage', '').strip()
-
-    if not allocation_type_name:
-        errors.append('Allocation type name is required.')
-
-    if not facility_id_str:
-        errors.append('Facility is required.')
-
-    panel_id = None
-    if not panel_id_str:
-        errors.append('Panel is required.')
-    else:
-        try:
-            panel_id = int(panel_id_str)
-        except ValueError:
-            errors.append('Invalid panel selection.')
-
-    default_allocation_amount = None
-    if amount_str:
-        try:
-            default_allocation_amount = float(amount_str)
-            if default_allocation_amount < 0:
-                errors.append('Default allocation amount must be >= 0.')
-        except ValueError:
-            errors.append('Default allocation amount must be a number.')
-
-    fair_share_percentage = None
-    if fair_share_str:
-        try:
-            fair_share_percentage = float(fair_share_str)
-            if not (0 <= fair_share_percentage <= 100):
-                errors.append('Fair share percentage must be between 0 and 100.')
-        except ValueError:
-            errors.append('Fair share percentage must be a number.')
 
     def _reload_form(extra_errors=None):
         facilities = (
@@ -619,26 +490,28 @@ def htmx_allocation_type_create():
             'dashboards/admin/fragments/create_allocation_type_form_htmx.html',
             facilities=facilities,
             panels_for_facility=panels_for_facility,
-            errors=(extra_errors or []) + errors,
+            errors=extra_errors or [],
             form=request.form,
         )
 
-    if errors:
-        return _reload_form()
+    try:
+        data = CreateAllocationTypeForm().load(request.form)
+    except ValidationError as e:
+        return _reload_form(CreateAllocationTypeForm.flatten_errors(e.messages))
 
     try:
         with management_transaction(db.session):
             AllocationType.create(
                 db.session,
-                allocation_type=allocation_type_name,
-                panel_id=panel_id,
-                default_allocation_amount=default_allocation_amount,
-                fair_share_percentage=fair_share_percentage,
+                allocation_type=data['allocation_type'],
+                panel_id=data['panel_id'],
+                default_allocation_amount=data['default_allocation_amount'],
+                fair_share_percentage=data['fair_share_percentage'],
             )
     except Exception as e:
         return _reload_form([f'Error creating allocation type: {e}'])
 
-    return htmx_success('dashboards/admin/fragments/facility_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadFacilitiesCard': {}})
+    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
 
 
 # ── Allocation Type Delete ─────────────────────────────────────────────────

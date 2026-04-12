@@ -29,7 +29,7 @@
                    name="q"
                    placeholder="Type username, first name, or last name..."
                    autocomplete="off"
-                   hx-get="{{ url_for('user_dashboard.htmx_search_users', projcode=projcode) }}"
+                   hx-get="{{ url_for('admin_dashboard.htmx_search_users', context='member', projcode=projcode) }}"
                    hx-trigger="input changed delay:300ms"
                    hx-target="#htmxUserSearchResults"
                    hx-swap="innerHTML"

@@ -15,7 +15,9 @@ from webapp.extensions import db
 from sam.schemas import AllocationWithUsageSchema
 from sam import Allocation
 from sam.manage import update_allocation, management_transaction
-from webapp.api.helpers import register_error_handlers, parse_input_end_date
+from webapp.api.helpers import register_error_handlers
+from sam.schemas.forms import EditAllocationForm
+from marshmallow import ValidationError
 from datetime import datetime
 
 bp = Blueprint('api_allocations', __name__)
@@ -85,33 +87,24 @@ def update_allocation_endpoint(allocation_id):
     if not data:
         return jsonify({'error': 'Request body must be JSON'}), 400
 
-    # Build updates dict
-    updates = {}
-
-    # Parse amount
-    if 'amount' in data:
-        try:
-            updates['amount'] = float(data['amount'])
-        except (ValueError, TypeError):
-            return jsonify({'error': 'Invalid amount format. Must be a number.'}), 400
-
-    # Parse dates
+    # Validate and coerce input via form schema (partial=True: no field is required for PUT)
     try:
-        if 'start_date' in data and data['start_date']:
-            updates['start_date'] = datetime.strptime(data['start_date'], '%Y-%m-%d')
+        form_data = EditAllocationForm().load(data, partial=True)
+    except ValidationError as e:
+        errors = EditAllocationForm.flatten_errors(e.messages)
+        return jsonify({'error': errors[0] if errors else 'Invalid input'}), 400
 
-        if 'end_date' in data:
-            # Allow null/empty to clear end date
-            if data['end_date']:
-                updates['end_date'] = parse_input_end_date(data['end_date'])
-            else:
-                updates['end_date'] = None
-    except ValueError:
-        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
-
-    # Description
+    # Build updates dict — key on original data to avoid overwriting fields not in the request
+    updates = {}
+    if 'amount' in data:
+        updates['amount'] = form_data['amount']
+    if 'start_date' in data:
+        raw = form_data.get('start_date')
+        updates['start_date'] = datetime.combine(raw, datetime.min.time()) if raw else None
+    if 'end_date' in data:
+        updates['end_date'] = form_data.get('end_date')  # datetime or None
     if 'description' in data:
-        updates['description'] = data['description']
+        updates['description'] = form_data.get('description')
 
     # Validate we have something to update
     if not updates:

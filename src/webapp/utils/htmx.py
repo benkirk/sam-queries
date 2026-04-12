@@ -17,3 +17,22 @@ def htmx_success(template, triggers, **ctx):
     response = make_response(render_template(template, **ctx))
     response.headers['HX-Trigger'] = json.dumps(triggers)
     return response
+
+
+def htmx_success_message(triggers, message, detail=None):
+    """Render the generic success fragment with HX-Trigger response headers.
+
+    Convenience wrapper around htmx_success() for the common case where
+    no custom template is needed — just a checkmark and a message.
+
+    Args:
+        triggers: dict mapping event names to payloads
+        message:  Primary success text shown in bold
+        detail:   Optional secondary line (e.g. project code + title)
+    """
+    return htmx_success(
+        'dashboards/fragments/htmx_success.html',
+        triggers,
+        message=message,
+        detail=detail,
+    )

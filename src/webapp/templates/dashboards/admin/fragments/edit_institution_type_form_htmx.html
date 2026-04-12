@@ -1,15 +1,16 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   htmx: Edit Institution Type Form (loaded into #editInstitutionTypeFormContainer)
   InstitutionType has no active flag.
   Editable: type name (required).
 #}
 
-<form hx-post="{{ url_for('admin_dashboard.htmx_institution_type_edit', institution_type_id=inst_type.institution_type_id) }}"
-      hx-target="#editInstitutionTypeFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_institution_type_edit', institution_type_id=inst_type.institution_type_id),
+    '#editInstitutionTypeFormContainer',
+    'Save Changes',
+    is_edit=True
+) %}
         <!-- ID (read-only) -->
         <div class="mb-3">
             <label class="form-label">Type ID</label>
@@ -25,20 +26,4 @@
                    name="type" required maxlength="45"
                    value="{{ form.get('type') if form else inst_type.type }}">
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-warning">
-            <i class="fas fa-save"></i> Save Changes
-        </button>
-    </div>
-</form>
+{% endcall %}

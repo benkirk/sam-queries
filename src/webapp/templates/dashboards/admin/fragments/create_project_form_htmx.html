@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   htmx: Create Project Form
   Facility / Panel / AllocationType: cascade selects on row 1 (Facility required,
@@ -10,13 +11,12 @@
   Contract / Organization: optional FK pickers (search-as-you-type, badge pattern).
   All FK selections stored in hidden inputs; badges show the selection.
 #}
-<form hx-post="{{ url_for('admin_dashboard.htmx_project_create') }}"
-      hx-target="#createProjectFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
-
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_project_create'),
+    '#createProjectFormContainer',
+    'Create Project',
+    submit_icon='folder-plus'
+) %}
         <!-- ── Facility / Panel / Allocation Type ──────────────────────────── -->
         <div class="row g-2 mb-3">
             <div class="col-md-4">
@@ -202,7 +202,7 @@
                            id="createProjectLeadSearch"
                            placeholder="Search by name or username…"
                            autocomplete="off"
-                           hx-get="{{ url_for('admin_dashboard.htmx_search_users_for_org') }}"
+                           hx-get="{{ url_for('admin_dashboard.htmx_search_users', context='fk') }}"
                            hx-target="#createProjectLeadResults"
                            hx-swap="innerHTML"
                            hx-trigger="input changed delay:300ms"
@@ -239,7 +239,7 @@
                            id="createProjectAdminSearch"
                            placeholder="Search by name or username…"
                            autocomplete="off"
-                           hx-get="{{ url_for('admin_dashboard.htmx_search_users_for_org') }}"
+                           hx-get="{{ url_for('admin_dashboard.htmx_search_users', context='fk') }}"
                            hx-target="#createProjectAdminResults"
                            hx-swap="innerHTML"
                            hx-trigger="input changed delay:300ms"
@@ -420,25 +420,7 @@
                 </div>
             </div>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-    </div>{# /modal-body #}
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">
-            <i class="fas fa-folder-plus"></i> Create Project
-        </button>
-    </div>
-
-</form>
+{% endcall %}
 
 <script>
 (function () {
