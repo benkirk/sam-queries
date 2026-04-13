@@ -2,12 +2,12 @@
 
 ## Context
 
-The Edit Project allocations tab currently supports a single edit flow for all allocation types.  
+The Edit Project allocations tab currently supports a single edit flow for all allocation types.
 We need to differentiate UX across three distinct cases that arise in practice:
 
 - **Case 1**: Single project, no tree — simplest path, standalone allocation
-- **Case 2a**: Project tree with *inherited* allocations (e.g., NMMM0003) — propagate to subprojects when adding; high-friction detach when editing a child
-- **Case 2b**: Project tree with *individual* (non-inherited) allocations (e.g., CESM0002/Derecho) — sanity-check that parent ≥ sum(children)
+- **Case 2a**: Project tree with *inherited* (parent-linked) allocations (e.g. NMMM0003) — propagate to subprojects when adding; high-friction detach when editing a child
+- **Case 2b**: Project tree with *individual* (non-inherited) allocations (e.g. CESM0002/Derecho) — sanity-check that parent ≥ sum(children)
 
 Future scope (design for, don't implement yet): mid-tier privileged users (root project lead/admin) redistributing amounts among siblings without changing the parent total.
 
@@ -28,9 +28,63 @@ Future scope (design for, don't implement yet): mid-tier privileged users (root 
 | Edit project route | `admin_dashboard.edit_project_page(projcode=...)` — `projects_routes.py:481` |
 | HTMX routes | `projects_routes.py` — `htmx_add_allocation_form/POST`, `htmx_edit_allocation_form/POST` |
 
-Propagation topology: **flat star** — all child allocations point directly to the root parent allocation (`parent_allocation_id = root.allocation_id`). This keeps `update_allocation()` cascade working correctly (it walks `allocation.children`).
+### Allocation Tree Topology: Deep Tree
 
-Formatting convention: allocation amounts use `| fmt_number` throughout (confirmed in existing `project_allocation_tree_htmx.html:140`). This applies regardless of resource type (core-hours, TB, etc.) — consistent with existing display code.
+The live database uses a **deep tree** topology, confirmed by SQL query against `sam-sql.ucar.edu`:
+
+```sql
+SELECT p.projcode, p.parent_id, al.allocation_id, al.parent_allocation_id
+FROM allocation al
+JOIN account ac   ON al.account_id = ac.account_id
+JOIN project p    ON ac.project_id = p.project_id
+JOIN resources r  ON ac.resource_id = r.resource_id
+WHERE p.tree_root = 1106 AND r.resource_name = 'Derecho'
+  AND al.deleted = 0
+ORDER BY al.parent_allocation_id IS NULL DESC, al.allocation_id;
+```
+
+Result (abbreviated — bold rows are grandchildren):
+
+| projcode  | allocation_id | parent_allocation_id | parent_alloc_projcode |
+|-----------|---------------|----------------------|-----------------------|
+| NMMM0003  | 20989         | NULL                 | —                     |
+| NMMM0008  | 20991         | 20989                | NMMM0003              |
+| NMMM0012  | 20993         | 20989                | NMMM0003              |
+| **NMMM0054** | **20994**  | **20993**            | **NMMM0012**          |
+| **NMMM0020** | **20995**  | **20993**            | **NMMM0012**          |
+| NMMM0013  | 20997         | 20989                | NMMM0003              |
+
+NMMM0054 is a grandchild of NMMM0003 (project parent = NMMM0012). Its `parent_allocation_id`
+points to NMMM0012's allocation (20993), **not** to the root NMMM0003 allocation (20989).
+
+This mirrors the legacy Java propagation logic (`Project.java:261–269`):
+```java
+private Allocation doPropagatingAddAllocation(ProjectAllocationRequest request) {
+    Allocation allocation = doAddAllocation(request);        // create alloc for THIS project
+    ProjectAllocationCommand childCommand =
+        new ProjectAllocationCommand(request, allocation);   // wrap with THIS alloc as parent
+    for (Project child : children) {
+        if (child.isActive()) {
+            child.doPropagatingAddAllocation(childCommand);  // recurse — parent advances each level
+        }
+    }
+    return allocation;
+}
+```
+
+**Why it matters for `propagate_allocation_to_subprojects()`:**
+If we naively set `parent_allocation_id = root_allocation.allocation_id` for every
+descendant, grandchildren would point to the root instead of their immediate allocation
+parent. This breaks cascade: `update_allocation()` walks `allocation.children` — in the
+flat-star model, grandchildren are never reachable from a mid-tier allocation.
+
+**Traversal order:** `get_descendants()` returns nodes ordered by `tree_left`
+(nested-set DFS pre-order). Pre-order DFS **guarantees a parent node appears before its
+children**, so we can build the `alloc_map` incrementally in a single pass — no BFS needed.
+
+Formatting convention: allocation amounts use `| fmt_number` throughout (confirmed in
+`project_allocation_tree_htmx.html:140`). Applies regardless of resource type — consistent
+with existing display code.
 
 ---
 
@@ -47,12 +101,28 @@ Formatting convention: allocation amounts use `| fmt_number` throughout (confirm
 
 ## Step 1 — ORM: `src/sam/accounting/allocations.py`
 
-**1a.** Add `DETACH` to `AllocationTransactionType` enum (after `DELETE`):
+### 1a. Add `DETACH` to `AllocationTransactionType` enum (after `DELETE`):
 ```python
 DETACH = "DETACH"
 ```
 
-**1b.** Add `parent_allocation_id: Optional[int] = None` parameter to `Allocation.create()` signature and pass it to the constructor.  Document that this creates a child in the shared-allocation tree.
+### 1b. Add `parent_allocation_id` parameter to `Allocation.create()` signature and constructor
+
+Current signature (line 148) has no `parent_allocation_id`. Add to signature:
+```python
+parent_allocation_id: Optional[int] = None,
+```
+And pass it through to the constructor (line 195 area):
+```python
+allocation = cls(
+    account_id=account.account_id,
+    amount=amount,
+    start_date=start_date,
+    end_date=end_date,
+    description=description,
+    parent_allocation_id=parent_allocation_id,   # NEW — creates child in allocation tree
+)
+```
 
 ---
 
@@ -60,20 +130,99 @@ DETACH = "DETACH"
 
 Add three new functions and expand `__all__`.
 
-### `propagate_allocation_to_subprojects(session, parent_allocation, child_projects, user_id, skip_existing=True) -> Tuple[List[Allocation], List[Project]]`
+### `propagate_allocation_to_subprojects(session, parent_allocation, descendants, user_id, skip_existing=True) -> Tuple[List[Allocation], List[Project]]`
 
-**Atomicity note:** This function must always run inside the caller's `management_transaction()`. It performs N `Allocation.create()` + N `log_allocation_transaction()` calls with no internal commit. If any call raises, the outer transaction rolls back everything — all-or-nothing is guaranteed by the caller's transaction context.
+**Atomicity note:** This function must always run inside the caller's `management_transaction()`.
+No internal commit — all-or-nothing is guaranteed by the caller's transaction context.
 
-**Account creation note:** `Allocation.create()` internally calls `Account.get_by_project_and_resource()` and creates the Account if absent (lines 186–193 of allocations.py). No pre-creation needed.
+**Deep-tree algorithm:** Maintains an `alloc_map = {project_id → allocation_id}` so each
+new child allocation can find its immediate parent. `descendants` must be in `tree_left`
+DFS pre-order (i.e., the list returned by `project.get_descendants()`) — this order
+guarantees parents appear before their children.
 
-- Derives `resource_id` from `parent_allocation.account.resource_id`
-- For each project in `child_projects`:
-  - Check for existing non-deleted allocation: call `Account.get_by_project_and_resource(session, child.project_id, resource_id)` and check `[a for a in account.allocations if not a.deleted]` if account found
-  - If exists and `skip_existing=True`: append to `skipped` list and continue
-  - If exists and `skip_existing=False`: raise `ValueError`
-  - Call `Allocation.create(session, project_id=..., resource_id=..., amount=parent_allocation.amount, start_date=parent_allocation.start_date, end_date=parent_allocation.end_date, parent_allocation_id=parent_allocation.allocation_id)`
-  - Log `AllocationTransactionType.CREATE` with `propagated=True`, comment `"Propagated from parent allocation #<id>"`
-- Returns `(created_list, skipped_list)`
+**Skipped-allocation subtlety:** When an existing allocation is skipped (`skip_existing=True`),
+its `allocation_id` must still be inserted into `alloc_map`. Without this, children of an
+already-allocated project would receive `parent_allocation_id=None` instead of the correct
+parent pointer.
+
+```python
+def propagate_allocation_to_subprojects(
+    session,
+    parent_allocation,
+    descendants,      # from project.get_descendants() — DFS pre-order, parent before children
+    user_id,
+    skip_existing=True,
+):
+    """
+    Create child allocations for each active project in `descendants`, mirroring
+    the deep-tree topology: each allocation's parent_allocation_id points to its
+    immediate project-parent's allocation (not the root).
+
+    descendants MUST be in tree_left (DFS pre-order) order.
+    project.get_descendants() satisfies this constraint.
+
+    Runs inside caller's management_transaction() — no internal commit.
+    """
+    from sam.accounting.accounts import Account
+
+    resource_id = parent_allocation.account.resource_id
+    root_project_id = parent_allocation.account.project_id
+
+    # Seed map: root project → root allocation
+    alloc_map = {root_project_id: parent_allocation.allocation_id}
+
+    created, skipped = [], []
+
+    for child_proj in descendants:
+        if not child_proj.active:
+            continue
+
+        # Check for an existing non-deleted allocation on this project+resource
+        account = Account.get_by_project_and_resource(
+            session, child_proj.project_id, resource_id
+        )
+        existing = (
+            [a for a in account.allocations if not a.deleted]
+            if account else []
+        )
+
+        if existing:
+            if skip_existing:
+                # Register in alloc_map so this project's children resolve correctly
+                alloc_map[child_proj.project_id] = existing[0].allocation_id
+                skipped.append(child_proj)
+                continue
+            else:
+                raise ValueError(
+                    f"Project {child_proj.projcode} already has an allocation "
+                    f"for resource_id={resource_id}"
+                )
+
+        # Immediate parent's allocation_id (None if parent was inactive/missing)
+        proj_parent_alloc_id = alloc_map.get(child_proj.parent_id)
+
+        new_alloc = Allocation.create(
+            session,
+            project_id=child_proj.project_id,
+            resource_id=resource_id,
+            amount=parent_allocation.amount,
+            start_date=parent_allocation.start_date,
+            end_date=parent_allocation.end_date,
+            parent_allocation_id=proj_parent_alloc_id,   # deep-tree pointer to immediate parent
+        )
+
+        log_allocation_transaction(
+            session, new_alloc, user_id,
+            AllocationTransactionType.CREATE,
+            comment=f"Propagated from parent allocation #{parent_allocation.allocation_id}",
+            propagated=True,
+        )
+
+        alloc_map[child_proj.project_id] = new_alloc.allocation_id
+        created.append(new_alloc)
+
+    return created, skipped
+```
 
 ### `detach_allocation(session, allocation_id, user_id) -> Allocation`
 
@@ -82,6 +231,24 @@ Add three new functions and expand `__all__`.
 - Set `allocation.parent_allocation_id = None`; `session.flush()`
 - Log `AllocationTransactionType.DETACH` with `comment=f"Detached from parent allocation #{old_parent_id}"`
 - Return allocation
+
+```python
+def detach_allocation(session, allocation_id, user_id):
+    allocation = session.get(Allocation, allocation_id)
+    if not allocation or not allocation.is_inheriting:
+        raise ValueError(
+            f"Allocation {allocation_id} not found or is not an inheriting allocation"
+        )
+    old_parent_id = allocation.parent_allocation_id
+    allocation.parent_allocation_id = None
+    session.flush()
+    log_allocation_transaction(
+        session, allocation, user_id,
+        AllocationTransactionType.DETACH,
+        comment=f"Detached from parent allocation #{old_parent_id}",
+    )
+    return allocation
+```
 
 ### `get_children_allocation_sum(allocation) -> float`
 
@@ -108,18 +275,8 @@ from .allocations import (
 
 ## Step 4 — Routes: `src/webapp/dashboards/admin/projects_routes.py`
 
-### 4a. `htmx_add_allocation_form` (GET ~line 732)
+### 4a. Module-level imports (top of file, not inside handler bodies)
 
-Pass tree context to template:
-```python
-active_descendants = [d for d in project.get_descendants() if d.active]
-child_count = len(active_descendants)
-# add to render_template:
-project_has_children=project.has_children,
-child_count=child_count,
-```
-
-Module-level imports to add at the top of `projects_routes.py` (not inside handler bodies — point 5 of review):
 ```python
 from sam.manage.allocations import (
     create_allocation, update_allocation,
@@ -132,14 +289,25 @@ from sam.accounting.allocations import (
 )
 ```
 
-### 4b. `htmx_add_allocation` (POST ~line 767)
+### 4b. `htmx_add_allocation_form` (GET ~line 732)
+
+Pass tree context to template:
+```python
+active_descendants = [d for d in project.get_descendants() if d.active]
+child_count = len(active_descendants)
+# add to render_template:
+project_has_children=project.has_children,
+child_count=child_count,
+```
+
+### 4c. `htmx_add_allocation` (POST ~line 767)
 
 Read new form field early:
 ```python
 apply_to_subprojects = request.form.get('apply_to_subprojects') == 'on'
 ```
 
-Update `_reload_add_form()` — current signature is `def _reload_add_form(extra_errors=None)` (projects_routes.py:828). It computes `available` resources inline. Extend to pass two new template vars (all three call sites use this helper — only one definition to change):
+Extend `_reload_add_form()` to pass two new template vars:
 ```python
 def _reload_add_form(extra_errors=None):
     from sam.resources.resources import Resource as R
@@ -162,19 +330,18 @@ def _reload_add_form(extra_errors=None):
 After creating the parent allocation inside `management_transaction`:
 ```python
 if apply_to_subprojects and project.has_children:
-    active_descendants = [d for d in project.get_descendants() if d.active]
+    # get_descendants() returns DFS pre-order (tree_left order) — parents before children
+    descendants = [d for d in project.get_descendants() if d.active]
     created, skipped = propagate_allocation_to_subprojects(
-        db.session, parent_alloc, active_descendants,
+        db.session, parent_alloc, descendants,
         user_id=current_user.user_id, skip_existing=True,
     )
+    # include len(created) created and len(skipped) skipped in success message
 ```
-(No inner import needed — moved to module level in step 4a.)
 
-Update success message to mention `len(created)` created and `len(skipped)` skipped.
+### 4d. `htmx_edit_allocation_form` (GET ~line 872)
 
-### 4c. `htmx_edit_allocation_form` (GET ~line 872)
-
-Compute and pass additional context (no inner imports needed — moved to module level):
+Compute and pass additional context:
 ```python
 children_sum = get_children_allocation_sum(allocation) if allocation.children else 0.0
 
@@ -210,14 +377,15 @@ return render_template(...,
 )
 ```
 
-### 4d. `htmx_edit_allocation` (POST ~line 892)
+### 4e. `htmx_edit_allocation` (POST ~line 892)
 
 Read `break_inheritance` early:
 ```python
 break_inheritance = request.form.get('break_inheritance') == 'true'
 ```
 
-Update `_reload_edit_form()` inner function to also recompute and pass `children_sum`, `parent_info`, and `unlinked_descendants_count=0` (skip the unlinked count recomputation on error re-renders for performance).
+Update `_reload_edit_form()` inner function to also pass `children_sum`, `parent_info`,
+and `unlinked_descendants_count=0` (skip expensive recompute on error re-renders).
 
 Replace the `except InheritingAllocationException` block with the detach+edit path:
 ```python
@@ -225,8 +393,8 @@ try:
     with management_transaction(db.session):
         if allocation.is_inheriting and break_inheritance:
             detach_allocation(db.session, alloc_id, current_user.user_id)
-            # detach_allocation() calls session.flush() — the identity map now reflects
-            # parent_allocation_id=None, so allocation.is_inheriting is False.
+            # detach_allocation() calls session.flush() — identity map now reflects
+            # parent_allocation_id=None, so is_inheriting is False.
             # update_allocation() will no longer raise InheritingAllocationException.
             # Audit trail: DETACH transaction + EDIT transaction (two records — intentional).
             update_allocation(db.session, alloc_id, current_user.user_id, **updates)
@@ -240,13 +408,12 @@ except InheritingAllocationException:
     ])
 ```
 
-Note: `break_inheritance=True` but `not allocation.is_inheriting` → falls through to normal `update_allocation()` call; the break flag is a no-op (not an error).
+Note: `break_inheritance=True` but `not allocation.is_inheriting` → falls through to
+normal `update_allocation()` call; the break flag is a no-op (not an error).
 
-All imports for this handler come from module-level (step 4a).
+### 4f. New route: `htmx_detach_allocation` (POST)
 
-### 4e. New route: `htmx_detach_allocation` (POST)
-
-For standalone detach (no field edits). Permission: `EDIT_PROJECTS` — same as all other allocation mutations. The `AllocationTransaction(DETACH)` record provides audit visibility.
+For standalone detach (no field edits). Permission: `EDIT_PROJECTS`.
 
 ```python
 @bp.route('/htmx/detach-allocation/<int:alloc_id>', methods=['POST'])
@@ -254,14 +421,22 @@ For standalone detach (no field edits). Permission: `EDIT_PROJECTS` — same as 
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_detach_allocation(alloc_id):
     """Break parent_allocation_id link without editing other fields."""
+    allocation = db.session.get(Allocation, alloc_id)
+    if not allocation:
+        return '<div class="alert alert-danger">Allocation not found.</div>', 404
+    projcode = allocation.account.project.projcode if allocation.account else ''
+    try:
+        with management_transaction(db.session):
+            detach_allocation(db.session, alloc_id, current_user.user_id)
+    except ValueError as e:
+        return f'<div class="alert alert-danger">{e}</div>', 400
+    return htmx_success_message(
+        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
+        'Allocation detached successfully.',
+    )
 ```
 
-- Load allocation, verify `is_inheriting`
-- Derive `projcode = allocation.account.project.projcode if allocation.account else ''`
-- Call `detach_allocation()` inside `management_transaction()`
-- Return `htmx_success_message({'closeActiveModal': {}, 'reloadAllocationTree': projcode}, ...)`
-
-### 4f. New route: `htmx_propagate_to_remaining` (POST)
+### 4g. New route: `htmx_propagate_to_remaining` (POST)
 
 For parent allocations that have some unlinked descendants:
 ```python
@@ -270,19 +445,40 @@ For parent allocations that have some unlinked descendants:
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_propagate_to_remaining(alloc_id):
     """Create child allocations for active descendants that don't yet have one."""
+    allocation = db.session.get(Allocation, alloc_id)
+    if not allocation or allocation.is_inheriting:
+        return '<div class="alert alert-danger">Invalid allocation.</div>', 400
+    project = allocation.account.project
+    existing_child_project_ids = {
+        child.account.project_id
+        for child in allocation.children
+        if not child.deleted and child.account
+    }
+    # get_descendants() returns DFS pre-order — required by propagate_allocation_to_subprojects
+    descendants = [
+        d for d in project.get_descendants()
+        if d.active and d.project_id not in existing_child_project_ids
+    ]
+    try:
+        with management_transaction(db.session):
+            created, skipped = propagate_allocation_to_subprojects(
+                db.session, allocation, descendants,
+                user_id=current_user.user_id, skip_existing=True,
+            )
+    except Exception as e:
+        return f'<div class="alert alert-danger">Error: {e}</div>', 400
+    return htmx_success_message(
+        {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
+        f'Created {len(created)} child allocation(s). {len(skipped)} skipped (already existed).',
+    )
 ```
-
-- Load allocation; verify `not is_inheriting`
-- Build `existing_child_project_ids` from `allocation.children`
-- Find `unlinked = [d for d in project.get_descendants() if d.active and d.project_id not in existing_child_project_ids]`
-- Call `propagate_allocation_to_subprojects()` inside `management_transaction()`
-- Return success message with count
 
 ---
 
 ## Step 5 — Template: `add_allocation_form_htmx.html`
 
-After the description field and before the bottom alert, add a conditional sub-project propagation section:
+After the description field and before the bottom alert, add a conditional sub-project
+propagation section:
 
 ```html
 {% if project_has_children %}
@@ -301,28 +497,36 @@ After the description field and before the bottom alert, add a conditional sub-p
   </div>
   <div class="form-text mt-1 ms-4">
     Creates a linked child allocation for each active sub-project using the same amount
-    and dates. Sub-projects share the parent pool — charges count against the root.
-    Sub-projects that already have an allocation for this resource are skipped.
+    and dates. The allocation tree mirrors the project tree — each sub-project's
+    allocation points to its immediate parent's allocation. Sub-projects that already
+    have an allocation for this resource are skipped.
   </div>
 </div>
 {% endif %}
 ```
 
-Replace the existing bottom alert with context-aware text (show the old "add parent first" hint only when `not project_has_children`).
+Replace the existing bottom alert with context-aware text (show the old "add parent first"
+hint only when `not project_has_children`).
 
 ---
 
 ## Step 6 — Template: `edit_allocation_form_htmx.html`
 
-### 6a. Context comment — document new variables: `children_sum`, `parent_info`, `unlinked_descendants_count`
+### 6a. Context comment at top of template
+
+Document new variables passed from route: `children_sum`, `parent_info`,
+`unlinked_descendants_count`.
 
 ### 6b. Replace `{% if allocation.is_inheriting %}` alert (lines 23–31)
 
 Enhance to link to parent project and add a "Break inheritance" collapsible section.
 
-Key ordering fix: the `<input type="hidden" id="break_inheritance">` is placed **before** the collapse block that references it via `document.getElementById('break_inheritance')` in the `onchange` handler. This ensures the element exists in the DOM before any JS fires.
+Key ordering fix: the `<input type="hidden" id="break_inheritance">` is placed **before**
+the collapse block that references it via `document.getElementById('break_inheritance')`
+in the `onchange` handler. This ensures the element exists in the DOM before any JS fires.
 
-Parent link guard: the `href` uses `url_for('admin_dashboard.edit_project_page', projcode=parent_info.projcode)` only when `parent_info.projcode` is set (route computes it as `None` for missing or inactive parent projects).
+Parent link guard: `href` uses `url_for(..., projcode=parent_info.projcode)` only when
+`parent_info.projcode` is set (route computes it as `None` for missing/inactive parent projects).
 
 ```html
 {% if allocation.is_inheriting %}
@@ -392,7 +596,7 @@ Parent link guard: the `href` uses `url_for('admin_dashboard.edit_project_page',
 
 ### 6c. Replace `{% if allocation.children %}` cascade notice (lines 33–41)
 
-Enhance for Case 2b to show children amount summary and validation:
+Enhance for Case 2b to show children amount summary and unlinked-descendants button:
 
 ```html
 {% if allocation.children %}
@@ -459,16 +663,17 @@ Between the children block and the read-only context div:
 
 | Case | Mitigation |
 |---|---|
-| Child project already has allocation when "Apply to subprojects" | `skip_existing=True` default; skipped count shown in success message |
-| `break_inheritance=True` but `not allocation.is_inheriting` | Route ignores break flag, falls through to normal `update_allocation()` — no error |
+| Child project already has allocation when "Apply to subprojects" | `skip_existing=True` default; skipped project still inserted into `alloc_map` so its own children resolve correctly; skipped count shown in success message |
+| `break_inheritance=True` but `not allocation.is_inheriting` | Route ignores break flag, falls through to normal `update_allocation()` — not an error |
 | `children_sum` includes soft-deleted children | `get_children_allocation_sum()` explicitly filters `not child.deleted` |
 | Template child count includes soft-deleted children | Jinja uses `selectattr('deleted', 'equalto', False)` |
-| Deep project tree (grandchildren) | `project.get_descendants()` returns all levels via nested-set; all assigned `parent_allocation_id = root.allocation_id` (flat star) |
+| Deep project tree (grandchildren) | `project.get_descendants()` returns all levels in DFS pre-order; `alloc_map` ensures each level gets the correct immediate-parent pointer |
+| Inactive intermediate project | Its allocation is never created → `alloc_map.get(child.parent_id)` returns `None` → child gets `parent_allocation_id=None` (standalone root within the tree — acceptable) |
 | `_reload_edit_form()` missing new context vars | Recompute `children_sum`, `parent_info`, pass `unlinked_descendants_count=0` (skip expensive recompute on error re-renders) |
-| Detach+edit SQLAlchemy identity map | `detach_allocation()` calls `session.flush()` — the identity map reflects `parent_allocation_id=None` before `update_allocation()` runs; no race condition |
+| Detach+edit SQLAlchemy identity map | `detach_allocation()` calls `session.flush()` — the identity map reflects `parent_allocation_id=None` before `update_allocation()` runs |
 | Propagation partial failure | Runs inside caller's `management_transaction()` — all-or-nothing rollback on any exception |
 | Parent project inactive or missing | Route sets `parent_info['projcode'] = None`; template skips link rendering when `projcode` is falsy |
-| Case 2b amount validation | Advisory warning only (non-blocking) — admin may be mid-transition. This is intentional per requirements. |
+| Case 2b amount validation | Advisory warning only (non-blocking) — admin may be mid-transition. Intentional per requirements. |
 
 ---
 
@@ -486,18 +691,19 @@ When implementing redistribution for root project leads/admins:
 ## Verification
 
 1. **Case 1** — Navigate to a single (leaf, no parent, no children) project → Edit Allocation → see "Standalone allocation" note, full editing enabled
-2. **Case 2a add** — Navigate to a parent project with active children → Add Allocation → see "Apply to sub-projects" checkbox → check it → submit → confirm child allocations created in tree view with correct `parent_allocation_id`
+2. **Case 2a add** — Navigate to parent project with active children → Add Allocation → see "Apply to sub-projects" checkbox → check it → submit → run the deep-tree SQL query above and confirm NMMM0054-equivalent rows show `parent_allocation_id` = NMMM0012's allocation (not root)
 3. **Case 2a edit (inherited child)** — Navigate to NMMM0003 child project → Edit Allocation on an inherited alloc → see "Inherited allocation" warning with parent link → expand "Break inheritance..." → check checkbox → fields unlock → save → confirm DETACH + EDIT transactions in audit log; allocation now shows standalone
 4. **Case 2a edit (parent with children)** — Edit parent allocation → see cascade info + "Apply to remaining sub-projects" button if any unlinked
 5. **Case 2b** — Navigate to CESM0002 parent project (Derecho) → Edit Allocation → see children total / available display → set amount below children sum → see advisory warning → confirm save still succeeds
-6. **Standalone detach button** — Use "Detach only" button → confirm only DETACH transaction logged (no EDIT), allocation now editable independently
+6. **Standalone detach button** — Use "Detach only" button → confirm only DETACH transaction logged (no EDIT)
 
 ### Unit test cases to add to `tests/unit/test_allocation_tree.py`
 
 - `TestDetachAllocation`: detach sets `parent_allocation_id=None`, logs DETACH transaction; raises `ValueError` if called on non-inheriting allocation
 - `TestDetachThenUpdate`: after detach+flush, `is_inheriting` is False, `update_allocation()` succeeds without raising
-- `TestPropagateToSubprojects`: creates child allocations with correct `parent_allocation_id`; skip_existing=True skips pre-existing allocations; returns correct (created, skipped) counts
+- `TestPropagateToSubprojects`: creates child allocations; grandchild's `parent_allocation_id` == mid-tier allocation_id (not root) — deep-tree assertion
+- `TestPropagateSkipExisting`: when mid-tier already has allocation, it is skipped AND added to `alloc_map`; grandchild's `parent_allocation_id` still points to mid-tier's existing allocation (not None)
 - `TestGetChildrenAllocationSum`: returns sum of non-deleted children; excludes soft-deleted children; returns 0.0 when no children
-- `TestCascadeAfterDetach`: after detach, editing the former parent's amount does NOT cascade to the detached allocation (it's no longer in `allocation.children`)
+- `TestCascadeAfterDetach`: after detach, editing the former parent's amount does NOT cascade to the detached allocation
 
 Run: `source ../.env && pytest tests/unit/test_allocation_tree.py -v` then full suite `pytest tests/ --no-cov`
