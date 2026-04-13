@@ -81,6 +81,16 @@
     <div id="editDetailsContainer">
       {% include 'dashboards/admin/fragments/edit_project_details_htmx.html' %}
     </div>
+
+    <!-- ── Linked Elements ──────────────────────────────────────────── -->
+    <div id="linkedElementsContainer" class="mt-4"
+         hx-get="{{ url_for('admin_dashboard.htmx_project_linked_elements', projcode=project.projcode) }}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <div class="text-center text-muted py-3">
+        <i class="fas fa-spinner fa-spin"></i> Loading linked elements…
+      </div>
+    </div>
   </div>
 
   <!-- ── Tab 2: Allocations ─────────────────────────────────────────── -->
@@ -120,16 +130,6 @@
     </div>
   </div>
 
-</div>
-
-<!-- ── Linked Elements ────────────────────────────────────────────── -->
-<div id="linkedElementsContainer" class="mt-4"
-     hx-get="{{ url_for('admin_dashboard.htmx_project_linked_elements', projcode=project.projcode) }}"
-     hx-trigger="load"
-     hx-swap="innerHTML">
-  <div class="text-center text-muted py-3">
-    <i class="fas fa-spinner fa-spin"></i> Loading linked elements…
-  </div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ MODALS -->
