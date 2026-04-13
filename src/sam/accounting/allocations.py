@@ -272,6 +272,7 @@ class AllocationTransactionType(enum.StrEnum):
     EXPIRE = "EXPIRE"
     DELETE = "DELETE"
     DETACH = "DETACH"
+    LINK = "LINK"
     # Legacy Java-side types (present in existing DB data)
     NEW = "NEW"
     EXTENSION = "EXTENSION"

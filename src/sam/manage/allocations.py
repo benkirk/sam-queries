@@ -23,9 +23,26 @@ __all__ = [
     'update_allocation',
     'propagate_allocation_to_subprojects',
     'detach_allocation',
+    'link_allocation_to_parent',
     'get_partitioned_descendant_sum',
+    'date_ranges_overlap',
     'InheritingAllocationException',
 ]
+
+
+def date_ranges_overlap(a, b) -> bool:
+    """True if two allocation-like objects' [start_date, end_date] ranges overlap.
+
+    NULL bounds are treated as open-ended. Either argument may be an Allocation
+    or any object with ``start_date`` / ``end_date`` attributes.
+    """
+    a_start, a_end = a.start_date, a.end_date
+    b_start, b_end = b.start_date, b.end_date
+    if a_end is not None and b_start is not None and b_start > a_end:
+        return False
+    if a_start is not None and b_end is not None and b_end < a_start:
+        return False
+    return True
 
 
 def validate_allocation_dates(start_date: datetime, end_date: Optional[datetime] = None) -> None:
@@ -479,17 +496,7 @@ def get_partitioned_descendant_sum(session: Session, allocation: Allocation) -> 
 
     # Only descendant allocations whose date range overlaps the edit target
     # count as "partitioned siblings" — allocations in other fiscal years are
-    # unrelated. NULL bounds are treated as open-ended.
-    edit_start = allocation.start_date
-    edit_end = allocation.end_date
-
-    def _overlaps(a):
-        if edit_end is not None and a.start_date is not None and a.start_date > edit_end:
-            return False
-        if edit_start is not None and a.end_date is not None and a.end_date < edit_start:
-            return False
-        return True
-
+    # unrelated.
     total = 0.0
     for desc in project.get_descendants():
         if not desc.active:
@@ -498,6 +505,81 @@ def get_partitioned_descendant_sum(session: Session, allocation: Allocation) -> 
         if not acct:
             continue
         for a in acct.allocations:
-            if not a.deleted and a.parent_allocation_id is None and _overlaps(a):
+            if (not a.deleted
+                    and a.parent_allocation_id is None
+                    and date_ranges_overlap(a, allocation)):
                 total += a.amount
     return total
+
+
+def link_allocation_to_parent(
+    session: Session,
+    allocation_id: int,
+    parent_allocation_id: int,
+    user_id: int,
+) -> Allocation:
+    """
+    Re-link a standalone child allocation to a parent-project allocation.
+
+    Mirrors the parent's amount/start_date/end_date onto the child so the
+    re-linked allocation is functionally indistinguishable from one created
+    originally via propagate_allocation_to_subprojects(). Flushes, then
+    logs a single LINK transaction.
+
+    Raises:
+        ValueError: child not found / already inheriting; parent not found /
+                    itself inheriting; resource mismatch; parent project is
+                    not the immediate project-parent of the child's project.
+    """
+    from sam.accounting.accounts import Account  # noqa: F401 — cycle guard
+
+    child = session.get(Allocation, allocation_id)
+    if not child:
+        raise ValueError(f"Allocation {allocation_id} not found")
+    if child.is_inheriting:
+        raise ValueError(
+            f"Allocation {allocation_id} is already inheriting; detach first"
+        )
+
+    parent = session.get(Allocation, parent_allocation_id)
+    if not parent:
+        raise ValueError(f"Parent allocation {parent_allocation_id} not found")
+    if parent.is_inheriting:
+        raise ValueError(
+            f"Parent allocation {parent_allocation_id} is itself inheriting; "
+            f"link to a root allocation instead"
+        )
+    if parent.deleted:
+        raise ValueError(f"Parent allocation {parent_allocation_id} is deleted")
+
+    if not child.account or not parent.account:
+        raise ValueError("Both allocations must be bound to an account")
+    if child.account.resource_id != parent.account.resource_id:
+        raise ValueError(
+            "Cannot link allocations for different resources "
+            f"(child: {child.account.resource_id}, parent: {parent.account.resource_id})"
+        )
+
+    child_proj = child.account.project
+    parent_proj = parent.account.project
+    if not child_proj or not parent_proj:
+        raise ValueError("Both allocations' accounts must have a project")
+    if child_proj.parent_id != parent_proj.project_id:
+        raise ValueError(
+            f"Project {parent_proj.projcode} is not the immediate parent of "
+            f"{child_proj.projcode}; deep-tree links must point to the "
+            f"immediate ancestor"
+        )
+
+    child.parent_allocation_id = parent.allocation_id
+    child.amount = parent.amount
+    child.start_date = parent.start_date
+    child.end_date = parent.end_date
+    session.flush()
+
+    log_allocation_transaction(
+        session, child, user_id,
+        AllocationTransactionType.LINK,
+        comment=f"Re-linked to parent allocation #{parent.allocation_id}",
+    )
+    return child

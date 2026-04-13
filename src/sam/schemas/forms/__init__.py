@@ -87,11 +87,12 @@ from .orgs import (
 )
 from .projects import (
     CreateProjectForm,
+    EditProjectForm,
     AddLinkedOrganizationForm,
     AddLinkedContractForm,
     AddLinkedDirectoryForm,
 )
-from .user import AddMemberForm, EditAllocationForm
+from .user import AddMemberForm, EditAllocationForm, AddAllocationForm
 
 __all__ = [
     'HtmxFormSchema',
@@ -130,10 +131,12 @@ __all__ = [
     'CreateNsfProgramForm',
     # Projects
     'CreateProjectForm',
+    'EditProjectForm',
     'AddLinkedOrganizationForm',
     'AddLinkedContractForm',
     'AddLinkedDirectoryForm',
     # User
     'AddMemberForm',
     'EditAllocationForm',
+    'AddAllocationForm',
 ]

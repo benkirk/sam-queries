@@ -16,6 +16,10 @@
     unlinked_descendants_count — int: active descendants with NO allocation for this resource
                                (counts by resource existence, not by allocation.children membership,
                                so detached children are correctly excluded)
+    relink_candidate         — dict|None: for standalone child allocations whose parent project
+                               has a compatible (overlapping, non-inheriting) allocation for the
+                               same resource. Shape: {allocation_id, amount, start_date, end_date,
+                               projcode}. When set, Section E is shown and Section D is suppressed.
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 
@@ -151,8 +155,38 @@
   </div>
   {% endif %}
 
+  {# ── Section E: Relink to parent (Case 1b — standalone child w/ parent) ── #}
+  {# Only shown when the child's project has a parent project with a compatible #}
+  {# (overlapping, non-inheriting) allocation for the same resource. Relinking  #}
+  {# mirrors parent amount/start/end so the result is functionally identical to #}
+  {# an originally-linked child.                                                #}
+  {% if relink_candidate is defined and relink_candidate %}
+  <div class="alert alert-info py-2 mb-3">
+    <i class="fas fa-link me-1"></i>
+    <strong>Parent allocation available.</strong>
+    Parent project
+    <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=relink_candidate.projcode) }}"
+       class="alert-link">{{ relink_candidate.projcode }}</a>
+    has a compatible allocation
+    (#{{ relink_candidate.allocation_id }},
+     {{ relink_candidate.amount | fmt_number }},
+     {{ relink_candidate.start_date | fmt_date }} → {{ relink_candidate.end_date | fmt_date }}).
+    Re-linking will overwrite this allocation's amount and dates to match the parent,
+    making it functionally identical to an originally-linked child.
+    <div class="mt-2">
+      <button type="button" class="btn btn-sm btn-primary"
+              hx-post="{{ url_for('admin_dashboard.htmx_link_allocation_to_parent', alloc_id=allocation.allocation_id) }}"
+              hx-vals='{"parent_allocation_id": {{ relink_candidate.allocation_id }}}'
+              hx-target="#editAllocationFormContainer"
+              hx-confirm="Re-link allocation #{{ allocation.allocation_id }} to parent #{{ relink_candidate.allocation_id }}? Amount will change from {{ allocation.amount | fmt_number }} to {{ relink_candidate.amount | fmt_number }} and dates will match the parent.">
+        <i class="fas fa-link me-1"></i> Relink to parent
+      </button>
+    </div>
+  </div>
+
   {# ── Section D: Standalone allocation note (Case 1) ──────────────── #}
-  {% if not allocation.is_inheriting and not allocation.children %}
+  {# Suppressed when Section E shows — a relink candidate is more actionable. #}
+  {% elif not allocation.is_inheriting and not allocation.children %}
   <div class="alert alert-secondary py-1 mb-3 small">
     <i class="fas fa-cube me-1"></i>
     Standalone allocation — not linked to any parent or sub-project allocations.

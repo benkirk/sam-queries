@@ -530,7 +530,8 @@ def htmx_project_update(projcode):
     from sam.projects.areas import AreaOfInterest
     from sam.accounting.allocations import AllocationType
     from sam.core.users import User
-    from sam.resources.facilities import Panel
+    from sam.schemas.forms import EditProjectForm
+    from marshmallow import ValidationError
 
     project = Project.get_by_projcode(db.session, projcode)
     if not project:
@@ -538,72 +539,40 @@ def htmx_project_update(projcode):
 
     errors = []
 
-    # --- Field extraction ---
-    title = request.form.get('title', '').strip()
-    abstract = request.form.get('abstract', '').strip() or None
-    lead_id_str = request.form.get('project_lead_user_id', '').strip()
-    admin_id_str = request.form.get('project_admin_user_id', '').strip()
-    aoi_id_str = request.form.get('area_of_interest_id', '').strip()
-    alloc_type_id_str = request.form.get('allocation_type_id', '').strip()
-    unix_gid_str = request.form.get('unix_gid', '').strip()
-    ext_alias = request.form.get('ext_alias', '').strip() or None
+    # Pre-process form data: drop empty strings so marshmallow's Int/load_default
+    # treats absent/empty fields uniformly. Inject explicit booleans for unchecked
+    # checkboxes (which are absent from request.form when unchecked).
+    data = {k: v for k, v in request.form.items() if v != ''}
+    data['charging_exempt'] = 'charging_exempt' in request.form
+    data['active'] = 'active' in request.form
 
-    # Boolean fields: unchecked checkboxes send nothing, so default to False.
-    charging_exempt = 'charging_exempt' in request.form
-    active = 'active' in request.form
+    try:
+        form_data = EditProjectForm().load(data)
+    except ValidationError as e:
+        errors.extend(EditProjectForm.flatten_errors(e.messages))
+        form_data = {}
 
-    # --- Validation ---
-    if not title:
+    # Required-field checks not expressible in the partial schema
+    if not form_data.get('title'):
         errors.append('Title is required.')
-    elif len(title) > 255:
-        errors.append('Title must be 255 characters or fewer.')
-
-    project_lead_user_id = None
-    if not lead_id_str:
+    if not form_data.get('project_lead_user_id'):
         errors.append('Project lead is required.')
-    else:
-        try:
-            project_lead_user_id = int(lead_id_str)
-            if not db.session.get(User, project_lead_user_id):
-                errors.append('Selected project lead does not exist.')
-        except ValueError:
-            errors.append('Invalid project lead.')
-
-    project_admin_user_id = None
-    if admin_id_str:
-        try:
-            project_admin_user_id = int(admin_id_str)
-            if not db.session.get(User, project_admin_user_id):
-                errors.append('Selected project admin does not exist.')
-        except ValueError:
-            errors.append('Invalid project admin.')
-
-    area_of_interest_id = None
-    if not aoi_id_str:
+    if not form_data.get('area_of_interest_id'):
         errors.append('Area of interest is required.')
-    else:
-        try:
-            area_of_interest_id = int(aoi_id_str)
-            if not db.session.get(AreaOfInterest, area_of_interest_id):
-                errors.append('Selected area of interest does not exist.')
-        except ValueError:
-            errors.append('Invalid area of interest.')
 
-    allocation_type_id = None
-    if alloc_type_id_str:
-        try:
-            allocation_type_id = int(alloc_type_id_str)
-            if not db.session.get(AllocationType, allocation_type_id):
-                errors.append('Selected allocation type does not exist.')
-        except ValueError:
-            errors.append('Invalid allocation type.')
-
-    unix_gid = None
-    if unix_gid_str:
-        try:
-            unix_gid = int(unix_gid_str)
-        except ValueError:
-            errors.append('Unix GID must be a number.')
+    # FK existence checks — require DB access, intentionally kept in the route
+    lead_id = form_data.get('project_lead_user_id')
+    if lead_id and not db.session.get(User, lead_id):
+        errors.append('Selected project lead does not exist.')
+    admin_id = form_data.get('project_admin_user_id')
+    if admin_id and not db.session.get(User, admin_id):
+        errors.append('Selected project admin does not exist.')
+    aoi_id = form_data.get('area_of_interest_id')
+    if aoi_id and not db.session.get(AreaOfInterest, aoi_id):
+        errors.append('Selected area of interest does not exist.')
+    alloc_type_id = form_data.get('allocation_type_id')
+    if alloc_type_id and not db.session.get(AllocationType, alloc_type_id):
+        errors.append('Selected allocation type does not exist.')
 
     def _reload_edit_form(extra_errors=None):
         current_facility_id = None
@@ -625,20 +594,11 @@ def htmx_project_update(projcode):
     if errors:
         return _reload_edit_form()
 
+    # Project.update() writes only non-None kwargs, so passing form_data as **kwargs
+    # correctly preserves fields the user didn't touch.
     try:
         with management_transaction(db.session):
-            project.update(
-                title=title,
-                abstract=abstract,
-                area_of_interest_id=area_of_interest_id,
-                allocation_type_id=allocation_type_id,
-                charging_exempt=charging_exempt,
-                project_lead_user_id=project_lead_user_id,
-                project_admin_user_id=project_admin_user_id,
-                unix_gid=unix_gid,
-                ext_alias=ext_alias,
-                active=active,
-            )
+            project.update(**form_data)
     except Exception as e:
         return _reload_edit_form([f'Error updating project: {e}'])
 
@@ -776,6 +736,8 @@ def htmx_add_allocation(projcode):
     from sam.projects.projects import Project
     from sam.resources.resources import Resource
     from sam.manage.allocations import create_allocation
+    from sam.schemas.forms import AddAllocationForm
+    from marshmallow import ValidationError
 
     project = Project.get_by_projcode(db.session, projcode)
     if not project:
@@ -783,53 +745,33 @@ def htmx_add_allocation(projcode):
 
     errors = []
 
-    resource_id_str = request.form.get('resource_id', '').strip()
-    amount_str = request.form.get('amount', '').strip()
-    start_date_str = request.form.get('start_date', '').strip()
-    end_date_str = request.form.get('end_date', '').strip()
-    description = request.form.get('description', '').strip() or None
+    # Pre-process: drop empty strings (marshmallow would reject '' for Int/Float/Date);
+    # inject explicit False for unchecked checkbox.
+    data = {k: v for k, v in request.form.items() if v != ''}
+    data['apply_to_subprojects'] = 'apply_to_subprojects' in request.form
 
+    try:
+        form_data = AddAllocationForm().load(data)
+    except ValidationError as e:
+        errors.extend(AddAllocationForm.flatten_errors(e.messages))
+        form_data = {}
+
+    # FK existence check — requires DB access, stays in the route
     resource = None
-    if not resource_id_str:
-        errors.append('Resource is required.')
-    else:
-        try:
-            resource = db.session.get(Resource, int(resource_id_str))
-            if not resource:
-                errors.append('Selected resource does not exist.')
-        except ValueError:
-            errors.append('Invalid resource.')
+    if form_data.get('resource_id'):
+        resource = db.session.get(Resource, form_data['resource_id'])
+        if not resource:
+            errors.append('Selected resource does not exist.')
 
-    amount = None
-    if not amount_str:
-        errors.append('Amount is required.')
-    else:
-        try:
-            amount = float(amount_str)
-            if amount <= 0:
-                errors.append('Amount must be greater than zero.')
-        except ValueError:
-            errors.append('Amount must be a number.')
-
-    start_date = end_date = None
-    if not start_date_str:
-        errors.append('Start date is required.')
-    else:
-        try:
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-        except ValueError:
-            errors.append('Invalid start date.')
-
-    if end_date_str:
-        try:
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').replace(
-                hour=23, minute=59, second=59)
-            if start_date and end_date < start_date:
-                errors.append('End date must be on or after start date.')
-        except ValueError:
-            errors.append('Invalid end date.')
-
-    apply_to_subprojects = request.form.get('apply_to_subprojects') == 'on'
+    # Coerce start_date (date) → datetime; end_date is already datetime-or-None via post_load
+    start_date = (
+        datetime.combine(form_data['start_date'], datetime.min.time())
+        if form_data.get('start_date') else None
+    )
+    end_date = form_data.get('end_date')
+    amount = form_data.get('amount')
+    description = form_data.get('description')
+    apply_to_subprojects = form_data.get('apply_to_subprojects', False)
 
     def _reload_add_form(extra_errors=None):
         from sam.resources.resources import Resource as R
@@ -900,7 +842,7 @@ def htmx_add_allocation(projcode):
 def htmx_edit_allocation_form(alloc_id):
     """Return the edit-allocation form fragment (loaded into modal)."""
     from sam.accounting.allocations import Allocation
-    from sam.manage.allocations import get_partitioned_descendant_sum
+    from sam.manage.allocations import get_partitioned_descendant_sum, date_ranges_overlap
     from sam.accounting.accounts import Account
 
     allocation = db.session.get(Allocation, alloc_id)
@@ -938,6 +880,33 @@ def htmx_edit_allocation_form(alloc_id):
                 if d.active and not _has_any_alloc(d.project_id)
             )
 
+    # Relink candidate: standalone child allocation whose project has a parent
+    # project with a compatible (overlapping, non-inheriting) allocation for the
+    # same resource. When multiple candidates overlap, prefer the latest start_date.
+    relink_candidate = None
+    if not allocation.is_inheriting and allocation.account:
+        proj = allocation.account.project
+        if proj and proj.parent_id and proj.parent and proj.parent.active:
+            parent_acct = Account.get_by_project_and_resource(
+                db.session, proj.parent.project_id, allocation.account.resource_id
+            )
+            if parent_acct:
+                candidates = [
+                    a for a in parent_acct.allocations
+                    if not a.deleted
+                    and not a.is_inheriting
+                    and date_ranges_overlap(a, allocation)
+                ]
+                if candidates:
+                    best = max(candidates, key=lambda a: a.start_date or datetime.min)
+                    relink_candidate = {
+                        'allocation_id': best.allocation_id,
+                        'amount': best.amount,
+                        'start_date': best.start_date,
+                        'end_date': best.end_date,
+                        'projcode': proj.parent.projcode,
+                    }
+
     return render_template(
         'dashboards/admin/fragments/edit_allocation_form_htmx.html',
         allocation=allocation,
@@ -945,6 +914,7 @@ def htmx_edit_allocation_form(alloc_id):
         partitioned_sum=partitioned_sum,
         parent_info=parent_info,
         unlinked_descendants_count=unlinked_descendants_count,
+        relink_candidate=relink_candidate,
     )
 
 
@@ -956,7 +926,8 @@ def htmx_edit_allocation(alloc_id):
     from sam.accounting.allocations import Allocation, InheritingAllocationException
     from sam.manage.allocations import update_allocation, detach_allocation
     from sam.manage.allocations import get_partitioned_descendant_sum
-    from sam.accounting.accounts import Account
+    from sam.schemas.forms import EditAllocationForm
+    from marshmallow import ValidationError
 
     allocation = db.session.get(Allocation, alloc_id)
     if not allocation:
@@ -968,39 +939,33 @@ def htmx_edit_allocation(alloc_id):
 
     errors = []
 
-    amount_str = request.form.get('amount', '').strip()
-    start_date_str = request.form.get('start_date', '').strip()
-    end_date_str = request.form.get('end_date', '').strip()
-    description = request.form.get('description', '').strip() or None
+    # Pre-process form data: drop empty amount/start_date (marshmallow would
+    # reject '' for Float/Date). end_date='' is a valid "clear to open-ended"
+    # signal — let the schema's post_load convert it to None.
+    data = dict(request.form)
+    for k in ('amount', 'start_date'):
+        if data.get(k) == '':
+            data.pop(k, None)
 
+    try:
+        form_data = EditAllocationForm().load(data, partial=True)
+    except ValidationError as e:
+        errors.extend(EditAllocationForm.flatten_errors(e.messages))
+        form_data = {}
+
+    # Build updates dict — gate on original form presence so unspecified fields
+    # aren't overwritten and empty-string end_date correctly clears.
     updates = {}
-
-    if amount_str:
-        try:
-            updates['amount'] = float(amount_str)
-            if updates['amount'] <= 0:
-                errors.append('Amount must be greater than zero.')
-        except ValueError:
-            errors.append('Amount must be a number.')
-
-    if start_date_str:
-        try:
-            updates['start_date'] = datetime.strptime(start_date_str, '%Y-%m-%d')
-        except ValueError:
-            errors.append('Invalid start date.')
-
-    if end_date_str:
-        try:
-            updates['end_date'] = datetime.strptime(end_date_str, '%Y-%m-%d').replace(
-                hour=23, minute=59, second=59)
-        except ValueError:
-            errors.append('Invalid end date.')
-    elif 'end_date' in request.form:
-        # Explicit empty string → clear end date (open-ended).
-        updates['end_date'] = None
-
+    if request.form.get('amount'):
+        updates['amount'] = form_data['amount']
+    if request.form.get('start_date'):
+        updates['start_date'] = datetime.combine(
+            form_data['start_date'], datetime.min.time()
+        )
+    if 'end_date' in request.form:
+        updates['end_date'] = form_data.get('end_date')  # datetime or None
     if 'description' in request.form:
-        updates['description'] = description
+        updates['description'] = form_data.get('description')
 
     def _reload_edit_form(extra_errors=None):
         # Recompute context for re-render
@@ -1021,6 +986,7 @@ def htmx_edit_allocation(alloc_id):
             partitioned_sum=partitioned_sum,
             parent_info=p_info,
             unlinked_descendants_count=0,  # skip expensive recompute on error re-renders
+            relink_candidate=None,         # skip recompute on error re-renders
             errors=(extra_errors or []) + errors,
             form=request.form,
         )
@@ -1076,6 +1042,40 @@ def htmx_detach_allocation(alloc_id):
     return htmx_success_message(
         {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
         'Allocation detached successfully.',
+    )
+
+
+@bp.route('/htmx/link-allocation-to-parent/<int:alloc_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_link_allocation_to_parent(alloc_id):
+    """Re-link a standalone child allocation to its parent-project allocation."""
+    from sam.accounting.allocations import Allocation
+    from sam.manage.allocations import link_allocation_to_parent
+
+    allocation = db.session.get(Allocation, alloc_id)
+    if not allocation:
+        return '<div class="alert alert-danger">Allocation not found.</div>', 404
+    projcode = allocation.account.project.projcode if allocation.account else ''
+
+    try:
+        parent_allocation_id = int(request.form.get('parent_allocation_id', '0'))
+    except (TypeError, ValueError):
+        return '<div class="alert alert-danger">Invalid parent allocation id.</div>', 400
+    if parent_allocation_id <= 0:
+        return '<div class="alert alert-danger">Missing parent allocation id.</div>', 400
+
+    try:
+        with management_transaction(db.session):
+            link_allocation_to_parent(
+                db.session, alloc_id, parent_allocation_id, current_user.user_id
+            )
+    except ValueError as e:
+        return f'<div class="alert alert-danger">{e}</div>', 400
+
+    return htmx_success_message(
+        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
+        'Allocation re-linked to parent successfully.',
     )
 
 
