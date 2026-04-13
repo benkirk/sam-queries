@@ -477,6 +477,19 @@ def get_partitioned_descendant_sum(session: Session, allocation: Allocation) -> 
     if not project or not project.has_children:
         return 0.0
 
+    # Only descendant allocations whose date range overlaps the edit target
+    # count as "partitioned siblings" — allocations in other fiscal years are
+    # unrelated. NULL bounds are treated as open-ended.
+    edit_start = allocation.start_date
+    edit_end = allocation.end_date
+
+    def _overlaps(a):
+        if edit_end is not None and a.start_date is not None and a.start_date > edit_end:
+            return False
+        if edit_start is not None and a.end_date is not None and a.end_date < edit_start:
+            return False
+        return True
+
     total = 0.0
     for desc in project.get_descendants():
         if not desc.active:
@@ -485,6 +498,6 @@ def get_partitioned_descendant_sum(session: Session, allocation: Allocation) -> 
         if not acct:
             continue
         for a in acct.allocations:
-            if not a.deleted and a.parent_allocation_id is None:
+            if not a.deleted and a.parent_allocation_id is None and _overlaps(a):
                 total += a.amount
     return total

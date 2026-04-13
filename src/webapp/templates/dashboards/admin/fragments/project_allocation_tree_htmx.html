@@ -25,7 +25,13 @@
          hx-get="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=projcode) }}"
          hx-target="#allocationTreeContainer"
          hx-include="#alloc-active-at"
-         hx-trigger="change delay:800ms">
+         hx-trigger="change delay:800ms"
+         hx-indicator="#allocTreeSpinner, #allocationTreeContainer"
+         hx-disabled-elt="this">
+  <span id="allocTreeSpinner" class="htmx-indicator small text-muted">
+    <span class="spinner-border spinner-border-sm text-primary me-1" role="status" aria-hidden="true"></span>
+    Loading…
+  </span>
   {% if active_at != now_str %}
   <span class="badge bg-info text-dark">
     <i class="fas fa-history me-1"></i>Historical view: {{ active_at }}
@@ -102,13 +108,10 @@
       <tbody>
         <tr class="table-secondary alloc-resource-header"
             style="cursor:pointer; border-top: 2px solid #ced4da;"
-            onclick="(function(row){
-                       var b = document.getElementById('{{ body_id }}');
-                       b.classList.toggle('d-none');
-                       var c = row.querySelector('i.alloc-caret');
-                       c.classList.toggle('fa-chevron-right');
-                       c.classList.toggle('fa-chevron-down');
-                     })(this)">
+            data-bs-toggle="collapse"
+            data-bs-target="#{{ body_id }}"
+            aria-expanded="false"
+            aria-controls="{{ body_id }}">
 
           {# Col 1: resource name + caret #}
           <td class="fw-semibold py-2" style="vertical-align:middle;">
@@ -160,7 +163,7 @@
         {%- endif -%}
       {%- endfor -%}
 
-      <tbody id="{{ body_id }}" class="d-none">
+      <tbody id="{{ body_id }}" class="collapse alloc-tree-body">
         {{ render_project_tree_rows([root],
                                      depth=0,
                                      current_projcode=projcode,
@@ -184,4 +187,24 @@
 <style>
   .btn-xs { padding: 0.1rem 0.35rem; font-size: 0.75rem; }
   .alloc-resource-header:hover td { filter: brightness(0.96); }
+
+  /* Caret rotation driven by Bootstrap's aria-expanded update */
+  .alloc-resource-header .alloc-caret { transition: transform 0.15s ease; }
+  .alloc-resource-header[aria-expanded="true"] .alloc-caret { transform: rotate(90deg); }
+
+  /* Kill Bootstrap's height animation on <tbody> — looks jittery on table-row-groups.
+     Zero transition-duration makes Bootstrap's getTransitionDurationFromElement() return 0,
+     so .collapsing is removed immediately and the toggle snaps (same visual as d-none). */
+  tbody.alloc-tree-body.collapse,
+  tbody.alloc-tree-body.collapsing { transition: none !important; }
+
+  /* Dim the tree while a reload is in flight.
+     htmx adds .htmx-request to any element listed in hx-indicator for the
+     duration of the request — we use that to fade the existing tree so users
+     see the UI is "doing something" during slow (~14s) refreshes. */
+  #allocationTreeContainer { transition: opacity 150ms ease; }
+  #allocationTreeContainer.htmx-request {
+    opacity: 0.5;
+    pointer-events: none;
+  }
 </style>

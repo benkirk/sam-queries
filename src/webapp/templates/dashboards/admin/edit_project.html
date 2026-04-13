@@ -205,7 +205,11 @@
     if (activeAtInput && activeAtInput.value) {
       url += '?active_at=' + encodeURIComponent(activeAtInput.value);
     }
-    htmx.ajax('GET', url, { target: '#allocationTreeContainer', swap: 'innerHTML' });
+    htmx.ajax('GET', url, {
+      target: '#allocationTreeContainer',
+      swap: 'innerHTML',
+      indicator: '#allocTreeSpinner, #allocationTreeContainer'
+    });
   });
 </script>
 
