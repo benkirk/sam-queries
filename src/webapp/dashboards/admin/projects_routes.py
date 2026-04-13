@@ -756,11 +756,15 @@ def htmx_add_allocation_form(projcode):
     available_resources = [r for r in available_resources
                            if r.resource_id not in linked_resource_ids]
 
+    active_descendants = [d for d in project.get_descendants() if d.active]
+
     return render_template(
         'dashboards/admin/fragments/add_allocation_form_htmx.html',
         project=project,
         available_resources=available_resources,
         today=datetime.now().strftime('%Y-%m-%d'),
+        project_has_children=project.has_children,
+        child_count=len(active_descendants),
     )
 
 
@@ -825,6 +829,8 @@ def htmx_add_allocation(projcode):
         except ValueError:
             errors.append('Invalid end date.')
 
+    apply_to_subprojects = request.form.get('apply_to_subprojects') == 'on'
+
     def _reload_add_form(extra_errors=None):
         from sam.resources.resources import Resource as R
         linked_ids = {a.resource_id for a in project.accounts}
@@ -835,6 +841,7 @@ def htmx_add_allocation(projcode):
             .all()
         )
         available = [r for r in available if r.resource_id not in linked_ids]
+        active_desc = [d for d in project.get_descendants() if d.active]
         return render_template(
             'dashboards/admin/fragments/add_allocation_form_htmx.html',
             project=project,
@@ -842,14 +849,17 @@ def htmx_add_allocation(projcode):
             today=datetime.now().strftime('%Y-%m-%d'),
             errors=(extra_errors or []) + errors,
             form=request.form,
+            project_has_children=project.has_children,
+            child_count=len(active_desc),
         )
 
     if errors:
         return _reload_add_form()
 
     try:
+        from sam.manage.allocations import propagate_allocation_to_subprojects
         with management_transaction(db.session):
-            create_allocation(
+            parent_alloc = create_allocation(
                 db.session,
                 project_id=project.project_id,
                 resource_id=resource.resource_id,
@@ -859,13 +869,28 @@ def htmx_add_allocation(projcode):
                 description=description,
                 user_id=current_user.user_id,
             )
+            if apply_to_subprojects and project.has_children:
+                descendants = [d for d in project.get_descendants() if d.active]
+                child_created, child_skipped = propagate_allocation_to_subprojects(
+                    db.session, parent_alloc, descendants,
+                    user_id=current_user.user_id, skip_existing=True,
+                )
+            else:
+                child_created, child_skipped = [], []
     except Exception as e:
         return _reload_add_form([f'Error creating allocation: {e}'])
+
+    detail = f'{project.projcode} — {resource.resource_name}'
+    if child_created or child_skipped:
+        detail += (
+            f'. Propagated to {len(child_created)} sub-project(s)'
+            + (f'; {len(child_skipped)} already had an allocation (skipped).' if child_skipped else '.')
+        )
 
     return htmx_success_message(
         {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
         'Allocation created successfully.',
-        detail=f'{project.projcode} — {resource.resource_name}',
+        detail=detail,
     )
 
 
@@ -875,6 +900,8 @@ def htmx_add_allocation(projcode):
 def htmx_edit_allocation_form(alloc_id):
     """Return the edit-allocation form fragment (loaded into modal)."""
     from sam.accounting.allocations import Allocation
+    from sam.manage.allocations import get_partitioned_descendant_sum
+    from sam.accounting.accounts import Account
 
     allocation = db.session.get(Allocation, alloc_id)
     if not allocation:
@@ -882,10 +909,42 @@ def htmx_edit_allocation_form(alloc_id):
 
     projcode = allocation.account.project.projcode if allocation.account else ''
 
+    # Flaw 1 fix: sum standalone (non-inherited) descendant allocations only
+    partitioned_sum = get_partitioned_descendant_sum(db.session, allocation)
+
+    # Parent info for inheriting allocations
+    parent_info = None
+    if allocation.is_inheriting and allocation.parent:
+        p = allocation.parent
+        parent_proj = p.account.project if p.account else None
+        parent_info = {
+            'allocation_id': p.allocation_id,
+            'amount': p.amount,
+            'projcode': parent_proj.projcode if parent_proj and parent_proj.active else None,
+        }
+
+    # Flaw 3 fix: count descendants that have NO allocation for this resource at all
+    # (not just those missing from allocation.children — detached ones are excluded)
+    unlinked_descendants_count = 0
+    if not allocation.is_inheriting and allocation.account:
+        project = allocation.account.project
+        resource_id = allocation.account.resource_id
+        if project and project.has_children:
+            def _has_any_alloc(proj_id):
+                acct = Account.get_by_project_and_resource(db.session, proj_id, resource_id)
+                return acct is not None and any(not a.deleted for a in acct.allocations)
+            unlinked_descendants_count = sum(
+                1 for d in project.get_descendants()
+                if d.active and not _has_any_alloc(d.project_id)
+            )
+
     return render_template(
         'dashboards/admin/fragments/edit_allocation_form_htmx.html',
         allocation=allocation,
         projcode=projcode,
+        partitioned_sum=partitioned_sum,
+        parent_info=parent_info,
+        unlinked_descendants_count=unlinked_descendants_count,
     )
 
 
@@ -895,13 +954,17 @@ def htmx_edit_allocation_form(alloc_id):
 def htmx_edit_allocation(alloc_id):
     """Validate and apply allocation edits with cascade + audit logging."""
     from sam.accounting.allocations import Allocation, InheritingAllocationException
-    from sam.manage.allocations import update_allocation
+    from sam.manage.allocations import update_allocation, detach_allocation
+    from sam.manage.allocations import get_partitioned_descendant_sum
+    from sam.accounting.accounts import Account
 
     allocation = db.session.get(Allocation, alloc_id)
     if not allocation:
         return '<div class="alert alert-danger">Allocation not found.</div>', 404
 
     projcode = allocation.account.project.projcode if allocation.account else ''
+
+    break_inheritance = request.form.get('break_inheritance') == 'true'
 
     errors = []
 
@@ -940,10 +1003,24 @@ def htmx_edit_allocation(alloc_id):
         updates['description'] = description
 
     def _reload_edit_form(extra_errors=None):
+        # Recompute context for re-render
+        partitioned_sum = get_partitioned_descendant_sum(db.session, allocation)
+        p_info = None
+        if allocation.is_inheriting and allocation.parent:
+            p = allocation.parent
+            parent_proj = p.account.project if p.account else None
+            p_info = {
+                'allocation_id': p.allocation_id,
+                'amount': p.amount,
+                'projcode': parent_proj.projcode if parent_proj and parent_proj.active else None,
+            }
         return render_template(
             'dashboards/admin/fragments/edit_allocation_form_htmx.html',
             allocation=allocation,
             projcode=projcode,
+            partitioned_sum=partitioned_sum,
+            parent_info=p_info,
+            unlinked_descendants_count=0,  # skip expensive recompute on error re-renders
             errors=(extra_errors or []) + errors,
             form=request.form,
         )
@@ -956,16 +1033,19 @@ def htmx_edit_allocation(alloc_id):
 
     try:
         with management_transaction(db.session):
-            update_allocation(
-                db.session,
-                alloc_id,
-                current_user.user_id,
-                **updates,
-            )
+            if allocation.is_inheriting and break_inheritance:
+                # DETACH then EDIT: two audit records — intentional.
+                # detach_allocation() calls session.flush() so is_inheriting is
+                # False in the identity map before update_allocation() runs.
+                detach_allocation(db.session, alloc_id, current_user.user_id)
+                update_allocation(db.session, alloc_id, current_user.user_id, **updates)
+            else:
+                update_allocation(db.session, alloc_id, current_user.user_id, **updates)
     except InheritingAllocationException:
         return _reload_edit_form([
-            'Cannot directly edit an inherited (child) allocation. '
-            'Edit the parent allocation instead — changes will cascade automatically.'
+            'Cannot directly edit an inherited allocation. '
+            'Check "I understand — break inheritance" to detach it first, '
+            'or edit the parent allocation to cascade changes automatically.'
         ])
     except Exception as e:
         return _reload_edit_form([f'Error updating allocation: {e}'])
@@ -973,6 +1053,69 @@ def htmx_edit_allocation(alloc_id):
     return htmx_success_message(
         {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
         'Allocation updated successfully.',
+    )
+
+
+@bp.route('/htmx/detach-allocation/<int:alloc_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_detach_allocation(alloc_id):
+    """Break parent_allocation_id link without editing other fields."""
+    from sam.accounting.allocations import Allocation
+    from sam.manage.allocations import detach_allocation
+
+    allocation = db.session.get(Allocation, alloc_id)
+    if not allocation:
+        return '<div class="alert alert-danger">Allocation not found.</div>', 404
+    projcode = allocation.account.project.projcode if allocation.account else ''
+    try:
+        with management_transaction(db.session):
+            detach_allocation(db.session, alloc_id, current_user.user_id)
+    except ValueError as e:
+        return f'<div class="alert alert-danger">{e}</div>', 400
+    return htmx_success_message(
+        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
+        'Allocation detached successfully.',
+    )
+
+
+@bp.route('/htmx/propagate-allocation-to-remaining/<int:alloc_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_propagate_to_remaining(alloc_id):
+    """Create child allocations for active descendants that don't yet have one."""
+    from sam.accounting.allocations import Allocation
+    from sam.accounting.accounts import Account
+    from sam.manage.allocations import propagate_allocation_to_subprojects
+
+    allocation = db.session.get(Allocation, alloc_id)
+    if not allocation or allocation.is_inheriting:
+        return '<div class="alert alert-danger">Invalid allocation.</div>', 400
+    project = allocation.account.project
+    resource_id = allocation.account.resource_id
+
+    # Flaw 3 fix: exclude descendants that already have ANY allocation for this resource
+    # (not just those linked via allocation.children — detached ones are excluded correctly)
+    def _has_any_alloc(proj_id):
+        acct = Account.get_by_project_and_resource(db.session, proj_id, resource_id)
+        return acct is not None and any(not a.deleted for a in acct.allocations)
+
+    descendants = [
+        d for d in project.get_descendants()
+        if d.active and not _has_any_alloc(d.project_id)
+    ]
+    try:
+        with management_transaction(db.session):
+            created, skipped = propagate_allocation_to_subprojects(
+                db.session, allocation, descendants,
+                user_id=current_user.user_id, skip_existing=True,
+            )
+    except Exception as e:
+        return f'<div class="alert alert-danger">Error: {e}</div>', 400
+    return htmx_success_message(
+        {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
+        f'Created {len(created)} child allocation(s).'
+        + (f' {len(skipped)} skipped (already existed).' if skipped else ''),
     )
 
 

@@ -155,6 +155,7 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
         start_date: 'datetime',
         end_date: 'Optional[datetime]' = None,
         description: 'Optional[str]' = None,
+        parent_allocation_id: 'Optional[int]' = None,
     ) -> 'Allocation':
         """Create a new allocation for a project + resource pair.
 
@@ -198,6 +199,7 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
             start_date=start_date,
             end_date=end_date,
             description=description,
+            parent_allocation_id=parent_allocation_id,
         )
         session.add(allocation)
         session.flush()
@@ -269,6 +271,7 @@ class AllocationTransactionType(enum.StrEnum):
     ADJUSTMENT = "ADJUSTMENT"
     EXPIRE = "EXPIRE"
     DELETE = "DELETE"
+    DETACH = "DETACH"
     # Legacy Java-side types (present in existing DB data)
     NEW = "NEW"
     EXTENSION = "EXTENSION"

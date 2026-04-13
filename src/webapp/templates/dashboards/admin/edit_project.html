@@ -198,11 +198,14 @@
   // success fragment; nothing more to do here — htmx handles it.
 
   // Reload Allocation Tree after add/edit allocation success.
+  // Preserve the current "Active at" date so a historical view is not reset to today.
   document.body.addEventListener('reloadAllocationTree', function (evt) {
-    htmx.ajax('GET',
-      '{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}',
-      { target: '#allocationTreeContainer', swap: 'innerHTML' }
-    );
+    var activeAtInput = document.getElementById('alloc-active-at');
+    var url = '{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}';
+    if (activeAtInput && activeAtInput.value) {
+      url += '?active_at=' + encodeURIComponent(activeAtInput.value);
+    }
+    htmx.ajax('GET', url, { target: '#allocationTreeContainer', swap: 'innerHTML' });
   });
 </script>
 

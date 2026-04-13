@@ -583,9 +583,12 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                     most_recent_alloc = max(account.allocations,
                                             key=lambda a: a.end_date if a.end_date else datetime.max
                                             )
-                    # Apply date threshold, only query 'most_recent_alloc'
-                    # if it has expired within the past 1 year
-                    if (now - most_recent_alloc.end_date) <= timedelta(days=90):
+                    # Apply date threshold: only query 'most_recent_alloc'
+                    # if it has expired within the past 90 days.
+                    # An open-ended allocation (end_date=None) never expires —
+                    # treat it as always within threshold.
+                    end = most_recent_alloc.end_date
+                    if end is None or (now - end) <= timedelta(days=90):
                         query_alloc = most_recent_alloc
 
             # OK, if we still don't have an allocation to query

@@ -21,6 +21,9 @@ __all__ = [
     'log_allocation_transaction',
     'create_allocation',
     'update_allocation',
+    'propagate_allocation_to_subprojects',
+    'detach_allocation',
+    'get_partitioned_descendant_sum',
     'InheritingAllocationException',
 ]
 
@@ -318,3 +321,170 @@ def update_allocation(
         session.flush()
 
     return allocation
+
+
+def propagate_allocation_to_subprojects(
+    session: Session,
+    parent_allocation: Allocation,
+    descendants,
+    user_id: int,
+    skip_existing: bool = True,
+):
+    """
+    Create child allocations for each active project in ``descendants``,
+    mirroring the deep-tree topology: each allocation's parent_allocation_id
+    points to its immediate project-parent's allocation (not the root).
+
+    ``descendants`` MUST be in tree_left (DFS pre-order) order so that a
+    parent node always appears before its children.  project.get_descendants()
+    satisfies this constraint.
+
+    Runs inside the caller's management_transaction() — does NOT commit.
+
+    Args:
+        session:           SQLAlchemy session.
+        parent_allocation: Root allocation to propagate from.
+        descendants:       Ordered list of Project objects (DFS pre-order).
+        user_id:           FK to User performing the action (for audit log).
+        skip_existing:     When True, projects that already have a non-deleted
+                           allocation for this resource are skipped (default).
+
+    Returns:
+        Tuple[List[Allocation], List[Project]]: (created, skipped)
+    """
+    from sam.accounting.accounts import Account
+
+    resource_id = parent_allocation.account.resource_id
+    root_project_id = parent_allocation.account.project_id
+
+    # Seed map: root project → root allocation_id
+    alloc_map = {root_project_id: parent_allocation.allocation_id}
+
+    created, skipped = [], []
+
+    for child_proj in descendants:
+        if not child_proj.active:
+            continue
+
+        account = Account.get_by_project_and_resource(
+            session, child_proj.project_id, resource_id
+        )
+        existing = (
+            [a for a in account.allocations if not a.deleted]
+            if account else []
+        )
+
+        if existing:
+            if skip_existing:
+                # Register in alloc_map so this project's children resolve correctly
+                alloc_map[child_proj.project_id] = existing[0].allocation_id
+                skipped.append(child_proj)
+                continue
+            else:
+                raise ValueError(
+                    f"Project {child_proj.projcode} already has an allocation "
+                    f"for resource_id={resource_id}"
+                )
+
+        # Immediate parent's allocation_id (None if parent was inactive/missing)
+        proj_parent_alloc_id = alloc_map.get(child_proj.parent_id)
+
+        new_alloc = Allocation.create(
+            session,
+            project_id=child_proj.project_id,
+            resource_id=resource_id,
+            amount=parent_allocation.amount,
+            start_date=parent_allocation.start_date,
+            end_date=parent_allocation.end_date,
+            parent_allocation_id=proj_parent_alloc_id,
+        )
+
+        log_allocation_transaction(
+            session, new_alloc, user_id,
+            AllocationTransactionType.CREATE,
+            comment=f"Propagated from parent allocation #{parent_allocation.allocation_id}",
+            propagated=True,
+        )
+
+        alloc_map[child_proj.project_id] = new_alloc.allocation_id
+        created.append(new_alloc)
+
+    return created, skipped
+
+
+def detach_allocation(session: Session, allocation_id: int, user_id: int) -> Allocation:
+    """
+    Break the parent_allocation_id link on a child (inheriting) allocation.
+
+    Sets parent_allocation_id to None, flushes, and logs a DETACH transaction.
+    After this call the allocation is fully independent — future edits to the
+    former parent will NOT cascade here.
+
+    NOTE: Detaching does NOT decouple usage roll-up, which operates on the
+    project tree (MPPT) regardless of allocation linkage.
+
+    Does NOT commit; caller must wrap in management_transaction().
+
+    Args:
+        session:       SQLAlchemy session.
+        allocation_id: ID of the inheriting allocation to detach.
+        user_id:       FK to User performing the action (for audit log).
+
+    Returns:
+        The detached Allocation instance.
+
+    Raises:
+        ValueError: If the allocation is not found or is not inheriting.
+    """
+    allocation = session.get(Allocation, allocation_id)
+    if not allocation or not allocation.is_inheriting:
+        raise ValueError(
+            f"Allocation {allocation_id} not found or is not an inheriting allocation"
+        )
+    old_parent_id = allocation.parent_allocation_id
+    allocation.parent_allocation_id = None
+    session.flush()
+    log_allocation_transaction(
+        session, allocation, user_id,
+        AllocationTransactionType.DETACH,
+        comment=f"Detached from parent allocation #{old_parent_id}",
+    )
+    return allocation
+
+
+def get_partitioned_descendant_sum(session: Session, allocation: Allocation) -> float:
+    """
+    Sum the amounts of non-deleted, non-inherited (parent_allocation_id IS NULL)
+    allocations on descendant projects for the same resource as ``allocation``.
+
+    This is the correct "Case 2b" check: descendant projects that were given
+    their own standalone allocation rather than a linked (shared-pool) copy.
+
+    Returns 0.0 if allocation has no account, the project has no children,
+    or no descendants have standalone allocations for this resource.
+
+    NOTE: Do NOT use allocation.children for this — those are shared-pool copies
+    with the same amount as the parent; summing them always gives a false overage
+    (n × parent.amount for n children, always > parent.amount when n > 1).
+    """
+    from sam.accounting.accounts import Account
+
+    if not allocation.account:
+        return 0.0
+
+    resource_id = allocation.account.resource_id
+    project = allocation.account.project
+    if not project or not project.has_children:
+        return 0.0
+
+    total = 0.0
+    for desc in project.get_descendants():
+        if not desc.active:
+            continue
+        acct = Account.get_by_project_and_resource(session, desc.project_id, resource_id)
+        if not acct:
+            continue
+        for a in acct.allocations:
+            if not a.deleted and a.parent_allocation_id is None:
+                total += a.amount
+    return total

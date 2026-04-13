@@ -8,6 +8,8 @@
     today               — date string 'YYYY-MM-DD' for default start date
     errors              — list of validation error strings (on re-render)
     form                — request.form on validation error re-render
+    project_has_children — bool: project has active sub-projects
+    child_count          — int: number of active sub-projects
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 
@@ -90,11 +92,34 @@
            placeholder="e.g. FY2025 allocation">
   </div>
 
+  {% if project_has_children %}
+  <div class="mb-3 border rounded p-3 bg-light">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="applyToSubprojects"
+             name="apply_to_subprojects"
+             {% if form and form.get('apply_to_subprojects') == 'on' %}checked{% endif %}>
+      <label class="form-check-label fw-semibold" for="applyToSubprojects">
+        <i class="fas fa-sitemap me-1 text-info"></i>
+        Apply to sub-projects
+        <span class="badge bg-info text-dark ms-1">
+          {{ child_count }} active sub-project{{ 's' if child_count != 1 else '' }}
+        </span>
+      </label>
+    </div>
+    <div class="form-text mt-1 ms-4">
+      Creates a linked child allocation for each active sub-project using the same amount
+      and dates. The allocation tree mirrors the project tree — each sub-project's
+      allocation points to its immediate parent's allocation. Sub-projects that already
+      have an allocation for this resource are skipped.
+    </div>
+  </div>
+  {% else %}
   <div class="alert alert-info py-2 mb-0 small">
     <i class="fas fa-info-circle"></i>
     To allocate to a sub-project, add the parent allocation here first,
     then return to add child allocations to the sub-project directly.
   </div>
+  {% endif %}
 
   {% endif %}
 
