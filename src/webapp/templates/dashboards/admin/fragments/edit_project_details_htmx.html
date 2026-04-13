@@ -1,0 +1,340 @@
+{#
+  Edit Project — Details tab form fragment.
+  Rendered inline on page load (no lazy loading needed — data already available).
+  Submitted via htmx POST to admin_dashboard.htmx_project_update.
+
+  Context variables:
+    project              — Project ORM object
+    current_facility_id  — pre-selected facility (reversed from allocation_type.panel.facility)
+    current_panel_id     — pre-selected panel
+    areas                — list of AreaOfInterest objects
+    facilities           — list of Facility objects
+    panels_for_facility  — pre-loaded panels for the current facility
+    alloc_types_for_panel — pre-loaded alloc types for the current panel
+    form                 — request.form on validation error re-render (else None)
+    errors               — list of error strings (else None)
+#}
+
+{% set f = form %}
+
+<form hx-post="{{ url_for('admin_dashboard.htmx_project_update', projcode=project.projcode) }}"
+      hx-target="#editDetailsContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+  {% if errors %}
+  <div class="alert alert-danger mb-3">
+    {% for err in errors %}
+    <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ err }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ── Read-only: Project Code ───────────────────────────────────── -->
+  <div class="row mb-3">
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Project Code</label>
+      <div class="form-control-plaintext">
+        <code class="fs-5">{{ project.projcode }}</code>
+        <span class="text-muted ms-2 small">(immutable)</span>
+      </div>
+    </div>
+    <div class="col-md-8">
+      <label class="form-label fw-semibold">Current Facility / Panel</label>
+      <div class="form-control-plaintext text-muted">
+        {% if project.allocation_type and project.allocation_type.panel %}
+          {{ project.allocation_type.panel.facility.facility_name if project.allocation_type.panel.facility else '—' }}
+          / {{ project.allocation_type.panel.panel_name }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Facility / Panel / Allocation Type ──────────────────────── -->
+  <div class="row g-2 mb-3">
+    <div class="col-md-4">
+      <label for="editProjectFacility" class="form-label fw-semibold">
+        Facility <span class="text-muted small">(changes panel options)</span>
+      </label>
+      <select class="form-select form-select-sm" id="editProjectFacility"
+              name="facility_id"
+              hx-get="{{ url_for('admin_dashboard.htmx_panels_for_facility') }}"
+              hx-target="#editProjectPanel"
+              hx-swap="innerHTML"
+              hx-trigger="change"
+              hx-include="#editProjectFacility">
+        <option value="">— Select —</option>
+        {% for facility in facilities %}
+        <option value="{{ facility.facility_id }}"
+            {% if (f and f.get('facility_id') == facility.facility_id|string)
+                  or (not f and current_facility_id == facility.facility_id) %}selected{% endif %}>
+          {{ facility.facility_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label for="editProjectPanel" class="form-label fw-semibold">Panel</label>
+      <select class="form-select form-select-sm" id="editProjectPanel"
+              name="panel_id"
+              hx-get="{{ url_for('admin_dashboard.htmx_alloc_types_for_panel') }}"
+              hx-target="#editProjectAllocType"
+              hx-swap="innerHTML"
+              hx-trigger="change"
+              hx-include="#editProjectPanel">
+        {% if panels_for_facility %}
+          <option value="">— Select —</option>
+          {% for panel in panels_for_facility %}
+          <option value="{{ panel.panel_id }}"
+              {% if (f and f.get('panel_id') == panel.panel_id|string)
+                    or (not f and current_panel_id == panel.panel_id) %}selected{% endif %}>
+            {{ panel.panel_name }}{% if panel.description %} — {{ panel.description }}{% endif %}
+          </option>
+          {% endfor %}
+        {% else %}
+          <option value="">— Select facility first —</option>
+        {% endif %}
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label for="editProjectAllocType" class="form-label">
+        Allocation Type <span class="text-muted">(optional)</span>
+      </label>
+      <select class="form-select form-select-sm" id="editProjectAllocType"
+              name="allocation_type_id">
+        {% if alloc_types_for_panel %}
+          <option value="">— None —</option>
+          {% for at in alloc_types_for_panel %}
+          <option value="{{ at.allocation_type_id }}"
+              {% if (f and f.get('allocation_type_id') == at.allocation_type_id|string)
+                    or (not f and project.allocation_type_id == at.allocation_type_id) %}selected{% endif %}>
+            {{ at.allocation_type }}
+          </option>
+          {% endfor %}
+        {% else %}
+          <option value="">— Select panel first —</option>
+        {% endif %}
+      </select>
+    </div>
+  </div>
+
+  <!-- ── Title ─────────────────────────────────────────────────────── -->
+  <div class="mb-3">
+    <label for="editProjectTitle" class="form-label fw-semibold">
+      Title <span class="text-danger">*</span>
+    </label>
+    <input type="text" class="form-control" id="editProjectTitle"
+           name="title" required maxlength="255"
+           value="{{ f.get('title', project.title) if f else project.title }}">
+  </div>
+
+  <!-- ── Abstract ──────────────────────────────────────────────────── -->
+  <div class="mb-3">
+    <label for="editProjectAbstract" class="form-label">
+      Abstract <span class="text-muted">(optional)</span>
+    </label>
+    <textarea class="form-control" id="editProjectAbstract"
+              name="abstract" rows="3"
+              placeholder="Brief description of the project's scientific goals…">{{ f.get('abstract', project.abstract or '') if f else (project.abstract or '') }}</textarea>
+  </div>
+
+  <div class="row">
+    <!-- ── Project Lead ──────────────────────────────────────────── -->
+    <div class="col-md-6">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">
+          Project Lead <span class="text-danger">*</span>
+        </label>
+        <div id="editProjectLeadSelected" class="mb-1">
+          <span class="badge bg-primary py-1 px-2" id="editProjectLeadBadge">
+            {{ f.get('lead_display', project.lead.display_name if project.lead else '') if f else (project.lead.display_name if project.lead else '') }}
+          </span>
+          <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
+                  onclick="clearEditLeadSelection()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <input type="hidden" name="project_lead_user_id" id="editProjectLeadId"
+               value="{{ f.get('project_lead_user_id', project.project_lead_user_id) if f else project.project_lead_user_id }}">
+        <input type="text" class="form-control form-control-sm"
+               id="editProjectLeadSearch"
+               placeholder="Search to change lead…"
+               autocomplete="off"
+               hx-get="{{ url_for('admin_dashboard.htmx_search_users', context='fk') }}"
+               hx-target="#editProjectLeadResults"
+               hx-swap="innerHTML"
+               hx-trigger="input changed delay:300ms"
+               name="q">
+        <div id="editProjectLeadResults" class="list-group mt-1"
+             style="max-height:180px;overflow-y:auto;"></div>
+      </div>
+    </div>
+
+    <!-- ── Project Admin ─────────────────────────────────────────── -->
+    <div class="col-md-6">
+      <div class="mb-3">
+        <label class="form-label">
+          Project Admin <span class="text-muted">(optional)</span>
+        </label>
+        {% set current_admin = project.admin %}
+        <div id="editProjectAdminSelected" class="mb-1"
+             {% if not current_admin and (not f or not f.get('project_admin_user_id')) %}style="display:none;"{% endif %}>
+          <span class="badge bg-secondary py-1 px-2" id="editProjectAdminBadge">
+            {{ f.get('admin_display', current_admin.display_name if current_admin else '') if f else (current_admin.display_name if current_admin else '') }}
+          </span>
+          <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
+                  onclick="clearEditAdminSelection()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <input type="hidden" name="project_admin_user_id" id="editProjectAdminId"
+               value="{{ f.get('project_admin_user_id', project.project_admin_user_id or '') if f else (project.project_admin_user_id or '') }}">
+        <input type="text" class="form-control form-control-sm"
+               id="editProjectAdminSearch"
+               placeholder="Search to change or set admin…"
+               autocomplete="off"
+               hx-get="{{ url_for('admin_dashboard.htmx_search_users', context='fk') }}"
+               hx-target="#editProjectAdminResults"
+               hx-swap="innerHTML"
+               hx-trigger="input changed delay:300ms"
+               name="q">
+        <div id="editProjectAdminResults" class="list-group mt-1"
+             style="max-height:180px;overflow-y:auto;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Area of Interest ──────────────────────────────────────────── -->
+  <div class="row">
+    <div class="col-md-6">
+      <div class="mb-3">
+        <label for="editProjectAoi" class="form-label fw-semibold">
+          Area of Interest <span class="text-danger">*</span>
+        </label>
+        <select class="form-select form-select-sm" id="editProjectAoi"
+                name="area_of_interest_id" required>
+          <option value="">— Select —</option>
+          {% for area in areas %}
+          <option value="{{ area.area_of_interest_id }}"
+              {% if (f and f.get('area_of_interest_id') == area.area_of_interest_id|string)
+                    or (not f and project.area_of_interest_id == area.area_of_interest_id) %}selected{% endif %}>
+            {{ area.area_of_interest }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <!-- ── Unix GID (read-only — changing an established GID would break filesystem permissions) ── -->
+      <div class="mb-3">
+        <label class="form-label">Unix GID</label>
+        <div class="form-control-plaintext text-muted">
+          {{ project.unix_gid or '—' }}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <!-- ── Ext Alias ── -->
+      <div class="mb-3">
+        <label for="editProjectExtAlias" class="form-label">
+          Ext. Alias <span class="text-muted">(optional)</span>
+        </label>
+        <input type="text" class="form-control form-control-sm" id="editProjectExtAlias"
+               name="ext_alias"
+               value="{{ f.get('ext_alias', project.ext_alias or '') if f else (project.ext_alias or '') }}">
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Flags ─────────────────────────────────────────────────────── -->
+  <div class="row mb-3">
+    <div class="col-auto">
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="editProjectActive"
+               name="active" value="1"
+               {% if f %}{% if f.get('active') %}checked{% endif %}
+               {% elif project.active %}checked{% endif %}>
+        <label class="form-check-label" for="editProjectActive">Active</label>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="editProjectChargingExempt"
+               name="charging_exempt" value="1"
+               {% if f %}{% if f.get('charging_exempt') %}checked{% endif %}
+               {% elif project.charging_exempt %}checked{% endif %}>
+        <label class="form-check-label" for="editProjectChargingExempt">
+          Charging Exempt
+          <span class="text-muted small">(no charges assessed)</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Submit ────────────────────────────────────────────────────── -->
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-warning">
+      <i class="fas fa-save"></i> Save Changes
+    </button>
+    <a href="{{ url_for('admin_dashboard.index') }}" class="btn btn-outline-secondary">
+      Cancel
+    </a>
+  </div>
+
+</form>
+
+<script>
+// FK-picker wire-up for Lead field (edit form)
+(function () {
+  var leadResults = document.getElementById('editProjectLeadResults');
+  var leadIdInput = document.getElementById('editProjectLeadId');
+  var leadBadge   = document.getElementById('editProjectLeadBadge');
+  var leadSelected = document.getElementById('editProjectLeadSelected');
+
+  if (leadResults) {
+    leadResults.addEventListener('click', function (e) {
+      var item = e.target.closest('.fk-search-result');
+      if (!item) return;
+      leadIdInput.value = item.dataset.userId;
+      leadBadge.textContent = item.dataset.displayName;
+      leadSelected.style.display = '';
+      leadResults.innerHTML = '';
+      document.getElementById('editProjectLeadSearch').value = '';
+    });
+  }
+
+  window.clearEditLeadSelection = function () {
+    leadIdInput.value = '';
+    leadBadge.textContent = '';
+    leadSelected.style.display = 'none';
+  };
+
+  // FK-picker wire-up for Admin field
+  var adminResults = document.getElementById('editProjectAdminResults');
+  var adminIdInput = document.getElementById('editProjectAdminId');
+  var adminBadge   = document.getElementById('editProjectAdminBadge');
+  var adminSelected = document.getElementById('editProjectAdminSelected');
+
+  if (adminResults) {
+    adminResults.addEventListener('click', function (e) {
+      var item = e.target.closest('.fk-search-result');
+      if (!item) return;
+      adminIdInput.value = item.dataset.userId;
+      adminBadge.textContent = item.dataset.displayName;
+      adminSelected.style.display = '';
+      adminResults.innerHTML = '';
+      document.getElementById('editProjectAdminSearch').value = '';
+    });
+  }
+
+  window.clearEditAdminSelection = function () {
+    adminIdInput.value = '';
+    adminBadge.textContent = '';
+    adminSelected.style.display = 'none';
+  };
+})();
+</script>

@@ -1,0 +1,212 @@
+{% extends 'dashboards/base.html' %}
+{% from 'dashboards/admin/fragments/user_search_results_fk_htmx.html' import render_fk_search_results with context %}
+
+{% block title %}Edit Project {{ project.projcode }} — SAM{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+<style>
+  .tree-list { list-style: none; padding-left: 1.25rem; }
+  .tree-list > li { border-left: 2px solid #dee2e6; padding: 0.25rem 0.5rem; margin-bottom: 0.1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb + Back button -->
+<div class="d-flex align-items-center mb-3">
+  <nav aria-label="breadcrumb" class="mb-0">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard.index') }}">Admin</a></li>
+      <li class="breadcrumb-item active">Edit Project</li>
+      <li class="breadcrumb-item active">{{ project.projcode }}</li>
+    </ol>
+  </nav>
+  <a href="{{ url_for('admin_dashboard.index') }}" class="btn btn-outline-secondary btn-sm ms-auto">
+    <i class="fas fa-arrow-left"></i> Back to Admin
+  </a>
+</div>
+
+<!-- Page header -->
+<div class="d-flex align-items-start gap-3 mb-4">
+  <h3 class="mb-0">
+    <i class="fas fa-folder-open text-warning me-2"></i>
+    <code>{{ project.projcode }}</code>
+    <span class="ms-2 fw-normal text-muted">{{ project.title }}</span>
+    {% if not project.active %}
+    <span class="badge bg-secondary fs-6 ms-2 align-middle"><i class="fas fa-ban"></i> Inactive</span>
+    {% endif %}
+  </h3>
+</div>
+
+<!-- Tab navigation -->
+<ul class="nav nav-tabs mb-0" id="editProjectTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="details-tab"
+            data-bs-toggle="tab" data-bs-target="#tab-details"
+            type="button" role="tab">
+      <i class="fas fa-edit me-1"></i> Details
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="allocations-tab"
+            data-bs-toggle="tab" data-bs-target="#tab-allocations"
+            type="button" role="tab"
+            hx-get="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}"
+            hx-target="#allocationTreeContainer"
+            hx-trigger="shown.bs.tab once">
+      <i class="fas fa-server me-1"></i> Allocations
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="members-tab"
+            data-bs-toggle="tab" data-bs-target="#tab-members"
+            type="button" role="tab"
+            hx-get="{{ url_for('user_dashboard.members_fragment', projcode=project.projcode) }}"
+            hx-target="#membersContainer"
+            hx-trigger="shown.bs.tab once">
+      <i class="fas fa-users me-1"></i> Members
+    </button>
+  </li>
+</ul>
+
+<!-- Tab content -->
+<div class="tab-content border border-top-0 rounded-bottom p-3 bg-white" id="editProjectTabsContent">
+
+  <!-- ── Tab 1: Details ─────────────────────────────────────────────── -->
+  <div class="tab-pane fade show active" id="tab-details" role="tabpanel">
+    <div id="editDetailsContainer">
+      {% include 'dashboards/admin/fragments/edit_project_details_htmx.html' %}
+    </div>
+
+    <!-- ── Linked Elements ──────────────────────────────────────────── -->
+    <div id="linkedElementsContainer" class="mt-4"
+         hx-get="{{ url_for('admin_dashboard.htmx_project_linked_elements', projcode=project.projcode) }}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <div class="text-center text-muted py-3">
+        <i class="fas fa-spinner fa-spin"></i> Loading linked elements…
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab 2: Allocations ─────────────────────────────────────────── -->
+  <div class="tab-pane fade" id="tab-allocations" role="tabpanel">
+    <div class="d-flex justify-content-end mb-3">
+      <button class="btn btn-sm btn-success"
+              hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=project.projcode) }}"
+              hx-target="#addAllocationFormContainer"
+              hx-trigger="click"
+              data-bs-toggle="modal"
+              data-bs-target="#addAllocationModal">
+        <i class="fas fa-plus-circle"></i> Add Allocation
+      </button>
+    </div>
+    <div id="allocationTreeContainer">
+      <div class="text-center text-muted py-4">
+        <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+        <p class="mt-2">Loading allocations…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab 3: Members ─────────────────────────────────────────────── -->
+  <div class="tab-pane fade" id="tab-members" role="tabpanel">
+    {#
+      NOTE: Member management routes live at /user/htmx/... (user blueprint).
+      Calling them from an /admin page is an intentional namespace crossing —
+      all permission guards are enforced server-side.  If admin-specific member
+      management behaviour is needed in the future, extract these routes to a
+      shared blueprint.  See plan: docs/plans/EDIT_PROJECTS.md §Design Notes.
+    #}
+    <div id="membersContainer">
+      <div class="text-center text-muted py-4">
+        <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+        <p class="mt-2">Loading members…</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ MODALS -->
+
+<!-- Add Allocation Modal (lazy-loaded) -->
+<div class="modal fade" id="addAllocationModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title"><i class="fas fa-plus-circle"></i> Add Allocation</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div id="addAllocationFormContainer">
+        <div class="modal-body text-center text-muted py-3">
+          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <p class="mt-2">Loading…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Allocation Modal (lazy-loaded) -->
+<div class="modal fade" id="editAllocationModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title"><i class="fas fa-edit"></i> Edit Allocation</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div id="editAllocationFormContainer">
+        <div class="modal-body text-center text-muted py-3">
+          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <p class="mt-2">Loading…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Project Details Modal — required by the clickable projcodes in the allocation tree -->
+<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-xl" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="projectDetailsModalTitle">Project Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="projectDetailsModalBody">
+        <div class="text-center">
+          <div class="spinner-border text-primary" role="status">
+            <span class="sr-only">Loading…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Include member management modals (reused from user dashboard) -->
+{% include 'dashboards/user/fragments/member_modals.html' %}
+
+<!-- ═══════════════════════════════════════════════ HTMX event handlers -->
+<script>
+  // The htmx_success_message already swapped #editDetailsContainer with a
+  // success fragment; nothing more to do here — htmx handles it.
+
+  // Reload Allocation Tree after add/edit allocation success.
+  // Preserve the current "Active at" date so a historical view is not reset to today.
+  document.body.addEventListener('reloadAllocationTree', function (evt) {
+    var activeAtInput = document.getElementById('alloc-active-at');
+    var url = '{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}';
+    if (activeAtInput && activeAtInput.value) {
+      url += '?active_at=' + encodeURIComponent(activeAtInput.value);
+    }
+    htmx.ajax('GET', url, {
+      target: '#allocationTreeContainer',
+      swap: 'innerHTML',
+      indicator: '#allocTreeSpinner, #allocationTreeContainer'
+    });
+  });
+</script>
+
+{% endblock %}

@@ -146,7 +146,7 @@ def project_card(projcode):
         project_data=project_data,
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
-        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
     )
 
 

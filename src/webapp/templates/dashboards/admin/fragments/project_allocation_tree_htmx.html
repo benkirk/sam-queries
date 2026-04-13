@@ -1,0 +1,210 @@
+{#
+  Admin: Edit Project — Allocations tab fragment.
+  Lazy-loaded when the Allocations tab is first shown.
+
+  Context variables:
+    root                — Project ORM root node of the tree
+    projcode            — projcode of the project being edited
+    resources_by_tab    — OrderedDict {tab_label: {names, rtypes, rtypes_str}}
+    resources_by_projcode — dict {projcode: {resource_name: resource_dict}}
+
+  Layout:
+    - Bootstrap pill tabs, one per non-empty resource type (HPC/DAV, Disk, etc.)
+    - Within each tab: single table with multiple <tbody> sections
+      - One <tbody> per resource: a header row (collapsible on click) + a tree body
+      - All rows share the same <colgroup> → progress bars align perfectly
+#}
+{% from 'dashboards/shared/project_tree.html' import render_project_tree, render_project_tree_rows with context %}
+
+{# ── Active at date picker ───────────────────────────────────────────── #}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <label for="alloc-active-at" class="fw-semibold text-nowrap mb-0 small">Active at:</label>
+  <input type="date" id="alloc-active-at" name="active_at"
+         class="form-control form-control-sm" style="width:auto;"
+         value="{{ active_at }}"
+         hx-get="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=projcode) }}"
+         hx-target="#allocationTreeContainer"
+         hx-include="#alloc-active-at"
+         hx-trigger="change delay:800ms"
+         hx-indicator="#allocTreeSpinner, #allocationTreeContainer"
+         hx-disabled-elt="this">
+  <span id="allocTreeSpinner" class="htmx-indicator small text-muted">
+    <span class="spinner-border spinner-border-sm text-primary me-1" role="status" aria-hidden="true"></span>
+    Loading…
+  </span>
+  {% if active_at != now_str %}
+  <span class="badge bg-info text-dark">
+    <i class="fas fa-history me-1"></i>Historical view: {{ active_at }}
+  </span>
+  {% endif %}
+</div>
+
+{% if not resources_by_tab %}
+<div class="alert alert-info">
+  <i class="fas fa-info-circle"></i>
+  No allocations found for this project or its sub-projects.
+  Use the <strong>Add Allocation</strong> button above to create the first one.
+</div>
+
+{% else %}
+
+{# ── Resource Type pill tabs ─────────────────────────────────────────── #}
+<ul class="nav nav-pills mb-3" id="allocResourceTypeTabs" role="tablist">
+  {% for tab_label, tab_data in resources_by_tab.items() %}
+  {% set tab_idx = loop.index %}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if loop.first %}active{% endif %}"
+            id="alloc-pill-{{ tab_idx }}"
+            data-bs-toggle="pill"
+            data-bs-target="#alloc-pane-{{ tab_idx }}"
+            type="button" role="tab"
+            aria-controls="alloc-pane-{{ tab_idx }}"
+            aria-selected="{{ 'true' if loop.first else 'false' }}">
+      <i class="fas fa-server me-1 small"></i>{{ tab_label }}
+      <span class="badge bg-secondary ms-1">{{ tab_data.names | length }}</span>
+    </button>
+  </li>
+  {% endfor %}
+</ul>
+
+{# ── Tab pane content ────────────────────────────────────────────────── #}
+<div class="tab-content" id="allocResourceTypeTabsContent">
+  {% for tab_label, tab_data in resources_by_tab.items() %}
+  {% set tab_idx = loop.index %}
+  <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+       id="alloc-pane-{{ tab_idx }}"
+       role="tabpanel"
+       aria-labelledby="alloc-pill-{{ tab_idx }}">
+
+    {#
+      Single table for the whole tab.  Every row — resource headers and project
+      tree rows — shares the same <colgroup>, so progress bars land in the same
+      column regardless of resource name length or tree depth.
+
+      Structure per resource:
+        <tbody>   ← header row (clickable, toggles tree body)
+          <tr class="alloc-resource-header"> ... </tr>
+        </tbody>
+        <tbody id="alloc-body-…">  ← tree rows (collapsible)
+          {{ render_project_tree_rows(...) }}
+        </tbody>
+    #}
+    <table class="table table-sm table-hover mb-0 border" style="table-layout:fixed;width:100%;">
+      <colgroup>
+        <col>                        {# resource/project name — fills remaining space #}
+        <col style="width:110px;">   {# progress bar #}
+        <col style="width:60px;">    {# % used #}
+        <col style="width:90px;">    {# allocated amount #}
+        <col style="width:110px;">   {# shared badge + edit button #}
+      </colgroup>
+
+      {% for resource_name in tab_data.names %}
+      {%- set resource_slug = resource_name | lower | replace(' ', '-') | replace('/', '-') | replace('_', '-') -%}
+      {%- set body_id = 'alloc-body-' ~ tab_idx ~ '-' ~ resource_slug -%}
+      {%- set root_alloc = resources_by_projcode.get(root.projcode, {}).get(resource_name) -%}
+      {%- set pct = [root_alloc.percent_used, 100] | min if root_alloc else 0 -%}
+
+      {# ── Resource header row ──────────────────────────────────────── #}
+      <tbody>
+        <tr class="table-secondary alloc-resource-header"
+            style="cursor:pointer; border-top: 2px solid #ced4da;"
+            data-bs-toggle="collapse"
+            data-bs-target="#{{ body_id }}"
+            aria-expanded="false"
+            aria-controls="{{ body_id }}">
+
+          {# Col 1: resource name + caret #}
+          <td class="fw-semibold py-2" style="vertical-align:middle;">
+            <i class="fas fa-chevron-right alloc-caret me-2 small text-muted"></i>
+            <i class="fas fa-server text-primary me-1"></i>
+            {{ resource_name }}
+          </td>
+
+          {# Col 2: progress bar — same column as tree rows #}
+          <td style="padding:0.25rem 0.4rem; vertical-align:middle;">
+            {% if root_alloc %}
+            <div class="progress" style="height:8px;">
+              <div class="progress-bar
+                   {%- if root_alloc.percent_used >= 90 %} bg-danger
+                   {%- elif root_alloc.percent_used >= 75 %} bg-warning
+                   {%- else %} bg-success{% endif %}"
+                   role="progressbar" style="width:{{ pct }}%;"></div>
+            </div>
+            {% endif %}
+          </td>
+
+          {# Col 3: % used #}
+          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
+            {% if root_alloc %}{{ root_alloc.percent_used | fmt_pct }} used{% endif %}
+          </td>
+
+          {# Col 4: allocated amount #}
+          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
+            {% if root_alloc %}{{ root_alloc.allocated | fmt_number }}{% endif %}
+          </td>
+
+          {# Col 5: shared badge #}
+          <td style="vertical-align:middle;">
+            {% if root_alloc and root_alloc.is_inheriting %}
+            <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+
+      {# ── Tree rows — collapsible tbody ────────────────────────────── #}
+      {#  Build per-resource {projcode: resource_dict|None} lookup #}
+      {%- set alloc_by_projcode = {} -%}
+      {%- for pc, res_dict in resources_by_projcode.items() -%}
+        {%- if resource_name in res_dict -%}
+          {%- set _ = alloc_by_projcode.update({pc: res_dict[resource_name]}) -%}
+        {%- else -%}
+          {%- set _ = alloc_by_projcode.update({pc: none}) -%}
+        {%- endif -%}
+      {%- endfor -%}
+
+      <tbody id="{{ body_id }}" class="collapse alloc-tree-body">
+        {{ render_project_tree_rows([root],
+                                     depth=0,
+                                     current_projcode=projcode,
+                                     alloc_by_projcode=alloc_by_projcode,
+                                     can_view=true,
+                                     can_edit_allocations=true,
+                                     active_only=true,
+                                     usage_warning_threshold=75,
+                                     usage_critical_threshold=90) }}
+      </tbody>
+
+      {% endfor %}{# /resource loop #}
+    </table>
+
+  </div>{# /tab-pane #}
+  {% endfor %}
+</div>{# /tab-content #}
+
+{% endif %}
+
+<style>
+  .btn-xs { padding: 0.1rem 0.35rem; font-size: 0.75rem; }
+  .alloc-resource-header:hover td { filter: brightness(0.96); }
+
+  /* Caret rotation driven by Bootstrap's aria-expanded update */
+  .alloc-resource-header .alloc-caret { transition: transform 0.15s ease; }
+  .alloc-resource-header[aria-expanded="true"] .alloc-caret { transform: rotate(90deg); }
+
+  /* Kill Bootstrap's height animation on <tbody> — looks jittery on table-row-groups.
+     Zero transition-duration makes Bootstrap's getTransitionDurationFromElement() return 0,
+     so .collapsing is removed immediately and the toggle snaps (same visual as d-none). */
+  tbody.alloc-tree-body.collapse,
+  tbody.alloc-tree-body.collapsing { transition: none !important; }
+
+  /* Dim the tree while a reload is in flight.
+     htmx adds .htmx-request to any element listed in hx-indicator for the
+     duration of the request — we use that to fade the existing tree so users
+     see the UI is "doing something" during slow (~14s) refreshes. */
+  #allocationTreeContainer { transition: opacity 150ms ease; }
+  #allocationTreeContainer.htmx-request {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+</style>

@@ -317,7 +317,7 @@
                         {% endfor %}
                     </h5>
                 </div>
-                <div>
+                <div class="d-flex align-items-center gap-1">
                     {# Show user's role on this project #}
                     {% if project.lead and project.lead.user_id == user.user_id %}
                         <span class="badge bg-primary"><i class="fas fa-star"></i> Lead</span>
@@ -393,6 +393,16 @@
                     };
                 }
                 </script>
+                {% endif %}
+
+                {# Edit Project button — inside the card body, visible only when expanded #}
+                {% if has_permission(Permission.EDIT_PROJECTS) %}
+                <div class="d-flex justify-content-end mt-3 pt-2 border-top">
+                    <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
+                       class="btn btn-sm btn-warning">
+                        <i class="fas fa-edit"></i> Edit Project
+                    </a>
+                </div>
                 {% endif %}
 
             </div>

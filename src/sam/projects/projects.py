@@ -301,6 +301,67 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
         return project
 
+    def update(
+        self,
+        *,
+        title: Optional[str] = None,
+        abstract: Optional[str] = None,
+        area_of_interest_id: Optional[int] = None,
+        allocation_type_id: Optional[int] = None,
+        charging_exempt: Optional[bool] = None,
+        project_lead_user_id: Optional[int] = None,
+        project_admin_user_id: Optional[int] = None,
+        unix_gid: Optional[int] = None,
+        ext_alias: Optional[str] = None,
+        active: Optional[bool] = None,
+    ) -> 'Project':
+        """Update mutable project fields and flush.
+
+        Only keyword arguments explicitly provided (non-None) are written.
+        ``projcode`` and ``parent_id`` are intentionally excluded — projcode
+        is immutable after creation, and tree restructuring is a separate op.
+
+        Uses ``SessionMixin.session`` (``Session.object_session(self)``) for
+        the flush, so no session argument is needed.
+
+        Args:
+            title:                 Human-readable project title.
+            abstract:              Longer project description (pass ``''`` to clear).
+            area_of_interest_id:   FK to AreaOfInterest.
+            allocation_type_id:    FK to AllocationType.
+            charging_exempt:       If True, charges are not assessed.
+            project_lead_user_id:  FK to lead User.
+            project_admin_user_id: FK to admin User.
+            unix_gid:              Unix group ID.
+            ext_alias:             External alias string (pass ``''`` to clear).
+            active:                Active flag.
+
+        Returns:
+            self (for chaining).
+        """
+        if title is not None:
+            self.title = title.strip()
+        if abstract is not None:
+            self.abstract = abstract.strip() or None
+        if area_of_interest_id is not None:
+            self.area_of_interest_id = area_of_interest_id
+        if allocation_type_id is not None:
+            self.allocation_type_id = allocation_type_id
+        if charging_exempt is not None:
+            self.charging_exempt = charging_exempt
+        if project_lead_user_id is not None:
+            self.project_lead_user_id = project_lead_user_id
+        if project_admin_user_id is not None:
+            self.project_admin_user_id = project_admin_user_id
+        if unix_gid is not None:
+            self.unix_gid = unix_gid
+        if ext_alias is not None:
+            self.ext_alias = ext_alias.strip() or None
+        if active is not None:
+            self.active = active
+        self.session.flush()
+        return self
+
     # # Active account users (filtered join)
     # account_users = relationship(
     #     'AccountUser',
@@ -468,7 +529,8 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     def get_detailed_allocation_usage(self,
                                       resource_name: Optional[str] = None,
                                       include_adjustments: bool = True,
-                                      hierarchical: bool = True) -> Dict[str, Dict[str, any]]:
+                                      hierarchical: bool = True,
+                                      active_at: Optional[datetime] = None) -> Dict[str, Dict[str, any]]:
         """
         Calculate allocation usage and remaining balance across all resource types.
 
@@ -477,11 +539,13 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             include_adjustments: Whether to include manual charge adjustments
             hierarchical: If True, aggregate usage from this project and all descendants (sub-projects).
                           If False, only count usage for this specific project.
+            active_at: Reference datetime for determining which allocation is "active".
+                       Defaults to now.
 
         Returns:
             Dict mapping resource_name to usage details.
         """
-        now = datetime.now()
+        now = active_at or datetime.now()
         results = {}
 
         # Check if tree structure is valid for hierarchical queries
@@ -519,9 +583,12 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                     most_recent_alloc = max(account.allocations,
                                             key=lambda a: a.end_date if a.end_date else datetime.max
                                             )
-                    # Apply date threshold, only query 'most_recent_alloc'
-                    # if it has expired within the past 1 year
-                    if (now - most_recent_alloc.end_date) <= timedelta(days=90):
+                    # Apply date threshold: only query 'most_recent_alloc'
+                    # if it has expired within the past 90 days.
+                    # An open-ended allocation (end_date=None) never expires —
+                    # treat it as always within threshold.
+                    end = most_recent_alloc.end_date
+                    if end is None or (now - end) <= timedelta(days=90):
                         query_alloc = most_recent_alloc
 
             # OK, if we still don't have an allocation to query
@@ -1189,7 +1256,7 @@ class ProjectNumber(Base):
 
 
 #----------------------------------------------------------------------------
-class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
+class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
     """File system directories associated with projects."""
     __tablename__ = 'project_directory'
 
@@ -1201,6 +1268,35 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
     project = relationship('Project', back_populates='directories')
     project_directory_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
+
+    @classmethod
+    def create(cls, session, *, project_id: int, directory_name: str,
+               start_date=None) -> 'ProjectDirectory':
+        """Associate a filesystem directory with a project.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        from datetime import datetime
+        if not directory_name or not directory_name.strip():
+            raise ValueError("directory_name is required")
+        obj = cls(
+            project_id=project_id,
+            directory_name=directory_name.strip(),
+            start_date=start_date or datetime.now(),
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
+    def deactivate(self) -> 'ProjectDirectory':
+        """End this directory association by setting end_date to now.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        from datetime import datetime
+        self.end_date = datetime.now()
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.directory_name} (project {self.project_id})"

@@ -1,0 +1,11 @@
+{#
+  Project hierarchy tree fragment — rendered by user_dashboard.tree_fragment().
+  Wraps the shared render_project_tree macro with a simple <ul>.
+#}
+{% from 'dashboards/shared/project_tree.html' import render_project_tree with context %}
+<ul class="tree-list">
+  {{ render_project_tree([root],
+                         current_projcode=current_projcode,
+                         can_view=can_view,
+                         active_only=active_only) }}
+</ul>

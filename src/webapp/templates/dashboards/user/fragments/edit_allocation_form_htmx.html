@@ -22,19 +22,23 @@
         </div>
     </div>
 
-    <!-- Amount -->
+    <!-- Amount (live comma-preview rendered below by number-preview.js) -->
     <div class="mb-3">
         <label for="allocationAmount">Allocation Amount <span class="text-danger">*</span></label>
         <div class="input-group">
             <input type="number" class="form-control" id="allocationAmount" name="amount"
                    step="0.01" min="0" required
+                   data-number-preview
                    value="{{ allocation.amount }}">
             <span class="input-group-text" title="Current allocation amount">
                 <i class="fas fa-info-circle"></i>
             </span>
         </div>
-        <small class="form-text text-muted">
-            Core-hours or storage units. Current: <strong>{{ "{:,.2f}".format(allocation.amount) }}</strong>
+        <small class="form-text">
+            <span class="number-preview text-primary fw-semibold"></span>
+            <span class="text-muted">
+                Core-hours or storage units. Current: <strong>{{ "{:,.2f}".format(allocation.amount) }}</strong>
+            </span>
         </small>
     </div>
 

@@ -49,7 +49,7 @@ class TestAllocationTransactionType:
         assert AllocationTransactionType.CREATE == "CREATE"
         assert isinstance(AllocationTransactionType.CREATE, str)
         # Python-side types (new operations)
-        expected_new = {"CREATE", "EDIT", "TRANSFER", "ADJUSTMENT", "EXPIRE", "DELETE"}
+        expected_new = {"CREATE", "EDIT", "TRANSFER", "ADJUSTMENT", "EXPIRE", "DELETE", "DETACH", "LINK"}
         # Legacy Java-side types present in existing DB data
         expected_legacy = {"NEW", "EXTENSION", "SUPPLEMENT"}
         expected = expected_new | expected_legacy
