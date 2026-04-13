@@ -502,49 +502,66 @@ def get_project_allocations(project):   # ← project object, not projcode
     ...
 ```
 
-### 9. Form Validation in API Endpoints
+### 9. Form Validation in HTMX and API Routes
 
-Use Marshmallow form schemas from `sam.schemas.forms` — never call
-`datetime.strptime` or `parse_input_end_date` directly in route handlers.
+**The rule:** any validated POST/PUT route — HTMX (`webapp/dashboards/.../*_routes.py`)
+**or** API (`webapp/api/v1/...`) — loads input via a schema from
+`sam.schemas.forms`. If no schema fits, **add one first**, then wire the
+route. Never write `datetime.strptime`, `parse_input_end_date`, `float()`,
+or `int()` coercion ladders inline.
 
-**POST** (all fields validated as required by the schema):
+**Before writing any POST/PUT handler:**
+1. Look in `src/sam/schemas/forms/` for an existing schema that matches.
+   Exports live in `src/sam/schemas/forms/__init__.py`.
+2. If none fits, add a new `HtmxFormSchema` subclass to the appropriate
+   domain file (`projects.py`, `user.py`, `orgs.py`, ...) and export it
+   from `__init__.py`.
+3. Only then write the route.
+
+FK existence checks (e.g. `db.session.get(User, lead_id)`) **stay in the
+route** — schemas don't touch the DB. That's the one thing that belongs
+inline, and it's explicit in each schema's docstring.
+
+**Pattern — POST (all required fields enforced by the schema):**
 ```python
 from sam.schemas.forms import AddMemberForm
 from marshmallow import ValidationError
 
-data = request.get_json() or request.form
+# HTMX: pre-process request.form — drop empty strings so Int/Float/Date
+# fields fall back to load_default, and inject explicit False for unchecked
+# checkboxes (absent from request.form when unchecked).
+data = {k: v for k, v in request.form.items() if v != ''}
+data['charging_exempt'] = 'charging_exempt' in request.form  # if applicable
+
+# API: data = request.get_json()
+
 try:
     form_data = AddMemberForm().load(data)
 except ValidationError as e:
     errors = AddMemberForm.flatten_errors(e.messages)
-    return jsonify({'error': errors[0] if errors else 'Invalid input'}), 400
+    return _reload_form(errors)   # HTMX re-render, or JSON 400
 
-start_date = datetime.combine(form_data['start_date'], datetime.min.time()) \
-             if form_data.get('start_date') else None
-end_date = form_data.get('end_date')   # already datetime or None (from post_load)
+# FK existence checks live here (require DB access)
+if form_data.get('lead_id') and not db.session.get(User, form_data['lead_id']):
+    errors.append('Selected lead does not exist.')
 ```
 
-**PUT** (partial update — use `partial=True` so no field is required):
+**Pattern — PUT (partial update):**
 ```python
-from sam.schemas.forms import EditAllocationForm
+form_data = EditAllocationForm().load(data, partial=True)
 
-data = request.get_json()
-try:
-    form_data = EditAllocationForm().load(data, partial=True)
-except ValidationError as e:
-    ...
-
-# Gate on original data dict — do NOT use form_data keys as that would
-# clear fields that weren't in the request (load_default fills them with None)
+# Gate on original data dict, NOT form_data keys — load_default fills
+# absent fields with None, which would silently clear them.
 updates = {}
 if 'amount' in data:
     updates['amount'] = form_data['amount']
-if 'start_date' in data:
-    raw = form_data.get('start_date')
-    updates['start_date'] = datetime.combine(raw, datetime.min.time()) if raw else None
 if 'end_date' in data:
     updates['end_date'] = form_data.get('end_date')   # datetime or None
 ```
+
+**HtmxFormSchema gives you for free:** `unknown=EXCLUDE` (silently drops
+CSRF tokens, stray fields), `flatten_errors()` for template-friendly lists,
+and a clear separation from ORM serialization (`sam.schemas/` proper).
 
 ---
 
@@ -877,6 +894,14 @@ docker compose up
 4. Run tests to verify fix
 5. Schema validation tests will catch future drift
 
+### Adding a New Validated POST/PUT Route (HTMX or API)
+1. Check `src/sam/schemas/forms/__init__.py` for an existing form schema.
+2. If none fits, add a new `HtmxFormSchema` subclass in the appropriate
+   domain file and export it from `__init__.py` **before** writing the route.
+3. Write the route: load input with the schema, keep FK existence checks
+   inline, gate `updates` dicts on original `data` keys for PUT.
+4. See §9 *Form Validation in HTMX and API Routes* for the full pattern.
+
 ---
 
 ## Key Contacts & Context
@@ -965,7 +990,7 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ❌ **DON'T** forget to unpack tuples from `get_projects_by_allocation_end_date()` - returns `(project, allocation, resource_name, days)`
 ❌ **DON'T** add standalone `update_*(session, id, ...)` functions to `sam/manage/` — put `update()` instance methods and `create()` classmethods directly on the ORM model instead
 ❌ **DON'T** write a local `_user_can_access_project` helper in a route file — use decorators from `webapp.api.access_control` (centralized, tested, consistent)
-❌ **DON'T** use `datetime.strptime` or `parse_input_end_date` directly in API route handlers — use `AddMemberForm` / `EditAllocationForm` from `sam.schemas.forms`
+❌ **DON'T** use `datetime.strptime`, `parse_input_end_date`, `float()`, or `int()` coercion ladders directly in **any** POST/PUT route handler (HTMX or API) — load input via a schema from `sam.schemas.forms`. If no schema fits, add one to the appropriate domain file and export it from `sam/schemas/forms/__init__.py` **before** writing the route. See §9 and the "Adding a New Validated POST/PUT Route" workflow.
 
 ✅ **DO** use schema validation tests before committing model changes
 ✅ **DO** check actual database schema when in doubt
