@@ -544,13 +544,12 @@ def link_allocation_to_parent(
     parent = session.get(Allocation, parent_allocation_id)
     if not parent:
         raise ValueError(f"Parent allocation {parent_allocation_id} not found")
-    if parent.is_inheriting:
-        raise ValueError(
-            f"Parent allocation {parent_allocation_id} is itself inheriting; "
-            f"link to a root allocation instead"
-        )
     if parent.deleted:
         raise ValueError(f"Parent allocation {parent_allocation_id} is deleted")
+    # Note: parent MAY itself be inheriting. The deep-tree design points each
+    # allocation at its *immediate* project-parent's allocation, not the root
+    # (see propagate_allocation_to_subprojects' alloc_map). A grandchild
+    # correctly links to an inheriting middle-tier parent.
 
     if not child.account or not parent.account:
         raise ValueError("Both allocations must be bound to an account")

@@ -891,10 +891,13 @@ def htmx_edit_allocation_form(alloc_id):
                 db.session, proj.parent.project_id, allocation.account.resource_id
             )
             if parent_acct:
+                # Parent allocation may itself be inheriting — the deep-tree
+                # invariant points at the immediate project-parent's allocation,
+                # not the root. A grandchild correctly links to an inheriting
+                # middle-tier parent.
                 candidates = [
                     a for a in parent_acct.allocations
                     if not a.deleted
-                    and not a.is_inheriting
                     and date_ranges_overlap(a, allocation)
                 ]
                 if candidates:
