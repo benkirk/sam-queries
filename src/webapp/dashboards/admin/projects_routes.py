@@ -694,6 +694,7 @@ def htmx_project_allocation_tree(projcode):
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_add_allocation_form(projcode):
     """Return the add-allocation sub-form (loaded into modal on button click)."""
+    import calendar
     from sam.projects.projects import Project
     from sam.resources.resources import Resource
 
@@ -718,11 +719,19 @@ def htmx_add_allocation_form(projcode):
 
     active_descendants = [d for d in project.get_descendants() if d.active]
 
+    # Default end date = last day of the same month, one year out.
+    # (E.g. today 2026-04-13 → default end 2027-04-30.) User can override.
+    now = datetime.now()
+    target_year = now.year + 1
+    last_day = calendar.monthrange(target_year, now.month)[1]
+    default_end_date = f'{target_year:04d}-{now.month:02d}-{last_day:02d}'
+
     return render_template(
         'dashboards/admin/fragments/add_allocation_form_htmx.html',
         project=project,
         available_resources=available_resources,
-        today=datetime.now().strftime('%Y-%m-%d'),
+        today=now.strftime('%Y-%m-%d'),
+        default_end_date=default_end_date,
         project_has_children=project.has_children,
         child_count=len(active_descendants),
     )
@@ -774,6 +783,7 @@ def htmx_add_allocation(projcode):
     apply_to_subprojects = form_data.get('apply_to_subprojects', False)
 
     def _reload_add_form(extra_errors=None):
+        import calendar
         from sam.resources.resources import Resource as R
         linked_ids = {a.resource_id for a in project.accounts}
         available = (
@@ -784,11 +794,15 @@ def htmx_add_allocation(projcode):
         )
         available = [r for r in available if r.resource_id not in linked_ids]
         active_desc = [d for d in project.get_descendants() if d.active]
+        now = datetime.now()
+        last_day = calendar.monthrange(now.year + 1, now.month)[1]
+        default_end = f'{now.year + 1:04d}-{now.month:02d}-{last_day:02d}'
         return render_template(
             'dashboards/admin/fragments/add_allocation_form_htmx.html',
             project=project,
             available_resources=available,
-            today=datetime.now().strftime('%Y-%m-%d'),
+            today=now.strftime('%Y-%m-%d'),
+            default_end_date=default_end,
             errors=(extra_errors or []) + errors,
             form=request.form,
             project_has_children=project.has_children,

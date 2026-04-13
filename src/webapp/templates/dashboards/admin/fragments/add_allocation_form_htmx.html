@@ -6,6 +6,8 @@
     project             — Project ORM object
     available_resources — list of Resource objects not yet linked to this project
     today               — date string 'YYYY-MM-DD' for default start date
+    default_end_date    — date string 'YYYY-MM-DD' for default end date
+                          (last day of same month one year out)
     errors              — list of validation error strings (on re-render)
     form                — request.form on validation error re-render
     project_has_children — bool: project has active sub-projects
@@ -45,19 +47,23 @@
     </select>
   </div>
 
-  <!-- Amount -->
+  <!-- Amount (live comma-preview rendered below by number-preview.js) -->
   <div class="mb-3">
     <label for="addAllocAmount" class="form-label fw-semibold">
       Amount <span class="text-danger">*</span>
     </label>
     <input type="number" class="form-control" id="addAllocAmount"
            name="amount" min="0.01" step="any" required
+           data-number-preview
            value="{{ form.get('amount', '') if form else '' }}"
            placeholder="e.g. 500000">
-    <div class="form-text text-muted">Core-hours for HPC; TB for storage resources.</div>
+    <div class="form-text">
+      <span class="number-preview text-primary fw-semibold"></span>
+      <span class="text-muted">Core-hours for HPC; TB for storage resources.</span>
+    </div>
   </div>
 
-  <!-- Dates -->
+  <!-- Dates (side-by-side; stack on narrow viewports) -->
   <div class="row">
     <div class="col-md-6">
       <div class="mb-3">
@@ -71,12 +77,11 @@
     </div>
     <div class="col-md-6">
       <div class="mb-3">
-        <label for="addAllocEnd" class="form-label">
-          End Date <span class="text-muted">(optional — leave blank for open-ended)</span>
-        </label>
+        <label for="addAllocEnd" class="form-label">End Date <span class="text-muted">(optional)</span></label>
         <input type="date" class="form-control" id="addAllocEnd"
                name="end_date"
-               value="{{ form.get('end_date', '') if form else '' }}">
+               value="{{ form.get('end_date', default_end_date) if form else default_end_date }}">
+        <small class="form-text text-muted">Leave blank for no end date</small>
       </div>
     </div>
   </div>

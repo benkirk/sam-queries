@@ -218,17 +218,21 @@
   {# ── Editable fields (disabled if inheriting) ─────────────────── #}
   {% set disabled = allocation.is_inheriting %}
 
-  <!-- Amount -->
+  <!-- Amount (live comma-preview rendered below by number-preview.js) -->
   <div class="mb-3">
     <label for="editAllocAmount" class="form-label fw-semibold">Amount</label>
     <input type="number" class="form-control" id="editAllocAmount"
            name="amount" min="0.01" step="any"
+           data-number-preview
            {% if disabled %}disabled{% endif %}
            value="{{ form.get('amount', allocation.amount) if form else allocation.amount }}">
-    {% if disabled %}<div class="form-text text-muted">Edit parent allocation to change this.</div>{% endif %}
+    <div class="form-text">
+      <span class="number-preview text-primary fw-semibold"></span>
+      {% if disabled %}<span class="text-muted">Edit parent allocation to change this.</span>{% endif %}
+    </div>
   </div>
 
-  <!-- Dates -->
+  <!-- Dates (side-by-side; stack on narrow viewports) -->
   <div class="row">
     <div class="col-md-6">
       <div class="mb-3">
@@ -241,13 +245,12 @@
     </div>
     <div class="col-md-6">
       <div class="mb-3">
-        <label for="editAllocEnd" class="form-label">
-          End Date <span class="text-muted">(blank = open-ended)</span>
-        </label>
+        <label for="editAllocEnd" class="form-label">End Date <span class="text-muted">(optional)</span></label>
         <input type="date" class="form-control" id="editAllocEnd"
                name="end_date"
                {% if disabled %}disabled{% endif %}
                value="{{ form.get('end_date', allocation.end_date.strftime('%Y-%m-%d') if allocation.end_date else '') if form else (allocation.end_date.strftime('%Y-%m-%d') if allocation.end_date else '') }}">
+        <small class="form-text text-muted">Leave blank for no end date</small>
       </div>
     </div>
   </div>
