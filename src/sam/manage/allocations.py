@@ -177,32 +177,17 @@ def create_allocation(
                 user_id=current_user.user_id,
             )
     """
-    from sam.accounting.accounts import Account
-    from sam.accounting.allocations import Allocation
-
-    if amount <= 0:
-        raise ValueError(f"Amount must be greater than 0, got {amount}")
-
     validate_allocation_dates(start_date, end_date)
 
-    # Get or create the Account linking this project to the resource.
-    account = Account.get_by_project_and_resource(
-        session, project_id, resource_id, exclude_deleted=True
-    )
-    if account is None:
-        account = Account(project_id=project_id, resource_id=resource_id)
-        session.add(account)
-        session.flush()
-
-    allocation = Allocation(
-        account_id=account.account_id,
+    allocation = Allocation.create(
+        session,
+        project_id=project_id,
+        resource_id=resource_id,
         amount=amount,
         start_date=start_date,
         end_date=end_date,
         description=description,
     )
-    session.add(allocation)
-    session.flush()
 
     log_allocation_transaction(
         session,

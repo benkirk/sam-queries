@@ -1253,7 +1253,7 @@ class ProjectNumber(Base):
 
 
 #----------------------------------------------------------------------------
-class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
+class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
     """File system directories associated with projects."""
     __tablename__ = 'project_directory'
 
@@ -1265,6 +1265,35 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
     project = relationship('Project', back_populates='directories')
     project_directory_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
+
+    @classmethod
+    def create(cls, session, *, project_id: int, directory_name: str,
+               start_date=None) -> 'ProjectDirectory':
+        """Associate a filesystem directory with a project.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        from datetime import datetime
+        if not directory_name or not directory_name.strip():
+            raise ValueError("directory_name is required")
+        obj = cls(
+            project_id=project_id,
+            directory_name=directory_name.strip(),
+            start_date=start_date or datetime.now(),
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
+    def deactivate(self) -> 'ProjectDirectory':
+        """End this directory association by setting end_date to now.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        from datetime import datetime
+        self.end_date = datetime.now()
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.directory_name} (project {self.project_id})"

@@ -122,6 +122,16 @@
 
 </div>
 
+<!-- ── Linked Elements ────────────────────────────────────────────── -->
+<div id="linkedElementsContainer" class="mt-4"
+     hx-get="{{ url_for('admin_dashboard.htmx_project_linked_elements', projcode=project.projcode) }}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <div class="text-center text-muted py-3">
+    <i class="fas fa-spinner fa-spin"></i> Loading linked elements…
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════ MODALS -->
 
 <!-- Add Allocation Modal (lazy-loaded) -->

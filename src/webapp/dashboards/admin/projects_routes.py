@@ -974,3 +974,273 @@ def htmx_edit_allocation(alloc_id):
         {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
         'Allocation updated successfully.',
     )
+
+
+# ---------------------------------------------------------------------------
+# Linked Elements (ProjectOrganization, ProjectContract, ProjectDirectory)
+# ---------------------------------------------------------------------------
+
+_ORG_LINK_FACILITIES = {'NCAR', 'CISL', 'CSL', 'ASD'}
+
+
+def _linked_elements_context(project):
+    """Build the template context dict for the linked-elements fragment."""
+    facility_name = None
+    try:
+        facility_name = project.allocation_type.panel.facility.facility_name
+    except AttributeError:
+        pass
+
+    return dict(
+        project=project,
+        allows_org_links=(facility_name in _ORG_LINK_FACILITIES),
+        active_organizations=[po for po in project.organizations if po.is_active],
+        contracts=project.contracts,
+        active_directories=[pd for pd in project.directories if pd.is_active],
+        errors=[],
+    )
+
+
+def _render_linked_elements(project, errors=None):
+    ctx = _linked_elements_context(project)
+    if errors:
+        ctx['errors'] = errors
+    return render_template(
+        'dashboards/admin/fragments/project_linked_elements_htmx.html',
+        **ctx,
+    )
+
+
+@bp.route('/htmx/project/<projcode>/linked-elements')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_project_linked_elements(projcode):
+    """Render the linked-elements section for an edit-project page."""
+    from sam.projects.projects import Project
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-warning">Project not found.</div>'
+
+    return _render_linked_elements(project)
+
+
+@bp.route('/htmx/project/<projcode>/organizations/add', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_add_project_organization(projcode):
+    """Link an organization to a project (NCAR facility only)."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import AddLinkedOrganizationForm
+    from sam.projects.projects import Project
+    from sam.core.organizations import Organization, ProjectOrganization
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found.</div>', 404
+
+    # Facility gate — caller shouldn't reach this for non-NCAR, but guard anyway
+    try:
+        facility_name = project.allocation_type.panel.facility.facility_name
+    except AttributeError:
+        facility_name = None
+    if facility_name not in _ORG_LINK_FACILITIES:
+        return _render_linked_elements(project, errors=['Organization links are not available for this facility.'])
+
+    try:
+        form_data = AddLinkedOrganizationForm().load(request.form)
+    except ValidationError as e:
+        return _render_linked_elements(project, errors=AddLinkedOrganizationForm.flatten_errors(e.messages))
+
+    org_id = form_data['organization_id']
+    org = db.session.get(Organization, org_id)
+    if not org:
+        return _render_linked_elements(project, errors=['Organization not found.'])
+
+    # Prevent duplicate active links
+    existing = [po for po in project.organizations if po.organization_id == org_id and po.is_active]
+    if existing:
+        return _render_linked_elements(project, errors=[f'"{org.name}" is already linked to this project.'])
+
+    try:
+        with management_transaction(db.session):
+            ProjectOrganization.create(
+                db.session,
+                project_id=project.project_id,
+                organization_id=org_id,
+            )
+    except Exception as e:
+        return _render_linked_elements(project, errors=[f'Error adding organization: {e}'])
+
+    db.session.refresh(project)
+    return _render_linked_elements(project)
+
+
+@bp.route('/htmx/project/<projcode>/organizations/<int:po_id>/remove', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_remove_project_organization(projcode, po_id):
+    """Deactivate a project-organization link (sets end_date to now)."""
+    from sam.projects.projects import Project
+    from sam.core.organizations import ProjectOrganization
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found.</div>', 404
+
+    po = db.session.get(ProjectOrganization, po_id)
+    if not po or po.project_id != project.project_id:
+        return _render_linked_elements(project, errors=['Organization link not found.'])
+
+    try:
+        with management_transaction(db.session):
+            po.deactivate()
+    except Exception as e:
+        return _render_linked_elements(project, errors=[f'Error removing organization: {e}'])
+
+    db.session.refresh(project)
+    return _render_linked_elements(project)
+
+
+@bp.route('/htmx/project/<projcode>/contracts/add', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_add_project_contract(projcode):
+    """Link a contract to a project."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import AddLinkedContractForm
+    from sam.projects.projects import Project
+    from sam.projects.contracts import Contract, ProjectContract
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found.</div>', 404
+
+    try:
+        form_data = AddLinkedContractForm().load(request.form)
+    except ValidationError as e:
+        return _render_linked_elements(project, errors=AddLinkedContractForm.flatten_errors(e.messages))
+
+    contract_id = form_data['contract_id']
+    contract = db.session.get(Contract, contract_id)
+    if not contract:
+        return _render_linked_elements(project, errors=['Contract not found.'])
+
+    # Prevent duplicate links
+    existing = [pc for pc in project.contracts if pc.contract_id == contract_id]
+    if existing:
+        return _render_linked_elements(project, errors=[f'Contract "{contract.contract_number}" is already linked to this project.'])
+
+    try:
+        with management_transaction(db.session):
+            ProjectContract.create(
+                db.session,
+                project_id=project.project_id,
+                contract_id=contract_id,
+            )
+    except Exception as e:
+        return _render_linked_elements(project, errors=[f'Error adding contract: {e}'])
+
+    db.session.refresh(project)
+    return _render_linked_elements(project)
+
+
+@bp.route('/htmx/project/<projcode>/contracts/<int:pc_id>/remove', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_remove_project_contract(projcode, pc_id):
+    """Remove a project-contract link.
+
+    If this is the sole project using the contract, also deactivates the
+    Contract record (sets end_date = now).  Otherwise only removes the
+    ProjectContract join row.
+    """
+    from sam.projects.projects import Project
+    from sam.projects.contracts import ProjectContract
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found.</div>', 404
+
+    pc = db.session.get(ProjectContract, pc_id)
+    if not pc or pc.project_id != project.project_id:
+        return _render_linked_elements(project, errors=['Contract link not found.'])
+
+    contract = pc.contract
+    other_links = [p for p in contract.projects if p.project_contract_id != pc_id]
+
+    try:
+        with management_transaction(db.session):
+            db.session.delete(pc)
+            if not other_links:
+                # Sole project using this contract — deactivate the contract too
+                contract.update(end_date=datetime.now())
+    except Exception as e:
+        return _render_linked_elements(project, errors=[f'Error removing contract: {e}'])
+
+    db.session.refresh(project)
+    return _render_linked_elements(project)
+
+
+@bp.route('/htmx/project/<projcode>/directories/add', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_add_project_directory(projcode):
+    """Associate a filesystem directory with a project."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import AddLinkedDirectoryForm
+    from sam.projects.projects import Project, ProjectDirectory
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found.</div>', 404
+
+    try:
+        form_data = AddLinkedDirectoryForm().load(request.form)
+    except ValidationError as e:
+        return _render_linked_elements(project, errors=AddLinkedDirectoryForm.flatten_errors(e.messages))
+
+    directory_name = form_data['directory_name']
+
+    # Prevent duplicate active entries
+    existing = [pd for pd in project.directories if pd.directory_name == directory_name and pd.is_active]
+    if existing:
+        return _render_linked_elements(project, errors=[f'Directory "{directory_name}" is already linked to this project.'])
+
+    try:
+        with management_transaction(db.session):
+            ProjectDirectory.create(
+                db.session,
+                project_id=project.project_id,
+                directory_name=directory_name,
+            )
+    except Exception as e:
+        return _render_linked_elements(project, errors=[f'Error adding directory: {e}'])
+
+    db.session.refresh(project)
+    return _render_linked_elements(project)
+
+
+@bp.route('/htmx/project/<projcode>/directories/<int:pd_id>/remove', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_remove_project_directory(projcode, pd_id):
+    """Deactivate a project directory association (sets end_date to now)."""
+    from sam.projects.projects import Project, ProjectDirectory
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found.</div>', 404
+
+    pd = db.session.get(ProjectDirectory, pd_id)
+    if not pd or pd.project_id != project.project_id:
+        return _render_linked_elements(project, errors=['Directory not found.'])
+
+    try:
+        with management_transaction(db.session):
+            pd.deactivate()
+    except Exception as e:
+        return _render_linked_elements(project, errors=[f'Error removing directory: {e}'])
+
+    db.session.refresh(project)
+    return _render_linked_elements(project)

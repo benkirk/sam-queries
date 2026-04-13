@@ -85,7 +85,12 @@ from .orgs import (
     EditNsfProgramForm,
     CreateNsfProgramForm,
 )
-from .projects import CreateProjectForm
+from .projects import (
+    CreateProjectForm,
+    AddLinkedOrganizationForm,
+    AddLinkedContractForm,
+    AddLinkedDirectoryForm,
+)
 from .user import AddMemberForm, EditAllocationForm
 
 __all__ = [
@@ -125,6 +130,9 @@ __all__ = [
     'CreateNsfProgramForm',
     # Projects
     'CreateProjectForm',
+    'AddLinkedOrganizationForm',
+    'AddLinkedContractForm',
+    'AddLinkedDirectoryForm',
     # User
     'AddMemberForm',
     'EditAllocationForm',

@@ -509,7 +509,7 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
 
 #----------------------------------------------------------------------------
-class ProjectOrganization(Base, TimestampMixin, DateRangeMixin):
+class ProjectOrganization(Base, TimestampMixin, DateRangeMixin, SessionMixin):
     """Maps projects to organizations."""
     __tablename__ = 'project_organization'
 
@@ -526,6 +526,33 @@ class ProjectOrganization(Base, TimestampMixin, DateRangeMixin):
 
     project = relationship('Project', back_populates='organizations')
     organization = relationship('Organization', back_populates='projects')
+
+    @classmethod
+    def create(cls, session, *, project_id: int, organization_id: int,
+               start_date=None) -> 'ProjectOrganization':
+        """Link a project to an organization.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        from datetime import datetime
+        obj = cls(
+            project_id=project_id,
+            organization_id=organization_id,
+            start_date=start_date or datetime.now(),
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
+    def deactivate(self) -> 'ProjectOrganization':
+        """End this project-organization link by setting end_date to now.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        from datetime import datetime
+        self.end_date = datetime.now()
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"ProjectOrganization {self.project_organization_id}: project={self.project_id} / org={self.organization_id}"

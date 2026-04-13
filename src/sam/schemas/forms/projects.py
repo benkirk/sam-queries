@@ -85,3 +85,26 @@ class EditProjectForm(HtmxFormSchema):
         if data.get('ext_alias') == '':
             data['ext_alias'] = None
         return data
+
+
+class AddLinkedOrganizationForm(HtmxFormSchema):
+    """Validate the organization FK picker when linking an org to a project."""
+    organization_id = f.Int(required=True)
+
+
+class AddLinkedContractForm(HtmxFormSchema):
+    """Validate the contract FK picker when linking a contract to a project."""
+    contract_id = f.Int(required=True)
+
+
+class AddLinkedDirectoryForm(HtmxFormSchema):
+    """Validate the directory name field when adding a project directory."""
+    directory_name = f.Str(required=True, validate=v.Length(min=1, max=255))
+
+    @post_load
+    def normalize(self, data, **kwargs):
+        data['directory_name'] = data['directory_name'].strip()
+        if not data['directory_name']:
+            from marshmallow import ValidationError as _VE
+            raise _VE({'directory_name': ['Directory name cannot be blank.']})
+        return data
