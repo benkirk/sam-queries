@@ -13,6 +13,7 @@ from cli.project.display import (
     display_notification_preview
 )
 from sam import Project, fmt
+from sam.enums import FacilityName
 from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
     get_projects_with_expired_allocations,
@@ -307,7 +308,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
             #recipients["benkirk@ucar.edu"] = (user.display_name, 'lead')
 
             subject = f'NSF NCAR Project {projcode} Expiration Notice'
-            if 'WNA' == facility_name:
+            if facility_name == FacilityName.WNA:
                 subject = f'NCAR/Wyoming Computing Project {projcode} Expiration Notice'
 
             # Create notification for each recipient

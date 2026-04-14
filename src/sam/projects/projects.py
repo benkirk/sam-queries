@@ -10,6 +10,7 @@ from ..resources.resources import *
 from ..summaries.comp_summaries import *
 from ..summaries.dav_summaries import *
 from ..accounting.calculator import calculate_charges, get_charge_models_for_resource
+from ..enums import ResourceTypeName
 
 import logging
 from typing import Any
@@ -1117,11 +1118,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         Returns:
             Tuple of (total_jobs, total_core_hours) or (None, None)
         """
-        if resource_type not in ('HPC', 'DAV'):
+        if not ResourceTypeName.is_compute(resource_type):
             return None, None
 
         # Use appropriate summary table
-        SummaryClass = CompChargeSummary if resource_type == 'HPC' else DavChargeSummary
+        SummaryClass = CompChargeSummary if resource_type == ResourceTypeName.HPC else DavChargeSummary
 
         stats = self.session.query(func.coalesce(func.sum(SummaryClass.num_jobs), 0).label('jobs'),
                                    func.coalesce(func.sum(SummaryClass.core_hours), 0).label('hours')
@@ -1141,10 +1142,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         """
         Get job count and core hours for computational resources (Subtree Aggregation).
         """
-        if resource_type not in ('HPC', 'DAV'):
+        if not ResourceTypeName.is_compute(resource_type):
             return None, None
 
-        SummaryClass = CompChargeSummary if resource_type == 'HPC' else DavChargeSummary
+        SummaryClass = CompChargeSummary if resource_type == ResourceTypeName.HPC else DavChargeSummary
 
         stats = self.session.query(
                 func.coalesce(func.sum(SummaryClass.num_jobs), 0).label('jobs'),

@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, readonly_display with context %}
 {#
   htmx: Edit Panel Session Form (loaded into #editPanelSessionFormContainer)
   Session name and panel are read-only.
@@ -11,60 +12,35 @@
     'Save Changes',
     is_edit=True
 ) %}
-        <!-- Name / Panel (read-only) -->
         <div class="row mb-3">
             <div class="col-md-7">
-                <label class="form-label">Session Name</label>
-                <div class="form-control-plaintext">
-                    <strong>{{ panel_session.name }}</strong>
-                </div>
+                {{ readonly_display('Session Name', panel_session.name, muted=False, strong=True) }}
             </div>
             <div class="col-md-5">
-                <label class="form-label">Panel</label>
-                <div class="form-control-plaintext text-muted">
-                    {{ panel_session.panel.panel_name if panel_session.panel else '—' }}
-                </div>
+                {{ readonly_display('Panel', panel_session.panel.panel_name if panel_session.panel else '—') }}
             </div>
         </div>
 
-        <!-- Start / End dates -->
-        <div class="row mb-3">
+        <div class="row">
             <div class="col-md-6">
-                <label for="editPanelSessionStart" class="form-label">
-                    Start Date <span class="text-danger">*</span>
-                </label>
-                <input type="date" class="form-control" id="editPanelSessionStart"
-                       name="start_date" required
-                       value="{{ form.get('start_date') if form else (panel_session.start_date.strftime('%Y-%m-%d') if panel_session.start_date else '') }}">
+                {{ date_field('start_date', 'Start Date',
+                              required=True,
+                              default=panel_session.start_date,
+                              id='editPanelSessionStart') }}
             </div>
             <div class="col-md-6">
-                <label for="editPanelSessionEnd" class="form-label">
-                    End Date <span class="text-muted">(optional)</span>
-                </label>
-                <input type="date" class="form-control" id="editPanelSessionEnd"
-                       name="end_date"
-                       value="{{ form.get('end_date') if form else (panel_session.end_date.strftime('%Y-%m-%d') if panel_session.end_date else '') }}">
+                {{ date_field('end_date', 'End Date',
+                              default=panel_session.end_date,
+                              id='editPanelSessionEnd') }}
             </div>
         </div>
 
-        <!-- Panel meeting date -->
-        <div class="mb-3">
-            <label for="editPanelSessionMeeting" class="form-label">
-                Panel Meeting Date <span class="text-muted">(optional)</span>
-            </label>
-            <input type="date" class="form-control" id="editPanelSessionMeeting"
-                   name="panel_meeting_date"
-                   value="{{ form.get('panel_meeting_date') if form else (panel_session.panel_meeting_date.strftime('%Y-%m-%d') if panel_session.panel_meeting_date else '') }}">
-        </div>
+        {{ date_field('panel_meeting_date', 'Panel Meeting Date',
+                      default=panel_session.panel_meeting_date,
+                      id='editPanelSessionMeeting') }}
 
-        <!-- Description -->
-        <div class="mb-3">
-            <label for="editPanelSessionDescription" class="form-label">
-                Description <span class="text-muted">(optional)</span>
-            </label>
-            <input type="text" class="form-control" id="editPanelSessionDescription"
-                   name="description"
-                   value="{{ form.get('description') if form else (panel_session.description or '') }}"
-                   placeholder="Brief description of the session">
-        </div>
+        {{ text_field('description', 'Description',
+                      default=panel_session.description or '',
+                      placeholder='Brief description of the session',
+                      id='editPanelSessionDescription') }}
 {% endcall %}

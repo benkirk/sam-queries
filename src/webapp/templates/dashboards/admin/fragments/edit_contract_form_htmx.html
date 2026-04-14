@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, readonly_display with context %}
 {#
   htmx: Edit Contract Form (loaded into #editContractFormContainer)
   Read-only: contract_number, source, PI.
@@ -11,68 +12,41 @@
     'Save Changes',
     is_edit=True
 ) %}
-        <!-- Number / Source (read-only) -->
         <div class="row mb-3">
             <div class="col-md-7">
-                <label class="form-label">Contract Number</label>
-                <div class="form-control-plaintext">
-                    <strong>{{ contract.contract_number }}</strong>
-                </div>
+                {{ readonly_display('Contract Number', contract.contract_number, muted=False, strong=True) }}
             </div>
             <div class="col-md-5">
-                <label class="form-label">Source</label>
-                <div class="form-control-plaintext text-muted">
-                    {{ contract.contract_source.contract_source if contract.contract_source else '—' }}
-                </div>
+                {{ readonly_display('Source', contract.contract_source.contract_source if contract.contract_source else '—') }}
             </div>
         </div>
 
-        <!-- PI (read-only) -->
-        <div class="mb-3">
-            <label class="form-label">Principal Investigator</label>
-            <div class="form-control-plaintext text-muted">
-                {{ contract.principal_investigator.display_name if contract.principal_investigator else '—' }}
-            </div>
-        </div>
+        {{ readonly_display('Principal Investigator',
+                            contract.principal_investigator.display_name if contract.principal_investigator else '—') }}
 
-        <!-- Title -->
-        <div class="mb-3">
-            <label for="editContractTitle" class="form-label">
-                Title <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="editContractTitle"
-                   name="title" required maxlength="255"
-                   value="{{ form.get('title') if form else contract.title }}">
-        </div>
+        {{ text_field('title', 'Title',
+                      required=True, maxlength=255,
+                      default=contract.title,
+                      id='editContractTitle') }}
 
-        <!-- URL -->
-        <div class="mb-3">
-            <label for="editContractUrl" class="form-label">
-                URL <span class="text-muted">(optional)</span>
-            </label>
-            <input type="url" class="form-control" id="editContractUrl"
-                   name="url" maxlength="1000"
-                   value="{{ form.get('url') if form else (contract.url or '') }}"
-                   placeholder="https://...">
-        </div>
+        {{ text_field('url', 'URL',
+                      type='url',
+                      maxlength=1000,
+                      default=contract.url or '',
+                      placeholder='https://...',
+                      id='editContractUrl') }}
 
-        <!-- Start / End dates -->
-        <div class="row mb-3">
+        <div class="row">
             <div class="col-md-6">
-                <label for="editContractStart" class="form-label">
-                    Start Date <span class="text-danger">*</span>
-                </label>
-                <input type="date" class="form-control" id="editContractStart"
-                       name="start_date" required
-                       value="{{ form.get('start_date') if form else (contract.start_date.strftime('%Y-%m-%d') if contract.start_date else '') }}">
+                {{ date_field('start_date', 'Start Date',
+                              required=True,
+                              default=contract.start_date,
+                              id='editContractStart') }}
             </div>
             <div class="col-md-6">
-                <label for="editContractEnd" class="form-label">
-                    End Date <span class="text-muted">(optional)</span>
-                </label>
-                <input type="date" class="form-control" id="editContractEnd"
-                       name="end_date"
-                       value="{{ form.get('end_date') if form else (contract.end_date.strftime('%Y-%m-%d') if contract.end_date else '') }}">
+                {{ date_field('end_date', 'End Date',
+                              default=contract.end_date,
+                              id='editContractEnd') }}
             </div>
         </div>
 {% endcall %}

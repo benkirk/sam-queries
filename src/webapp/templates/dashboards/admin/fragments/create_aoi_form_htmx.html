@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field with context %}
 {# htmx: Create Area of Interest Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_aoi_create'),
@@ -6,28 +7,16 @@
     'Create Area of Interest',
     submit_icon='plus'
 ) %}
-        <div class="mb-3">
-            <label for="createAoiName" class="form-label">
-                Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createAoiName"
-                   name="area_of_interest" required maxlength="255"
-                   value="{{ form.get('area_of_interest') if form else '' }}"
-                   placeholder="e.g. Atmospheric Chemistry">
-        </div>
+        {{ text_field('area_of_interest', 'Name',
+                      required=True, maxlength=255,
+                      placeholder='e.g. Atmospheric Chemistry',
+                      id='createAoiName') }}
 
-        <div class="mb-3">
-            <label for="createAoiGroup" class="form-label">
-                Group <span class="text-danger">*</span>
-            </label>
-            <select class="form-select" id="createAoiGroup" name="area_of_interest_group_id" required>
-                <option value="">— Select a group —</option>
-                {% for group in aoi_groups %}
-                <option value="{{ group.area_of_interest_group_id }}"
-                    {% if form and form.get('area_of_interest_group_id') == group.area_of_interest_group_id|string %}selected{% endif %}>
-                    {{ group.name }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
+        {{ select_field('area_of_interest_group_id', 'Group',
+                        items=aoi_groups,
+                        value_attr='area_of_interest_group_id',
+                        label_attr='name',
+                        required=True,
+                        placeholder='— Select a group —',
+                        id='createAoiGroup') }}
 {% endcall %}

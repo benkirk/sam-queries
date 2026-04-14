@@ -3,6 +3,8 @@
 {% for user in users %}
 <div class="list-group-item list-group-item-action p-2 fk-search-result"
      style="cursor:pointer;"
+     data-fk-id="{{ user.user_id }}"
+     data-fk-label="{{ user.display_name }} ({{ user.username }})"
      data-user-id="{{ user.user_id }}"
      data-user-display="{{ user.display_name }} ({{ user.username }})">
     <div class="d-flex justify-content-between align-items-center">

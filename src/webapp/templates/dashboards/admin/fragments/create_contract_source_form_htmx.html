@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field with context %}
 {# htmx: Create Contract Source Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_contract_source_create'),
@@ -6,13 +7,8 @@
     'Create Contract Source',
     submit_icon='plus'
 ) %}
-        <div class="mb-3">
-            <label for="createContractSourceName" class="form-label">
-                Source Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createContractSourceName"
-                   name="contract_source" required maxlength="50"
-                   value="{{ form.get('contract_source') if form else '' }}"
-                   placeholder="e.g. NSF">
-        </div>
+        {{ text_field('contract_source', 'Source Name',
+                      required=True, maxlength=50,
+                      placeholder='e.g. NSF',
+                      id='createContractSourceName') }}
 {% endcall %}

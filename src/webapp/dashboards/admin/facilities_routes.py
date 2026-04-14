@@ -5,11 +5,15 @@ Covers: Facilities, Panels, Panel Sessions, Allocation Types.
 """
 
 from flask import render_template, request
-from webapp.utils.htmx import htmx_success, htmx_success_message
 from flask_login import login_required
 from datetime import datetime
-from marshmallow import ValidationError
 
+from webapp.utils.htmx import (
+    handle_htmx_form_post,
+    handle_htmx_soft_delete,
+    htmx_not_found,
+    htmx_success_message,
+)
 from webapp.extensions import db
 from webapp.utils.rbac import require_permission, Permission
 from sam.manage import management_transaction
@@ -19,6 +23,9 @@ from sam.schemas.forms.facilities import (
 )
 
 from .blueprint import bp
+
+
+_FACILITY_TRIGGERS = {'closeActiveModal': {}, 'reloadFacilitiesCard': {}}
 
 
 # ── Facility Card ──────────────────────────────────────────────────────────
@@ -79,34 +86,20 @@ def htmx_facility_edit(facility_id):
 
     facility = db.session.get(Facility, facility_id)
     if not facility:
-        return '<div class="alert alert-danger">Facility not found</div>', 404
+        return htmx_not_found('Facility')
 
-    try:
-        data = EditFacilityForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_facility_form_htmx.html',
-            facility=facility,
-            errors=EditFacilityForm.flatten_errors(e.messages),
-            form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            facility.update(
-                description=data['description'],
-                fair_share_percentage=data['fair_share_percentage'],
-                active=data['active'],
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_facility_form_htmx.html',
-            facility=facility,
-            errors=[f'Error updating facility: {e}'],
-            form=request.form,
-        )
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=EditFacilityForm,
+        template='dashboards/admin/fragments/edit_facility_form_htmx.html',
+        success_triggers=_FACILITY_TRIGGERS,
+        error_prefix='Error updating facility',
+        extra_context={'facility': facility},
+        do_action=lambda data: facility.update(
+            description=data['description'],
+            fair_share_percentage=data['fair_share_percentage'],
+            active=data['active'],
+        ),
+    )
 
 
 # ── Facility Create ────────────────────────────────────────────────────────
@@ -127,30 +120,19 @@ def htmx_facility_create():
     """Create a new facility."""
     from sam.resources.facilities import Facility
 
-    try:
-        data = CreateFacilityForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/admin/fragments/create_facility_form_htmx.html',
-            errors=CreateFacilityForm.flatten_errors(e.messages), form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            Facility.create(
-                db.session,
-                facility_name=data['facility_name'],
-                description=data['description'],
-                code=data['code'],
-                fair_share_percentage=data['fair_share_percentage'],
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/create_facility_form_htmx.html',
-            errors=[f'Error creating facility: {e}'], form=request.form,
-        )
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=CreateFacilityForm,
+        template='dashboards/admin/fragments/create_facility_form_htmx.html',
+        success_triggers=_FACILITY_TRIGGERS,
+        error_prefix='Error creating facility',
+        do_action=lambda data: Facility.create(
+            db.session,
+            facility_name=data['facility_name'],
+            description=data['description'],
+            code=data['code'],
+            fair_share_percentage=data['fair_share_percentage'],
+        ),
+    )
 
 
 # ── Facility Delete ────────────────────────────────────────────────────────
@@ -165,15 +147,8 @@ def htmx_facility_delete(facility_id):
 
     facility = db.session.get(Facility, facility_id)
     if not facility:
-        return '<div class="alert alert-danger">Facility not found</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            facility.update(active=False)
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return ''
+        return htmx_not_found('Facility')
+    return handle_htmx_soft_delete(facility, name='Facility')
 
 
 # ── Panel Edit ─────────────────────────────────────────────────────────────
@@ -205,8 +180,11 @@ def htmx_panel_edit(panel_id):
 
     panel = db.session.get(Panel, panel_id)
     if not panel:
-        return '<div class="alert alert-danger">Panel not found</div>', 404
+        return htmx_not_found('Panel')
 
+    # Note: panel edit doesn't validate via a schema (only description + active),
+    # so it can't use handle_htmx_form_post directly. The body is small enough
+    # that the inline pattern stays clear.
     description = request.form.get('description', '').strip()
     active = bool(request.form.get('active'))
 
@@ -224,7 +202,7 @@ def htmx_panel_edit(panel_id):
             form=request.form,
         )
 
-    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
+    return htmx_success_message(_FACILITY_TRIGGERS, 'Saved successfully.')
 
 
 # ── Panel Create ───────────────────────────────────────────────────────────
@@ -245,39 +223,36 @@ def htmx_panel_create_form():
     )
 
 
+def _active_facilities():
+    from sam.resources.facilities import Facility
+    return (
+        db.session.query(Facility)
+        .filter(Facility.is_active)
+        .order_by(Facility.facility_name)
+        .all()
+    )
+
+
 @bp.route('/htmx/panel-create', methods=['POST'])
 @login_required
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_panel_create():
     """Create a new panel."""
-    from sam.resources.facilities import Facility, Panel
+    from sam.resources.facilities import Panel
 
-    def _reload_form(extra_errors=None):
-        facilities = db.session.query(Facility).filter(Facility.is_active).order_by(Facility.facility_name).all()
-        return render_template(
-            'dashboards/admin/fragments/create_panel_form_htmx.html',
-            facilities=facilities,
-            errors=extra_errors or [],
-            form=request.form,
-        )
-
-    try:
-        data = CreatePanelForm().load(request.form)
-    except ValidationError as e:
-        return _reload_form(CreatePanelForm.flatten_errors(e.messages))
-
-    try:
-        with management_transaction(db.session):
-            Panel.create(
-                db.session,
-                panel_name=data['panel_name'],
-                facility_id=data['facility_id'],
-                description=data['description'],
-            )
-    except Exception as e:
-        return _reload_form([f'Error creating panel: {e}'])
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=CreatePanelForm,
+        template='dashboards/admin/fragments/create_panel_form_htmx.html',
+        success_triggers=_FACILITY_TRIGGERS,
+        error_prefix='Error creating panel',
+        context_fn=lambda: {'facilities': _active_facilities()},
+        do_action=lambda data: Panel.create(
+            db.session,
+            panel_name=data['panel_name'],
+            facility_id=data['facility_id'],
+            description=data['description'],
+        ),
+    )
 
 
 # ── Panel Delete ───────────────────────────────────────────────────────────
@@ -292,15 +267,8 @@ def htmx_panel_delete(panel_id):
 
     panel = db.session.get(Panel, panel_id)
     if not panel:
-        return '<div class="alert alert-danger">Panel not found</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            panel.update(active=False)
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return ''
+        return htmx_not_found('Panel')
+    return handle_htmx_soft_delete(panel, name='Panel')
 
 
 # ── Panel Session Edit ─────────────────────────────────────────────────────
@@ -332,8 +300,11 @@ def htmx_panel_session_edit(panel_session_id):
 
     panel_session = db.session.get(PanelSession, panel_session_id)
     if not panel_session:
-        return '<div class="alert alert-danger">Panel session not found</div>', 404
+        return htmx_not_found('Panel session')
 
+    # Cross-field check (end_date vs existing start_date) needs the loaded
+    # object, so this route uses the schema directly rather than the helper.
+    from marshmallow import ValidationError
     try:
         data = EditPanelSessionForm().load(request.form)
     except ValidationError as e:
@@ -344,7 +315,6 @@ def htmx_panel_session_edit(panel_session_id):
             form=request.form,
         )
 
-    # Additional cross-field check: end_date vs existing start_date when form start not set
     if data.get('end_date') and data.get('start_date') is None and panel_session.start_date:
         if data['end_date'] <= panel_session.start_date:
             return render_template(
@@ -370,7 +340,7 @@ def htmx_panel_session_edit(panel_session_id):
             form=request.form,
         )
 
-    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
+    return htmx_success_message(_FACILITY_TRIGGERS, 'Saved successfully.')
 
 
 # ── Allocation Type Edit ───────────────────────────────────────────────────
@@ -404,34 +374,20 @@ def htmx_allocation_type_edit(allocation_type_id):
 
     allocation_type = db.session.get(AllocationType, allocation_type_id)
     if not allocation_type:
-        return '<div class="alert alert-danger">Allocation type not found</div>', 404
+        return htmx_not_found('Allocation type')
 
-    try:
-        data = EditAllocationTypeForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_allocation_type_form_htmx.html',
-            allocation_type=allocation_type,
-            errors=EditAllocationTypeForm.flatten_errors(e.messages),
-            form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            allocation_type.update(
-                default_allocation_amount=data['default_allocation_amount'],
-                fair_share_percentage=data['fair_share_percentage'],
-                active=data['active'],
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_allocation_type_form_htmx.html',
-            allocation_type=allocation_type,
-            errors=[f'Error updating allocation type: {e}'],
-            form=request.form,
-        )
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=EditAllocationTypeForm,
+        template='dashboards/admin/fragments/edit_allocation_type_form_htmx.html',
+        success_triggers=_FACILITY_TRIGGERS,
+        error_prefix='Error updating allocation type',
+        extra_context={'allocation_type': allocation_type},
+        do_action=lambda data: allocation_type.update(
+            default_allocation_amount=data['default_allocation_amount'],
+            fair_share_percentage=data['fair_share_percentage'],
+            active=data['active'],
+        ),
+    )
 
 
 # ── Allocation Type Create ─────────────────────────────────────────────────
@@ -442,20 +398,34 @@ def htmx_allocation_type_edit(allocation_type_id):
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_allocation_type_create_form():
     """Return the allocation type create form fragment (loaded into modal)."""
-    from sam.resources.facilities import Facility
-
-    facilities = (
-        db.session.query(Facility)
-        .filter(Facility.is_active)
-        .order_by(Facility.facility_name)
-        .all()
-    )
-
     return render_template(
         'dashboards/admin/fragments/create_allocation_type_form_htmx.html',
-        facilities=facilities,
+        facilities=_active_facilities(),
         panels_for_facility=[],
     )
+
+
+def _alloc_type_create_context():
+    """Re-render context for the allocation type create form: facilities +
+    panels-for-the-currently-selected-facility (from request.form)."""
+    from sam.resources.facilities import Panel
+
+    panels_for_facility = []
+    facility_id_str = request.form.get('facility_id', '').strip()
+    if facility_id_str:
+        try:
+            panels_for_facility = (
+                db.session.query(Panel)
+                .filter(Panel.facility_id == int(facility_id_str), Panel.is_active)
+                .order_by(Panel.panel_name)
+                .all()
+            )
+        except (ValueError, TypeError):
+            pass
+    return {
+        'facilities': _active_facilities(),
+        'panels_for_facility': panels_for_facility,
+    }
 
 
 @bp.route('/htmx/allocation-type-create', methods=['POST'])
@@ -464,54 +434,21 @@ def htmx_allocation_type_create_form():
 def htmx_allocation_type_create():
     """Create a new allocation type."""
     from sam.accounting.allocations import AllocationType
-    from sam.resources.facilities import Facility, Panel
 
-    facility_id_str = request.form.get('facility_id', '').strip()
-
-    def _reload_form(extra_errors=None):
-        facilities = (
-            db.session.query(Facility)
-            .filter(Facility.is_active)
-            .order_by(Facility.facility_name)
-            .all()
-        )
-        panels_for_facility = []
-        if facility_id_str:
-            try:
-                panels_for_facility = (
-                    db.session.query(Panel)
-                    .filter(Panel.facility_id == int(facility_id_str), Panel.is_active)
-                    .order_by(Panel.panel_name)
-                    .all()
-                )
-            except (ValueError, TypeError):
-                pass
-        return render_template(
-            'dashboards/admin/fragments/create_allocation_type_form_htmx.html',
-            facilities=facilities,
-            panels_for_facility=panels_for_facility,
-            errors=extra_errors or [],
-            form=request.form,
-        )
-
-    try:
-        data = CreateAllocationTypeForm().load(request.form)
-    except ValidationError as e:
-        return _reload_form(CreateAllocationTypeForm.flatten_errors(e.messages))
-
-    try:
-        with management_transaction(db.session):
-            AllocationType.create(
-                db.session,
-                allocation_type=data['allocation_type'],
-                panel_id=data['panel_id'],
-                default_allocation_amount=data['default_allocation_amount'],
-                fair_share_percentage=data['fair_share_percentage'],
-            )
-    except Exception as e:
-        return _reload_form([f'Error creating allocation type: {e}'])
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadFacilitiesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=CreateAllocationTypeForm,
+        template='dashboards/admin/fragments/create_allocation_type_form_htmx.html',
+        success_triggers=_FACILITY_TRIGGERS,
+        error_prefix='Error creating allocation type',
+        context_fn=_alloc_type_create_context,
+        do_action=lambda data: AllocationType.create(
+            db.session,
+            allocation_type=data['allocation_type'],
+            panel_id=data['panel_id'],
+            default_allocation_amount=data['default_allocation_amount'],
+            fair_share_percentage=data['fair_share_percentage'],
+        ),
+    )
 
 
 # ── Allocation Type Delete ─────────────────────────────────────────────────
@@ -526,12 +463,5 @@ def htmx_allocation_type_delete(allocation_type_id):
 
     allocation_type = db.session.get(AllocationType, allocation_type_id)
     if not allocation_type:
-        return '<div class="alert alert-danger">Allocation type not found</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            allocation_type.update(active=False)
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return ''
+        return htmx_not_found('Allocation type')
+    return handle_htmx_soft_delete(allocation_type, name='Allocation type')

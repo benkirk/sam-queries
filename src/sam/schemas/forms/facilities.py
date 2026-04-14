@@ -6,9 +6,8 @@ Covers: Facilities, Panels, Panel Sessions, Allocation Types.
 
 import marshmallow.fields as f
 import marshmallow.validate as v
-from marshmallow import ValidationError, post_load
+from marshmallow import post_load
 
-from webapp.api.helpers import parse_input_end_date
 from . import HtmxFormSchema
 
 
@@ -62,17 +61,8 @@ class EditPanelSessionForm(HtmxFormSchema):
     def coerce_and_validate_dates(self, data, **kwargs):
         if data.get('description') == '':
             data['description'] = None
-        end_str = data.get('end_date')
-        if end_str:
-            data['end_date'] = parse_input_end_date(end_str)
-        else:
-            data['end_date'] = None
-
-        from datetime import datetime
-        if data.get('end_date') and data.get('start_date'):
-            start = datetime.combine(data['start_date'], datetime.min.time())
-            if data['end_date'] <= start:
-                raise ValidationError({'end_date': ['End date must be after start date.']})
+        data['end_date'] = self.normalize_end_date(data.get('end_date'))
+        self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data
 
 

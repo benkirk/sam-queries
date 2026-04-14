@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field with context %}
 {# htmx: Create NSF Program Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_nsf_program_create'),
@@ -6,13 +7,8 @@
     'Create NSF Program',
     submit_icon='plus'
 ) %}
-        <div class="mb-3">
-            <label for="createNsfProgramName" class="form-label">
-                Program Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createNsfProgramName"
-                   name="nsf_program_name" required maxlength="255"
-                   value="{{ form.get('nsf_program_name') if form else '' }}"
-                   placeholder="e.g. Atmospheric and Geospace Sciences">
-        </div>
+        {{ text_field('nsf_program_name', 'Program Name',
+                      required=True, maxlength=255,
+                      placeholder='e.g. Atmospheric and Geospace Sciences',
+                      id='createNsfProgramName') }}
 {% endcall %}

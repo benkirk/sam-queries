@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from sam.enums import ChargeType, ResourceTypeName
 from sam.summaries.comp_summaries import CompChargeSummary
 from sam.summaries.dav_summaries import DavChargeSummary
 from sam.summaries.disk_summaries import DiskChargeSummary
@@ -10,19 +11,19 @@ from sam.summaries.archive_summaries import ArchiveChargeSummary
 
 # Map generic charge keys to their SQLAlchemy models
 CHARGE_MODELS_BY_KEY = {
-    'comp': CompChargeSummary,
-    'dav': DavChargeSummary,
-    'disk': DiskChargeSummary,
-    'archive': ArchiveChargeSummary,
+    ChargeType.COMP: CompChargeSummary,
+    ChargeType.DAV: DavChargeSummary,
+    ChargeType.DISK: DiskChargeSummary,
+    ChargeType.ARCHIVE: ArchiveChargeSummary,
 }
 
 # Map resource types to the keys of charges they accumulate
 # Note: Matching src/sam/projects/projects.py behavior where HPC and DAV check both comp and dav
 RESOURCE_TYPE_TO_CHARGE_KEYS = {
-    'HPC': ['comp', 'dav'],
-    'DAV': ['comp', 'dav'],
-    'DISK': ['disk'],
-    'ARCHIVE': ['archive'],
+    ResourceTypeName.HPC: [ChargeType.COMP, ChargeType.DAV],
+    ResourceTypeName.DAV: [ChargeType.COMP, ChargeType.DAV],
+    ResourceTypeName.DISK: [ChargeType.DISK],
+    ResourceTypeName.ARCHIVE: [ChargeType.ARCHIVE],
 }
 
 def get_charge_models_for_resource(resource_type: Optional[str]) -> Dict[str, Any]:

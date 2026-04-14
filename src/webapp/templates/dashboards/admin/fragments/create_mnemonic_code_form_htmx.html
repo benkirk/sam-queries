@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field with context %}
 {# htmx: Create Mnemonic Code Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_mnemonic_code_create'),
@@ -6,7 +7,8 @@
     'Create Mnemonic Code',
     submit_icon='plus'
 ) %}
-        {# ── Code field ── #}
+        {# Code field — special: monospace, uppercase, pattern, narrow width.
+           Kept inline to preserve all attrs. #}
         <div class="mb-3">
             <label for="createMcCode" class="form-label">
                 Code <span class="text-danger">*</span>
@@ -21,7 +23,7 @@
                    style="max-width: 8rem;">
         </div>
 
-        {# ── Quick-fill from Institution ── #}
+        {# Quick-fill from Institution — has data-description and onchange #}
         <div class="mb-3">
             <label for="createMcInstitution" class="form-label">
                 Fill description from Institution <span class="text-muted">(optional)</span>
@@ -41,7 +43,7 @@
             </div>
         </div>
 
-        {# ── Quick-fill from NCAR Organization ── #}
+        {# Quick-fill from NCAR Organization #}
         <div class="mb-3">
             <label for="createMcOrganization" class="form-label">
                 Fill description from NCAR Organization <span class="text-muted">(optional)</span>
@@ -58,20 +60,12 @@
             </select>
         </div>
 
-        {# ── Description field (auto-populated, editable) ── #}
-        <div class="mb-3">
-            <label for="createMcDescription" class="form-label">
-                Description <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createMcDescription"
-                   name="description" required maxlength="200"
-                   value="{{ form.get('description') if form else prefill_description }}"
-                   placeholder="e.g. University of Colorado, Boulder">
-            <div class="form-text">
-                Must exactly match the institution or organization name used for project routing.
-                Auto-populated when you select from the dropdowns above.
-            </div>
-        </div>
+        {{ text_field('description', 'Description',
+                      required=True, maxlength=200,
+                      default=prefill_description,
+                      placeholder='e.g. University of Colorado, Boulder',
+                      help='Must exactly match the institution or organization name used for project routing. Auto-populated when you select from the dropdowns above.',
+                      id='createMcDescription') }}
 {% endcall %}
 
 <script>

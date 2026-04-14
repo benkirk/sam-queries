@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field with context %}
 {# htmx: Create Institution Type Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_institution_type_create'),
@@ -6,13 +7,8 @@
     'Create Institution Type',
     submit_icon='plus'
 ) %}
-        <div class="mb-3">
-            <label for="createInstTypeName" class="form-label">
-                Type Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createInstTypeName"
-                   name="type" required maxlength="45"
-                   value="{{ form.get('type') if form else '' }}"
-                   placeholder="e.g. University">
-        </div>
+        {{ text_field('type', 'Type Name',
+                      required=True, maxlength=45,
+                      placeholder='e.g. University',
+                      id='createInstTypeName') }}
 {% endcall %}

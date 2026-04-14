@@ -18,7 +18,9 @@ Usage in a route handler:
     # data is a clean dict with coerced Python types
 """
 
-from marshmallow import Schema, EXCLUDE
+from datetime import datetime
+import marshmallow.fields as f
+from marshmallow import Schema, EXCLUDE, ValidationError
 
 
 class HtmxFormSchema(Schema):
@@ -46,6 +48,41 @@ class HtmxFormSchema(Schema):
             for msg in (msgs if isinstance(msgs, list) else [msgs]):
                 out.append(f'{label}: {msg}')
         return out
+
+    @staticmethod
+    def normalize_end_date(end_str):
+        """Parse a YYYY-MM-DD form input into an end-of-day datetime, or None.
+
+        Accepts an empty string or None and returns None. Otherwise delegates to
+        parse_input_end_date which yields a 23:59:59 timestamp so date-range
+        comparisons against datetime fields are inclusive of the chosen day.
+        """
+        if not end_str:
+            return None
+        from webapp.api.helpers import parse_input_end_date
+        return parse_input_end_date(end_str)
+
+    @staticmethod
+    def assert_date_range(start_date, end_date, *,
+                          field='end_date',
+                          message='End date must be after start date.'):
+        """Raise ValidationError if end_date <= start_date.
+
+        `start_date` may be a date or datetime; it is normalized to a
+        midnight datetime for the comparison. `end_date` should already be
+        a datetime (use normalize_end_date first). No-op if either is None.
+        """
+        if not (start_date and end_date):
+            return
+        if hasattr(start_date, 'time') and not hasattr(start_date, 'hour'):
+            # plain date — combine to datetime at midnight
+            start = datetime.combine(start_date, datetime.min.time())
+        elif hasattr(start_date, 'hour'):
+            start = start_date
+        else:
+            start = datetime.combine(start_date, datetime.min.time())
+        if end_date <= start:
+            raise ValidationError({field: [message]})
 
 
 # Re-export domain schemas for convenience

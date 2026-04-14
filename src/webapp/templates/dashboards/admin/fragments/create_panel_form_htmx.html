@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field with context %}
 {# htmx: Create Panel Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_panel_create'),
@@ -6,16 +7,12 @@
     'Create Panel',
     submit_icon='plus'
 ) %}
-        <div class="mb-3">
-            <label for="createPanelName" class="form-label">
-                Panel Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createPanelName"
-                   name="panel_name" required maxlength="30"
-                   value="{{ form.get('panel_name') if form else '' }}"
-                   placeholder="e.g. UNIV-LARGE">
-        </div>
+        {{ text_field('panel_name', 'Panel Name',
+                      required=True, maxlength=30,
+                      placeholder='e.g. UNIV-LARGE',
+                      id='createPanelName') }}
 
+        {# Facility select kept inline — option label has conditional code suffix #}
         <div class="mb-3">
             <label for="createPanelFacility" class="form-label">
                 Facility <span class="text-danger">*</span>
@@ -31,12 +28,7 @@
             </select>
         </div>
 
-        <div class="mb-3">
-            <label for="createPanelDescription" class="form-label">
-                Description <span class="text-muted">(optional)</span>
-            </label>
-            <input type="text" class="form-control" id="createPanelDescription"
-                   name="description" maxlength="100"
-                   value="{{ form.get('description') if form else '' }}">
-        </div>
+        {{ text_field('description', 'Description',
+                      maxlength=100,
+                      id='createPanelDescription') }}
 {% endcall %}

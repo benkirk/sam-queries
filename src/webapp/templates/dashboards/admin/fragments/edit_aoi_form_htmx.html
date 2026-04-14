@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field, checkbox_field, readonly_display with context %}
 {#
   htmx: Edit Area of Interest Form (loaded into #editAoiFormContainer)
   Editable: area_of_interest (required), group (dropdown, required), active.
@@ -10,44 +11,22 @@
     'Save Changes',
     is_edit=True
 ) %}
-        <!-- ID (read-only) -->
-        <div class="mb-3">
-            <label class="form-label">AOI ID</label>
-            <div class="form-control-plaintext text-muted">{{ aoi.area_of_interest_id }}</div>
-        </div>
+        {{ readonly_display('AOI ID', aoi.area_of_interest_id) }}
 
-        <!-- Name -->
-        <div class="mb-3">
-            <label for="editAoiName" class="form-label">
-                Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="editAoiName"
-                   name="area_of_interest" required maxlength="255"
-                   value="{{ form.get('area_of_interest') if form else aoi.area_of_interest }}">
-        </div>
+        {{ text_field('area_of_interest', 'Name',
+                      required=True, maxlength=255,
+                      default=aoi.area_of_interest,
+                      id='editAoiName') }}
 
-        <!-- Group (dropdown) -->
-        <div class="mb-3">
-            <label for="editAoiGroup" class="form-label">
-                Group <span class="text-danger">*</span>
-            </label>
-            <select class="form-select" id="editAoiGroup" name="area_of_interest_group_id" required>
-                {% set selected_group_id = (form.get('area_of_interest_group_id')|int if form else aoi.area_of_interest_group_id) %}
-                {% for g in aoi_groups %}
-                <option value="{{ g.area_of_interest_group_id }}"
-                        {% if g.area_of_interest_group_id == selected_group_id %}selected{% endif %}>
-                    {{ g.name }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
+        {{ select_field('area_of_interest_group_id', 'Group',
+                        items=aoi_groups,
+                        value_attr='area_of_interest_group_id',
+                        label_attr='name',
+                        required=True,
+                        default=aoi.area_of_interest_group_id,
+                        id='editAoiGroup') }}
 
-        <!-- Active -->
-        <div class="mb-3 form-check">
-            <input type="checkbox" class="form-check-input" id="editAoiActive"
-                   name="active" value="1"
-                   {% if form %}{% if form.get('active') %}checked{% endif %}
-                   {% elif aoi.active %}checked{% endif %}>
-            <label class="form-check-label" for="editAoiActive">Active</label>
-        </div>
+        {{ checkbox_field('active', 'Active',
+                          default=aoi.active,
+                          id='editAoiActive') }}
 {% endcall %}

@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, number_field, date_field, select_field with context %}
 {# htmx: Create Machine Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_machine_create'),
@@ -8,65 +9,36 @@
 ) %}
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createMachineName" class="form-label">
-                        Name <span class="text-danger">*</span>
-                    </label>
-                    <input type="text" class="form-control" id="createMachineName"
-                           name="name" required maxlength="50"
-                           value="{{ form.get('name') if form else '' }}"
-                           placeholder="e.g. derecho01">
-                </div>
+                {{ text_field('name', 'Name',
+                              required=True, maxlength=50,
+                              placeholder='e.g. derecho01',
+                              id='createMachineName') }}
             </div>
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createMachineResource" class="form-label">
-                        Resource <span class="text-danger">*</span>
-                    </label>
-                    <select class="form-select" id="createMachineResource"
-                            name="resource_id" required>
-                        <option value="">— Select resource —</option>
-                        {% for resource in resources %}
-                        <option value="{{ resource.resource_id }}"
-                            {% if form and form.get('resource_id') == resource.resource_id|string %}selected{% endif %}>
-                            {{ resource.resource_name }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
+                {{ select_field('resource_id', 'Resource',
+                                items=resources,
+                                value_attr='resource_id',
+                                label_attr='resource_name',
+                                required=True,
+                                placeholder='— Select resource —',
+                                id='createMachineResource') }}
             </div>
         </div>
 
-        <div class="mb-3">
-            <label for="createMachineDescription" class="form-label">
-                Description <span class="text-muted">(optional)</span>
-            </label>
-            <input type="text" class="form-control" id="createMachineDescription"
-                   name="description" maxlength="255"
-                   value="{{ form.get('description') if form else '' }}">
-        </div>
+        {{ text_field('description', 'Description',
+                      maxlength=255,
+                      id='createMachineDescription') }}
 
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createMachineCPUs" class="form-label">
-                        CPUs per Node <span class="text-muted">(optional)</span>
-                    </label>
-                    <input type="number" class="form-control" id="createMachineCPUs"
-                           name="cpus_per_node" min="1"
-                           value="{{ form.get('cpus_per_node') if form else '' }}"
-                           placeholder="e.g. 128">
-                </div>
+                {{ number_field('cpus_per_node', 'CPUs per Node',
+                                min=1,
+                                placeholder='e.g. 128',
+                                id='createMachineCPUs') }}
             </div>
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createMachineCommission" class="form-label">
-                        Commission Date <span class="text-muted">(optional)</span>
-                    </label>
-                    <input type="date" class="form-control" id="createMachineCommission"
-                           name="commission_date"
-                           value="{{ form.get('commission_date') if form else '' }}">
-                </div>
+                {{ date_field('commission_date', 'Commission Date',
+                              id='createMachineCommission') }}
             </div>
         </div>
 {% endcall %}

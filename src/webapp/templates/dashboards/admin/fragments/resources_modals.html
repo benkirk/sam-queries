@@ -1,165 +1,33 @@
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {#
   Admin: Resource Management Modals
   Edit modals: loaded lazily when an edit button is clicked.
   Create modals: loaded lazily when a create button is clicked.
 #}
 
-<!-- ══════════════════════════════════════════════════════════ CREATE MODALS -->
+{# ════════════════════════════════════════════════════════ CREATE MODALS #}
 
 {% if has_permission(Permission.CREATE_RESOURCES) %}
-<!-- Create Resource Type Modal -->
-<div class="modal fade" id="createResourceTypeModal" tabindex="-1"
-     aria-labelledby="createResourceTypeModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createResourceTypeModalLabel">
-                    <i class="fas fa-plus"></i> New Resource Type
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createResourceTypeFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createResourceTypeModal', 'New Resource Type',
+                  icon='plus', container_id='createResourceTypeFormContainer') }}
 
-<!-- Create Resource Modal -->
-<div class="modal fade" id="createResourceModal" tabindex="-1"
-     aria-labelledby="createResourceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createResourceModalLabel">
-                    <i class="fas fa-plus"></i> New Resource
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createResourceFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createResourceModal', 'New Resource',
+                  icon='plus', container_id='createResourceFormContainer', size='lg') }}
 
-<!-- Create Machine Modal -->
-<div class="modal fade" id="createMachineModal" tabindex="-1"
-     aria-labelledby="createMachineModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createMachineModalLabel">
-                    <i class="fas fa-plus"></i> New Machine
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createMachineFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createMachineModal', 'New Machine',
+                  icon='plus', container_id='createMachineFormContainer') }}
 {% endif %}
 
-<!-- ══════════════════════════════════════════════════════════ EDIT MODALS -->
+{# ══════════════════════════════════════════════════════════ EDIT MODALS #}
 
-<!-- Edit Resource Modal -->
-<div class="modal fade" id="editResourceModal" tabindex="-1"
-     aria-labelledby="editResourceModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editResourceModalLabel">
-                    <i class="fas fa-server"></i> Edit Resource
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editResourceFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editResourceModal', 'Edit Resource',
+                  icon='server', container_id='editResourceFormContainer', variant='edit') }}
 
-<!-- Edit Resource Type Modal -->
-<div class="modal fade" id="editResourceTypeModal" tabindex="-1"
-     aria-labelledby="editResourceTypeModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editResourceTypeModalLabel">
-                    <i class="fas fa-tags"></i> Edit Resource Type
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editResourceTypeFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editResourceTypeModal', 'Edit Resource Type',
+                  icon='tags', container_id='editResourceTypeFormContainer', variant='edit') }}
 
-<!-- Edit Machine Modal -->
-<div class="modal fade" id="editMachineModal" tabindex="-1"
-     aria-labelledby="editMachineModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editMachineModalLabel">
-                    <i class="fas fa-microchip"></i> Edit Machine
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editMachineFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editMachineModal', 'Edit Machine',
+                  icon='microchip', container_id='editMachineFormContainer', variant='edit') }}
 
-<!-- Edit Queue Modal -->
-<div class="modal fade" id="editQueueModal" tabindex="-1"
-     aria-labelledby="editQueueModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editQueueModalLabel">
-                    <i class="fas fa-list-ol"></i> Edit Queue
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editQueueFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editQueueModal', 'Edit Queue',
+                  icon='list-ol', container_id='editQueueFormContainer', variant='edit') }}

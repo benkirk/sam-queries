@@ -6,10 +6,8 @@ Covers: Resources, Resource Types, Machines, Queues.
 
 import marshmallow.fields as f
 import marshmallow.validate as v
-from marshmallow import ValidationError, post_load
-from datetime import datetime
+from marshmallow import post_load
 
-from webapp.api.helpers import parse_input_end_date
 from . import HtmxFormSchema
 
 
@@ -23,18 +21,12 @@ class EditResourceForm(HtmxFormSchema):
     def coerce_and_validate_dates(self, data, **kwargs):
         if data.get('description') == '':
             data['description'] = None
-        end_str = data.get('decommission_date')
-        if end_str:
-            data['decommission_date'] = parse_input_end_date(end_str)
-        else:
-            data['decommission_date'] = None
-
-        if data.get('decommission_date') and data.get('commission_date'):
-            start = datetime.combine(data['commission_date'], datetime.min.time())
-            if data['decommission_date'] <= start:
-                raise ValidationError(
-                    {'decommission_date': ['Decommission date must be after commission date.']}
-                )
+        data['decommission_date'] = self.normalize_end_date(data.get('decommission_date'))
+        self.assert_date_range(
+            data.get('commission_date'), data.get('decommission_date'),
+            field='decommission_date',
+            message='Decommission date must be after commission date.',
+        )
         return data
 
 
@@ -71,18 +63,12 @@ class EditMachineForm(HtmxFormSchema):
     def coerce_and_validate_dates(self, data, **kwargs):
         if data.get('description') == '':
             data['description'] = None
-        end_str = data.get('decommission_date')
-        if end_str:
-            data['decommission_date'] = parse_input_end_date(end_str)
-        else:
-            data['decommission_date'] = None
-
-        if data.get('decommission_date') and data.get('commission_date'):
-            start = datetime.combine(data['commission_date'], datetime.min.time())
-            if data['decommission_date'] <= start:
-                raise ValidationError(
-                    {'decommission_date': ['Decommission date must be after commission date.']}
-                )
+        data['decommission_date'] = self.normalize_end_date(data.get('decommission_date'))
+        self.assert_date_range(
+            data.get('commission_date'), data.get('decommission_date'),
+            field='decommission_date',
+            message='Decommission date must be after commission date.',
+        )
         return data
 
 
@@ -109,11 +95,7 @@ class EditQueueForm(HtmxFormSchema):
     def coerce_dates(self, data, **kwargs):
         if data.get('description') == '':
             data['description'] = None
-        end_str = data.get('end_date')
-        if end_str:
-            data['end_date'] = parse_input_end_date(end_str)
-        else:
-            data['end_date'] = None
+        data['end_date'] = self.normalize_end_date(data.get('end_date'))
         return data
     # Note: queue start_date is on the ORM object, not in the form. The route
     # checks end_date > queue.start_date inline after schema.load() since it

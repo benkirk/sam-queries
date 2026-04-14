@@ -7,6 +7,8 @@
 {% for project in projects %}
 <button type="button"
         class="list-group-item list-group-item-action w-100 text-start fk-search-result"
+        data-fk-id="{{ project.project_id }}"
+        data-fk-label="{{ project.projcode }} — {{ project.title | truncate(60) }}"
         data-project-id="{{ project.project_id }}"
         data-project-display="{{ project.projcode }} — {{ project.title | truncate(60) }}">
     <strong>{{ project.projcode }}</strong>

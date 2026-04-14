@@ -9,9 +9,7 @@ import re as _re
 import marshmallow.fields as f
 import marshmallow.validate as v
 from marshmallow import validates, ValidationError, post_load
-from datetime import datetime
 
-from webapp.api.helpers import parse_input_end_date
 from . import HtmxFormSchema
 
 
@@ -139,16 +137,8 @@ class EditContractForm(HtmxFormSchema):
     def coerce_and_validate_dates(self, data, **kwargs):
         if data.get('url') == '':
             data['url'] = None
-        end_str = data.get('end_date')
-        if end_str:
-            data['end_date'] = parse_input_end_date(end_str)
-        else:
-            data['end_date'] = None
-
-        if data.get('end_date') and data.get('start_date'):
-            start = datetime.combine(data['start_date'], datetime.min.time())
-            if data['end_date'] <= start:
-                raise ValidationError({'end_date': ['End date must be after start date.']})
+        data['end_date'] = self.normalize_end_date(data.get('end_date'))
+        self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data
 
 
@@ -165,16 +155,8 @@ class CreateContractForm(HtmxFormSchema):
     def coerce_and_validate_dates(self, data, **kwargs):
         if data.get('url') == '':
             data['url'] = None
-        end_str = data.get('end_date')
-        if end_str:
-            data['end_date'] = parse_input_end_date(end_str)
-        else:
-            data['end_date'] = None
-
-        if data.get('end_date') and data.get('start_date'):
-            start = datetime.combine(data['start_date'], datetime.min.time())
-            if data['end_date'] <= start:
-                raise ValidationError({'end_date': ['End date must be after start date.']})
+        data['end_date'] = self.normalize_end_date(data.get('end_date'))
+        self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data
 
 

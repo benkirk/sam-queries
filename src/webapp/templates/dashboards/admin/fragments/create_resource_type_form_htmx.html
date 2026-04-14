@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, number_field with context %}
 {# htmx: Create Resource Type Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_resource_type_create'),
@@ -6,23 +7,13 @@
     'Create Resource Type',
     submit_icon='plus'
 ) %}
-        <div class="mb-3">
-            <label for="createResTypeName" class="form-label">
-                Type Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createResTypeName"
-                   name="resource_type" required maxlength="35"
-                   value="{{ form.get('resource_type') if form else '' }}"
-                   placeholder="e.g. HPC">
-        </div>
+        {{ text_field('resource_type', 'Type Name',
+                      required=True, maxlength=35,
+                      placeholder='e.g. HPC',
+                      id='createResTypeName') }}
 
-        <div class="mb-3">
-            <label for="createResTypeGrace" class="form-label">
-                Grace Period Days <span class="text-muted">(optional)</span>
-            </label>
-            <input type="number" class="form-control" id="createResTypeGrace"
-                   name="grace_period_days" min="0"
-                   value="{{ form.get('grace_period_days') if form else '' }}"
-                   placeholder="0">
-        </div>
+        {{ number_field('grace_period_days', 'Grace Period Days',
+                        min=0,
+                        placeholder='0',
+                        id='createResTypeGrace') }}
 {% endcall %}

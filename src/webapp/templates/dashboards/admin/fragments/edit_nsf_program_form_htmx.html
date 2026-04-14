@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, checkbox_field, readonly_display with context %}
 {#
   htmx: Edit NSF Program Form (loaded into #editNsfProgramFormContainer)
   Editable: nsf_program_name (required), active.
@@ -10,28 +11,14 @@
     'Save Changes',
     is_edit=True
 ) %}
-        <!-- ID (read-only) -->
-        <div class="mb-3">
-            <label class="form-label">Program ID</label>
-            <div class="form-control-plaintext text-muted">{{ program.nsf_program_id }}</div>
-        </div>
+        {{ readonly_display('Program ID', program.nsf_program_id) }}
 
-        <!-- Name -->
-        <div class="mb-3">
-            <label for="editNsfProgramName" class="form-label">
-                Program Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="editNsfProgramName"
-                   name="nsf_program_name" required maxlength="255"
-                   value="{{ form.get('nsf_program_name') if form else program.nsf_program_name }}">
-        </div>
+        {{ text_field('nsf_program_name', 'Program Name',
+                      required=True, maxlength=255,
+                      default=program.nsf_program_name,
+                      id='editNsfProgramName') }}
 
-        <!-- Active -->
-        <div class="mb-3 form-check">
-            <input type="checkbox" class="form-check-input" id="editNsfProgramActive"
-                   name="active" value="1"
-                   {% if form %}{% if form.get('active') %}checked{% endif %}
-                   {% elif program.active %}checked{% endif %}>
-            <label class="form-check-label" for="editNsfProgramActive">Active</label>
-        </div>
+        {{ checkbox_field('active', 'Active',
+                          default=program.active,
+                          id='editNsfProgramActive') }}
 {% endcall %}

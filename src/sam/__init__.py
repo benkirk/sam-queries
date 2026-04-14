@@ -200,11 +200,16 @@ from .operational import (
     WallclockExemption
 )
 
+# Domain enums
+from .enums import ResourceTypeName, FacilityName, ChargeType
+
 # Expose all imported models at package level
 __all__ = [
     # Base
     'Base', 'TimestampMixin', 'SoftDeleteMixin', 'ActiveFlagMixin',
     'DateRangeMixin', 'SessionMixin',
+    # Enums
+    'ResourceTypeName', 'FacilityName', 'ChargeType',
     # Geography
     'Country', 'StateProv',
     # Core - Users
