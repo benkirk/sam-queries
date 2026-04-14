@@ -16,7 +16,7 @@
   the picker with a shared FK-search widget.
 #}
 
-<form hx-post="{{ url_for('user_dashboard.htmx_add_member', projcode=projcode) }}"
+<form hx-post="{{ url_for('project_members.htmx_add_member', projcode=projcode) }}"
       hx-target="#addMemberFormContainer"
       hx-swap="innerHTML"
       hx-disabled-elt="find button[type='submit']">

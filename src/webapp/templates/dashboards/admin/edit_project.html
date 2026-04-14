@@ -61,7 +61,7 @@
     <button class="nav-link" id="members-tab"
             data-bs-toggle="tab" data-bs-target="#tab-members"
             type="button" role="tab"
-            hx-get="{{ url_for('user_dashboard.members_fragment', projcode=project.projcode) }}"
+            hx-get="{{ url_for('project_members.members_fragment', projcode=project.projcode) }}"
             hx-target="#htmx-members-{{ project.projcode }}"
             hx-trigger="shown.bs.tab once">
       <i class="fas fa-users me-1"></i> Members
@@ -129,16 +129,9 @@
 
   <!-- ── Tab 3: Members ─────────────────────────────────────────────── -->
   <div class="tab-pane fade" id="tab-members" role="tabpanel">
-    {#
-      NOTE: Member management routes live at /user/htmx/... (user blueprint).
-      Calling them from an /admin page is an intentional namespace crossing —
-      all permission guards are enforced server-side.  If admin-specific member
-      management behaviour is needed in the future, extract these routes to a
-      shared blueprint.  See plan: docs/plans/EDIT_PROJECTS.md §Design Notes.
-    #}
     {# Container ID must match #htmx-members-{projcode} — the action buttons
-       in members_table.html and the OOB swap in add_member_success_htmx.html
-       both target that exact selector, shared with user/partials/project_card.html. #}
+       in members_table.html and the add_member_success_htmx OOB swap both
+       target that exact selector, shared with user/partials/project_card.html. #}
     <div id="htmx-members-{{ project.projcode }}">
       <div class="text-center text-muted py-4">
         <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
@@ -243,7 +236,7 @@
 </div>
 
 <!-- Include member management modals (reused from user dashboard) -->
-{% include 'dashboards/user/fragments/member_modals_htmx.html' %}
+{% include 'project_members/fragments/member_modals_htmx.html' %}
 
 <!-- ═══════════════════════════════════════════════ HTMX event handlers -->
 <script>

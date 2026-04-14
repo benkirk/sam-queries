@@ -7,7 +7,7 @@
     {% if can_manage %}
     <button class="btn btn-sm btn-primary"
             data-bs-toggle="modal" data-bs-target="#addMemberModal"
-            hx-get="{{ url_for('user_dashboard.htmx_add_member_form', projcode=projcode) }}"
+            hx-get="{{ url_for('project_members.htmx_add_member_form', projcode=projcode) }}"
             hx-target="#addMemberFormContainer"
             hx-swap="innerHTML">
         <i class="fas fa-user-plus"></i> Add Member
@@ -66,7 +66,7 @@
                         {% if can_change_admin %}
                         <button class="btn btn-xs btn-outline-warning"
                                 title="Remove admin role (keep as member)"
-                                hx-put="{{ url_for('user_dashboard.htmx_change_admin', projcode=projcode) }}"
+                                hx-put="{{ url_for('project_members.htmx_change_admin', projcode=projcode) }}"
                                 hx-vals='{"admin_username": ""}'
                                 hx-target="#htmx-members-{{ projcode }}"
                                 hx-swap="innerHTML"
@@ -76,7 +76,7 @@
                         {% endif %}
                         <button class="btn btn-xs btn-outline-danger"
                                 title="Remove from project"
-                                hx-delete="{{ url_for('user_dashboard.htmx_remove_member', projcode=projcode, username=member.username) }}"
+                                hx-delete="{{ url_for('project_members.htmx_remove_member', projcode=projcode, username=member.username) }}"
                                 hx-target="#htmx-members-{{ projcode }}"
                                 hx-swap="innerHTML"
                                 hx-confirm="Remove {{ member.display_name }} ({{ member.username }}) from this project? This will remove them from all resources.">
@@ -87,7 +87,7 @@
                         {% if can_change_admin %}
                         <button class="btn btn-xs btn-outline-info"
                                 title="Make project admin"
-                                hx-put="{{ url_for('user_dashboard.htmx_change_admin', projcode=projcode) }}"
+                                hx-put="{{ url_for('project_members.htmx_change_admin', projcode=projcode) }}"
                                 hx-vals='{"admin_username": "{{ member.username }}"}'
                                 hx-target="#htmx-members-{{ projcode }}"
                                 hx-swap="innerHTML"
@@ -97,7 +97,7 @@
                         {% endif %}
                         <button class="btn btn-xs btn-outline-danger"
                                 title="Remove from project"
-                                hx-delete="{{ url_for('user_dashboard.htmx_remove_member', projcode=projcode, username=member.username) }}"
+                                hx-delete="{{ url_for('project_members.htmx_remove_member', projcode=projcode, username=member.username) }}"
                                 hx-target="#htmx-members-{{ projcode }}"
                                 hx-swap="innerHTML"
                                 hx-confirm="Remove {{ member.display_name }} ({{ member.username }}) from this project? This will remove them from all resources.">
