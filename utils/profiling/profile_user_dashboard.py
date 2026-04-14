@@ -57,6 +57,19 @@ USAGE_CRITICAL_THRESHOLD = 90
 # SQL instrumentation (same pattern as profile_admin_orgs.py / profile_allocations.py)
 # ---------------------------------------------------------------------------
 
+import re
+_TABLE_RE = re.compile(r'\bFROM\s+([a-z_][a-z0-9_]*)', re.IGNORECASE)
+
+
+def _extract_table(statement: str) -> str:
+    """Best-effort: pull the first FROM <table> name out of a SQL statement."""
+    m = _TABLE_RE.search(statement)
+    if m:
+        return m.group(1).lower()
+    # Fall back to first word (e.g. WITH ... statements)
+    return statement.strip().split(None, 1)[0].lower()[:30]
+
+
 class _SQLStats:
     def __init__(self):
         self._t: Dict[int, float] = {}
@@ -66,6 +79,7 @@ class _SQLStats:
         self.count = 0
         self.total_time = 0.0
         self.slowest: List[tuple] = []
+        self.by_table: Dict[str, List[float]] = {}
         self._t.clear()
 
     def before(self, conn, cursor, statement, parameters, context, executemany):
@@ -78,6 +92,14 @@ class _SQLStats:
         self.slowest.append((elapsed, statement.strip()[:140]))
         self.slowest.sort(reverse=True)
         self.slowest = self.slowest[:10]
+
+        table = _extract_table(statement)
+        # Bucket WITH-anchors CTE batches under a synthetic name
+        if statement.strip().lower().startswith('with anchors'):
+            table = '<batched WITH anchors CTE>'
+        elif statement.strip().lower().startswith('with w '):
+            table = '<batched WITH w (rolling) CTE>'
+        self.by_table.setdefault(table, []).append(elapsed)
 
 
 _sql = _SQLStats()
@@ -122,6 +144,8 @@ def run_scenario(app, username: str):
     fetch_sql_count = render_sql_count = render_sql_time = 0
     fetch_slowest: List[tuple] = []
     render_slowest: List[tuple] = []
+    fetch_by_table: Dict[str, List[float]] = {}
+    render_by_table: Dict[str, List[float]] = {}
 
     with app.test_request_context('/user/'):
         session = db.session
@@ -144,6 +168,7 @@ def run_scenario(app, username: str):
         phases['TOTAL_FETCH'] = phases['get_user_dashboard_data']
         fetch_sql_count = _sql.count
         fetch_slowest = list(_sql.slowest)
+        fetch_by_table = dict(_sql.by_table)
 
         # --- Phase 2: template render (lazy loads fire here) ---
         _sql.reset()
@@ -160,17 +185,29 @@ def run_scenario(app, username: str):
         render_sql_count = _sql.count
         render_sql_time = _sql.total_time
         render_slowest = list(_sql.slowest)
+        render_by_table = dict(_sql.by_table)
 
-    return (phases, fetch_sql_count, fetch_slowest,
-            render_sql_count, render_sql_time, render_slowest, user)
+    return (phases, fetch_sql_count, fetch_slowest, fetch_by_table,
+            render_sql_count, render_sql_time, render_slowest, render_by_table, user)
 
 
 # ---------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------
 
-def _print_report(label, phases, fetch_sql, fetch_slowest,
-                  render_sql, render_sql_time, render_slowest):
+def _print_by_table(label, by_table):
+    if not by_table:
+        return
+    rows = sorted(by_table.items(), key=lambda kv: -len(kv[1]))
+    print(f"\n  Per-table query distribution ({label}):")
+    print(f"    {'table':<40s}  {'count':>5s}  {'total ms':>10s}")
+    for table, elapsed_list in rows:
+        print(f"    {table:<40s}  {len(elapsed_list):>5d}  "
+              f"{sum(elapsed_list)*1000:>9.1f}")
+
+
+def _print_report(label, phases, fetch_sql, fetch_slowest, fetch_by_table,
+                  render_sql, render_sql_time, render_slowest, render_by_table):
     total = phases['TOTAL_FETCH'] + phases['TOTAL_RENDER']
 
     print(f"\n{'#'*72}")
@@ -195,11 +232,13 @@ def _print_report(label, phases, fetch_sql, fetch_slowest,
         print("  Top-10 slowest SQL queries (data fetch phase):")
         for i, (t, sql) in enumerate(fetch_slowest[:10], 1):
             print(f"    [{i:2d}] {t*1000:7.1f} ms  {sql!r}")
+    _print_by_table('data fetch', fetch_by_table)
     if render_slowest:
         print()
         print("  Top-10 slowest SQL queries (template render phase):")
         for i, (t, sql) in enumerate(render_slowest[:10], 1):
             print(f"    [{i:2d}] {t*1000:7.1f} ms  {sql!r}")
+    _print_by_table('template render', render_by_table)
 
 
 # ---------------------------------------------------------------------------
@@ -227,13 +266,14 @@ def main():
         print("      to the template renderer.\n")
 
         with _cprofiled() as pr:
-            (phases, fetch_sql, fetch_slowest,
-             render_sql, render_sql_time, render_slowest, user) = run_scenario(app, args.user)
+            (phases, fetch_sql, fetch_slowest, fetch_by_table,
+             render_sql, render_sql_time, render_slowest, render_by_table,
+             user) = run_scenario(app, args.user)
 
         _print_report(
             f"USER DASHBOARD — {args.user} (user_id={user.user_id})",
-            phases, fetch_sql, fetch_slowest,
-            render_sql, render_sql_time, render_slowest,
+            phases, fetch_sql, fetch_slowest, fetch_by_table,
+            render_sql, render_sql_time, render_slowest, render_by_table,
         )
         _print_cprofile(pr, f"USER DASHBOARD — {args.user}")
 

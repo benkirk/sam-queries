@@ -1,14 +1,57 @@
 """
 Dashboard data aggregation queries for SAM.
 
-This module provides functions for building dashboard views that aggregate
-project and user data with allocation usage details. These queries are
-optimized for server-side rendering with minimal database round-trips.
+This module is the data layer for three distinct dashboard surfaces. Each
+entry point corresponds to one route shape and has different optimization
+constraints, so the file is intentionally laid out by entry point with
+shared helpers above them.
 
-Functions:
-    get_user_dashboard_data: Get all dashboard data for a user
-    get_project_dashboard_data: Get dashboard data for a single project
-    get_resource_detail_data: Get resource usage details for charts
+Public entry points
+-------------------
+    get_user_dashboard_data(session, user_id)
+        Drives the /user/ route. Loads ALL of a user's active projects and
+        their per-resource allocation usage in a fixed-size set of batched
+        SQL queries (independent of project count). Uses the multi-project
+        batched helper below.
+
+    get_project_dashboard_data(session, projcode)
+        Drives admin single-project search. Loads ONE project plus its
+        per-resource usage. Uses the per-project helper below — there is
+        no batching benefit when N=1, and the single-project path needs
+        to coexist with admin tree views (projects_routes.py) that loop
+        per-node for unrelated reasons.
+
+    get_resource_detail_data(...)
+        Drives the per-resource drilldown route. Self-contained — does its
+        own MPTT-vs-leaf branching for daily charge aggregation. Independent
+        of the user/project dashboard helpers above.
+
+Resource-dict builders (two coexisting versions)
+------------------------------------------------
+    _build_project_resources_data(project)
+        Per-project helper. Calls Project.get_detailed_allocation_usage()
+        and shapes the result into the dict format the dashboard templates
+        expect. Used by both get_project_dashboard_data() and the admin
+        project tree view in webapp/dashboards/admin/projects_routes.py.
+
+    _build_user_projects_resources_batched(session, projects)
+        Batched equivalent for many projects at once. Replaces the
+        per-project N+1 fanout with calls to the existing
+        Project.batch_get_subtree_charges / batch_get_account_charges
+        primitives (which fstree also uses — but this module does NOT
+        import from sam.queries.fstree_access; both consumers depend only
+        on the durable Project class methods).
+
+Both builders produce dicts with identical fields. The equivalence is
+locked in by tests/unit/test_query_functions.py::TestDashboardQueries
+::test_user_dashboard_batched_matches_per_project, which compares them
+field-by-field across a real user's projects on every CI run. Any change
+to one MUST keep that test green or update the other side in lockstep.
+
+Why two? The single-project path is faster and simpler when N=1; the
+batched path scales to large project lists without firing per-project
+charge-aggregation queries. Merging them would either pessimize the N=1
+case or complicate the N=many case — both are net losses for readers.
 """
 
 from datetime import datetime
@@ -41,10 +84,21 @@ from sam.queries.rolling_usage import get_project_rolling_usage
 def _build_project_resources_data(project: Project,
                                    active_at: Optional[datetime] = None) -> List[Dict]:
     """
-    Helper function to build resource usage data for a project.
+    Single-project resource-dict builder.
 
-    Extracts resource allocation and usage information from a project's
-    detailed allocation usage data.
+    Calls Project.get_detailed_allocation_usage() (which fires per-account
+    charge / adjustment / job-statistics queries) and shapes the result
+    into the dict format the dashboard templates consume. Coexists with
+    _build_user_projects_resources_batched() — see this module's docstring
+    for the why-two explanation. Both produce identical output and are
+    locked in step by an equivalence test in test_query_functions.py.
+
+    Used by:
+      * get_project_dashboard_data() — admin single-project search
+      * webapp/dashboards/admin/projects_routes.py — admin tree view (loops
+        per node; OK because admin tree views are small and rare)
+
+    The batched version is used by get_user_dashboard_data() instead.
 
     Args:
         project: Project object
@@ -165,47 +219,119 @@ def _build_user_projects_resources_batched(
     active_at: Optional[datetime] = None,
 ) -> Dict[int, List[Dict]]:
     """
-    Batched equivalent of looping _build_project_resources_data() over a list of
-    projects. Collects allocation work units across every (project, account) pair,
-    issues exactly two batched charge queries (subtree + leaf) via the existing
-    Project.batch_get_subtree_charges / Project.batch_get_account_charges
-    primitives, then assembles per-project resource dicts.
+    Batched, multi-project equivalent of _build_project_resources_data().
 
-    Used by get_user_dashboard_data() to avoid the per-project N+1 explosion
-    where each call to project.get_detailed_allocation_usage() fired ~3-4
-    aggregation queries per (project, account).
+    Returns a dict mapping ``project_id`` → list of resource dicts in
+    EXACTLY the same shape that _build_project_resources_data() produces
+    per-project. The caller can plug each list straight into its existing
+    project_data structure with no template changes.
 
-    Returns a dict mapping project_id → list of resource dicts in the same shape
-    that _build_project_resources_data() produces, so the caller can plug each
-    list into its existing project_data structure unchanged.
+    Why this exists
+    ---------------
+    The user dashboard renders many projects per request. The per-project
+    helper calls ``Project.get_detailed_allocation_usage()``, which fires
+    ~3-4 charge-aggregation queries per (project, account) pair plus a
+    rolling-usage round trip per project. For a user on 11 projects with
+    ~5 accounts each that became ~290 SQL queries and ~2.9 s wall time
+    (verified via utils/profiling/profile_user_dashboard.py).
 
-    Equivalence with the per-project path is enforced by
-    test_query_functions.py::test_user_dashboard_batched_matches_per_project.
+    This helper collapses that into a fixed number of batched queries:
+
+      * ONE consolidated Project ``selectinload`` chain for template metadata
+        (lead, admin, allocation_type → panel → facility, area_of_interest,
+        contracts, organizations, directories), with cascade suppression
+        on User to keep ``Project.lead/admin`` from dragging in every loaded
+        User's selectin relationships.
+      * ONE bulk Account fetch, joinedloaded with resource + resource_type
+        and selectinloaded with allocations.
+      * Calls to Project.batch_get_subtree_charges and
+        Project.batch_get_account_charges — each issues
+        N_resource_types × N_charge_models queries (typically 5-20 total).
+      * Skipped get_project_rolling_usage() calls for projects whose
+        accounts have no rolling thresholds set (the "C1 gate" — most
+        projects in production qualify, eliminating ~80-90 queries).
+
+    Coupling note
+    -------------
+    The batch primitives (Project.batch_get_*_charges) live on the Project
+    class and are also consumed by sam.queries.fstree_access. This module
+    does NOT import anything from fstree_access — fstree is treated as
+    disposable; the durable interface is Project.batch_get_*_charges.
+
+    Equivalence
+    -----------
+    Locked to _build_project_resources_data() field-by-field by
+    tests/unit/test_query_functions.py::TestDashboardQueries
+    ::test_user_dashboard_batched_matches_per_project. Any divergence
+    between the two paths fails CI.
     """
     now = active_at or datetime.now()
 
-    # ------------------------------------------------------------------
-    # Phase 1: pre-load accounts → allocations / resource / charge_adjustments
-    # for every project in one batched fetch. selectinload turns N project
-    # walks into ~3 queries total.
-    # ------------------------------------------------------------------
     project_ids = [p.project_id for p in projects]
     if not project_ids:
         return {}
 
-    session.query(Account).options(
+    # ------------------------------------------------------------------
+    # Phase 1: Bulk-load every Project's template-required metadata in
+    # one batched fetch. The Project rows themselves are already in the
+    # session identity map (they came from User.active_projects()), so
+    # this query just attaches the relationships.
+    #
+    # Cascade-suppression: joinedload(Project.lead/admin) loads the User
+    # row, but User has several lazy='selectin' relationships
+    # (led_projects, admin_projects, accounts, email_addresses) that
+    # would automatically fire for every newly-loaded lead/admin User.
+    # The dashboard template only reads `lead.display_name` and
+    # `lead.user_id` (same for admin), so we suppress those four
+    # downstream loads with .lazyload(). Same pattern as
+    # profile_admin_orgs.py:235-249.
+    # ------------------------------------------------------------------
+    session.query(Project).options(
+        joinedload(Project.lead).lazyload(User.led_projects),
+        joinedload(Project.lead).lazyload(User.admin_projects),
+        joinedload(Project.lead).lazyload(User.accounts),
+        joinedload(Project.lead).lazyload(User.email_addresses),
+        joinedload(Project.admin).lazyload(User.led_projects),
+        joinedload(Project.admin).lazyload(User.admin_projects),
+        joinedload(Project.admin).lazyload(User.accounts),
+        joinedload(Project.admin).lazyload(User.email_addresses),
+        joinedload(Project.allocation_type)
+            .joinedload(AllocationType.panel)
+            .joinedload(Panel.facility),
+        joinedload(Project.area_of_interest),
+        selectinload(Project.contracts)
+            .joinedload(ProjectContract.contract)
+            .joinedload(Contract.contract_source),
+        selectinload(Project.organizations)
+            .joinedload(ProjectOrganization.organization),
+        selectinload(Project.directories),
+    ).filter(Project.project_id.in_(project_ids)).all()
+
+    # ------------------------------------------------------------------
+    # Phase 2: Bulk-load every account (and its allocations + resource)
+    # for every project the user is on, in a single batched fetch. Bucket
+    # the result by project_id explicitly — iterating `project.accounts`
+    # below would defeat the bulk fetch by triggering a per-project lazy
+    # load on the back-populated relationship even though the rows are
+    # already in the identity map.
+    # ------------------------------------------------------------------
+    accounts_for_user = session.query(Account).options(
         selectinload(Account.allocations),
         joinedload(Account.resource).joinedload(Resource.resource_type),
     ).filter(
         Account.project_id.in_(project_ids),
         Account.deleted == False,  # noqa: E712 — SQLAlchemy expression
     ).all()
-    # Result discarded — purpose is to populate the identity map so that the
-    # subsequent project.accounts walks below are free.
+
+    accounts_by_project: Dict[int, List[Account]] = {}
+    for acct in accounts_for_user:
+        accounts_by_project.setdefault(acct.project_id, []).append(acct)
 
     # ------------------------------------------------------------------
-    # Phase 2: per (project, account), pick the allocation we'd display and
-    # collect a work unit for the batch charge methods. Pure Python, no DB.
+    # Phase 3: per (project, account), pick the allocation we'd display
+    # and collect a work unit for the batch charge methods. Pure Python,
+    # no DB. Mirrors Project.get_detailed_allocation_usage()'s
+    # active-or-recent allocation-selection logic via _select_query_alloc.
     # ------------------------------------------------------------------
     subtree_infos: List[Dict] = []
     account_infos: List[Dict] = []
@@ -213,8 +339,15 @@ def _build_user_projects_resources_batched(
     chosen: Dict[tuple, tuple] = {}
 
     for project in projects:
-        is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
-        for account in project.accounts:
+        # Leaf nodes (no descendants) get routed through the leaf-friendly
+        # batch primitive: it groups by resource_type only and inlines
+        # per-anchor date ranges in the VALUES CTE. The subtree primitive
+        # has to date-group separately, which fans out the query count for
+        # users whose projects span many distinct allocation date windows.
+        # NestedSetMixin.is_leaf() handles the (tree_right == tree_left + 1)
+        # check plus the null-coordinate fallback.
+        leaf = project.is_leaf()
+        for account in accounts_by_project.get(project.project_id, []):
             if account.deleted:
                 continue
             if not account.resource:
@@ -234,7 +367,15 @@ def _build_user_projects_resources_batched(
 
             chosen[key] = (project, account, query_alloc, resource_type, end_date)
 
-            if is_tree_valid:
+            if leaf:
+                account_infos.append({
+                    'key':           key,
+                    'account_id':    account.account_id,
+                    'resource_type': resource_type,
+                    'start_date':    start_date,
+                    'end_date':      end_date,
+                })
+            else:
                 subtree_infos.append({
                     'key':           key,
                     'resource_id':   account.resource_id,
@@ -245,19 +386,13 @@ def _build_user_projects_resources_batched(
                     'start_date':    start_date,
                     'end_date':      end_date,
                 })
-            else:
-                account_infos.append({
-                    'key':           key,
-                    'account_id':    account.account_id,
-                    'resource_type': resource_type,
-                    'start_date':    start_date,
-                    'end_date':      end_date,
-                })
 
     # ------------------------------------------------------------------
-    # Phase 3: ONE batched fetch per partition (subtree / leaf). The
+    # Phase 4: ONE batched fetch per partition (subtree / leaf). The
     # primitives live on Project and are already used by fstree — we are
-    # the second, independent consumer.
+    # the second, independent consumer. Each call issues
+    # N_resource_types × N_charge_models queries (typically 5-20 total
+    # for the whole user, regardless of project count).
     # ------------------------------------------------------------------
     raw_charges: Dict[tuple, Dict] = {}
     if subtree_infos:
@@ -270,17 +405,21 @@ def _build_user_projects_resources_batched(
         )
 
     # ------------------------------------------------------------------
-    # Phase 4: rolling-usage gate. Only fetch get_project_rolling_usage()
+    # Phase 5: rolling-usage gate. Only fetch get_project_rolling_usage()
     # for projects where at least one account has a non-null rolling
-    # threshold. The vast majority of projects in production have no
-    # threshold set, so this skip is the bulk of the rolling-usage win.
+    # threshold. The dashboard template gates rendering on threshold_pct
+    # (project_card.html:182-197), and the vast majority of projects in
+    # production have no threshold set — so for them we'd be fetching
+    # data the user never sees. Skipping here saves ~8-9 queries per
+    # skipped project; for one test user this gate alone reclaimed ~93
+    # queries and ~1.2 s of wall time. The same gate is applied in
+    # _build_project_resources_data() below so both code paths agree.
     # ------------------------------------------------------------------
     rolling_usage_by_projcode: Dict[str, Dict] = {}
     for project in projects:
         needs_rolling = any(
             (acct.first_threshold is not None or acct.second_threshold is not None)
-            for acct in project.accounts
-            if not acct.deleted
+            for acct in accounts_by_project.get(project.project_id, [])
         )
         if needs_rolling:
             rolling_usage_by_projcode[project.projcode] = get_project_rolling_usage(
@@ -288,10 +427,13 @@ def _build_user_projects_resources_batched(
             )
 
     # ------------------------------------------------------------------
-    # Phase 5: assemble per-project resource dicts. This mirrors the
+    # Phase 6: assemble per-project resource dicts. This mirrors the
     # shape produced by _build_project_resources_data() exactly — every
-    # field, every default — so the template is unaffected and the
-    # equivalence test can compare dict-by-dict.
+    # field, every default — so templates are unaffected and the
+    # equivalence test can compare dict-by-dict. If you add or rename
+    # a field here, mirror it in _build_project_resources_data() above
+    # AND extend the equivalence test's SCALAR_FIELDS or FLOAT_FIELDS
+    # tuple, otherwise CI will catch the drift.
     # ------------------------------------------------------------------
     out: Dict[int, List[Dict]] = {p.project_id: [] for p in projects}
 
@@ -374,8 +516,10 @@ def get_project_dashboard_data(session: Session, projcode: str) -> Optional[Dict
     """
     Get dashboard data for a single project.
 
-    Used for admin project search functionality and as a helper for
-    get_user_dashboard_data().
+    Drives the admin single-project search route. Self-contained — does
+    NOT call into _build_user_projects_resources_batched(). The user
+    dashboard at /user/ uses that batched helper directly via
+    get_user_dashboard_data() instead.
 
     Args:
         session: SQLAlchemy session
@@ -396,7 +540,16 @@ def get_project_dashboard_data(session: Session, projcode: str) -> Optional[Dict
         ...     proj = data['project']
         ...     print(f"{proj.projcode}: {len(data['resources'])} resources")
     """
-    # Get project with relationships eagerly loaded
+    # Get project with relationships eagerly loaded.
+    #
+    # We keep an explicit per-call .options(...) chain here (rather than
+    # delegating to model-level lazy='selectin') because this is the
+    # single-project path. For N=1 there's no batching benefit, and
+    # joinedload keeps the round-trip count to one query for the project
+    # plus a few selectinload secondaries. The cascade concerns that
+    # forced cascade-suppression in the batched helper above don't bite
+    # here either — only one lead/admin User gets joinedloaded, so its
+    # selectin relationships fire at most once.
     project = session.query(Project)\
         .options(
             joinedload(Project.lead),
@@ -452,53 +605,15 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
         ...     proj = proj_data['project']
         ...     print(f"{proj.projcode}: {len(proj_data['resources'])} resources")
     """
-    # Get user with active projects eagerly loaded
-    user = session.query(User)\
-        .options(
-            selectinload(User.email_addresses),
-            joinedload(User.led_projects).joinedload(Project.lead),
-            joinedload(User.led_projects).joinedload(Project.allocation_type).joinedload(AllocationType.panel).joinedload(Panel.facility),
-            joinedload(User.led_projects).joinedload(Project.area_of_interest),
-            joinedload(User.led_projects).selectinload(Project.contracts).joinedload(ProjectContract.contract).joinedload(Contract.contract_source),
-            joinedload(User.led_projects).selectinload(Project.organizations).joinedload(ProjectOrganization.organization),
-            joinedload(User.led_projects).selectinload(Project.directories),
-
-            joinedload(User.admin_projects).joinedload(Project.admin),
-            joinedload(User.admin_projects).joinedload(Project.allocation_type).joinedload(AllocationType.panel).joinedload(Panel.facility),
-            joinedload(User.admin_projects).joinedload(Project.area_of_interest),
-            joinedload(User.admin_projects).selectinload(Project.contracts).joinedload(ProjectContract.contract).joinedload(Contract.contract_source),
-            joinedload(User.admin_projects).selectinload(Project.organizations).joinedload(ProjectOrganization.organization),
-            joinedload(User.admin_projects).selectinload(Project.directories),
-
-            # Optimize the active_projects path (via accounts)
-            selectinload(User.accounts)
-                .joinedload(AccountUser.account)
-                .joinedload(Account.project)
-                .joinedload(Project.allocation_type)
-                .joinedload(AllocationType.panel)
-                .joinedload(Panel.facility),
-            selectinload(User.accounts)
-                .joinedload(AccountUser.account)
-                .joinedload(Account.project)
-                .joinedload(Project.area_of_interest),
-            selectinload(User.accounts)
-                .joinedload(AccountUser.account)
-                .joinedload(Account.project)
-                .selectinload(Project.contracts)
-                .joinedload(ProjectContract.contract)
-                .joinedload(Contract.contract_source),
-            selectinload(User.accounts)
-                .joinedload(AccountUser.account)
-                .joinedload(Account.project)
-                .selectinload(Project.organizations)
-                .joinedload(ProjectOrganization.organization),
-            selectinload(User.accounts)
-                .joinedload(AccountUser.account)
-                .joinedload(Account.project)
-                .selectinload(Project.directories)
-        )\
-        .filter(User.user_id == user_id)\
-        .first()
+    # Bare User fetch — no per-call eager-loading chain. The model-level
+    # lazy='selectin' on User.led_projects, User.admin_projects, User.accounts,
+    # User.email_addresses, and AccountUser.account is enough to make
+    # user.active_projects() walk efficient (one batched query per relationship,
+    # not per row). The template-required Project metadata
+    # (allocation_type/panel/facility, area_of_interest, contracts,
+    # organizations, directories) is loaded by a single consolidated
+    # selectinload chain at the top of _build_user_projects_resources_batched.
+    user = session.query(User).filter(User.user_id == user_id).first()
 
     if not user:
         return {

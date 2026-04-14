@@ -50,7 +50,7 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
     disk_charges = relationship('DiskCharge', back_populates='account')
     hpc_charge_summaries = relationship('HPCChargeSummary', back_populates='account')
     hpc_charges = relationship('HPCCharge', back_populates='account')
-    project = relationship('Project', back_populates='accounts')
+    project = relationship('Project', back_populates='accounts', lazy='selectin')
     resource = relationship('Resource', back_populates='accounts')
     users = relationship('AccountUser', back_populates='account', lazy='select', cascade='all')
     responsible_parties = relationship('ResponsibleParty', back_populates='account', cascade='all, delete-orphan')
@@ -194,7 +194,7 @@ class AccountUser(Base, TimestampMixin, DateRangeMixin):
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
 
-    account = relationship('Account', back_populates='users', lazy='select')
+    account = relationship('Account', back_populates='users', lazy='selectin')
     user = relationship('User', back_populates='accounts', lazy='selectin')
 
     def __str__(self):
