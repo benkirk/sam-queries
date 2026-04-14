@@ -514,4 +514,179 @@ class TestComplexCRUD:
         assert all(email.email_address_id is not None for email in emails)
         print(f"✅ Bulk inserted {len(emails)} emails")
 
+
+class TestAccountCreatePropagation:
+    """Account.create() enforces the member-propagation invariant.
+
+    Every new Account must auto-materialize AccountUser rows for the project
+    lead, the project admin, and any user currently active on a sibling
+    Account of the same project. This class pins that behavior.
+    """
+
+    def _pick_unused_resource(self, session, project):
+        """Return a Resource not yet attached to this project, or None."""
+        used_ids = {a.resource_id for a in project.accounts if not a.deleted}
+        q = session.query(Resource)
+        if used_ids:
+            q = q.filter(~Resource.resource_id.in_(used_ids))
+        return q.first()
+
+    def test_propagates_lead_and_admin(self, session, test_project):
+        """Lead and admin land on the new Account as open-ended AccountUsers."""
+        if test_project is None:
+            pytest.skip("Test project SCSG0001 not found")
+        if test_project.project_lead_user_id is None:
+            pytest.skip("Test project has no lead")
+
+        target_resource = self._pick_unused_resource(session, test_project)
+        if target_resource is None:
+            pytest.skip("No unused resource available for test project")
+
+        before = datetime.now()
+        account = Account.create(
+            session,
+            project_id=test_project.project_id,
+            resource_id=target_resource.resource_id,
+        )
+
+        assert account.account_id is not None
+        assert account.project_id == test_project.project_id
+        assert account.resource_id == target_resource.resource_id
+
+        new_aus = session.query(AccountUser).filter_by(
+            account_id=account.account_id
+        ).all()
+        propagated_ids = {au.user_id for au in new_aus}
+
+        assert test_project.project_lead_user_id in propagated_ids, (
+            "Project lead must be propagated to new Account"
+        )
+        if test_project.project_admin_user_id is not None:
+            assert test_project.project_admin_user_id in propagated_ids, (
+                "Project admin must be propagated to new Account"
+            )
+
+        for au in new_aus:
+            assert au.end_date is None, (
+                f"AccountUser {au.account_user_id} must be open-ended "
+                f"(got end_date={au.end_date})"
+            )
+            assert au.start_date is not None
+            assert au.start_date >= before - timedelta(seconds=5)
+
+        print(
+            f"✅ Account.create() propagated {len(propagated_ids)} users "
+            f"(lead/admin + siblings) to new {target_resource.resource_name} account"
+        )
+        session.rollback()
+
+    def test_propagates_active_sibling_members(self, session, test_project):
+        """Active AccountUsers on sibling accounts are copied to the new account."""
+        if test_project is None or not test_project.accounts:
+            pytest.skip("Test project has no sibling accounts")
+
+        active_sibling_ids = set()
+        for sibling in test_project.accounts:
+            if sibling.deleted:
+                continue
+            for au in sibling.users:
+                if au.end_date is None:
+                    active_sibling_ids.add(au.user_id)
+        if not active_sibling_ids:
+            pytest.skip("No active sibling members to propagate")
+
+        target_resource = self._pick_unused_resource(session, test_project)
+        if target_resource is None:
+            pytest.skip("No unused resource available for test project")
+
+        account = Account.create(
+            session,
+            project_id=test_project.project_id,
+            resource_id=target_resource.resource_id,
+        )
+
+        propagated_ids = {
+            au.user_id
+            for au in session.query(AccountUser).filter_by(
+                account_id=account.account_id
+            ).all()
+        }
+        missing = active_sibling_ids - propagated_ids
+        assert not missing, (
+            f"Active sibling members not propagated: user_ids={missing}"
+        )
+        print(
+            f"✅ {len(active_sibling_ids)} active sibling members "
+            f"propagated to new account"
+        )
+        session.rollback()
+
+    def test_skips_inactive_sibling_members(self, session, test_project):
+        """Expired (end_date set) sibling memberships are NOT propagated."""
+        if test_project is None or not test_project.accounts:
+            pytest.skip("Test project has no sibling accounts")
+
+        expired_ids = set()
+        active_ids = set()
+        for sibling in test_project.accounts:
+            if sibling.deleted:
+                continue
+            for au in sibling.users:
+                if au.end_date is None:
+                    active_ids.add(au.user_id)
+                else:
+                    expired_ids.add(au.user_id)
+        # Users whose ONLY membership is expired — they must not appear.
+        # (Users with both active and expired rows legitimately propagate
+        # via the active row, so exclude them from this check.)
+        truly_expired = expired_ids - active_ids
+        # Lead/admin propagate unconditionally from the project FK, so
+        # exclude them too.
+        truly_expired -= {
+            test_project.project_lead_user_id,
+            test_project.project_admin_user_id,
+        }
+        if not truly_expired:
+            pytest.skip("No users with only expired memberships on this project")
+
+        target_resource = self._pick_unused_resource(session, test_project)
+        if target_resource is None:
+            pytest.skip("No unused resource available for test project")
+
+        account = Account.create(
+            session,
+            project_id=test_project.project_id,
+            resource_id=target_resource.resource_id,
+        )
+
+        propagated_ids = {
+            au.user_id
+            for au in session.query(AccountUser).filter_by(
+                account_id=account.account_id
+            ).all()
+        }
+        leaked = truly_expired & propagated_ids
+        assert not leaked, (
+            f"Expired-only sibling members were propagated: user_ids={leaked}"
+        )
+        print(f"✅ {len(truly_expired)} expired-only members correctly excluded")
+        session.rollback()
+
+    def test_raises_on_missing_project(self, session):
+        """ValueError if project_id doesn't exist."""
+        fake_id = 999_999_999
+        assert session.get(Project, fake_id) is None
+
+        resource = session.query(Resource).first()
+        assert resource is not None
+
+        with pytest.raises(ValueError, match="Project .* not found"):
+            Account.create(
+                session,
+                project_id=fake_id,
+                resource_id=resource.resource_id,
+            )
+        print("✅ Account.create() rejects missing project")
+        session.rollback()
+
         session.rollback()
