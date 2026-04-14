@@ -394,14 +394,26 @@ class User(Base, TimestampMixin):
         return list({p for p in self._projects_w_dups if p is not None})
 
     def active_projects(self, as_of: Optional[datetime] = None) -> List['Project']:
-        """Return projects where the user has active (non-expired) membership and the project is active."""
+        """Return active projects where the user is a member, lead, or admin.
+
+        Lead/admin are included even when no Account/AccountUser exists yet
+        (e.g. immediately after project creation, before any resource is
+        allocated). Account.create() materializes lead/admin as AccountUser
+        rows the moment the first Account is added to the project.
+        """
         check_date = as_of or datetime.now()
         projects = set()
         for au in self.accounts:
             if au.end_date is None or au.end_date >= check_date:
                 project = au.account.project if au.account else None
-                if project is not None and project.active:
+                if project is not None and project.is_active:
                     projects.add(project)
+        for project in self.led_projects:
+            if project.is_active:
+                projects.add(project)
+        for project in self.admin_projects:
+            if project.is_active:
+                projects.add(project)
         return list(projects)
 
     @property
