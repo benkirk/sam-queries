@@ -92,7 +92,13 @@ from .projects import (
     AddLinkedContractForm,
     AddLinkedDirectoryForm,
 )
-from .user import AddMemberForm, EditAllocationForm, AddAllocationForm
+from .user import (
+    AddMemberForm,
+    EditAllocationForm,
+    AddAllocationForm,
+    RenewAllocationsForm,
+    ExtendAllocationsForm,
+)
 
 __all__ = [
     'HtmxFormSchema',
@@ -139,4 +145,6 @@ __all__ = [
     'AddMemberForm',
     'EditAllocationForm',
     'AddAllocationForm',
+    'RenewAllocationsForm',
+    'ExtendAllocationsForm',
 ]

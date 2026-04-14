@@ -60,6 +60,44 @@ class EditAllocationForm(HtmxFormSchema):
         return data
 
 
+class RenewAllocationsForm(HtmxFormSchema):
+    """Validate the admin 'Renew Allocations' form (Edit Project → Allocations tab).
+
+    Renewal clones existing allocations (identified server-side by the
+    ``source_active_at`` context) into a new time period. The client submits
+    only the new date range and the subset of resources to renew.
+    """
+    source_active_at = f.Date('%Y-%m-%d', required=True)
+    new_start_date = f.Date('%Y-%m-%d', required=True)
+    new_end_date = f.Str(required=True)   # 23:59:59 convention applied in post_load
+    resource_ids = f.List(f.Int(), required=True, validate=v.Length(min=1))
+
+    @post_load
+    def coerce_and_validate_dates(self, data, **kwargs):
+        data['new_end_date'] = parse_input_end_date(data['new_end_date'])
+        start_dt = datetime.combine(data['new_start_date'], datetime.min.time())
+        if data['new_end_date'] <= start_dt:
+            raise ValidationError({'new_end_date': ['End date must be after start date.']})
+        return data
+
+
+class ExtendAllocationsForm(HtmxFormSchema):
+    """Validate the admin 'Extend Allocations' form (Edit Project → Allocations tab).
+
+    Extend pushes ``end_date`` forward on existing allocations identified
+    server-side by the ``source_active_at`` context. The client submits only
+    the new end date and the subset of resources to extend.
+    """
+    source_active_at = f.Date('%Y-%m-%d', required=True)
+    new_end_date = f.Str(required=True)   # 23:59:59 convention applied in post_load
+    resource_ids = f.List(f.Int(), required=True, validate=v.Length(min=1))
+
+    @post_load
+    def coerce_and_validate_dates(self, data, **kwargs):
+        data['new_end_date'] = parse_input_end_date(data['new_end_date'])
+        return data
+
+
 class AddAllocationForm(HtmxFormSchema):
     """Validate the admin 'Add Allocation' form (Edit Project → Allocations tab).
 

@@ -346,6 +346,9 @@ def propagate_allocation_to_subprojects(
     descendants,
     user_id: int,
     skip_existing: bool = True,
+    *,
+    transaction_type: AllocationTransactionType = AllocationTransactionType.CREATE,
+    transaction_comment: Optional[str] = None,
 ):
     """
     Create child allocations for each active project in ``descendants``,
@@ -418,8 +421,10 @@ def propagate_allocation_to_subprojects(
 
         log_allocation_transaction(
             session, new_alloc, user_id,
-            AllocationTransactionType.CREATE,
-            comment=f"Propagated from parent allocation #{parent_allocation.allocation_id}",
+            transaction_type,
+            comment=transaction_comment or (
+                f"Propagated from parent allocation #{parent_allocation.allocation_id}"
+            ),
             propagated=True,
         )
 
