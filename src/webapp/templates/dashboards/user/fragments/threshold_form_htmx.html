@@ -1,4 +1,9 @@
 {#
+  Intentional exception to the field-macro pattern: bespoke inline narrow
+  widget (width:4.5rem; font-size:0.7rem) that replaces its own button
+  in-place via hx-swap="outerHTML". Not modal-shaped — field macros don't
+  fit the inline-edit UX.
+
   Inline threshold edit form for a single rolling window.
 
   Replaces the Add/Edit button via hx-target="this" hx-swap="outerHTML".

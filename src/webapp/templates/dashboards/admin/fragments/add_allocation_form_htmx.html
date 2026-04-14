@@ -12,8 +12,22 @@
     form                — request.form on validation error re-render
     project_has_children — bool: project has active sub-projects
     child_count          — int: number of active sub-projects
+
+  Intentional exceptions to the field-macro pattern:
+    * Resource select — option label is
+      `{{ resource_name }} ({{ resource_type }})` with the suffix conditional
+      on `resource_type is not none`. select_field's label_attrs joins
+      unconditionally, so expressing this cleanly requires macro extension.
+    * Amount number input — the sibling `<span class="number-preview">`
+      lives inside a custom `form-text` container alongside explanatory
+      helper text. number_field's `help=` slot renders a bare <small>,
+      which would misplace the preview span relative to number-preview.js.
+    * apply_to_subprojects stylized card — bespoke form-check card with
+      icon + count badge + help text; not a plain checkbox.
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/form_fields.html'
+    import date_field, text_field with context %}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_add_allocation', projcode=project.projcode),
@@ -47,7 +61,9 @@
     </select>
   </div>
 
-  <!-- Amount (live comma-preview rendered below by number-preview.js) -->
+  {# Amount — live comma-preview rendered by static/js/number-preview.js,
+     which listens on the data-number-preview attribute and writes into
+     the sibling .number-preview span. #}
   <div class="mb-3">
     <label for="addAllocAmount" class="form-label fw-semibold">
       Amount <span class="text-danger">*</span>
@@ -66,36 +82,22 @@
   <!-- Dates (side-by-side; stack on narrow viewports) -->
   <div class="row">
     <div class="col-md-6">
-      <div class="mb-3">
-        <label for="addAllocStart" class="form-label fw-semibold">
-          Start Date <span class="text-danger">*</span>
-        </label>
-        <input type="date" class="form-control" id="addAllocStart"
-               name="start_date" required
-               value="{{ form.get('start_date', today) if form else today }}">
-      </div>
+      {{ date_field('start_date', 'Start Date',
+                    required=True, default=today,
+                    label_class='form-label fw-semibold',
+                    id='addAllocStart') }}
     </div>
     <div class="col-md-6">
-      <div class="mb-3">
-        <label for="addAllocEnd" class="form-label">End Date <span class="text-muted">(optional)</span></label>
-        <input type="date" class="form-control" id="addAllocEnd"
-               name="end_date"
-               value="{{ form.get('end_date', default_end_date) if form else default_end_date }}">
-        <small class="form-text text-muted">Leave blank for no end date</small>
-      </div>
+      {{ date_field('end_date', 'End Date',
+                    default=default_end_date,
+                    help='Leave blank for no end date',
+                    id='addAllocEnd') }}
     </div>
   </div>
 
-  <!-- Description -->
-  <div class="mb-3">
-    <label for="addAllocDescription" class="form-label">
-      Description <span class="text-muted">(optional)</span>
-    </label>
-    <input type="text" class="form-control" id="addAllocDescription"
-           name="description"
-           value="{{ form.get('description', '') if form else '' }}"
-           placeholder="e.g. FY2025 allocation">
-  </div>
+  {{ text_field('description', 'Description',
+                placeholder='e.g. FY2025 allocation',
+                id='addAllocDescription') }}
 
   {% if project_has_children %}
   <div class="mb-3 border rounded p-3 bg-light">

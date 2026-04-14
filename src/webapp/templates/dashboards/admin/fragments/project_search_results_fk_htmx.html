@@ -1,16 +1,14 @@
 {#
   htmx: Project search results for FK fields (parent project selector).
-  Click handler defined in the enclosing form template; each item carries
-  data-project-id and data-project-display for JS to read.
+  Each item carries data-fk-id / data-fk-label for the delegated
+  click handler in /static/js/fk-picker.js.
 #}
 {% if projects %}
 {% for project in projects %}
 <button type="button"
         class="list-group-item list-group-item-action w-100 text-start fk-search-result"
         data-fk-id="{{ project.project_id }}"
-        data-fk-label="{{ project.projcode }} — {{ project.title | truncate(60) }}"
-        data-project-id="{{ project.project_id }}"
-        data-project-display="{{ project.projcode }} — {{ project.title | truncate(60) }}">
+        data-fk-label="{{ project.projcode }} — {{ project.title | truncate(60) }}">
     <strong>{{ project.projcode }}</strong>
     <small class="text-muted ms-2">{{ project.title | truncate(60) }}</small>
     {% if project.lead %}

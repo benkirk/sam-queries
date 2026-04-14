@@ -4,11 +4,11 @@ Admin dashboard — Project management routes.
 Covers: Project creation (Phase A).  Edit/allocation management (Phase B).
 """
 
-import re
 from datetime import datetime
 
 from flask import render_template, request, redirect, url_for
-from webapp.utils.htmx import htmx_success, htmx_success_message
+from webapp.utils.htmx import htmx_success, htmx_success_message, handle_htmx_form_post
+from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from flask_login import login_required, current_user
 
 from webapp.extensions import db
@@ -293,181 +293,67 @@ def htmx_project_next_projcode():
 @require_permission(Permission.CREATE_PROJECTS)
 def htmx_project_create():
     """Validate form and create a new project."""
-    from datetime import datetime
     from sam.projects.projects import Project
     from sam.projects.areas import AreaOfInterest
     from sam.projects.contracts import Contract, ProjectContract
     from sam.core.users import User
     from sam.core.organizations import Organization, ProjectOrganization
     from sam.resources.facilities import Facility, Panel
+    from sam.accounting.allocations import AllocationType
+    from sam.schemas.forms import CreateProjectForm
 
-    errors = []
-
-    # ── Raw field extraction ──
-    projcode_raw = request.form.get('projcode', '').strip().upper()
-    title = request.form.get('title', '').strip()
-    abstract = request.form.get('abstract', '').strip() or None
-    facility_id_str = request.form.get('facility_id', '').strip()
-    panel_id_str = request.form.get('panel_id', '').strip()
-    lead_id_str = request.form.get('project_lead_user_id', '').strip()
-    admin_id_str = request.form.get('project_admin_user_id', '').strip()
-    aoi_id_str = request.form.get('area_of_interest_id', '').strip()
-    alloc_type_id_str = request.form.get('allocation_type_id', '').strip()
-    parent_id_str = request.form.get('parent_id', '').strip()
-    contract_id_str = request.form.get('contract_id', '').strip()
-    org_id_str = request.form.get('organization_id', '').strip()
-    charging_exempt = request.form.get('charging_exempt') == 'on'
-    unix_gid_str = request.form.get('unix_gid', '').strip()
-    ext_alias = request.form.get('ext_alias', '').strip() or None
-
-    # ── Validation ──
-    if not facility_id_str:
-        errors.append('Facility is required.')
-    else:
-        try:
-            if not db.session.get(Facility, int(facility_id_str)):
-                errors.append('Selected facility does not exist.')
-        except ValueError:
-            errors.append('Invalid facility.')
-
-    if not panel_id_str:
-        errors.append('Panel is required.')
-    else:
-        try:
-            if not db.session.get(Panel, int(panel_id_str)):
-                errors.append('Selected panel does not exist.')
-        except ValueError:
-            errors.append('Invalid panel.')
-
-    if not projcode_raw:
-        errors.append('Project code is required.')
-    elif not re.fullmatch(r'[A-Z0-9]{2,30}', projcode_raw):
-        errors.append('Project code must be 2–30 uppercase letters/digits.')
-    elif Project.get_by_projcode(db.session, projcode_raw):
-        errors.append(f'Project code "{projcode_raw}" is already in use.')
-
-    if not title:
-        errors.append('Title is required.')
-    elif len(title) > 255:
-        errors.append('Title must be 255 characters or fewer.')
-
-    project_lead_user_id = None
-    if not lead_id_str:
-        errors.append('Project lead is required.')
-    else:
-        try:
-            project_lead_user_id = int(lead_id_str)
-            if not db.session.get(User, project_lead_user_id):
-                errors.append('Selected project lead does not exist.')
-        except ValueError:
-            errors.append('Invalid project lead.')
-
-    project_admin_user_id = None
-    if admin_id_str:
-        try:
-            project_admin_user_id = int(admin_id_str)
-            if not db.session.get(User, project_admin_user_id):
-                errors.append('Selected project admin does not exist.')
-        except ValueError:
-            errors.append('Invalid project admin.')
-
-    area_of_interest_id = None
-    if not aoi_id_str:
-        errors.append('Area of interest is required.')
-    else:
-        try:
-            area_of_interest_id = int(aoi_id_str)
-            if not db.session.get(AreaOfInterest, area_of_interest_id):
-                errors.append('Selected area of interest does not exist.')
-        except ValueError:
-            errors.append('Invalid area of interest.')
-
-    allocation_type_id = None
-    if alloc_type_id_str:
-        try:
-            allocation_type_id = int(alloc_type_id_str)
-        except ValueError:
-            errors.append('Invalid allocation type.')
-
-    parent_id = None
-    if parent_id_str:
-        try:
-            parent_id = int(parent_id_str)
-            if not db.session.get(Project, parent_id):
-                errors.append('Selected parent project does not exist.')
-        except ValueError:
-            errors.append('Invalid parent project.')
-
-    contract_id = None
-    if contract_id_str:
-        try:
-            contract_id = int(contract_id_str)
-            if not db.session.get(Contract, contract_id):
-                errors.append('Selected contract does not exist.')
-        except ValueError:
-            errors.append('Invalid contract.')
-
-    organization_id = None
-    if org_id_str:
-        try:
-            organization_id = int(org_id_str)
-            if not db.session.get(Organization, organization_id):
-                errors.append('Selected organization does not exist.')
-        except ValueError:
-            errors.append('Invalid organization.')
-
-    unix_gid = None
-    if unix_gid_str:
-        try:
-            unix_gid = int(unix_gid_str)
-        except ValueError:
-            errors.append('Unix GID must be a number.')
-
-    def _reload_form(extra_errors=None):
-        return render_template(
-            'dashboards/admin/fragments/create_project_form_htmx.html',
-            **_project_form_data(form=request.form),
-            errors=(extra_errors or []) + errors,
-            form=request.form,
+    def _do_action(data):
+        validate_fk_existence(
+            db.session,
+            (Facility, data['facility_id'], 'facility'),
+            (Panel, data['panel_id'], 'panel'),
+            (User, data['project_lead_user_id'], 'project lead'),
+            (User, data.get('project_admin_user_id'), 'project admin'),
+            (AreaOfInterest, data['area_of_interest_id'], 'area of interest'),
+            (AllocationType, data.get('allocation_type_id'), 'allocation type'),
+            (Project, data.get('parent_id'), 'parent project'),
+            (Contract, data.get('contract_id'), 'contract'),
+            (Organization, data.get('organization_id'), 'organization'),
         )
-
-    if errors:
-        return _reload_form()
-
-    try:
-        with management_transaction(db.session):
-            project = Project.create(
-                db.session,
-                projcode=projcode_raw,
-                title=title,
-                abstract=abstract,
-                project_lead_user_id=project_lead_user_id,
-                project_admin_user_id=project_admin_user_id,
-                area_of_interest_id=area_of_interest_id,
-                allocation_type_id=allocation_type_id,
-                parent_id=parent_id,
-                charging_exempt=charging_exempt,
-                unix_gid=unix_gid,
-                ext_alias=ext_alias,
+        if Project.get_by_projcode(db.session, data['projcode']):
+            raise FKValidationError(
+                [f'Project code "{data["projcode"]}" is already in use.']
             )
-            if contract_id:
-                db.session.add(ProjectContract(
-                    project_id=project.project_id,
-                    contract_id=contract_id,
-                ))
-            if organization_id:
-                db.session.add(ProjectOrganization(
-                    project_id=project.project_id,
-                    organization_id=organization_id,
-                    start_date=datetime.now(),
-                ))
-    except Exception as e:
-        return _reload_form([f'Error creating project: {e}'])
 
-    return htmx_success_message(
-        {'closeActiveModal': {}, 'loadNewProject': project.projcode},
-        'Project created successfully.',
-        detail=f'{project.projcode} — {project.title}',
+        # facility_id / panel_id are existence-only; Project.create() derives
+        # the effective facility/panel from allocation_type_id.
+        project_kwargs = {
+            k: v for k, v in data.items()
+            if k not in ('facility_id', 'panel_id',
+                         'contract_id', 'organization_id')
+        }
+        project = Project.create(db.session, **project_kwargs)
+        if data.get('contract_id'):
+            ProjectContract.create(
+                db.session,
+                project_id=project.project_id,
+                contract_id=data['contract_id'],
+            )
+        if data.get('organization_id'):
+            ProjectOrganization.create(
+                db.session,
+                project_id=project.project_id,
+                organization_id=data['organization_id'],
+            )
+        return project
+
+    return handle_htmx_form_post(
+        schema_cls=CreateProjectForm,
+        template='dashboards/admin/fragments/create_project_form_htmx.html',
+        context_fn=lambda: _project_form_data(form=request.form),
+        success_triggers=lambda project: {
+            'closeActiveModal': {},
+            'loadNewProject': project.projcode,
+        },
+        success_message='Project created successfully.',
+        success_detail=lambda project: f'{project.projcode} — {project.title}',
+        error_prefix='Error creating project',
+        do_action=_do_action,
     )
 
 
@@ -531,81 +417,46 @@ def htmx_project_update(projcode):
     from sam.accounting.allocations import AllocationType
     from sam.core.users import User
     from sam.schemas.forms import EditProjectForm
-    from marshmallow import ValidationError
 
     project = Project.get_by_projcode(db.session, projcode)
     if not project:
         return '<div class="alert alert-danger">Project not found.</div>', 404
 
-    errors = []
+    current_facility_id = None
+    current_panel_id = None
+    if project.allocation_type and project.allocation_type.panel:
+        current_panel_id = project.allocation_type.panel_id
+        if project.allocation_type.panel.facility:
+            current_facility_id = project.allocation_type.panel.facility_id
 
-    # Pre-process form data: drop empty strings so marshmallow's Int/load_default
-    # treats absent/empty fields uniformly. Inject explicit booleans for unchecked
-    # checkboxes (which are absent from request.form when unchecked).
-    data = {k: v for k, v in request.form.items() if v != ''}
-    data['charging_exempt'] = 'charging_exempt' in request.form
-    data['active'] = 'active' in request.form
-
-    try:
-        form_data = EditProjectForm().load(data)
-    except ValidationError as e:
-        errors.extend(EditProjectForm.flatten_errors(e.messages))
-        form_data = {}
-
-    # Required-field checks not expressible in the partial schema
-    if not form_data.get('title'):
-        errors.append('Title is required.')
-    if not form_data.get('project_lead_user_id'):
-        errors.append('Project lead is required.')
-    if not form_data.get('area_of_interest_id'):
-        errors.append('Area of interest is required.')
-
-    # FK existence checks — require DB access, intentionally kept in the route
-    lead_id = form_data.get('project_lead_user_id')
-    if lead_id and not db.session.get(User, lead_id):
-        errors.append('Selected project lead does not exist.')
-    admin_id = form_data.get('project_admin_user_id')
-    if admin_id and not db.session.get(User, admin_id):
-        errors.append('Selected project admin does not exist.')
-    aoi_id = form_data.get('area_of_interest_id')
-    if aoi_id and not db.session.get(AreaOfInterest, aoi_id):
-        errors.append('Selected area of interest does not exist.')
-    alloc_type_id = form_data.get('allocation_type_id')
-    if alloc_type_id and not db.session.get(AllocationType, alloc_type_id):
-        errors.append('Selected allocation type does not exist.')
-
-    def _reload_edit_form(extra_errors=None):
-        current_facility_id = None
-        current_panel_id = None
-        if project.allocation_type and project.allocation_type.panel:
-            current_panel_id = project.allocation_type.panel_id
-            if project.allocation_type.panel.facility:
-                current_facility_id = project.allocation_type.panel.facility_id
-        return render_template(
-            'dashboards/admin/fragments/edit_project_details_htmx.html',
-            project=project,
-            current_facility_id=current_facility_id,
-            current_panel_id=current_panel_id,
-            errors=(extra_errors or []) + errors,
-            form=request.form,
-            **_project_form_data(form=request.form),
+    def _do_action(data):
+        validate_fk_existence(
+            db.session,
+            (User, data['project_lead_user_id'], 'project lead'),
+            (User, data.get('project_admin_user_id'), 'project admin'),
+            (AreaOfInterest, data['area_of_interest_id'], 'area of interest'),
+            (AllocationType, data.get('allocation_type_id'), 'allocation type'),
         )
+        # project.update() only writes non-None kwargs, so scalar fields
+        # the user left blank (stripped to None by the schema) pass
+        # through unchanged.
+        project.update(**data)
+        return project
 
-    if errors:
-        return _reload_edit_form()
-
-    # Project.update() writes only non-None kwargs, so passing form_data as **kwargs
-    # correctly preserves fields the user didn't touch.
-    try:
-        with management_transaction(db.session):
-            project.update(**form_data)
-    except Exception as e:
-        return _reload_edit_form([f'Error updating project: {e}'])
-
-    return htmx_success_message(
-        {'reloadEditProjectDetails': projcode},
-        'Project updated successfully.',
-        detail=f'{project.projcode} — {project.title}',
+    return handle_htmx_form_post(
+        schema_cls=EditProjectForm,
+        template='dashboards/admin/fragments/edit_project_details_htmx.html',
+        context_fn=lambda: _project_form_data(form=request.form),
+        extra_context={
+            'project': project,
+            'current_facility_id': current_facility_id,
+            'current_panel_id': current_panel_id,
+        },
+        success_triggers={'reloadEditProjectDetails': projcode},
+        success_message='Project updated successfully.',
+        success_detail=lambda p: f'{p.projcode} — {p.title}',
+        error_prefix='Error updating project',
+        do_action=_do_action,
     )
 
 

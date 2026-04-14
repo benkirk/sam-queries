@@ -3,6 +3,7 @@ from flask import make_response, render_template, request
 from marshmallow import ValidationError
 
 from webapp.extensions import db
+from webapp.utils.fk_validation import FKValidationError
 from sam.manage import management_transaction
 
 
@@ -49,6 +50,7 @@ def handle_htmx_form_post(
     do_action,
     success_triggers,
     success_message='Saved successfully.',
+    success_detail=None,
     error_prefix='Error',
     extra_context=None,
     context_fn=None,
@@ -76,9 +78,17 @@ def handle_htmx_form_post(
         do_action:         callable taking the validated `data` dict. Should
                            perform the create/update *inside* `management_transaction`
                            — the helper handles the transaction. Raise on error.
-        success_triggers:  HX-Trigger dict, e.g.
-                           {'closeActiveModal': {}, 'reloadFacilitiesCard': {}}
+                           May return a value (the created/updated object); if
+                           `success_triggers` is callable it receives this value.
+        success_triggers:  HX-Trigger payload. Either a dict, e.g.
+                           {'closeActiveModal': {}, 'reloadFacilitiesCard': {}},
+                           or a callable `result -> dict` for dynamic triggers
+                           that need the created/updated object
+                           (e.g. `lambda p: {'loadNewProject': p.projcode}`).
         success_message:   Primary success text (default 'Saved successfully.').
+        success_detail:    Optional secondary line. Either a string, or a
+                           callable `result -> str` for per-instance detail
+                           like "SCSG0001 — My project title".
         error_prefix:      Prefix for unexpected exception messages
                            (e.g. 'Error creating facility').
         extra_context:     Static dict merged into the re-render context — pass
@@ -106,11 +116,15 @@ def handle_htmx_form_post(
 
     try:
         with management_transaction(db.session):
-            do_action(data)
+            result = do_action(data)
+    except FKValidationError as e:
+        return _render_with_errors(e.errors)
     except Exception as e:  # noqa: BLE001 — surface to the user
         return _render_with_errors([f'{error_prefix}: {e}'])
 
-    return htmx_success_message(success_triggers, success_message)
+    triggers = success_triggers(result) if callable(success_triggers) else success_triggers
+    detail = success_detail(result) if callable(success_detail) else success_detail
+    return htmx_success_message(triggers, success_message, detail=detail)
 
 
 def htmx_not_found(name='Resource', status=404):

@@ -1,4 +1,6 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/form_fields.html'
+    import number_field, date_field, textarea_field with context %}
 {#
   htmx: Edit Allocation Form (loaded into modal as fragment)
 
@@ -22,51 +24,40 @@
         </div>
     </div>
 
-    <!-- Amount (live comma-preview rendered below by number-preview.js) -->
-    <div class="mb-3">
-        <label for="allocationAmount">Allocation Amount <span class="text-danger">*</span></label>
-        <div class="input-group">
-            <input type="number" class="form-control" id="allocationAmount" name="amount"
-                   step="0.01" min="0" required
-                   data-number-preview
-                   value="{{ allocation.amount }}">
-            <span class="input-group-text" title="Current allocation amount">
-                <i class="fas fa-info-circle"></i>
-            </span>
-        </div>
-        <small class="form-text">
-            <span class="number-preview text-primary fw-semibold"></span>
-            <span class="text-muted">
-                Core-hours or storage units. Current: <strong>{{ "{:,.2f}".format(allocation.amount) }}</strong>
-            </span>
-        </small>
-    </div>
+    {# Amount — live comma-preview rendered by static/js/number-preview.js
+       into the sibling .number-preview span declared via help_html below. #}
+    {% call number_field('amount', 'Allocation Amount',
+                         required=True, min=0, step=0.01,
+                         default=allocation.amount,
+                         data_attrs={'number-preview': ''},
+                         help_html='<span class="number-preview text-primary fw-semibold"></span>'
+                                   '<span class="text-muted"> Core-hours or storage units.</span>',
+                         id='allocationAmount') %}
+        <span class="input-group-text" title="Current allocation amount">
+            <i class="fas fa-info-circle"></i>
+        </span>
+    {% endcall %}
 
     <!-- Date Range -->
     <div class="row">
         <div class="col-md-6">
-            <div class="mb-3">
-                <label for="allocationStartDate">Start Date <span class="text-danger">*</span></label>
-                <input type="date" class="form-control" id="allocationStartDate" name="start_date" required
-                       value="{{ allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else '' }}">
-            </div>
+            {{ date_field('start_date', 'Start Date',
+                          required=True,
+                          default=allocation.start_date,
+                          id='allocationStartDate') }}
         </div>
         <div class="col-md-6">
-            <div class="mb-3">
-                <label for="allocationEndDate">End Date <span class="text-muted">(optional)</span></label>
-                <input type="date" class="form-control" id="allocationEndDate" name="end_date"
-                       value="{{ allocation.end_date.strftime('%Y-%m-%d') if allocation.end_date else '' }}">
-                <small class="form-text text-muted">Leave blank for no end date</small>
-            </div>
+            {{ date_field('end_date', 'End Date',
+                          default=allocation.end_date,
+                          help='Leave blank for no end date',
+                          id='allocationEndDate') }}
         </div>
     </div>
 
-    <!-- Description (optional) -->
-    <div class="mb-3">
-        <label for="allocationDescription">Description <span class="text-muted">(optional)</span></label>
-        <textarea class="form-control" id="allocationDescription" name="description" rows="2"
-                  placeholder="Optional notes about this allocation...">{{ allocation.description or '' }}</textarea>
-    </div>
+    {{ textarea_field('description', 'Description',
+                      rows=2, default=allocation.description or '',
+                      placeholder='Optional notes about this allocation...',
+                      id='allocationDescription') }}
 
     <!-- Warning message -->
     <div class="alert alert-warning">

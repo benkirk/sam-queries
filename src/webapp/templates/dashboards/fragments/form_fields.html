@@ -36,7 +36,8 @@
 {# ─── text input ───────────────────────────────────────────────────────── #}
 {% macro text_field(name, label, required=False, optional_text='(optional)',
                     maxlength=None, placeholder=None, help=None,
-                    default='', id=None, type='text', label_class='form-label') %}
+                    default='', id=None, type='text', label_class='form-label',
+                    disabled=False) %}
 {%- set _id = id or name -%}
 {%- set _value = form.get(name) if form else default -%}
 <div class="mb-3">
@@ -44,6 +45,7 @@
     <input type="{{ type }}" class="form-control" id="{{ _id }}"
            name="{{ name }}"
            {%- if required %} required{% endif -%}
+           {%- if disabled %} disabled{% endif -%}
            {%- if maxlength %} maxlength="{{ maxlength }}"{% endif %}
            value="{{ _value if _value is not none else '' }}"
            {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>
@@ -53,22 +55,48 @@
 
 
 {# ─── number input ─────────────────────────────────────────────────────── #}
+{#
+  `data_attrs` is a dict of {name: value} pairs emitted as data-<name>="<value>"
+  attributes on the <input>. Used e.g. to attach `data-number-preview` for the
+  live comma-formatting JS.
+
+  `help_html` renders raw HTML inside the container (via `|safe`). Use it
+  when the helper text must include child elements such as the sibling
+  `<span class="number-preview">` that number-preview.js writes into.
+  Takes precedence over the plain-string `help=`.
+
+  To wrap the input in a Bootstrap `input-group` with a suffix slot
+  (e.g. tooltip icon), call the macro via `{% call %}`:
+
+      {% call number_field('amount', 'Amount', ...) %}
+          <span class="input-group-text">...</span>
+      {% endcall %}
+
+  The caller block becomes the input-group suffix; without `{% call %}` the
+  macro renders as a plain input.
+#}
 {% macro number_field(name, label, required=False, optional_text='(optional)',
                       min=None, max=None, step=None, placeholder=None, help=None,
-                      default='', id=None, label_class='form-label') %}
+                      default='', id=None, label_class='form-label',
+                      disabled=False, data_attrs={}, help_html=None) %}
 {%- set _id = id or name -%}
 {%- set _value = form.get(name) if form else default -%}
 <div class="mb-3">
     {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
+    {%- if caller %}<div class="input-group">{% endif %}
     <input type="number" class="form-control" id="{{ _id }}"
            name="{{ name }}"
            {%- if required %} required{% endif -%}
+           {%- if disabled %} disabled{% endif -%}
            {%- if min is not none %} min="{{ min }}"{% endif -%}
            {%- if max is not none %} max="{{ max }}"{% endif -%}
            {%- if step is not none %} step="{{ step }}"{% endif %}
+           {%- for _k, _v in data_attrs.items() %} data-{{ _k }}="{{ _v }}"{% endfor %}
            value="{{ _value if _value is not none else '' }}"
            {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>
-    {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
+    {%- if caller %}{{ caller() }}</div>{% endif %}
+    {%- if help_html %}<small class="form-text">{{ help_html|safe }}</small>
+    {%- elif help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>
 {% endmacro %}
 
@@ -79,7 +107,8 @@
   Date objects are formatted automatically.
 #}
 {% macro date_field(name, label, required=False, optional_text='(optional)',
-                    help=None, default='', id=None, label_class='form-label') %}
+                    help=None, default='', id=None, label_class='form-label',
+                    disabled=False) %}
 {%- set _id = id or name -%}
 {%- set _form_value = form.get(name) if form else None -%}
 {%- if _form_value is not none -%}
@@ -93,7 +122,8 @@
     {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
     <input type="date" class="form-control" id="{{ _id }}"
            name="{{ name }}"
-           {%- if required %} required{% endif %}
+           {%- if required %} required{% endif -%}
+           {%- if disabled %} disabled{% endif %}
            value="{{ _value }}">
     {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>

@@ -4,6 +4,8 @@
            active_directories, errors
 #}
 
+{% from 'dashboards/fragments/form_fields.html' import fk_search_field with context %}
+
 {% if errors %}
 <div class="alert alert-danger alert-dismissible fade show mb-3">
   <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
@@ -39,26 +41,13 @@
               hx-swap="innerHTML">
           <div class="d-flex gap-2 align-items-start flex-wrap">
             <div class="flex-grow-1" style="min-width:200px;">
-              <div id="linkedOrgSelected" class="mb-1" style="display:none;">
-                <span class="badge bg-info text-dark py-1 px-2" id="linkedOrgBadge"></span>
-                <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
-                        onclick="clearLinkedOrgSelection()">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-              <input type="hidden" name="organization_id" id="linkedOrgId">
-              <input type="text"
-                     class="form-control form-control-sm"
-                     id="linkedOrgSearch"
-                     placeholder="Search by name or acronym…"
-                     autocomplete="off"
-                     hx-get="{{ url_for('admin_dashboard.htmx_org_search_for_project') }}"
-                     hx-target="#linkedOrgResults"
-                     hx-swap="innerHTML"
-                     hx-trigger="input changed delay:300ms"
-                     name="q">
-              <div id="linkedOrgResults" class="list-group mt-1"
-                   style="max-height:180px;overflow-y:auto;"></div>
+              {{ fk_search_field('organization_id', '',
+                                 search_url=url_for('admin_dashboard.htmx_org_search_for_project'),
+                                 optional_text='',
+                                 placeholder='Search by name or acronym…',
+                                 badge_class='bg-info text-dark py-1 px-2',
+                                 search_class='form-control form-control-sm',
+                                 id_prefix='linkedOrg') }}
             </div>
             <button type="submit" class="btn btn-sm btn-success">
               <i class="fas fa-check"></i> Link
@@ -137,26 +126,13 @@
               hx-swap="innerHTML">
           <div class="d-flex gap-2 align-items-start flex-wrap">
             <div class="flex-grow-1" style="min-width:200px;">
-              <div id="linkedContractSelected" class="mb-1" style="display:none;">
-                <span class="badge bg-warning text-dark py-1 px-2 font-monospace" id="linkedContractBadge"></span>
-                <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
-                        onclick="clearLinkedContractSelection()">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-              <input type="hidden" name="contract_id" id="linkedContractId">
-              <input type="text"
-                     class="form-control form-control-sm"
-                     id="linkedContractSearch"
-                     placeholder="Search by contract number or title…"
-                     autocomplete="off"
-                     hx-get="{{ url_for('admin_dashboard.htmx_contract_search_for_project') }}"
-                     hx-target="#linkedContractResults"
-                     hx-swap="innerHTML"
-                     hx-trigger="input changed delay:300ms"
-                     name="q">
-              <div id="linkedContractResults" class="list-group mt-1"
-                   style="max-height:180px;overflow-y:auto;"></div>
+              {{ fk_search_field('contract_id', '',
+                                 search_url=url_for('admin_dashboard.htmx_contract_search_for_project'),
+                                 optional_text='',
+                                 placeholder='Search by contract number or title…',
+                                 badge_class='bg-warning text-dark py-1 px-2 font-monospace',
+                                 search_class='form-control form-control-sm',
+                                 id_prefix='linkedContract') }}
             </div>
             <button type="submit" class="btn btn-sm btn-success">
               <i class="fas fa-check"></i> Link
@@ -291,49 +267,10 @@
 </div>{# /d-flex flex-column #}
 
 <script>
-// Prefix all helpers with "le" (linked-elements) to avoid collisions with
-// other scripts on the page.
-
+// Toggle helper for the Add-form collapse panels. FK pickers are wired up
+// globally by /static/js/fk-picker.js.
 function leToggleAddForm(id) {
   const el = document.getElementById(id);
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
-}
-
-// ── Org FK picker ──────────────────────────────────────────────────────────
-const _leOrgResults = document.getElementById('linkedOrgResults');
-if (_leOrgResults) {
-  _leOrgResults.addEventListener('click', function (e) {
-    const item = e.target.closest('.fk-search-result');
-    if (!item) return;
-    document.getElementById('linkedOrgId').value = item.dataset.orgId;
-    document.getElementById('linkedOrgBadge').textContent = item.dataset.orgDisplay;
-    document.getElementById('linkedOrgSelected').style.display = '';
-    document.getElementById('linkedOrgSearch').value = '';
-    _leOrgResults.innerHTML = '';
-  });
-}
-
-function clearLinkedOrgSelection() {
-  document.getElementById('linkedOrgId').value = '';
-  document.getElementById('linkedOrgSelected').style.display = 'none';
-}
-
-// ── Contract FK picker ─────────────────────────────────────────────────────
-const _leContractResults = document.getElementById('linkedContractResults');
-if (_leContractResults) {
-  _leContractResults.addEventListener('click', function (e) {
-    const item = e.target.closest('.fk-search-result');
-    if (!item) return;
-    document.getElementById('linkedContractId').value = item.dataset.contractId;
-    document.getElementById('linkedContractBadge').textContent = item.dataset.contractDisplay;
-    document.getElementById('linkedContractSelected').style.display = '';
-    document.getElementById('linkedContractSearch').value = '';
-    _leContractResults.innerHTML = '';
-  });
-}
-
-function clearLinkedContractSelection() {
-  document.getElementById('linkedContractId').value = '';
-  document.getElementById('linkedContractSelected').style.display = 'none';
 }
 </script>

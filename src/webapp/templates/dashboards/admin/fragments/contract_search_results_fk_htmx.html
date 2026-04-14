@@ -4,9 +4,7 @@
 <div class="list-group-item list-group-item-action p-2 fk-search-result"
      style="cursor:pointer;"
      data-fk-id="{{ contract.contract_id }}"
-     data-fk-label="{{ contract.contract_number }} — {{ contract.title[:60] }}"
-     data-contract-id="{{ contract.contract_id }}"
-     data-contract-display="{{ contract.contract_number }} — {{ contract.title[:60] }}">
+     data-fk-label="{{ contract.contract_number }} — {{ contract.title[:60] }}">
     <span class="badge bg-light text-dark border me-1 font-monospace">{{ contract.contract_number }}</span>
     <span class="small">{{ contract.title[:80] }}</span>
 </div>
