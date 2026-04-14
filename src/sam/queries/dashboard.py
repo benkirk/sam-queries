@@ -55,7 +55,7 @@ case or complicate the N=many case — both are net losses for readers.
 """
 
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TypedDict
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -81,8 +81,65 @@ from sam.queries.rolling_usage import get_project_rolling_usage
 # Dashboard Query Helpers
 # ============================================================================
 
+
+class DashboardResource(TypedDict):
+    """
+    Per-resource row in the dashboard data structure.
+
+    Single source of truth for the dict shape produced by BOTH
+    _build_project_resources_data() (single-project path) and
+    _build_user_projects_resources_batched() (multi-project batched path).
+    Both producers must populate every field listed here; the equivalence
+    test in tests/unit/test_query_functions.py compares them
+    field-by-field at runtime.
+
+    Note: this is a documentation/IDE annotation only. The project does
+    not run mypy in CI, so type errors won't fail the build — but the
+    annotation gives editors enough information to autocomplete field
+    access, catch typos when reading, and serve as the canonical
+    contract for downstream consumers (the project_card.html template,
+    the API serializers, the CLI display helpers).
+
+    If you add or rename a field, update BOTH producers AND the
+    equivalence test's SCALAR_FIELDS / FLOAT_FIELDS tuples in lockstep.
+    """
+    # Identity / FK metadata
+    resource_name: str
+    allocation_id: Optional[int]
+    parent_allocation_id: Optional[int]
+    is_inheriting: bool
+    account_id: Optional[int]
+
+    # Numeric usage
+    allocated: float
+    used: float
+    remaining: float
+    percent_used: float
+    charges_by_type: Dict[str, float]
+    adjustments: float
+
+    # Status / display
+    status: str
+    resource_type: str
+
+    # Date metadata
+    start_date: Optional[datetime]
+    end_date: Optional[datetime]
+    days_until_expiration: Optional[int]
+    date_group_key: str
+
+    # Timeline progress (mirrors allocations dashboard project_table.html)
+    elapsed_pct: float
+    bar_state: str  # one of: 'no-dates', 'open-ended', 'expired', 'active', 'no-duration'
+
+    # Rolling-window usage (only populated for projects whose accounts
+    # have a non-null first_threshold or second_threshold; otherwise None)
+    rolling_30: Optional[Dict]
+    rolling_90: Optional[Dict]
+
+
 def _build_project_resources_data(project: Project,
-                                   active_at: Optional[datetime] = None) -> List[Dict]:
+                                   active_at: Optional[datetime] = None) -> List[DashboardResource]:
     """
     Single-project resource-dict builder.
 
@@ -217,7 +274,7 @@ def _build_user_projects_resources_batched(
     session: Session,
     projects: List[Project],
     active_at: Optional[datetime] = None,
-) -> Dict[int, List[Dict]]:
+) -> Dict[int, List[DashboardResource]]:
     """
     Batched, multi-project equivalent of _build_project_resources_data().
 
@@ -435,7 +492,7 @@ def _build_user_projects_resources_batched(
     # AND extend the equivalence test's SCALAR_FIELDS or FLOAT_FIELDS
     # tuple, otherwise CI will catch the drift.
     # ------------------------------------------------------------------
-    out: Dict[int, List[Dict]] = {p.project_id: [] for p in projects}
+    out: Dict[int, List[DashboardResource]] = {p.project_id: [] for p in projects}
 
     for key, (project, account, query_alloc, resource_type, end_date) in chosen.items():
         resource_name = account.resource.resource_name
@@ -529,7 +586,7 @@ def get_project_dashboard_data(session: Session, projcode: str) -> Optional[Dict
         Dictionary with structure:
         {
             'project': Project object,
-            'resources': List[Dict],  # From get_detailed_allocation_usage()
+            'resources': List[DashboardResource],  # see TypedDict above
             'has_children': bool
         }
         Returns None if project not found.
@@ -591,7 +648,7 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
             'projects': [
                 {
                     'project': Project object,
-                    'resources': List[Dict],  # From get_detailed_allocation_usage()
+                    'resources': List[DashboardResource],  # see TypedDict above
                     'has_children': bool
                 }
             ],
@@ -629,7 +686,9 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
     # Project.batch_get_*_charges twice total instead of firing per-project
     # get_detailed_allocation_usage() (which would fire 3-4 queries per
     # (project, account)). See _build_user_projects_resources_batched docstring.
-    project_resources_map = _build_user_projects_resources_batched(session, projects)
+    project_resources_map: Dict[int, List[DashboardResource]] = (
+        _build_user_projects_resources_batched(session, projects)
+    )
 
     project_data_list = []
     for project in projects:
