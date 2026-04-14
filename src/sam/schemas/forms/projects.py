@@ -35,7 +35,7 @@ class CreateProjectForm(HtmxFormSchema):
     ext_alias = f.Str(load_default=None)
 
     @validates('projcode')
-    def validate_projcode(self, value):
+    def validate_projcode(self, value, **kwargs):
         code = value.strip().upper()
         if not code:
             raise ValidationError('Project code is required.')
@@ -45,46 +45,31 @@ class CreateProjectForm(HtmxFormSchema):
     @post_load
     def normalize(self, data, **kwargs):
         data['projcode'] = data['projcode'].strip().upper()
-        if data.get('abstract') == '':
-            data['abstract'] = None
-        if data.get('ext_alias') == '':
-            data['ext_alias'] = None
-        # charging_exempt from checkbox comes as 'on' not a bool
         return data
 
 
 class EditProjectForm(HtmxFormSchema):
-    """Partial type-coercion schema for project edit routes.
+    """Type-coercion schema for project edit routes.
 
-    All fields are optional so the route can call
-    ``EditProjectForm().load(data, partial=True)`` and only update
-    whatever the user submitted.
-
-    IMPORTANT — checkbox handling: unchecked HTML checkboxes send *no*
-    field at all, so the route must inject explicit ``False`` for boolean
-    fields that are absent from ``request.form`` before passing to this
-    schema (otherwise a missing field would be silently ignored).
+    Mandatory project identity fields (title, lead, area of interest) are
+    required because the edit form always renders them. Other scalar fields
+    use ``load_default=None`` so ``project.update()`` can skip unchanged
+    values. Checkbox fields use ``load_default=False`` because unchecked
+    HTML checkboxes send no key at all — the schema's default then
+    correctly represents "unchecked" rather than "unchanged".
 
     FK existence checks remain in the route (require DB access).
     """
-    title = f.Str(load_default=None, validate=v.Length(min=1, max=255))
+    title = f.Str(required=True, validate=v.Length(min=1, max=255))
     abstract = f.Str(load_default=None)
-    area_of_interest_id = f.Int(load_default=None)
+    area_of_interest_id = f.Int(required=True)
     allocation_type_id = f.Int(load_default=None)
-    charging_exempt = f.Bool(load_default=None)
-    project_lead_user_id = f.Int(load_default=None)
+    charging_exempt = f.Bool(load_default=False)
+    project_lead_user_id = f.Int(required=True)
     project_admin_user_id = f.Int(load_default=None)
     unix_gid = f.Int(load_default=None)
     ext_alias = f.Str(load_default=None)
-    active = f.Bool(load_default=None)
-
-    @post_load
-    def normalize(self, data, **kwargs):
-        if data.get('abstract') == '':
-            data['abstract'] = None
-        if data.get('ext_alias') == '':
-            data['ext_alias'] = None
-        return data
+    active = f.Bool(load_default=False)
 
 
 class AddLinkedOrganizationForm(HtmxFormSchema):

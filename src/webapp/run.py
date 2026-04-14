@@ -16,6 +16,7 @@ from webapp.dashboards.user import bp as user_dashboard_bp
 from webapp.dashboards.admin import bp as admin_dashboard_bp
 from webapp.dashboards.status import bp as status_dashboard_bp
 from webapp.dashboards.allocations import bp as allocations_dashboard_bp
+from webapp.dashboards.project_members import bp as project_members_bp
 from webapp.auth.models import AuthUser
 from webapp.utils.rbac import rbac_context_processor
 from sam.core.users import User
@@ -185,6 +186,7 @@ def create_app():
     app.register_blueprint(admin_dashboard_bp)
     app.register_blueprint(status_dashboard_bp)
     app.register_blueprint(allocations_dashboard_bp)
+    app.register_blueprint(project_members_bp)
     # NOTE: admin_bp blueprint removed - Flask-Admin handles /database routing
     # app.register_blueprint(admin_bp, url_prefix='/database')
 

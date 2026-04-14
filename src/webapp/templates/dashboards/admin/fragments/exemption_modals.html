@@ -1,49 +1,12 @@
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {#
   Admin: Wallclock Exemption Modals
   These containers live in the page DOM so HTMX can load forms into them
   when the user card buttons are clicked.
 #}
 
-<!-- Add Exemption Modal -->
-<div class="modal fade" id="addExemptionModal" tabindex="-1"
-     aria-labelledby="addExemptionModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="addExemptionModalLabel">
-                    <i class="fas fa-clock"></i> Add Wallclock Exemption
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="addExemptionFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('addExemptionModal', 'Add Wallclock Exemption',
+                  icon='clock', container_id='addExemptionFormContainer') }}
 
-<!-- Edit Exemption Modal -->
-<div class="modal fade" id="editExemptionModal" tabindex="-1"
-     aria-labelledby="editExemptionModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editExemptionModalLabel">
-                    <i class="fas fa-edit"></i> Edit Wallclock Exemption
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editExemptionFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editExemptionModal', 'Edit Wallclock Exemption',
+                  icon='edit', container_id='editExemptionFormContainer', variant='edit') }}

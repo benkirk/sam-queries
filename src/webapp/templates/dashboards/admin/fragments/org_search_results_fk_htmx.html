@@ -3,8 +3,8 @@
 {% for org in orgs %}
 <div class="list-group-item list-group-item-action p-2 fk-search-result"
      style="cursor:pointer;"
-     data-org-id="{{ org.organization_id }}"
-     data-org-display="{{ org.name }} ({{ org.acronym }})">
+     data-fk-id="{{ org.organization_id }}"
+     data-fk-label="{{ org.name }} ({{ org.acronym }})">
     <span class="badge bg-light text-dark border me-1">{{ org.acronym }}</span>
     {{ org.name }}
 </div>

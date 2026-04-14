@@ -1,31 +1,10 @@
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {#
   Admin: Project Management Modals
   Create modal: form loaded lazily via HTMX when button is clicked.
-  Edit modal: placeholder for Phase B.
 #}
 
-<!-- ══════════════════════════════════════════════════════════ CREATE MODAL -->
-
 {% if has_permission(Permission.CREATE_PROJECTS) %}
-<!-- Create Project Modal -->
-<div class="modal fade" id="createProjectModal" tabindex="-1"
-     aria-labelledby="createProjectModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createProjectModalLabel">
-                    <i class="fas fa-folder-plus"></i> New Project
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createProjectFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createProjectModal', 'New Project',
+                  icon='folder-plus', container_id='createProjectFormContainer', size='xl') }}
 {% endif %}

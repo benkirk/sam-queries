@@ -5,11 +5,15 @@ Covers: Resources, Resource Types, Machines, Queues.
 """
 
 from flask import render_template, request
-from webapp.utils.htmx import htmx_success_message
 from flask_login import login_required
 from datetime import datetime
-from marshmallow import ValidationError
 
+from webapp.utils.htmx import (
+    handle_htmx_form_post,
+    handle_htmx_soft_delete,
+    htmx_not_found,
+    htmx_success_message,
+)
 from webapp.extensions import db
 from webapp.utils.rbac import require_permission, Permission
 from sam.manage import management_transaction
@@ -20,6 +24,24 @@ from sam.schemas.forms.resources import (
 )
 
 from .blueprint import bp
+
+
+_RESOURCES_TRIGGERS = {'closeActiveModal': {}, 'reloadResourcesCard': {}}
+
+
+def _active_resources():
+    from sam.resources.resources import Resource
+    return (
+        db.session.query(Resource)
+        .filter(Resource.is_active)
+        .order_by(Resource.resource_name)
+        .all()
+    )
+
+
+def _all_resource_types():
+    from sam.resources.resources import ResourceType
+    return db.session.query(ResourceType).order_by(ResourceType.resource_type).all()
 
 
 # ── Resource Management Card ───────────────────────────────────────────────
@@ -98,35 +120,21 @@ def htmx_resource_edit(resource_id):
 
     resource = db.session.get(Resource, resource_id)
     if not resource:
-        return '<div class="alert alert-danger">Resource not found</div>', 404
+        return htmx_not_found('Resource')
 
-    try:
-        data = EditResourceForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_resource_form_htmx.html',
-            resource=resource,
-            errors=EditResourceForm.flatten_errors(e.messages),
-            form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            resource.update(
-                description=data['description'],
-                commission_date=datetime.combine(data['commission_date'], datetime.min.time()),
-                decommission_date=data['decommission_date'],
-                charging_exempt=data['charging_exempt'],
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_resource_form_htmx.html',
-            resource=resource,
-            errors=[f'Error updating resource: {e}'],
-            form=request.form,
-        )
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadResourcesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=EditResourceForm,
+        template='dashboards/admin/fragments/edit_resource_form_htmx.html',
+        success_triggers=_RESOURCES_TRIGGERS,
+        error_prefix='Error updating resource',
+        extra_context={'resource': resource},
+        do_action=lambda data: resource.update(
+            description=data['description'],
+            commission_date=datetime.combine(data['commission_date'], datetime.min.time()),
+            decommission_date=data['decommission_date'],
+            charging_exempt=data['charging_exempt'],
+        ),
+    )
 
 
 # ── Resource Create ────────────────────────────────────────────────────────
@@ -137,13 +145,9 @@ def htmx_resource_edit(resource_id):
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_resource_create_form():
     """Return the resource create form fragment (loaded into modal)."""
-    from sam.resources.resources import ResourceType
-
-    resource_types = db.session.query(ResourceType).order_by(ResourceType.resource_type).all()
-
     return render_template(
         'dashboards/admin/fragments/create_resource_form_htmx.html',
-        resource_types=resource_types,
+        resource_types=_all_resource_types(),
     )
 
 
@@ -152,36 +156,23 @@ def htmx_resource_create_form():
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_resource_create():
     """Create a new resource."""
-    from sam.resources.resources import Resource, ResourceType
+    from sam.resources.resources import Resource
 
-    def _reload_form(extra_errors=None):
-        resource_types = db.session.query(ResourceType).order_by(ResourceType.resource_type).all()
-        return render_template(
-            'dashboards/admin/fragments/create_resource_form_htmx.html',
-            resource_types=resource_types,
-            errors=extra_errors or [],
-            form=request.form,
-        )
-
-    try:
-        data = CreateResourceForm().load(request.form)
-    except ValidationError as e:
-        return _reload_form(CreateResourceForm.flatten_errors(e.messages))
-
-    try:
-        with management_transaction(db.session):
-            Resource.create(
-                db.session,
-                resource_name=data['resource_name'],
-                resource_type_id=data['resource_type_id'],
-                description=data['description'],
-                commission_date=datetime.combine(data['commission_date'], datetime.min.time()) if data.get('commission_date') else None,
-                charging_exempt=data['charging_exempt'],
-            )
-    except Exception as e:
-        return _reload_form([f'Error creating resource: {e}'])
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadResourcesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=CreateResourceForm,
+        template='dashboards/admin/fragments/create_resource_form_htmx.html',
+        success_triggers=_RESOURCES_TRIGGERS,
+        error_prefix='Error creating resource',
+        context_fn=lambda: {'resource_types': _all_resource_types()},
+        do_action=lambda data: Resource.create(
+            db.session,
+            resource_name=data['resource_name'],
+            resource_type_id=data['resource_type_id'],
+            description=data['description'],
+            commission_date=datetime.combine(data['commission_date'], datetime.min.time()) if data.get('commission_date') else None,
+            charging_exempt=data['charging_exempt'],
+        ),
+    )
 
 
 # ── Resource Delete ────────────────────────────────────────────────────────
@@ -196,15 +187,17 @@ def htmx_resource_delete(resource_id):
 
     resource = db.session.get(Resource, resource_id)
     if not resource:
-        return '<div class="alert alert-danger">Resource not found</div>', 404
+        return htmx_not_found('Resource')
 
+    # Resource decommission sets a date rather than the active flag, so we
+    # don't use handle_htmx_soft_delete here.
     try:
         with management_transaction(db.session):
             resource.update(decommission_date=datetime.now())
     except Exception as e:
         return f'<div class="alert alert-danger">Error: {e}</div>', 500
 
-    return ''  # hx-swap="delete" removes the row
+    return ''
 
 
 # ── Resource Type Edit ─────────────────────────────────────────────────────
@@ -236,32 +229,18 @@ def htmx_resource_type_edit(resource_type_id):
 
     resource_type = db.session.get(ResourceType, resource_type_id)
     if not resource_type:
-        return '<div class="alert alert-danger">Resource type not found</div>', 404
+        return htmx_not_found('Resource type')
 
-    try:
-        data = EditResourceTypeForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_resource_type_form_htmx.html',
-            resource_type=resource_type,
-            errors=EditResourceTypeForm.flatten_errors(e.messages),
-            form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            resource_type.update(
-                grace_period_days=data['grace_period_days'],
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_resource_type_form_htmx.html',
-            resource_type=resource_type,
-            errors=[f'Error updating resource type: {e}'],
-            form=request.form,
-        )
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadResourcesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=EditResourceTypeForm,
+        template='dashboards/admin/fragments/edit_resource_type_form_htmx.html',
+        success_triggers=_RESOURCES_TRIGGERS,
+        error_prefix='Error updating resource type',
+        extra_context={'resource_type': resource_type},
+        do_action=lambda data: resource_type.update(
+            grace_period_days=data['grace_period_days'],
+        ),
+    )
 
 
 # ── Resource Type Create ───────────────────────────────────────────────────
@@ -282,28 +261,17 @@ def htmx_resource_type_create():
     """Create a new resource type."""
     from sam.resources.resources import ResourceType
 
-    try:
-        data = CreateResourceTypeForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/admin/fragments/create_resource_type_form_htmx.html',
-            errors=CreateResourceTypeForm.flatten_errors(e.messages), form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            ResourceType.create(
-                db.session,
-                resource_type=data['resource_type'],
-                grace_period_days=data['grace_period_days'],
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/create_resource_type_form_htmx.html',
-            errors=[f'Error creating resource type: {e}'], form=request.form,
-        )
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadResourcesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=CreateResourceTypeForm,
+        template='dashboards/admin/fragments/create_resource_type_form_htmx.html',
+        success_triggers=_RESOURCES_TRIGGERS,
+        error_prefix='Error creating resource type',
+        do_action=lambda data: ResourceType.create(
+            db.session,
+            resource_type=data['resource_type'],
+            grace_period_days=data['grace_period_days'],
+        ),
+    )
 
 
 # ── Resource Type Delete ───────────────────────────────────────────────────
@@ -318,15 +286,8 @@ def htmx_resource_type_delete(resource_type_id):
 
     resource_type = db.session.get(ResourceType, resource_type_id)
     if not resource_type:
-        return '<div class="alert alert-danger">Resource type not found</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            resource_type.update(active=False)
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return ''
+        return htmx_not_found('Resource type')
+    return handle_htmx_soft_delete(resource_type, name='Resource type')
 
 
 # ── Machine Edit ───────────────────────────────────────────────────────────
@@ -358,35 +319,21 @@ def htmx_machine_edit(machine_id):
 
     machine = db.session.get(Machine, machine_id)
     if not machine:
-        return '<div class="alert alert-danger">Machine not found</div>', 404
+        return htmx_not_found('Machine')
 
-    try:
-        data = EditMachineForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_machine_form_htmx.html',
-            machine=machine,
-            errors=EditMachineForm.flatten_errors(e.messages),
-            form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            machine.update(
-                description=data['description'],
-                cpus_per_node=data['cpus_per_node'],
-                commission_date=datetime.combine(data['commission_date'], datetime.min.time()),
-                decommission_date=data['decommission_date'],
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_machine_form_htmx.html',
-            machine=machine,
-            errors=[f'Error updating machine: {e}'],
-            form=request.form,
-        )
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadResourcesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=EditMachineForm,
+        template='dashboards/admin/fragments/edit_machine_form_htmx.html',
+        success_triggers=_RESOURCES_TRIGGERS,
+        error_prefix='Error updating machine',
+        extra_context={'machine': machine},
+        do_action=lambda data: machine.update(
+            description=data['description'],
+            cpus_per_node=data['cpus_per_node'],
+            commission_date=datetime.combine(data['commission_date'], datetime.min.time()),
+            decommission_date=data['decommission_date'],
+        ),
+    )
 
 
 # ── Machine Create ─────────────────────────────────────────────────────────
@@ -397,13 +344,9 @@ def htmx_machine_edit(machine_id):
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_machine_create_form():
     """Return the machine create form fragment (loaded into modal)."""
-    from sam.resources.resources import Resource
-
-    resources = db.session.query(Resource).filter(Resource.is_active).order_by(Resource.resource_name).all()
-
     return render_template(
         'dashboards/admin/fragments/create_machine_form_htmx.html',
-        resources=resources,
+        resources=_active_resources(),
     )
 
 
@@ -413,36 +356,22 @@ def htmx_machine_create_form():
 def htmx_machine_create():
     """Create a new machine."""
     from sam.resources.machines import Machine
-    from sam.resources.resources import Resource
 
-    def _reload_form(extra_errors=None):
-        resources = db.session.query(Resource).filter(Resource.is_active).order_by(Resource.resource_name).all()
-        return render_template(
-            'dashboards/admin/fragments/create_machine_form_htmx.html',
-            resources=resources,
-            errors=extra_errors or [],
-            form=request.form,
-        )
-
-    try:
-        data = CreateMachineForm().load(request.form)
-    except ValidationError as e:
-        return _reload_form(CreateMachineForm.flatten_errors(e.messages))
-
-    try:
-        with management_transaction(db.session):
-            Machine.create(
-                db.session,
-                name=data['name'],
-                resource_id=data['resource_id'],
-                description=data['description'],
-                cpus_per_node=data['cpus_per_node'],
-                commission_date=datetime.combine(data['commission_date'], datetime.min.time()) if data.get('commission_date') else None,
-            )
-    except Exception as e:
-        return _reload_form([f'Error creating machine: {e}'])
-
-    return htmx_success_message({'closeActiveModal': {}, 'reloadResourcesCard': {}}, 'Saved successfully.')
+    return handle_htmx_form_post(
+        schema_cls=CreateMachineForm,
+        template='dashboards/admin/fragments/create_machine_form_htmx.html',
+        success_triggers=_RESOURCES_TRIGGERS,
+        error_prefix='Error creating machine',
+        context_fn=lambda: {'resources': _active_resources()},
+        do_action=lambda data: Machine.create(
+            db.session,
+            name=data['name'],
+            resource_id=data['resource_id'],
+            description=data['description'],
+            cpus_per_node=data['cpus_per_node'],
+            commission_date=datetime.combine(data['commission_date'], datetime.min.time()) if data.get('commission_date') else None,
+        ),
+    )
 
 
 # ── Machine Delete ─────────────────────────────────────────────────────────
@@ -457,7 +386,7 @@ def htmx_machine_delete(machine_id):
 
     machine = db.session.get(Machine, machine_id)
     if not machine:
-        return '<div class="alert alert-danger">Machine not found</div>', 404
+        return htmx_not_found('Machine')
 
     try:
         with management_transaction(db.session):
@@ -497,8 +426,11 @@ def htmx_queue_edit(queue_id):
 
     queue = db.session.get(Queue, queue_id)
     if not queue:
-        return '<div class="alert alert-danger">Queue not found</div>', 404
+        return htmx_not_found('Queue')
 
+    # Cross-field check requiring the ORM object's start_date — done after
+    # validation so this route uses the schema directly rather than the helper.
+    from marshmallow import ValidationError
     try:
         data = EditQueueForm().load(request.form)
     except ValidationError as e:
@@ -509,7 +441,6 @@ def htmx_queue_edit(queue_id):
             form=request.form,
         )
 
-    # Cross-field check requiring the ORM object's start_date
     if data.get('end_date') and queue.start_date and data['end_date'] <= queue.start_date:
         return render_template(
             'dashboards/admin/fragments/edit_queue_form_htmx.html',
@@ -533,7 +464,7 @@ def htmx_queue_edit(queue_id):
             form=request.form,
         )
 
-    return htmx_success_message({'closeActiveModal': {}, 'reloadResourcesCard': {}}, 'Saved successfully.')
+    return htmx_success_message(_RESOURCES_TRIGGERS, 'Saved successfully.')
 
 
 # ── Queue Delete ───────────────────────────────────────────────────────────
@@ -548,7 +479,7 @@ def htmx_queue_delete(queue_id):
 
     queue = db.session.get(Queue, queue_id)
     if not queue:
-        return '<div class="alert alert-danger">Queue not found</div>', 404
+        return htmx_not_found('Queue')
 
     try:
         with management_transaction(db.session):

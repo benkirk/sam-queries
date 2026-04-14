@@ -22,6 +22,8 @@
                                projcode}. When set, Section E is shown and Section D is suppressed.
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/form_fields.html'
+    import number_field, date_field, text_field with context %}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_edit_allocation', alloc_id=allocation.allocation_id),
@@ -215,55 +217,45 @@
     </div>
   </div>
 
-  {# ── Editable fields (disabled if inheriting) ─────────────────── #}
+  {# ── Editable fields (disabled if inheriting; inline onchange JS in the
+       break-inheritance collapse toggles the `disabled` attribute on
+       #editAllocAmount / #editAllocStart / #editAllocEnd — those IDs are
+       preserved via explicit `id=` args below so the JS keeps working). ── #}
   {% set disabled = allocation.is_inheriting %}
+  {% set _amount_help = '<span class="number-preview text-primary fw-semibold"></span>'
+                       ~ ('<span class="text-muted"> Edit parent allocation to change this.</span>' if disabled else '') %}
 
-  <!-- Amount (live comma-preview rendered below by number-preview.js) -->
-  <div class="mb-3">
-    <label for="editAllocAmount" class="form-label fw-semibold">Amount</label>
-    <input type="number" class="form-control" id="editAllocAmount"
-           name="amount" min="0.01" step="any"
-           data-number-preview
-           {% if disabled %}disabled{% endif %}
-           value="{{ form.get('amount', allocation.amount) if form else allocation.amount }}">
-    <div class="form-text">
-      <span class="number-preview text-primary fw-semibold"></span>
-      {% if disabled %}<span class="text-muted">Edit parent allocation to change this.</span>{% endif %}
-    </div>
-  </div>
+  {{ number_field('amount', 'Amount',
+                  min=0.01, step='any',
+                  disabled=disabled,
+                  default=allocation.amount,
+                  data_attrs={'number-preview': ''},
+                  help_html=_amount_help,
+                  label_class='form-label fw-semibold',
+                  id='editAllocAmount') }}
 
   <!-- Dates (side-by-side; stack on narrow viewports) -->
   <div class="row">
     <div class="col-md-6">
-      <div class="mb-3">
-        <label for="editAllocStart" class="form-label fw-semibold">Start Date</label>
-        <input type="date" class="form-control" id="editAllocStart"
-               name="start_date"
-               {% if disabled %}disabled{% endif %}
-               value="{{ form.get('start_date', allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else '') if form else (allocation.start_date.strftime('%Y-%m-%d') if allocation.start_date else '') }}">
-      </div>
+      {{ date_field('start_date', 'Start Date',
+                    disabled=disabled,
+                    default=allocation.start_date,
+                    label_class='form-label fw-semibold',
+                    id='editAllocStart') }}
     </div>
     <div class="col-md-6">
-      <div class="mb-3">
-        <label for="editAllocEnd" class="form-label">End Date <span class="text-muted">(optional)</span></label>
-        <input type="date" class="form-control" id="editAllocEnd"
-               name="end_date"
-               {% if disabled %}disabled{% endif %}
-               value="{{ form.get('end_date', allocation.end_date.strftime('%Y-%m-%d') if allocation.end_date else '') if form else (allocation.end_date.strftime('%Y-%m-%d') if allocation.end_date else '') }}">
-        <small class="form-text text-muted">Leave blank for no end date</small>
-      </div>
+      {{ date_field('end_date', 'End Date',
+                    disabled=disabled,
+                    default=allocation.end_date,
+                    help='Leave blank for no end date',
+                    id='editAllocEnd') }}
     </div>
   </div>
 
-  <!-- Description (not cascaded — always editable) -->
-  <div class="mb-3">
-    <label for="editAllocDescription" class="form-label">
-      Description <span class="text-muted">(optional — not cascaded to children)</span>
-    </label>
-    <input type="text" class="form-control" id="editAllocDescription"
-           name="description"
-           value="{{ form.get('description', allocation.description or '') if form else (allocation.description or '') }}"
-           placeholder="Optional note for this allocation">
-  </div>
+  {{ text_field('description', 'Description',
+                optional_text='(optional — not cascaded to children)',
+                default=allocation.description or '',
+                placeholder='Optional note for this allocation',
+                id='editAllocDescription') }}
 
 {% endcall %}

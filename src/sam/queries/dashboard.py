@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from sam.core.users import User
 from sam.core.organizations import Organization, ProjectOrganization
+from sam.enums import ResourceTypeName
 from sam.projects.projects import Project
 from sam.projects.contracts import Contract, ContractSource, ProjectContract
 from sam.accounting.accounts import Account, AccountUser
@@ -366,7 +367,7 @@ def get_resource_detail_data(
         }
 
     # Determine resource type to query appropriate tables
-    resource_type = resource.resource_type.resource_type if resource.resource_type else 'HPC'
+    resource_type = resource.resource_type.resource_type if resource.resource_type else ResourceTypeName.HPC
 
     # Resolve the scope project (controls daily charge aggregation)
     if scope_projcode and scope_projcode != projcode:
@@ -388,7 +389,7 @@ def get_resource_detail_data(
         # Use MPPT join pattern (same as Project.get_subtree_charges) to aggregate
         # daily charges across this project and all descendants.
         results = None
-        if resource_type in ('HPC', 'DAV'):
+        if ResourceTypeName.is_compute(resource_type):
             results = session.query(
                 CompChargeSummary.activity_date,
                 func.sum(CompChargeSummary.charges).label('charges')
@@ -404,7 +405,7 @@ def get_resource_detail_data(
                 CompChargeSummary.activity_date <= end_date,
             ).group_by(CompChargeSummary.activity_date).all()
 
-        elif resource_type == 'DISK':
+        elif resource_type == ResourceTypeName.DISK:
             results = session.query(
                 DiskChargeSummary.activity_date,
                 func.sum(DiskChargeSummary.charges).label('charges')
@@ -420,7 +421,7 @@ def get_resource_detail_data(
                 DiskChargeSummary.activity_date <= end_date,
             ).group_by(DiskChargeSummary.activity_date).all()
 
-        elif resource_type == 'ARCHIVE':
+        elif resource_type == ResourceTypeName.ARCHIVE:
             results = session.query(
                 ArchiveChargeSummary.activity_date,
                 func.sum(ArchiveChargeSummary.charges).label('charges')
@@ -481,7 +482,7 @@ def get_resource_detail_data(
 
         results = None
 
-        if resource_type in ('HPC', 'DAV'):
+        if ResourceTypeName.is_compute(resource_type):
             results = session.query(
                 CompChargeSummary.activity_date,
                 func.sum(CompChargeSummary.charges).label('charges')
@@ -491,7 +492,7 @@ def get_resource_detail_data(
                 CompChargeSummary.activity_date <= end_date
             ).group_by(CompChargeSummary.activity_date).all()
 
-        elif resource_type == 'DISK':
+        elif resource_type == ResourceTypeName.DISK:
             results = session.query(
                 DiskChargeSummary.activity_date,
                 func.sum(DiskChargeSummary.charges).label('charges')
@@ -501,7 +502,7 @@ def get_resource_detail_data(
                 DiskChargeSummary.activity_date <= end_date
             ).group_by(DiskChargeSummary.activity_date).all()
 
-        elif resource_type == 'ARCHIVE':
+        elif resource_type == ResourceTypeName.ARCHIVE:
             results = session.query(
                 ArchiveChargeSummary.activity_date,
                 func.sum(ArchiveChargeSummary.charges).label('charges')

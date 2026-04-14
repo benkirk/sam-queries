@@ -6,10 +6,8 @@ Covers: Add Member, Edit Allocation.
 
 import marshmallow.fields as f
 import marshmallow.validate as v
-from marshmallow import ValidationError, post_load
-from datetime import datetime
+from marshmallow import post_load
 
-from webapp.api.helpers import parse_input_end_date
 from . import HtmxFormSchema
 
 
@@ -20,18 +18,8 @@ class AddMemberForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        end_str = data.get('end_date')
-        if end_str:
-            data['end_date'] = parse_input_end_date(end_str)
-        else:
-            data['end_date'] = None
-
-        start = data.get('start_date')
-        end = data.get('end_date')
-        if start and end:
-            start_dt = datetime.combine(start, datetime.min.time())
-            if end <= start_dt:
-                raise ValidationError({'end_date': ['End date must be after start date.']})
+        data['end_date'] = self.normalize_end_date(data.get('end_date'))
+        self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data
 
 
@@ -43,20 +31,8 @@ class EditAllocationForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        end_str = data.get('end_date')
-        if end_str:
-            data['end_date'] = parse_input_end_date(end_str)
-        else:
-            data['end_date'] = None
-
-        start = data.get('start_date')
-        end = data.get('end_date')
-        if start and end:
-            start_dt = datetime.combine(start, datetime.min.time())
-            if end <= start_dt:
-                raise ValidationError({'end_date': ['End date must be after start date.']})
+        data['end_date'] = self.normalize_end_date(data.get('end_date'))
+        self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data
 
 
@@ -74,10 +50,11 @@ class RenewAllocationsForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        data['new_end_date'] = parse_input_end_date(data['new_end_date'])
-        start_dt = datetime.combine(data['new_start_date'], datetime.min.time())
-        if data['new_end_date'] <= start_dt:
-            raise ValidationError({'new_end_date': ['End date must be after start date.']})
+        data['new_end_date'] = self.normalize_end_date(data['new_end_date'])
+        self.assert_date_range(
+            data['new_start_date'], data['new_end_date'],
+            field='new_end_date',
+        )
         return data
 
 
@@ -94,7 +71,7 @@ class ExtendAllocationsForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        data['new_end_date'] = parse_input_end_date(data['new_end_date'])
+        data['new_end_date'] = self.normalize_end_date(data['new_end_date'])
         return data
 
 
@@ -115,18 +92,6 @@ class AddAllocationForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        end_str = data.get('end_date')
-        if end_str:
-            data['end_date'] = parse_input_end_date(end_str)
-        else:
-            data['end_date'] = None
-
-        start = data.get('start_date')
-        end = data.get('end_date')
-        if start and end:
-            start_dt = datetime.combine(start, datetime.min.time())
-            if end <= start_dt:
-                raise ValidationError({'end_date': ['End date must be after start date.']})
+        data['end_date'] = self.normalize_end_date(data.get('end_date'))
+        self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data

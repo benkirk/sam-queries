@@ -1,13 +1,18 @@
 {#
   Reusable Jinja2 macro for HTMX modal forms.
 
+  IMPORT WITH CONTEXT — the wrapper renders the `errors` list automatically,
+  but only if `errors` is visible to the macro. Without `with context`,
+  validation errors will silently fail to display.
+
+      {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+
   Usage (call block — field HTML goes between call and endcall):
-    from 'dashboards/fragments/modal_form.html' import htmx_form
-    call htmx_form(url_for('admin_dashboard.htmx_facility_create'),
-                   '#createFacilityFormContainer', 'Create Facility',
-                   submit_icon='plus')
-        unique field HTML here
-    endcall
+      {% call htmx_form(url_for('admin_dashboard.htmx_facility_create'),
+                        '#createFacilityFormContainer', 'Create Facility',
+                        submit_icon='plus') %}
+          {{ text_field('facility_name', 'Name', required=True, ...) }}
+      {% endcall %}
 
   Parameters:
     post_url      - form action URL (required)

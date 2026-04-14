@@ -382,8 +382,8 @@
 <!-- Project Management Modals -->
 {% include 'dashboards/admin/fragments/project_modals.html' %}
 
-<!-- Member Management Modals (reused from user dashboard) -->
-{% include 'dashboards/user/fragments/member_modals_htmx.html' %}
+<!-- Member Management Modals (shared — used by user, admin, and edit-project pages) -->
+{% include 'project_members/fragments/member_modals_htmx.html' %}
 
 <!-- Allocation Management Modals (reused from user dashboard) -->
 {% include 'dashboards/user/fragments/allocation_modals.html' %}

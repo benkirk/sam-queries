@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, checkbox_field, readonly_display with context %}
 {#
   htmx: Edit Panel Form (loaded into #editPanelFormContainer)
   panel_name and facility are read-only.
@@ -11,42 +12,21 @@
     'Save Changes',
     is_edit=True
 ) %}
-        <!-- Name / Facility (read-only) -->
         <div class="row mb-3">
             <div class="col-md-7">
-                <label class="form-label">Panel Name</label>
-                <div class="form-control-plaintext">
-                    <strong>{{ panel.panel_name }}</strong>
-                </div>
+                {{ readonly_display('Panel Name', panel.panel_name, muted=False, strong=True) }}
             </div>
             <div class="col-md-5">
-                <label class="form-label">Facility</label>
-                <div class="form-control-plaintext text-muted">
-                    {{ panel.facility.facility_name if panel.facility else '—' }}
-                </div>
+                {{ readonly_display('Facility', panel.facility.facility_name if panel.facility else '—') }}
             </div>
         </div>
 
-        <!-- Description -->
-        <div class="mb-3">
-            <label for="editPanelDescription" class="form-label">
-                Description <span class="text-muted">(optional)</span>
-            </label>
-            <input type="text" class="form-control" id="editPanelDescription"
-                   name="description"
-                   value="{{ form.get('description') if form else (panel.description or '') }}"
-                   placeholder="Brief description of the panel">
-        </div>
+        {{ text_field('description', 'Description',
+                      default=panel.description or '',
+                      placeholder='Brief description of the panel',
+                      id='editPanelDescription') }}
 
-        <!-- Active -->
-        <div class="mb-3 form-check">
-            <input type="checkbox" class="form-check-input" id="editPanelActive"
-                   name="active" value="1"
-                   {% if form %}
-                       {% if form.get('active') %}checked{% endif %}
-                   {% elif panel.active %}
-                       checked
-                   {% endif %}>
-            <label class="form-check-label" for="editPanelActive">Active</label>
-        </div>
+        {{ checkbox_field('active', 'Active',
+                          default=panel.active,
+                          id='editPanelActive') }}
 {% endcall %}

@@ -1,143 +1,30 @@
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {#
   Admin: Facility Management Modals
   Edit modals: loaded lazily when an edit button is clicked.
   Create modals: loaded lazily when a create button is clicked.
 #}
 
-<!-- ══════════════════════════════════════════════════════════ CREATE MODALS -->
+{# ════════════════════════════════════════════════════════ CREATE MODALS #}
 
 {% if has_permission(Permission.CREATE_RESOURCES) %}
-<!-- Create Facility Modal -->
-<div class="modal fade" id="createFacilityModal" tabindex="-1"
-     aria-labelledby="createFacilityModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createFacilityModalLabel">
-                    <i class="fas fa-plus"></i> New Facility
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createFacilityFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createFacilityModal', 'New Facility',
+                  icon='plus', container_id='createFacilityFormContainer') }}
 
-<!-- Create Panel Modal -->
-<div class="modal fade" id="createPanelModal" tabindex="-1"
-     aria-labelledby="createPanelModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createPanelModalLabel">
-                    <i class="fas fa-plus"></i> New Panel
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createPanelFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createPanelModal', 'New Panel',
+                  icon='plus', container_id='createPanelFormContainer') }}
 
-<!-- Create Allocation Type Modal -->
-<div class="modal fade" id="createAllocationTypeModal" tabindex="-1"
-     aria-labelledby="createAllocationTypeModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createAllocationTypeModalLabel">
-                    <i class="fas fa-plus"></i> New Allocation Type
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createAllocationTypeFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createAllocationTypeModal', 'New Allocation Type',
+                  icon='plus', container_id='createAllocationTypeFormContainer') }}
 {% endif %}
 
-<!-- ══════════════════════════════════════════════════════════ EDIT MODALS -->
+{# ══════════════════════════════════════════════════════════ EDIT MODALS #}
 
-<!-- Edit Facility Modal -->
-<div class="modal fade" id="editFacilityModal" tabindex="-1"
-     aria-labelledby="editFacilityModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editFacilityModalLabel">
-                    <i class="fas fa-building"></i> Edit Facility
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editFacilityFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editFacilityModal', 'Edit Facility',
+                  icon='building', container_id='editFacilityFormContainer', variant='edit') }}
 
-<!-- Edit Panel Modal -->
-<div class="modal fade" id="editPanelModal" tabindex="-1"
-     aria-labelledby="editPanelModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editPanelModalLabel">
-                    <i class="fas fa-users-cog"></i> Edit Panel
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editPanelFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editPanelModal', 'Edit Panel',
+                  icon='users-cog', container_id='editPanelFormContainer', variant='edit') }}
 
-<!-- Edit Allocation Type Modal -->
-<div class="modal fade" id="editAllocationTypeModal" tabindex="-1"
-     aria-labelledby="editAllocationTypeModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editAllocationTypeModalLabel">
-                    <i class="fas fa-layer-group"></i> Edit Allocation Type
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editAllocationTypeFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editAllocationTypeModal', 'Edit Allocation Type',
+                  icon='layer-group', container_id='editAllocationTypeFormContainer', variant='edit') }}

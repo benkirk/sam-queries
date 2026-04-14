@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, number_field, date_field, readonly_display with context %}
 {#
   htmx: Edit Queue Form (loaded into #editQueueFormContainer)
   Queue name, resource, and start_date are read-only.
@@ -11,23 +12,15 @@
     'Save Changes',
     is_edit=True
 ) %}
-        <!-- Queue name / Resource (read-only) -->
         <div class="row mb-3">
             <div class="col-md-6">
-                <label class="form-label">Queue Name</label>
-                <div class="form-control-plaintext">
-                    <strong>{{ queue.queue_name }}</strong>
-                </div>
+                {{ readonly_display('Queue Name', queue.queue_name, muted=False, strong=True) }}
             </div>
             <div class="col-md-6">
-                <label class="form-label">Resource</label>
-                <div class="form-control-plaintext text-muted">
-                    {{ queue.resource.resource_name if queue.resource else '—' }}
-                </div>
+                {{ readonly_display('Resource', queue.resource.resource_name if queue.resource else '—') }}
             </div>
         </div>
 
-        <!-- Start date (read-only) -->
         <div class="mb-3">
             <label class="form-label">Start Date</label>
             <div class="form-control-plaintext text-muted">
@@ -36,32 +29,20 @@
             </div>
         </div>
 
-        <!-- Description -->
-        <div class="mb-3">
-            <label for="editQueueDescription" class="form-label">Description</label>
-            <input type="text" class="form-control" id="editQueueDescription"
-                   name="description"
-                   value="{{ form.get('description') if form else (queue.description or '') }}"
-                   placeholder="Brief description of the queue">
-        </div>
+        {{ text_field('description', 'Description',
+                      optional_text='',
+                      default=queue.description or '',
+                      placeholder='Brief description of the queue',
+                      id='editQueueDescription') }}
 
-        <!-- Wallclock limit -->
-        <div class="mb-3">
-            <label for="editQueueWallclock" class="form-label">
-                Wallclock Limit (hours) <span class="text-danger">*</span>
-            </label>
-            <input type="number" class="form-control" id="editQueueWallclock"
-                   name="wall_clock_hours_limit" required step="0.5" min="0.5"
-                   value="{{ form.get('wall_clock_hours_limit') if form else (queue.wall_clock_hours_limit or '') }}">
-        </div>
+        {{ number_field('wall_clock_hours_limit', 'Wallclock Limit (hours)',
+                        required=True,
+                        min=0.5, step=0.5,
+                        default=queue.wall_clock_hours_limit or '',
+                        id='editQueueWallclock') }}
 
-        <!-- End date -->
-        <div class="mb-3">
-            <label for="editQueueEndDate" class="form-label">
-                End Date <span class="text-muted">(optional — set to deactivate queue)</span>
-            </label>
-            <input type="date" class="form-control" id="editQueueEndDate"
-                   name="end_date"
-                   value="{{ form.get('end_date') if form else (queue.end_date.strftime('%Y-%m-%d') if queue.end_date else '') }}">
-        </div>
+        {{ date_field('end_date', 'End Date',
+                      optional_text='(optional — set to deactivate queue)',
+                      default=queue.end_date,
+                      id='editQueueEndDate') }}
 {% endcall %}

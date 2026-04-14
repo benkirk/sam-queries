@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import number_field, readonly_display with context %}
 {#
   htmx: Edit Resource Type Form (loaded into #editResourceTypeFormContainer)
   resource_type name is read-only. Editable: grace_period_days.
@@ -10,23 +11,13 @@
     'Save Changes',
     is_edit=True
 ) %}
-        <!-- Type name (read-only) -->
-        <div class="mb-3">
-            <label class="form-label">Resource Type</label>
-            <div class="form-control-plaintext">
-                <strong>{{ resource_type.resource_type }}</strong>
-            </div>
-        </div>
+        {{ readonly_display('Resource Type', resource_type.resource_type, muted=False, strong=True) }}
 
-        <!-- Grace period days -->
-        <div class="mb-3">
-            <label for="editResourceTypeGracePeriod" class="form-label">
-                Grace Period (days)
-            </label>
-            <input type="number" class="form-control" id="editResourceTypeGracePeriod"
-                   name="grace_period_days" min="0" step="1"
-                   value="{{ form.get('grace_period_days') if form else (resource_type.grace_period_days if resource_type.grace_period_days is not none else '') }}"
-                   placeholder="Number of grace-period days after allocation ends">
-            <div class="form-text text-muted">Number of days after allocation expiry that access remains.</div>
-        </div>
+        {{ number_field('grace_period_days', 'Grace Period (days)',
+                        optional_text='',
+                        min=0, step=1,
+                        default=resource_type.grace_period_days if resource_type.grace_period_days is not none else '',
+                        placeholder='Number of grace-period days after allocation ends',
+                        help='Number of days after allocation expiry that access remains.',
+                        id='editResourceTypeGracePeriod') }}
 {% endcall %}

@@ -6,10 +6,8 @@ Covers: Resources, Resource Types, Machines, Queues.
 
 import marshmallow.fields as f
 import marshmallow.validate as v
-from marshmallow import ValidationError, post_load
-from datetime import datetime
+from marshmallow import post_load
 
-from webapp.api.helpers import parse_input_end_date
 from . import HtmxFormSchema
 
 
@@ -21,20 +19,12 @@ class EditResourceForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        end_str = data.get('decommission_date')
-        if end_str:
-            data['decommission_date'] = parse_input_end_date(end_str)
-        else:
-            data['decommission_date'] = None
-
-        if data.get('decommission_date') and data.get('commission_date'):
-            start = datetime.combine(data['commission_date'], datetime.min.time())
-            if data['decommission_date'] <= start:
-                raise ValidationError(
-                    {'decommission_date': ['Decommission date must be after commission date.']}
-                )
+        data['decommission_date'] = self.normalize_end_date(data.get('decommission_date'))
+        self.assert_date_range(
+            data.get('commission_date'), data.get('decommission_date'),
+            field='decommission_date',
+            message='Decommission date must be after commission date.',
+        )
         return data
 
 
@@ -44,12 +34,6 @@ class CreateResourceForm(HtmxFormSchema):
     description = f.Str(load_default=None)
     charging_exempt = f.Bool(load_default=False)
     commission_date = f.Date('%Y-%m-%d', load_default=None)
-
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        return data
 
 
 class EditResourceTypeForm(HtmxFormSchema):
@@ -69,20 +53,12 @@ class EditMachineForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        end_str = data.get('decommission_date')
-        if end_str:
-            data['decommission_date'] = parse_input_end_date(end_str)
-        else:
-            data['decommission_date'] = None
-
-        if data.get('decommission_date') and data.get('commission_date'):
-            start = datetime.combine(data['commission_date'], datetime.min.time())
-            if data['decommission_date'] <= start:
-                raise ValidationError(
-                    {'decommission_date': ['Decommission date must be after commission date.']}
-                )
+        data['decommission_date'] = self.normalize_end_date(data.get('decommission_date'))
+        self.assert_date_range(
+            data.get('commission_date'), data.get('decommission_date'),
+            field='decommission_date',
+            message='Decommission date must be after commission date.',
+        )
         return data
 
 
@@ -93,12 +69,6 @@ class CreateMachineForm(HtmxFormSchema):
     cpus_per_node = f.Int(load_default=None, validate=v.Range(min=1))
     commission_date = f.Date('%Y-%m-%d', load_default=None)
 
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        return data
-
 
 class EditQueueForm(HtmxFormSchema):
     wall_clock_hours_limit = f.Float(required=True, validate=v.Range(min=0, min_inclusive=False))
@@ -107,13 +77,7 @@ class EditQueueForm(HtmxFormSchema):
 
     @post_load
     def coerce_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        end_str = data.get('end_date')
-        if end_str:
-            data['end_date'] = parse_input_end_date(end_str)
-        else:
-            data['end_date'] = None
+        data['end_date'] = self.normalize_end_date(data.get('end_date'))
         return data
     # Note: queue start_date is on the ORM object, not in the form. The route
     # checks end_date > queue.start_date inline after schema.load() since it
