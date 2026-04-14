@@ -59,7 +59,7 @@ class User(Base, TimestampMixin):
     # [All existing relationships remain the same...]
     academic_status = relationship('AcademicStatus', back_populates='users')
     accounts = relationship('AccountUser', back_populates='user', lazy='selectin')
-    admin_projects = relationship('Project', foreign_keys='Project.project_admin_user_id', back_populates='admin')
+    admin_projects = relationship('Project', foreign_keys='Project.project_admin_user_id', back_populates='admin', lazy='selectin')
     administered_resources = relationship('Resource', foreign_keys='Resource.prim_sys_admin_user_id', back_populates='prim_sys_admin')
     aliases = relationship('UserAlias', back_populates='user', uselist=False)
     allocation_transactions = relationship('AllocationTransaction', foreign_keys='AllocationTransaction.user_id', back_populates='user')
@@ -76,7 +76,7 @@ class User(Base, TimestampMixin):
     hpc_charge_summaries = relationship('HPCChargeSummary', back_populates='user')
     hpc_charges = relationship('HPCCharge', back_populates='user')
     institutions = relationship('UserInstitution', back_populates='user', cascade='all, delete-orphan')
-    led_projects = relationship('Project', foreign_keys='Project.project_lead_user_id', back_populates='lead')
+    led_projects = relationship('Project', foreign_keys='Project.project_lead_user_id', back_populates='lead', lazy='selectin')
     login_type = relationship('LoginType', back_populates='users')
     monitored_contracts = relationship('Contract', foreign_keys='Contract.contract_monitor_user_id', back_populates='contract_monitor')
     organizations = relationship('UserOrganization', back_populates='user', cascade='all, delete-orphan')
