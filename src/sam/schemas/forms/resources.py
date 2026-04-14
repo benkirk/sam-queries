@@ -19,8 +19,6 @@ class EditResourceForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
         data['decommission_date'] = self.normalize_end_date(data.get('decommission_date'))
         self.assert_date_range(
             data.get('commission_date'), data.get('decommission_date'),
@@ -36,12 +34,6 @@ class CreateResourceForm(HtmxFormSchema):
     description = f.Str(load_default=None)
     charging_exempt = f.Bool(load_default=False)
     commission_date = f.Date('%Y-%m-%d', load_default=None)
-
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        return data
 
 
 class EditResourceTypeForm(HtmxFormSchema):
@@ -61,8 +53,6 @@ class EditMachineForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
         data['decommission_date'] = self.normalize_end_date(data.get('decommission_date'))
         self.assert_date_range(
             data.get('commission_date'), data.get('decommission_date'),
@@ -79,12 +69,6 @@ class CreateMachineForm(HtmxFormSchema):
     cpus_per_node = f.Int(load_default=None, validate=v.Range(min=1))
     commission_date = f.Date('%Y-%m-%d', load_default=None)
 
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        return data
-
 
 class EditQueueForm(HtmxFormSchema):
     wall_clock_hours_limit = f.Float(required=True, validate=v.Range(min=0, min_inclusive=False))
@@ -93,8 +77,6 @@ class EditQueueForm(HtmxFormSchema):
 
     @post_load
     def coerce_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
         data['end_date'] = self.normalize_end_date(data.get('end_date'))
         return data
     # Note: queue start_date is on the ORM object, not in the form. The route

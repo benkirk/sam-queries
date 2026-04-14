@@ -17,13 +17,6 @@ class EditFacilityForm(HtmxFormSchema):
                                     validate=v.Range(min=0, max=100))
     active = f.Bool(load_default=False)
 
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        # Empty string for fair_share_percentage means None
-        if data.get('fair_share_percentage') is None:
-            data['fair_share_percentage'] = None
-        return data
-
 
 class CreateFacilityForm(HtmxFormSchema):
     facility_name = f.Str(required=True, validate=v.Length(min=1, max=30))
@@ -32,23 +25,11 @@ class CreateFacilityForm(HtmxFormSchema):
     fair_share_percentage = f.Float(load_default=None,
                                     validate=v.Range(min=0, max=100))
 
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        if data.get('code') == '':
-            data['code'] = None
-        return data
-
 
 class CreatePanelForm(HtmxFormSchema):
     panel_name = f.Str(required=True, validate=v.Length(min=1))
     facility_id = f.Int(required=True)
     description = f.Str(load_default=None)
-
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        return data
 
 
 class EditPanelSessionForm(HtmxFormSchema):
@@ -59,8 +40,6 @@ class EditPanelSessionForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
         data['end_date'] = self.normalize_end_date(data.get('end_date'))
         self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data

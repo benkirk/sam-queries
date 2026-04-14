@@ -31,8 +31,6 @@ class EditAllocationForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
         data['end_date'] = self.normalize_end_date(data.get('end_date'))
         self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data
@@ -94,8 +92,6 @@ class AddAllocationForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
         data['end_date'] = self.normalize_end_date(data.get('end_date'))
         self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data

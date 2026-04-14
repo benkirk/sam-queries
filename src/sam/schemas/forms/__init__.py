@@ -20,7 +20,7 @@ Usage in a route handler:
 
 from datetime import datetime
 import marshmallow.fields as f
-from marshmallow import Schema, EXCLUDE, ValidationError
+from marshmallow import Schema, EXCLUDE, ValidationError, pre_load
 
 
 class HtmxFormSchema(Schema):
@@ -28,11 +28,51 @@ class HtmxFormSchema(Schema):
 
     Configuration:
     - unknown=EXCLUDE: silently ignore extra form fields (CSRF tokens, etc.)
-    - Empty strings from HTML forms are treated as missing by field defaults.
+    - @pre_load strips empty-string values so optional Int/Float/Date fields
+      fall through to ``load_default`` instead of failing to coerce ``''``.
+      This matches the pattern documented in CLAUDE.md §9 (dropping empties
+      from ``request.form``) but moves it into the schema layer so every
+      HTMX route benefits automatically.
     """
 
     class Meta:
         unknown = EXCLUDE
+
+    @pre_load
+    def _strip_empty_strings(self, data, **kwargs):
+        """Normalize Flask's ImmutableMultiDict into a plain dict and drop
+        keys whose value is the empty string.
+
+        - For Flask ``ImmutableMultiDict`` input: walk the schema's declared
+          fields. ``fields.List`` fields are always read via ``getlist`` so a
+          single-checked checkbox produces a one-element list (not a scalar).
+          All other fields read a single value via ``.get`` and are dropped if
+          the value is ``''``.
+        - For plain-dict input (e.g. a route that pre-built the payload):
+          drop keys whose value is ``''``. Any already-built list fields pass
+          through unchanged.
+
+        This eliminates the need for per-schema ``coerce_empty`` post-loads
+        and matches the pattern documented in CLAUDE.md §9 (dropping empties
+        from ``request.form``) but moves it into the schema layer so every
+        HTMX route benefits automatically.
+        """
+        from marshmallow.fields import List as _List
+        if hasattr(data, 'getlist'):
+            out = {}
+            for key, field in self.fields.items():
+                if isinstance(field, _List):
+                    values = [v for v in data.getlist(key) if v != '']
+                    if values:
+                        out[key] = values
+                else:
+                    v = data.get(key)
+                    if v is not None and v != '':
+                        out[key] = v
+            return out
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if v != ''}
+        return data
 
     @staticmethod
     def flatten_errors(messages: dict) -> list[str]:

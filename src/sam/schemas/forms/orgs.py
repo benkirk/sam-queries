@@ -19,24 +19,12 @@ class EditOrganizationForm(HtmxFormSchema):
     description = f.Str(load_default=None)
     active = f.Bool(load_default=False)
 
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        return data
-
 
 class CreateOrganizationForm(HtmxFormSchema):
     name = f.Str(required=True, validate=v.Length(min=1))
     acronym = f.Str(required=True, validate=v.Length(min=1))
     description = f.Str(load_default=None)
     parent_org_id = f.Int(load_default=None)
-
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        if data.get('description') == '':
-            data['description'] = None
-        return data
 
 
 class EditInstitutionTypeForm(HtmxFormSchema):
@@ -56,13 +44,6 @@ class EditInstitutionForm(HtmxFormSchema):
     zip = f.Str(load_default=None)
     code = f.Str(load_default=None)
 
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        for field in ('nsf_org_code', 'address', 'city', 'zip', 'code'):
-            if data.get(field) == '':
-                data[field] = None
-        return data
-
 
 class CreateInstitutionForm(HtmxFormSchema):
     name = f.Str(required=True, validate=v.Length(min=1))
@@ -71,13 +52,6 @@ class CreateInstitutionForm(HtmxFormSchema):
     nsf_org_code = f.Str(load_default=None)
     city = f.Str(load_default=None)
     code = f.Str(load_default=None)
-
-    @post_load
-    def coerce_empty(self, data, **kwargs):
-        for field in ('nsf_org_code', 'city', 'code'):
-            if data.get(field) == '':
-                data[field] = None
-        return data
 
 
 class CreateMnemonicCodeForm(HtmxFormSchema):
@@ -90,7 +64,7 @@ class CreateMnemonicCodeForm(HtmxFormSchema):
         return data
 
     @validates('code')
-    def validate_code(self, value):
+    def validate_code(self, value, **kwargs):
         code = value.strip().upper()
         if not code:
             raise ValidationError('Code is required.')
@@ -135,8 +109,6 @@ class EditContractForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('url') == '':
-            data['url'] = None
         data['end_date'] = self.normalize_end_date(data.get('end_date'))
         self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data
@@ -153,8 +125,6 @@ class CreateContractForm(HtmxFormSchema):
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
-        if data.get('url') == '':
-            data['url'] = None
         data['end_date'] = self.normalize_end_date(data.get('end_date'))
         self.assert_date_range(data.get('start_date'), data.get('end_date'))
         return data

@@ -35,7 +35,7 @@ class CreateProjectForm(HtmxFormSchema):
     ext_alias = f.Str(load_default=None)
 
     @validates('projcode')
-    def validate_projcode(self, value):
+    def validate_projcode(self, value, **kwargs):
         code = value.strip().upper()
         if not code:
             raise ValidationError('Project code is required.')
@@ -45,11 +45,6 @@ class CreateProjectForm(HtmxFormSchema):
     @post_load
     def normalize(self, data, **kwargs):
         data['projcode'] = data['projcode'].strip().upper()
-        if data.get('abstract') == '':
-            data['abstract'] = None
-        if data.get('ext_alias') == '':
-            data['ext_alias'] = None
-        # charging_exempt from checkbox comes as 'on' not a bool
         return data
 
 
@@ -77,14 +72,6 @@ class EditProjectForm(HtmxFormSchema):
     unix_gid = f.Int(load_default=None)
     ext_alias = f.Str(load_default=None)
     active = f.Bool(load_default=None)
-
-    @post_load
-    def normalize(self, data, **kwargs):
-        if data.get('abstract') == '':
-            data['abstract'] = None
-        if data.get('ext_alias') == '':
-            data['ext_alias'] = None
-        return data
 
 
 class AddLinkedOrganizationForm(HtmxFormSchema):
