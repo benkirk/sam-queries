@@ -134,6 +134,8 @@ class OIDCAuthProvider(AuthProvider):
         2. email prefix (before @)
         """
         username = claims.get(self.username_claim)
+        if username and '@' in username:
+            username = username.split('@')[0]
         if not username:
             email = claims.get('email', '')
             username = email.split('@')[0] if email else None
