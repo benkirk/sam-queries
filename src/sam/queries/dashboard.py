@@ -60,8 +60,21 @@ def _build_project_resources_data(project: Project,
 
     now = active_at or datetime.now()
 
-    # Fetch rolling window usage (30d/90d) for all HPC/DAV resources in one call
-    rolling_usage = get_project_rolling_usage(project.session, project.projcode)
+    # Fetch rolling window usage (30d/90d) only when at least one account on
+    # this project has a non-null threshold set. The dashboard template only
+    # displays the rolling-usage block when threshold_pct is not None
+    # (project_card.html:182-197), so for the vast majority of projects (no
+    # thresholds set) we'd be fetching data that is never rendered. Skipping
+    # avoids the per-project query.
+    needs_rolling = any(
+        (acct.first_threshold is not None or acct.second_threshold is not None)
+        for acct in project.accounts
+        if not acct.deleted
+    )
+    rolling_usage = (
+        get_project_rolling_usage(project.session, project.projcode)
+        if needs_rolling else {}
+    )
 
     for resource_name, usage in usage_data.items():
         start_date = usage.get('start_date')
@@ -122,6 +135,239 @@ def _build_project_resources_data(project: Project,
         })
 
     return resources
+
+
+def _select_query_alloc(account: Account, now: datetime):
+    """
+    Pick the allocation to display for an account, mirroring the logic in
+    Project.get_detailed_allocation_usage(): prefer the active allocation,
+    otherwise fall back to the most recent one if it expired within 90 days.
+
+    Returns the chosen Allocation or None.
+    """
+    for alloc in account.allocations:
+        if alloc.is_active_at(now):
+            return alloc
+    if account.allocations:
+        most_recent = max(
+            account.allocations,
+            key=lambda a: a.end_date if a.end_date else datetime.max,
+        )
+        end = most_recent.end_date
+        if end is None or (now - end).days <= 90:
+            return most_recent
+    return None
+
+
+def _build_user_projects_resources_batched(
+    session: Session,
+    projects: List[Project],
+    active_at: Optional[datetime] = None,
+) -> Dict[int, List[Dict]]:
+    """
+    Batched equivalent of looping _build_project_resources_data() over a list of
+    projects. Collects allocation work units across every (project, account) pair,
+    issues exactly two batched charge queries (subtree + leaf) via the existing
+    Project.batch_get_subtree_charges / Project.batch_get_account_charges
+    primitives, then assembles per-project resource dicts.
+
+    Used by get_user_dashboard_data() to avoid the per-project N+1 explosion
+    where each call to project.get_detailed_allocation_usage() fired ~3-4
+    aggregation queries per (project, account).
+
+    Returns a dict mapping project_id → list of resource dicts in the same shape
+    that _build_project_resources_data() produces, so the caller can plug each
+    list into its existing project_data structure unchanged.
+
+    Equivalence with the per-project path is enforced by
+    test_query_functions.py::test_user_dashboard_batched_matches_per_project.
+    """
+    now = active_at or datetime.now()
+
+    # ------------------------------------------------------------------
+    # Phase 1: pre-load accounts → allocations / resource / charge_adjustments
+    # for every project in one batched fetch. selectinload turns N project
+    # walks into ~3 queries total.
+    # ------------------------------------------------------------------
+    project_ids = [p.project_id for p in projects]
+    if not project_ids:
+        return {}
+
+    session.query(Account).options(
+        selectinload(Account.allocations),
+        joinedload(Account.resource).joinedload(Resource.resource_type),
+    ).filter(
+        Account.project_id.in_(project_ids),
+        Account.deleted == False,  # noqa: E712 — SQLAlchemy expression
+    ).all()
+    # Result discarded — purpose is to populate the identity map so that the
+    # subsequent project.accounts walks below are free.
+
+    # ------------------------------------------------------------------
+    # Phase 2: per (project, account), pick the allocation we'd display and
+    # collect a work unit for the batch charge methods. Pure Python, no DB.
+    # ------------------------------------------------------------------
+    subtree_infos: List[Dict] = []
+    account_infos: List[Dict] = []
+    # (project_id, account_id) → (project, account, query_alloc, resource_type, end_date)
+    chosen: Dict[tuple, tuple] = {}
+
+    for project in projects:
+        is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
+        for account in project.accounts:
+            if account.deleted:
+                continue
+            if not account.resource:
+                continue
+            query_alloc = _select_query_alloc(account, now)
+            if query_alloc is None:
+                continue
+
+            resource_type = (
+                account.resource.resource_type.resource_type
+                if account.resource.resource_type
+                else 'UNKNOWN'
+            )
+            start_date = query_alloc.start_date
+            end_date = query_alloc.end_date or now
+            key = (project.project_id, account.account_id)
+
+            chosen[key] = (project, account, query_alloc, resource_type, end_date)
+
+            if is_tree_valid:
+                subtree_infos.append({
+                    'key':           key,
+                    'resource_id':   account.resource_id,
+                    'resource_type': resource_type,
+                    'tree_root':     project.tree_root,
+                    'tree_left':     project.tree_left,
+                    'tree_right':    project.tree_right,
+                    'start_date':    start_date,
+                    'end_date':      end_date,
+                })
+            else:
+                account_infos.append({
+                    'key':           key,
+                    'account_id':    account.account_id,
+                    'resource_type': resource_type,
+                    'start_date':    start_date,
+                    'end_date':      end_date,
+                })
+
+    # ------------------------------------------------------------------
+    # Phase 3: ONE batched fetch per partition (subtree / leaf). The
+    # primitives live on Project and are already used by fstree — we are
+    # the second, independent consumer.
+    # ------------------------------------------------------------------
+    raw_charges: Dict[tuple, Dict] = {}
+    if subtree_infos:
+        raw_charges.update(
+            Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments=True)
+        )
+    if account_infos:
+        raw_charges.update(
+            Project.batch_get_account_charges(session, account_infos, include_adjustments=True)
+        )
+
+    # ------------------------------------------------------------------
+    # Phase 4: rolling-usage gate. Only fetch get_project_rolling_usage()
+    # for projects where at least one account has a non-null rolling
+    # threshold. The vast majority of projects in production have no
+    # threshold set, so this skip is the bulk of the rolling-usage win.
+    # ------------------------------------------------------------------
+    rolling_usage_by_projcode: Dict[str, Dict] = {}
+    for project in projects:
+        needs_rolling = any(
+            (acct.first_threshold is not None or acct.second_threshold is not None)
+            for acct in project.accounts
+            if not acct.deleted
+        )
+        if needs_rolling:
+            rolling_usage_by_projcode[project.projcode] = get_project_rolling_usage(
+                session, project.projcode,
+            )
+
+    # ------------------------------------------------------------------
+    # Phase 5: assemble per-project resource dicts. This mirrors the
+    # shape produced by _build_project_resources_data() exactly — every
+    # field, every default — so the template is unaffected and the
+    # equivalence test can compare dict-by-dict.
+    # ------------------------------------------------------------------
+    out: Dict[int, List[Dict]] = {p.project_id: [] for p in projects}
+
+    for key, (project, account, query_alloc, resource_type, end_date) in chosen.items():
+        resource_name = account.resource.resource_name
+        start_date = query_alloc.start_date
+
+        charges_data = raw_charges.get(key, {'charges_by_type': {}, 'adjustment': 0.0})
+        charges_by_type = charges_data['charges_by_type']
+        adjustments = charges_data['adjustment']
+
+        allocated = float(query_alloc.amount)
+        total_charges = sum(charges_by_type.values())
+        effective_used = total_charges + adjustments
+        remaining = allocated - effective_used
+        percent_used = (effective_used / allocated * 100) if allocated > 0 else 0.0
+
+        days_until_expiration = None
+        if query_alloc.end_date:
+            days_until_expiration = (query_alloc.end_date - now).days
+
+        start_str = start_date.strftime('%Y-%m-%d') if start_date else '0000-00-00'
+        end_str = query_alloc.end_date.strftime('%Y-%m-%d') if query_alloc.end_date else 'open'
+        date_group_key = f"{start_str}_{end_str}"
+
+        if not start_date:
+            elapsed_pct = 0
+            bar_state = 'no-dates'
+        elif not query_alloc.end_date:
+            elapsed_pct = 50
+            bar_state = 'open-ended'
+        elif query_alloc.end_date < now:
+            elapsed_pct = 100
+            bar_state = 'expired'
+        else:
+            duration_days = (query_alloc.end_date - start_date).days
+            if duration_days > 0:
+                elapsed_pct = max(0.0, min(100.0, round((now - start_date).days / duration_days * 100, 1)))
+                bar_state = 'active'
+            else:
+                elapsed_pct = 0
+                bar_state = 'no-duration'
+
+        rwin = rolling_usage_by_projcode.get(project.projcode, {}).get(resource_name, {}).get('windows', {})
+
+        out[project.project_id].append({
+            'resource_name':        resource_name,
+            'allocation_id':        query_alloc.allocation_id,
+            'parent_allocation_id': query_alloc.parent_allocation_id,
+            'is_inheriting':        query_alloc.is_inheriting,
+            'account_id':           account.account_id,
+            'allocated':            allocated,
+            'used':                 effective_used,
+            'remaining':            remaining,
+            'percent_used':         percent_used,
+            'charges_by_type':      charges_by_type,
+            'adjustments':          adjustments,
+            'status':               'Unknown',
+            'start_date':           start_date,
+            'end_date':             query_alloc.end_date,
+            'days_until_expiration': days_until_expiration,
+            'date_group_key':       date_group_key,
+            'elapsed_pct':          elapsed_pct,
+            'bar_state':            bar_state,
+            'resource_type':        resource_type,
+            'rolling_30':           rwin.get(30),
+            'rolling_90':           rwin.get(90),
+        })
+
+    # Sort each project's resources by resource_name for stable ordering
+    # (matches the implicit ordering of project.get_detailed_allocation_usage()
+    # which iterates accounts in load order — we sort here to be deterministic).
+    for pid in out:
+        out[pid].sort(key=lambda r: r['resource_name'])
+
+    return out
 
 
 def get_project_dashboard_data(session: Session, projcode: str) -> Optional[Dict]:
@@ -264,12 +510,17 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
     # Get active projects, sorted by project code for consistent display order
     projects = sorted(user.active_projects(), key=lambda p: p.projcode)
 
-    # Build project data using helper function to avoid code duplication
+    # Batched fetch: collect alloc work units across all projects and call
+    # Project.batch_get_*_charges twice total instead of firing per-project
+    # get_detailed_allocation_usage() (which would fire 3-4 queries per
+    # (project, account)). See _build_user_projects_resources_batched docstring.
+    project_resources_map = _build_user_projects_resources_batched(session, projects)
+
     project_data_list = []
     for project in projects:
         project_data_list.append({
             'project': project,
-            'resources': _build_project_resources_data(project),
+            'resources': project_resources_map.get(project.project_id, []),
             'has_children': project.has_children if hasattr(project, 'has_children') else False
         })
 
