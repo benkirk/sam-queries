@@ -22,8 +22,11 @@ from sam.queries.charges import (
     get_user_breakdown_for_project,
 )
 from sam.queries.dashboard import (
+    _build_project_resources_data,
+    _build_user_projects_resources_batched,
     get_project_dashboard_data,
     get_resource_detail_data,
+    get_user_dashboard_data,
 )
 from sam.queries.allocations import (
     get_project_allocations,
@@ -242,6 +245,85 @@ class TestDashboardQueries:
             assert 'resource' in result
             assert 'resource_summary' in result
             assert 'daily_charges' in result
+
+    def test_user_dashboard_batched_matches_per_project(self, session):
+        """
+        The new batched helper _build_user_projects_resources_batched must
+        return resource dicts equivalent to looping the per-project
+        _build_project_resources_data over the same projects.
+
+        Pin a fixed datetime for both paths so any "time has passed" between
+        the two calls cannot drift the elapsed_pct / days_until_expiration
+        fields. Compare every numeric/scalar field; relax only on float
+        equality (sums of floats can differ in the last bit between paths).
+        """
+        # bdobbins is the canonical multi-project profile target. Falls back
+        # to benkirk if bdobbins isn't in the local DB.
+        sam_user = (User.get_by_username(session, 'bdobbins')
+                    or User.get_by_username(session, 'benkirk'))
+        if sam_user is None:
+            pytest.skip("Neither bdobbins nor benkirk found in test DB")
+
+        projects = sorted(sam_user.active_projects(), key=lambda p: p.projcode)
+        if not projects:
+            pytest.skip(f"User {sam_user.username} has no active projects")
+
+        # Pin time to make both paths see identical "now"
+        active_at = datetime.now()
+
+        batched = _build_user_projects_resources_batched(
+            session, projects, active_at=active_at,
+        )
+
+        # Build the per-project equivalent and compare project by project.
+        SCALAR_FIELDS = (
+            'resource_name', 'allocation_id', 'parent_allocation_id',
+            'is_inheriting', 'account_id', 'status', 'start_date', 'end_date',
+            'days_until_expiration', 'date_group_key', 'bar_state',
+            'resource_type',
+        )
+        FLOAT_FIELDS = (
+            'allocated', 'used', 'remaining', 'percent_used',
+            'adjustments', 'elapsed_pct',
+        )
+        FLOAT_TOL = 1e-6
+
+        for project in projects:
+            per_project = sorted(
+                _build_project_resources_data(project, active_at=active_at),
+                key=lambda r: r['resource_name'],
+            )
+            from_batch = batched.get(project.project_id, [])
+
+            assert len(per_project) == len(from_batch), (
+                f"{project.projcode}: batched returned {len(from_batch)} resources, "
+                f"per-project returned {len(per_project)}"
+            )
+
+            for pp, bb in zip(per_project, from_batch):
+                ctx = f"{project.projcode}/{pp['resource_name']}"
+                for f in SCALAR_FIELDS:
+                    assert pp[f] == bb[f], f"{ctx}: {f} differs ({pp[f]!r} vs {bb[f]!r})"
+                for f in FLOAT_FIELDS:
+                    assert abs(float(pp[f]) - float(bb[f])) < FLOAT_TOL, (
+                        f"{ctx}: {f} differs ({pp[f]} vs {bb[f]})"
+                    )
+                # charges_by_type: dict of floats — same keys, same values
+                assert set(pp['charges_by_type'].keys()) == set(bb['charges_by_type'].keys()), (
+                    f"{ctx}: charges_by_type key set differs"
+                )
+                for k in pp['charges_by_type']:
+                    assert abs(pp['charges_by_type'][k] - bb['charges_by_type'][k]) < FLOAT_TOL, (
+                        f"{ctx}: charges_by_type[{k}] differs"
+                    )
+                # rolling_30 / rolling_90 may legitimately be None or a dict;
+                # only meaningful for projects with a threshold. Equality OK
+                # because both code paths read the same source.
+                assert pp['rolling_30'] == bb['rolling_30'], f"{ctx}: rolling_30 differs"
+                assert pp['rolling_90'] == bb['rolling_90'], f"{ctx}: rolling_90 differs"
+
+        print(f"✅ Batched and per-project paths agree across "
+              f"{len(projects)} projects for {sam_user.username}")
 
     def test_get_resource_detail_data_daily_charges(self, session, test_project):
         """Test resource detail data returns daily charge arrays."""
