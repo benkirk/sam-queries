@@ -91,7 +91,25 @@
 
   <!-- ── Tab 2: Allocations ─────────────────────────────────────────── -->
   <div class="tab-pane fade" id="tab-allocations" role="tabpanel">
-    <div class="d-flex justify-content-end mb-3">
+    <div class="d-flex justify-content-end gap-2 mb-3">
+      <button class="btn btn-sm btn-warning"
+              hx-get="{{ url_for('admin_dashboard.htmx_extend_allocations_form', projcode=project.projcode) }}"
+              hx-target="#extendAllocationsFormContainer"
+              hx-include="#alloc-active-at"
+              hx-trigger="click"
+              data-bs-toggle="modal"
+              data-bs-target="#extendAllocationsModal">
+        <i class="fas fa-calendar-plus"></i> Extend
+      </button>
+      <button class="btn btn-sm btn-primary"
+              hx-get="{{ url_for('admin_dashboard.htmx_renew_allocations_form', projcode=project.projcode) }}"
+              hx-target="#renewAllocationsFormContainer"
+              hx-include="#alloc-active-at"
+              hx-trigger="click"
+              data-bs-toggle="modal"
+              data-bs-target="#renewAllocationsModal">
+        <i class="fas fa-sync-alt"></i> Renew
+      </button>
       <button class="btn btn-sm btn-success"
               hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=project.projcode) }}"
               hx-target="#addAllocationFormContainer"
@@ -139,6 +157,42 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div id="addAllocationFormContainer">
+        <div class="modal-body text-center text-muted py-3">
+          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <p class="mt-2">Loading…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Extend Allocations Modal (lazy-loaded) -->
+<div class="modal fade" id="extendAllocationsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title"><i class="fas fa-calendar-plus"></i> Extend Allocations</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div id="extendAllocationsFormContainer">
+        <div class="modal-body text-center text-muted py-3">
+          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <p class="mt-2">Loading…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Renew Allocations Modal (lazy-loaded) -->
+<div class="modal fade" id="renewAllocationsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="fas fa-sync-alt"></i> Renew Allocations</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div id="renewAllocationsFormContainer">
         <div class="modal-body text-center text-muted py-3">
           <i class="fas fa-spinner fa-spin fa-2x"></i>
           <p class="mt-2">Loading…</p>

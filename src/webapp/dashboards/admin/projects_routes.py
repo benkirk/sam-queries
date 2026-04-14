@@ -850,6 +850,418 @@ def htmx_add_allocation(projcode):
     )
 
 
+# ---------------------------------------------------------------------------
+# Renew allocations (Edit Project → Allocations tab)
+# ---------------------------------------------------------------------------
+
+def _parse_active_at_arg(arg: str) -> datetime:
+    """Parse the ?active_at=YYYY-MM-DD query arg; default to today on empty/invalid."""
+    arg = (arg or '').strip()
+    if arg:
+        try:
+            return datetime.strptime(arg, '%Y-%m-%d')
+        except ValueError:
+            pass
+    return datetime.now()
+
+
+def _propose_renew_dates(source_allocs):
+    """Return (new_start, new_end) as 'YYYY-MM-DD' strings for the form defaults.
+
+    Contiguous renewal: new_start = latest source end_date + 1 day;
+    new_end = new_start + (source_end - source_start). When multiple source
+    allocations are selected, we anchor on the one with the latest end date
+    and preserve its period length exactly — this naturally handles the
+    common fiscal-year case (e.g. Oct 1 → Sep 30 → Oct 1 → Sep 30 next year).
+
+    Falls back to ("today", "today + 1 year, last day of month") if the set
+    is empty or lacks end dates (open-ended allocations).
+    """
+    import calendar
+    from datetime import timedelta
+
+    dated = [a for a in source_allocs if a.end_date is not None]
+    if dated:
+        anchor = max(dated, key=lambda a: a.end_date)
+        new_start = anchor.end_date + timedelta(days=1)
+        period = anchor.end_date - anchor.start_date
+        new_end = new_start + period
+        return new_start.strftime('%Y-%m-%d'), new_end.strftime('%Y-%m-%d')
+
+    now = datetime.now()
+    last_day = calendar.monthrange(now.year + 1, now.month)[1]
+    return (
+        now.strftime('%Y-%m-%d'),
+        f'{now.year + 1:04d}-{now.month:02d}-{last_day:02d}',
+    )
+
+
+def _build_renew_candidates(project, source_active_at):
+    """Build the per-resource candidate rows for the Renew form.
+
+    Returns a list of dicts (one per root-project allocation active at
+    ``source_active_at``), each containing display fields the template
+    needs: resource name/type, amount, tree size, and the source
+    allocation id for submission.
+    """
+    from sam.manage.renew import (
+        find_source_allocations_at,
+        find_renewable_descendants,
+    )
+
+    sources = find_source_allocations_at(
+        db.session, project, source_active_at
+    )
+
+    candidates = []
+    for src in sources:
+        resource = src.account.resource
+        # Count descendants that had any (inheriting OR standalone) source
+        # allocation for this resource at source_active_at — these are the
+        # projects renewal will create new rows on.
+        child_projects = find_renewable_descendants(
+            project, resource.resource_id, source_active_at
+        )
+        candidates.append({
+            'source_alloc': src,
+            'resource_id': resource.resource_id,
+            'resource_name': resource.resource_name,
+            'resource_type': (
+                resource.resource_type.resource_type
+                if resource.resource_type else ''
+            ),
+            'amount': src.amount,
+            'start_date': src.start_date,
+            'end_date': src.end_date,
+            'descendant_count': len(child_projects),
+        })
+    candidates.sort(key=lambda c: c['resource_name'])
+    return candidates
+
+
+@bp.route('/htmx/renew-allocations-form/<projcode>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_renew_allocations_form(projcode):
+    """Return the Renew Allocations modal form fragment.
+
+    Query params:
+        active_at (YYYY-MM-DD): which allocations to renew. Defaults to today.
+    """
+    from sam.projects.projects import Project
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-warning">Project not found.</div>'
+
+    # Renew always operates from the root of the project tree.
+    root = project.get_root() if hasattr(project, 'get_root') else project
+
+    source_active_at = _parse_active_at_arg(request.args.get('active_at', ''))
+    candidates = _build_renew_candidates(root, source_active_at)
+
+    default_start, default_end = _propose_renew_dates(
+        [c['source_alloc'] for c in candidates]
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/renew_allocations_form_htmx.html',
+        project=project,
+        root=root,
+        candidates=candidates,
+        source_active_at=source_active_at.strftime('%Y-%m-%d'),
+        default_start=default_start,
+        default_end=default_end,
+    )
+
+
+@bp.route('/htmx/renew-allocations/<projcode>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_renew_allocations(projcode):
+    """Create renewed allocations for the selected resources."""
+    from sam.projects.projects import Project
+    from sam.manage.renew import renew_project_allocations
+    from sam.schemas.forms import RenewAllocationsForm
+    from marshmallow import ValidationError
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found.</div>', 404
+
+    root = project.get_root() if hasattr(project, 'get_root') else project
+
+    errors = []
+
+    # Pre-process: drop empty strings; collect multi-valued resource_ids list.
+    data = {k: v for k, v in request.form.items() if v != ''}
+    data['resource_ids'] = [
+        int(v) for v in request.form.getlist('resource_ids') if v
+    ]
+
+    try:
+        form_data = RenewAllocationsForm().load(data)
+    except ValidationError as e:
+        errors.extend(RenewAllocationsForm.flatten_errors(e.messages))
+        form_data = {}
+
+    def _reload_renew_form(extra_errors=None):
+        source_active_at = form_data.get('source_active_at') \
+            or _parse_active_at_arg(request.form.get('source_active_at', '')).date()
+        # Normalize to datetime
+        source_dt = (
+            datetime.combine(source_active_at, datetime.min.time())
+            if hasattr(source_active_at, 'year') else datetime.now()
+        )
+        candidates = _build_renew_candidates(root, source_dt)
+        return render_template(
+            'dashboards/admin/fragments/renew_allocations_form_htmx.html',
+            project=project,
+            root=root,
+            candidates=candidates,
+            source_active_at=source_dt.strftime('%Y-%m-%d'),
+            default_start=request.form.get('new_start_date', ''),
+            default_end=request.form.get('new_end_date', ''),
+            errors=(extra_errors or []) + errors,
+            form=request.form,
+        )
+
+    if errors:
+        return _reload_renew_form()
+
+    new_start = datetime.combine(
+        form_data['new_start_date'], datetime.min.time()
+    )
+    new_end = form_data['new_end_date']   # already datetime via post_load
+    source_dt = datetime.combine(
+        form_data['source_active_at'], datetime.min.time()
+    )
+
+    try:
+        with management_transaction(db.session):
+            created = renew_project_allocations(
+                db.session,
+                root_project_id=root.project_id,
+                source_active_at=source_dt,
+                new_start=new_start,
+                new_end=new_end,
+                resource_ids=form_data['resource_ids'],
+                user_id=current_user.user_id,
+            )
+    except Exception as e:
+        return _reload_renew_form([f'Error renewing allocations: {e}'])
+
+    if not created:
+        return _reload_renew_form([
+            'No allocations were renewed. Check that the selected resources '
+            'have an active root allocation at the source date.'
+        ])
+
+    detail = (
+        f'{root.projcode}: renewed {len(created)} allocation(s) for '
+        f'{new_start.strftime("%Y-%m-%d")} → {new_end.strftime("%Y-%m-%d")}'
+    )
+    return htmx_success_message(
+        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
+        'Allocations renewed successfully.',
+        detail=detail,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Extend allocations (Edit Project → Allocations tab)
+# ---------------------------------------------------------------------------
+
+def _propose_extend_end(source_allocs):
+    """Return ``YYYY-MM-DD`` string: a proposed new end date for Extend.
+
+    Anchors on the latest-ending dated source, then adds the source's
+    own period length (end - start). So a 1-year allocation proposes a
+    1-year push; a 6-month allocation proposes 6 months. Open-ended
+    sources are ignored. Falls back to anchor_end + 365 days if no dated
+    source is available.
+    """
+    from datetime import timedelta
+
+    dated = [a for a in source_allocs if a.end_date is not None]
+    if not dated:
+        return ''
+    anchor = max(dated, key=lambda a: a.end_date)
+    period = anchor.end_date - anchor.start_date
+    return (anchor.end_date + period).strftime('%Y-%m-%d')
+
+
+def _build_extend_candidates(project, source_active_at):
+    """Build the per-resource candidate rows for the Extend form.
+
+    Mirrors ``_build_renew_candidates`` but emits the fields the Extend
+    template needs (no start_date) and tags open-ended sources so the
+    template can render them as disabled checkboxes.
+    """
+    from sam.manage.renew import (
+        find_source_allocations_at,
+        find_renewable_descendants,
+    )
+
+    sources = find_source_allocations_at(
+        db.session, project, source_active_at
+    )
+
+    candidates = []
+    for src in sources:
+        resource = src.account.resource
+        child_projects = find_renewable_descendants(
+            project, resource.resource_id, source_active_at
+        )
+        candidates.append({
+            'source_alloc': src,
+            'resource_id': resource.resource_id,
+            'resource_name': resource.resource_name,
+            'resource_type': (
+                resource.resource_type.resource_type
+                if resource.resource_type else ''
+            ),
+            'amount': src.amount,
+            'end_date': src.end_date,
+            'is_open_ended': src.end_date is None,
+            'descendant_count': len(child_projects),
+        })
+    candidates.sort(key=lambda c: c['resource_name'])
+    return candidates
+
+
+@bp.route('/htmx/extend-allocations-form/<projcode>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_extend_allocations_form(projcode):
+    """Return the Extend Allocations modal form fragment."""
+    from sam.projects.projects import Project
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-warning">Project not found.</div>'
+
+    root = project.get_root() if hasattr(project, 'get_root') else project
+
+    source_active_at = _parse_active_at_arg(request.args.get('active_at', ''))
+    candidates = _build_extend_candidates(root, source_active_at)
+
+    default_end = _propose_extend_end(
+        [c['source_alloc'] for c in candidates if not c['is_open_ended']]
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/extend_allocations_form_htmx.html',
+        project=project,
+        root=root,
+        candidates=candidates,
+        source_active_at=source_active_at.strftime('%Y-%m-%d'),
+        default_end=default_end,
+    )
+
+
+@bp.route('/htmx/extend-allocations/<projcode>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_extend_allocations(projcode):
+    """Push end_date forward on the selected allocations."""
+    from sam.projects.projects import Project
+    from sam.manage.extend import extend_project_allocations
+    from sam.schemas.forms import ExtendAllocationsForm
+    from marshmallow import ValidationError
+
+    project = Project.get_by_projcode(db.session, projcode)
+    if not project:
+        return '<div class="alert alert-danger">Project not found.</div>', 404
+
+    root = project.get_root() if hasattr(project, 'get_root') else project
+
+    errors = []
+
+    data = {k: v for k, v in request.form.items() if v != ''}
+    data['resource_ids'] = [
+        int(v) for v in request.form.getlist('resource_ids') if v
+    ]
+
+    try:
+        form_data = ExtendAllocationsForm().load(data)
+    except ValidationError as e:
+        errors.extend(ExtendAllocationsForm.flatten_errors(e.messages))
+        form_data = {}
+
+    def _reload_extend_form(extra_errors=None):
+        source_active_at = form_data.get('source_active_at') \
+            or _parse_active_at_arg(request.form.get('source_active_at', '')).date()
+        source_dt = (
+            datetime.combine(source_active_at, datetime.min.time())
+            if hasattr(source_active_at, 'year') else datetime.now()
+        )
+        candidates = _build_extend_candidates(root, source_dt)
+        return render_template(
+            'dashboards/admin/fragments/extend_allocations_form_htmx.html',
+            project=project,
+            root=root,
+            candidates=candidates,
+            source_active_at=source_dt.strftime('%Y-%m-%d'),
+            default_end=request.form.get('new_end_date', ''),
+            errors=(extra_errors or []) + errors,
+            form=request.form,
+        )
+
+    if errors:
+        return _reload_extend_form()
+
+    new_end = form_data['new_end_date']   # datetime via post_load
+    source_dt = datetime.combine(
+        form_data['source_active_at'], datetime.min.time()
+    )
+
+    # Block shortening: new_end must strictly exceed every selected
+    # resource's current end date at the source.
+    from sam.manage.renew import find_source_alloc_at
+    latest_current_end = None
+    for rid in form_data['resource_ids']:
+        src = find_source_alloc_at(root, rid, source_dt)
+        if src is None or src.end_date is None:
+            continue
+        if latest_current_end is None or src.end_date > latest_current_end:
+            latest_current_end = src.end_date
+    if latest_current_end is not None and new_end <= latest_current_end:
+        return _reload_extend_form([
+            f'New end date must be later than the current latest end date '
+            f'({latest_current_end.strftime("%Y-%m-%d")}).'
+        ])
+
+    try:
+        with management_transaction(db.session):
+            updated = extend_project_allocations(
+                db.session,
+                root_project_id=root.project_id,
+                source_active_at=source_dt,
+                new_end=new_end,
+                resource_ids=form_data['resource_ids'],
+                user_id=current_user.user_id,
+            )
+    except Exception as e:
+        return _reload_extend_form([f'Error extending allocations: {e}'])
+
+    if not updated:
+        return _reload_extend_form([
+            'No allocations were extended. Either the selected resources '
+            'are open-ended or already end on/after the requested date.'
+        ])
+
+    detail = (
+        f'{root.projcode}: extended {len(updated)} allocation(s) to '
+        f'{new_end.strftime("%Y-%m-%d")}'
+    )
+    return htmx_success_message(
+        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
+        'Allocations extended successfully.',
+        detail=detail,
+    )
+
+
 @bp.route('/htmx/edit-allocation-form/<int:alloc_id>')
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
