@@ -1,0 +1,8 @@
+{# htmx: Project create success — closes modal, triggers loadNewProject event to show new project card #}
+<div class="modal-body text-center py-4">
+    <i class="fas fa-check-circle text-success fa-2x"></i>
+    <p class="mt-2 text-success fw-semibold">Project created successfully.</p>
+    <p class="text-muted mb-0">
+        <strong>{{ project.projcode }}</strong> — {{ project.title }}
+    </p>
+</div>

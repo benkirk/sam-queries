@@ -1,43 +1,19 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, number_field with context %}
 {# htmx: Create Resource Type Form #}
-<form hx-post="{{ url_for('admin_dashboard.htmx_resource_type_create') }}"
-      hx-target="#createResourceTypeFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_resource_type_create'),
+    '#createResourceTypeFormContainer',
+    'Create Resource Type',
+    submit_icon='plus'
+) %}
+        {{ text_field('resource_type', 'Type Name',
+                      required=True, maxlength=35,
+                      placeholder='e.g. HPC',
+                      id='createResTypeName') }}
 
-    <div class="modal-body">
-        <div class="mb-3">
-            <label for="createResTypeName" class="form-label">
-                Type Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createResTypeName"
-                   name="resource_type" required maxlength="35"
-                   value="{{ form.get('resource_type') if form else '' }}"
-                   placeholder="e.g. HPC">
-        </div>
-
-        <div class="mb-3">
-            <label for="createResTypeGrace" class="form-label">
-                Grace Period Days <span class="text-muted">(optional)</span>
-            </label>
-            <input type="number" class="form-control" id="createResTypeGrace"
-                   name="grace_period_days" min="0"
-                   value="{{ form.get('grace_period_days') if form else '' }}"
-                   placeholder="0">
-        </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">
-            <i class="fas fa-plus"></i> Create Resource Type
-        </button>
-    </div>
-</form>
+        {{ number_field('grace_period_days', 'Grace Period Days',
+                        min=0,
+                        placeholder='0',
+                        id='createResTypeGrace') }}
+{% endcall %}

@@ -19,9 +19,30 @@ from sam.accounting.allocations import (
 __all__ = [
     'validate_allocation_dates',
     'log_allocation_transaction',
+    'create_allocation',
     'update_allocation',
+    'propagate_allocation_to_subprojects',
+    'detach_allocation',
+    'link_allocation_to_parent',
+    'get_partitioned_descendant_sum',
+    'date_ranges_overlap',
     'InheritingAllocationException',
 ]
+
+
+def date_ranges_overlap(a, b) -> bool:
+    """True if two allocation-like objects' [start_date, end_date] ranges overlap.
+
+    NULL bounds are treated as open-ended. Either argument may be an Allocation
+    or any object with ``start_date`` / ``end_date`` attributes.
+    """
+    a_start, a_end = a.start_date, a.end_date
+    b_start, b_end = b.start_date, b.end_date
+    if a_end is not None and b_start is not None and b_start > a_end:
+        return False
+    if a_start is not None and b_end is not None and b_end < a_start:
+        return False
+    return True
 
 
 def validate_allocation_dates(start_date: datetime, end_date: Optional[datetime] = None) -> None:
@@ -128,6 +149,77 @@ def log_allocation_transaction(
     session.flush()
 
     return transaction
+
+
+def create_allocation(
+    session: Session,
+    *,
+    project_id: int,
+    resource_id: int,
+    amount: float,
+    start_date: datetime,
+    end_date: Optional[datetime] = None,
+    description: Optional[str] = None,
+    user_id: int,
+) -> 'Allocation':
+    """Create a new allocation for a project + resource pair.
+
+    Gets or creates the Account linking project ↔ resource, instantiates
+    the Allocation record, and logs an AllocationTransaction(CREATE) for
+    audit purposes.
+
+    NOTE: Does NOT commit the session.  The caller is responsible for
+    wrapping the call in ``management_transaction`` (or committing).
+
+    Args:
+        session:     SQLAlchemy session.
+        project_id:  FK to Project.
+        resource_id: FK to Resource.
+        amount:      Allocation amount (must be > 0).
+        start_date:  Start of allocation period.
+        end_date:    End of allocation period (None = open-ended).
+        description: Optional human-readable note.
+        user_id:     FK to User performing the action (for audit log).
+
+    Returns:
+        Newly created and flushed Allocation instance.
+
+    Example::
+
+        with management_transaction(session):
+            alloc = create_allocation(
+                session,
+                project_id=project.project_id,
+                resource_id=resource.resource_id,
+                amount=500_000.0,
+                start_date=datetime(2025, 1, 1),
+                end_date=datetime(2025, 12, 31),
+                user_id=current_user.user_id,
+            )
+    """
+    validate_allocation_dates(start_date, end_date)
+
+    allocation = Allocation.create(
+        session,
+        project_id=project_id,
+        resource_id=resource_id,
+        amount=amount,
+        start_date=start_date,
+        end_date=end_date,
+        description=description,
+    )
+
+    log_allocation_transaction(
+        session,
+        allocation,
+        user_id,
+        AllocationTransactionType.CREATE,
+        comment='Allocation created',
+        old_values={},
+        propagated=False,
+    )
+
+    return allocation
 
 
 def update_allocation(
@@ -246,3 +338,252 @@ def update_allocation(
         session.flush()
 
     return allocation
+
+
+def propagate_allocation_to_subprojects(
+    session: Session,
+    parent_allocation: Allocation,
+    descendants,
+    user_id: int,
+    skip_existing: bool = True,
+    *,
+    transaction_type: AllocationTransactionType = AllocationTransactionType.CREATE,
+    transaction_comment: Optional[str] = None,
+):
+    """
+    Create child allocations for each active project in ``descendants``,
+    mirroring the deep-tree topology: each allocation's parent_allocation_id
+    points to its immediate project-parent's allocation (not the root).
+
+    ``descendants`` MUST be in tree_left (DFS pre-order) order so that a
+    parent node always appears before its children.  project.get_descendants()
+    satisfies this constraint.
+
+    Runs inside the caller's management_transaction() — does NOT commit.
+
+    Args:
+        session:           SQLAlchemy session.
+        parent_allocation: Root allocation to propagate from.
+        descendants:       Ordered list of Project objects (DFS pre-order).
+        user_id:           FK to User performing the action (for audit log).
+        skip_existing:     When True, projects that already have a non-deleted
+                           allocation for this resource are skipped (default).
+
+    Returns:
+        Tuple[List[Allocation], List[Project]]: (created, skipped)
+    """
+    from sam.accounting.accounts import Account
+
+    resource_id = parent_allocation.account.resource_id
+    root_project_id = parent_allocation.account.project_id
+
+    # Seed map: root project → root allocation_id
+    alloc_map = {root_project_id: parent_allocation.allocation_id}
+
+    created, skipped = [], []
+
+    for child_proj in descendants:
+        if not child_proj.active:
+            continue
+
+        account = Account.get_by_project_and_resource(
+            session, child_proj.project_id, resource_id
+        )
+        existing = (
+            [a for a in account.allocations if not a.deleted]
+            if account else []
+        )
+
+        if existing:
+            if skip_existing:
+                # Register in alloc_map so this project's children resolve correctly
+                alloc_map[child_proj.project_id] = existing[0].allocation_id
+                skipped.append(child_proj)
+                continue
+            else:
+                raise ValueError(
+                    f"Project {child_proj.projcode} already has an allocation "
+                    f"for resource_id={resource_id}"
+                )
+
+        # Immediate parent's allocation_id (None if parent was inactive/missing)
+        proj_parent_alloc_id = alloc_map.get(child_proj.parent_id)
+
+        new_alloc = Allocation.create(
+            session,
+            project_id=child_proj.project_id,
+            resource_id=resource_id,
+            amount=parent_allocation.amount,
+            start_date=parent_allocation.start_date,
+            end_date=parent_allocation.end_date,
+            parent_allocation_id=proj_parent_alloc_id,
+        )
+
+        log_allocation_transaction(
+            session, new_alloc, user_id,
+            transaction_type,
+            comment=transaction_comment or (
+                f"Propagated from parent allocation #{parent_allocation.allocation_id}"
+            ),
+            propagated=True,
+        )
+
+        alloc_map[child_proj.project_id] = new_alloc.allocation_id
+        created.append(new_alloc)
+
+    return created, skipped
+
+
+def detach_allocation(session: Session, allocation_id: int, user_id: int) -> Allocation:
+    """
+    Break the parent_allocation_id link on a child (inheriting) allocation.
+
+    Sets parent_allocation_id to None, flushes, and logs a DETACH transaction.
+    After this call the allocation is fully independent — future edits to the
+    former parent will NOT cascade here.
+
+    NOTE: Detaching does NOT decouple usage roll-up, which operates on the
+    project tree (MPPT) regardless of allocation linkage.
+
+    Does NOT commit; caller must wrap in management_transaction().
+
+    Args:
+        session:       SQLAlchemy session.
+        allocation_id: ID of the inheriting allocation to detach.
+        user_id:       FK to User performing the action (for audit log).
+
+    Returns:
+        The detached Allocation instance.
+
+    Raises:
+        ValueError: If the allocation is not found or is not inheriting.
+    """
+    allocation = session.get(Allocation, allocation_id)
+    if not allocation or not allocation.is_inheriting:
+        raise ValueError(
+            f"Allocation {allocation_id} not found or is not an inheriting allocation"
+        )
+    old_parent_id = allocation.parent_allocation_id
+    allocation.parent_allocation_id = None
+    session.flush()
+    log_allocation_transaction(
+        session, allocation, user_id,
+        AllocationTransactionType.DETACH,
+        comment=f"Detached from parent allocation #{old_parent_id}",
+    )
+    return allocation
+
+
+def get_partitioned_descendant_sum(session: Session, allocation: Allocation) -> float:
+    """
+    Sum the amounts of non-deleted, non-inherited (parent_allocation_id IS NULL)
+    allocations on descendant projects for the same resource as ``allocation``.
+
+    This is the correct "Case 2b" check: descendant projects that were given
+    their own standalone allocation rather than a linked (shared-pool) copy.
+
+    Returns 0.0 if allocation has no account, the project has no children,
+    or no descendants have standalone allocations for this resource.
+
+    NOTE: Do NOT use allocation.children for this — those are shared-pool copies
+    with the same amount as the parent; summing them always gives a false overage
+    (n × parent.amount for n children, always > parent.amount when n > 1).
+    """
+    from sam.accounting.accounts import Account
+
+    if not allocation.account:
+        return 0.0
+
+    resource_id = allocation.account.resource_id
+    project = allocation.account.project
+    if not project or not project.has_children:
+        return 0.0
+
+    # Only descendant allocations whose date range overlaps the edit target
+    # count as "partitioned siblings" — allocations in other fiscal years are
+    # unrelated.
+    total = 0.0
+    for desc in project.get_descendants():
+        if not desc.active:
+            continue
+        acct = Account.get_by_project_and_resource(session, desc.project_id, resource_id)
+        if not acct:
+            continue
+        for a in acct.allocations:
+            if (not a.deleted
+                    and a.parent_allocation_id is None
+                    and date_ranges_overlap(a, allocation)):
+                total += a.amount
+    return total
+
+
+def link_allocation_to_parent(
+    session: Session,
+    allocation_id: int,
+    parent_allocation_id: int,
+    user_id: int,
+) -> Allocation:
+    """
+    Re-link a standalone child allocation to a parent-project allocation.
+
+    Mirrors the parent's amount/start_date/end_date onto the child so the
+    re-linked allocation is functionally indistinguishable from one created
+    originally via propagate_allocation_to_subprojects(). Flushes, then
+    logs a single LINK transaction.
+
+    Raises:
+        ValueError: child not found / already inheriting; parent not found /
+                    itself inheriting; resource mismatch; parent project is
+                    not the immediate project-parent of the child's project.
+    """
+    from sam.accounting.accounts import Account  # noqa: F401 — cycle guard
+
+    child = session.get(Allocation, allocation_id)
+    if not child:
+        raise ValueError(f"Allocation {allocation_id} not found")
+    if child.is_inheriting:
+        raise ValueError(
+            f"Allocation {allocation_id} is already inheriting; detach first"
+        )
+
+    parent = session.get(Allocation, parent_allocation_id)
+    if not parent:
+        raise ValueError(f"Parent allocation {parent_allocation_id} not found")
+    if parent.deleted:
+        raise ValueError(f"Parent allocation {parent_allocation_id} is deleted")
+    # Note: parent MAY itself be inheriting. The deep-tree design points each
+    # allocation at its *immediate* project-parent's allocation, not the root
+    # (see propagate_allocation_to_subprojects' alloc_map). A grandchild
+    # correctly links to an inheriting middle-tier parent.
+
+    if not child.account or not parent.account:
+        raise ValueError("Both allocations must be bound to an account")
+    if child.account.resource_id != parent.account.resource_id:
+        raise ValueError(
+            "Cannot link allocations for different resources "
+            f"(child: {child.account.resource_id}, parent: {parent.account.resource_id})"
+        )
+
+    child_proj = child.account.project
+    parent_proj = parent.account.project
+    if not child_proj or not parent_proj:
+        raise ValueError("Both allocations' accounts must have a project")
+    if child_proj.parent_id != parent_proj.project_id:
+        raise ValueError(
+            f"Project {parent_proj.projcode} is not the immediate parent of "
+            f"{child_proj.projcode}; deep-tree links must point to the "
+            f"immediate ancestor"
+        )
+
+    child.parent_allocation_id = parent.allocation_id
+    child.amount = parent.amount
+    child.start_date = parent.start_date
+    child.end_date = parent.end_date
+    session.flush()
+
+    log_allocation_transaction(
+        session, child, user_id,
+        AllocationTransactionType.LINK,
+        comment=f"Re-linked to parent allocation #{parent.allocation_id}",
+    )
+    return child

@@ -8,21 +8,19 @@ JavaScript API calls for improved performance and simplicity.
 """
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify, make_response
-from webapp.utils.htmx import htmx_success
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
-from webapp.api.helpers import parse_input_end_date
+from marshmallow import ValidationError
+
+from sam.schemas.forms.user import EditAllocationForm
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.rolling_usage import get_project_rolling_usage
-from sam.queries.users import get_users_on_project
 from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project, get_charges_by_projcode
 from sam.queries.lookups import find_project_by_code
 from sam.projects.projects import Project
-from webapp.utils.project_permissions import (
-    can_manage_project_members, can_change_admin, can_edit_consumption_threshold
-)
+from webapp.utils.project_permissions import can_edit_consumption_threshold
 from webapp.utils.rbac import require_permission, Permission, has_permission
 from ..charts import generate_usage_timeseries_matplotlib
 
@@ -221,40 +219,14 @@ def resource_details():
     )
 
 
-@bp.route('/members/<projcode>')
-@login_required
-def members_fragment(projcode):
-    """
-    Lazy-loaded HTML fragment showing project members.
-
-    Returns:
-        HTML table of project members with management controls (if authorized)
-    """
-    project = Project.get_by_projcode(db.session, projcode)
-
-    if not project:
-        return '<p class="text-danger mb-0">Project not found</p>'
-
-    members = get_users_on_project(db.session, projcode)
-
-    if not members:
-        return '<p class="text-muted mb-0">No members found or project not accessible</p>'
-
-    return render_template(
-        'dashboards/user/fragments/members_table.html',
-        members=sorted(members, key=lambda member: member["display_name"]),
-        projcode=projcode,
-        project=project,
-        can_manage=can_manage_project_members(current_user, project),
-        can_change_admin=can_change_admin(current_user, project)
-    )
-
-
 @bp.route('/tree/<projcode>')
 @login_required
 def tree_fragment(projcode):
     """
     Lazy-loaded HTML fragment showing project hierarchy tree.
+
+    Renders the shared render_project_tree macro
+    (dashboards/shared/project_tree.html) via a thin wrapper template.
 
     Returns:
         HTML tree structure (no full page layout)
@@ -264,62 +236,17 @@ def tree_fragment(projcode):
     if not project:
         return '<p class="text-danger mb-0">Project not found</p>'
 
-    # Get the root of the project tree
     active_only = request.args.get('active_only') == '1'
     root = project.get_root() if hasattr(project, 'get_root') else project
-    can_view_projects = has_permission(current_user, Permission.VIEW_PROJECTS)
+    can_view = has_permission(current_user, Permission.VIEW_PROJECTS)
 
-    # Render tree structure recursively
-    def render_tree_node(node, current_projcode, level=0):
-        is_current = node.projcode == current_projcode
-        is_active = node.active if hasattr(node, 'active') else True
-
-        # Build style and classes
-        style_parts = []
-        if is_current:
-            style_parts.append('background: #fff3cd; font-weight: bold; border-left-color: #ffc107;')
-        if not is_active:
-            style_parts.append('color: #6c757d; opacity: 0.6;')
-
-        style = ' '.join(style_parts)
-        icon = '<i class="fas fa-arrow-right text-warning mr-1"></i>' if is_current else ''
-        inactive_badge = ' <span class="badge badge-secondary badge-sm">Inactive</span>' if not is_active else ''
-
-        # Make project code clickable if user has VIEW_PROJECTS permission
-        if can_view_projects:
-            detail_url = url_for('user_dashboard.project_details_modal', projcode=node.projcode)
-            projcode_html = (
-                f'<button class="btn btn-link p-0" title="View project details"'
-                f" onclick=\"event.stopPropagation();"
-                f" htmx.ajax('GET', '{detail_url}', {{target: '#projectDetailsModalBody', swap: 'innerHTML'}});"
-                f" bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();\">"
-                f'<strong>{node.projcode}</strong></button>'
-            )
-        else:
-            projcode_html = f'<strong>{node.projcode}</strong>'
-        html = f'<li style="{style}">{icon}{projcode_html}'
-
-        if node.title:
-            html += f' - {node.title}'
-
-        html += inactive_badge
-
-        # Recursively render children
-        children = node.children if hasattr(node, 'children') and node.children else []
-        if active_only:
-            children = [c for c in children if getattr(c, 'active', True)]
-        if children:
-            html += '<ul class="tree-list">'
-            for child in sorted(children, key=lambda c: c.projcode):
-                html += render_tree_node(child, current_projcode, level + 1)
-            html += '</ul>'
-
-        html += '</li>'
-        return html
-
-    tree_html = f'<ul class="tree-list">{render_tree_node(root, projcode)}</ul>'
-
-    return tree_html
+    return render_template(
+        'dashboards/user/fragments/tree_htmx.html',
+        root=root,
+        current_projcode=projcode,
+        active_only=active_only,
+        can_view=can_view,
+    )
 
 
 
@@ -341,13 +268,16 @@ def project_details_modal(projcode):
     # Get full project data
     project_data = get_project_dashboard_data(db.session, projcode)
 
-    return render_template(
+    import json
+    resp = make_response(render_template(
         'dashboards/user/partials/project_details_modal.html',
         project_data=project_data,
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
-    )
+    ))
+    resp.headers['HX-Trigger'] = json.dumps({'setModalTitle': f'Project Details \u2014 {projcode}'})
+    return resp
 
 
 # ============================================================================
@@ -357,158 +287,6 @@ def project_details_modal(projcode):
 # These replace custom JavaScript with hx-* attributes on HTML elements.
 # All routes are prefixed with /htmx/ to avoid conflicts with API endpoints.
 # ============================================================================
-
-@bp.route('/htmx/add-member-form/<projcode>')
-@login_required
-def htmx_add_member_form(projcode):
-    """
-    Return the add member form as an HTML fragment.
-
-    Called when the htmx Add Member button is clicked. Returns a fresh form
-    pre-populated with today's start date, ready to be inserted into the modal.
-    """
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger m-3">Project not found</div>', 404
-
-    if not can_manage_project_members(current_user, project):
-        return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
-
-    return render_template(
-        'dashboards/user/fragments/add_member_form_htmx.html',
-        projcode=projcode,
-        start_date=date.today().strftime('%Y-%m-%d'),
-        errors=[]
-    )
-
-
-@bp.route('/htmx/search-users')
-@login_required
-def htmx_search_users():
-    """
-    Search users and return results as an HTML fragment.
-
-    Replaces the JSON /api/v1/users/search endpoint for htmx usage.
-    Returns clickable list items with inline onclick handlers.
-    """
-    from sam.queries.users import search_users_by_pattern, get_project_member_user_ids
-
-    query = request.args.get('q', '').strip()
-    projcode = request.args.get('projcode', '')
-
-    if len(query) < 2:
-        return ''
-
-    # Exclude users already on the project
-    exclude_ids = None
-    if projcode:
-        project = db.session.query(Project).filter_by(projcode=projcode).first()
-        if project:
-            exclude_ids = get_project_member_user_ids(db.session, project.project_id)
-
-    users = search_users_by_pattern(
-        db.session, query, limit=20, exclude_user_ids=exclude_ids
-    )
-
-    return render_template(
-        'dashboards/user/fragments/user_search_results_htmx.html',
-        users=users
-    )
-
-
-@bp.route('/htmx/add-member/<projcode>', methods=['POST'])
-@login_required
-def htmx_add_member(projcode):
-    """
-    Handle add member form submission (htmx).
-
-    On validation error: returns the form with error messages (htmx swaps
-    it back into the modal, user sees inline errors).
-
-    On success: returns a success message + OOB swap to update the members
-    table, then auto-closes the modal.
-    """
-    from sam.manage import add_user_to_project, management_transaction
-    from sam.core.users import User
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger m-3">Project not found</div>', 404
-
-    if not can_manage_project_members(current_user, project):
-        return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
-
-    # Parse form fields
-    username = request.form.get('username', '').strip()
-    start_date_str = request.form.get('start_date', '').strip()
-    end_date_str = request.form.get('end_date', '').strip()
-
-    errors = []
-
-    if not username:
-        errors.append('Please select a user first')
-
-    # Parse dates
-    start_date = None
-    end_date = None
-    try:
-        if start_date_str:
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-        if end_date_str:
-            end_date = parse_input_end_date(end_date_str)
-    except ValueError:
-        errors.append('Invalid date format. Use YYYY-MM-DD.')
-
-    if start_date and end_date and end_date <= start_date:
-        errors.append('End date must be after start date')
-
-    if errors:
-        return render_template(
-            'dashboards/user/fragments/add_member_form_htmx.html',
-            projcode=projcode,
-            start_date=start_date_str,
-            end_date=end_date_str,
-            errors=errors
-        )
-
-    # Look up the user
-    user = db.session.query(User).filter_by(username=username).first()
-    if not user:
-        return render_template(
-            'dashboards/user/fragments/add_member_form_htmx.html',
-            projcode=projcode,
-            start_date=start_date_str,
-            end_date=end_date_str,
-            errors=[f'User "{username}" not found']
-        )
-
-    # Add the member
-    try:
-        with management_transaction(db.session):
-            add_user_to_project(
-                db.session, project.project_id, user.user_id,
-                start_date, end_date
-            )
-    except (ValueError, Exception) as e:
-        return render_template(
-            'dashboards/user/fragments/add_member_form_htmx.html',
-            projcode=projcode,
-            start_date=start_date_str,
-            end_date=end_date_str,
-            errors=[str(e)]
-        )
-
-    # Success — render updated members table for OOB swap
-    members_html = _render_members_table(projcode, project)
-
-    return htmx_success(
-        'dashboards/user/fragments/add_member_success_htmx.html',
-        {'closeModal': 'addMemberModal'},
-        message=f'Added {user.display_name} to project {projcode}',
-        projcode=projcode,
-        members_html=members_html
-    )
-
 
 @bp.route('/htmx/edit-allocation-form/<int:allocation_id>')
 @login_required
@@ -573,50 +351,24 @@ def htmx_edit_allocation(allocation_id):
     resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
     projcode = request.form.get('projcode', '')
 
-    # Parse form fields
-    errors = []
-    updates = {}
-
-    amount_str = request.form.get('amount', '').strip()
-    if amount_str:
-        try:
-            amount = float(amount_str)
-            if amount <= 0:
-                errors.append('Amount must be greater than 0')
-            else:
-                updates['amount'] = amount
-        except ValueError:
-            errors.append('Invalid amount format')
-    else:
-        errors.append('Amount is required')
-
-    start_date_str = request.form.get('start_date', '').strip()
-    end_date_str = request.form.get('end_date', '').strip()
     try:
-        if start_date_str:
-            updates['start_date'] = datetime.strptime(start_date_str, '%Y-%m-%d')
-        if end_date_str:
-            updates['end_date'] = parse_input_end_date(end_date_str)
-        else:
-            updates['end_date'] = None  # Explicitly clear end date
-    except ValueError:
-        errors.append('Invalid date format. Use YYYY-MM-DD.')
-
-    if 'start_date' in updates and 'end_date' in updates and updates['end_date']:
-        if updates['end_date'] <= updates['start_date']:
-            errors.append('End date must be after start date')
-
-    description = request.form.get('description', '').strip()
-    updates['description'] = description if description else None
-
-    if errors:
+        form_data = EditAllocationForm().load(request.form)
+    except ValidationError as e:
         return render_template(
             'dashboards/user/fragments/edit_allocation_form_htmx.html',
             allocation=allocation,
             resource_name=resource_name,
             projcode=projcode,
-            errors=errors
+            errors=EditAllocationForm.flatten_errors(e.messages)
         )
+
+    updates = {
+        'amount': form_data['amount'],
+        'end_date': form_data['end_date'],  # None explicitly clears end date
+        'description': form_data['description'],
+    }
+    if form_data.get('start_date'):
+        updates['start_date'] = datetime.combine(form_data['start_date'], datetime.min.time())
 
     try:
         with management_transaction(db.session):
@@ -651,86 +403,6 @@ def htmx_edit_allocation(allocation_id):
     ''')
     response.headers['HX-Trigger'] = 'allocationUpdated'
     return response
-
-
-def _render_members_table(projcode, project):
-    """Render the members table fragment for a project (shared by htmx routes)."""
-    members = get_users_on_project(db.session, projcode)
-    return render_template(
-        'dashboards/user/fragments/members_table.html',
-        members=sorted(members, key=lambda m: m["display_name"]),
-        projcode=projcode,
-        project=project,
-        can_manage=can_manage_project_members(current_user, project),
-        can_change_admin=can_change_admin(current_user, project)
-    )
-
-
-@bp.route('/htmx/remove-member/<projcode>/<username>', methods=['DELETE'])
-@login_required
-def htmx_remove_member(projcode, username):
-    """
-    Remove a member from a project (htmx).
-
-    Returns the updated members table HTML on success, or an error alert.
-    """
-    from sam.manage import remove_user_from_project, management_transaction
-    from sam.core.users import User
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger">Project not found</div>', 404
-
-    if not can_manage_project_members(current_user, project):
-        return '<div class="alert alert-danger">Unauthorized</div>', 403
-
-    user = db.session.query(User).filter_by(username=username).first()
-    if not user:
-        return f'<div class="alert alert-danger">User "{username}" not found</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            remove_user_from_project(db.session, project.project_id, user.user_id)
-    except (ValueError, Exception) as e:
-        return f'<div class="alert alert-danger">{e}</div>', 400
-
-    return _render_members_table(projcode, project)
-
-
-@bp.route('/htmx/change-admin/<projcode>', methods=['PUT'])
-@login_required
-def htmx_change_admin(projcode):
-    """
-    Change or remove the project admin (htmx).
-
-    Form field: admin_username (empty string to remove admin role).
-    Returns the updated members table HTML on success.
-    """
-    from sam.manage import change_project_admin, management_transaction
-    from sam.core.users import User
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger">Project not found</div>', 404
-
-    if not can_change_admin(current_user, project):
-        return '<div class="alert alert-danger">Unauthorized — only project lead can change admin</div>', 403
-
-    admin_username = request.form.get('admin_username', '').strip()
-
-    try:
-        with management_transaction(db.session):
-            if admin_username:
-                new_admin = db.session.query(User).filter_by(username=admin_username).first()
-                if not new_admin:
-                    return f'<div class="alert alert-danger">User "{admin_username}" not found</div>', 404
-                change_project_admin(db.session, project.project_id, new_admin.user_id)
-            else:
-                change_project_admin(db.session, project.project_id, None)
-    except (ValueError, Exception) as e:
-        return f'<div class="alert alert-danger">{e}</div>', 400
-
-    return _render_members_table(projcode, project)
 
 
 # ---------------------------------------------------------------------------

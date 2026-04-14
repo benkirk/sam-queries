@@ -1,0 +1,324 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, number_field, textarea_field, checkbox_field, fk_search_field with context %}
+{#
+  htmx: Create Project Form
+  Facility / Panel / AllocationType: cascade selects on row 1 (Facility required,
+    Panel required, AllocationType optional). Panel options reload on facility change;
+    alloc type options reload on panel change. Auto-selects if only one option.
+  Project code: radio toggle between Auto-generate (facility + mnemonic)
+                and Manual entry.
+  Lead / Admin: search-as-you-type via fk_search_field macro + fk-picker.js.
+  Parent Project / Contract / Organization: optional FK pickers.
+#}
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_project_create'),
+    '#createProjectFormContainer',
+    'Create Project',
+    submit_icon='folder-plus'
+) %}
+        {# Cascading facility/panel/alloc-type selects kept inline — dynamic dependent
+           options with conditional descriptions don't fit the generic select macro. #}
+        <div class="row g-2 mb-3">
+            <div class="col-md-4">
+                <label for="createProjectFacility" class="form-label fw-semibold">
+                    Facility <span class="text-danger">*</span>
+                </label>
+                <select class="form-select form-select-sm" id="createProjectFacility"
+                        name="facility_id" required
+                        hx-get="{{ url_for('admin_dashboard.htmx_panels_for_facility') }}"
+                        hx-target="#createProjectPanel"
+                        hx-swap="innerHTML"
+                        hx-trigger="change"
+                        hx-include="#createProjectFacility">
+                    <option value="">— Select —</option>
+                    {% for facility in facilities %}
+                    <option value="{{ facility.facility_id }}"
+                        {% if form and form.get('facility_id') == facility.facility_id|string %}selected{% endif %}>
+                        {{ facility.facility_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="createProjectPanel" class="form-label fw-semibold">
+                    Panel <span class="text-danger">*</span>
+                </label>
+                <select class="form-select form-select-sm" id="createProjectPanel"
+                        name="panel_id" required
+                        hx-get="{{ url_for('admin_dashboard.htmx_alloc_types_for_panel') }}"
+                        hx-target="#createProjectAllocType"
+                        hx-swap="innerHTML"
+                        hx-trigger="change"
+                        hx-include="#createProjectPanel">
+                    {% if panels_for_facility %}
+                        <option value="">— Select —</option>
+                        {% for panel in panels_for_facility %}
+                        <option value="{{ panel.panel_id }}"
+                            {% if form and form.get('panel_id') == panel.panel_id|string %}selected{% endif %}>
+                            {{ panel.panel_name }}{% if panel.description %} — {{ panel.description }}{% endif %}
+                        </option>
+                        {% endfor %}
+                    {% else %}
+                        <option value="">— Select facility first —</option>
+                    {% endif %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="createProjectAllocType" class="form-label">
+                    Allocation Type <span class="text-muted">(optional)</span>
+                </label>
+                <select class="form-select form-select-sm" id="createProjectAllocType"
+                        name="allocation_type_id">
+                    {% if alloc_types_for_panel %}
+                        <option value="">— None —</option>
+                        {% for at in alloc_types_for_panel %}
+                        <option value="{{ at.allocation_type_id }}"
+                            {% if form and form.get('allocation_type_id') == at.allocation_type_id|string %}selected{% endif %}>
+                            {{ at.allocation_type }}
+                        </option>
+                        {% endfor %}
+                    {% else %}
+                        <option value="">— Select panel first —</option>
+                    {% endif %}
+                </select>
+            </div>
+        </div>
+
+        {# Project code mode toggle + auto/manual sections — bespoke UI, kept inline. #}
+        <div class="mb-3">
+            <label class="form-label fw-semibold">
+                Project Code <span class="text-danger">*</span>
+            </label>
+
+            <div class="btn-group btn-group-sm mb-2 w-100" role="group" aria-label="Project code mode">
+                <input type="radio" class="btn-check" name="projcode_mode"
+                       id="projcodeModeAuto" value="auto" autocomplete="off"
+                       {% if not form or form.get('projcode_mode', 'auto') == 'auto' %}checked{% endif %}>
+                <label class="btn btn-outline-secondary" for="projcodeModeAuto">
+                    <i class="fas fa-magic me-1"></i> Auto-generate
+                </label>
+                <input type="radio" class="btn-check" name="projcode_mode"
+                       id="projcodeModeManual" value="manual" autocomplete="off"
+                       {% if form and form.get('projcode_mode') == 'manual' %}checked{% endif %}>
+                <label class="btn btn-outline-secondary" for="projcodeModeManual">
+                    <i class="fas fa-keyboard me-1"></i> Manual
+                </label>
+            </div>
+
+            <div id="projcodeAutoSection">
+                <div class="row g-2">
+                    <div class="col-12">
+                        <select class="form-select form-select-sm" id="projcodeMnemonic"
+                                name="mnemonic_code_id"
+                                hx-get="{{ url_for('admin_dashboard.htmx_project_next_projcode') }}"
+                                hx-target="#projcodePreview"
+                                hx-swap="innerHTML"
+                                hx-trigger="change"
+                                hx-include="#createProjectFacility, #projcodeMnemonic">
+                            <option value="">— Mnemonic —</option>
+                            {% for mnemo in mnemonics %}
+                            <option value="{{ mnemo.mnemonic_code_id }}"
+                                {% if form and form.get('mnemonic_code_id') == mnemo.mnemonic_code_id|string %}selected{% endif %}>
+                                {{ mnemo.code }} — {{ mnemo.description }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <span class="text-muted small me-1">Next code:</span>
+                    <span id="projcodePreview" class="badge bg-secondary font-monospace">
+                        {% if form and form.get('projcode_mode', 'auto') == 'auto' %}
+                            {{ form.get('projcode', '—') }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <div id="projcodeManualSection" style="display:none;">
+                <input type="text" class="form-control font-monospace text-uppercase"
+                       id="projcodeManualInput"
+                       placeholder="e.g. UCSD0042"
+                       maxlength="30"
+                       oninput="this.value = this.value.toUpperCase()"
+                       value="{{ form.get('projcode', '') if form and form.get('projcode_mode') == 'manual' else '' }}">
+            </div>
+
+            <input type="hidden" name="projcode" id="projcodeHidden"
+                   value="{{ form.get('projcode', '') if form else '' }}">
+        </div>
+
+        {{ text_field('title', 'Title',
+                      required=True, maxlength=255,
+                      placeholder='e.g. Mesoscale Climate Dynamics',
+                      label_class='form-label fw-semibold',
+                      id='createProjectTitle') }}
+
+        {{ textarea_field('abstract', 'Abstract',
+                          rows=3,
+                          placeholder="Brief description of the project's scientific goals…",
+                          id='createProjectAbstract') }}
+
+        <div class="row">
+            <div class="col-md-6">
+                {{ fk_search_field('project_lead_user_id', 'Project Lead',
+                                   search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                                   required=True,
+                                   placeholder='Search by name or username…',
+                                   badge_class='bg-primary py-1 px-2',
+                                   search_class='form-control form-control-sm',
+                                   label_class='form-label fw-semibold',
+                                   id_prefix='createProjectLead') }}
+            </div>
+            <div class="col-md-6">
+                {{ fk_search_field('project_admin_user_id', 'Project Admin',
+                                   search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                                   placeholder='Search by name or username…',
+                                   badge_class='bg-secondary py-1 px-2',
+                                   search_class='form-control form-control-sm',
+                                   id_prefix='createProjectAdmin') }}
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="createProjectAoi" class="form-label fw-semibold">
+                        Area of Interest <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-select form-select-sm" id="createProjectAoi"
+                            name="area_of_interest_id" required>
+                        <option value="">— Select —</option>
+                        {% for area in areas %}
+                        <option value="{{ area.area_of_interest_id }}"
+                            {% if form and form.get('area_of_interest_id') == area.area_of_interest_id|string %}selected{% endif %}>
+                            {{ area.area_of_interest }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-6">
+                {{ fk_search_field('contract_id', 'Contract',
+                                   search_url=url_for('admin_dashboard.htmx_contract_search_for_project'),
+                                   placeholder='Search by contract number or title…',
+                                   badge_class='bg-warning text-dark py-1 px-2 font-monospace',
+                                   search_class='form-control form-control-sm',
+                                   id_prefix='createProjectContract') }}
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                {{ fk_search_field('organization_id', 'Organization',
+                                   search_url=url_for('admin_dashboard.htmx_org_search_for_project'),
+                                   placeholder='Search by name or acronym…',
+                                   badge_class='bg-info text-dark py-1 px-2',
+                                   search_class='form-control form-control-sm',
+                                   id_prefix='createProjectOrg') }}
+            </div>
+            <div class="col-md-6">
+                {{ fk_search_field('parent_id', 'Parent Project',
+                                   search_url=url_for('admin_dashboard.htmx_project_search_for_parent'),
+                                   optional_text='(optional — makes this a sub-project)',
+                                   placeholder='Search by project code or title…',
+                                   badge_class='bg-secondary text-light py-1 px-2 font-monospace',
+                                   search_class='form-control form-control-sm',
+                                   id_prefix='createProjectParent') }}
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                {{ checkbox_field('charging_exempt', 'Charging Exempt',
+                                  id='createProjectChargingExempt') }}
+            </div>
+            <div class="col-md-4">
+                {{ number_field('unix_gid', 'Unix GID',
+                                min=1,
+                                id='createProjectUnixGid') }}
+            </div>
+            <div class="col-md-4">
+                {{ text_field('ext_alias', 'External Alias',
+                              maxlength=64,
+                              id='createProjectExtAlias') }}
+            </div>
+        </div>
+{% endcall %}
+
+<script>
+(function () {
+    // ── Facility → Panel → AllocationType cascade ────────────────────────
+    // After panels load: auto-select if only one option, then cascade
+    const panelSelect = document.getElementById('createProjectPanel');
+    const allocSelect = document.getElementById('createProjectAllocType');
+
+    panelSelect.addEventListener('htmx:afterSwap', function () {
+        const opts = Array.from(this.options).filter(function (o) { return o.value !== ''; });
+        if (opts.length === 1) {
+            this.value = opts[0].value;
+            htmx.trigger(this, 'change');  // cascade → alloc types
+        }
+    });
+
+    allocSelect.addEventListener('htmx:afterSwap', function () {
+        const opts = Array.from(this.options).filter(function (o) { return o.value !== ''; });
+        if (opts.length === 1) {
+            this.value = opts[0].value;
+        }
+    });
+
+    // ── Projcode mode toggle ──────────────────────────────────────────────
+    const autoSection   = document.getElementById('projcodeAutoSection');
+    const manualSection = document.getElementById('projcodeManualSection');
+    const manualInput   = document.getElementById('projcodeManualInput');
+    const hiddenCode    = document.getElementById('projcodeHidden');
+    const previewEl     = document.getElementById('projcodePreview');
+
+    function applyProjcodeMode(mode) {
+        if (mode === 'manual') {
+            autoSection.style.display  = 'none';
+            manualSection.style.display = '';
+            hiddenCode.value = manualInput.value.toUpperCase();
+        } else {
+            autoSection.style.display  = '';
+            manualSection.style.display = 'none';
+            hiddenCode.value = previewEl.textContent.trim() !== '—' ? previewEl.textContent.trim() : '';
+        }
+    }
+
+    document.querySelectorAll('[name="projcode_mode"]').forEach(function (radio) {
+        radio.addEventListener('change', function () { applyProjcodeMode(this.value); });
+    });
+
+    // Keep hidden field in sync when manual input changes
+    manualInput.addEventListener('input', function () {
+        hiddenCode.value = this.value.toUpperCase();
+    });
+
+    // Keep hidden field in sync when projcode preview updates (htmx swap)
+    document.getElementById('projcodePreview').addEventListener('htmx:afterSwap', function () {
+        const mode = document.querySelector('[name="projcode_mode"]:checked');
+        if (mode && mode.value === 'auto') {
+            hiddenCode.value = this.textContent.trim() !== '—' ? this.textContent.trim() : '';
+        }
+    });
+
+    // Apply on load (handles form re-render with errors)
+    const currentMode = document.querySelector('[name="projcode_mode"]:checked');
+    if (currentMode) applyProjcodeMode(currentMode.value);
+
+    // ── htmx: update hidden projcode after auto-preview response ────────
+    document.getElementById('projcodeAutoSection').addEventListener('htmx:afterSwap', function (e) {
+        if (e.target.id === 'projcodePreview') {
+            const val = e.target.textContent.trim();
+            hiddenCode.value = (val && val !== '—') ? val : '';
+        }
+    });
+
+    // FK pickers (lead, admin, contract, org, parent) are wired up by
+    // /static/js/fk-picker.js — no per-field JS needed.
+})();
+</script>

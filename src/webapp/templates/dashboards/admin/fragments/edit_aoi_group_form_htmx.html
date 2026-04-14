@@ -1,52 +1,24 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, checkbox_field, readonly_display with context %}
 {#
   htmx: Edit AOI Group Form (loaded into #editAoiGroupFormContainer)
   Editable: name (required), active.
 #}
 
-<form hx-post="{{ url_for('admin_dashboard.htmx_aoi_group_edit', group_id=group.area_of_interest_group_id) }}"
-      hx-target="#editAoiGroupFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_aoi_group_edit', group_id=group.area_of_interest_group_id),
+    '#editAoiGroupFormContainer',
+    'Save Changes',
+    is_edit=True
+) %}
+        {{ readonly_display('Group ID', group.area_of_interest_group_id) }}
 
-    <div class="modal-body">
-        <!-- ID (read-only) -->
-        <div class="mb-3">
-            <label class="form-label">Group ID</label>
-            <div class="form-control-plaintext text-muted">{{ group.area_of_interest_group_id }}</div>
-        </div>
+        {{ text_field('name', 'Name',
+                      required=True, maxlength=100,
+                      default=group.name,
+                      id='editAoiGroupName') }}
 
-        <!-- Name -->
-        <div class="mb-3">
-            <label for="editAoiGroupName" class="form-label">
-                Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="editAoiGroupName"
-                   name="name" required maxlength="100"
-                   value="{{ form.get('name') if form else group.name }}">
-        </div>
-
-        <!-- Active -->
-        <div class="mb-3 form-check">
-            <input type="checkbox" class="form-check-input" id="editAoiGroupActive"
-                   name="active" value="1"
-                   {% if form %}{% if form.get('active') %}checked{% endif %}
-                   {% elif group.active %}checked{% endif %}>
-            <label class="form-check-label" for="editAoiGroupActive">Active</label>
-        </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-warning">
-            <i class="fas fa-save"></i> Save Changes
-        </button>
-    </div>
-</form>
+        {{ checkbox_field('active', 'Active',
+                          default=group.active,
+                          id='editAoiGroupActive') }}
+{% endcall %}

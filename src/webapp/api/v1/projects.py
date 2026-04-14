@@ -18,8 +18,8 @@ from sam.schemas import (
     ProjectSchema, ProjectListSchema, ProjectSummarySchema,
     AllocationWithUsageSchema, UserSummarySchema, CompJobSchema
 )
-from webapp.api.helpers import register_error_handlers, get_project_or_404, parse_date_range, parse_input_end_date
-from webapp.api.access_control import require_project_member_access
+from webapp.api.helpers import register_error_handlers, get_project_or_404, parse_date_range
+from webapp.api.access_control import require_project_access, require_project_member_access
 from datetime import datetime, timedelta
 
 bp = Blueprint('api_projects', __name__)
@@ -29,40 +29,6 @@ register_error_handlers(bp)
 # ============================================================================
 # Helper Functions
 # ============================================================================
-
-def _user_can_access_project(project):
-    """
-    Check if current user can access project data.
-
-    Users can access project data if they:
-    - Have VIEW_PROJECTS permission (admin), OR
-    - Are a member of the project (lead, admin, or member)
-
-    Args:
-        project: Project object to check access for
-
-    Returns:
-        bool: True if user can access, False otherwise
-    """
-    from sam.core.users import User
-    from webapp.utils.rbac import has_permission
-
-    # Admin with permission can access any project
-    if has_permission(current_user, Permission.VIEW_PROJECTS):
-        return True
-
-    # Get SAM user record
-    sam_user = db.session.query(User).filter_by(user_id=current_user.user_id).first()
-    if not sam_user:
-        return False
-
-    # Check if user is a member of the project
-    user_projects = {p.project_id for p in sam_user.active_projects()}
-    user_projects.update({p.project_id for p in sam_user.led_projects})
-    user_projects.update({p.project_id for p in sam_user.admin_projects})
-
-    return project.project_id in user_projects
-
 
 def _parse_project_filter_params():
     """
@@ -191,7 +157,8 @@ def list_projects():
 
 @bp.route('/<projcode>', methods=['GET'])
 @login_required
-def get_project(projcode):
+@require_project_access
+def get_project(project):
     """
     GET /api/v1/projects/<projcode> - Get project details with tree structure.
 
@@ -208,10 +175,6 @@ def get_project(projcode):
         - tree_depth: Depth of current project in tree (0 = root)
         - tree: Full tree structure from root with nested children
     """
-    project, error = get_project_or_404(db.session, projcode)
-    if error:
-        return error
-
     # Get max_depth parameter (default: 4)
     max_depth = request.args.get('max_depth', 4, type=int)
 
@@ -261,7 +224,8 @@ def get_project_members(project):
 
 @bp.route('/<projcode>/allocations', methods=['GET'])
 @login_required
-def get_project_allocations(projcode):
+@require_project_member_access(Permission.VIEW_ALLOCATIONS)
+def get_project_allocations(project):
     """
     GET /api/v1/projects/<projcode>/allocations - Get project allocations with usage.
 
@@ -277,15 +241,6 @@ def get_project_allocations(projcode):
         JSON with allocations including usage details for the project
     """
     from sam.accounting.accounts import Account
-
-    project, error = get_project_or_404(db.session, projcode)
-    if error:
-        return error
-
-    # # Check access: admin permission OR user is project member
-    # from webapp.utils.rbac import has_permission
-    # if not (has_permission(current_user, Permission.VIEW_ALLOCATIONS) or _user_can_access_project(project)):
-    #     return jsonify({'error': 'Forbidden - insufficient permissions'}), 403
 
     resource_name = request.args.get('resource')
     include_adjustments = request.args.get('include_adjustments', 'true').lower() == 'true'
@@ -318,7 +273,7 @@ def get_project_allocations(projcode):
                 allocations_data.append(alloc_data)
 
     return jsonify({
-        'projcode': projcode,
+        'projcode': project.projcode,
         'allocations': allocations_data,
         'total': len(allocations_data)
     })
@@ -446,6 +401,8 @@ def add_member(projcode):
     from sam.manage import add_user_to_project, management_transaction
     from sam.core.users import User
     from webapp.utils.project_permissions import can_manage_project_members
+    from sam.schemas.forms import AddMemberForm
+    from marshmallow import ValidationError
 
     project, error = get_project_or_404(db.session, projcode)
     if error:
@@ -454,29 +411,21 @@ def add_member(projcode):
     if not can_manage_project_members(current_user, project):
         return jsonify({'error': 'Unauthorized - insufficient permissions'}), 403
 
-    # Get data from JSON body or form data
+    # Validate and coerce input (dates, ordering) via form schema
     data = request.get_json() or request.form
-    username = data.get('username')
-    if not username:
-        return jsonify({'error': 'Username is required'}), 400
+    try:
+        form_data = AddMemberForm().load(data)
+    except ValidationError as e:
+        errors = AddMemberForm.flatten_errors(e.messages)
+        return jsonify({'error': errors[0] if errors else 'Invalid input'}), 400
+
+    username = form_data['username']
+    start_date = datetime.combine(form_data['start_date'], datetime.min.time()) if form_data.get('start_date') else None
+    end_date = form_data.get('end_date')  # already a datetime or None from post_load
 
     user = db.session.query(User).filter_by(username=username).first()
     if not user:
         return jsonify({'error': f'User "{username}" not found'}), 404
-
-    # Parse dates
-    start_date = None
-    end_date = None
-    try:
-        start_date_str = data.get('start_date', '').strip() if data.get('start_date') else ''
-        if start_date_str:
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-
-        end_date_str = data.get('end_date', '').strip() if data.get('end_date') else ''
-        if end_date_str:
-            end_date = parse_input_end_date(end_date_str)
-    except ValueError:
-        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
 
     try:
         with management_transaction(db.session):
@@ -600,7 +549,8 @@ def update_admin(projcode):
 
 @bp.route('/<projcode>/jobs', methods=['GET'])
 @login_required
-def get_project_jobs(projcode):
+@require_project_member_access(Permission.VIEW_ALLOCATIONS)
+def get_project_jobs(project):
     """
     GET /api/v1/projects/<projcode>/jobs - Get job history for a project.
 
@@ -617,15 +567,12 @@ def get_project_jobs(projcode):
     """
     from sam.activity.computational import CompJob
 
+    projcode = project.projcode
     resource_name = request.args.get('resource')
     limit = min(int(request.args.get('limit', 100)), 1000)
 
     if not resource_name:
         return jsonify({'error': 'Resource parameter is required'}), 400
-
-    project, error = get_project_or_404(db.session, projcode)
-    if error:
-        return error
 
     # Parse dates
     start_date, end_date, error = parse_date_range(days_back=30)

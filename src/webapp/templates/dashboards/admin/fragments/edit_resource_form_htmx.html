@@ -1,88 +1,48 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, checkbox_field, readonly_display with context %}
 {#
   htmx: Edit Resource Form (loaded into #editResourceFormContainer)
   resource_name and resource_type are read-only.
   Editable: description, commission_date, decommission_date, charging_exempt.
 #}
 
-<form hx-post="{{ url_for('admin_dashboard.htmx_resource_edit', resource_id=resource.resource_id) }}"
-      hx-target="#editResourceFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
-        <!-- Name / Type (read-only) -->
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_resource_edit', resource_id=resource.resource_id),
+    '#editResourceFormContainer',
+    'Save Changes',
+    is_edit=True
+) %}
         <div class="row mb-3">
             <div class="col-md-6">
-                <label class="form-label">Resource Name</label>
-                <div class="form-control-plaintext">
-                    <strong>{{ resource.resource_name }}</strong>
-                </div>
+                {{ readonly_display('Resource Name', resource.resource_name, muted=False, strong=True) }}
             </div>
             <div class="col-md-6">
-                <label class="form-label">Type</label>
-                <div class="form-control-plaintext text-muted">
-                    {{ resource.resource_type.resource_type if resource.resource_type else '—' }}
-                </div>
+                {{ readonly_display('Type', resource.resource_type.resource_type if resource.resource_type else '—') }}
             </div>
         </div>
 
-        <!-- Description -->
-        <div class="mb-3">
-            <label for="editResourceDescription" class="form-label">Description</label>
-            <input type="text" class="form-control" id="editResourceDescription"
-                   name="description"
-                   value="{{ form.get('description') if form else (resource.description or '') }}"
-                   placeholder="Brief description of the resource">
-        </div>
+        {{ text_field('description', 'Description',
+                      optional_text='',
+                      default=resource.description or '',
+                      placeholder='Brief description of the resource',
+                      id='editResourceDescription') }}
 
-        <!-- Commission / Decommission dates -->
-        <div class="row mb-3">
+        <div class="row">
             <div class="col-md-6">
-                <label for="editResourceCommission" class="form-label">
-                    Commission Date <span class="text-danger">*</span>
-                </label>
-                <input type="date" class="form-control" id="editResourceCommission"
-                       name="commission_date" required
-                       value="{{ form.get('commission_date') if form else (resource.commission_date.strftime('%Y-%m-%d') if resource.commission_date else '') }}">
+                {{ date_field('commission_date', 'Commission Date',
+                              required=True,
+                              default=resource.commission_date,
+                              id='editResourceCommission') }}
             </div>
             <div class="col-md-6">
-                <label for="editResourceDecommission" class="form-label">
-                    Decommission Date <span class="text-muted">(optional)</span>
-                </label>
-                <input type="date" class="form-control" id="editResourceDecommission"
-                       name="decommission_date"
-                       value="{{ form.get('decommission_date') if form else (resource.decommission_date.strftime('%Y-%m-%d') if resource.decommission_date else '') }}">
+                {{ date_field('decommission_date', 'Decommission Date',
+                              default=resource.decommission_date,
+                              id='editResourceDecommission') }}
             </div>
         </div>
 
-        <!-- Charging Exempt -->
-        <div class="mb-3 form-check">
-            <input type="checkbox" class="form-check-input" id="editResourceChargingExempt"
-                   name="charging_exempt" value="1"
-                   {% if form %}
-                       {% if form.get('charging_exempt') %}checked{% endif %}
-                   {% elif resource.charging_exempt %}
-                       checked
-                   {% endif %}>
-            <label class="form-check-label" for="editResourceChargingExempt">
-                Charging Exempt
-            </label>
-            <div class="form-text text-muted">Jobs on this resource will not be charged.</div>
-        </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-warning">
-            <i class="fas fa-save"></i> Save Changes
-        </button>
-    </div>
-</form>
+        {{ checkbox_field('charging_exempt', 'Charging Exempt',
+                          default=resource.charging_exempt,
+                          help='Jobs on this resource will not be charged.',
+                          id='editResourceChargingExempt') }}
+{% endcall %}

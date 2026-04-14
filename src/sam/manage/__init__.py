@@ -18,7 +18,10 @@ from .transaction import management_transaction
 from .allocations import (
     validate_allocation_dates,
     log_allocation_transaction,
-    update_allocation
+    update_allocation,
+    propagate_allocation_to_subprojects,
+    detach_allocation,
+    get_partitioned_descendant_sum,
 )
 from .summaries import (
     upsert_comp_charge_summary,
@@ -35,6 +38,9 @@ __all__ = [
     'validate_allocation_dates',
     'log_allocation_transaction',
     'update_allocation',
+    'propagate_allocation_to_subprojects',
+    'detach_allocation',
+    'get_partitioned_descendant_sum',
     'upsert_comp_charge_summary',
     'upsert_disk_charge_summary',
     'upsert_archive_charge_summary',

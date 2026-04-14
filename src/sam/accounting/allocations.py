@@ -144,6 +144,67 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
         self._walk_tree(_do_extend)
         self.session.flush()
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        project_id: int,
+        resource_id: int,
+        amount: float,
+        start_date: 'datetime',
+        end_date: 'Optional[datetime]' = None,
+        description: 'Optional[str]' = None,
+        parent_allocation_id: 'Optional[int]' = None,
+    ) -> 'Allocation':
+        """Create a new allocation for a project + resource pair.
+
+        Gets or creates the Account linking project ↔ resource, then
+        instantiates and flushes the Allocation.
+
+        Does NOT log an audit transaction — callers that need an audit trail
+        (e.g. sam.manage.allocations.create_allocation) should call
+        log_allocation_transaction() after this returns.
+
+        Does NOT commit; caller must wrap in management_transaction().
+
+        Args:
+            session:     SQLAlchemy session.
+            project_id:  FK to Project.
+            resource_id: FK to Resource.
+            amount:      Allocation amount (must be > 0).
+            start_date:  Start of allocation period.
+            end_date:    End of allocation period (None = open-ended).
+            description: Optional human-readable note.
+
+        Returns:
+            Newly created and flushed Allocation instance.
+        """
+        from sam.accounting.accounts import Account
+
+        if amount <= 0:
+            raise ValueError(f"Amount must be > 0, got {amount}")
+
+        account = Account.get_by_project_and_resource(
+            session, project_id, resource_id, exclude_deleted=True
+        )
+        if account is None:
+            account = Account.create(
+                session, project_id=project_id, resource_id=resource_id
+            )
+
+        allocation = cls(
+            account_id=account.account_id,
+            amount=amount,
+            start_date=start_date,
+            end_date=end_date,
+            description=description,
+            parent_allocation_id=parent_allocation_id,
+        )
+        session.add(allocation)
+        session.flush()
+        return allocation
+
     def __str__(self):
         return f"{self.allocation_id}"
 
@@ -210,6 +271,9 @@ class AllocationTransactionType(enum.StrEnum):
     ADJUSTMENT = "ADJUSTMENT"
     EXPIRE = "EXPIRE"
     DELETE = "DELETE"
+    DETACH = "DETACH"
+    LINK = "LINK"
+    RENEW = "RENEW"
     # Legacy Java-side types (present in existing DB data)
     NEW = "NEW"
     EXTENSION = "EXTENSION"

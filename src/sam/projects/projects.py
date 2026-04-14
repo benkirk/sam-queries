@@ -10,6 +10,7 @@ from ..resources.resources import *
 from ..summaries.comp_summaries import *
 from ..summaries.dav_summaries import *
 from ..accounting.calculator import calculate_charges, get_charge_models_for_resource
+from ..enums import ResourceTypeName
 
 import logging
 from typing import Any
@@ -227,6 +228,141 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         # Order by projcode and apply limit
         return query.order_by(cls.projcode).limit(limit).all()
 
+    @classmethod
+    def create(cls, session, *, projcode: str, title: str, project_lead_user_id: int,
+               area_of_interest_id: int, abstract: Optional[str] = None,
+               project_admin_user_id: Optional[int] = None,
+               allocation_type_id: Optional[int] = None,
+               parent_id: Optional[int] = None,
+               charging_exempt: bool = False,
+               unix_gid: Optional[int] = None,
+               ext_alias: Optional[str] = None) -> 'Project':
+        """Create a new project and place it correctly in the nested-set tree.
+
+        All keyword arguments are required or keyword-only to prevent positional
+        mistakes.  ``projcode`` is uppercased and stripped automatically.
+
+        The new project inherits ``tree_root`` from its parent (if provided) and
+        receives correct ``tree_left`` / ``tree_right`` coordinates via
+        ``_ns_place_in_tree``.  Root projects (no parent) start their own
+        single-node tree.
+
+        Args:
+            session: SQLAlchemy session.
+            projcode: Unique project code (e.g. ``'UCSD0001'``).
+            title: Human-readable project title.
+            project_lead_user_id: FK to the project lead User.
+            area_of_interest_id: FK to AreaOfInterest (required).
+            abstract: Optional longer description.
+            project_admin_user_id: Optional FK to project admin User.
+            allocation_type_id: Optional FK to AllocationType.
+            parent_id: Optional FK to parent Project (for sub-projects).
+            charging_exempt: If True, charges are not assessed. Default False.
+            unix_gid: Optional Unix group ID.
+            ext_alias: Optional external alias string.
+
+        Returns:
+            The newly created and flushed Project instance.
+
+        Example::
+
+            project = Project.create(
+                session,
+                projcode='UCSD0042',
+                title='Mesoscale Climate Dynamics',
+                project_lead_user_id=lead_user.user_id,
+                area_of_interest_id=aoi.area_of_interest_id,
+            )
+        """
+        parent = session.get(cls, parent_id) if parent_id else None
+
+        project = cls(
+            projcode=projcode.upper().strip(),
+            title=title.strip(),
+            abstract=abstract.strip() if abstract else None,
+            project_lead_user_id=project_lead_user_id,
+            project_admin_user_id=project_admin_user_id,
+            area_of_interest_id=area_of_interest_id,
+            allocation_type_id=allocation_type_id,
+            parent_id=parent_id,
+            charging_exempt=charging_exempt,
+            unix_gid=unix_gid,
+            ext_alias=ext_alias.strip() if ext_alias else None,
+        )
+        session.add(project)
+        session.flush()  # assigns project_id before tree placement
+
+        # Set tree coordinates (also sets tree_root and shifts siblings)
+        project._ns_place_in_tree(session, parent)
+
+        # Create sequential project number (mirrors legacy SAM createProjectNumber())
+        pn = ProjectNumber(project_id=project.project_id)
+        session.add(pn)
+        session.flush()
+
+        return project
+
+    def update(
+        self,
+        *,
+        title: Optional[str] = None,
+        abstract: Optional[str] = None,
+        area_of_interest_id: Optional[int] = None,
+        allocation_type_id: Optional[int] = None,
+        charging_exempt: Optional[bool] = None,
+        project_lead_user_id: Optional[int] = None,
+        project_admin_user_id: Optional[int] = None,
+        unix_gid: Optional[int] = None,
+        ext_alias: Optional[str] = None,
+        active: Optional[bool] = None,
+    ) -> 'Project':
+        """Update mutable project fields and flush.
+
+        Only keyword arguments explicitly provided (non-None) are written.
+        ``projcode`` and ``parent_id`` are intentionally excluded — projcode
+        is immutable after creation, and tree restructuring is a separate op.
+
+        Uses ``SessionMixin.session`` (``Session.object_session(self)``) for
+        the flush, so no session argument is needed.
+
+        Args:
+            title:                 Human-readable project title.
+            abstract:              Longer project description (pass ``''`` to clear).
+            area_of_interest_id:   FK to AreaOfInterest.
+            allocation_type_id:    FK to AllocationType.
+            charging_exempt:       If True, charges are not assessed.
+            project_lead_user_id:  FK to lead User.
+            project_admin_user_id: FK to admin User.
+            unix_gid:              Unix group ID.
+            ext_alias:             External alias string (pass ``''`` to clear).
+            active:                Active flag.
+
+        Returns:
+            self (for chaining).
+        """
+        if title is not None:
+            self.title = title.strip()
+        if abstract is not None:
+            self.abstract = abstract.strip() or None
+        if area_of_interest_id is not None:
+            self.area_of_interest_id = area_of_interest_id
+        if allocation_type_id is not None:
+            self.allocation_type_id = allocation_type_id
+        if charging_exempt is not None:
+            self.charging_exempt = charging_exempt
+        if project_lead_user_id is not None:
+            self.project_lead_user_id = project_lead_user_id
+        if project_admin_user_id is not None:
+            self.project_admin_user_id = project_admin_user_id
+        if unix_gid is not None:
+            self.unix_gid = unix_gid
+        if ext_alias is not None:
+            self.ext_alias = ext_alias.strip() or None
+        if active is not None:
+            self.active = active
+        self.session.flush()
+        return self
+
     # # Active account users (filtered join)
     # account_users = relationship(
     #     'AccountUser',
@@ -394,7 +530,8 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     def get_detailed_allocation_usage(self,
                                       resource_name: Optional[str] = None,
                                       include_adjustments: bool = True,
-                                      hierarchical: bool = True) -> Dict[str, Dict[str, any]]:
+                                      hierarchical: bool = True,
+                                      active_at: Optional[datetime] = None) -> Dict[str, Dict[str, any]]:
         """
         Calculate allocation usage and remaining balance across all resource types.
 
@@ -403,11 +540,13 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             include_adjustments: Whether to include manual charge adjustments
             hierarchical: If True, aggregate usage from this project and all descendants (sub-projects).
                           If False, only count usage for this specific project.
+            active_at: Reference datetime for determining which allocation is "active".
+                       Defaults to now.
 
         Returns:
             Dict mapping resource_name to usage details.
         """
-        now = datetime.now()
+        now = active_at or datetime.now()
         results = {}
 
         # Check if tree structure is valid for hierarchical queries
@@ -445,9 +584,12 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                     most_recent_alloc = max(account.allocations,
                                             key=lambda a: a.end_date if a.end_date else datetime.max
                                             )
-                    # Apply date threshold, only query 'most_recent_alloc'
-                    # if it has expired within the past 1 year
-                    if (now - most_recent_alloc.end_date) <= timedelta(days=90):
+                    # Apply date threshold: only query 'most_recent_alloc'
+                    # if it has expired within the past 90 days.
+                    # An open-ended allocation (end_date=None) never expires —
+                    # treat it as always within threshold.
+                    end = most_recent_alloc.end_date
+                    if end is None or (now - end) <= timedelta(days=90):
                         query_alloc = most_recent_alloc
 
             # OK, if we still don't have an allocation to query
@@ -976,11 +1118,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         Returns:
             Tuple of (total_jobs, total_core_hours) or (None, None)
         """
-        if resource_type not in ('HPC', 'DAV'):
+        if not ResourceTypeName.is_compute(resource_type):
             return None, None
 
         # Use appropriate summary table
-        SummaryClass = CompChargeSummary if resource_type == 'HPC' else DavChargeSummary
+        SummaryClass = CompChargeSummary if resource_type == ResourceTypeName.HPC else DavChargeSummary
 
         stats = self.session.query(func.coalesce(func.sum(SummaryClass.num_jobs), 0).label('jobs'),
                                    func.coalesce(func.sum(SummaryClass.core_hours), 0).label('hours')
@@ -1000,10 +1142,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         """
         Get job count and core hours for computational resources (Subtree Aggregation).
         """
-        if resource_type not in ('HPC', 'DAV'):
+        if not ResourceTypeName.is_compute(resource_type):
             return None, None
 
-        SummaryClass = CompChargeSummary if resource_type == 'HPC' else DavChargeSummary
+        SummaryClass = CompChargeSummary if resource_type == ResourceTypeName.HPC else DavChargeSummary
 
         stats = self.session.query(
                 func.coalesce(func.sum(SummaryClass.num_jobs), 0).label('jobs'),
@@ -1115,7 +1257,7 @@ class ProjectNumber(Base):
 
 
 #----------------------------------------------------------------------------
-class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
+class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
     """File system directories associated with projects."""
     __tablename__ = 'project_directory'
 
@@ -1127,6 +1269,35 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin):
     project = relationship('Project', back_populates='directories')
     project_directory_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
+
+    @classmethod
+    def create(cls, session, *, project_id: int, directory_name: str,
+               start_date=None) -> 'ProjectDirectory':
+        """Associate a filesystem directory with a project.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        from datetime import datetime
+        if not directory_name or not directory_name.strip():
+            raise ValueError("directory_name is required")
+        obj = cls(
+            project_id=project_id,
+            directory_name=directory_name.strip(),
+            start_date=start_date or datetime.now(),
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
+    def deactivate(self) -> 'ProjectDirectory':
+        """End this directory association by setting end_date to now.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        from datetime import datetime
+        self.end_date = datetime.now()
+        self.session.flush()
+        return self
 
     def __str__(self):
         return f"{self.directory_name} (project {self.project_id})"
@@ -1167,6 +1338,60 @@ class DefaultProject(Base, TimestampMixin):
 # ============================================================================
 # Contract Management
 # ============================================================================
+
+
+# ============================================================================
+# Project Code Generation
+# ============================================================================
+
+def next_projcode(session, facility_id: int, mnemonic_code_id: int) -> str:
+    """Compute the next available project code for a given facility + mnemonic rule.
+
+    Looks up the ``ProjectCode`` rule (which specifies the numeric digit width),
+    scans all existing ``Project.projcode`` values that share the mnemonic prefix,
+    and returns the next unused sequential code.
+
+    Args:
+        session: SQLAlchemy session.
+        facility_id: FK to a Facility row.
+        mnemonic_code_id: FK to a MnemonicCode row.
+
+    Returns:
+        Next projcode string, e.g. ``'UCB0042'``.
+
+    Raises:
+        ValueError: If no ``ProjectCode`` rule exists for the given pair.
+
+    Example::
+
+        code = next_projcode(session, facility_id=1, mnemonic_code_id=7)
+        # → 'UCSD0042'
+    """
+    from ..resources.facilities import ProjectCode
+
+    pc = session.get(ProjectCode, (facility_id, mnemonic_code_id))
+    if not pc:
+        raise ValueError(
+            f"No ProjectCode rule for facility_id={facility_id}, "
+            f"mnemonic_code_id={mnemonic_code_id}"
+        )
+
+    prefix = pc.mnemonic_code.code   # e.g. 'UCB'
+    digits = pc.digits               # e.g. 4 → zero-pad to width 4
+
+    existing = (
+        session.query(Project.projcode)
+        .filter(Project.projcode.like(f'{prefix}%'))
+        .all()
+    )
+
+    max_num = 0
+    for (code,) in existing:
+        suffix = code[len(prefix):]
+        if suffix.isdigit():
+            max_num = max(max_num, int(suffix))
+
+    return f"{prefix}{str(max_num + 1).zfill(digits)}"
 
 
 #-------------------------------------------------------------------------em-

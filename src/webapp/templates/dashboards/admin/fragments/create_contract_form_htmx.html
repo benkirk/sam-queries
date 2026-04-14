@@ -1,154 +1,56 @@
-{#
-  htmx: Create Contract Form
-  PI field uses HTMX search-as-you-type; selected user_id stored in a hidden input.
-#}
-<form hx-post="{{ url_for('admin_dashboard.htmx_contract_create') }}"
-      hx-target="#createContractFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, select_field, fk_search_field with context %}
+{# htmx: Create Contract Form #}
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_contract_create'),
+    '#createContractFormContainer',
+    'Create Contract',
+    submit_icon='plus'
+) %}
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createContractNumber" class="form-label">
-                        Contract Number <span class="text-danger">*</span>
-                    </label>
-                    <input type="text" class="form-control" id="createContractNumber"
-                           name="contract_number" required maxlength="50"
-                           value="{{ form.get('contract_number') if form else '' }}"
-                           placeholder="e.g. AGS-1234567">
-                </div>
+                {{ text_field('contract_number', 'Contract Number',
+                              required=True, maxlength=50,
+                              placeholder='e.g. AGS-1234567',
+                              id='createContractNumber') }}
             </div>
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createContractSource" class="form-label">
-                        Source <span class="text-danger">*</span>
-                    </label>
-                    <select class="form-select" id="createContractSource"
-                            name="contract_source_id" required>
-                        <option value="">— Select source —</option>
-                        {% for source in contract_sources %}
-                        <option value="{{ source.contract_source_id }}"
-                            {% if form and form.get('contract_source_id') == source.contract_source_id|string %}selected{% endif %}>
-                            {{ source.contract_source }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
+                {{ select_field('contract_source_id', 'Source',
+                                items=contract_sources,
+                                value_attr='contract_source_id',
+                                label_attr='contract_source',
+                                required=True,
+                                placeholder='— Select source —',
+                                id='createContractSource') }}
             </div>
         </div>
 
-        <div class="mb-3">
-            <label for="createContractTitle" class="form-label">
-                Title <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createContractTitle"
-                   name="title" required maxlength="255"
-                   value="{{ form.get('title') if form else '' }}">
-        </div>
+        {{ text_field('title', 'Title',
+                      required=True, maxlength=255,
+                      id='createContractTitle') }}
 
-        <div class="mb-3">
-            <label for="createContractUrl" class="form-label">
-                URL <span class="text-muted">(optional)</span>
-            </label>
-            <input type="url" class="form-control" id="createContractUrl"
-                   name="url" maxlength="1000"
-                   value="{{ form.get('url') if form else '' }}"
-                   placeholder="https://...">
-        </div>
+        {{ text_field('url', 'URL',
+                      type='url', maxlength=1000,
+                      placeholder='https://...',
+                      id='createContractUrl') }}
 
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createContractStart" class="form-label">
-                        Start Date <span class="text-danger">*</span>
-                    </label>
-                    <input type="date" class="form-control" id="createContractStart"
-                           name="start_date" required
-                           value="{{ form.get('start_date') if form else today }}">
-                </div>
+                {{ date_field('start_date', 'Start Date',
+                              required=True,
+                              default=today,
+                              id='createContractStart') }}
             </div>
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createContractEnd" class="form-label">
-                        End Date <span class="text-muted">(optional)</span>
-                    </label>
-                    <input type="date" class="form-control" id="createContractEnd"
-                           name="end_date"
-                           value="{{ form.get('end_date') if form else '' }}">
-                </div>
+                {{ date_field('end_date', 'End Date',
+                              id='createContractEnd') }}
             </div>
         </div>
 
-        <!-- Principal Investigator search -->
-        <div class="mb-3">
-            <label for="createContractPISearch" class="form-label">
-                Principal Investigator <span class="text-danger">*</span>
-            </label>
-
-            <div id="createContractPISelected" class="mb-1"
-                 {% if not form or not form.get('principal_investigator_user_id') %}style="display:none;"{% endif %}>
-                <span class="badge bg-primary py-1 px-2" id="createContractPIBadge">
-                    {{ form.get('pi_display', '') if form else '' }}
-                </span>
-                <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
-                        onclick="clearPISelection()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <input type="hidden" name="principal_investigator_user_id"
-                   id="createContractPIId"
-                   value="{{ form.get('principal_investigator_user_id') if form else '' }}">
-
-            <input type="text" class="form-control" id="createContractPISearch"
-                   placeholder="Search by name or username…"
-                   autocomplete="off"
-                   hx-get="{{ url_for('admin_dashboard.htmx_search_users_for_org') }}"
-                   hx-target="#createContractPIResults"
-                   hx-swap="innerHTML"
-                   hx-trigger="input changed delay:300ms"
-                   hx-include="[id='createContractPISearch']"
-                   name="q">
-            <div id="createContractPIResults" class="list-group mt-1"
-                 style="max-height:200px;overflow-y:auto;"></div>
-        </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">
-            <i class="fas fa-plus"></i> Create Contract
-        </button>
-    </div>
-</form>
-
-<script>
-(function() {
-    // Wire up PI pick from search results
-    document.getElementById('createContractPIResults').addEventListener('click', function(e) {
-        var item = e.target.closest('.fk-search-result');
-        if (!item) return;
-        document.getElementById('createContractPIId').value = item.dataset.userId;
-        document.getElementById('createContractPIBadge').textContent = item.dataset.userDisplay;
-        document.getElementById('createContractPISelected').style.display = '';
-        document.getElementById('createContractPIResults').innerHTML = '';
-        document.getElementById('createContractPISearch').value = '';
-    });
-})();
-
-function clearPISelection() {
-    document.getElementById('createContractPIId').value = '';
-    document.getElementById('createContractPIBadge').textContent = '';
-    document.getElementById('createContractPISelected').style.display = 'none';
-}
-</script>
+        {{ fk_search_field('principal_investigator_user_id', 'Principal Investigator',
+                           search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                           required=True,
+                           placeholder='Search by name or username…',
+                           badge_class='bg-primary py-1 px-2',
+                           id_prefix='createContractPI') }}
+{% endcall %}

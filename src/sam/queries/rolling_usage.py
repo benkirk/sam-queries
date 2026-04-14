@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from sam.enums import ResourceTypeName
 from sam.projects.projects import Project
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
@@ -280,7 +281,7 @@ def get_project_rolling_usage(
         res = acct.resource
         if res is None:
             continue
-        if res.resource_type is None or res.resource_type.resource_type not in ('HPC', 'DAV'):
+        if res.resource_type is None or not ResourceTypeName.is_compute(res.resource_type.resource_type):
             continue
         if resource_name and res.resource_name != resource_name:
             continue

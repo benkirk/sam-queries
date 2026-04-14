@@ -1,0 +1,133 @@
+{#
+  Admin: Edit Project — Add Allocation modal form.
+  Loaded lazily into #addAllocationFormContainer when button clicked.
+
+  Context variables:
+    project             — Project ORM object
+    available_resources — list of Resource objects not yet linked to this project
+    today               — date string 'YYYY-MM-DD' for default start date
+    default_end_date    — date string 'YYYY-MM-DD' for default end date
+                          (last day of same month one year out)
+    errors              — list of validation error strings (on re-render)
+    form                — request.form on validation error re-render
+    project_has_children — bool: project has active sub-projects
+    child_count          — int: number of active sub-projects
+
+  Intentional exceptions to the field-macro pattern:
+    * Resource select — option label is
+      `{{ resource_name }} ({{ resource_type }})` with the suffix conditional
+      on `resource_type is not none`. select_field's label_attrs joins
+      unconditionally, so expressing this cleanly requires macro extension.
+    * Amount number input — the sibling `<span class="number-preview">`
+      lives inside a custom `form-text` container alongside explanatory
+      helper text. number_field's `help=` slot renders a bare <small>,
+      which would misplace the preview span relative to number-preview.js.
+    * apply_to_subprojects stylized card — bespoke form-check card with
+      icon + count badge + help text; not a plain checkbox.
+#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/form_fields.html'
+    import date_field, text_field with context %}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_add_allocation', projcode=project.projcode),
+    '#addAllocationFormContainer',
+    'Create Allocation',
+    submit_icon='plus-circle'
+) %}
+
+  {% if not available_resources %}
+  <div class="alert alert-info mb-3">
+    <i class="fas fa-info-circle"></i>
+    All active resources are already linked to this project.
+    To add a sub-project allocation, first create the sub-project.
+  </div>
+  {% else %}
+
+  <!-- Resource -->
+  <div class="mb-3">
+    <label for="addAllocResource" class="form-label fw-semibold">
+      Resource <span class="text-danger">*</span>
+    </label>
+    <select class="form-select" id="addAllocResource" name="resource_id" required>
+      <option value="">— Select resource —</option>
+      {% for resource in available_resources %}
+      <option value="{{ resource.resource_id }}"
+          {% if form and form.get('resource_id') == resource.resource_id|string %}selected{% endif %}>
+        {{ resource.resource_name }}
+        {% if resource.resource_type %} ({{ resource.resource_type.resource_type }}){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {# Amount — live comma-preview rendered by static/js/number-preview.js,
+     which listens on the data-number-preview attribute and writes into
+     the sibling .number-preview span. #}
+  <div class="mb-3">
+    <label for="addAllocAmount" class="form-label fw-semibold">
+      Amount <span class="text-danger">*</span>
+    </label>
+    <input type="number" class="form-control" id="addAllocAmount"
+           name="amount" min="0.01" step="any" required
+           data-number-preview
+           value="{{ form.get('amount', '') if form else '' }}"
+           placeholder="e.g. 500000">
+    <div class="form-text">
+      <span class="number-preview text-primary fw-semibold"></span>
+      <span class="text-muted">Core-hours for HPC; TB for storage resources.</span>
+    </div>
+  </div>
+
+  <!-- Dates (side-by-side; stack on narrow viewports) -->
+  <div class="row">
+    <div class="col-md-6">
+      {{ date_field('start_date', 'Start Date',
+                    required=True, default=today,
+                    label_class='form-label fw-semibold',
+                    id='addAllocStart') }}
+    </div>
+    <div class="col-md-6">
+      {{ date_field('end_date', 'End Date',
+                    default=default_end_date,
+                    help='Leave blank for no end date',
+                    id='addAllocEnd') }}
+    </div>
+  </div>
+
+  {{ text_field('description', 'Description',
+                placeholder='e.g. FY2025 allocation',
+                id='addAllocDescription') }}
+
+  {% if project_has_children %}
+  <div class="mb-3 border rounded p-3 bg-light">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="applyToSubprojects"
+             name="apply_to_subprojects"
+             {% if form and form.get('apply_to_subprojects') == 'on' %}checked{% endif %}>
+      <label class="form-check-label fw-semibold" for="applyToSubprojects">
+        <i class="fas fa-sitemap me-1 text-info"></i>
+        Apply to sub-projects
+        <span class="badge bg-info text-dark ms-1">
+          {{ child_count }} active sub-project{{ 's' if child_count != 1 else '' }}
+        </span>
+      </label>
+    </div>
+    <div class="form-text mt-1 ms-4">
+      Creates a linked child allocation for each active sub-project using the same amount
+      and dates. The allocation tree mirrors the project tree — each sub-project's
+      allocation points to its immediate parent's allocation. Sub-projects that already
+      have an allocation for this resource are skipped.
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info py-2 mb-0 small">
+    <i class="fas fa-info-circle"></i>
+    To allocate to a sub-project, add the parent allocation here first,
+    then return to add child allocations to the sub-project directly.
+  </div>
+  {% endif %}
+
+  {% endif %}
+
+{% endcall %}

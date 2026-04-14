@@ -1,0 +1,248 @@
+{#
+  Edit Project — Details tab form fragment.
+  Rendered inline on page load (no lazy loading needed — data already available).
+  Submitted via htmx POST to admin_dashboard.htmx_project_update.
+
+  Context variables:
+    project              — Project ORM object
+    current_facility_id  — pre-selected facility (reversed from allocation_type.panel.facility)
+    current_panel_id     — pre-selected panel
+    areas                — list of AreaOfInterest objects
+    facilities           — list of Facility objects
+    panels_for_facility  — pre-loaded panels for the current facility
+    alloc_types_for_panel — pre-loaded alloc types for the current panel
+    form                 — request.form on validation error re-render (else None)
+    errors               — list of error strings (else None)
+
+  Intentional exceptions to the field-macro pattern:
+    * Facility / Panel / AllocationType cascade — three interdependent
+      selects with conditional placeholders and a Panel option label that
+      appends `— description` when set. select_field can't express this
+      without extension; leaving cascade inline is cheaper than the macro
+      expansion.
+    * Unix GID — displayed read-only (filesystem permissions break if we
+      change it mid-flight).
+    * Ext Alias — form-control-sm styling; text_field hardcodes form-control.
+    * active / charging_exempt — form-switch styling; checkbox_field produces
+      plain form-check.
+#}
+
+{% from 'dashboards/fragments/form_fields.html' import
+    fk_search_field, text_field, textarea_field, select_field with context %}
+
+{% set f = form %}
+
+<form hx-post="{{ url_for('admin_dashboard.htmx_project_update', projcode=project.projcode) }}"
+      hx-target="#editDetailsContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+
+  {% if errors %}
+  <div class="alert alert-danger mb-3">
+    {% for err in errors %}
+    <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ err }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ── Read-only: Project Code ───────────────────────────────────── -->
+  <div class="row mb-3">
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Project Code</label>
+      <div class="form-control-plaintext">
+        <code class="fs-5">{{ project.projcode }}</code>
+        <span class="text-muted ms-2 small">(immutable)</span>
+      </div>
+    </div>
+    <div class="col-md-8">
+      <label class="form-label fw-semibold">Current Facility / Panel</label>
+      <div class="form-control-plaintext text-muted">
+        {% if project.allocation_type and project.allocation_type.panel %}
+          {{ project.allocation_type.panel.facility.facility_name if project.allocation_type.panel.facility else '—' }}
+          / {{ project.allocation_type.panel.panel_name }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Facility / Panel / Allocation Type ──────────────────────── -->
+  <div class="row g-2 mb-3">
+    <div class="col-md-4">
+      <label for="editProjectFacility" class="form-label fw-semibold">
+        Facility <span class="text-muted small">(changes panel options)</span>
+      </label>
+      <select class="form-select form-select-sm" id="editProjectFacility"
+              name="facility_id"
+              hx-get="{{ url_for('admin_dashboard.htmx_panels_for_facility') }}"
+              hx-target="#editProjectPanel"
+              hx-swap="innerHTML"
+              hx-trigger="change"
+              hx-include="#editProjectFacility">
+        <option value="">— Select —</option>
+        {% for facility in facilities %}
+        <option value="{{ facility.facility_id }}"
+            {% if (f and f.get('facility_id') == facility.facility_id|string)
+                  or (not f and current_facility_id == facility.facility_id) %}selected{% endif %}>
+          {{ facility.facility_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label for="editProjectPanel" class="form-label fw-semibold">Panel</label>
+      <select class="form-select form-select-sm" id="editProjectPanel"
+              name="panel_id"
+              hx-get="{{ url_for('admin_dashboard.htmx_alloc_types_for_panel') }}"
+              hx-target="#editProjectAllocType"
+              hx-swap="innerHTML"
+              hx-trigger="change"
+              hx-include="#editProjectPanel">
+        {% if panels_for_facility %}
+          <option value="">— Select —</option>
+          {% for panel in panels_for_facility %}
+          <option value="{{ panel.panel_id }}"
+              {% if (f and f.get('panel_id') == panel.panel_id|string)
+                    or (not f and current_panel_id == panel.panel_id) %}selected{% endif %}>
+            {{ panel.panel_name }}{% if panel.description %} — {{ panel.description }}{% endif %}
+          </option>
+          {% endfor %}
+        {% else %}
+          <option value="">— Select facility first —</option>
+        {% endif %}
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label for="editProjectAllocType" class="form-label">
+        Allocation Type <span class="text-muted">(optional)</span>
+      </label>
+      <select class="form-select form-select-sm" id="editProjectAllocType"
+              name="allocation_type_id">
+        {% if alloc_types_for_panel %}
+          <option value="">— None —</option>
+          {% for at in alloc_types_for_panel %}
+          <option value="{{ at.allocation_type_id }}"
+              {% if (f and f.get('allocation_type_id') == at.allocation_type_id|string)
+                    or (not f and project.allocation_type_id == at.allocation_type_id) %}selected{% endif %}>
+            {{ at.allocation_type }}
+          </option>
+          {% endfor %}
+        {% else %}
+          <option value="">— Select panel first —</option>
+        {% endif %}
+      </select>
+    </div>
+  </div>
+
+  {{ text_field('title', 'Title',
+                required=True, maxlength=255, default=project.title,
+                label_class='form-label fw-semibold', id='editProjectTitle') }}
+
+  {{ textarea_field('abstract', 'Abstract',
+                    rows=3, default=project.abstract or '',
+                    placeholder="Brief description of the project's scientific goals…",
+                    id='editProjectAbstract') }}
+
+  <div class="row">
+    <!-- ── Project Lead ──────────────────────────────────────────── -->
+    <div class="col-md-6">
+      {{ fk_search_field('project_lead_user_id', 'Project Lead',
+                         search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                         required=True,
+                         placeholder='Search to change lead…',
+                         badge_class='bg-primary py-1 px-2',
+                         search_class='form-control form-control-sm',
+                         label_class='form-label fw-semibold',
+                         selected_id=project.project_lead_user_id,
+                         selected_label=project.lead.display_name if project.lead else '',
+                         id_prefix='editProjectLead') }}
+    </div>
+
+    <!-- ── Project Admin ─────────────────────────────────────────── -->
+    <div class="col-md-6">
+      {{ fk_search_field('project_admin_user_id', 'Project Admin',
+                         search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                         placeholder='Search to change or set admin…',
+                         badge_class='bg-secondary py-1 px-2',
+                         search_class='form-control form-control-sm',
+                         selected_id=project.project_admin_user_id or '',
+                         selected_label=project.admin.display_name if project.admin else '',
+                         id_prefix='editProjectAdmin') }}
+    </div>
+  </div>
+
+  <!-- ── Area of Interest / Unix GID / Ext Alias ──────────────────── -->
+  <div class="row">
+    <div class="col-md-6">
+      {{ select_field('area_of_interest_id', 'Area of Interest',
+                      items=areas,
+                      value_attr='area_of_interest_id',
+                      label_attr='area_of_interest',
+                      required=True,
+                      placeholder='— Select —',
+                      default=project.area_of_interest_id,
+                      select_class='form-select form-select-sm',
+                      label_class='form-label fw-semibold',
+                      id='editProjectAoi') }}
+    </div>
+    <div class="col-md-3">
+      <!-- ── Unix GID (read-only — changing an established GID would break filesystem permissions) ── -->
+      <div class="mb-3">
+        <label class="form-label">Unix GID</label>
+        <div class="form-control-plaintext text-muted">
+          {{ project.unix_gid or '—' }}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <!-- ── Ext Alias ── -->
+      <div class="mb-3">
+        <label for="editProjectExtAlias" class="form-label">
+          Ext. Alias <span class="text-muted">(optional)</span>
+        </label>
+        <input type="text" class="form-control form-control-sm" id="editProjectExtAlias"
+               name="ext_alias"
+               value="{{ f.get('ext_alias', project.ext_alias or '') if f else (project.ext_alias or '') }}">
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Flags ─────────────────────────────────────────────────────── -->
+  <div class="row mb-3">
+    <div class="col-auto">
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="editProjectActive"
+               name="active" value="1"
+               {% if f %}{% if f.get('active') %}checked{% endif %}
+               {% elif project.active %}checked{% endif %}>
+        <label class="form-check-label" for="editProjectActive">Active</label>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="editProjectChargingExempt"
+               name="charging_exempt" value="1"
+               {% if f %}{% if f.get('charging_exempt') %}checked{% endif %}
+               {% elif project.charging_exempt %}checked{% endif %}>
+        <label class="form-check-label" for="editProjectChargingExempt">
+          Charging Exempt
+          <span class="text-muted small">(no charges assessed)</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Submit ────────────────────────────────────────────────────── -->
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-warning">
+      <i class="fas fa-save"></i> Save Changes
+    </button>
+    <a href="{{ url_for('admin_dashboard.index') }}" class="btn btn-outline-secondary">
+      Cancel
+    </a>
+  </div>
+
+</form>

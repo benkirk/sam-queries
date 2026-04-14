@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/form_fields.html' import date_field, form_errors_panel with context %}
 {#
   htmx: Add Member Form (loaded into modal as fragment)
 
@@ -9,9 +10,13 @@
     3. Form submission uses hx-post, server returns HTML (not JSON)
     4. On success: OOB swap updates members table, modal auto-closes
     5. On error: server returns this form template with error messages
+
+  Note: this form does not use the htmx_form wrapper macro because the user
+  search + selection UI requires custom layout and JS state. W3 will replace
+  the picker with a shared FK-search widget.
 #}
 
-<form hx-post="{{ url_for('user_dashboard.htmx_add_member', projcode=projcode) }}"
+<form hx-post="{{ url_for('project_members.htmx_add_member', projcode=projcode) }}"
       hx-target="#addMemberFormContainer"
       hx-swap="innerHTML"
       hx-disabled-elt="find button[type='submit']">
@@ -29,7 +34,7 @@
                    name="q"
                    placeholder="Type username, first name, or last name..."
                    autocomplete="off"
-                   hx-get="{{ url_for('user_dashboard.htmx_search_users', projcode=projcode) }}"
+                   hx-get="{{ url_for('admin_dashboard.htmx_search_users', context='member', projcode=projcode) }}"
                    hx-trigger="input changed delay:300ms"
                    hx-target="#htmxUserSearchResults"
                    hx-swap="innerHTML"
@@ -50,36 +55,23 @@
                     onclick="htmxClearUserSelection()" aria-label="Clear"></button>
         </div>
 
-        {# ── Date Range ── #}
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="htmxStartDate">Start Date</label>
-                    <input type="date" class="form-control" id="htmxStartDate"
-                           name="start_date"
-                           value="{{ start_date or '' }}">
-                    <small class="form-text text-muted">Defaults to today</small>
-                </div>
+                {{ date_field('start_date', 'Start Date',
+                              optional_text='',
+                              default=start_date or '',
+                              help='Defaults to today',
+                              id='htmxStartDate') }}
             </div>
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="htmxEndDate">End Date <span class="text-muted">(optional)</span></label>
-                    <input type="date" class="form-control" id="htmxEndDate"
-                           name="end_date"
-                           value="{{ end_date or '' }}">
-                    <small class="form-text text-muted">Leave blank for no end date</small>
-                </div>
+                {{ date_field('end_date', 'End Date',
+                              default=end_date or '',
+                              help='Leave blank for no end date',
+                              id='htmxEndDate') }}
             </div>
         </div>
 
-        {# ── Validation Errors (rendered server-side on re-submit) ── #}
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
+        {{ form_errors_panel() }}
 
         <small class="form-text text-muted">
             The member will have access to all resources associated with this project.
@@ -97,7 +89,7 @@
 {#
   Minimal inline JS for user selection state (~12 lines).
   This is the ONE thing htmx can't fully replace: setting a hidden field
-  from a click on a search result. Everything else is htmx.
+  from a click on a search result. W3 will replace this with a shared widget.
 #}
 <script>
 function htmxSelectUser(username, displayName, email) {

@@ -410,7 +410,42 @@ __table_args__ = (
 - `DateRangeMixin`: Adds start_date, end_date + `is_active` / `is_currently_active` hybrids
 - `SessionMixin`: Adds `self.session` property (`Session.object_session(self)`) — required for `update()` instance methods
 
-### 6. Write Operations on ORM Models
+### 5. Universal `is_active` Interface
+Every ORM model exposes `Model.is_active` as a SQLAlchemy hybrid property.
+Use it in both Python and SQL contexts — **never** use raw column comparisons:
+
+```python
+# ✅ DO — works in Python and SQL filter()
+if project.is_active: ...
+session.query(Project).filter(Project.is_active).all()
+
+# ❌ DON'T — exposes column internals, can't invert cleanly
+session.query(Project).filter(Project.active == True).all()
+session.query(Machine).filter(Machine.decommission_date == None).all()
+```
+
+Inversion is `~Model.is_active`:
+```python
+session.query(User).filter(~User.is_active).all()  # inactive users
+```
+
+**Semantics by model type:**
+| Mixin / Model | `is_active` meaning |
+|---|---|
+| `ActiveFlagMixin` (Project, Facility, Panel, …) | `active == True` |
+| `SoftDeleteMixin` (Account, …) | `deleted == False` |
+| `DateRangeMixin` (AccountUser, UserOrganization, …) | within start/end date range |
+| Custom hybrids (Resource, Machine, Queue, PanelSession, …) | commissioned / within date range |
+| `User.is_active` | `active == True AND locked == False` |
+
+**Exception — `statistics.py`**: `User.active == True` is kept intentionally
+so that `active_users` and `locked_users` remain separate counters.
+
+### 6. Views
+- Mark views with `__table_args__ = {'info': {'is_view': True}}`
+- Never attempt INSERT/UPDATE/DELETE on views
+
+### 7. Write Operations on ORM Models
 Prefer co-locating write logic with the model definition:
 - **`update()` → instance method**: validate fields + `self.session.flush()`, return `self`
 - **`create()` → classmethod**: takes `session` explicitly, validates, does `session.add(obj)` + `session.flush()`, returns instance
@@ -444,40 +479,89 @@ resource.update(description="new")
 
 **What stays in `sam.manage`**: complex multi-entity ops (`add_user_to_project`), audit-trail-heavy ops (`update_allocation` + `log_allocation_transaction`), summary upserts (`summaries.py`), and the `management_transaction` context manager.
 
-### 5. Universal `is_active` Interface
-Every ORM model exposes `Model.is_active` as a SQLAlchemy hybrid property.
-Use it in both Python and SQL contexts — **never** use raw column comparisons:
+### 8. API Route Protection (webapp)
 
-```python
-# ✅ DO — works in Python and SQL filter()
-if project.is_active: ...
-session.query(Project).filter(Project.is_active).all()
+All project-scoped API routes **must** use a decorator from `webapp/api/access_control.py`
+rather than a hand-rolled helper. Never write a local `_user_can_access_project`.
 
-# ❌ DON'T — exposes column internals, can't invert cleanly
-session.query(Project).filter(Project.active == True).all()
-session.query(Machine).filter(Machine.decommission_date == None).all()
-```
-
-Inversion is `~Model.is_active`:
-```python
-session.query(User).filter(~User.is_active).all()  # inactive users
-```
-
-**Semantics by model type:**
-| Mixin / Model | `is_active` meaning |
+| Decorator | Access granted when |
 |---|---|
-| `ActiveFlagMixin` (Project, Facility, Panel, …) | `active == True` |
-| `SoftDeleteMixin` (Account, …) | `deleted == False` |
-| `DateRangeMixin` (AccountUser, UserOrganization, …) | within start/end date range |
-| Custom hybrids (Resource, Machine, Queue, PanelSession, …) | commissioned / within date range |
-| `User.is_active` | `active == True AND locked == False` |
+| `@require_project_access` | `VIEW_PROJECTS` permission OR project member |
+| `@require_project_member_access(Permission.X)` | permission X OR project member |
 
-**Exception — `statistics.py`**: `User.active == True` is kept intentionally
-so that `active_users` and `locked_users` remain separate counters.
+The decorators handle the `projcode` → `project` lookup and 403 on failure.
+Function signatures receive `project` directly (not `projcode`):
 
-### 5. Views
-- Mark views with `__table_args__ = {'info': {'is_view': True}}`
-- Never attempt INSERT/UPDATE/DELETE on views
+```python
+from webapp.api.access_control import require_project_access, require_project_member_access
+
+@bp.route('/<projcode>/allocations', methods=['GET'])
+@login_required
+@require_project_member_access(Permission.VIEW_ALLOCATIONS)
+def get_project_allocations(project):   # ← project object, not projcode
+    ...
+```
+
+### 9. Form Validation in HTMX and API Routes
+
+**The rule:** any validated POST/PUT route — HTMX (`webapp/dashboards/.../*_routes.py`)
+**or** API (`webapp/api/v1/...`) — loads input via a schema from
+`sam.schemas.forms`. If no schema fits, **add one first**, then wire the
+route. Never write `datetime.strptime`, `parse_input_end_date`, `float()`,
+or `int()` coercion ladders inline.
+
+**Before writing any POST/PUT handler:**
+1. Look in `src/sam/schemas/forms/` for an existing schema that matches.
+   Exports live in `src/sam/schemas/forms/__init__.py`.
+2. If none fits, add a new `HtmxFormSchema` subclass to the appropriate
+   domain file (`projects.py`, `user.py`, `orgs.py`, ...) and export it
+   from `__init__.py`.
+3. Only then write the route.
+
+FK existence checks (e.g. `db.session.get(User, lead_id)`) **stay in the
+route** — schemas don't touch the DB. That's the one thing that belongs
+inline, and it's explicit in each schema's docstring.
+
+**Pattern — POST (all required fields enforced by the schema):**
+```python
+from sam.schemas.forms import AddMemberForm
+from marshmallow import ValidationError
+
+# HTMX: pre-process request.form — drop empty strings so Int/Float/Date
+# fields fall back to load_default, and inject explicit False for unchecked
+# checkboxes (absent from request.form when unchecked).
+data = {k: v for k, v in request.form.items() if v != ''}
+data['charging_exempt'] = 'charging_exempt' in request.form  # if applicable
+
+# API: data = request.get_json()
+
+try:
+    form_data = AddMemberForm().load(data)
+except ValidationError as e:
+    errors = AddMemberForm.flatten_errors(e.messages)
+    return _reload_form(errors)   # HTMX re-render, or JSON 400
+
+# FK existence checks live here (require DB access)
+if form_data.get('lead_id') and not db.session.get(User, form_data['lead_id']):
+    errors.append('Selected lead does not exist.')
+```
+
+**Pattern — PUT (partial update):**
+```python
+form_data = EditAllocationForm().load(data, partial=True)
+
+# Gate on original data dict, NOT form_data keys — load_default fills
+# absent fields with None, which would silently clear them.
+updates = {}
+if 'amount' in data:
+    updates['amount'] = form_data['amount']
+if 'end_date' in data:
+    updates['end_date'] = form_data.get('end_date')   # datetime or None
+```
+
+**HtmxFormSchema gives you for free:** `unknown=EXCLUDE` (silently drops
+CSRF tokens, stray fields), `flatten_errors()` for template-friendly lists,
+and a clear separation from ORM serialization (`sam.schemas/` proper).
 
 ---
 
@@ -810,6 +894,14 @@ docker compose up
 4. Run tests to verify fix
 5. Schema validation tests will catch future drift
 
+### Adding a New Validated POST/PUT Route (HTMX or API)
+1. Check `src/sam/schemas/forms/__init__.py` for an existing form schema.
+2. If none fits, add a new `HtmxFormSchema` subclass in the appropriate
+   domain file and export it from `__init__.py` **before** writing the route.
+3. Write the route: load input with the schema, keep FK existence checks
+   inline, gate `updates` dicts on original `data` keys for PUT.
+4. See §9 *Form Validation in HTMX and API Routes* for the full pattern.
+
 ---
 
 ## Key Contacts & Context
@@ -897,6 +989,8 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ❌ **DON'T** pass `session` to `project.get_detailed_allocation_usage()` - it uses SessionMixin internally
 ❌ **DON'T** forget to unpack tuples from `get_projects_by_allocation_end_date()` - returns `(project, allocation, resource_name, days)`
 ❌ **DON'T** add standalone `update_*(session, id, ...)` functions to `sam/manage/` — put `update()` instance methods and `create()` classmethods directly on the ORM model instead
+❌ **DON'T** write a local `_user_can_access_project` helper in a route file — use decorators from `webapp.api.access_control` (centralized, tested, consistent)
+❌ **DON'T** use `datetime.strptime`, `parse_input_end_date`, `float()`, or `int()` coercion ladders directly in **any** POST/PUT route handler (HTMX or API) — load input via a schema from `sam.schemas.forms`. If no schema fits, add one to the appropriate domain file and export it from `sam/schemas/forms/__init__.py` **before** writing the route. See §9 and the "Adding a New Validated POST/PUT Route" workflow.
 
 ✅ **DO** use schema validation tests before committing model changes
 ✅ **DO** check actual database schema when in doubt
@@ -907,10 +1001,10 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ✅ **DO** use `Model.is_active` for any active check — it's a hybrid property on every model (works in Python and SQL, supports `~Model.is_active` inversion)
 ✅ **DO** unpack query result tuples properly when using `get_projects_by_allocation_end_date()`
 ✅ **DO** add `SessionMixin` to any ORM model that needs an `update()` method (provides `self.session`)
+✅ **DO** use `@require_project_access` or `@require_project_member_access(Permission.X)` on all project-scoped GET routes — function receives `project`, not `projcode`
+✅ **DO** use `FormSchema().load(data)` for POST mutations, `FormSchema().load(data, partial=True)` for PUT — gate the `updates` dict on keys present in the original `data` dict, not the form output
 
 ---
 
-*Last Updated: 2026-03-27*
-*Current Branch: prefer_class_methods*
-*Test Status: 791 passed, 25 skipped, 2 xpassed*
-*Parallel Execution: ~148s (no coverage)*
+*Last Updated: 2026-04-12*
+*Current Branch: refactor_before_expansion*

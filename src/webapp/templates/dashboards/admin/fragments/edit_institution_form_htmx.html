@@ -1,112 +1,73 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, readonly_display with context %}
 {#
   htmx: Edit Institution Form (loaded into #editInstitutionFormContainer)
   Institution has no active flag. institution_type shown as read-only display.
   Editable: name, acronym, nsf_org_code, address, city, zip, code.
 #}
 
-<form hx-post="{{ url_for('admin_dashboard.htmx_institution_edit', inst_id=institution.institution_id) }}"
-      hx-target="#editInstitutionFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
-        <!-- ID / Type (read-only) -->
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_institution_edit', inst_id=institution.institution_id),
+    '#editInstitutionFormContainer',
+    'Save Changes',
+    is_edit=True
+) %}
         <div class="row mb-3">
             <div class="col-md-6">
-                <label class="form-label">Institution ID</label>
-                <div class="form-control-plaintext text-muted">{{ institution.institution_id }}</div>
+                {{ readonly_display('Institution ID', institution.institution_id) }}
             </div>
             <div class="col-md-6">
-                <label class="form-label">Type</label>
-                <div class="form-control-plaintext text-muted">
-                    {{ institution.institution_type.type if institution.institution_type else '—' }}
-                </div>
+                {{ readonly_display('Type', institution.institution_type.type if institution.institution_type else '—') }}
             </div>
         </div>
 
-        <!-- Name / Acronym -->
-        <div class="row mb-3">
+        <div class="row">
             <div class="col-md-8">
-                <label for="editInstName" class="form-label">
-                    Name <span class="text-danger">*</span>
-                </label>
-                <input type="text" class="form-control" id="editInstName"
-                       name="name" required maxlength="80"
-                       value="{{ form.get('name') if form else institution.name }}">
+                {{ text_field('name', 'Name',
+                              required=True, maxlength=80,
+                              default=institution.name,
+                              id='editInstName') }}
             </div>
             <div class="col-md-4">
-                <label for="editInstAcronym" class="form-label">
-                    Acronym <span class="text-danger">*</span>
-                </label>
-                <input type="text" class="form-control" id="editInstAcronym"
-                       name="acronym" required maxlength="40"
-                       value="{{ form.get('acronym') if form else institution.acronym }}">
+                {{ text_field('acronym', 'Acronym',
+                              required=True, maxlength=40,
+                              default=institution.acronym,
+                              id='editInstAcronym') }}
             </div>
         </div>
 
-        <!-- NSF org code / Code -->
-        <div class="row mb-3">
+        <div class="row">
             <div class="col-md-9">
-                <label for="editInstNsfCode" class="form-label">
-                    NSF Org Code <span class="text-muted">(optional)</span>
-                </label>
-                <input type="text" class="form-control" id="editInstNsfCode"
-                       name="nsf_org_code" maxlength="200"
-                       value="{{ form.get('nsf_org_code') if form else (institution.nsf_org_code or '') }}">
+                {{ text_field('nsf_org_code', 'NSF Org Code',
+                              maxlength=200,
+                              default=institution.nsf_org_code or '',
+                              id='editInstNsfCode') }}
             </div>
             <div class="col-md-3">
-                <label for="editInstCode" class="form-label">
-                    Code <span class="text-muted">(optional)</span>
-                </label>
-                <input type="text" class="form-control" id="editInstCode"
-                       name="code" maxlength="3"
-                       value="{{ form.get('code') if form else (institution.code or '') }}">
+                {{ text_field('code', 'Code',
+                              maxlength=3,
+                              default=institution.code or '',
+                              id='editInstCode') }}
             </div>
         </div>
 
-        <!-- Address -->
-        <div class="mb-3">
-            <label for="editInstAddress" class="form-label">
-                Address <span class="text-muted">(optional)</span>
-            </label>
-            <input type="text" class="form-control" id="editInstAddress"
-                   name="address" maxlength="255"
-                   value="{{ form.get('address') if form else (institution.address or '') }}">
-        </div>
+        {{ text_field('address', 'Address',
+                      maxlength=255,
+                      default=institution.address or '',
+                      id='editInstAddress') }}
 
-        <!-- City / ZIP -->
-        <div class="row mb-3">
+        <div class="row">
             <div class="col-md-8">
-                <label for="editInstCity" class="form-label">
-                    City <span class="text-muted">(optional)</span>
-                </label>
-                <input type="text" class="form-control" id="editInstCity"
-                       name="city" maxlength="30"
-                       value="{{ form.get('city') if form else (institution.city or '') }}">
+                {{ text_field('city', 'City',
+                              maxlength=30,
+                              default=institution.city or '',
+                              id='editInstCity') }}
             </div>
             <div class="col-md-4">
-                <label for="editInstZip" class="form-label">
-                    ZIP <span class="text-muted">(optional)</span>
-                </label>
-                <input type="text" class="form-control" id="editInstZip"
-                       name="zip" maxlength="15"
-                       value="{{ form.get('zip') if form else (institution.zip or '') }}">
+                {{ text_field('zip', 'ZIP',
+                              maxlength=15,
+                              default=institution.zip or '',
+                              id='editInstZip') }}
             </div>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-warning">
-            <i class="fas fa-save"></i> Save Changes
-        </button>
-    </div>
-</form>
+{% endcall %}

@@ -6,17 +6,87 @@ AOI Groups, Contract Sources, Contracts, NSF Programs.
 """
 
 from flask import render_template, request
-from webapp.utils.htmx import htmx_success
 from flask_login import login_required
 from datetime import datetime
-from webapp.api.helpers import parse_input_end_date
 
+from webapp.utils.htmx import (
+    handle_htmx_form_post,
+    handle_htmx_soft_delete,
+    htmx_not_found,
+    htmx_success_message,
+)
 from webapp.extensions import db, cache
 from webapp.utils.rbac import require_permission, Permission
 from sam.manage import management_transaction
 from sam.core.users import User
+from sam.queries.admin import (
+    get_organizations_with_members,
+    get_institution_type_tree,
+    get_institutions_with_members,
+    get_aoi_groups_with_areas,
+    get_areas_of_interest_with_projects,
+    get_contracts_with_pi,
+    get_nsf_programs_with_contracts,
+)
+from sam.schemas.forms.orgs import (
+    EditOrganizationForm, CreateOrganizationForm,
+    EditInstitutionTypeForm, CreateInstitutionTypeForm,
+    EditInstitutionForm, CreateInstitutionForm,
+    CreateMnemonicCodeForm,
+    EditAoiGroupForm, CreateAoiGroupForm,
+    EditAoiForm, CreateAoiForm,
+    EditContractSourceForm, CreateContractSourceForm,
+    EditContractForm, CreateContractForm,
+    EditNsfProgramForm, CreateNsfProgramForm,
+)
 
 from .blueprint import bp
+
+
+_ORG_TRIGGERS = {'closeActiveModal': {}, 'reloadOrganizationsCard': {}}
+
+
+# ─── shared dropdown loaders ────────────────────────────────────────────────
+
+
+def _active_parent_orgs():
+    from sam.core.organizations import Organization
+    return (
+        db.session.query(Organization)
+        .filter(Organization.is_active)
+        .order_by(Organization.name)
+        .all()
+    )
+
+
+def _all_institution_types():
+    from sam.core.organizations import InstitutionType
+    return db.session.query(InstitutionType).order_by(InstitutionType.type).all()
+
+
+def _all_active_aoi_groups():
+    from sam.projects.areas import AreaOfInterestGroup
+    return (
+        db.session.query(AreaOfInterestGroup)
+        .filter(AreaOfInterestGroup.is_active)
+        .order_by(AreaOfInterestGroup.name)
+        .all()
+    )
+
+
+def _all_aoi_groups():
+    from sam.projects.areas import AreaOfInterestGroup
+    return db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
+
+
+def _active_contract_sources():
+    from sam.projects.contracts import ContractSource
+    return (
+        db.session.query(ContractSource)
+        .filter(ContractSource.is_active)
+        .order_by(ContractSource.contract_source)
+        .all()
+    )
 
 
 # ── Organization Card ──────────────────────────────────────────────────────
@@ -33,22 +103,13 @@ def htmx_organizations_card():
     Contract Sources, Contracts, NSF Programs.
     Lazy-loaded when the Organization collapsible section is first expanded.
     """
-    from sam.core.organizations import Organization, Institution, InstitutionType, UserInstitution, MnemonicCode
-    from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
-    from sam.projects.contracts import Contract, ContractSource, NSFProgram
-    from sam.projects.projects import Project
-    from sqlalchemy.orm import subqueryload, selectinload, lazyload
+    from sam.core.organizations import Organization, MnemonicCode
+    from sam.projects.contracts import ContractSource
 
     active_only = request.args.get('active_only') == '1'
     now = datetime.now()
 
-    org_q = db.session.query(Organization).options(
-        subqueryload(Organization.children),
-        selectinload(Organization.users),
-    )
-    if active_only:
-        org_q = org_q.filter(Organization.is_active)
-    organizations = org_q.all()
+    organizations = get_organizations_with_members(db.session, active_only=active_only)
 
     # Build DFS-ordered flat tree: [(org, depth, has_children)]
     _children = {}
@@ -68,60 +129,18 @@ def htmx_organizations_card():
 
     org_tree = _dfs(None, 0)
 
-    institution_types = db.session.query(InstitutionType).options(
-        selectinload(InstitutionType.institutions)
-            .selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.accounts),
-        selectinload(InstitutionType.institutions)
-            .selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.email_addresses),
-    ).order_by(InstitutionType.type).all()
-    institutions = db.session.query(Institution).options(
-        selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.accounts),
-        selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.email_addresses),
-    ).order_by(Institution.name).all()
-
-    aoi_group_q = db.session.query(AreaOfInterestGroup).options(
-        selectinload(AreaOfInterestGroup.areas),
-    ).order_by(AreaOfInterestGroup.name)
-    if active_only:
-        aoi_group_q = aoi_group_q.filter(AreaOfInterestGroup.is_active)
-    aoi_groups = aoi_group_q.all()
-
-    aoi_q = db.session.query(AreaOfInterest).options(
-        selectinload(AreaOfInterest.projects).lazyload(Project.accounts),
-    ).order_by(AreaOfInterest.area_of_interest)
-    if active_only:
-        aoi_q = aoi_q.filter(AreaOfInterest.is_active)
-    aois = aoi_q.all()
+    institution_types = get_institution_type_tree(db.session)
+    institutions = get_institutions_with_members(db.session)
+    aoi_groups = get_aoi_groups_with_areas(db.session, active_only=active_only)
+    aois = get_areas_of_interest_with_projects(db.session, active_only=active_only)
 
     cs_q = db.session.query(ContractSource).order_by(ContractSource.contract_source)
     if active_only:
         cs_q = cs_q.filter(ContractSource.is_active)
     contract_sources = cs_q.all()
 
-    contract_q = db.session.query(Contract).options(
-        selectinload(Contract.principal_investigator)
-            .lazyload(User.accounts),
-        selectinload(Contract.principal_investigator)
-            .lazyload(User.email_addresses),
-    ).order_by(Contract.contract_number)
-    if active_only:
-        contract_q = contract_q.filter(Contract.is_active)
-    contracts = contract_q.all()
-
-    nsf_q = db.session.query(NSFProgram).options(
-        selectinload(NSFProgram.contracts),
-    ).order_by(NSFProgram.nsf_program_name)
-    if active_only:
-        nsf_q = nsf_q.filter(NSFProgram.is_active)
-    nsf_programs = nsf_q.all()
+    contracts = get_contracts_with_pi(db.session, active_only=active_only)
+    nsf_programs = get_nsf_programs_with_contracts(db.session, active_only=active_only)
 
     _mc_lookup = MnemonicCode.build_lookup(db.session)
     inst_to_mnemonic = {
@@ -181,39 +200,20 @@ def htmx_organization_edit(org_id):
 
     org = db.session.get(Organization, org_id)
     if not org:
-        return '<div class="alert alert-danger">Organization not found</div>', 404
+        return htmx_not_found('Organization')
 
-    errors = []
-    name = request.form.get('name', '').strip()
-    acronym = request.form.get('acronym', '').strip()
-    description = request.form.get('description', '').strip()
-    active = bool(request.form.get('active'))
-
-    if not name:
-        errors.append('Name is required.')
-    if not acronym:
-        errors.append('Acronym is required.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/edit_organization_form_htmx.html',
-            org=org, errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            org.update(
-                name=name, acronym=acronym,
-                description=description or None,
-                active=active,
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_organization_form_htmx.html',
-            org=org, errors=[f'Error updating organization: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=EditOrganizationForm,
+        template='dashboards/admin/fragments/edit_organization_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error updating organization',
+        extra_context={'org': org},
+        do_action=lambda data: org.update(
+            name=data['name'], acronym=data['acronym'],
+            description=data['description'],
+            active=data['active'],
+        ),
+    )
 
 
 # ── Organization Create ────────────────────────────────────────────────────
@@ -224,19 +224,9 @@ def htmx_organization_edit(org_id):
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_organization_create_form():
     """Return the organization create form fragment (loaded into modal)."""
-    from sam.core.organizations import Organization
-
-    # Offer existing active orgs as optional parent
-    parent_orgs = (
-        db.session.query(Organization)
-        .filter(Organization.is_active)
-        .order_by(Organization.name)
-        .all()
-    )
-
     return render_template(
         'dashboards/admin/fragments/create_organization_form_htmx.html',
-        parent_orgs=parent_orgs,
+        parent_orgs=_active_parent_orgs(),
     )
 
 
@@ -247,54 +237,20 @@ def htmx_organization_create():
     """Create a new organization."""
     from sam.core.organizations import Organization
 
-    errors = []
-    name = request.form.get('name', '').strip()
-    acronym = request.form.get('acronym', '').strip()
-    description = request.form.get('description', '').strip()
-    parent_id_str = request.form.get('parent_org_id', '').strip()
-
-    if not name:
-        errors.append('Name is required.')
-    if not acronym:
-        errors.append('Acronym is required.')
-
-    parent_org_id = None
-    if parent_id_str:
-        try:
-            parent_org_id = int(parent_id_str)
-        except ValueError:
-            errors.append('Invalid parent organization.')
-
-    def _reload_form(extra_errors=None):
-        parent_orgs = (
-            db.session.query(Organization)
-            .filter(Organization.is_active)
-            .order_by(Organization.name)
-            .all()
-        )
-        return render_template(
-            'dashboards/admin/fragments/create_organization_form_htmx.html',
-            parent_orgs=parent_orgs,
-            errors=(extra_errors or []) + errors,
-            form=request.form,
-        )
-
-    if errors:
-        return _reload_form()
-
-    try:
-        with management_transaction(db.session):
-            Organization.create(
-                db.session,
-                name=name,
-                acronym=acronym,
-                description=description or None,
-                parent_org_id=parent_org_id,
-            )
-    except Exception as e:
-        return _reload_form([f'Error creating organization: {e}'])
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=CreateOrganizationForm,
+        template='dashboards/admin/fragments/create_organization_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error creating organization',
+        context_fn=lambda: {'parent_orgs': _active_parent_orgs()},
+        do_action=lambda data: Organization.create(
+            db.session,
+            name=data['name'],
+            acronym=data['acronym'],
+            description=data['description'],
+            parent_org_id=data['parent_org_id'],
+        ),
+    )
 
 
 # ── Organization Delete ────────────────────────────────────────────────────
@@ -309,15 +265,8 @@ def htmx_organization_delete(org_id):
 
     org = db.session.get(Organization, org_id)
     if not org:
-        return '<div class="alert alert-danger">Organization not found</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            org.update(active=False)
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return ''
+        return htmx_not_found('Organization')
+    return handle_htmx_soft_delete(org, name='Organization')
 
 
 # ── Institution Type Edit ──────────────────────────────────────────────────
@@ -349,30 +298,16 @@ def htmx_institution_type_edit(institution_type_id):
 
     inst_type = db.session.get(InstitutionType, institution_type_id)
     if not inst_type:
-        return '<div class="alert alert-danger">Institution type not found</div>', 404
+        return htmx_not_found('Institution type')
 
-    errors = []
-    type_name = request.form.get('type', '').strip()
-
-    if not type_name:
-        errors.append('Type name is required.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/edit_institution_type_form_htmx.html',
-            inst_type=inst_type, errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            inst_type.update(type=type_name)
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_institution_type_form_htmx.html',
-            inst_type=inst_type, errors=[f'Error updating institution type: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=EditInstitutionTypeForm,
+        template='dashboards/admin/fragments/edit_institution_type_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error updating institution type',
+        extra_context={'inst_type': inst_type},
+        do_action=lambda data: inst_type.update(type=data['type']),
+    )
 
 
 # ── Institution Type Create ────────────────────────────────────────────────
@@ -393,28 +328,13 @@ def htmx_institution_type_create():
     """Create a new institution type."""
     from sam.core.organizations import InstitutionType
 
-    errors = []
-    type_name = request.form.get('type', '').strip()
-
-    if not type_name:
-        errors.append('Type name is required.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/create_institution_type_form_htmx.html',
-            errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            InstitutionType.create(db.session, type=type_name)
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/create_institution_type_form_htmx.html',
-            errors=[f'Error creating institution type: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=CreateInstitutionTypeForm,
+        template='dashboards/admin/fragments/create_institution_type_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error creating institution type',
+        do_action=lambda data: InstitutionType.create(db.session, type=data['type']),
+    )
 
 
 # ── Institution Edit ───────────────────────────────────────────────────────
@@ -446,41 +366,24 @@ def htmx_institution_edit(inst_id):
 
     institution = db.session.get(Institution, inst_id)
     if not institution:
-        return '<div class="alert alert-danger">Institution not found</div>', 404
+        return htmx_not_found('Institution')
 
-    errors = []
-    name = request.form.get('name', '').strip()
-    acronym = request.form.get('acronym', '').strip()
-
-    if not name:
-        errors.append('Name is required.')
-    if not acronym:
-        errors.append('Acronym is required.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/edit_institution_form_htmx.html',
-            institution=institution, errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            institution.update(
-                name=name,
-                acronym=acronym,
-                nsf_org_code=request.form.get('nsf_org_code', '').strip() or None,
-                address=request.form.get('address', '').strip() or None,
-                city=request.form.get('city', '').strip() or None,
-                zip=request.form.get('zip', '').strip() or None,
-                code=request.form.get('code', '').strip() or None,
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_institution_form_htmx.html',
-            institution=institution, errors=[f'Error updating institution: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=EditInstitutionForm,
+        template='dashboards/admin/fragments/edit_institution_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error updating institution',
+        extra_context={'institution': institution},
+        do_action=lambda data: institution.update(
+            name=data['name'],
+            acronym=data['acronym'],
+            nsf_org_code=data['nsf_org_code'],
+            address=data['address'],
+            city=data['city'],
+            zip=data['zip'],
+            code=data['code'],
+        ),
+    )
 
 
 # ── Institution Create ─────────────────────────────────────────────────────
@@ -491,13 +394,9 @@ def htmx_institution_edit(inst_id):
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_institution_create_form():
     """Return the institution create form fragment (loaded into modal)."""
-    from sam.core.organizations import InstitutionType
-
-    institution_types = db.session.query(InstitutionType).order_by(InstitutionType.type).all()
-
     return render_template(
         'dashboards/admin/fragments/create_institution_form_htmx.html',
-        institution_types=institution_types,
+        institution_types=_all_institution_types(),
     )
 
 
@@ -506,55 +405,24 @@ def htmx_institution_create_form():
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_institution_create():
     """Create a new institution."""
-    from sam.core.organizations import Institution, InstitutionType
+    from sam.core.organizations import Institution
 
-    errors = []
-    name = request.form.get('name', '').strip()
-    acronym = request.form.get('acronym', '').strip()
-    nsf_org_code = request.form.get('nsf_org_code', '').strip()
-    city = request.form.get('city', '').strip()
-    code = request.form.get('code', '').strip()
-    institution_type_id_str = request.form.get('institution_type_id', '').strip()
-
-    if not name:
-        errors.append('Name is required.')
-    if not acronym:
-        errors.append('Acronym is required.')
-
-    institution_type_id = None
-    if institution_type_id_str:
-        try:
-            institution_type_id = int(institution_type_id_str)
-        except ValueError:
-            errors.append('Invalid institution type selection.')
-
-    def _reload_form(extra_errors=None):
-        institution_types = db.session.query(InstitutionType).order_by(InstitutionType.type).all()
-        return render_template(
-            'dashboards/admin/fragments/create_institution_form_htmx.html',
-            institution_types=institution_types,
-            errors=(extra_errors or []) + errors,
-            form=request.form,
-        )
-
-    if errors:
-        return _reload_form()
-
-    try:
-        with management_transaction(db.session):
-            Institution.create(
-                db.session,
-                name=name,
-                acronym=acronym,
-                nsf_org_code=nsf_org_code or None,
-                city=city or None,
-                code=code or None,
-                institution_type_id=institution_type_id,
-            )
-    except Exception as e:
-        return _reload_form([f'Error creating institution: {e}'])
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=CreateInstitutionForm,
+        template='dashboards/admin/fragments/create_institution_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error creating institution',
+        context_fn=lambda: {'institution_types': _all_institution_types()},
+        do_action=lambda data: Institution.create(
+            db.session,
+            name=data['name'],
+            acronym=data['acronym'],
+            nsf_org_code=data['nsf_org_code'],
+            city=data['city'],
+            code=data['code'],
+            institution_type_id=data['institution_type_id'],
+        ),
+    )
 
 
 # ── Mnemonic Code Create ───────────────────────────────────────────────────
@@ -588,57 +456,62 @@ def htmx_mnemonic_code_create_form():
     )
 
 
-@bp.route('/htmx/mnemonic-code-create', methods=['POST'])
-@login_required
-@require_permission(Permission.CREATE_RESOURCES)
-def htmx_mnemonic_code_create():
-    """Create a new mnemonic code."""
-    import re
-    from sam.core.organizations import Institution, MnemonicCode, Organization
-
-    errors = []
-    code = request.form.get('code', '').strip().upper()
-    description = request.form.get('description', '').strip()
-
-    if not code:
-        errors.append('Code is required.')
-    elif not re.fullmatch(r'[A-Z]{3}', code):
-        errors.append('Code must be exactly 3 uppercase letters (A–Z).')
-    elif db.session.query(MnemonicCode).filter_by(code=code).first():
-        errors.append(f'Code "{code}" already exists.')
-
-    if not description:
-        errors.append('Description is required.')
-    elif db.session.query(MnemonicCode).filter_by(description=description).first():
-        errors.append(f'Description "{description}" is already in use by another mnemonic code.')
-
-    def _reload_form(extra_errors=None):
-        institutions = db.session.query(Institution).order_by(Institution.name).all()
-        organizations = (
+def _mnemonic_create_context():
+    from sam.core.organizations import Institution, Organization
+    return {
+        'institutions': db.session.query(Institution).order_by(Institution.name).all(),
+        'organizations': (
             db.session.query(Organization)
             .filter(Organization.is_active)
             .order_by(Organization.name)
             .all()
-        )
+        ),
+        'prefill_description': '',
+    }
+
+
+@bp.route('/htmx/mnemonic-code-create', methods=['POST'])
+@login_required
+@require_permission(Permission.CREATE_RESOURCES)
+def htmx_mnemonic_code_create():
+    """Create a new mnemonic code.
+
+    Uses an inline DB-uniqueness check after schema validation, so the
+    helper-based handler gets bypassed for that step.
+    """
+    from sam.core.organizations import MnemonicCode
+    from marshmallow import ValidationError
+
+    def _reload_form(extra_errors=None):
+        ctx = _mnemonic_create_context()
+        ctx['errors'] = extra_errors or []
+        ctx['form'] = request.form
         return render_template(
             'dashboards/admin/fragments/create_mnemonic_code_form_htmx.html',
-            institutions=institutions,
-            organizations=organizations,
-            prefill_description='',
-            errors=(extra_errors or []) + errors,
-            form=request.form,
+            **ctx,
         )
 
+    try:
+        data = CreateMnemonicCodeForm().load(request.form)
+    except ValidationError as e:
+        return _reload_form(CreateMnemonicCodeForm.flatten_errors(e.messages))
+
+    # DB uniqueness checks (require session, can't be in Marshmallow)
+    errors = []
+    if db.session.query(MnemonicCode).filter_by(code=data['code']).first():
+        errors.append(f'Code "{data["code"]}" already exists.')
+    if db.session.query(MnemonicCode).filter_by(description=data['description']).first():
+        errors.append(f'Description "{data["description"]}" is already in use by another mnemonic code.')
     if errors:
-        return _reload_form()
+        return _reload_form(errors)
 
     try:
         with management_transaction(db.session):
-            MnemonicCode.create(db.session, code=code, description=description)
+            MnemonicCode.create(db.session, code=data['code'], description=data['description'])
     except Exception as e:
         return _reload_form([f'Error creating mnemonic code: {e}'])
 
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return htmx_success_message(_ORG_TRIGGERS, 'Saved successfully.')
 
 
 # ── AOI Group Edit ─────────────────────────────────────────────────────────
@@ -670,31 +543,16 @@ def htmx_aoi_group_edit(group_id):
 
     group = db.session.get(AreaOfInterestGroup, group_id)
     if not group:
-        return '<div class="alert alert-danger">AOI group not found</div>', 404
+        return htmx_not_found('AOI group')
 
-    errors = []
-    name = request.form.get('name', '').strip()
-    active = bool(request.form.get('active'))
-
-    if not name:
-        errors.append('Name is required.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/edit_aoi_group_form_htmx.html',
-            group=group, errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            group.update(name=name, active=active)
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_aoi_group_form_htmx.html',
-            group=group, errors=[f'Error updating AOI group: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=EditAoiGroupForm,
+        template='dashboards/admin/fragments/edit_aoi_group_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error updating AOI group',
+        extra_context={'group': group},
+        do_action=lambda data: group.update(name=data['name'], active=data['active']),
+    )
 
 
 # ── AOI Group Create ───────────────────────────────────────────────────────
@@ -715,28 +573,13 @@ def htmx_aoi_group_create():
     """Create a new AOI group."""
     from sam.projects.areas import AreaOfInterestGroup
 
-    errors = []
-    name = request.form.get('name', '').strip()
-
-    if not name:
-        errors.append('Name is required.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/create_aoi_group_form_htmx.html',
-            errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            AreaOfInterestGroup.create(db.session, name=name)
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/create_aoi_group_form_htmx.html',
-            errors=[f'Error creating AOI group: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=CreateAoiGroupForm,
+        template='dashboards/admin/fragments/create_aoi_group_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error creating AOI group',
+        do_action=lambda data: AreaOfInterestGroup.create(db.session, name=data['name']),
+    )
 
 
 # ── AOI Group Delete ───────────────────────────────────────────────────────
@@ -751,15 +594,8 @@ def htmx_aoi_group_delete(group_id):
 
     group = db.session.get(AreaOfInterestGroup, group_id)
     if not group:
-        return '<div class="alert alert-danger">AOI group not found</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            group.update(active=False)
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return ''
+        return htmx_not_found('AOI group')
+    return handle_htmx_soft_delete(group, name='AOI group')
 
 
 # ── AOI Edit ───────────────────────────────────────────────────────────────
@@ -770,18 +606,16 @@ def htmx_aoi_group_delete(group_id):
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_aoi_edit_form(aoi_id):
     """Return the AOI edit form fragment (loaded into modal)."""
-    from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
+    from sam.projects.areas import AreaOfInterest
 
     aoi = db.session.get(AreaOfInterest, aoi_id)
     if not aoi:
         return '<div class="alert alert-warning">Area of interest not found</div>'
 
-    aoi_groups = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
-
     return render_template(
         'dashboards/admin/fragments/edit_aoi_form_htmx.html',
         aoi=aoi,
-        aoi_groups=aoi_groups,
+        aoi_groups=_all_aoi_groups(),
     )
 
 
@@ -790,52 +624,25 @@ def htmx_aoi_edit_form(aoi_id):
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_aoi_edit(aoi_id):
     """Update an area of interest."""
-    from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
+    from sam.projects.areas import AreaOfInterest
 
     aoi = db.session.get(AreaOfInterest, aoi_id)
     if not aoi:
-        return '<div class="alert alert-danger">Area of interest not found</div>', 404
+        return htmx_not_found('Area of interest')
 
-    errors = []
-    area_of_interest = request.form.get('area_of_interest', '').strip()
-    group_id_str = request.form.get('area_of_interest_group_id', '').strip()
-    active = bool(request.form.get('active'))
-
-    if not area_of_interest:
-        errors.append('Name is required.')
-
-    group_id = None
-    if group_id_str:
-        try:
-            group_id = int(group_id_str)
-        except ValueError:
-            errors.append('Invalid group selection.')
-    else:
-        errors.append('Group is required.')
-
-    if errors:
-        aoi_groups = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
-        return render_template(
-            'dashboards/admin/fragments/edit_aoi_form_htmx.html',
-            aoi=aoi, aoi_groups=aoi_groups, errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            aoi.update(
-                area_of_interest=area_of_interest,
-                area_of_interest_group_id=group_id,
-                active=active,
-            )
-    except Exception as e:
-        aoi_groups = db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
-        return render_template(
-            'dashboards/admin/fragments/edit_aoi_form_htmx.html',
-            aoi=aoi, aoi_groups=aoi_groups,
-            errors=[f'Error updating area of interest: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=EditAoiForm,
+        template='dashboards/admin/fragments/edit_aoi_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error updating area of interest',
+        extra_context={'aoi': aoi},
+        context_fn=lambda: {'aoi_groups': _all_aoi_groups()},
+        do_action=lambda data: aoi.update(
+            area_of_interest=data['area_of_interest'],
+            area_of_interest_group_id=data['area_of_interest_group_id'],
+            active=data['active'],
+        ),
+    )
 
 
 # ── AOI Create ─────────────────────────────────────────────────────────────
@@ -846,15 +653,9 @@ def htmx_aoi_edit(aoi_id):
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_aoi_create_form():
     """Return the AOI create form fragment."""
-    from sam.projects.areas import AreaOfInterestGroup
-
-    aoi_groups = db.session.query(AreaOfInterestGroup).filter(
-        AreaOfInterestGroup.is_active
-    ).order_by(AreaOfInterestGroup.name).all()
-
     return render_template(
         'dashboards/admin/fragments/create_aoi_form_htmx.html',
-        aoi_groups=aoi_groups,
+        aoi_groups=_all_active_aoi_groups(),
     )
 
 
@@ -863,49 +664,20 @@ def htmx_aoi_create_form():
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_aoi_create():
     """Create a new area of interest."""
-    from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
+    from sam.projects.areas import AreaOfInterest
 
-    errors = []
-    area_of_interest = request.form.get('area_of_interest', '').strip()
-    group_id_str = request.form.get('area_of_interest_group_id', '').strip()
-
-    if not area_of_interest:
-        errors.append('Name is required.')
-
-    group_id = None
-    if group_id_str:
-        try:
-            group_id = int(group_id_str)
-        except ValueError:
-            errors.append('Invalid group selection.')
-    else:
-        errors.append('Group is required.')
-
-    def _reload_form(extra_errors=None):
-        aoi_groups = db.session.query(AreaOfInterestGroup).filter(
-            AreaOfInterestGroup.is_active
-        ).order_by(AreaOfInterestGroup.name).all()
-        return render_template(
-            'dashboards/admin/fragments/create_aoi_form_htmx.html',
-            aoi_groups=aoi_groups,
-            errors=(extra_errors or []) + errors,
-            form=request.form,
-        )
-
-    if errors:
-        return _reload_form()
-
-    try:
-        with management_transaction(db.session):
-            AreaOfInterest.create(
-                db.session,
-                area_of_interest=area_of_interest,
-                area_of_interest_group_id=group_id,
-            )
-    except Exception as e:
-        return _reload_form([f'Error creating area of interest: {e}'])
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=CreateAoiForm,
+        template='dashboards/admin/fragments/create_aoi_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error creating area of interest',
+        context_fn=lambda: {'aoi_groups': _all_active_aoi_groups()},
+        do_action=lambda data: AreaOfInterest.create(
+            db.session,
+            area_of_interest=data['area_of_interest'],
+            area_of_interest_group_id=data['area_of_interest_group_id'],
+        ),
+    )
 
 
 # ── AOI Delete ─────────────────────────────────────────────────────────────
@@ -920,15 +692,8 @@ def htmx_aoi_delete(aoi_id):
 
     aoi = db.session.get(AreaOfInterest, aoi_id)
     if not aoi:
-        return '<div class="alert alert-danger">Area of interest not found</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            aoi.update(active=False)
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return ''
+        return htmx_not_found('Area of interest')
+    return handle_htmx_soft_delete(aoi, name='Area of interest')
 
 
 # ── Contract Source Edit ───────────────────────────────────────────────────
@@ -960,31 +725,18 @@ def htmx_contract_source_edit(source_id):
 
     source = db.session.get(ContractSource, source_id)
     if not source:
-        return '<div class="alert alert-danger">Contract source not found</div>', 404
+        return htmx_not_found('Contract source')
 
-    errors = []
-    contract_source = request.form.get('contract_source', '').strip()
-    active = bool(request.form.get('active'))
-
-    if not contract_source:
-        errors.append('Source name is required.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/edit_contract_source_form_htmx.html',
-            source=source, errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            source.update(contract_source=contract_source, active=active)
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_contract_source_form_htmx.html',
-            source=source, errors=[f'Error updating contract source: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=EditContractSourceForm,
+        template='dashboards/admin/fragments/edit_contract_source_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error updating contract source',
+        extra_context={'source': source},
+        do_action=lambda data: source.update(
+            contract_source=data['contract_source'], active=data['active'],
+        ),
+    )
 
 
 # ── Contract Source Create ─────────────────────────────────────────────────
@@ -1005,28 +757,15 @@ def htmx_contract_source_create():
     """Create a new contract source."""
     from sam.projects.contracts import ContractSource
 
-    errors = []
-    contract_source = request.form.get('contract_source', '').strip()
-
-    if not contract_source:
-        errors.append('Source name is required.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/create_contract_source_form_htmx.html',
-            errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            ContractSource.create(db.session, contract_source=contract_source)
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/create_contract_source_form_htmx.html',
-            errors=[f'Error creating contract source: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=CreateContractSourceForm,
+        template='dashboards/admin/fragments/create_contract_source_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error creating contract source',
+        do_action=lambda data: ContractSource.create(
+            db.session, contract_source=data['contract_source'],
+        ),
+    )
 
 
 # ── Contract Source Delete ─────────────────────────────────────────────────
@@ -1041,15 +780,8 @@ def htmx_contract_source_delete(source_id):
 
     source = db.session.get(ContractSource, source_id)
     if not source:
-        return '<div class="alert alert-danger">Contract source not found</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            source.update(active=False)
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return ''
+        return htmx_not_found('Contract source')
+    return handle_htmx_soft_delete(source, name='Contract source')
 
 
 # ── Contract Edit ──────────────────────────────────────────────────────────
@@ -1081,57 +813,21 @@ def htmx_contract_edit(contract_id):
 
     contract = db.session.get(Contract, contract_id)
     if not contract:
-        return '<div class="alert alert-danger">Contract not found</div>', 404
+        return htmx_not_found('Contract')
 
-    errors = []
-    title = request.form.get('title', '').strip()
-    url = request.form.get('url', '').strip()
-    start_str = request.form.get('start_date', '').strip()
-    end_str = request.form.get('end_date', '').strip()
-
-    if not title:
-        errors.append('Title is required.')
-
-    start_date = None
-    if start_str:
-        try:
-            start_date = datetime.strptime(start_str, '%Y-%m-%d')
-        except ValueError:
-            errors.append('Invalid start date format.')
-    else:
-        errors.append('Start date is required.')
-
-    end_date = None
-    if end_str:
-        try:
-            end_date = parse_input_end_date(end_str)
-            effective_start = start_date or contract.start_date
-            if effective_start and end_date <= effective_start:
-                errors.append('End date must be after start date.')
-        except ValueError:
-            errors.append('Invalid end date format.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/edit_contract_form_htmx.html',
-            contract=contract, errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            contract.update(
-                title=title,
-                url=url or None,
-                start_date=start_date,
-                end_date=end_date,
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_contract_form_htmx.html',
-            contract=contract, errors=[f'Error updating contract: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=EditContractForm,
+        template='dashboards/admin/fragments/edit_contract_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error updating contract',
+        extra_context={'contract': contract},
+        do_action=lambda data: contract.update(
+            title=data['title'],
+            url=data['url'],
+            start_date=datetime.combine(data['start_date'], datetime.min.time()),
+            end_date=data['end_date'],
+        ),
+    )
 
 
 # ── Contract Create ────────────────────────────────────────────────────────
@@ -1142,15 +838,9 @@ def htmx_contract_edit(contract_id):
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_contract_create_form():
     """Return the contract create form fragment."""
-    from sam.projects.contracts import ContractSource
-
-    contract_sources = db.session.query(ContractSource).filter(
-        ContractSource.is_active
-    ).order_by(ContractSource.contract_source).all()
-
     return render_template(
         'dashboards/admin/fragments/create_contract_form_htmx.html',
-        contract_sources=contract_sources,
+        contract_sources=_active_contract_sources(),
         today=datetime.now().strftime('%Y-%m-%d'),
     )
 
@@ -1160,89 +850,28 @@ def htmx_contract_create_form():
 @require_permission(Permission.CREATE_RESOURCES)
 def htmx_contract_create():
     """Create a new contract."""
-    from sam.projects.contracts import Contract, ContractSource
+    from sam.projects.contracts import Contract
 
-    errors = []
-    contract_number = request.form.get('contract_number', '').strip()
-    title = request.form.get('title', '').strip()
-    url = request.form.get('url', '').strip()
-    start_str = request.form.get('start_date', '').strip()
-    end_str = request.form.get('end_date', '').strip()
-    source_id_str = request.form.get('contract_source_id', '').strip()
-    pi_user_id_str = request.form.get('principal_investigator_user_id', '').strip()
-
-    if not contract_number:
-        errors.append('Contract number is required.')
-    if not title:
-        errors.append('Title is required.')
-    if not pi_user_id_str:
-        errors.append('Principal investigator is required.')
-
-    contract_source_id = None
-    if source_id_str:
-        try:
-            contract_source_id = int(source_id_str)
-        except ValueError:
-            errors.append('Invalid contract source selection.')
-    else:
-        errors.append('Contract source is required.')
-
-    pi_user_id = None
-    if pi_user_id_str:
-        try:
-            pi_user_id = int(pi_user_id_str)
-        except ValueError:
-            errors.append('Invalid principal investigator selection.')
-
-    start_date = None
-    if start_str:
-        try:
-            start_date = datetime.strptime(start_str, '%Y-%m-%d')
-        except ValueError:
-            errors.append('Invalid start date format.')
-    else:
-        errors.append('Start date is required.')
-
-    end_date = None
-    if end_str:
-        try:
-            end_date = parse_input_end_date(end_str)
-            if start_date and end_date <= start_date:
-                errors.append('End date must be after start date.')
-        except ValueError:
-            errors.append('Invalid end date format.')
-
-    def _reload_form(extra_errors=None):
-        contract_sources = db.session.query(ContractSource).filter(
-            ContractSource.is_active
-        ).order_by(ContractSource.contract_source).all()
-        return render_template(
-            'dashboards/admin/fragments/create_contract_form_htmx.html',
-            contract_sources=contract_sources,
-            today=datetime.now().strftime('%Y-%m-%d'),
-            errors=(extra_errors or []) + errors,
-            form=request.form,
-        )
-
-    if errors:
-        return _reload_form()
-
-    try:
-        with management_transaction(db.session):
-            Contract.create(
-                db.session,
-                contract_number=contract_number,
-                title=title,
-                url=url or None,
-                start_date=start_date,
-                end_date=end_date,
-                contract_source_id=contract_source_id,
-                principal_investigator_user_id=pi_user_id,
-            )
-    except Exception as e:
-        return _reload_form([f'Error creating contract: {e}'])
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=CreateContractForm,
+        template='dashboards/admin/fragments/create_contract_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error creating contract',
+        context_fn=lambda: {
+            'contract_sources': _active_contract_sources(),
+            'today': datetime.now().strftime('%Y-%m-%d'),
+        },
+        do_action=lambda data: Contract.create(
+            db.session,
+            contract_number=data['contract_number'],
+            title=data['title'],
+            url=data['url'],
+            start_date=datetime.combine(data['start_date'], datetime.min.time()),
+            end_date=data['end_date'],
+            contract_source_id=data['contract_source_id'],
+            principal_investigator_user_id=data['principal_investigator_user_id'],
+        ),
+    )
 
 
 # ── Contract Delete ────────────────────────────────────────────────────────
@@ -1257,8 +886,9 @@ def htmx_contract_delete(contract_id):
 
     contract = db.session.get(Contract, contract_id)
     if not contract:
-        return '<div class="alert alert-danger">Contract not found</div>', 404
+        return htmx_not_found('Contract')
 
+    # Contract uses end_date rather than the active flag for retirement.
     try:
         with management_transaction(db.session):
             contract.update(end_date=datetime.now())
@@ -1297,31 +927,18 @@ def htmx_nsf_program_edit(nsf_program_id):
 
     program = db.session.get(NSFProgram, nsf_program_id)
     if not program:
-        return '<div class="alert alert-danger">NSF program not found</div>', 404
+        return htmx_not_found('NSF program')
 
-    errors = []
-    nsf_program_name = request.form.get('nsf_program_name', '').strip()
-    active = bool(request.form.get('active'))
-
-    if not nsf_program_name:
-        errors.append('Program name is required.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/edit_nsf_program_form_htmx.html',
-            program=program, errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            program.update(nsf_program_name=nsf_program_name, active=active)
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_nsf_program_form_htmx.html',
-            program=program, errors=[f'Error updating NSF program: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=EditNsfProgramForm,
+        template='dashboards/admin/fragments/edit_nsf_program_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error updating NSF program',
+        extra_context={'program': program},
+        do_action=lambda data: program.update(
+            nsf_program_name=data['nsf_program_name'], active=data['active'],
+        ),
+    )
 
 
 # ── NSF Program Create ─────────────────────────────────────────────────────
@@ -1342,28 +959,15 @@ def htmx_nsf_program_create():
     """Create a new NSF program."""
     from sam.projects.contracts import NSFProgram
 
-    errors = []
-    nsf_program_name = request.form.get('nsf_program_name', '').strip()
-
-    if not nsf_program_name:
-        errors.append('Program name is required.')
-
-    if errors:
-        return render_template(
-            'dashboards/admin/fragments/create_nsf_program_form_htmx.html',
-            errors=errors, form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            NSFProgram.create(db.session, nsf_program_name=nsf_program_name)
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/create_nsf_program_form_htmx.html',
-            errors=[f'Error creating NSF program: {e}'], form=request.form,
-        )
-
-    return htmx_success('dashboards/admin/fragments/organization_edit_success_htmx.html', {'closeActiveModal': {}, 'reloadOrganizationsCard': {}})
+    return handle_htmx_form_post(
+        schema_cls=CreateNsfProgramForm,
+        template='dashboards/admin/fragments/create_nsf_program_form_htmx.html',
+        success_triggers=_ORG_TRIGGERS,
+        error_prefix='Error creating NSF program',
+        do_action=lambda data: NSFProgram.create(
+            db.session, nsf_program_name=data['nsf_program_name'],
+        ),
+    )
 
 
 # ── NSF Program Delete ─────────────────────────────────────────────────────
@@ -1378,37 +982,10 @@ def htmx_nsf_program_delete(nsf_program_id):
 
     program = db.session.get(NSFProgram, nsf_program_id)
     if not program:
-        return '<div class="alert alert-danger">NSF program not found</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            program.update(active=False)
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return ''
+        return htmx_not_found('NSF program')
+    return handle_htmx_soft_delete(program, name='NSF program')
 
 
 # ── User search for FK fields ──────────────────────────────────────────────
-
-
-@bp.route('/htmx/search-users-for-org')
-@login_required
-@require_permission(Permission.CREATE_RESOURCES)
-def htmx_search_users_for_org():
-    """
-    Search users for FK fields in org-domain forms (e.g. contract PI).
-    Returns an HTML fragment with a list of matching users.
-    """
-    from sam.queries.users import search_users_by_pattern
-
-    query = request.args.get('q', '').strip()
-    if len(query) < 2:
-        return ''
-
-    users = search_users_by_pattern(db.session, query, limit=15, active_only=True)
-
-    return render_template(
-        'dashboards/admin/fragments/user_search_results_fk_htmx.html',
-        users=users,
-    )
+# Note: user search is handled by the unified admin_dashboard.htmx_search_users
+# endpoint (admin/blueprint.py) with context='fk'.

@@ -1,20 +1,18 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field with context %}
 {# htmx: Create Panel Form #}
-<form hx-post="{{ url_for('admin_dashboard.htmx_panel_create') }}"
-      hx-target="#createPanelFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_panel_create'),
+    '#createPanelFormContainer',
+    'Create Panel',
+    submit_icon='plus'
+) %}
+        {{ text_field('panel_name', 'Panel Name',
+                      required=True, maxlength=30,
+                      placeholder='e.g. UNIV-LARGE',
+                      id='createPanelName') }}
 
-    <div class="modal-body">
-        <div class="mb-3">
-            <label for="createPanelName" class="form-label">
-                Panel Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createPanelName"
-                   name="panel_name" required maxlength="30"
-                   value="{{ form.get('panel_name') if form else '' }}"
-                   placeholder="e.g. UNIV-LARGE">
-        </div>
-
+        {# Facility select kept inline — option label has conditional code suffix #}
         <div class="mb-3">
             <label for="createPanelFacility" class="form-label">
                 Facility <span class="text-danger">*</span>
@@ -30,28 +28,7 @@
             </select>
         </div>
 
-        <div class="mb-3">
-            <label for="createPanelDescription" class="form-label">
-                Description <span class="text-muted">(optional)</span>
-            </label>
-            <input type="text" class="form-control" id="createPanelDescription"
-                   name="description" maxlength="100"
-                   value="{{ form.get('description') if form else '' }}">
-        </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">
-            <i class="fas fa-plus"></i> Create Panel
-        </button>
-    </div>
-</form>
+        {{ text_field('description', 'Description',
+                      maxlength=100,
+                      id='createPanelDescription') }}
+{% endcall %}

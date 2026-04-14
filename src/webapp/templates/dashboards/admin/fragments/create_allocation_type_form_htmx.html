@@ -1,73 +1,89 @@
-{# htmx: Create Allocation Type Form #}
-<form hx-post="{{ url_for('admin_dashboard.htmx_allocation_type_create') }}"
-      hx-target="#createAllocationTypeFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
-        <div class="mb-3">
-            <label for="createAllocTypeName" class="form-label">
-                Allocation Type <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createAllocTypeName"
-                   name="allocation_type" required maxlength="20"
-                   value="{{ form.get('allocation_type') if form else '' }}"
-                   placeholder="e.g. NSC">
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, number_field with context %}
+{# htmx: Create Allocation Type Form
+   Facility → Panel cascade (reuses htmx_panels_for_facility endpoint).
+   Auto-selects panel if only one option for the chosen facility.
+#}
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_allocation_type_create'),
+    '#createAllocationTypeFormContainer',
+    'Create Allocation Type',
+    submit_icon='plus'
+) %}
+        {# Cascading facility/panel selects kept inline — dynamic dependent options
+           with optional description suffix don't fit the generic select macro. #}
+        <div class="row g-2 mb-3">
+            <div class="col-md-6">
+                <label for="createAllocTypeFacility" class="form-label fw-semibold">
+                    Facility <span class="text-danger">*</span>
+                </label>
+                <select class="form-select form-select-sm" id="createAllocTypeFacility"
+                        name="facility_id" required
+                        hx-get="{{ url_for('admin_dashboard.htmx_panels_for_facility') }}"
+                        hx-target="#createAllocTypePanel"
+                        hx-swap="innerHTML"
+                        hx-trigger="change"
+                        hx-include="#createAllocTypeFacility">
+                    <option value="">— Select —</option>
+                    {% for facility in facilities %}
+                    <option value="{{ facility.facility_id }}"
+                        {% if form and form.get('facility_id') == facility.facility_id|string %}selected{% endif %}>
+                        {{ facility.facility_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label for="createAllocTypePanel" class="form-label fw-semibold">
+                    Panel <span class="text-danger">*</span>
+                </label>
+                <select class="form-select form-select-sm" id="createAllocTypePanel"
+                        name="panel_id" required>
+                    {% if panels_for_facility %}
+                        <option value="">— Select —</option>
+                        {% for panel in panels_for_facility %}
+                        <option value="{{ panel.panel_id }}"
+                            {% if form and form.get('panel_id') == panel.panel_id|string %}selected{% endif %}>
+                            {{ panel.panel_name }}{% if panel.description %} — {{ panel.description }}{% endif %}
+                        </option>
+                        {% endfor %}
+                    {% else %}
+                        <option value="">— Select facility first —</option>
+                    {% endif %}
+                </select>
+            </div>
         </div>
 
-        <div class="mb-3">
-            <label for="createAllocTypePanel" class="form-label">
-                Panel <span class="text-muted">(optional)</span>
-            </label>
-            <select class="form-select" id="createAllocTypePanel" name="panel_id">
-                <option value="">— None —</option>
-                {% for p in panels %}
-                <option value="{{ p.panel_id }}"
-                    {% if form and form.get('panel_id') == p.panel_id|string %}selected{% endif %}>
-                    {{ p.panel_name }}{% if p.facility %} ({{ p.facility.facility_name }}){% endif %}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
+        {{ text_field('allocation_type', 'Allocation Type',
+                      required=True, maxlength=20,
+                      placeholder='e.g. NSC',
+                      id='createAllocTypeName') }}
 
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createAllocTypeAmount" class="form-label">
-                        Default Amount <span class="text-muted">(optional)</span>
-                    </label>
-                    <input type="number" class="form-control" id="createAllocTypeAmount"
-                           name="default_allocation_amount" min="0" step="any"
-                           value="{{ form.get('default_allocation_amount') if form else '' }}"
-                           placeholder="e.g. 400000">
-                </div>
+                {{ number_field('default_allocation_amount', 'Default Amount',
+                                min=0, step='any',
+                                placeholder='e.g. 400000',
+                                id='createAllocTypeAmount') }}
             </div>
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createAllocTypeFairShare" class="form-label">
-                        Fair Share % <span class="text-muted">(optional, 0–100)</span>
-                    </label>
-                    <input type="number" class="form-control" id="createAllocTypeFairShare"
-                           name="fair_share_percentage" min="0" max="100" step="0.01"
-                           value="{{ form.get('fair_share_percentage') if form else '' }}"
-                           placeholder="e.g. 10.0">
-                </div>
+                {{ number_field('fair_share_percentage', 'Fair Share %',
+                                optional_text='(optional, 0–100)',
+                                min=0, max=100, step=0.01,
+                                placeholder='e.g. 10.0',
+                                id='createAllocTypeFairShare') }}
             </div>
         </div>
+{% endcall %}
 
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">
-            <i class="fas fa-plus"></i> Create Allocation Type
-        </button>
-    </div>
-</form>
+<script>
+(function () {
+    // Auto-select panel if only one option after htmx swap
+    document.getElementById('createAllocTypePanel').addEventListener('htmx:afterSwap', function () {
+        const opts = Array.from(this.options).filter(function (o) { return o.value !== ''; });
+        if (opts.length === 1) {
+            this.value = opts[0].value;
+        }
+    });
+})();
+</script>

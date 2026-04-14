@@ -1,95 +1,49 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field with context %}
 {# htmx: Create Institution Form #}
-<form hx-post="{{ url_for('admin_dashboard.htmx_institution_create') }}"
-      hx-target="#createInstitutionFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_institution_create'),
+    '#createInstitutionFormContainer',
+    'Create Institution',
+    submit_icon='plus'
+) %}
+        {{ text_field('name', 'Name',
+                      required=True, maxlength=80,
+                      placeholder='e.g. Massachusetts Institute of Technology',
+                      id='createInstName') }}
 
-    <div class="modal-body">
-        <div class="mb-3">
-            <label for="createInstName" class="form-label">
-                Name <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createInstName"
-                   name="name" required maxlength="80"
-                   value="{{ form.get('name') if form else '' }}"
-                   placeholder="e.g. Massachusetts Institute of Technology">
-        </div>
-
-        <div class="mb-3">
-            <label for="createInstAcronym" class="form-label">
-                Acronym <span class="text-danger">*</span>
-            </label>
-            <input type="text" class="form-control" id="createInstAcronym"
-                   name="acronym" required maxlength="40"
-                   value="{{ form.get('acronym') if form else '' }}"
-                   placeholder="e.g. MIT">
-        </div>
+        {{ text_field('acronym', 'Acronym',
+                      required=True, maxlength=40,
+                      placeholder='e.g. MIT',
+                      id='createInstAcronym') }}
 
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createInstType" class="form-label">
-                        Institution Type <span class="text-muted">(optional)</span>
-                    </label>
-                    <select class="form-select" id="createInstType" name="institution_type_id">
-                        <option value="">— None —</option>
-                        {% for inst_type in institution_types %}
-                        <option value="{{ inst_type.institution_type_id }}"
-                            {% if form and form.get('institution_type_id') == inst_type.institution_type_id|string %}selected{% endif %}>
-                            {{ inst_type.type }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
+                {{ select_field('institution_type_id', 'Institution Type',
+                                items=institution_types,
+                                value_attr='institution_type_id',
+                                label_attr='type',
+                                placeholder='— None —',
+                                id='createInstType') }}
             </div>
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createInstCity" class="form-label">
-                        City <span class="text-muted">(optional)</span>
-                    </label>
-                    <input type="text" class="form-control" id="createInstCity"
-                           name="city" maxlength="30"
-                           value="{{ form.get('city') if form else '' }}">
-                </div>
+                {{ text_field('city', 'City',
+                              maxlength=30,
+                              id='createInstCity') }}
             </div>
         </div>
 
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createInstNSFCode" class="form-label">
-                        NSF Org Code <span class="text-muted">(optional)</span>
-                    </label>
-                    <input type="text" class="form-control" id="createInstNSFCode"
-                           name="nsf_org_code" maxlength="200"
-                           value="{{ form.get('nsf_org_code') if form else '' }}">
-                </div>
+                {{ text_field('nsf_org_code', 'NSF Org Code',
+                              maxlength=200,
+                              id='createInstNSFCode') }}
             </div>
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createInstCode" class="form-label">
-                        Code <span class="text-muted">(optional, max 3 chars)</span>
-                    </label>
-                    <input type="text" class="form-control" id="createInstCode"
-                           name="code" maxlength="3"
-                           value="{{ form.get('code') if form else '' }}">
-                </div>
+                {{ text_field('code', 'Code',
+                              optional_text='(optional, max 3 chars)',
+                              maxlength=3,
+                              id='createInstCode') }}
             </div>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">
-            <i class="fas fa-plus"></i> Create Institution
-        </button>
-    </div>
-</form>
+{% endcall %}

@@ -1,83 +1,48 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, number_field, date_field, readonly_display with context %}
 {#
   htmx: Edit Machine Form (loaded into #editMachineFormContainer)
   Machine name and resource are read-only.
   Editable: description, cpus_per_node, commission_date, decommission_date.
 #}
 
-<form hx-post="{{ url_for('admin_dashboard.htmx_machine_edit', machine_id=machine.machine_id) }}"
-      hx-target="#editMachineFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
-        <!-- Name / Resource (read-only) -->
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_machine_edit', machine_id=machine.machine_id),
+    '#editMachineFormContainer',
+    'Save Changes',
+    is_edit=True
+) %}
         <div class="row mb-3">
             <div class="col-md-6">
-                <label class="form-label">Machine Name</label>
-                <div class="form-control-plaintext">
-                    <strong>{{ machine.name }}</strong>
-                </div>
+                {{ readonly_display('Machine Name', machine.name, muted=False, strong=True) }}
             </div>
             <div class="col-md-6">
-                <label class="form-label">Resource</label>
-                <div class="form-control-plaintext text-muted">
-                    {{ machine.resource.resource_name if machine.resource else '—' }}
-                </div>
+                {{ readonly_display('Resource', machine.resource.resource_name if machine.resource else '—') }}
             </div>
         </div>
 
-        <!-- Description -->
-        <div class="mb-3">
-            <label for="editMachineDescription" class="form-label">Description</label>
-            <input type="text" class="form-control" id="editMachineDescription"
-                   name="description"
-                   value="{{ form.get('description') if form else (machine.description or '') }}"
-                   placeholder="Brief description of the machine">
-        </div>
+        {{ text_field('description', 'Description',
+                      optional_text='',
+                      default=machine.description or '',
+                      placeholder='Brief description of the machine',
+                      id='editMachineDescription') }}
 
-        <!-- CPUs per node -->
-        <div class="mb-3">
-            <label for="editMachineCpus" class="form-label">
-                CPUs per Node <span class="text-muted">(optional)</span>
-            </label>
-            <input type="number" class="form-control" id="editMachineCpus"
-                   name="cpus_per_node" min="1" step="1"
-                   value="{{ form.get('cpus_per_node') if form else (machine.cpus_per_node or '') }}">
-        </div>
+        {{ number_field('cpus_per_node', 'CPUs per Node',
+                        min=1, step=1,
+                        default=machine.cpus_per_node or '',
+                        id='editMachineCpus') }}
 
-        <!-- Commission / Decommission dates -->
-        <div class="row mb-3">
+        <div class="row">
             <div class="col-md-6">
-                <label for="editMachineCommission" class="form-label">
-                    Commission Date <span class="text-danger">*</span>
-                </label>
-                <input type="date" class="form-control" id="editMachineCommission"
-                       name="commission_date" required
-                       value="{{ form.get('commission_date') if form else (machine.commission_date.strftime('%Y-%m-%d') if machine.commission_date else '') }}">
+                {{ date_field('commission_date', 'Commission Date',
+                              required=True,
+                              default=machine.commission_date,
+                              id='editMachineCommission') }}
             </div>
             <div class="col-md-6">
-                <label for="editMachineDecommission" class="form-label">
-                    Decommission Date <span class="text-muted">(optional)</span>
-                </label>
-                <input type="date" class="form-control" id="editMachineDecommission"
-                       name="decommission_date"
-                       value="{{ form.get('decommission_date') if form else (machine.decommission_date.strftime('%Y-%m-%d') if machine.decommission_date else '') }}">
+                {{ date_field('decommission_date', 'Decommission Date',
+                              default=machine.decommission_date,
+                              id='editMachineDecommission') }}
             </div>
         </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-warning">
-            <i class="fas fa-save"></i> Save Changes
-        </button>
-    </div>
-</form>
+{% endcall %}

@@ -1,385 +1,63 @@
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {#
   Admin: Organization Management Modals
   Edit modals: loaded lazily when an edit button is clicked.
   Create modals: loaded lazily when a create button is clicked.
 #}
 
-<!-- ══════════════════════════════════════════════════════════ CREATE MODALS -->
+{# ════════════════════════════════════════════════════════ CREATE MODALS #}
 
 {% if has_permission(Permission.CREATE_RESOURCES) %}
-<!-- Create Organization Modal -->
-<div class="modal fade" id="createOrganizationModal" tabindex="-1"
-     aria-labelledby="createOrganizationModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createOrganizationModalLabel">
-                    <i class="fas fa-plus"></i> New Organization
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createOrganizationFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createOrganizationModal', 'New Organization',
+                  icon='plus', container_id='createOrganizationFormContainer') }}
 
-<!-- Create Institution Type Modal -->
-<div class="modal fade" id="createInstitutionTypeModal" tabindex="-1"
-     aria-labelledby="createInstitutionTypeModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createInstitutionTypeModalLabel">
-                    <i class="fas fa-plus"></i> New Institution Type
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createInstitutionTypeFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createInstitutionTypeModal', 'New Institution Type',
+                  icon='plus', container_id='createInstitutionTypeFormContainer') }}
 
-<!-- Create Institution Modal -->
-<div class="modal fade" id="createInstitutionModal" tabindex="-1"
-     aria-labelledby="createInstitutionModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createInstitutionModalLabel">
-                    <i class="fas fa-plus"></i> New Institution
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createInstitutionFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createInstitutionModal', 'New Institution',
+                  icon='plus', container_id='createInstitutionFormContainer', size='lg') }}
 
-<!-- Create Mnemonic Code Modal -->
-<div class="modal fade" id="createMnemonicCodeModal" tabindex="-1"
-     aria-labelledby="createMnemonicCodeModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createMnemonicCodeModalLabel">
-                    <i class="fas fa-plus"></i> New Mnemonic Code
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createMnemonicCodeFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createMnemonicCodeModal', 'New Mnemonic Code',
+                  icon='plus', container_id='createMnemonicCodeFormContainer', size='lg') }}
 
-<!-- Create AOI Group Modal -->
-<div class="modal fade" id="createAoiGroupModal" tabindex="-1"
-     aria-labelledby="createAoiGroupModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createAoiGroupModalLabel">
-                    <i class="fas fa-plus"></i> New AOI Group
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createAoiGroupFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createAoiGroupModal', 'New AOI Group',
+                  icon='plus', container_id='createAoiGroupFormContainer') }}
 
-<!-- Create AOI Modal -->
-<div class="modal fade" id="createAoiModal" tabindex="-1"
-     aria-labelledby="createAoiModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createAoiModalLabel">
-                    <i class="fas fa-plus"></i> New Area of Interest
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createAoiFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createAoiModal', 'New Area of Interest',
+                  icon='plus', container_id='createAoiFormContainer') }}
 
-<!-- Create Contract Source Modal -->
-<div class="modal fade" id="createContractSourceModal" tabindex="-1"
-     aria-labelledby="createContractSourceModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createContractSourceModalLabel">
-                    <i class="fas fa-plus"></i> New Contract Source
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createContractSourceFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createContractSourceModal', 'New Contract Source',
+                  icon='plus', container_id='createContractSourceFormContainer') }}
 
-<!-- Create Contract Modal -->
-<div class="modal fade" id="createContractModal" tabindex="-1"
-     aria-labelledby="createContractModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createContractModalLabel">
-                    <i class="fas fa-plus"></i> New Contract
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createContractFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createContractModal', 'New Contract',
+                  icon='plus', container_id='createContractFormContainer', size='lg') }}
 
-<!-- Create NSF Program Modal -->
-<div class="modal fade" id="createNsfProgramModal" tabindex="-1"
-     aria-labelledby="createNsfProgramModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="createNsfProgramModalLabel">
-                    <i class="fas fa-plus"></i> New NSF Program
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createNsfProgramFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createNsfProgramModal', 'New NSF Program',
+                  icon='plus', container_id='createNsfProgramFormContainer') }}
 {% endif %}
 
-<!-- ══════════════════════════════════════════════════════════ EDIT MODALS -->
+{# ══════════════════════════════════════════════════════════ EDIT MODALS #}
 
-<!-- Edit Institution Type Modal -->
-<div class="modal fade" id="editInstitutionTypeModal" tabindex="-1"
-     aria-labelledby="editInstitutionTypeModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editInstitutionTypeModalLabel">
-                    <i class="fas fa-tag"></i> Edit Institution Type
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editInstitutionTypeFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editInstitutionTypeModal', 'Edit Institution Type',
+                  icon='tag', container_id='editInstitutionTypeFormContainer', variant='edit') }}
 
-<!-- Edit Organization Modal -->
-<div class="modal fade" id="editOrganizationModal" tabindex="-1"
-     aria-labelledby="editOrganizationModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editOrganizationModalLabel">
-                    <i class="fas fa-sitemap"></i> Edit Organization
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editOrganizationFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editOrganizationModal', 'Edit Organization',
+                  icon='sitemap', container_id='editOrganizationFormContainer', variant='edit') }}
 
-<!-- Edit Institution Modal -->
-<div class="modal fade" id="editInstitutionModal" tabindex="-1"
-     aria-labelledby="editInstitutionModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editInstitutionModalLabel">
-                    <i class="fas fa-university"></i> Edit Institution
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editInstitutionFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editInstitutionModal', 'Edit Institution',
+                  icon='university', container_id='editInstitutionFormContainer', variant='edit', size='lg') }}
 
-<!-- Edit AOI Group Modal -->
-<div class="modal fade" id="editAoiGroupModal" tabindex="-1"
-     aria-labelledby="editAoiGroupModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editAoiGroupModalLabel">
-                    <i class="fas fa-folder"></i> Edit AOI Group
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editAoiGroupFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editAoiGroupModal', 'Edit AOI Group',
+                  icon='folder', container_id='editAoiGroupFormContainer', variant='edit') }}
 
-<!-- Edit AOI Modal -->
-<div class="modal fade" id="editAoiModal" tabindex="-1"
-     aria-labelledby="editAoiModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editAoiModalLabel">
-                    <i class="fas fa-flask"></i> Edit Area of Interest
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editAoiFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editAoiModal', 'Edit Area of Interest',
+                  icon='flask', container_id='editAoiFormContainer', variant='edit') }}
 
-<!-- Edit Contract Source Modal -->
-<div class="modal fade" id="editContractSourceModal" tabindex="-1"
-     aria-labelledby="editContractSourceModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editContractSourceModalLabel">
-                    <i class="fas fa-file-contract"></i> Edit Contract Source
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editContractSourceFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editContractSourceModal', 'Edit Contract Source',
+                  icon='file-contract', container_id='editContractSourceFormContainer', variant='edit') }}
 
-<!-- Edit Contract Modal -->
-<div class="modal fade" id="editContractModal" tabindex="-1"
-     aria-labelledby="editContractModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editContractModalLabel">
-                    <i class="fas fa-file-signature"></i> Edit Contract
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editContractFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editContractModal', 'Edit Contract',
+                  icon='file-signature', container_id='editContractFormContainer', variant='edit') }}
 
-<!-- Edit NSF Program Modal -->
-<div class="modal fade" id="editNsfProgramModal" tabindex="-1"
-     aria-labelledby="editNsfProgramModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="editNsfProgramModalLabel">
-                    <i class="fas fa-award"></i> Edit NSF Program
-                </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editNsfProgramFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editNsfProgramModal', 'Edit NSF Program',
+                  icon='award', container_id='editNsfProgramFormContainer', variant='edit') }}

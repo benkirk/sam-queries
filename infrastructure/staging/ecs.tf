@@ -39,13 +39,13 @@ resource "aws_ecs_task_definition" "webapp" {
     environment = [
       { name = "PYTHONDONTWRITEBYTECODE", value = "1" },
       { name = "PYTHONUNBUFFERED", value = "1" },
-      { name = "DISABLE_AUTH", value = "1" },
-      { name = "DEV_AUTO_LOGIN_USER", value = "benkirk" },
+      { name = "DISABLE_AUTH", value = "0" },
       { name = "FLASK_DEBUG", value = "0" },
       { name = "AUDIT_ENABLED", value = "1" },
       { name = "AUDIT_LOG_PATH", value = "/var/log/sam/model_audit.log" },
       { name = "SAM_DB_REQUIRE_SSL", value = "false" },
-      { name = "AUTH_PROVIDER", value = "stub" },
+      { name = "AUTH_PROVIDER", value = "oidc" },
+      { name = "OIDC_REDIRECT_URI", value = "https://sam-staging.csgsam.ucar.edu/auth/oidc/callback" },
     ]
 
     secrets = [

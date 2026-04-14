@@ -259,6 +259,21 @@ class ProjectContract(Base):
     project = relationship('Project', back_populates='contracts')
     contract = relationship('Contract', back_populates='projects')
 
+    @classmethod
+    def create(cls, session, *, project_id: int, contract_id: int) -> 'ProjectContract':
+        """Link a project to a funding contract.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        Note: removal requires session.delete(pc) since this model has no
+        soft-delete column.  If the contract has no other project links,
+        the caller should also call contract.update(end_date=...) to
+        deactivate the Contract record.
+        """
+        obj = cls(project_id=project_id, contract_id=contract_id)
+        session.add(obj)
+        session.flush()
+        return obj
+
     def __str__(self):
         projcode = self.project.projcode if self.project else self.project_id
         contract_num = self.contract.contract_number if self.contract else self.contract_id

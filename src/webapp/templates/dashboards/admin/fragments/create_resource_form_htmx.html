@@ -1,178 +1,48 @@
-{#
-  htmx: Create Resource Form
-  prim_sys_admin_user_id and prim_responsible_org_id use HTMX search-as-you-type.
-#}
-<form hx-post="{{ url_for('admin_dashboard.htmx_resource_create') }}"
-      hx-target="#createResourceFormContainer"
-      hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
-
-    <div class="modal-body">
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, select_field, checkbox_field, fk_search_field with context %}
+{# htmx: Create Resource Form #}
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_resource_create'),
+    '#createResourceFormContainer',
+    'Create Resource',
+    submit_icon='plus'
+) %}
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createResName" class="form-label">
-                        Resource Name <span class="text-danger">*</span>
-                    </label>
-                    <input type="text" class="form-control" id="createResName"
-                           name="resource_name" required maxlength="40"
-                           value="{{ form.get('resource_name') if form else '' }}"
-                           placeholder="e.g. Derecho">
-                </div>
+                {{ text_field('resource_name', 'Resource Name',
+                              required=True, maxlength=40,
+                              placeholder='e.g. Derecho',
+                              id='createResName') }}
             </div>
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="createResType" class="form-label">
-                        Resource Type <span class="text-danger">*</span>
-                    </label>
-                    <select class="form-select" id="createResType"
-                            name="resource_type_id" required>
-                        <option value="">— Select type —</option>
-                        {% for rt in resource_types %}
-                        <option value="{{ rt.resource_type_id }}"
-                            {% if form and form.get('resource_type_id') == rt.resource_type_id|string %}selected{% endif %}>
-                            {{ rt.resource_type }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
+                {{ select_field('resource_type_id', 'Resource Type',
+                                items=resource_types,
+                                value_attr='resource_type_id',
+                                label_attr='resource_type',
+                                required=True,
+                                placeholder='— Select type —',
+                                id='createResType') }}
             </div>
         </div>
 
-        <div class="mb-3">
-            <label for="createResDescription" class="form-label">
-                Description <span class="text-muted">(optional)</span>
-            </label>
-            <input type="text" class="form-control" id="createResDescription"
-                   name="description" maxlength="255"
-                   value="{{ form.get('description') if form else '' }}">
-        </div>
+        {{ text_field('description', 'Description',
+                      maxlength=255,
+                      id='createResDescription') }}
 
-        <div class="mb-3">
-            <label for="createResCommission" class="form-label">
-                Commission Date <span class="text-muted">(optional)</span>
-            </label>
-            <input type="date" class="form-control" id="createResCommission"
-                   name="commission_date"
-                   value="{{ form.get('commission_date') if form else '' }}">
-        </div>
+        {{ date_field('commission_date', 'Commission Date',
+                      id='createResCommission') }}
 
-        <div class="mb-3 form-check">
-            <input type="checkbox" class="form-check-input" id="createResChargingExempt"
-                   name="charging_exempt" value="1"
-                   {% if form and form.get('charging_exempt') %}checked{% endif %}>
-            <label class="form-check-label" for="createResChargingExempt">Charging Exempt</label>
-        </div>
+        {{ checkbox_field('charging_exempt', 'Charging Exempt',
+                          id='createResChargingExempt') }}
 
-        <!-- Primary Sysadmin search -->
-        <div class="mb-3">
-            <label for="createResSysadminSearch" class="form-label">
-                Primary Sysadmin <span class="text-muted">(optional)</span>
-            </label>
+        {{ fk_search_field('prim_sys_admin_user_id', 'Primary Sysadmin',
+                           search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                           placeholder='Search by name or username…',
+                           id_prefix='createResSysadmin') }}
 
-            <div id="createResSysadminSelected" class="mb-1" style="display:none;">
-                <span class="badge bg-info py-1 px-2" id="createResSysadminBadge"></span>
-                <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
-                        onclick="clearSysadminSelection()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <input type="hidden" name="prim_sys_admin_user_id" id="createResSysadminId" value="">
-
-            <input type="text" class="form-control" id="createResSysadminSearch"
-                   placeholder="Search by name or username…"
-                   autocomplete="off"
-                   hx-get="{{ url_for('admin_dashboard.htmx_search_users') }}"
-                   hx-target="#createResSysadminResults"
-                   hx-swap="innerHTML"
-                   hx-trigger="input changed delay:300ms"
-                   hx-include="[id='createResSysadminSearch']"
-                   name="q">
-            <div id="createResSysadminResults" class="list-group mt-1"
-                 style="max-height:180px;overflow-y:auto;"></div>
-        </div>
-
-        <!-- Primary Responsible Organization search -->
-        <div class="mb-3">
-            <label for="createResOrgSearch" class="form-label">
-                Primary Responsible Organization <span class="text-muted">(optional)</span>
-            </label>
-
-            <div id="createResOrgSelected" class="mb-1" style="display:none;">
-                <span class="badge bg-secondary py-1 px-2" id="createResOrgBadge"></span>
-                <button type="button" class="btn btn-xs btn-outline-secondary ms-1"
-                        onclick="clearOrgSelection()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <input type="hidden" name="prim_responsible_org_id" id="createResOrgId" value="">
-
-            <input type="text" class="form-control" id="createResOrgSearch"
-                   placeholder="Search by name or acronym…"
-                   autocomplete="off"
-                   hx-get="{{ url_for('admin_dashboard.htmx_search_organizations') }}"
-                   hx-target="#createResOrgResults"
-                   hx-swap="innerHTML"
-                   hx-trigger="input changed delay:300ms"
-                   hx-include="[id='createResOrgSearch']"
-                   name="q">
-            <div id="createResOrgResults" class="list-group mt-1"
-                 style="max-height:180px;overflow-y:auto;"></div>
-        </div>
-
-        {% if errors %}
-        <div class="alert alert-danger mt-2 mb-0">
-            {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">
-            <i class="fas fa-plus"></i> Create Resource
-        </button>
-    </div>
-</form>
-
-<script>
-(function() {
-    // Sysadmin picker
-    document.getElementById('createResSysadminResults').addEventListener('click', function(e) {
-        var item = e.target.closest('.fk-search-result');
-        if (!item) return;
-        document.getElementById('createResSysadminId').value = item.dataset.userId;
-        document.getElementById('createResSysadminBadge').textContent = item.dataset.userDisplay;
-        document.getElementById('createResSysadminSelected').style.display = '';
-        document.getElementById('createResSysadminResults').innerHTML = '';
-        document.getElementById('createResSysadminSearch').value = '';
-    });
-
-    // Org picker
-    document.getElementById('createResOrgResults').addEventListener('click', function(e) {
-        var item = e.target.closest('.fk-search-result');
-        if (!item) return;
-        document.getElementById('createResOrgId').value = item.dataset.orgId;
-        document.getElementById('createResOrgBadge').textContent = item.dataset.orgDisplay;
-        document.getElementById('createResOrgSelected').style.display = '';
-        document.getElementById('createResOrgResults').innerHTML = '';
-        document.getElementById('createResOrgSearch').value = '';
-    });
-})();
-
-function clearSysadminSelection() {
-    document.getElementById('createResSysadminId').value = '';
-    document.getElementById('createResSysadminBadge').textContent = '';
-    document.getElementById('createResSysadminSelected').style.display = 'none';
-}
-
-function clearOrgSelection() {
-    document.getElementById('createResOrgId').value = '';
-    document.getElementById('createResOrgBadge').textContent = '';
-    document.getElementById('createResOrgSelected').style.display = 'none';
-}
-</script>
+        {{ fk_search_field('prim_responsible_org_id', 'Primary Responsible Organization',
+                           search_url=url_for('admin_dashboard.htmx_search_organizations'),
+                           placeholder='Search by name or acronym…',
+                           badge_class='bg-secondary py-1 px-2',
+                           id_prefix='createResOrg') }}
+{% endcall %}

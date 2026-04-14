@@ -1,0 +1,276 @@
+{#
+  Linked Elements section — rendered below the main edit-project tabs.
+  Context: project, allows_org_links, active_organizations, contracts,
+           active_directories, errors
+#}
+
+{% from 'dashboards/fragments/form_fields.html' import fk_search_field with context %}
+
+{% if errors %}
+<div class="alert alert-danger alert-dismissible fade show mb-3">
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  {% for e in errors %}<div>{{ e }}</div>{% endfor %}
+</div>
+{% endif %}
+
+<h5 class="text-muted mb-3">
+  <i class="fas fa-link me-1"></i> Linked Elements
+</h5>
+
+<div class="d-flex flex-column gap-3">
+
+  {# ═══════════════════════════════ Organizations (NCAR-facility only) ══ #}
+  {% if allows_org_links %}
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <span class="fw-semibold">
+        <i class="fas fa-building me-1 text-primary"></i> Organizations
+      </span>
+      <button class="btn btn-sm btn-outline-success"
+              type="button"
+              onclick="leToggleAddForm('addOrgForm')">
+        <i class="fas fa-plus"></i> Add
+      </button>
+    </div>
+    <div class="card-body p-0">
+
+      {# ── Add form (hidden by default) ── #}
+      <div id="addOrgForm" style="display:none;" class="p-3 border-bottom bg-light">
+        <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_organization', projcode=project.projcode) }}"
+              hx-target="#linkedElementsContainer"
+              hx-swap="innerHTML">
+          <div class="d-flex gap-2 align-items-start flex-wrap">
+            <div class="flex-grow-1" style="min-width:200px;">
+              {{ fk_search_field('organization_id', '',
+                                 search_url=url_for('admin_dashboard.htmx_org_search_for_project'),
+                                 optional_text='',
+                                 placeholder='Search by name or acronym…',
+                                 badge_class='bg-info text-dark py-1 px-2',
+                                 search_class='form-control form-control-sm',
+                                 id_prefix='linkedOrg') }}
+            </div>
+            <button type="submit" class="btn btn-sm btn-success">
+              <i class="fas fa-check"></i> Link
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="leToggleAddForm('addOrgForm')">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {# ── Table of active organizations ── #}
+      {% if active_organizations %}
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:8em;">Acronym</th>
+            <th>Name</th>
+            <th style="width:9em;">Since</th>
+            <th style="width:9em;">Until</th>
+            <th style="width:3em;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for po in active_organizations %}
+          <tr>
+            <td>
+              <span class="badge bg-light text-dark border">{{ po.organization.acronym }}</span>
+            </td>
+            <td>{{ po.organization.name }}</td>
+            <td class="text-muted small">{{ po.start_date | fmt_date }}</td>
+            <td class="text-muted small">
+              {% if po.end_date %}{{ po.end_date | fmt_date }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end">
+              <button class="btn btn-xs btn-outline-danger"
+                      title="Remove organization link"
+                      hx-post="{{ url_for('admin_dashboard.htmx_remove_project_organization', projcode=project.projcode, po_id=po.project_organization_id) }}"
+                      hx-target="#linkedElementsContainer"
+                      hx-swap="innerHTML"
+                      hx-confirm="Remove the link to {{ po.organization.name }}?">
+                <i class="fas fa-times"></i>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="text-muted small p-3">No organizations linked.</div>
+      {% endif %}
+
+    </div>
+  </div>
+  {% endif %}
+
+  {# ═══════════════════════════════════════════════════ Contracts ══════ #}
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <span class="fw-semibold">
+        <i class="fas fa-file-contract me-1 text-warning"></i> Contracts
+      </span>
+      <button class="btn btn-sm btn-outline-success"
+              type="button"
+              onclick="leToggleAddForm('addContractForm')">
+        <i class="fas fa-plus"></i> Add
+      </button>
+    </div>
+    <div class="card-body p-0">
+
+      {# ── Add form (hidden by default) ── #}
+      <div id="addContractForm" style="display:none;" class="p-3 border-bottom bg-light">
+        <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_contract', projcode=project.projcode) }}"
+              hx-target="#linkedElementsContainer"
+              hx-swap="innerHTML">
+          <div class="d-flex gap-2 align-items-start flex-wrap">
+            <div class="flex-grow-1" style="min-width:200px;">
+              {{ fk_search_field('contract_id', '',
+                                 search_url=url_for('admin_dashboard.htmx_contract_search_for_project'),
+                                 optional_text='',
+                                 placeholder='Search by contract number or title…',
+                                 badge_class='bg-warning text-dark py-1 px-2 font-monospace',
+                                 search_class='form-control form-control-sm',
+                                 id_prefix='linkedContract') }}
+            </div>
+            <button type="submit" class="btn btn-sm btn-success">
+              <i class="fas fa-check"></i> Link
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="leToggleAddForm('addContractForm')">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {# ── Table of contracts ── #}
+      {% if contracts %}
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:12em;">Contract #</th>
+            <th>Title</th>
+            <th style="width:9em;">Linked</th>
+            <th style="width:3em;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pc in contracts %}
+          <tr>
+            <td>
+              <span class="font-monospace small">{{ pc.contract.contract_number }}</span>
+            </td>
+            <td class="small">
+              {{ pc.contract.title[:80] }}{% if pc.contract.title | length > 80 %}…{% endif %}
+            </td>
+            <td class="text-muted small">{{ pc.creation_time | fmt_date }}</td>
+            <td class="text-end">
+              <button class="btn btn-xs btn-outline-danger"
+                      title="Remove contract link"
+                      hx-post="{{ url_for('admin_dashboard.htmx_remove_project_contract', projcode=project.projcode, pc_id=pc.project_contract_id) }}"
+                      hx-target="#linkedElementsContainer"
+                      hx-swap="innerHTML"
+                      hx-confirm="Remove link to contract {{ pc.contract.contract_number }}? If this is the only project using this contract it will also be deactivated.">
+                <i class="fas fa-times"></i>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="text-muted small p-3">No contracts linked.</div>
+      {% endif %}
+
+    </div>
+  </div>
+
+  {# ═══════════════════════════════════════════════ Directories ════════ #}
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <span class="fw-semibold">
+        <i class="fas fa-folder me-1 text-secondary"></i> Directories
+      </span>
+      <button class="btn btn-sm btn-outline-success"
+              type="button"
+              onclick="leToggleAddForm('addDirForm')">
+        <i class="fas fa-plus"></i> Add
+      </button>
+    </div>
+    <div class="card-body p-0">
+
+      {# ── Add form (hidden by default) ── #}
+      <div id="addDirForm" style="display:none;" class="p-3 border-bottom bg-light">
+        <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_directory', projcode=project.projcode) }}"
+              hx-target="#linkedElementsContainer"
+              hx-swap="innerHTML">
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <input type="text"
+                   name="directory_name"
+                   class="form-control form-control-sm flex-grow-1"
+                   placeholder="/glade/path/to/directory"
+                   autocomplete="off"
+                   style="min-width:200px;">
+            <button type="submit" class="btn btn-sm btn-success">
+              <i class="fas fa-check"></i> Add
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="leToggleAddForm('addDirForm')">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {# ── Table of active directories ── #}
+      {% if active_directories %}
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Directory</th>
+            <th style="width:9em;">Since</th>
+            <th style="width:9em;">Until</th>
+            <th style="width:3em;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pd in active_directories %}
+          <tr>
+            <td class="font-monospace small">{{ pd.directory_name }}</td>
+            <td class="text-muted small">{{ pd.start_date | fmt_date }}</td>
+            <td class="text-muted small">
+              {% if pd.end_date %}{{ pd.end_date | fmt_date }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end">
+              <button class="btn btn-xs btn-outline-danger"
+                      title="Remove directory"
+                      hx-post="{{ url_for('admin_dashboard.htmx_remove_project_directory', projcode=project.projcode, pd_id=pd.project_directory_id) }}"
+                      hx-target="#linkedElementsContainer"
+                      hx-swap="innerHTML"
+                      hx-confirm="Remove directory {{ pd.directory_name }}?">
+                <i class="fas fa-times"></i>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="text-muted small p-3">No directories linked.</div>
+      {% endif %}
+
+    </div>
+  </div>
+
+</div>{# /d-flex flex-column #}
+
+<script>
+// Toggle helper for the Add-form collapse panels. FK pickers are wired up
+// globally by /static/js/fk-picker.js.
+function leToggleAddForm(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+</script>

@@ -134,6 +134,17 @@ from .fstree_access import (
 # Rolling window usage (30/90-day trailing charge analysis)
 from .rolling_usage import get_project_rolling_usage
 
+# Admin dashboard queries (heavy eager-load chains)
+from .admin import (
+    get_organizations_with_members,
+    get_institution_type_tree,
+    get_institutions_with_members,
+    get_aoi_groups_with_areas,
+    get_areas_of_interest_with_projects,
+    get_contracts_with_pi,
+    get_nsf_programs_with_contracts,
+)
+
 
 __all__ = [
     # Lookups
@@ -208,4 +219,12 @@ __all__ = [
     'get_user_fsdata',
     # Rolling window usage
     'get_project_rolling_usage',
+    # Admin dashboard queries
+    'get_organizations_with_members',
+    'get_institution_type_tree',
+    'get_institutions_with_members',
+    'get_aoi_groups_with_areas',
+    'get_areas_of_interest_with_projects',
+    'get_contracts_with_pi',
+    'get_nsf_programs_with_contracts',
 ]

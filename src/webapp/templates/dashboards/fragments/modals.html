@@ -1,0 +1,62 @@
+{#
+  Reusable modal scaffold macro for HTMX-loaded forms.
+
+  Wraps the boilerplate Bootstrap modal markup so the only thing each
+  *_modals.html file declares is the modal id, title, icon, form container id,
+  and create/edit variant.
+
+  Usage:
+      {% from 'dashboards/fragments/modals.html' import modal_scaffold %}
+
+      {{ modal_scaffold('createFacilityModal',
+                        'New Facility',
+                        icon='plus',
+                        container_id='createFacilityFormContainer',
+                        variant='create') }}
+
+      {{ modal_scaffold('editFacilityModal',
+                        'Edit Facility',
+                        icon='building',
+                        container_id='editFacilityFormContainer',
+                        variant='edit',
+                        size='lg') }}
+
+  Parameters:
+    modal_id     - DOM id of the outer modal div (required)
+    title        - text shown in the modal header (required)
+    icon         - Font Awesome icon name without 'fa-' prefix (required)
+    container_id - DOM id of the inner div that HTMX will swap form HTML into (required)
+    variant      - 'create' (green header, default) or 'edit' (yellow header)
+    size         - 'lg' / 'xl' to apply modal-lg / modal-xl to modal-dialog
+#}
+
+{% macro modal_scaffold(modal_id, title, icon, container_id, variant='create', size=None) %}
+{%- if variant == 'edit' -%}
+  {%- set _header_class = 'bg-warning' -%}
+  {%- set _close_class = 'btn-close' -%}
+{%- else -%}
+  {%- set _header_class = 'bg-success text-white' -%}
+  {%- set _close_class = 'btn-close btn-close-white' -%}
+{%- endif -%}
+{%- set _dialog_class = 'modal-dialog' + (' modal-' ~ size if size else '') -%}
+<div class="modal fade" id="{{ modal_id }}" tabindex="-1"
+     aria-labelledby="{{ modal_id }}Label" aria-hidden="true">
+    <div class="{{ _dialog_class }}">
+        <div class="modal-content">
+            <div class="modal-header {{ _header_class }}">
+                <h5 class="modal-title" id="{{ modal_id }}Label">
+                    <i class="fas fa-{{ icon }}"></i> {{ title }}
+                </h5>
+                <button type="button" class="{{ _close_class }}"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="{{ container_id }}">
+                <div class="modal-body text-center text-muted py-4" role="status">
+                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}

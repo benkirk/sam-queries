@@ -11,7 +11,7 @@ Domain-specific routes are split into sub-modules imported at the bottom:
 """
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response
-from webapp.utils.htmx import htmx_success
+from webapp.utils.htmx import htmx_success, htmx_success_message
 from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
 from webapp.api.helpers import parse_input_end_date
@@ -146,7 +146,7 @@ def project_card(projcode):
         project_data=project_data,
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
-        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
     )
 
 
@@ -420,13 +420,59 @@ def expirations_export():
 # htmx Search Routes
 # ============================================================================
 
+@bp.route('/htmx/search/users')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_search_users():
+    """Unified user search endpoint.
+
+    The ``context`` query parameter selects the response template:
+      fk          → FK-picker badge list (create_resource, create_contract, create_project)
+      impersonate → admin user list with active_only filter (impersonation panel)
+      member      → project member add list, excludes existing members (projcode required)
+
+    All other contexts fall back to ``fk``.
+    """
+    from sam.queries.users import search_users_by_pattern, get_project_member_user_ids
+    from sam.projects.projects import Project
+
+    q = request.args.get('q', '').strip()
+    context = request.args.get('context', 'fk')
+
+    if len(q) < 2:
+        return ''
+
+    template_map = {
+        'fk':          'dashboards/admin/fragments/user_search_results_fk_htmx.html',
+        'impersonate': 'dashboards/admin/fragments/user_search_results_htmx.html',
+        'member':      'dashboards/user/fragments/user_search_results_htmx.html',
+    }
+    template = template_map.get(context, template_map['fk'])
+
+    active_only = request.args.get('active_only', 'true') == 'true'
+    exclude_ids = None
+
+    if context == 'member':
+        projcode = request.args.get('projcode', '')
+        if projcode:
+            project = db.session.query(Project).filter_by(projcode=projcode).first()
+            if project:
+                exclude_ids = get_project_member_user_ids(db.session, project.project_id)
+
+    users = search_users_by_pattern(
+        db.session, q, limit=20 if context == 'impersonate' else 15,
+        active_only=active_only, exclude_user_ids=exclude_ids
+    )
+
+    return render_template(template, users=users, q=q)
+
+
+# Keep old impersonate endpoint as alias for backward compatibility
 @bp.route('/htmx/search-users-impersonate')
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_search_users_impersonate():
-    """
-    Search active users for impersonation, returning HTML fragments.
-    """
+    """Alias for /htmx/search/users?context=impersonate (deprecated)."""
     from sam.queries.users import search_users_by_pattern
 
     query = request.args.get('q', '').strip()
@@ -609,10 +655,9 @@ def htmx_add_exemption(username):
         )
 
     # Success: close modal + refresh user card
-    return htmx_success(
-        'dashboards/admin/fragments/exemption_success_htmx.html',
+    return htmx_success_message(
         {'closeActiveModal': {}, 'reloadUserCard': username},
-        username=username
+        'Exemption saved successfully.',
     )
 
 
@@ -704,10 +749,9 @@ def htmx_edit_exemption(exemption_id):
         )
 
     # Success: close modal + refresh user card
-    return htmx_success(
-        'dashboards/admin/fragments/exemption_success_htmx.html',
+    return htmx_success_message(
         {'closeActiveModal': {}, 'reloadUserCard': username},
-        username=username
+        'Exemption saved successfully.',
     )
 
 
@@ -745,4 +789,4 @@ def htmx_queues_for_resource():
 # Domain route modules — must be imported AFTER bp is defined
 # ============================================================================
 
-from . import resources_routes, facilities_routes, orgs_routes  # noqa: E402, F401
+from . import resources_routes, facilities_routes, orgs_routes, projects_routes  # noqa: E402, F401

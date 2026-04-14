@@ -1,0 +1,147 @@
+{#
+  Intentional exception to the field-macro pattern: dominated by a bespoke
+  resource-checkbox table showing source period / current end / tree-size per
+  row. Only the date inputs at the top would benefit from macros. Leave as-is.
+
+  Admin: Edit Project — Renew Allocations modal form.
+  Loaded lazily into #renewAllocationsFormContainer when the Renew button is clicked.
+
+  Context variables:
+    project           — Project ORM object (the one being edited)
+    root              — Root of the project tree (what renewal operates on)
+    candidates        — list of dicts: one per renewable root allocation.
+                        Keys: source_alloc, resource_id, resource_name,
+                              resource_type, amount, start_date, end_date,
+                              inheriting_count
+    source_active_at  — YYYY-MM-DD string (the "Active At" filter value)
+    default_start     — YYYY-MM-DD string — proposed new start date
+    default_end       — YYYY-MM-DD string — proposed new end date
+    errors            — list of validation error strings (on re-render)
+    form              — request.form on validation error re-render
+#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_renew_allocations', projcode=project.projcode),
+    '#renewAllocationsFormContainer',
+    'Renew Allocations',
+    submit_icon='sync-alt',
+    submit_class='btn-primary'
+) %}
+
+  <div class="alert alert-info small mb-3">
+    <i class="fas fa-info-circle"></i>
+    Renewing allocations for <strong>{{ root.projcode }}</strong>
+    {% if root.project_id != project.project_id %}
+    (tree root of <code>{{ project.projcode }}</code>)
+    {% endif %}
+    based on allocations active at <strong>{{ source_active_at }}</strong>.
+    The new allocations mirror the current amounts and tree topology.
+  </div>
+
+  {# Preserve source date for the POST — not user-editable in v1. #}
+  <input type="hidden" name="source_active_at" value="{{ source_active_at }}">
+
+  {% if not candidates %}
+  <div class="alert alert-warning mb-0">
+    <i class="fas fa-exclamation-triangle"></i>
+    No renewable allocations found for this project at
+    <strong>{{ source_active_at }}</strong>.
+    Try a different "Active At" date on the Allocations tab.
+  </div>
+  {% else %}
+
+  <!-- New date range (side-by-side; stack on narrow viewports) -->
+  <div class="row">
+    <div class="col-md-6">
+      <div class="mb-3">
+        <label for="renewStart" class="form-label fw-semibold">
+          New Start Date <span class="text-danger">*</span>
+        </label>
+        <input type="date" class="form-control" id="renewStart"
+               name="new_start_date" required
+               value="{{ form.get('new_start_date', default_start) if form else default_start }}">
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="mb-3">
+        <label for="renewEnd" class="form-label fw-semibold">
+          New End Date <span class="text-danger">*</span>
+        </label>
+        <input type="date" class="form-control" id="renewEnd"
+               name="new_end_date" required
+               value="{{ form.get('new_end_date', default_end) if form else default_end }}">
+        <small class="form-text text-muted">
+          Default: contiguous with latest source end date, same period length.
+        </small>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resource checkboxes -->
+  <div class="mb-2">
+    <label class="form-label fw-semibold mb-1">Resources to renew</label>
+    <div class="form-text mt-0 mb-2">
+      Uncheck any resource you don't want to renew. All are selected by default.
+    </div>
+    <div class="border rounded">
+      <table class="table table-sm mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:2.5rem;"></th>
+            <th>Resource</th>
+            <th class="text-end">Amount</th>
+            <th class="text-end">Source Period</th>
+            <th class="text-end">Tree</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in candidates %}
+          {%- set checked_default = true -%}
+          {%- set submitted_ids = form.getlist('resource_ids') if form else [] -%}
+          {%- if form and c.resource_id|string not in submitted_ids -%}
+            {%- set checked_default = false -%}
+          {%- endif -%}
+          <tr>
+            <td class="text-center" style="vertical-align:middle;">
+              <input class="form-check-input" type="checkbox"
+                     name="resource_ids"
+                     id="renewRes{{ c.resource_id }}"
+                     value="{{ c.resource_id }}"
+                     {% if checked_default %}checked{% endif %}>
+            </td>
+            <td style="vertical-align:middle;">
+              <label class="mb-0" for="renewRes{{ c.resource_id }}">
+                <i class="fas fa-server text-primary me-1 small"></i>
+                <strong>{{ c.resource_name }}</strong>
+                {% if c.resource_type %}
+                <span class="badge bg-secondary bg-opacity-25 text-dark border small ms-1">
+                  {{ c.resource_type }}
+                </span>
+                {% endif %}
+              </label>
+            </td>
+            <td class="text-end small text-muted" style="vertical-align:middle;">
+              {{ c.amount | fmt_number }}
+            </td>
+            <td class="text-end small text-muted" style="vertical-align:middle;">
+              {{ c.start_date | fmt_date }} →
+              {% if c.end_date %}{{ c.end_date | fmt_date }}{% else %}open{% endif %}
+            </td>
+            <td class="text-end small text-muted" style="vertical-align:middle;">
+              {% if c.descendant_count > 0 %}
+              1 root + {{ c.descendant_count }} sub-project{{ 's' if c.descendant_count != 1 else '' }}
+              {% else %}
+              1 root
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% endif %}
+
+{% endcall %}
