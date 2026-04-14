@@ -428,3 +428,180 @@ class TestProductionConfigOIDCValidation:
                 ProductionConfig.validate()
             finally:
                 ProductionConfig.AUTH_PROVIDER = original
+
+
+# ---------------------------------------------------------------------------
+# UPN claim stripping tests
+# ---------------------------------------------------------------------------
+
+class TestUPNClaimStripping:
+    """Test that UPN-format preferred_username (user@domain) resolves correctly."""
+
+    def test_upn_with_domain_resolves(self, session):
+        """benkirk@ucar.edu resolves to SAM user benkirk."""
+        provider = OIDCAuthProvider(db_session=session)
+        claims = {'preferred_username': 'benkirk@ucar.edu', 'sub': '123'}
+        user = provider.resolve_user_from_claims(claims)
+        assert user is not None
+        assert user.username == 'benkirk'
+
+    def test_upn_with_different_domain(self, session):
+        """benkirk@ncar.ucar.edu also strips to benkirk."""
+        provider = OIDCAuthProvider(db_session=session)
+        claims = {'preferred_username': 'benkirk@ncar.ucar.edu', 'sub': '123'}
+        user = provider.resolve_user_from_claims(claims)
+        assert user is not None
+        assert user.username == 'benkirk'
+
+    def test_short_username_still_works(self, session):
+        """Plain benkirk (no @) still works after stripping logic."""
+        provider = OIDCAuthProvider(db_session=session)
+        claims = {'preferred_username': 'benkirk', 'sub': '123'}
+        user = provider.resolve_user_from_claims(claims)
+        assert user is not None
+        assert user.username == 'benkirk'
+
+    def test_upn_nonexistent_user(self, session):
+        """nobody@ucar.edu still returns None."""
+        provider = OIDCAuthProvider(db_session=session)
+        claims = {'preferred_username': 'nobody_xyz@ucar.edu', 'sub': '999'}
+        user = provider.resolve_user_from_claims(claims)
+        assert user is None
+
+
+# ---------------------------------------------------------------------------
+# DB role resolution tests
+# ---------------------------------------------------------------------------
+
+class TestDBRoleResolution:
+    """Test that AuthUser.roles falls back to database role_user table."""
+
+    def test_dev_mapping_takes_priority(self, session):
+        """When user is in dev_role_mapping, those roles are used."""
+        from webapp.auth.models import AuthUser
+        from sam.core.users import User
+
+        user = User.get_by_username(session, 'benkirk')
+        if user is None:
+            pytest.skip("Test user not in database")
+
+        auth_user = AuthUser(user, dev_role_mapping={'benkirk': ['admin']})
+        assert 'admin' in auth_user.roles
+
+    def test_db_roles_when_not_in_dev_mapping(self, session):
+        """When user is NOT in dev_role_mapping, roles come from role_user table."""
+        from webapp.auth.models import AuthUser
+        from sam.core.users import User
+
+        user = User.get_by_username(session, 'benkirk')
+        if user is None:
+            pytest.skip("Test user not in database")
+
+        auth_user = AuthUser(user, dev_role_mapping={})
+        roles = auth_user.roles
+        assert isinstance(roles, set)
+        db_role_names = {ra.role.name for ra in user.role_assignments}
+        assert roles == db_role_names
+
+    def test_empty_roles_when_no_assignments(self, session):
+        """User with no role_user entries and no dev mapping gets empty roles."""
+        from webapp.auth.models import AuthUser
+        from sam.core.users import User
+
+        users = session.query(User).filter(User.is_active).all()
+        user_no_roles = None
+        for u in users:
+            if not u.role_assignments:
+                user_no_roles = u
+                break
+        if user_no_roles is None:
+            pytest.skip("No user without role assignments found in database")
+
+        auth_user = AuthUser(user_no_roles, dev_role_mapping={})
+        assert auth_user.roles == set()
+
+
+# ---------------------------------------------------------------------------
+# OIDC callback session and redirect tests
+# ---------------------------------------------------------------------------
+
+class TestOIDCSessionAndRedirect:
+    """Test session state and role-based redirect after OIDC callback."""
+
+    def test_callback_sets_session_user_id(self, app):
+        """After successful callback, session contains user ID."""
+        mock_oauth = MagicMock()
+        mock_oauth.entra.authorize_access_token.return_value = {
+            'userinfo': {'preferred_username': 'benkirk', 'email': 'benkirk@ucar.edu'}
+        }
+
+        app.extensions['oauth'] = mock_oauth
+        app.config['AUTH_PROVIDER'] = 'oidc'
+        try:
+            with app.test_client() as c:
+                c.get('/auth/oidc/callback')
+                with c.session_transaction() as sess:
+                    assert '_user_id' in sess
+        finally:
+            app.config['AUTH_PROVIDER'] = 'stub'
+            app.extensions.pop('oauth', None)
+
+    def test_callback_upn_claim_creates_session(self, app):
+        """UPN-format claim (user@domain) still creates a valid session."""
+        mock_oauth = MagicMock()
+        mock_oauth.entra.authorize_access_token.return_value = {
+            'userinfo': {'preferred_username': 'benkirk@ucar.edu', 'email': 'benkirk@ucar.edu'}
+        }
+
+        app.extensions['oauth'] = mock_oauth
+        app.config['AUTH_PROVIDER'] = 'oidc'
+        try:
+            with app.test_client() as c:
+                resp = c.get('/auth/oidc/callback')
+                assert resp.status_code == 302
+                assert '/auth/login' not in resp.headers.get('Location', '')
+        finally:
+            app.config['AUTH_PROVIDER'] = 'stub'
+            app.extensions.pop('oauth', None)
+
+    def test_callback_respects_oidc_next(self, app):
+        """Callback redirects to session['oidc_next'] when set."""
+        mock_oauth = MagicMock()
+        mock_oauth.entra.authorize_access_token.return_value = {
+            'userinfo': {'preferred_username': 'benkirk', 'email': 'benkirk@ucar.edu'}
+        }
+
+        app.extensions['oauth'] = mock_oauth
+        app.config['AUTH_PROVIDER'] = 'oidc'
+        try:
+            with app.test_client() as c:
+                with c.session_transaction() as sess:
+                    sess['oidc_next'] = '/dashboard/allocations'
+
+                resp = c.get('/auth/oidc/callback')
+                assert resp.status_code == 302
+                assert '/dashboard/allocations' in resp.headers.get('Location', '')
+        finally:
+            app.config['AUTH_PROVIDER'] = 'stub'
+            app.extensions.pop('oauth', None)
+
+    def test_callback_oidc_next_consumed(self, app):
+        """oidc_next is removed from session after redirect."""
+        mock_oauth = MagicMock()
+        mock_oauth.entra.authorize_access_token.return_value = {
+            'userinfo': {'preferred_username': 'benkirk', 'email': 'benkirk@ucar.edu'}
+        }
+
+        app.extensions['oauth'] = mock_oauth
+        app.config['AUTH_PROVIDER'] = 'oidc'
+        try:
+            with app.test_client() as c:
+                with c.session_transaction() as sess:
+                    sess['oidc_next'] = '/dashboard/user'
+
+                c.get('/auth/oidc/callback')
+                with c.session_transaction() as sess:
+                    assert 'oidc_next' not in sess
+        finally:
+            app.config['AUTH_PROVIDER'] = 'stub'
+            app.extensions.pop('oauth', None)

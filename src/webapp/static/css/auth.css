@@ -41,6 +41,23 @@ body {
     margin-bottom: 35px;
 }
 
+.login-logo {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 16px;
+    background: linear-gradient(135deg, var(--ncar-blue) 0%, var(--ncar-light-blue) 100%);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(var(--ncar-teal-rgb), 0.3);
+}
+
+.login-logo i {
+    font-size: 28px;
+    color: white;
+}
+
 .login-header h1 {
     color: var(--ncar-navy);
     font-size: 32px;
@@ -205,4 +222,32 @@ body {
 
 .login-form {
     margin: 0;
+}
+
+/* ===================================================================
+   Help Link
+   =================================================================== */
+
+.help-link {
+    color: var(--ncar-gray);
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.help-link:hover {
+    color: var(--ncar-blue);
+    text-decoration: underline;
+}
+
+/* ===================================================================
+   Footer
+   =================================================================== */
+
+.login-footer {
+    text-align: center;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
 }

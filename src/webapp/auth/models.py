@@ -63,16 +63,10 @@ class AuthUser(UserMixin):
         3. Empty set (no roles)
         """
         if self._roles is None:
-            # First, check hard-coded dev role mapping
             if self.username in self.dev_role_mapping:
                 self._roles = set(self.dev_role_mapping[self.username])
             else:
-                # Fall back to database roles (future implementation)
-                # Uncomment when role/role_user tables are ready:
-                # self._roles = {ra.role.name for ra in self.sam_user.role_assignments}
-
-                # For now, return empty set if not in dev mapping
-                self._roles = set()
+                self._roles = {ra.role.name for ra in self.sam_user.role_assignments}
 
         return self._roles
 
