@@ -30,30 +30,33 @@ resource "aws_alb_target_group" "webapp" {
   tags = { Name = "${local.name_prefix}-webapp-tg" }
 }
 
-# HTTP listener (upgrade to HTTPS when ACM cert is ready)
+# HTTP listener — redirects all traffic to HTTPS
 resource "aws_alb_listener" "http" {
   load_balancer_arn = aws_alb.main.arn
   port              = 80
   protocol          = "HTTP"
 
   default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+# HTTPS listener — terminates TLS using ACM cert, forwards to target group
+resource "aws_alb_listener" "https" {
+  load_balancer_arn = aws_alb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate_validation.webapp.certificate_arn
+
+  default_action {
     type             = "forward"
     target_group_arn = aws_alb_target_group.webapp.arn
   }
 }
-
-# HTTPS listener — required before enabling AUTH_PROVIDER=oidc
-# Uncomment when ACM certificate and DNS are ready:
-#
-# resource "aws_alb_listener" "https" {
-#   load_balancer_arn = aws_alb.main.arn
-#   port              = 443
-#   protocol          = "HTTPS"
-#   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-#   certificate_arn   = aws_acm_certificate.webapp.arn
-#
-#   default_action {
-#     type             = "forward"
-#     target_group_arn = aws_alb_target_group.webapp.arn
-#   }
-# }
