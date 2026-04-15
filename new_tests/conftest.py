@@ -298,3 +298,113 @@ def subtree_project(session, _subtree_project_id):
     """A Project bound to the test session that has >=3 active child projects."""
     from sam import Project
     return session.get(Project, _subtree_project_id)
+
+
+# ---- "any row of X" fixtures ----------------------------------------------
+#
+# Simple function-scoped lookups used by the `.update()` contract tests in
+# test_manage_*.py and by read-only property tests. Each runs one ~1ms
+# SELECT with a skip fallback when the row doesn't exist. Session-cached
+# ID lookups would be marginally faster but are not worth the complexity
+# at this call volume.
+#
+# Naming: `any_X` → "pick any row of type X, don't care which". Contrast
+# with the shape-constrained fixtures above (`active_project` requires
+# allocations, `hpc_resource` requires active HPC, etc.).
+
+
+def _any_or_skip(session, model, label):
+    row = session.query(model).first()
+    if row is None:
+        pytest.skip(f"No {label} in database")
+    return row
+
+
+@pytest.fixture
+def any_facility(session):
+    from sam.resources.facilities import Facility
+    return _any_or_skip(session, Facility, "facilities")
+
+
+@pytest.fixture
+def any_panel(session):
+    from sam.resources.facilities import Panel
+    return _any_or_skip(session, Panel, "panels")
+
+
+@pytest.fixture
+def any_panel_session(session):
+    from sam.resources.facilities import PanelSession
+    return _any_or_skip(session, PanelSession, "panel sessions")
+
+
+@pytest.fixture
+def any_allocation_type(session):
+    from sam.accounting.allocations import AllocationType
+    return _any_or_skip(session, AllocationType, "allocation types")
+
+
+@pytest.fixture
+def any_organization(session):
+    from sam.core.organizations import Organization
+    return _any_or_skip(session, Organization, "organizations")
+
+
+@pytest.fixture
+def any_institution(session):
+    from sam.core.organizations import Institution
+    return _any_or_skip(session, Institution, "institutions")
+
+
+@pytest.fixture
+def any_aoi(session):
+    from sam.projects.areas import AreaOfInterest
+    return _any_or_skip(session, AreaOfInterest, "areas of interest")
+
+
+@pytest.fixture
+def any_aoi_group(session):
+    from sam.projects.areas import AreaOfInterestGroup
+    return _any_or_skip(session, AreaOfInterestGroup, "AOI groups")
+
+
+@pytest.fixture
+def any_contract(session):
+    from sam.projects.contracts import Contract
+    return _any_or_skip(session, Contract, "contracts")
+
+
+@pytest.fixture
+def any_contract_source(session):
+    from sam.projects.contracts import ContractSource
+    return _any_or_skip(session, ContractSource, "contract sources")
+
+
+@pytest.fixture
+def any_nsf_program(session):
+    from sam.projects.contracts import NSFProgram
+    return _any_or_skip(session, NSFProgram, "NSF programs")
+
+
+@pytest.fixture
+def any_resource(session):
+    from sam.resources.resources import Resource
+    return _any_or_skip(session, Resource, "resources")
+
+
+@pytest.fixture
+def any_resource_type(session):
+    from sam.resources.resources import ResourceType
+    return _any_or_skip(session, ResourceType, "resource types")
+
+
+@pytest.fixture
+def any_machine(session):
+    from sam.resources.machines import Machine
+    return _any_or_skip(session, Machine, "machines")
+
+
+@pytest.fixture
+def any_queue(session):
+    from sam.resources.machines import Queue
+    return _any_or_skip(session, Queue, "queues")
