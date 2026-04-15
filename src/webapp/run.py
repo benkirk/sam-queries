@@ -33,7 +33,17 @@ from webapp.config import get_webapp_config
 from webapp.logging_config import configure_logging
 
 
-def create_app():
+def create_app(*, config_overrides: dict | None = None):
+    """Build and return a configured Flask application.
+
+    Args:
+        config_overrides: Optional dict merged into `app.config` AFTER the
+            default values are populated but BEFORE `db.init_app(app)` runs.
+            Used by the test suite to point Flask-SQLAlchemy at an isolated
+            test database and/or to supply a SAVEPOINT-scoped connection via
+            `SQLALCHEMY_ENGINE_OPTIONS['creator']` + `StaticPool`. Production
+            callers pass no argument and see identical behavior.
+    """
     import os
 
     # Load and validate environment-based configuration
@@ -79,6 +89,12 @@ def create_app():
         engine_options['connect_args'] = {'ssl': {'ssl_disabled': False}}
 
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
+
+    # Apply caller-supplied overrides AFTER defaults, BEFORE extensions bind.
+    # The test suite uses this to point Flask-SQLAlchemy at the mysql-test
+    # container and/or to supply a pre-existing SAVEPOINT-scoped connection.
+    if config_overrides:
+        app.config.update(config_overrides)
 
     # Initialize db with app
     db.init_app(app)

@@ -12,13 +12,13 @@ everything Phase 3 and beyond.
 ## TL;DR
 
 You are migrating a 1400-test pytest suite from `tests/` to `new_tests/` on
-branch **`tests_refactor`**. Phases 0, 1, 2a–2e, and **3** are done and
-committed. **Phase 4 (webapp / Flask / API / Admin / OIDC) is next.**
+branch **`tests_refactor`**. Phases 0, 1, 2a–2e, **3**, and **4a (infra)**
+are done and committed. **Phase 4b (first real webapp ports) is next.**
 
 Quick state check:
 
 ```bash
-git log --oneline -6        # HEAD is 2941eb7 "test refactor: Phase 3 — factory module + 8 write-path ports"
+git log --oneline -6        # HEAD is the "Phase 4a infra" commit (create_app config_overrides kwarg + app/client/auth_client fixtures + 2 smoke tests)
 git status                  # Should be clean except for untracked (follow_up.txt, legacy_sam, old_plan.md)
 ls new_tests/factories/     # _seq.py, core.py, resources.py, projects.py, operational.py
 ```
@@ -37,11 +37,13 @@ SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam' \
 source etc/config_env.sh && pytest -n auto --no-cov
 ```
 
-**Expected at checkpoint (HEAD=2941eb7):**
-- `new_tests/`: **953 passed, 22 skipped** in ~42s (xdist -n auto)
-- Legacy `tests/`: **446 passed, 30 skipped, 2 xpassed** in ~71s
+**Expected at checkpoint (HEAD = Phase 4a commit):**
+- `new_tests/`: **955 passed, 22 skipped** in ~35s (xdist -n auto)
+  (953 Phase-3 ports + 2 new webapp smoke tests)
+- Legacy `tests/`: **446 passed, 30 skipped, 2 xpassed** in ~54s
+  (zero change — Phase 4a is purely additive, `create_app()` no-args path is untouched)
 
-**Combined port progress: ~68%** (953 ported / 1399 total).
+**Combined port progress: ~68%** (955 ported / 1399 total).
 
 All that's left is the webapp/Flask tier and the perf tier. No read-only or
 write-path unit stragglers remain.
@@ -51,9 +53,11 @@ write-path unit stragglers remain.
 ## What's committed (branch `tests_refactor`)
 
 ```
-2941eb7 test refactor: Phase 3 — factory module + 8 write-path ports   ← HEAD
-0b0d449 checkpointing resume
-9a8a176 test refactor: Phase 2e — finish structural read-path ports
+<Phase 4a>  webapp refactor: create_app(config_overrides=) + app/client/auth_client fixtures  ← HEAD
+cef2eef     docs: rewrite Resume.md for Phase 4
+2941eb7     test refactor: Phase 3 — factory module + 8 write-path ports
+0b0d449     checkpointing resume
+9a8a176     test refactor: Phase 2e — finish structural read-path ports
 522e020 checkpointing resume
 4d8e405 test refactor: Phase 2d — bulk structural read-path ports
 e7799ba commit plan
@@ -253,9 +257,18 @@ The legacy suite had five fundamental problems:
 
 # PHASE 4 — Webapp / API / Admin / OIDC
 
-This is the hardest phase because it introduces a **Flask `app` fixture**
-and the question of how `db.session` (Flask-SQLAlchemy's scoped session)
-relates to our raw SAVEPOINT-isolated `session` fixture.
+**Phase 4a (infra) is done.** `src/webapp/run.py::create_app()` was
+extended with a `config_overrides=` keyword-only kwarg that lets the test
+suite inject test-DB config *after* defaults land but *before*
+`db.init_app(app)` runs. This collapsed what looked like the hardest
+architectural problem (bridging raw `session` with Flask-SQLAlchemy's
+`db.session`) into a ~10-line refactor. The old "Path A vs Path B"
+analysis in this document has been **superseded** — full SAVEPOINT
+bridging is now trivially available if we want it.
+
+The Phase 4a commit also added three new fixtures to
+`new_tests/conftest.py` (`app`, `client`, `auth_client`) and a
+`new_tests/unit/test_webapp_smoke.py` acceptance-gate file (2 tests).
 
 ## Phase 4 scope
 
@@ -310,143 +323,138 @@ resets `sam.queries.usage_cache._cache` globals. **Defer to after Phase 4.**
 
 ---
 
-## Phase 4 architectural challenge
+## Phase 4 architecture (solved in 4a)
 
 `src/webapp/` uses **`flask_sqlalchemy.SQLAlchemy`** (`db = SQLAlchemy()`
-in `src/webapp/extensions.py`), not raw SQLAlchemy. The connection URL
-flows through a brittle chain:
+in `src/webapp/extensions.py`). The connection URL flows through the
+module globals in `sam.session` / `system_status.session`, which are
+populated at import time from `SAM_DB_*` / `STATUS_DB_*` env vars.
 
-1. **Module import time:** `sam/session/__init__.py` reads `SAM_DB_*` env
-   vars and assembles `sam.session.connection_string` as a module global.
-2. **`create_app()`:** `src/webapp/run.py` sets
-   `app.config['SQLALCHEMY_DATABASE_URI'] = sam.session.connection_string`
-   — just copies the global verbatim. Same for `system_status`.
-3. **`db.init_app(app)`:** Flask-SQLAlchemy lazily builds the engine on
-   first access to `db.engine` from the app's config.
+The old worry was: to point Flask-SQLAlchemy at the mysql-test container,
+you'd have to set env vars before any import could touch `sam.session`,
+then call `init_sam_db_defaults()` to rebuild the globals, then call
+`create_app()`. And full SAVEPOINT bridging (so factory rows are visible
+through Flask views via `db.session`) would require swapping the engine
+post-init, which Flask-SQLAlchemy doesn't support.
 
-**Consequences for the port:**
+**None of that is true anymore.** As of Phase 4a, `create_app()` accepts
+an optional `config_overrides=` kwarg:
 
-- You **cannot** swap the engine after `create_app()` — the connection
-  string has already been baked in.
-- To point the Flask app at `mysql-test`, you must set `SAM_DB_*` env
-  vars **before** importing `sam.session`. The legacy conftest does this
-  in `pytest_configure` (runs before any module import).
-- The legacy `tests/conftest.py` does NOT bridge its raw `session` fixture
-  with `db.session`. They're two independent sessions against (potentially)
-  the same DB, and the legacy suite just works around it by:
-  - Using `session` for ORM queries that don't go through Flask views
-  - Using `auth_client` + `app.test_client()` for route tests that pass
-    data through real HTTP
-  - Skipping tests that need to observe factory-built data through a
-    Flask view response
+```python
+# src/webapp/run.py
+def create_app(*, config_overrides: dict | None = None):
+    ...
+    app.config['SQLALCHEMY_DATABASE_URI'] = sam.session.connection_string
+    app.config['SQLALCHEMY_BINDS'] = {
+        'system_status': system_status.session.connection_string,
+    }
+    ...
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
 
-### The SAVEPOINT bridging question
+    # Apply caller-supplied overrides AFTER defaults, BEFORE extensions bind.
+    if config_overrides:
+        app.config.update(config_overrides)
 
-**Can we make Flask's `db.session` and our raw `session` share an outer
-transaction so factory rows are visible through views?**
+    db.init_app(app)
+```
 
-Short answer: **yes but it's surgery**. Approach:
-1. Open a raw `connection` from a test engine bound to mysql-test.
-2. `transaction = connection.begin()` — outer transaction.
-3. Bind the raw `session` to `connection` with
-   `join_transaction_mode="create_savepoint"` (same as today).
-4. Override `app.config['SQLALCHEMY_DATABASE_URI']` and force
-   `db.engine` to use the same `connection` (using Flask-SQLAlchemy's
-   `engine_options={"creator": lambda: connection}` or by replacing
-   the bind-to-engine mapping).
-5. Also wrap `db.session`'s session factory with
-   `join_transaction_mode="create_savepoint"`.
-6. At teardown, `transaction.rollback()` + `connection.close()`.
+The test `app` fixture uses this to point the URL at the mysql-test
+container directly — no env-var dance, no module global mutation, no
+`init_*_db_defaults()` re-call:
 
-**This is non-trivial.** Flask-SQLAlchemy's session handling isn't
-designed to accept a pre-existing connection, and overriding the engine
-post-init is documented as unsupported. There's working precedent in the
-pytest-flask-sqlalchemy plugin, but it adds a dependency and the plugin's
-patterns assume the ORM is pure Flask-SQLAlchemy (ours is mixed).
+```python
+# new_tests/conftest.py
+@pytest.fixture(scope="session")
+def app(test_db_url):
+    os.environ.setdefault("FLASK_CONFIG", "testing")
+    os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
+    from webapp.run import create_app
+    return create_app(config_overrides={
+        "SQLALCHEMY_DATABASE_URI": test_db_url,
+    })
+```
 
-### Recommendation: **Path A — snapshot data + auth_client, factories where cheap**
+### SAVEPOINT bridging is now a drop-in
 
-Don't invest in full SAVEPOINT bridging up front. Instead:
+If and when a Phase 4 write-path port genuinely needs factory rows to
+be visible through a Flask view without committing for real, the pattern
+is ~10 lines:
 
-- Build a Phase 4 `app` fixture that:
-  - Sets `SAM_DB_SERVER=127.0.0.1`, `SAM_DB_PORT=3307` + all the other
-    `SAM_DB_*` vars in `pytest_configure` **before** any module imports
-    touch `sam.session`.
-  - Calls `create_app()` with `FLASK_CONFIG=testing` — picks up
-    `TestingConfig` (which already mirrors `DEV_ROLE_MAPPING` so
-    `benkirk → admin` works).
-  - Yields the app for the session.
-- Build an `auth_client` fixture that mirrors the legacy one: set
-  `_user_id` via `client.session_transaction()` for benkirk.
-- For tests that need factory data visible to a route: use **`session.commit()`**
-  in the raw `session` fixture (which, under SAVEPOINT mode, is a
-  SAVEPOINT release — the data IS visible to a subsequent query on the
-  same connection but still gets rolled back at teardown). **But** this
-  only works if both sessions share the same connection, which they
-  don't by default.
-- Pragmatic compromise: for **read-path** route tests, use snapshot data
-  via representative fixtures (same as Phase 2). For **write-path** route
-  tests (charge_endpoints, member_management, status_endpoints), make
-  the POST through the test client and then query `db.session` (same app)
-  to verify — that works because the POST handler commits via
-  `management_transaction`. Teardown via a dedicated `db_rollback` fixture
-  that walks the new rows and deletes them, OR accept that write-path
-  route tests leak into the mysql-test database and rely on the container
-  being dockerfile-rebuildable.
+```python
+# Hypothetical future app_with_shared_connection fixture
+from sqlalchemy.pool import StaticPool
 
-**Main tradeoff:** Path A ships faster and matches what the legacy suite
-already does (the mysql-test container is cheap to rebuild). Path B (full
-SAVEPOINT bridging) is architecturally cleaner but likely costs 1–2 days
-of infrastructure work up front with no test-port progress during that
-window.
+@pytest.fixture
+def app_with_shared_connection(test_db_url, engine):
+    connection = engine.connect()
+    transaction = connection.begin()
+    try:
+        from webapp.run import create_app
+        app = create_app(config_overrides={
+            "SQLALCHEMY_DATABASE_URI": test_db_url,
+            "SQLALCHEMY_ENGINE_OPTIONS": {
+                "creator": lambda: connection,
+                "poolclass": StaticPool,
+            },
+        })
+        yield app
+    finally:
+        if transaction.is_active:
+            transaction.rollback()
+        connection.close()
+```
 
-**Third option worth considering:** For write-path API tests, use
-**Option A with an after-test DB-reset hook** — drop and re-snapshot the
-mysql-test database between test runs (not between tests). That gives
-clean initial state without requiring per-test isolation. Acceptable
-because write-path API tests are the minority and their writes are
-append-only (charges, status rows) rather than mutating shared rows.
+`creator=lambda: connection` tells Flask-SQLAlchemy's engine to hand
+out the same connection every time something asks, and `StaticPool`
+disables pooling so no new connections are created. Combined with the
+raw `session` fixture binding to the same connection, factory rows
+become visible through `db.session` inside the outer SAVEPOINT.
 
-### Open questions to confirm before porting
+**We haven't needed this yet.** Phase 4b (schemas, health, API auth)
+is all read-path or pure mock, so the basic `app` fixture suffices.
+Revisit when Phase 4d (write-path API) forces the question.
 
-1. **Does `auth_client`'s benkirk lookup work when benkirk exists in the
-   mysql-test snapshot?** Should be yes (benkirk is preserved unmodified
-   in the obfuscated snapshot per `~/.claude/projects/.../project_test_db_fixtures.md`).
-2. **Does `TestingConfig.DEV_ROLE_MAPPING` apply automatically when
-   `FLASK_CONFIG=testing`?** Verified in `src/webapp/config.py:140`.
-   Yes — `benkirk → admin` is mirrored.
-3. **Does `create_app()` initialize OIDC in test mode?** No — it only
-   registers OAuth when `AUTH_PROVIDER='oidc'`, and TestingConfig leaves
-   `AUTH_PROVIDER='stub'` (the default).
-4. **Can `pytest_configure` set `SAM_DB_*` vars after our existing
-   allowlist guard runs?** Yes — the guard runs in `pytest_configure`,
-   and we can add the env-var setting to the same hook. Order matters:
-   set env vars FIRST, then run the existing allowlist check, then
-   import anything that needs the vars.
+### Gotchas the 4a work exposed
+
+1. **`/api/v1/health/` pings every `SQLALCHEMY_BINDS` entry** — including
+   `system_status`, which is still pointing at the dev container default
+   (unreachable from the test env). The smoke test hits `/api/v1/health/live`
+   instead (in-process, no DB pings).
+2. **`auth_client` works end-to-end for benkirk.** `TestingConfig.DEV_ROLE_MAPPING`
+   gives `benkirk → admin` without any `role_user` DB rows, so the `/api/v1/users/me`
+   auth_client smoke test returns 200 + `{"username": "benkirk"}` directly.
+3. **`create_app()` is expensive** (registers all blueprints, initializes
+   Flask-Login, Flask-SQLAlchemy, Flask-Caching, audit events). The `app`
+   fixture is session-scoped so one app per xdist worker.
+4. **`FLASK_SECRET_KEY` is required.** The `app` fixture sets it to
+   `'test-secret-key'` via `os.environ.setdefault`. Won't clobber a
+   real value if the user happens to have one set.
+5. **`SQLALCHEMY_ENGINE_OPTIONS` is a replacement, not a merge** — if the
+   test fixture overrides it, the production pool defaults
+   (pool_size=10, pool_recycle=3600, pool_pre_ping=True) are lost.
+   Acceptable for tests (one connection, no pool). Just don't forget
+   to re-add `pool_pre_ping=True` if a test fixture needs it.
 
 ---
 
 ## Phase 4 execution plan
 
-### 4a — Infrastructure: `app`/`client`/`auth_client` fixtures (no ports)
+### 4a — Infrastructure: `create_app()` refactor + fixtures ✅ DONE
 
-**Goal:** Produce a minimal Phase 4 skeleton that passes a smoke test.
-
-1. Extend `new_tests/conftest.py::pytest_configure` to set `SAM_DB_*` env
-   vars (username=root, password=root, server=127.0.0.1, port=3307, name=sam)
-   BEFORE the allowlist check, and BEFORE any webapp imports.
-2. Add a new `new_tests/webapp_conftest.py` or extend `new_tests/conftest.py`
-   with session-scoped `app` + function-scoped `client` + `auth_client`
-   fixtures. Copy the patterns from `tests/conftest.py` lines 252–327
-   verbatim — they already work.
-3. Add `new_tests/unit/test_webapp_smoke.py` with 2 tests:
-   - `test_health_endpoint_returns_200(client)` — unauthenticated GET /health
-   - `test_auth_client_is_logged_in(auth_client)` — GET /api/v1/users/me and
-     verify `response.status_code == 200` and `response.json['username'] == 'benkirk'`
-4. Run it. If both pass, infrastructure is good and ports can begin.
-
-**Acceptance:** Both smoke tests pass in a parallel xdist run. Existing
-953 new_tests still pass.
+Shipped in the Phase 4a commit:
+- `src/webapp/run.py::create_app()` — added `*, config_overrides: dict | None = None`
+  kwarg and a 3-line merge block just before `db.init_app(app)`.
+- `new_tests/conftest.py` — added session-scoped `app` fixture (uses
+  `create_app(config_overrides={'SQLALCHEMY_DATABASE_URI': test_db_url})`),
+  function-scoped `client`, function-scoped `auth_client` (benkirk via
+  Flask-Login session cookie + `TestingConfig.DEV_ROLE_MAPPING`).
+- `new_tests/unit/test_webapp_smoke.py` — 2 tests:
+  - `test_liveness_endpoint_returns_200(client)` — unauthenticated GET
+    `/api/v1/health/live` (pure in-process probe, no DB pings).
+  - `test_auth_client_is_logged_in_as_benkirk(auth_client)` — GET
+    `/api/v1/users/me`, asserts 200 + `username == "benkirk"`.
+- Count: **955 passed, 22 skipped** in `new_tests/` (was 953 + 2 new).
+- Legacy: **446 passed, 30 skipped, 2 xpassed** — zero change.
 
 ### 4b — Schema / health / auth trivial ports (5 files, 73 tests)
 
@@ -488,29 +496,31 @@ need to be rewritten to use `active_project.projcode` or
 - `test_member_management.py` (17) — POST/PATCH/DELETE project members
 - `test_status_endpoints.py` (11) — POSTs DerechoStatus/CasperStatus
 
-**Strategy:** Build fresh project+user graphs via factories, `session.commit()`
-(SAVEPOINT release — data visible to same connection), issue the test-client
-POST, then query via `db.session` or the same `session` to verify. **BUT**
-— this only works if `db.session` and the raw `session` share a connection,
-which they don't by default.
+**Strategy:** Add an `app_with_shared_connection` fixture to
+`new_tests/conftest.py` that uses the `creator=`/`StaticPool` pattern from
+the "Phase 4 architecture" section above — Flask-SQLAlchemy's `db.session`
+and the raw `session` fixture share one connection, one outer transaction.
+Factory rows are visible through routes, route commits become SAVEPOINT
+releases, teardown rolls back.
 
-**Decision point during 4d:** If the naive approach (fresh factories +
-test-client request) fails because `db.session` can't see factory data,
-escalate to one of:
-1. Real `session.commit()` that actually persists, with manual cleanup
-   in a teardown fixture (row IDs recorded during the test, deleted after).
-2. Invest the 1–2 days in full SAVEPOINT bridging.
-3. Drop these tests and rely on the Phase 3 unit tests for the underlying
-   `manage.*` functions (which already exercise the exact same code paths
-   under factory isolation).
+With that in place, the 4d pattern is:
+1. `factory.make_user()` / `make_project()` / etc. via the raw `session`.
+2. Issue the test-client POST — the view runs through `management_transaction`
+   which calls `session.commit()` (= SAVEPOINT release in our bridged mode).
+3. Verify via a `db.session` query from within the same app context OR
+   via the raw `session` — they see the same data because they share a
+   connection.
+4. Teardown rolls back the outer transaction; nothing leaks.
 
-**Recommendation:** Option 3 if the bridging turns out to be hard.
-`test_charge_endpoints` overlaps heavily with `test_manage_summaries` (Phase 3,
-53 tests, already ported). `test_member_management` overlaps with
-`test_management_functions` (Phase 3, 14 tests, already ported). Only the
-HTTP-layer concerns (route wiring, marshmallow input validation, error
-formatting) are unique to these files — and those are well-covered by
-the `TestInputSchemas` classes already ported in Phase 3.
+**Optional fallback if bridging turns out to be fragile:** drop these
+three files as redundant. `test_charge_endpoints` overlaps heavily with
+`test_manage_summaries` (Phase 3, 53 tests, already ported).
+`test_member_management` overlaps with `test_management_functions`
+(Phase 3, 14 tests, already ported). Only HTTP-layer concerns (route
+wiring, marshmallow input validation, error formatting) are unique to
+these files, and those are already covered by the `TestInputSchemas`
+classes ported in Phase 3. This is the escape hatch if the bridged
+fixture misbehaves, not the plan.
 
 ### 4e — Webapp unit ports (2 files, 70 tests)
 
@@ -701,12 +711,22 @@ Legacy code like `assert f.description == original` AFTER
 object is still attached, so the re-assertion is either a tautology or
 wrong depending on session state. **Drop these during port.**
 
-### Flask-SQLAlchemy engine override is unsupported
+### Flask-SQLAlchemy config injection goes through `create_app(config_overrides=)`
 
-`flask_sqlalchemy.SQLAlchemy()` does NOT support swapping the engine
-after `db.init_app(app)`. If you need the Flask app to see a custom
-connection, the connection URL must be in place BEFORE `create_app()`
-is called. No post-init surgery.
+`flask_sqlalchemy.SQLAlchemy()` does not support swapping the engine
+*after* `db.init_app(app)` — but you don't need to. As of Phase 4a,
+`src/webapp/run.py::create_app()` accepts a keyword-only
+`config_overrides=` dict that's merged into `app.config` after the
+defaults land but before `db.init_app(app)` runs. The test `app`
+fixture uses this to inject `SQLALCHEMY_DATABASE_URI` (pointing at
+mysql-test) and, when needed, `SQLALCHEMY_ENGINE_OPTIONS` with a
+`creator=lambda: shared_connection` + `poolclass=StaticPool` to bind
+Flask-SQLAlchemy's engine to the same connection as the raw `session`
+fixture — enabling full SAVEPOINT bridging without any module-global
+surgery or `sam.session.init_sam_db_defaults()` re-calls.
+
+**Never** set `app.config[...]` after `db.init_app(app)`. Everything
+goes through `config_overrides=` or the config class.
 
 ## Working principles from this user
 
@@ -749,15 +769,23 @@ Paste this into a fresh Claude Code session to bootstrap:
 >   pytest -c new_tests/pytest.ini new_tests/ 2>&1 | tail -5
 > ```
 >
-> If `samuel-mysql-test` isn't running, start it with
-> `docker compose --profile test up -d mysql-test` and wait for TCP.
+> Expected: HEAD is the Phase 4a commit
+> (`create_app(config_overrides=...)` + `app`/`client`/`auth_client`
+> fixtures + 2 webapp smoke tests). `new_tests/` should report
+> **955 passed, 22 skipped**. If `samuel-mysql-test` isn't running,
+> start it with `docker compose --profile test up -d mysql-test` and
+> wait for TCP.
 >
-> Then kick off **Phase 4a**: build the Flask `app` / `client` /
-> `auth_client` fixture infrastructure in `new_tests/conftest.py` (setting
-> `SAM_DB_*` env vars in `pytest_configure` before imports), add a smoke
-> test file `new_tests/unit/test_webapp_smoke.py` with 2 tests (health
-> endpoint unauthenticated, `/api/v1/users/me` via auth_client), and
-> verify both pass under xdist. Do NOT port any real Phase 4 files yet —
-> the goal of 4a is just to prove the Flask fixtures work.
+> Then kick off **Phase 4b**: port the 5 trivial webapp files in this
+> order (simplest → most complex):
 >
-> Once 4a is green, proceed to 4b (5 trivial port files).
+> 1. `tests/api/test_status_schemas.py` (10 tests, zero DB, zero auth)
+> 2. `tests/api/test_api_auth.py` (10 tests, HTTP Basic decorator, no DB)
+> 3. `tests/api/test_schemas.py` (18 tests, pure Marshmallow, factory data)
+> 4. `tests/api/test_allocation_schemas.py` (13 tests, Marshmallow + factories)
+> 5. `tests/api/test_health_endpoints.py` (22 tests, `client` +
+>    `auth_client` + a new factory-built `non_admin_client` fixture)
+>
+> All 5 should drop in cleanly against the Phase 4a fixtures. Commit as
+> one batch with a message describing each file moved. Then stop and
+> wait for direction on 4c.

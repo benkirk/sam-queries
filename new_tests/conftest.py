@@ -156,6 +156,79 @@ def session(engine):
         connection.close()
 
 
+# ---- Flask app / client fixtures (Phase 4) --------------------------------
+#
+# These exist because `src/webapp/run.py::create_app()` was extended with a
+# `config_overrides=` kwarg that lets the caller replace SQLALCHEMY config
+# after defaults land but before `db.init_app(app)` runs. Without that kwarg,
+# Flask-SQLAlchemy's URL comes from a module-level global in `sam.session`
+# that's set at import time — which is why the legacy suite has the
+# elaborate env-var-before-import dance in `tests/conftest.py`.
+
+
+@pytest.fixture(scope="session")
+def app(test_db_url):
+    """Flask application bound to the mysql-test container.
+
+    Uses `create_app(config_overrides=...)` to point Flask-SQLAlchemy at
+    the test DB without touching `sam.session.connection_string`. Everything
+    else (DEV_ROLE_MAPPING, API_KEYS, TESTING=True, WTF_CSRF_ENABLED=False,
+    ALLOCATION_USAGE_CACHE_TTL=0) comes from `TestingConfig`, selected via
+    `FLASK_CONFIG='testing'`.
+
+    Session-scoped because `create_app()` is expensive (registers all
+    blueprints, initializes extensions) — one app per xdist worker.
+    """
+    os.environ.setdefault("FLASK_CONFIG", "testing")
+    os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
+    from webapp.run import create_app
+
+    flask_app = create_app(config_overrides={
+        "SQLALCHEMY_DATABASE_URI": test_db_url,
+        # SQLALCHEMY_BINDS (system_status) left alone — Phase 4 status tests
+        # can override it later when we port them.
+    })
+
+    # Regression guard — mirrors the legacy app fixture. Fails loudly if
+    # TestingConfig didn't load (which would mean DEV_ROLE_MAPPING, API_KEYS,
+    # and cache disables are all wrong).
+    assert flask_app.config["ALLOCATION_USAGE_CACHE_TTL"] == 0, (
+        "TestingConfig not loaded — check FLASK_CONFIG env var and "
+        "webapp.config.get_webapp_config() class selection"
+    )
+    return flask_app
+
+
+@pytest.fixture
+def client(app):
+    """Unauthenticated Flask test client — one per test."""
+    return app.test_client()
+
+
+@pytest.fixture
+def auth_client(client, session):
+    """Test client logged in as `benkirk` — admin via TestingConfig.DEV_ROLE_MAPPING.
+
+    Uses Flask-Login's session-cookie mechanism (`client.session_transaction()`
+    → `sess['_user_id']`). This triggers the `load_user()` callback in the
+    login_manager, which reads `DEV_ROLE_MAPPING` from TestingConfig so
+    benkirk gets the `admin` role without needing any real `role_user`
+    rows in the DB. Same pattern as the legacy fixture.
+    """
+    from sam import User
+
+    user = User.get_by_username(session, "benkirk")
+    assert user is not None, (
+        "benkirk must be preserved in the mysql-test snapshot — "
+        "see project_test_db_fixtures.md"
+    )
+    with client:
+        with client.session_transaction() as sess_data:
+            sess_data["_user_id"] = str(user.user_id)
+            sess_data["_fresh"] = True
+        yield client
+
+
 # ---- Representative fixtures ----------------------------------------------
 #
 # Layer 1 of the two-layer test data strategy (see docs/plans/REFACTOR_TESTING.md).
