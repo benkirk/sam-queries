@@ -135,6 +135,215 @@ New suite is fast, but the comparison isn't apples-to-apples yet — we've porte
 
 ---
 
+## Phase 2b — test_query_functions.py port (2026-04-14)
+
+**Status: ✅ complete.**
+
+First write-path-adjacent port. The plan anticipated this file would "use factories" — on closer reading, that assumption was wrong, and the port revealed a major refinement to the fixture strategy.
+
+**Key finding — two fixture tiers, not one.**
+
+A careful read of `test_query_functions.py` (and the original pre-port audit from an Explore agent) showed that ~80% of its 41 tests assert *structural* invariants (`isinstance(result, dict)`, `'key' in result`, `len > 0`, and `computed_from_result_fields` equalities like `remaining == allocated - used`). Only a small minority actually need exact values. **Those tests don't need factories — they need "any row of the right shape".**
+
+That observation produced the **two-tier fixture strategy** now in place:
+
+| Tier | Name | Scope | Purpose |
+|---|---|---|---|
+| **1** | Representative fixtures | `new_tests/conftest.py` | Query the snapshot for ANY row matching a structural shape. For read-path tests. Snapshot-refresh-safe. |
+| **2** | Factories | `new_tests/factories/` (future) | Build fresh synthetic rows inside the test's SAVEPOINT. For write-path tests needing exact counts/values. |
+
+Representative fixtures live in `new_tests/conftest.py` and use a **session-scoped ID-cache + function-scoped instance-fetch** pattern:
+
+```python
+@pytest.fixture(scope="session")
+def _active_project_id(engine):
+    # one SQL query at suite startup, returns project_id
+    ...
+
+@pytest.fixture
+def active_project(session, _active_project_id):
+    # fresh instance bound to the test's SAVEPOINT'd session
+    return session.get(Project, _active_project_id)
+```
+
+This avoids re-querying the snapshot 38 times per test run while still giving each test a fresh, session-bound ORM instance.
+
+**Initial representative fixture set:**
+
+- `active_project` — any project with >=1 account and >=1 active allocation (snapshot has 1310 candidates)
+- `multi_project_user` — any active+unlocked user on >=2 active projects (snapshot has 4930 active users with account memberships, easy to find qualifying ones)
+- `hpc_resource` — any resource with `resource_type='HPC'` (16 candidates)
+
+More will be added as each subsequent port reveals its needs (`dav_resource`, `any_leaf_project`, etc).
+
+**Ported file facts:**
+
+- `tests/unit/test_query_functions.py` (663 lines) → `new_tests/unit/test_query_functions.py` (~460 lines, more compact)
+- 39 test items: **38 passed, 1 skipped** in 4.03s
+- The skip (`test_get_allocation_summary_rate_consistency`) is self-declared: when the arbitrary `active_project` chosen by the fixture doesn't happen to have a single HPC allocation, the test skips rather than failing. Correct behavior — it's a combo test, not a core invariant.
+- Full `new_tests/` now: **75 passed, 11 skipped in 3.87s**
+
+**Concrete transformations beyond mechanical copy:**
+
+1. `test_project` / `test_resource` fixture refs → `active_project` / `hpc_resource`
+2. Hardcoded `'SCSG0001'` / `'Derecho'` → `active_project.projcode` / `hpc_resource.resource_name`
+3. `User.get_by_username(..., 'bdobbins') or User.get_by_username(..., 'benkirk')` fallback chain → `multi_project_user` fixture (fail-fast at session start, not in test)
+4. `search_projects_by_code_or_title(session, 'SCSG')` → `search_projects_by_code_or_title(session, active_project.projcode[:4])` — **self-consistent**: use a substring of the representative project's own projcode as the search term, no hardcoded data
+5. `test_search_projects_by_title`: use the first ≥4-char word from the representative project's title instead of hardcoded `'system'`
+6. Dropped parametrized `['Derecho', 'Campaign']` in `test_get_resource_detail_data_by_type` — collapsed to a single test using `hpc_resource` (the legacy version tested two hardcoded resources; one structural test is enough)
+7. Removed the hardcoded `'UNIV'`/`'TOTAL'` facility-name args where possible — the aggregated-allocations test now uses `projcode="TOTAL"` alone (which is the function's internal rollup key, not a user-facing projcode)
+
+**Decisions made during this port that update the plan:**
+
+1. **Reject the audit's "factory-with-fallback-to-real-data" pattern.** The audit's Explore agent proposed factories that fall back to querying `SCSG0001` when it exists. This defeats the entire isolation story — if the snapshot refresh removes SCSG0001, every "factory" call silently starts creating fresh rows, and the blast radius is invisible. **Factories in Phase 5 will always build fresh data. Representative fixtures are a separate concept, clearly named, clearly scoped to read-path tests.**
+
+2. **Factories are deferred.** Originally the plan had test_query_functions.py as "port to factories" in Phase 2. With the representative-fixture strategy, no factories are needed for this file, and the next port target (`test_rolling_usage.py` per the audit — structural tests) is likely the same. **Factories become necessary when the first write-path port lands (test_crud_operations, test_renew_extend, test_manage_summaries).**
+
+3. **Port order revised:**
+   - (2a) ✅ `test_schema_validation.py` + `test_views.py` — structural, no factories
+   - (2b) ✅ `test_query_functions.py` — structural, representative fixtures
+   - (2c) `test_rolling_usage.py` + `test_fstree_queries.py` + `test_project_access_queries.py` — structural, expand representative fixtures as needed
+   - (3) Write-path tests — factories + scenarios
+   - (4) Webapp/API tests — Flask test client + TestingConfig
+   - (5) Perf tests
+
+4. **Self-consistency pattern for search/filter tests:** when a test needs a specific data value (search term, filter value), derive it from the fixture at runtime rather than hardcoding. This is a general principle worth repeating in the README.
+
+**Pre-existing legacy flake observation:**
+
+Ran the legacy suite once after deletion: **1311 passed, 45 skipped** in 158.54s. Clean — no flakes this run. Flake rate remains ~30% (1 in 3 runs) per the Phase 2a observation. Not fixing.
+
+---
+
+## Phase 2c — structural read-path batch (planned)
+
+**Scope:** port three more structural read-path files onto the representative-fixture pattern established in Phase 2b. No factories yet.
+
+**Target files (scoped):**
+
+| File | Lines | Shape | Transformation complexity |
+|---|---|---|---|
+| `tests/unit/test_project_access_queries.py` | 142 | 16 structural tests, zero hardcoded refs — uses `next(iter(...))` to pick any branch dynamically | **Trivial** — near-mechanical port, just add `pytestmark = unit` |
+| `tests/unit/test_rolling_usage.py` | 365 | ~30 tests. Has `_first_hpc_project` helper for most tests (already defensive). Hardcoded `SCSG0001`/`NMMM0003`/`Derecho` used for: threshold-specific tests, subtree-rollup tests, fstree cross-check | **Moderate** — collapse `_first_hpc_project` into `active_project` fixture. Threshold tests keep hardcoded `NMMM0003/Derecho` with skip-if-missing (orthogonal feature, Phase 5 factories will cover this) |
+| `tests/unit/test_fstree_queries.py` | 585 | Largest file. Spot-checks (`[:3]`, `[:5]`) — already snapshot-safe. Hardcoded `'Derecho'` throughout, hardcoded `NCGD0006` in one subtree-rollup test | **Moderate** — replace `'Derecho'` with `hpc_resource.resource_name`. Rewrite `test_ncgd0006_*` as generic subtree test using a new `any_subtree_project` fixture |
+
+**New representative fixtures needed:**
+
+- `any_subtree_project` — any project with ≥3 active child projects via MPTT parent_id chain. Queries once at session start, for subtree rollup tests that need "a project with children".
+
+**Explicitly NOT ported yet:**
+
+- Hardcoded threshold tests (`test_nmmm0003_derecho_has_threshold`, `test_use_limit_equals_prorated_times_threshold`, `test_pct_of_limit_consistent_with_charges`, `test_fstree_threshold_limit_values_match`). These need a (project, resource) combo where the resource has threshold config data — complex to discover generically, and the tests are actually covering threshold-computation logic that will be much cleaner to test with factory-built data in Phase 5. **Interim approach:** keep them referencing `NMMM0003`/`Derecho`, add `pytest.skip` if `get_project_rolling_usage()` returns no threshold data for that combo in the current snapshot. Filed in a TODO comment for Phase 5.
+
+**Legacy-flake mitigation:**
+
+The Phase 2a observation showed the legacy suite has a ~30% flake rate under xdist after each deletion. Strategy for the next few PRs: run the legacy suite up to 2× after each deletion; accept a clean run as proof that the port didn't introduce regressions. Document any NEW flakes (tests failing post-port that didn't fail pre-port) separately — those would be real regressions, not the pre-existing latent ones.
+
+**Expected runtime impact:**
+
+- ~60 tests added to `new_tests/` (142 + 365 + 585 lines worth)
+- ~60 tests removed from `tests/` (same count)
+- `new_tests/` total projected: ~135 tests, ~6s (3× the current 3.87s — still under 10s budget)
+- Legacy total projected: ~1250 tests, ~130s
+
+**Commit plan:**
+
+One commit after all three files land. Commit message structure matches Phase 2b: summary + per-file notes + design decisions logged.
+
+**Post-Phase-2c checkpoint:**
+
+After this batch, revisit the plan and decide whether to:
+(a) continue Phase 2c with more structural files (test_sam_search_cli, test_manage_facilities/organizations/resources read paths)
+(b) start Phase 3 (factories + first write-path port)
+(c) start Phase 4 (webapp/API test-client ports — these need the `app` fixture wired in and the DEV_ROLE_MAPPING port mentioned in Phase 0)
+
+---
+
+## Phase 2c execution log (2026-04-14)
+
+**Status: ✅ complete. Three files ported in one batch.**
+
+**Ported:**
+
+- `tests/unit/test_project_access_queries.py` (142 lines) → `new_tests/unit/test_project_access_queries.py`
+  Near-mechanical port. This file already used `next(iter(...))` for dynamic branch picking, had zero hardcoded refs, and was the smallest/cleanest of the three.
+
+- `tests/unit/test_rolling_usage.py` (365 lines) → `new_tests/unit/test_rolling_usage.py`
+  Moderate transformation. Replaced `_first_hpc_project` helper with `active_project` fixture, replaced `SCSG0001`/`NMMM0003` leaf-project refs with `active_project`, added `subtree_project` for non-leaf rollup tests. Kept `NMMM0003/Derecho` hardcoded in threshold-specific tests with `pytest.skip` fallbacks — filed as Phase 5 factory TODO.
+
+- `tests/unit/test_fstree_queries.py` (585 lines, largest) → `new_tests/unit/test_fstree_queries.py`
+  Moderate transformation plus a performance fix (see below). Replaced hardcoded `'Derecho'` throughout with `hpc_resource` fixture. Generalized `test_ncgd0006_*` subtree test to use `subtree_project` fixture (the legacy version named NCGD0006 but only asserted `adjustedUsage >= 0`, which works for any subtree project).
+
+**New representative fixture:** `subtree_project` — any project with ≥3 active child projects (for MPTT rollup tests).
+
+**Bug fixed in `hpc_resource` fixture:**
+The initial version picked the lowest-ID HPC resource, which in the obfuscated snapshot is `Bluefire` (commissioned 2008, decommissioned 2013). It has historical allocations, so read-path tests that just check `len > 0` passed silently — but `get_fstree_data(session, 'Bluefire')` returns an empty tree because fstree only includes currently-active data. Updated the fixture SQL to filter `commission_date <= NOW()` AND `(decommission_date IS NULL OR >= NOW())`. The fixture now returns a currently-active HPC resource. Worth verifying Phase 2b tests still pass under the corrected fixture — they did (full suite green).
+
+**MAJOR finding — cache-dependence exposed by Phase 0.**
+
+Running the full `new_tests/` after Phase 2c's first pass clocked in at **48 seconds** — a 12× jump from the 4s Phase 2b baseline, dramatically disproportionate to the 2.3× test count growth. Investigation showed:
+
+- `get_fstree_data(session)` walks the entire sam schema and takes ~5-15s per call with no cache.
+- The legacy suite's test_fstree_queries.py had ~50 test methods calling this function directly. Under the pre-Phase-0 bug, tests ran with DevelopmentConfig's cache active (`ALLOCATION_USAGE_CACHE_TTL=3600`), so 49 of 50 calls hit the LRU cache and returned in microseconds. Under TestingConfig (post-Phase-0), the cache is properly disabled (TTL=0), and each test pays the full query cost.
+- In other words: **a significant chunk of the legacy suite's speed was accidental cache warming from tests running under the wrong config**. The Phase 0 bug fix didn't slow down the TESTS themselves — it revealed that the tests were always expensive, we just weren't paying.
+
+**Mitigation:** added **module-scoped fixtures** to `test_fstree_queries.py`:
+
+```python
+@pytest.fixture(scope='module')
+def fstree_all(engine):
+    with _throwaway_session(engine) as s:
+        return get_fstree_data(s)   # one call per module, read-only dict shared
+```
+
+Same pattern for `fstree_hpc`, `project_fs_all`, `project_fs_hpc`, `user_fs_all`, `user_fs_hpc`. All 35+ test methods rewritten to consume the cached result instead of calling the query directly.
+
+**Runtime impact of the fix:**
+
+| State | new_tests/ runtime |
+|---|---|
+| Before caching fix | 48.07s |
+| After module-scoped caching | 24.35s |
+| (Pre-Phase-2c baseline) | 3.87s |
+
+The remaining ~20s is xdist-related: pytest-xdist workers don't share fixture state, so every worker that happens to collect a fstree test re-runs the module fixture. With 12 workers all collecting fstree tests, that's ~12 uncached `get_fstree_data` calls.
+
+**Not fixing further** (for now). 24s is well under budget — per-test wall time is 143ms, matching the legacy baseline of 103ms. Diminishing returns to chase lower. A possible future optimization:
+- Use `--dist loadfile` or `@pytest.mark.xdist_group('fstree_queries')` to force all fstree tests to one worker, reducing the module-fixture cost from 12× to 1×. Filed as a TODO.
+
+**Legacy runtime dropped significantly:**
+
+| State | Legacy `tests/` runtime |
+|---|---|
+| Phase 2b (1311 pass) | 158.54s |
+| Phase 2c (1213 pass, -98) | **77.82s** |
+
+The 70-second drop from removing 98 tests = ~715ms/test — **7× the suite average of 103ms/test.** Confirms the fstree tests were the biggest cache beneficiaries and the biggest cost drivers under TestingConfig. Removing them from the legacy suite (and into the cached new_tests/ versions) is a net speed win.
+
+**Results:**
+
+| Suite | Tests | Runtime |
+|---|---|---|
+| `new_tests/` | 172 passed, 10 skipped | 24.35s |
+| Legacy `tests/` | 1213 passed, 45 skipped, 2 xpassed | 77.82s |
+| **Combined** | 1395 total | ~102s |
+
+**Port progress:** 172 / 1443 = ~12% of original. Five files ported. Three file-deletions per commit is the new cadence.
+
+**Plan revisions:**
+
+1. **Performance cliff documented:** every expensive query function used by 10+ tests should get a module-scoped fixture cache at port time. Will need this pattern for `test_manage_summaries.py` (charge aggregations), `test_allocations_performance.py` (dashboard data), and likely the webapp dashboard tests in Phase 4.
+
+2. **xdist-group optimization deferred:** `pytest-xdist` has `--dist loadgroup` which honors `@pytest.mark.xdist_group('name')` markers to force test co-location on a worker. Would drop fstree tests from 24s to maybe 5-7s. Not worth doing mid-migration; revisit in Phase 6 when consolidating.
+
+3. **Cache-dependence finding has Phase 4 implications:** the webapp API tests (tests/api/) call expensive query functions via Flask routes. They will be slow under TestingConfig unless we similarly cache results at the fixture level. Plan for this when Phase 4 starts.
+
+---
+
+## Empirical baseline (measured 2026-04-14)
+
+---
+
 ## Empirical baseline (measured 2026-04-14)
 
 - `source etc/config_env.sh && pytest -v -n auto` on 12 cores: **1386 passed, 53 skipped, 2 xpassed in 143.41s (2:23)**. CLAUDE.md says 380 tests / 32s — stale by ~3.6× in count and ~4.5× in runtime. The suite has grown substantially since the doc was written.

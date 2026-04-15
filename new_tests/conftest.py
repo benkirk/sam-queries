@@ -223,7 +223,14 @@ def _multi_project_user_id(engine):
 
 @pytest.fixture(scope="session")
 def _hpc_resource_id(engine):
-    """ID of any HPC resource."""
+    """ID of any currently-active HPC resource.
+
+    "Active" means commissioned on or before today AND either still
+    commissioned (NULL decommission_date) or decommissioned in the future.
+    The low-ID HPC resources in the obfuscated snapshot are long-retired
+    (Bluefire, Yellowstone, Jellystone, ...) so ORDER BY resource_id
+    without this filter returns a dead resource with no fstree presence.
+    """
     from sqlalchemy import text as _text
     with _session_for_setup(engine) as s:
         row = s.execute(_text("""
@@ -231,10 +238,37 @@ def _hpc_resource_id(engine):
             FROM resources r
             JOIN resource_type rt ON rt.resource_type_id = r.resource_type_id
             WHERE rt.resource_type = 'HPC'
+              AND (r.commission_date IS NULL OR r.commission_date <= NOW())
+              AND (r.decommission_date IS NULL OR r.decommission_date >= NOW())
             ORDER BY r.resource_id
             LIMIT 1
         """)).first()
-    assert row is not None, "snapshot has no HPC resources"
+    assert row is not None, "snapshot has no currently-active HPC resources"
+    return row[0]
+
+
+@pytest.fixture(scope="session")
+def _subtree_project_id(engine):
+    """ID of any active project with >=3 active child projects.
+
+    Used by subtree-rollup tests that need a non-leaf project for MPTT
+    aggregation. The threshold of 3 children is arbitrary — just large
+    enough to produce a meaningful rollup and ensure we don't pick a
+    project that happens to have 1 descendant.
+    """
+    from sqlalchemy import text as _text
+    with _session_for_setup(engine) as s:
+        row = s.execute(_text("""
+            SELECT p.project_id
+            FROM project p
+            JOIN project c ON c.parent_id = p.project_id
+            WHERE p.active = 1 AND c.active = 1
+            GROUP BY p.project_id
+            HAVING COUNT(c.project_id) >= 3
+            ORDER BY p.project_id
+            LIMIT 1
+        """)).first()
+    assert row is not None, "snapshot has no active projects with >=3 active children"
     return row[0]
 
 
@@ -257,3 +291,10 @@ def hpc_resource(session, _hpc_resource_id):
     """An HPC Resource bound to the test session."""
     from sam import Resource
     return session.get(Resource, _hpc_resource_id)
+
+
+@pytest.fixture
+def subtree_project(session, _subtree_project_id):
+    """A Project bound to the test session that has >=3 active child projects."""
+    from sam import Project
+    return session.get(Project, _subtree_project_id)
