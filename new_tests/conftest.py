@@ -67,6 +67,16 @@ def _verify_test_target(url) -> None:
 
 def pytest_configure(config):
     """Runs once at session start, before collection. Fail fast here."""
+    # FLASK_ACTIVE=1 must be set BEFORE any test module imports `system_status.*`,
+    # because `system_status.base.StatusBase` is resolved at import time. Without
+    # this, `StatusBase = declarative_base()` (standalone) and the status models
+    # bind to a private metadata that Flask-SQLAlchemy can't see — INSERT/UPDATE
+    # ops then fall back to the default sam bind. The Phase 4f status_session
+    # fixture relies on `StatusBase = db.Model` so the routing engages cleanly.
+    os.environ.setdefault("FLASK_ACTIVE", "1")
+    os.environ.setdefault("FLASK_CONFIG", "testing")
+    os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
+
     url = os.environ.get("SAM_TEST_DB_URL")
     if not url:
         pytest.exit(
@@ -167,8 +177,34 @@ def session(engine):
 
 
 @pytest.fixture(scope="session")
-def app(test_db_url):
-    """Flask application bound to the mysql-test container.
+def status_db_path(tmp_path_factory):
+    """Per-worker SQLite tempfile holding the `system_status` schema.
+
+    Why SQLite (not the mysql-test container, like the legacy suite did
+    with `system_status_test_<workerid>` databases): the `system_status`
+    models use only portable column types (DateTime, Integer, Float,
+    Boolean, String, ForeignKey), so SQLAlchemy's dialect-aware DDL
+    materializes the schema cleanly via `db.create_all(bind_key=...)`.
+    No per-worker DB creation, no env-var ordering, no `init_status_db_defaults()`
+    re-call dance — just a temp file path that goes into SQLALCHEMY_BINDS.
+
+    `tmp_path_factory.getbasetemp()` returns a worker-scoped directory
+    under pytest's tmp dir, so concurrent xdist workers get isolated
+    files automatically without touching PYTEST_XDIST_WORKER ourselves.
+    """
+    base = tmp_path_factory.getbasetemp()
+    return str(base / "status_test.sqlite")
+
+
+@pytest.fixture(scope="session")
+def status_db_url(status_db_path):
+    """SQLite URL used as the `system_status` bind in the test app config."""
+    return f"sqlite:///{status_db_path}"
+
+
+@pytest.fixture(scope="session")
+def app(test_db_url, status_db_url):
+    """Flask application bound to the mysql-test container + a SQLite status DB.
 
     Uses `create_app(config_overrides=...)` to point Flask-SQLAlchemy at
     the test DB without touching `sam.session.connection_string`. Everything
@@ -176,22 +212,30 @@ def app(test_db_url):
     ALLOCATION_USAGE_CACHE_TTL=0) comes from `TestingConfig`, selected via
     `FLASK_CONFIG='testing'`.
 
+    The `system_status` bind points at a per-worker SQLite tempfile (see
+    `status_db_path` / `status_db_url`). Schema is materialized once via
+    `db.create_all(bind_key='system_status')` after `create_app()` returns
+    — `db.metadatas['system_status']` knows about the status models because
+    importing `system_status.models` registers them on the bind-keyed
+    metadata at import time.
+
     Session-scoped because `create_app()` is expensive (registers all
     blueprints, initializes extensions) — one app per xdist worker.
     """
     os.environ.setdefault("FLASK_CONFIG", "testing")
     os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
+    # FLASK_ACTIVE=1 makes `system_status.base.StatusBase` resolve to
+    # `webapp.extensions.db.Model`, so the status models bind to the
+    # Flask-SQLAlchemy registry instead of a standalone declarative base.
+    # Required for `db.session.query(DerechoStatus)` to route through
+    # the system_status bind in test code and routes alike.
+    os.environ.setdefault("FLASK_ACTIVE", "1")
     from webapp.run import create_app
 
     flask_app = create_app(config_overrides={
         "SQLALCHEMY_DATABASE_URI": test_db_url,
-        # Point the `system_status` bind at the same mysql-test container
-        # so health-endpoint pings succeed. No test in 4b writes through
-        # this bind, so schema mismatch doesn't matter — SELECT 1 works
-        # regardless. Phase 4f status dashboard ports will revisit this
-        # and add a real isolated status DB.
         "SQLALCHEMY_BINDS": {
-            "system_status": test_db_url,
+            "system_status": status_db_url,
         },
     })
 
@@ -202,6 +246,27 @@ def app(test_db_url):
         "TestingConfig not loaded — check FLASK_CONFIG env var and "
         "webapp.config.get_webapp_config() class selection"
     )
+
+    # Materialize the system_status schema in the SQLite tempfile.
+    # Mirrors the canonical pattern from scripts/setup_status_db.py
+    # (StatusBase.metadata.create_all). The model imports populate
+    # `db.metadatas['system_status']` thanks to `__bind_key__`.
+    import system_status.models  # noqa: F401  — populate metadata registry
+    with flask_app.app_context():
+        from webapp.extensions import db
+        db.create_all(bind_key="system_status")
+
+    # The status dashboard blueprint (src/webapp/dashboards/status/blueprint.py)
+    # calls `system_status.create_status_engine()` DIRECTLY rather than going
+    # through Flask-SQLAlchemy's `db.session`. That helper reads the module-
+    # level `connection_string` global which was set at import time from
+    # STATUS_DB_* env vars (defaulting to a docker hostname unreachable from
+    # the test env). Override the global to point at our SQLite tempfile so
+    # the dashboard routes see the same data as the test fixture seeds.
+    import system_status.session as ss_session
+    from sqlalchemy.engine.url import make_url
+    ss_session.connection_string = make_url(status_db_url)
+
     return flask_app
 
 
@@ -261,6 +326,112 @@ def non_admin_client(client, session):
         with client.session_transaction() as sess_data:
             sess_data["_user_id"] = str(user.user_id)
             sess_data["_fresh"] = True
+        yield client
+
+
+# ---- system_status fixtures (Phase 4f) ------------------------------------
+#
+# The status fixtures use `db.session` directly inside an app context — both
+# the test code and the Flask routes route system_status queries through the
+# same Flask-SQLAlchemy session, which is bound to the per-worker SQLite
+# tempfile via the `system_status` bind. Per-test isolation is via DELETE
+# (not SAVEPOINT): SQLite's DELETE is fast, the routes commit normally, and
+# everything lives in the worker-scoped tempfile that pytest cleans up.
+
+
+def _truncate_status_tables(db):
+    """Wipe all system_status tables in dependency order.
+
+    Mirrors the iteration pattern from scripts/cleanup_status_data.py but
+    uses SQLAlchemy's `sorted_tables` so the FK ordering is automatic.
+    `reversed(sorted_tables)` deletes children before parents.
+    """
+    for tbl in reversed(db.metadatas["system_status"].sorted_tables):
+        db.session.execute(tbl.delete())
+    db.session.commit()
+
+
+@pytest.fixture
+def status_session(app):
+    """Per-test session for `system_status` schema, pre-cleaned.
+
+    Yields the Flask-SQLAlchemy `db.session`, wrapped in an app context.
+    The session routes queries on system_status models (DerechoStatus,
+    CasperStatus, …) through the per-worker SQLite engine. Tests can use
+    it just like a normal session — `add()`, `flush()`, `commit()`,
+    `query()` — and the same `db.session` inside Flask routes will see
+    the committed data because both go through the same engine.
+
+    Cleanup strategy: DELETE all status tables on entry. SQLite tempfile
+    + per-test DELETE is faster than SAVEPOINT bridging and isolates
+    tests cleanly without any session-mode mucking.
+    """
+    with app.app_context():
+        from webapp.extensions import db
+
+        _truncate_status_tables(db)
+        try:
+            yield db.session
+        finally:
+            db.session.remove()
+
+
+@pytest.fixture
+def api_key_client(client, session, app):
+    """Test client authenticated via HTTP Basic Auth API key.
+
+    Mirrors the legacy `api_key_client` from tests/api/conftest.py — wraps
+    the Flask test client to inject `Authorization: Basic <collector:test-api-key>`
+    on every request. Used by `test_status_endpoints.py` for POST routes
+    decorated with `@api_key_required`.
+
+    Also sets up a Flask-Login session as benkirk so GET routes decorated
+    with `@login_required` work in the same test class.
+
+    The bcrypt hash for `test-api-key` is precomputed in TestingConfig
+    (rounds=4 for fast test execution), so we don't need to recompute it
+    on every fixture call.
+    """
+    import base64
+    from sam.core.users import User
+
+    test_key = "test-api-key"
+    credentials = base64.b64encode(f"collector:{test_key}".encode()).decode("ascii")
+    auth_header = {"Authorization": f"Basic {credentials}"}
+
+    with client:
+        user = User.get_by_username(session, "benkirk")
+        assert user is not None, "benkirk must exist in the snapshot"
+        with client.session_transaction() as sess:
+            sess["_user_id"] = str(user.user_id)
+            sess["_fresh"] = True
+
+        original_post = client.post
+        original_get = client.get
+        original_patch = client.patch
+        original_delete = client.delete
+
+        def post_with_auth(path, **kwargs):
+            kwargs.setdefault("headers", {}).update(auth_header)
+            return original_post(path, **kwargs)
+
+        def get_with_auth(path, **kwargs):
+            kwargs.setdefault("headers", {}).update(auth_header)
+            return original_get(path, **kwargs)
+
+        def patch_with_auth(path, **kwargs):
+            kwargs.setdefault("headers", {}).update(auth_header)
+            return original_patch(path, **kwargs)
+
+        def delete_with_auth(path, **kwargs):
+            kwargs.setdefault("headers", {}).update(auth_header)
+            return original_delete(path, **kwargs)
+
+        client.post = post_with_auth
+        client.get = get_with_auth
+        client.patch = patch_with_auth
+        client.delete = delete_with_auth
+
         yield client
 
 

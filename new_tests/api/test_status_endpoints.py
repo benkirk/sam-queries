@@ -1,46 +1,29 @@
 """
 Tests for System Status API endpoints with simplified schema-based POST.
 
-Refactored to use Pure HTTP testing to avoid Flask-SQLAlchemy session conflicts.
-Direct DB access is removed (except for cleanup via separate connection).
+Phase 4f port: refactored to use the `status_session` fixture (which
+DELETEs all status tables on entry) instead of a per-test
+`cleanup_database()` helper that opened its own engine. Both the POST
+routes and the test fixture now route through Flask-SQLAlchemy's
+`db.session` against the per-worker SQLite tempfile bound at
+`SQLALCHEMY_BINDS['system_status']`.
 """
 
-import pytest
-import sys
-from pathlib import Path
 from datetime import datetime
 
-# Add python directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
+import pytest
 
 from system_status import (
     DerechoStatus,
     LoginNodeStatus,
     QueueStatus,
-    CasperStatus, CasperNodeTypeStatus,
+    CasperStatus,
+    CasperNodeTypeStatus,
     FilesystemStatus,
 )
-from system_status.session import create_status_engine
 
-def cleanup_database():
-    """Helper to clean up the database using a fresh connection."""
-    engine, SessionLocal = create_status_engine()
-    session = SessionLocal()
-    try:
-        # Delete in order of dependencies (child tables first)
-        session.query(LoginNodeStatus).delete()
-        session.query(QueueStatus).delete()
-        session.query(FilesystemStatus).delete()
-        session.query(CasperNodeTypeStatus).delete()
-        session.query(DerechoStatus).delete()
-        session.query(CasperStatus).delete()
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        raise e
-    finally:
-        session.close()
-        engine.dispose()
+
+pytestmark = pytest.mark.integration
 
 
 # ============================================================================
@@ -50,7 +33,7 @@ def cleanup_database():
 class TestDerechoPost:
     """Tests for POST /api/v1/status/derecho endpoint with nested loading."""
 
-    def test_post_derecho_minimal(self, api_key_client):
+    def test_post_derecho_minimal(self, api_key_client, status_session):
         """Test posting minimal Derecho status data."""
         data = {
             'cpu_nodes_total': 100,
@@ -74,21 +57,22 @@ class TestDerechoPost:
             'active_users': 50,
         }
 
-        response = api_key_client.post('/api/v1/status/derecho',
-                                   json=data,
-                                   content_type='application/json')
+        response = api_key_client.post(
+            '/api/v1/status/derecho',
+            json=data,
+            content_type='application/json',
+        )
 
         assert response.status_code == 201
         json_data = response.get_json()
         assert json_data['success'] is True
         assert 'status_id' in json_data
         assert 'timestamp' in json_data
-        # Empty nested arrays should be present
         assert json_data['login_node_ids'] == []
         assert json_data['queue_ids'] == []
         assert json_data['filesystem_ids'] == []
 
-    def test_post_derecho_with_nested_objects(self, api_key_client):
+    def test_post_derecho_with_nested_objects(self, api_key_client, status_session):
         """Test posting Derecho status with all nested object types."""
         data = {
             'cpu_nodes_total': 100,
@@ -134,9 +118,11 @@ class TestDerechoPost:
             ]
         }
 
-        response = api_key_client.post('/api/v1/status/derecho',
-                                   json=data,
-                                   content_type='application/json')
+        response = api_key_client.post(
+            '/api/v1/status/derecho',
+            json=data,
+            content_type='application/json',
+        )
 
         assert response.status_code == 201
         json_data = response.get_json()
@@ -145,16 +131,18 @@ class TestDerechoPost:
         assert len(json_data['queue_ids']) == 1
         assert len(json_data['filesystem_ids']) == 1
 
-    def test_post_derecho_missing_required_field(self, api_key_client):
+    def test_post_derecho_missing_required_field(self, api_key_client, status_session):
         """Test posting Derecho status with missing required field."""
         data = {
             'cpu_nodes_total': 100,
             # Missing many required fields
         }
 
-        response = api_key_client.post('/api/v1/status/derecho',
-                                   json=data,
-                                   content_type='application/json')
+        response = api_key_client.post(
+            '/api/v1/status/derecho',
+            json=data,
+            content_type='application/json',
+        )
 
         assert response.status_code == 500  # Schema validation error
 
@@ -162,7 +150,7 @@ class TestDerechoPost:
 class TestCasperPost:
     """Tests for POST /api/v1/status/casper endpoint with nested loading."""
 
-    def test_post_casper_minimal(self, api_key_client):
+    def test_post_casper_minimal(self, api_key_client, status_session):
         """Test posting minimal Casper status data."""
         data = {
             'cpu_nodes_total': 151,
@@ -193,9 +181,11 @@ class TestCasperPost:
             'active_users': 92,
         }
 
-        response = api_key_client.post('/api/v1/status/casper',
-                                   json=data,
-                                   content_type='application/json')
+        response = api_key_client.post(
+            '/api/v1/status/casper',
+            json=data,
+            content_type='application/json',
+        )
 
         assert response.status_code == 201
         json_data = response.get_json()
@@ -203,11 +193,8 @@ class TestCasperPost:
         assert 'status_id' in json_data
         assert 'timestamp' in json_data
 
-    def test_post_casper_with_nested_objects(self, api_key_client):
+    def test_post_casper_with_nested_objects(self, api_key_client, status_session):
         """Test posting Casper status with all nested object types."""
-        # Clean up any existing Casper data from previous tests
-        cleanup_database()
-
         data = {
             'cpu_nodes_total': 151,
             'cpu_nodes_available': 135,
@@ -263,12 +250,12 @@ class TestCasperPost:
             ]
         }
 
-        response = api_key_client.post('/api/v1/status/casper',
-                                   json=data,
-                                   content_type='application/json')
+        response = api_key_client.post(
+            '/api/v1/status/casper',
+            json=data,
+            content_type='application/json',
+        )
 
-        if response.status_code != 201:
-            print(f"Error response: {response.get_json()}")
         assert response.status_code == 201
         json_data = response.get_json()
         assert json_data['success'] is True
@@ -285,13 +272,9 @@ class TestCasperPost:
 class TestDerechoGet:
     """Tests for GET /api/v1/status/derecho/latest endpoint."""
 
-    @pytest.fixture(autouse=True)
-    def setup_derecho_data(self, api_key_client):
-        """Create test data for Derecho GET tests via API."""
-        # 1. Cleanup first
-        cleanup_database()
-
-        # 2. Post data
+    def test_get_derecho_latest(self, api_key_client, status_session):
+        """Test retrieving latest Derecho status includes nested objects."""
+        # Seed via the API so the route's serialization path is exercised end-to-end
         data = {
             'cpu_nodes_total': 100,
             'cpu_nodes_available': 80,
@@ -317,44 +300,37 @@ class TestDerechoGet:
                     'node_name': 'derecho1',
                     'available': True,
                     'user_count': 11,
-                    'node_type': 'cpu'
+                    'node_type': 'cpu',
                 },
                 {
                     'node_name': 'derecho2',
                     'available': True,
                     'user_count': 12,
-                    'node_type': 'cpu'
-                }
-            ]
+                    'node_type': 'cpu',
+                },
+            ],
         }
-        
         api_key_client.post('/api/v1/status/derecho', json=data)
 
-    def test_get_derecho_latest(self, api_key_client):
-        """Test retrieving latest Derecho status includes nested objects."""
         response = api_key_client.get('/api/v1/status/derecho/latest')
 
         assert response.status_code == 200
         data = response.get_json()
 
-        # Check main status fields
         assert data['cpu_nodes_total'] == 100
         assert data['running_jobs'] == 150
         assert 'timestamp' in data
 
-        # Check login nodes array is included
         assert 'login_nodes' in data
         assert len(data['login_nodes']) == 2
-        # Order is not guaranteed, so find by name
+        # Order is not guaranteed, find by name
         node1 = next((n for n in data['login_nodes'] if n['node_name'] == 'derecho1'), None)
         assert node1 is not None
         assert node1['user_count'] == 11
 
-    def test_get_derecho_no_data(self, api_key_client):
+    def test_get_derecho_no_data(self, api_key_client, status_session):
         """Test retrieving Derecho status when no data exists."""
-        # Clear all data
-        cleanup_database()
-
+        # status_session fixture pre-cleans, so nothing has been seeded
         response = api_key_client.get('/api/v1/status/derecho/latest')
 
         assert response.status_code == 404
@@ -365,13 +341,8 @@ class TestDerechoGet:
 class TestCasperGet:
     """Tests for GET /api/v1/status/casper/latest endpoint."""
 
-    @pytest.fixture(autouse=True)
-    def setup_casper_data(self, api_key_client):
-        """Create test data for Casper GET tests via API."""
-        # 1. Cleanup first
-        cleanup_database()
-
-        # 2. Post data
+    def test_get_casper_latest(self, api_key_client, status_session):
+        """Test retrieving latest Casper status includes nested objects."""
         data = {
             'cpu_nodes_total': 151,
             'cpu_nodes_available': 135,
@@ -404,7 +375,7 @@ class TestCasperGet:
                     'node_name': 'casper1',
                     'available': True,
                     'user_count': 39,
-                    'node_type': 'cpu'
+                    'node_type': 'cpu',
                 }
             ],
             'node_types': [
@@ -415,27 +386,21 @@ class TestCasperGet:
                 }
             ]
         }
-
         api_key_client.post('/api/v1/status/casper', json=data)
 
-    def test_get_casper_latest(self, api_key_client):
-        """Test retrieving latest Casper status includes nested objects."""
         response = api_key_client.get('/api/v1/status/casper/latest')
 
         assert response.status_code == 200
         data = response.get_json()
 
-        # Check main status fields
         assert data['cpu_nodes_total'] == 151
         assert data['gpu_nodes_total'] == 22
         assert data['running_jobs'] == 456
 
-        # Check login nodes array is included
         assert 'login_nodes' in data
         assert len(data['login_nodes']) == 1
         assert data['login_nodes'][0]['node_name'] == 'casper1'
 
-        # Check node types array is included
         assert 'node_types' in data
         assert len(data['node_types']) == 1
         assert data['node_types'][0]['node_type'] == 'gpu-v100'
