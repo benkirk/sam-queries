@@ -84,11 +84,16 @@ def pytest_configure(config):
 
     _verify_test_target(url)
 
-    # Put src on the import path so tests can `from sam...` without install
+    # Put src on the import path so tests can `from sam...` without install,
+    # and put new_tests/ on the path so tests can `from factories import ...`
+    # without requiring new_tests itself to be a package.
     proj_root = Path(__file__).parent.parent
     src_path = str(proj_root / "src")
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
+    new_tests_path = str(Path(__file__).parent)
+    if new_tests_path not in sys.path:
+        sys.path.insert(0, new_tests_path)
 
 
 # ---- Engine / session fixtures --------------------------------------------
