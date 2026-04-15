@@ -1,326 +1,682 @@
-#-------------------------------------------------------------------------bh-
-# pytest configuration and fixtures for SAM ORM tests
-#-------------------------------------------------------------------------eh-
+"""pytest fixtures and safety guards for the SAM test suite.
+
+The most important thing this file does: refuse to run against any database
+other than the dedicated `mysql-test` container. Production safety depends
+on the allowlist check in `pytest_configure` firing before any fixture or
+test module touches a connection.
+
+Any run of `pytest` MUST set `SAM_TEST_DB_URL` to a SQLAlchemy URL pointing
+at an allowed host/port.
+"""
+import os
+import sys
+from pathlib import Path
 
 import pytest
-import sys
-import os
-from pathlib import Path
+from sqlalchemy import create_engine
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.orm import sessionmaker
+
+
+# ---- Safety allowlist -----------------------------------------------------
+#
+# (host, port) pairs that are permitted as a test database target. The
+# mysql-test compose service binds host port 3307 on localhost; from inside
+# a container on the sam-network it would be reachable as mysql-test:3306.
+# Any other combination — in particular the main dev DB on 3306, or any
+# remote production host — is rejected.
+
+_ALLOWED_TEST_TARGETS = {
+    ("127.0.0.1", 3307),
+    ("localhost", 3307),
+    ("mysql-test", 3306),
+}
+
+
+def _verify_test_target(url) -> None:
+    """Raise pytest.exit if `url` does not point at an allowed test DB."""
+    try:
+        parsed = make_url(url)
+    except Exception as exc:
+        pytest.exit(
+            f"SAM_TEST_DB_URL is not a valid SQLAlchemy URL: {exc}",
+            returncode=2,
+        )
+
+    host = parsed.host or ""
+    port = parsed.port or 0
+
+    if (host, port) not in _ALLOWED_TEST_TARGETS:
+        allowed = ", ".join(f"{h}:{p}" for h, p in sorted(_ALLOWED_TEST_TARGETS))
+        pytest.exit(
+            "\n"
+            "=" * 70 + "\n"
+            "REFUSING TO RUN tests against this database.\n"
+            f"  SAM_TEST_DB_URL points at: {host}:{port}\n"
+            f"  Allowed targets:           {allowed}\n"
+            "\n"
+            "Start the isolated test container with:\n"
+            "  docker compose --profile test up -d mysql-test\n"
+            "\n"
+            "Then set:\n"
+            "  export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'\n"
+            + "=" * 70,
+            returncode=2,
+        )
 
 
 def pytest_configure(config):
-    """
-    Set up worker-specific environment variables for pytest-xdist.
+    """Runs once at session start, before collection. Fail fast here."""
+    # FLASK_ACTIVE=1 must be set BEFORE any test module imports `system_status.*`,
+    # because `system_status.base.StatusBase` is resolved at import time. Without
+    # this, `StatusBase = declarative_base()` (standalone) and the status models
+    # bind to a private metadata that Flask-SQLAlchemy can't see — INSERT/UPDATE
+    # ops then fall back to the default sam bind. The Phase 4f status_session
+    # fixture relies on `StatusBase = db.Model` so the routing engages cleanly.
+    os.environ.setdefault("FLASK_ACTIVE", "1")
+    os.environ.setdefault("FLASK_CONFIG", "testing")
+    os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
 
-    This hook runs before test collection, ensuring each worker gets
-    unique database names before any modules import configuration.
-    """
-    worker_id = getattr(config, 'workerinput', {}).get('workerid', 'master')
+    url = os.environ.get("SAM_TEST_DB_URL")
+    if not url:
+        pytest.exit(
+            "\n"
+            "=" * 70 + "\n"
+            "The test suite requires SAM_TEST_DB_URL to be set.\n"
+            "\n"
+            "Example:\n"
+            "  docker compose --profile test up -d mysql-test\n"
+            "  export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'\n"
+            "  pytest\n"
+            + "=" * 70,
+            returncode=2,
+        )
 
-    if worker_id == 'master':
-        db_name = 'system_status_test'
-    else:
-        db_name = f'system_status_test_{worker_id}'
+    _verify_test_target(url)
 
-    os.environ['STATUS_DB_NAME'] = db_name
-    os.environ['FLASK_ACTIVE'] = '1'
-    # Tests always use the bundled local MySQL, regardless of production STATUS_DB settings
-    # (which may point to an external PostgreSQL server).  Override all four vars here,
-    # before any module imports, so system_status.session picks up the correct values.
-    os.environ['STATUS_DB_DRIVER']   = 'mysql'
-    os.environ['STATUS_DB_SERVER']   = os.environ.get('LOCAL_SAM_DB_SERVER',   '127.0.0.1')
-    os.environ['STATUS_DB_USERNAME'] = os.environ.get('LOCAL_SAM_DB_USERNAME', 'root')
-    os.environ['STATUS_DB_PASSWORD'] = os.environ.get('LOCAL_SAM_DB_PASSWORD', 'root')
-
-# Add project root and src to path for imports
-PROJ_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJ_ROOT / 'src'))
-sys.path.insert(0, str(PROJ_ROOT / 'tests'))
-
-from fixtures.test_config import (
-    create_test_engine,
-    create_test_session_factory,
-    get_test_session,
-    get_test_session_rollback
-)
-
-
-@pytest.fixture(scope='session')
-def worker_id(request):
-    """
-    Get the pytest-xdist worker ID.
-
-    Returns 'master' when running without xdist, or 'gw0', 'gw1', etc.
-    when running with parallel workers via pytest-xdist.
-    """
-    if hasattr(request.config, 'workerinput'):
-        return request.config.workerinput['workerid']
-    return 'master'
+    # Put src/ on the import path so tests can `from sam...` without install,
+    # and put tests/ on the path so tests can `from factories import ...`
+    # without requiring tests/ itself to be a package.
+    proj_root = Path(__file__).parent.parent
+    src_path = str(proj_root / "src")
+    if src_path not in sys.path:
+        sys.path.insert(0, src_path)
+    tests_path = str(Path(__file__).parent)
+    if tests_path not in sys.path:
+        sys.path.insert(0, tests_path)
 
 
-@pytest.fixture(scope='session')
-def worker_db_name(worker_id):
-    """
-    Generate unique database name for this worker.
-
-    For pytest-xdist compatibility, each worker gets its own database:
-    - master -> system_status_test
-    - gw0 -> system_status_test_gw0
-    - gw1 -> system_status_test_gw1
-    etc.
-    """
-    if worker_id == 'master':
-        return 'system_status_test'
-    return f'system_status_test_{worker_id}'
+# ---- Engine / session fixtures --------------------------------------------
 
 
-@pytest.fixture(scope='session')
-def engine():
-    """Create SAM database engine for entire test session (uses production backup data)."""
-    return create_test_engine()
+@pytest.fixture(scope="session")
+def test_db_url() -> str:
+    """Return the validated test DB URL."""
+    return os.environ["SAM_TEST_DB_URL"]
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
+def engine(test_db_url):
+    """SQLAlchemy engine bound to the isolated mysql-test container."""
+    eng = create_engine(test_db_url, future=True, pool_pre_ping=True)
+    yield eng
+    eng.dispose()
+
+
+@pytest.fixture(scope="session")
 def SessionFactory(engine):
-    """Create a session factory for the test session."""
-    return create_test_session_factory(engine)
-
-
-@pytest.fixture(scope='session', autouse=True)
-def test_databases(worker_db_name):
-    """
-    Create temporary test database for system_status.
-
-    SAM database uses production backup data and doesn't need a separate test database.
-    System status database is created fresh to avoid clearing production data.
-
-    IMPORTANT: This fixture is autouse=True and session-scoped so it runs BEFORE
-    any imports and sets STATUS_DB_NAME environment variable early.
-
-    pytest-xdist compatible: Each worker gets a unique database name via worker_db_name.
-    """
-    from sqlalchemy import create_engine, text
-    import os
-    from webapp.run import create_app
-    from webapp.extensions import db
-    import system_status.session
-
-    # Set worker-specific database name in environment
-    os.environ['STATUS_DB_NAME'] = worker_db_name
-
-    # Get connection parameters for the LOCAL MySQL admin connection.
-    # Use LOCAL_SAM_DB_SERVER (always the bundled MySQL instance), NOT STATUS_DB_SERVER,
-    # which may point to an external PostgreSQL host when the status DB is remote.
-    db_server = os.getenv('LOCAL_SAM_DB_SERVER', '127.0.0.1')
-    db_user = os.getenv('LOCAL_SAM_DB_USERNAME', 'root')
-    db_password = os.getenv('LOCAL_SAM_DB_PASSWORD', 'root')
-
-    # Connect to database server (no specific database) and create worker DB
-    db_driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
-    if db_driver in ('postgresql', 'postgres'):
-        server_url = f"postgresql+psycopg2://{db_user}:{db_password}@{db_server}/postgres"
-        engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
-        with engine.connect() as conn:
-            conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
-            conn.execute(text(f"CREATE DATABASE {worker_db_name}"))
-    else:
-        server_url = f"mysql+pymysql://{db_user}:{db_password}@{db_server}"
-        engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
-        with engine.connect() as conn:
-            conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
-            conn.execute(text(f"CREATE DATABASE {worker_db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
-
-    # Now that the environment variable is set and session is imported,
-    # system_status.session.connection_string will be correct.
-    # Create a minimal Flask app to use its db object for schema creation
-    # This is necessary because system_status models use Flask-SQLAlchemy's db.Model
-    # and its __bind_key__ functionality.
-    temp_app = create_app()
-
-    with temp_app.app_context():
-        # db.create_all() will now correctly use the updated connection_string
-        # for 'system_status' bind, as create_app sets it from system_status.session
-        db.create_all()
-
-    yield {'system_status': worker_db_name}
-
-    # Cleanup: Drop worker-specific test database
-    with engine.connect() as conn:
-        conn.execute(text(f"DROP DATABASE IF EXISTS {worker_db_name}"))
-
-    # Restore original environment
-    os.environ.pop('STATUS_DB_NAME', None)
-    os.environ.pop('FLASK_ACTIVE', None) # Clean up env var
-    engine.dispose()
-
+    """Session factory for tests that want their own short-lived sessions."""
+    return sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
 @pytest.fixture
-def session(SessionFactory):
-    """
-    Provide a transactional test session.
+def session(engine):
+    """Per-test SQLAlchemy session with SAVEPOINT-based rollback isolation.
 
-    Creates a new session for each test and rolls back after the test completes.
+    The pattern:
+      1. Open a raw connection and begin an outer transaction on it.
+      2. Bind the Session to that connection with
+         `join_transaction_mode="create_savepoint"` — every call to
+         `session.begin()`/`session.commit()`/`session.rollback()` from
+         test code becomes a SAVEPOINT operation inside the outer
+         transaction, NOT a real commit/rollback.
+      3. At teardown, roll back the outer transaction. Nothing escapes.
+
+    This is what lets 12 xdist workers share one `sam_test` database
+    without stepping on each other — and it lets a read-only test call
+    `session.rollback()` (as the XRAS view tests do) without tearing
+    down the fixture's outer transaction.
     """
-    session = SessionFactory()
+    connection = engine.connect()
+    transaction = connection.begin()
+    Session = sessionmaker(
+        bind=connection,
+        autoflush=False,
+        autocommit=False,
+        future=True,
+        join_transaction_mode="create_savepoint",
+    )
+    sess = Session()
     try:
-        yield session
+        yield sess
     finally:
-        session.rollback()
-        session.close()
-
-
-@pytest.fixture
-def session_commit(SessionFactory):
-    """
-    Provide a session that commits changes.
-
-    Use this ONLY for tests that need to persist data.
-    Most tests should use the regular 'session' fixture which auto-rolls back.
-    """
-    session = SessionFactory()
-    try:
-        yield session
-        session.commit()
-    finally:
-        session.close()
-
-
-# Common test data fixtures
-@pytest.fixture
-def test_user(session):
-    """Get known test user (benkirk)."""
-    from sam import User
-    return User.get_by_username(session, 'benkirk')
-
-
-@pytest.fixture
-def test_project(session):
-    """Get known test project (SCSG0001)."""
-    from sam import Project
-    return Project.get_by_projcode(session, 'SCSG0001')
-
-
-@pytest.fixture
-def test_allocation(test_project):
-    """Get active allocation from test project."""
-    for account in test_project.accounts:
-        for allocation in account.allocations:
-            if allocation.is_active:
-                return allocation
-    return None
-
-
-@pytest.fixture
-def test_resource(session):
-    """Get known test resource (Derecho)."""
-    from sam import Resource
-    return session.query(Resource).filter_by(resource_name='Derecho').first()
-
-
-@pytest.fixture(scope='function')
-def status_session(test_databases, worker_db_name):
-    """
-    Provide system_status test session with transaction rollback.
-
-    Each test gets a fresh session that automatically rolls back changes.
-    pytest-xdist compatible: Uses worker-specific database name.
-    """
-    import os
-    from system_status.session import create_status_engine
-
-    # Override database name for this session
-    original_db = os.getenv('STATUS_DB_NAME', 'system_status')
-    os.environ['STATUS_DB_NAME'] = worker_db_name
-
-    try:
-        engine, SessionLocal = create_status_engine()
-        connection = engine.connect()
-        transaction = connection.begin()
-        session = SessionLocal(bind=connection)
-
-        yield session
-
-        session.close()
-        transaction.rollback()
+        sess.close()
+        if transaction.is_active:
+            transaction.rollback()
         connection.close()
-    finally:
-        os.environ['STATUS_DB_NAME'] = original_db
-        engine.dispose()
 
 
-@pytest.fixture(scope='session')
-def app(test_databases, worker_db_name):
+# ---- Flask app / client fixtures (Phase 4) --------------------------------
+#
+# These exist because `src/webapp/run.py::create_app()` was extended with a
+# `config_overrides=` kwarg that lets the caller replace SQLALCHEMY config
+# after defaults land but before `db.init_app(app)` runs. Without that kwarg,
+# Flask-SQLAlchemy's URL comes from a module-level global in `sam.session`
+# that's set at import time — which is why the legacy suite has the
+# elaborate env-var-before-import dance in `tests/conftest.py`.
+
+
+@pytest.fixture(scope="session")
+def status_db_path(tmp_path_factory):
+    """Per-worker SQLite tempfile holding the `system_status` schema.
+
+    Why SQLite (not the mysql-test container, like the legacy suite did
+    with `system_status_test_<workerid>` databases): the `system_status`
+    models use only portable column types (DateTime, Integer, Float,
+    Boolean, String, ForeignKey), so SQLAlchemy's dialect-aware DDL
+    materializes the schema cleanly via `db.create_all(bind_key=...)`.
+    No per-worker DB creation, no env-var ordering, no `init_status_db_defaults()`
+    re-call dance — just a temp file path that goes into SQLALCHEMY_BINDS.
+
+    `tmp_path_factory.getbasetemp()` returns a worker-scoped directory
+    under pytest's tmp dir, so concurrent xdist workers get isolated
+    files automatically without touching PYTEST_XDIST_WORKER ourselves.
     """
-    Create Flask app for testing.
+    base = tmp_path_factory.getbasetemp()
+    return str(base / "status_test.sqlite")
 
-    Uses session scope so the app is created once per test session.
-    Configures app for testing mode with CSRF disabled and test database for system_status.
-    Rebuilds system_status connection string to use test database.
-    pytest-xdist compatible: Uses worker-specific database name.
+
+@pytest.fixture(scope="session")
+def status_db_url(status_db_path):
+    """SQLite URL used as the `system_status` bind in the test app config."""
+    return f"sqlite:///{status_db_path}"
+
+
+@pytest.fixture(scope="session")
+def app(test_db_url, status_db_url):
+    """Flask application bound to the mysql-test container + a SQLite status DB.
+
+    Uses `create_app(config_overrides=...)` to point Flask-SQLAlchemy at
+    the test DB without touching `sam.session.connection_string`. Everything
+    else (DEV_ROLE_MAPPING, API_KEYS, TESTING=True, WTF_CSRF_ENABLED=False,
+    ALLOCATION_USAGE_CACHE_TTL=0) comes from `TestingConfig`, selected via
+    `FLASK_CONFIG='testing'`.
+
+    The `system_status` bind points at a per-worker SQLite tempfile (see
+    `status_db_path` / `status_db_url`). Schema is materialized once via
+    `db.create_all(bind_key='system_status')` after `create_app()` returns
+    — `db.metadatas['system_status']` knows about the status models because
+    importing `system_status.models` registers them on the bind-keyed
+    metadata at import time.
+
+    Session-scoped because `create_app()` is expensive (registers all
+    blueprints, initializes extensions) — one app per xdist worker.
     """
-    import os
+    os.environ.setdefault("FLASK_CONFIG", "testing")
+    os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
+    # FLASK_ACTIVE=1 makes `system_status.base.StatusBase` resolve to
+    # `webapp.extensions.db.Model`, so the status models bind to the
+    # Flask-SQLAlchemy registry instead of a standalone declarative base.
+    # Required for `db.session.query(DerechoStatus)` to route through
+    # the system_status bind in test code and routes alike.
+    os.environ.setdefault("FLASK_ACTIVE", "1")
     from webapp.run import create_app
-    import system_status.session
 
-    # Configure for testing — must be FLASK_CONFIG (read by get_webapp_config),
-    # not FLASK_ENV (which has no effect on config class selection).
-    os.environ['FLASK_CONFIG'] = 'testing'
+    flask_app = create_app(config_overrides={
+        "SQLALCHEMY_DATABASE_URI": test_db_url,
+        "SQLALCHEMY_BINDS": {
+            "system_status": status_db_url,
+        },
+    })
 
-    # CRITICAL: Reinitialize system_status connection string with test database
-    # The module may have been imported before STATUS_DB_NAME was set
-    system_status.session.init_status_db_defaults()
-
-    app = create_app()
-    app.config['TESTING'] = True
-    app.config['WTF_CSRF_ENABLED'] = False
-
-    # Regression guard: ensure TestingConfig was actually loaded. The TTLCache
-    # instance is explicitly disabled (TTL=0) in TestingConfig and set to 3600
-    # in the base class — use it as an observable marker that the right config
-    # class was selected by get_webapp_config().
-    assert app.config['ALLOCATION_USAGE_CACHE_TTL'] == 0, (
-        f"TestingConfig not loaded (got ALLOCATION_USAGE_CACHE_TTL="
-        f"{app.config['ALLOCATION_USAGE_CACHE_TTL']!r}). "
-        f"Check FLASK_CONFIG env var selection in webapp.config.get_webapp_config()."
+    # Regression guard — mirrors the legacy app fixture. Fails loudly if
+    # TestingConfig didn't load (which would mean DEV_ROLE_MAPPING, API_KEYS,
+    # and cache disables are all wrong).
+    assert flask_app.config["ALLOCATION_USAGE_CACHE_TTL"] == 0, (
+        "TestingConfig not loaded — check FLASK_CONFIG env var and "
+        "webapp.config.get_webapp_config() class selection"
     )
 
-    # Verify the app is using worker-specific test database
-    assert worker_db_name in app.config['SQLALCHEMY_BINDS']['system_status'], \
-        f"Flask app not using test database '{worker_db_name}': {app.config['SQLALCHEMY_BINDS']['system_status']}"
+    # Materialize the system_status schema in the SQLite tempfile.
+    # Mirrors the canonical pattern from scripts/setup_status_db.py
+    # (StatusBase.metadata.create_all). The model imports populate
+    # `db.metadatas['system_status']` thanks to `__bind_key__`.
+    import system_status.models  # noqa: F401  — populate metadata registry
+    with flask_app.app_context():
+        from webapp.extensions import db
+        db.create_all(bind_key="system_status")
 
-    return app
+    return flask_app
 
 
 @pytest.fixture
 def client(app):
-    """
-    Create Flask test client.
-
-    Returns an unauthenticated test client. Use this for testing
-    endpoints that don't require authentication.
-    """
+    """Unauthenticated Flask test client — one per test."""
     return app.test_client()
 
 
 @pytest.fixture
-def auth_client(client, session, app):
-    """
-    Create authenticated test client (logged in as benkirk).
+def auth_client(client, session):
+    """Test client logged in as `benkirk` — admin via TestingConfig.DEV_ROLE_MAPPING.
 
-    Simulates a logged-in user by setting Flask-Login session data.
-    The user 'benkirk' is used as it exists in the test database.
+    Uses Flask-Login's session-cookie mechanism (`client.session_transaction()`
+    → `sess['_user_id']`). This triggers the `load_user()` callback in the
+    login_manager, which reads `DEV_ROLE_MAPPING` from TestingConfig so
+    benkirk gets the `admin` role without needing any real `role_user`
+    rows in the DB. Same pattern as the legacy fixture.
     """
+    from sam import User
+
+    user = User.get_by_username(session, "benkirk")
+    assert user is not None, (
+        "benkirk must be preserved in the mysql-test snapshot — "
+        "see project_test_db_fixtures.md"
+    )
+    with client:
+        with client.session_transaction() as sess_data:
+            sess_data["_user_id"] = str(user.user_id)
+            sess_data["_fresh"] = True
+        yield client
+
+
+@pytest.fixture
+def non_admin_client(client, session):
+    """Test client logged in as a non-admin user from the snapshot.
+
+    Picks any active user who isn't `benkirk` — their username won't be
+    in `TestingConfig.DEV_ROLE_MAPPING`, so `load_user()` assigns them
+    the default `['user']` role. Used by tests that need to verify
+    403-on-admin-only-routes behavior.
+
+    We can't use a factory-built user here: `load_user` goes through
+    Flask-SQLAlchemy's `db.session` (its own connection, not the raw
+    test session), so it only sees committed snapshot rows.
+    """
+    from sam import User
+
+    user = (
+        session.query(User)
+        .filter(User.active == True, User.username != "benkirk")
+        .order_by(User.user_id)
+        .first()
+    )
+    assert user is not None, "snapshot has no active non-benkirk users"
+    with client:
+        with client.session_transaction() as sess_data:
+            sess_data["_user_id"] = str(user.user_id)
+            sess_data["_fresh"] = True
+        yield client
+
+
+# ---- system_status fixtures (Phase 4f) ------------------------------------
+#
+# The status fixtures use `db.session` directly inside an app context — both
+# the test code and the Flask routes route system_status queries through the
+# same Flask-SQLAlchemy session, which is bound to the per-worker SQLite
+# tempfile via the `system_status` bind. Per-test isolation is via DELETE
+# (not SAVEPOINT): SQLite's DELETE is fast, the routes commit normally, and
+# everything lives in the worker-scoped tempfile that pytest cleans up.
+
+
+def _truncate_status_tables(db):
+    """Wipe all system_status tables in dependency order.
+
+    Mirrors the iteration pattern from scripts/cleanup_status_data.py but
+    uses SQLAlchemy's `sorted_tables` so the FK ordering is automatic.
+    `reversed(sorted_tables)` deletes children before parents.
+    """
+    for tbl in reversed(db.metadatas["system_status"].sorted_tables):
+        db.session.execute(tbl.delete())
+    db.session.commit()
+
+
+@pytest.fixture
+def status_session(app):
+    """Per-test session for `system_status` schema, pre-cleaned.
+
+    Yields the Flask-SQLAlchemy `db.session`, wrapped in an app context.
+    The session routes queries on system_status models (DerechoStatus,
+    CasperStatus, …) through the per-worker SQLite engine. Tests can use
+    it just like a normal session — `add()`, `flush()`, `commit()`,
+    `query()` — and the same `db.session` inside Flask routes will see
+    the committed data because both go through the same engine.
+
+    Cleanup strategy: DELETE all status tables on entry. SQLite tempfile
+    + per-test DELETE is faster than SAVEPOINT bridging and isolates
+    tests cleanly without any session-mode mucking.
+    """
+    with app.app_context():
+        from webapp.extensions import db
+
+        _truncate_status_tables(db)
+        try:
+            yield db.session
+        finally:
+            db.session.remove()
+
+
+@pytest.fixture
+def api_key_client(client, session, app):
+    """Test client authenticated via HTTP Basic Auth API key.
+
+    Mirrors the legacy `api_key_client` from tests/api/conftest.py — wraps
+    the Flask test client to inject `Authorization: Basic <collector:test-api-key>`
+    on every request. Used by `test_status_endpoints.py` for POST routes
+    decorated with `@api_key_required`.
+
+    Also sets up a Flask-Login session as benkirk so GET routes decorated
+    with `@login_required` work in the same test class.
+
+    The bcrypt hash for `test-api-key` is precomputed in TestingConfig
+    (rounds=4 for fast test execution), so we don't need to recompute it
+    on every fixture call.
+    """
+    import base64
     from sam.core.users import User
 
-    with client:
-        # Get benkirk user
-        user = User.get_by_username(session, 'benkirk')
-        assert user is not None, "Test user 'benkirk' not found in database"
+    test_key = "test-api-key"
+    credentials = base64.b64encode(f"collector:{test_key}".encode()).decode("ascii")
+    auth_header = {"Authorization": f"Basic {credentials}"}
 
-        # Simulate login by setting session
+    with client:
+        user = User.get_by_username(session, "benkirk")
+        assert user is not None, "benkirk must exist in the snapshot"
         with client.session_transaction() as sess:
-            sess['_user_id'] = str(user.user_id)
-            sess['_fresh'] = True
+            sess["_user_id"] = str(user.user_id)
+            sess["_fresh"] = True
+
+        original_post = client.post
+        original_get = client.get
+        original_patch = client.patch
+        original_delete = client.delete
+
+        def post_with_auth(path, **kwargs):
+            kwargs.setdefault("headers", {}).update(auth_header)
+            return original_post(path, **kwargs)
+
+        def get_with_auth(path, **kwargs):
+            kwargs.setdefault("headers", {}).update(auth_header)
+            return original_get(path, **kwargs)
+
+        def patch_with_auth(path, **kwargs):
+            kwargs.setdefault("headers", {}).update(auth_header)
+            return original_patch(path, **kwargs)
+
+        def delete_with_auth(path, **kwargs):
+            kwargs.setdefault("headers", {}).update(auth_header)
+            return original_delete(path, **kwargs)
+
+        client.post = post_with_auth
+        client.get = get_with_auth
+        client.patch = patch_with_auth
+        client.delete = delete_with_auth
 
         yield client
+
+
+# ---- Representative fixtures ----------------------------------------------
+#
+# Layer 1 of the two-layer test data strategy (see docs/plans/REFACTOR_TESTING.md).
+#
+# These fixtures pick ANY row from the snapshot that matches a structural
+# shape — "any active project with allocations", "any HPC resource", "any
+# user with >=2 active projects". They are session-scoped (one query at
+# suite startup) and return IDs, not ORM instances — each test fetches a
+# fresh instance bound to its own session via session.get().
+#
+# This layer is for READ-PATH tests that want snapshot-shaped data but
+# don't care about specific projcodes/usernames. Tests built on this layer
+# survive snapshot refreshes as long as AT LEAST ONE row of each shape
+# still exists.
+#
+# Layer 2 (factories) lives in tests/factories/ and is for WRITE-PATH
+# tests that need to assert on exact counts/values.
+
+
+def _session_for_setup(engine):
+    """One-shot session for fixture setup queries, separate from test session."""
+    Session = sessionmaker(bind=engine, autoflush=False, future=True)
+    return Session()
+
+
+@pytest.fixture(scope="session")
+def _active_project_id(engine):
+    """ID of any project with at least one account AND at least one active allocation."""
+    from sqlalchemy import text as _text
+    with _session_for_setup(engine) as s:
+        row = s.execute(_text("""
+            SELECT p.project_id
+            FROM project p
+            JOIN account a ON a.project_id = p.project_id
+            JOIN allocation al ON al.account_id = a.account_id
+            WHERE p.active = 1
+              AND al.start_date <= NOW()
+              AND (al.end_date IS NULL OR al.end_date >= NOW())
+            GROUP BY p.project_id
+            HAVING COUNT(DISTINCT al.allocation_id) >= 1
+            ORDER BY p.project_id
+            LIMIT 1
+        """)).first()
+    assert row is not None, "snapshot has no active projects with allocations"
+    return row[0]
+
+
+@pytest.fixture(scope="session")
+def _multi_project_user_id(engine):
+    """ID of any active user who belongs to >=2 active projects (for dashboard tests)."""
+    from sqlalchemy import text as _text
+    with _session_for_setup(engine) as s:
+        row = s.execute(_text("""
+            SELECT u.user_id
+            FROM users u
+            JOIN account_user au ON au.user_id = u.user_id
+            JOIN account a ON a.account_id = au.account_id
+            JOIN project p ON p.project_id = a.project_id
+            WHERE u.active = 1 AND u.locked = 0
+              AND p.active = 1
+            GROUP BY u.user_id
+            HAVING COUNT(DISTINCT p.project_id) >= 2
+            ORDER BY u.user_id
+            LIMIT 1
+        """)).first()
+    assert row is not None, "snapshot has no multi-project active users"
+    return row[0]
+
+
+@pytest.fixture(scope="session")
+def _hpc_resource_id(engine):
+    """ID of any currently-active HPC resource.
+
+    "Active" means commissioned on or before today AND either still
+    commissioned (NULL decommission_date) or decommissioned in the future.
+    The low-ID HPC resources in the obfuscated snapshot are long-retired
+    (Bluefire, Yellowstone, Jellystone, ...) so ORDER BY resource_id
+    without this filter returns a dead resource with no fstree presence.
+    """
+    from sqlalchemy import text as _text
+    with _session_for_setup(engine) as s:
+        row = s.execute(_text("""
+            SELECT r.resource_id
+            FROM resources r
+            JOIN resource_type rt ON rt.resource_type_id = r.resource_type_id
+            WHERE rt.resource_type = 'HPC'
+              AND (r.commission_date IS NULL OR r.commission_date <= NOW())
+              AND (r.decommission_date IS NULL OR r.decommission_date >= NOW())
+            ORDER BY r.resource_id
+            LIMIT 1
+        """)).first()
+    assert row is not None, "snapshot has no currently-active HPC resources"
+    return row[0]
+
+
+@pytest.fixture(scope="session")
+def _subtree_project_id(engine):
+    """ID of any active project with >=3 active child projects.
+
+    Used by subtree-rollup tests that need a non-leaf project for MPTT
+    aggregation. The threshold of 3 children is arbitrary — just large
+    enough to produce a meaningful rollup and ensure we don't pick a
+    project that happens to have 1 descendant.
+    """
+    from sqlalchemy import text as _text
+    with _session_for_setup(engine) as s:
+        row = s.execute(_text("""
+            SELECT p.project_id
+            FROM project p
+            JOIN project c ON c.parent_id = p.project_id
+            WHERE p.active = 1 AND c.active = 1
+            GROUP BY p.project_id
+            HAVING COUNT(c.project_id) >= 3
+            ORDER BY p.project_id
+            LIMIT 1
+        """)).first()
+    assert row is not None, "snapshot has no active projects with >=3 active children"
+    return row[0]
+
+
+@pytest.fixture
+def active_project(session, _active_project_id):
+    """A Project row bound to the test session. Has at least one active allocation."""
+    from sam import Project
+    return session.get(Project, _active_project_id)
+
+
+@pytest.fixture
+def multi_project_user(session, _multi_project_user_id):
+    """A User bound to the test session with >=2 active projects."""
+    from sam import User
+    return session.get(User, _multi_project_user_id)
+
+
+@pytest.fixture
+def hpc_resource(session, _hpc_resource_id):
+    """An HPC Resource bound to the test session."""
+    from sam import Resource
+    return session.get(Resource, _hpc_resource_id)
+
+
+@pytest.fixture
+def subtree_project(session, _subtree_project_id):
+    """A Project bound to the test session that has >=3 active child projects."""
+    from sam import Project
+    return session.get(Project, _subtree_project_id)
+
+
+# ---- "any row of X" fixtures ----------------------------------------------
+#
+# Simple function-scoped lookups used by the `.update()` contract tests in
+# test_manage_*.py and by read-only property tests. Each runs one ~1ms
+# SELECT with a skip fallback when the row doesn't exist. Session-cached
+# ID lookups would be marginally faster but are not worth the complexity
+# at this call volume.
+#
+# Naming: `any_X` → "pick any row of type X, don't care which". Contrast
+# with the shape-constrained fixtures above (`active_project` requires
+# allocations, `hpc_resource` requires active HPC, etc.).
+
+
+def _any_or_skip(session, model, label):
+    row = session.query(model).first()
+    if row is None:
+        pytest.skip(f"No {label} in database")
+    return row
+
+
+@pytest.fixture
+def any_facility(session):
+    from sam.resources.facilities import Facility
+    return _any_or_skip(session, Facility, "facilities")
+
+
+@pytest.fixture
+def any_panel(session):
+    from sam.resources.facilities import Panel
+    return _any_or_skip(session, Panel, "panels")
+
+
+@pytest.fixture
+def any_panel_session(session):
+    from sam.resources.facilities import PanelSession
+    return _any_or_skip(session, PanelSession, "panel sessions")
+
+
+@pytest.fixture
+def any_allocation_type(session):
+    from sam.accounting.allocations import AllocationType
+    return _any_or_skip(session, AllocationType, "allocation types")
+
+
+@pytest.fixture
+def any_organization(session):
+    from sam.core.organizations import Organization
+    return _any_or_skip(session, Organization, "organizations")
+
+
+@pytest.fixture
+def any_institution(session):
+    from sam.core.organizations import Institution
+    return _any_or_skip(session, Institution, "institutions")
+
+
+@pytest.fixture
+def any_aoi(session):
+    from sam.projects.areas import AreaOfInterest
+    return _any_or_skip(session, AreaOfInterest, "areas of interest")
+
+
+@pytest.fixture
+def any_aoi_group(session):
+    from sam.projects.areas import AreaOfInterestGroup
+    return _any_or_skip(session, AreaOfInterestGroup, "AOI groups")
+
+
+@pytest.fixture
+def any_contract(session):
+    from sam.projects.contracts import Contract
+    return _any_or_skip(session, Contract, "contracts")
+
+
+@pytest.fixture
+def any_contract_source(session):
+    from sam.projects.contracts import ContractSource
+    return _any_or_skip(session, ContractSource, "contract sources")
+
+
+@pytest.fixture
+def any_nsf_program(session):
+    from sam.projects.contracts import NSFProgram
+    return _any_or_skip(session, NSFProgram, "NSF programs")
+
+
+@pytest.fixture
+def any_resource(session):
+    from sam.resources.resources import Resource
+    return _any_or_skip(session, Resource, "resources")
+
+
+@pytest.fixture
+def any_resource_type(session):
+    from sam.resources.resources import ResourceType
+    return _any_or_skip(session, ResourceType, "resource types")
+
+
+@pytest.fixture
+def any_machine(session):
+    from sam.resources.machines import Machine
+    return _any_or_skip(session, Machine, "machines")
+
+
+@pytest.fixture
+def any_queue(session):
+    from sam.resources.machines import Queue
+    return _any_or_skip(session, Queue, "queues")
