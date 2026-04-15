@@ -84,10 +84,11 @@ jobs:
           sam-status casper
           sam-status jupyterhub
 
-      - name: Test Suite
-        run: |
-          python3 tests/tools/orm_inventory.py
-          pytest -v -n auto
+      # Note: the pytest suite does NOT run here. sam-ci-docker.yaml is
+      # the canonical test job — it runs the full suite against the
+      # mysql-test container. This workflow's job is to verify that the
+      # conda/pip install path produces a working environment, which the
+      # sam-search and sam-status smoke steps above already prove.
 
       - name: Cleanup
         if: always()
