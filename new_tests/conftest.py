@@ -149,3 +149,111 @@ def session(engine):
         if transaction.is_active:
             transaction.rollback()
         connection.close()
+
+
+# ---- Representative fixtures ----------------------------------------------
+#
+# Layer 1 of the two-layer test data strategy (see docs/plans/REFACTOR_TESTING.md).
+#
+# These fixtures pick ANY row from the snapshot that matches a structural
+# shape — "any active project with allocations", "any HPC resource", "any
+# user with >=2 active projects". They are session-scoped (one query at
+# suite startup) and return IDs, not ORM instances — each test fetches a
+# fresh instance bound to its own session via session.get().
+#
+# This layer is for READ-PATH tests that want snapshot-shaped data but
+# don't care about specific projcodes/usernames. Tests built on this layer
+# survive snapshot refreshes as long as AT LEAST ONE row of each shape
+# still exists.
+#
+# Layer 2 (factories) lives in new_tests/factories/ and is for WRITE-PATH
+# tests that need to assert on exact counts/values. Added when we start
+# porting tests that need it.
+
+
+def _session_for_setup(engine):
+    """One-shot session for fixture setup queries, separate from test session."""
+    Session = sessionmaker(bind=engine, autoflush=False, future=True)
+    return Session()
+
+
+@pytest.fixture(scope="session")
+def _active_project_id(engine):
+    """ID of any project with at least one account AND at least one active allocation."""
+    from sqlalchemy import text as _text
+    with _session_for_setup(engine) as s:
+        row = s.execute(_text("""
+            SELECT p.project_id
+            FROM project p
+            JOIN account a ON a.project_id = p.project_id
+            JOIN allocation al ON al.account_id = a.account_id
+            WHERE p.active = 1
+              AND al.start_date <= NOW()
+              AND (al.end_date IS NULL OR al.end_date >= NOW())
+            GROUP BY p.project_id
+            HAVING COUNT(DISTINCT al.allocation_id) >= 1
+            ORDER BY p.project_id
+            LIMIT 1
+        """)).first()
+    assert row is not None, "snapshot has no active projects with allocations"
+    return row[0]
+
+
+@pytest.fixture(scope="session")
+def _multi_project_user_id(engine):
+    """ID of any active user who belongs to >=2 active projects (for dashboard tests)."""
+    from sqlalchemy import text as _text
+    with _session_for_setup(engine) as s:
+        row = s.execute(_text("""
+            SELECT u.user_id
+            FROM users u
+            JOIN account_user au ON au.user_id = u.user_id
+            JOIN account a ON a.account_id = au.account_id
+            JOIN project p ON p.project_id = a.project_id
+            WHERE u.active = 1 AND u.locked = 0
+              AND p.active = 1
+            GROUP BY u.user_id
+            HAVING COUNT(DISTINCT p.project_id) >= 2
+            ORDER BY u.user_id
+            LIMIT 1
+        """)).first()
+    assert row is not None, "snapshot has no multi-project active users"
+    return row[0]
+
+
+@pytest.fixture(scope="session")
+def _hpc_resource_id(engine):
+    """ID of any HPC resource."""
+    from sqlalchemy import text as _text
+    with _session_for_setup(engine) as s:
+        row = s.execute(_text("""
+            SELECT r.resource_id
+            FROM resources r
+            JOIN resource_type rt ON rt.resource_type_id = r.resource_type_id
+            WHERE rt.resource_type = 'HPC'
+            ORDER BY r.resource_id
+            LIMIT 1
+        """)).first()
+    assert row is not None, "snapshot has no HPC resources"
+    return row[0]
+
+
+@pytest.fixture
+def active_project(session, _active_project_id):
+    """A Project row bound to the test session. Has at least one active allocation."""
+    from sam import Project
+    return session.get(Project, _active_project_id)
+
+
+@pytest.fixture
+def multi_project_user(session, _multi_project_user_id):
+    """A User bound to the test session with >=2 active projects."""
+    from sam import User
+    return session.get(User, _multi_project_user_id)
+
+
+@pytest.fixture
+def hpc_resource(session, _hpc_resource_id):
+    """An HPC Resource bound to the test session."""
+    from sam import Resource
+    return session.get(Resource, _hpc_resource_id)
