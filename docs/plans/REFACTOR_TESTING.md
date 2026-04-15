@@ -340,6 +340,239 @@ The 70-second drop from removing 98 tests = ~715ms/test — **7× the suite aver
 
 ---
 
+## Phase 2d — remaining structural read-path ports (planned)
+
+**Scope:** finish the read-path wave before pivoting to factories. Covers every remaining `tests/unit/*.py` that does not need write persistence, plus the `test_manage_*` files that LOOK like writes but are actually `.update()` contract tests (they fetch → mutate in memory → rollback, which is perfectly safe under SAVEPOINT isolation).
+
+### Classification of remaining files
+
+Based on an Explore audit + spot-reads:
+
+| File | Lines | Class | Port plan |
+|---|---|---|---|
+| `test_orm_descriptors.py` | 57 | **X** — zero DB, pure introspection | Near-verbatim port |
+| `test_project_permissions.py` | 212 | **X** — pure mocks | Near-verbatim port |
+| `test_notification_enhancements.py` | 319 | **X** — mocked SMTP/context | Near-verbatim port |
+| `test_sam_search_cli.py` | 137 | **R** — CLI tests with mocked session | Transform hardcoded `benkirk`/`SCSG0001` CLI args to fixture-derived values |
+| `test_security_models.py` | 73 | **R** — ApiCredentials reads | Representative fixture needed if strict |
+| `test_project_models.py` | 291 | **R (maybe)** — mostly reads, re-verify on port | Near-verbatim + `pytest.mark.unit` |
+| `test_manage_facilities.py` | 338 | **M → R-adjacent** — `.update()` tests with rollback | Replace `_get_X` helpers with `any_X` fixtures |
+| `test_manage_organizations.py` | 501 | **M → R-adjacent** — same `.update()` pattern | Same |
+| `test_manage_resources.py` | 347 | **M → R-adjacent** — same `.update()` pattern | Same |
+| `test_oidc_auth.py` (Provider subset, lines ~30–113 and ~438–462) | ~75 | **R** — `session.query(User).first()` patterns | Partial port; defer route tests |
+| `test_transaction_context.py` | 78 | **W** — tests commit semantics explicitly | **Defer to Phase 3** |
+| `test_wallclock_exemptions.py` | 146 | **W** — 11× `.create()` calls | **Defer to Phase 3** (first port target) |
+| `test_management_functions.py` | 312 | **W** — all tests persist state via `add_user_to_project` etc. | **Defer to Phase 3** |
+| `test_oidc_auth.py` (route tests, bulk of file) | ~530 | **Mocked routes** | **Defer to Phase 4** (webapp tier) |
+
+### Commit plan
+
+Break Phase 2d into three commits so each has clear rollback-ability and legacy regression checks in between.
+
+- **2d-batch-1 (no new fixtures):** `test_orm_descriptors` + `test_project_permissions` + `test_notification_enhancements` + `test_sam_search_cli`. ~725 lines moved, ~4 files. The three X files import cleanly into new_tests/ since they don't need `SAM_TEST_DB_URL` (but the conftest guard still fires — that's fine). The CLI file needs hardcoded-ref transformation.
+- **2d-batch-2 (adds representative fixtures):** `test_manage_facilities` + `test_manage_organizations` + `test_manage_resources` + `test_security_models` + `test_project_models`. ~1450 lines. This is the fixture-heavy batch — adds ~10 new `any_*` fixtures to `new_tests/conftest.py`.
+- **2d-batch-3 (partial port):** `test_oidc_auth.py` Provider subset into `new_tests/unit/test_oidc_auth_provider.py`. Leave the rest of `tests/unit/test_oidc_auth.py` in place for Phase 3/4.
+
+### New representative fixtures needed
+
+All follow the existing conftest pattern: session-scoped ID cache + function-scoped `session.get()` fetch, OR simple function-scoped `session.query(Model).first()` for cheap auxiliary lookups.
+
+| Fixture | Shape | Used by |
+|---|---|---|
+| `any_facility` | first Facility row | test_manage_facilities |
+| `any_panel` | first Panel row | test_manage_facilities |
+| `any_panel_session` | first PanelSession row | test_manage_facilities |
+| `any_allocation_type` | first AllocationType row | test_manage_facilities |
+| `any_organization` | first Organization row | test_manage_organizations |
+| `any_institution` | first Institution row | test_manage_organizations |
+| `any_aoi` | first AreaOfInterest row | test_manage_organizations |
+| `any_contract` | first Contract row | test_manage_organizations |
+| `any_nsf_program` | first NSFProgram row | test_manage_organizations |
+| `any_resource_type` | first ResourceType row | test_manage_resources |
+| `any_machine` | first Machine row | test_manage_resources |
+| `any_queue` | first Queue row | test_manage_resources |
+
+These are all simple `.first()` + skip-if-none fixtures. I'll use function-scoped (1 query per test, ~1ms) rather than the session-cached pattern — cheap enough not to optimize. Naming convention: `any_*` for unconstrained "pick any row" fixtures (distinct from `active_project`/`hpc_resource`/`subtree_project` which have shape constraints).
+
+### Transformation patterns
+
+**For `test_sam_search_cli.py`:**
+Hardcoded CLI args like `['user', 'benkirk']` become:
+
+```python
+def test_user_search_exact_found(self, runner, mock_db_session, multi_project_user):
+    username = multi_project_user.username
+    result = runner.invoke(cli, ['user', username])
+    assert result.exit_code == 0
+    assert username in result.output
+```
+
+Same pattern for `SCSG0001` → `active_project.projcode`.
+
+**For `test_manage_*.py`:**
+Replace module-level `_get_X(session)` helpers with fixtures:
+
+```python
+# before
+def _get_facility(session):
+    f = session.query(Facility).first()
+    if not f:
+        pytest.skip("No facilities in database")
+    return f
+
+# after: delete helper, use fixture
+def test_update_description(self, session, any_facility):
+    original = any_facility.description
+    any_facility.update(description="new")
+    assert any_facility.description == "new"
+    session.rollback()
+    # SAVEPOINT eats the flush; assertion after rollback is redundant (and wrong —
+    # rollback clears session identity map, so the Python object is stale). Drop
+    # the post-rollback re-assert.
+```
+
+The post-rollback re-assert (`assert f.description == original`) in the legacy tests is a common smell — it's checking that the in-memory object reverted, but under SAVEPOINT isolation the Python object is detached after rollback. Drop those asserts during port.
+
+**For `test_oidc_auth.py` Provider subset:**
+The tests at lines 30–113 just call `session.query(User).filter_by(username='benkirk').first()` and check OIDC claim extraction. Replace hardcoded `benkirk` with `multi_project_user` (any active user works). The email-normalization tests at 438–462 hardcode `benkirk@ucar.edu` — these test string normalization logic so the domain part can stay hardcoded but the local-part should come from a fixture or be fully synthetic.
+
+### Expected results
+
+| Suite | Tests (projected) | Runtime (projected) |
+|---|---|---|
+| `new_tests/` after 2d | ~400–500 | 30–45s |
+| Legacy after 2d | ~900 | 40–60s |
+| Combined | ~1300–1400 | 70–105s |
+
+Port progress: ~35–40% when 2d lands. Moving the needle.
+
+### Phase 2d verification
+
+- After each commit: `pytest -c new_tests/pytest.ini new_tests/` clean, legacy `pytest -n auto --no-cov tests/` clean (allow one re-run for the legacy flake).
+- `new_tests/conftest.py` fixture list documented inline.
+- Post-2d plan log in this file.
+
+---
+
+## Phase 3 — factories + first write-path port (planned)
+
+**Scope:** build the factory layer so write-path tests (`test_wallclock_exemptions`, `test_transaction_context`, `test_management_functions`, and eventually `test_crud_operations`, `test_manage_summaries`, `test_renew_extend`) have somewhere to go. Port one small file end-to-end to validate the factory design. Iterate.
+
+### Factory module design
+
+Location: `new_tests/factories/` with domain-grouped modules. Public API via `new_tests/factories/__init__.py` re-exports.
+
+**Core principles (re-stated — these come from the plan's two-tier strategy):**
+
+1. **Never fall back to snapshot data.** Every call creates fresh synthetic rows with unique identifiers (projcode, username, etc.), inside the test's SAVEPOINT. The rollback catches everything.
+2. **Plain builder functions, not factory_boy classes.** SAM's models are simple enough; explicit kwargs are clearer than the factory_boy DSL. `factory_boy` stays in the deps in case we need it for a later deep-inheritance scenario.
+3. **Build the minimum required graph.** Every factory knows its FK dependencies and auto-builds parents if not supplied. `make_user()` builds an Organization if `org=` isn't provided, etc.
+4. **Predictable data.** No random amounts or dates. Tests that assert on exact values should get the same values every run.
+
+### First-wave factories
+
+Target: enough to port `test_wallclock_exemptions.py` (146 lines, 11 `WallclockExemption.create()` calls) + `test_transaction_context.py` (78 lines, tests commit/rollback).
+
+Modules:
+
+- `new_tests/factories/core.py`
+  - `make_organization(session, *, name=None) → Organization`
+  - `make_user(session, *, username=None, org=None) → User`
+  - `make_api_credentials(session, *, username=None) → ApiCredentials` (for test_security_models follow-up)
+
+- `new_tests/factories/resources.py`
+  - `make_resource_type(session, *, name='HPC') → ResourceType`
+  - `make_resource(session, *, name=None, resource_type=None) → Resource` (auto-creates ResourceType)
+  - `make_machine(session, *, name=None, resource=None) → Machine`
+  - `make_queue(session, *, name=None, resource=None, machine=None) → Queue`
+
+- `new_tests/factories/projects.py`
+  - `make_facility(session, *, name=None) → Facility`
+  - `make_project(session, *, projcode=None, facility=None, lead=None, active=True) → Project`
+
+- `new_tests/factories/accounting.py`
+  - `make_account(session, *, project=None, resource=None) → Account` (auto-builds project+resource)
+  - `make_allocation(session, *, account=None, amount=1_000_000, start_date=None, end_date=None) → Allocation`
+
+- `new_tests/factories/__init__.py` — re-export all public functions.
+
+**Naming sequence helper** (`new_tests/factories/_seq.py`):
+```python
+import itertools
+_counters = {}
+def next_seq(prefix):
+    c = _counters.setdefault(prefix, itertools.count())
+    return f"{prefix}{next(c):04d}"
+```
+Auto-generated usernames become `factoryuser0001`, `factoryuser0002`, etc. Auto-generated projcodes: `FCT00001`, etc. These are inside rolled-back transactions so uniqueness is only required within a single test. But: `factory_boy.Sequence` gives us this for free if we want it later. Keep it simple for now.
+
+### First write-path port target: `test_wallclock_exemptions.py`
+
+**Why this file first:**
+- Small (146 lines, ~12 tests)
+- Uses `.create()` classmethod exclusively, not complex multi-step flows
+- Dependencies are shallow: needs `User` + `Queue` only
+- No intermediate reads that depend on prior tests' state
+- Good proving ground for the factory-vs-session-rollback interaction
+
+**What gets validated:**
+- The factory module actually builds rows that SAM validates correctly
+- The SAVEPOINT rollback actually catches factory writes
+- Tests that assert "this row was inserted" still work (the SAVEPOINT holds the insert until rollback — `session.query().first()` finds it)
+- `make_user` + `make_queue` + `make_wallclock_exemption` compose cleanly
+
+**Port steps:**
+1. Build `new_tests/factories/core.py` and `resources.py` (minimum for User + Queue)
+2. Create `new_tests/unit/test_wallclock_exemptions.py` using factories
+3. Run in isolation — iterate on factory API until tests pass
+4. Delete legacy `tests/unit/test_wallclock_exemptions.py`
+5. Run full suites — new_tests/ + legacy regression
+
+### Phase 3 follow-up (same branch, next session)
+
+Once `test_wallclock_exemptions` validates the design:
+- Port `test_transaction_context.py` (78 lines — small, focused on commit/rollback semantics; will stress-test the SAVEPOINT pattern)
+- Port `test_management_functions.py` (312 lines — needs full User+Project+Account+Allocation graph)
+
+These three ports will also reveal which factory defaults need adjustment and which scenario helpers are worth adding (e.g. `scenario_project_with_members(session, n_members=3)` composing `make_project`, `make_user`×N, `make_account`, `make_allocation`).
+
+### Phase 3 verification
+
+- Factory module has its own smoke test (`new_tests/unit/test_factories.py`) that creates one of every type and verifies the returned instance passes `session.flush()`.
+- `test_wallclock_exemptions.py` under new_tests/ matches or exceeds the legacy version's test count.
+- Legacy suite post-deletion shows the file's ~12 tests removed with no new flakes.
+- The three ported write-path tests (end of Phase 3) collectively show the SAVEPOINT fixture handles `session_commit`-style writes correctly when routed through `create_savepoint` mode.
+
+### Critical files for Phase 3
+
+**Must create:**
+- `new_tests/factories/__init__.py`
+- `new_tests/factories/core.py` — User/Organization/ApiCredentials
+- `new_tests/factories/resources.py` — Resource/ResourceType/Machine/Queue
+- `new_tests/factories/projects.py` — Facility/Project
+- `new_tests/factories/accounting.py` — Account/Allocation
+- `new_tests/factories/_seq.py` — name sequencing helper
+- `new_tests/unit/test_factories.py` — factory smoke tests (verify each builder produces a valid flushable row)
+- `new_tests/unit/test_wallclock_exemptions.py` — first factory-consumer port
+
+**Must modify:**
+- `new_tests/conftest.py` — nothing structural, factories don't need new fixtures (they take `session` directly)
+
+**Must reuse (don't rewrite):**
+- `sam.accounting.allocations.Allocation.create()` — use existing classmethod
+- `sam.core.users.User.get_by_username()` — for fixture lookups if needed
+- CLAUDE.md patterns for `SessionMixin` + `.create()` classmethods
+
+### Phase 3 out-of-scope
+
+- `test_crud_operations.py` (692 lines, broad coverage) — port in Phase 3b after the factory design is validated
+- `test_manage_summaries.py` (710 lines, needs charge-summary factories) — Phase 3c
+- `test_renew_extend.py` (727 lines, allocation tree scenarios) — Phase 3d, needs `scenario_allocation_tree()`
+- `test_new_models.py` (51 tests across 7 models) — Phase 3b/c as appropriate
+- Webapp/API tests — Phase 4
+
+---
+
 ## Empirical baseline (measured 2026-04-14)
 
 ---
