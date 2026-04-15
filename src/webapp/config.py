@@ -135,6 +135,20 @@ class TestingConfig(SAMWebappConfig):
     ALLOCATION_USAGE_CACHE_TTL  = 0
     ALLOCATION_USAGE_CACHE_SIZE = 0
 
+    # Role mapping for the auth_client fixture — mirrors DevelopmentConfig so
+    # test users resolve to the same permissions they did when tests were
+    # inadvertently running under DevelopmentConfig. Consumed by
+    # run.py:load_user via AuthUser(dev_role_mapping=...).
+    DEV_ROLE_MAPPING = {
+        'benkirk':  ['admin'],
+        'mtrahan':  ['facility_manager'],
+        'rory':     ['project_lead'],
+        'andersnb': ['user'],
+        'negins':   ['user'],
+        'bdobbins': ['user'],
+        'tcraig':   ['user'],
+    }
+
 
 _configs = {
     'development': DevelopmentConfig,

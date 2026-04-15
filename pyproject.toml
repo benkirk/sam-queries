@@ -59,6 +59,13 @@ test = [
     "pytest-cov",
     "pytest-timeout",
     "pytest-xdist",
+    # new_tests/ additions — used by the planned test-suite replacement
+    # (see docs/plans/REFACTOR_TESTING.md). Factory-driven test data,
+    # query-count/latency regression guards, and static type checking.
+    "factory-boy",
+    "faker",
+    "pytest-benchmark",
+    "pyright",
 ]
 dev = ["samuel[test]", "jupyterlab", "pandas", "pre-commit"]
 

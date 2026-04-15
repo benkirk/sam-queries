@@ -235,12 +235,18 @@ def app(test_databases, worker_db_name, _prod_sam_session):
     # SAMConfig.reload() was already called by _prod_sam_session (or is a no-op
     # in the local path), so cfg.SAM_DB_REQUIRE_SSL is current here.
 
-    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['FLASK_CONFIG'] = 'testing'
     system_status.session.init_status_db_defaults()
 
     the_app = create_app()
     the_app.config['TESTING'] = True
     the_app.config['WTF_CSRF_ENABLED'] = False
+
+    assert the_app.config['ALLOCATION_USAGE_CACHE_TTL'] == 0, (
+        f"TestingConfig not loaded (got ALLOCATION_USAGE_CACHE_TTL="
+        f"{the_app.config['ALLOCATION_USAGE_CACHE_TTL']!r}). "
+        f"Check FLASK_CONFIG env var selection."
+    )
 
     assert worker_db_name in the_app.config['SQLALCHEMY_BINDS']['system_status'], (
         f"Flask app not using test database '{worker_db_name}': "

@@ -263,8 +263,9 @@ def app(test_databases, worker_db_name):
     from webapp.run import create_app
     import system_status.session
 
-    # Configure for testing
-    os.environ['FLASK_ENV'] = 'testing'
+    # Configure for testing — must be FLASK_CONFIG (read by get_webapp_config),
+    # not FLASK_ENV (which has no effect on config class selection).
+    os.environ['FLASK_CONFIG'] = 'testing'
 
     # CRITICAL: Reinitialize system_status connection string with test database
     # The module may have been imported before STATUS_DB_NAME was set
@@ -273,6 +274,16 @@ def app(test_databases, worker_db_name):
     app = create_app()
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False
+
+    # Regression guard: ensure TestingConfig was actually loaded. The TTLCache
+    # instance is explicitly disabled (TTL=0) in TestingConfig and set to 3600
+    # in the base class — use it as an observable marker that the right config
+    # class was selected by get_webapp_config().
+    assert app.config['ALLOCATION_USAGE_CACHE_TTL'] == 0, (
+        f"TestingConfig not loaded (got ALLOCATION_USAGE_CACHE_TTL="
+        f"{app.config['ALLOCATION_USAGE_CACHE_TTL']!r}). "
+        f"Check FLASK_CONFIG env var selection in webapp.config.get_webapp_config()."
+    )
 
     # Verify the app is using worker-specific test database
     assert worker_db_name in app.config['SQLALCHEMY_BINDS']['system_status'], \
