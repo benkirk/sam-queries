@@ -100,7 +100,9 @@ jobs:
       - name: Build and start services
         run: |
           docker compose build
-          docker compose up -d
+          # --profile test brings up the default stack PLUS mysql-test
+          # (the isolated test DB container that SAM_TEST_DB_URL targets).
+          docker compose --profile test up -d
           sleep 5
 
       - name: Wait for MySQL
@@ -131,13 +133,49 @@ jobs:
             exit 1
           }
 
+      - name: Wait for mysql-test (test DB on 3307)
+        run: |
+          for i in $(seq 1 60); do
+            if mysql -h 127.0.0.1 -P 3307 -proot -uroot -e "SELECT 1" 2>/dev/null; then
+              echo "mysql-test accepting connections after $((i * 5))s"
+              break
+            fi
+            STATE=$(docker compose ps mysql-test --format "{{.State}}" 2>/dev/null || echo "unknown")
+            if [ "${STATE}" = "exited" ]; then
+              echo "mysql-test container exited"
+              docker compose logs mysql-test --tail=200
+              exit 1
+            fi
+            sleep 5
+          done
+          for i in $(seq 1 12); do
+            if mysql -h 127.0.0.1 -P 3307 -proot -uroot sam -e "SELECT 1" 2>/dev/null; then
+              echo "mysql-test sam database ready"
+              break
+            fi
+            sleep 5
+          done
+          mysql -h 127.0.0.1 -P 3307 -proot -uroot sam -e "SELECT 1" || {
+            echo "mysql-test sam database not accessible"
+            docker compose logs mysql-test --tail=100
+            exit 1
+          }
+
       - name: Wait for webapp
         run: |
           timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
 
       - name: Run pytest (no coverage)
+        # SAM_TEST_DB_URL uses the compose service hostname `mysql-test`
+        # (reachable from inside the webapp container via the compose
+        # network). The test suite's safety allowlist has this target
+        # approved. `pytest` with no path arg picks up testpaths=tests
+        # from the root pytest.ini; the -n auto and --no-cov defaults
+        # come from pytest.ini addopts.
         run: |
-          docker compose exec -T webapp bash -c "cd /code && pytest tests/ -n auto --no-cov"
+          docker compose exec -T \
+            -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+            webapp bash -c "cd /code && pytest"
 
       - name: Show container logs
         if: failure()
