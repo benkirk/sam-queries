@@ -256,17 +256,6 @@ def app(test_db_url, status_db_url):
         from webapp.extensions import db
         db.create_all(bind_key="system_status")
 
-    # The status dashboard blueprint (src/webapp/dashboards/status/blueprint.py)
-    # calls `system_status.create_status_engine()` DIRECTLY rather than going
-    # through Flask-SQLAlchemy's `db.session`. That helper reads the module-
-    # level `connection_string` global which was set at import time from
-    # STATUS_DB_* env vars (defaulting to a docker hostname unreachable from
-    # the test env). Override the global to point at our SQLite tempfile so
-    # the dashboard routes see the same data as the test fixture seeds.
-    import system_status.session as ss_session
-    from sqlalchemy.engine.url import make_url
-    ss_session.connection_string = make_url(status_db_url)
-
     return flask_app
 
 
