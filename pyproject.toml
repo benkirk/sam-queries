@@ -56,15 +56,15 @@ hpc = [
 ]
 test = [
     "pytest",
-    "pytest-cov",
-    "pytest-timeout",
-    "pytest-xdist",
-    # Factory-driven test data + query-count/latency regression guards
-    # + static type checking.
-    "factory-boy",
-    "faker",
-    "pytest-benchmark",
-    "pyright",
+    "pytest-cov",       # --cov=src coverage reports (CI: sam-ci-docker.yaml)
+    "pytest-timeout",   # pytest.ini timeout = 300
+    "pytest-xdist",     # pytest.ini addopts -n auto (parallel)
+    # Deps deferred until their workstream lands (see
+    # docs/plans/TEST_SUITE_RESIDUALS.md):
+    #   factory-boy, faker            → Gap A / future factories
+    #   pytest-benchmark              → Gap A latency smoke
+    #   pyright                       → Gap B type checking
+    # Re-add to this list when starting the corresponding workstream.
 ]
 dev = ["samuel[test]", "jupyterlab", "pandas", "pre-commit"]
 
