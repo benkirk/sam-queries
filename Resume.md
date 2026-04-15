@@ -6,12 +6,12 @@
 
 ## TL;DR
 
-You are migrating a 1400-test pytest suite from `tests/` to `new_tests/` on branch **`tests_refactor`**. Phases 0, 1, 2a, 2b, 2c, and 2d are done and committed. **Phase 3 (factories + first write-path port) is next.**
+You are migrating a 1400-test pytest suite from `tests/` to `new_tests/` on branch **`tests_refactor`**. Phases 0, 1, 2a, 2b, 2c, 2d, and **2e** are done and committed. **Phase 3 (factories + first write-path port) is next.**
 
 Quick state check:
 
 ```bash
-git log --oneline -8           # Should show 4d8e405 as HEAD-ish
+git log --oneline -8           # Should show 9a8a176 "Phase 2e" as HEAD-ish
 git status                     # Should be clean except for untracked (follow_up.txt, legacy_sam, old_plan.md)
 ls new_tests/                  # conftest.py, pytest.ini, README.md, unit/, integration/
 ```
@@ -22,18 +22,20 @@ Run the suite to confirm everything still works:
 # Prereq: mysql-test container must be running
 docker compose --profile test up -d mysql-test
 
-# new_tests — fast, all ports
+# new_tests — all ports so far
 SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam' \
   pytest -c new_tests/pytest.ini new_tests/
 
-# Legacy (still has ~780 tests to port, uses port 3306 by default)
+# Legacy (still has ~600 tests to port)
 source etc/config_env.sh && pytest -n auto --no-cov
 ```
 
 Expected at checkpoint:
-- **new_tests/**: ~605 passed / ~22 skipped in ~21s
-- **Legacy tests/**: 778 passed / 39 skipped / 2 xpassed in ~60-70s
-- **Combined port progress: ~42%**
+- **new_tests/**: 784 passed / 22 skipped in ~38s
+- **Legacy tests/**: 597 passed / 34 skipped / 2 xpassed in ~54s
+- **Combined port progress: ~57%**
+
+The remaining 597 legacy tests are all either write-path (Phase 3), webapp/Admin (Phase 4), or perf (Phase 5) — no read-only stragglers left on the unit side.
 
 ---
 
@@ -83,15 +85,17 @@ The legacy suite has a **pre-existing ~30% flake rate** under xdist because its 
 ## What's committed (branch `tests_refactor`)
 
 ```
-4d8e405 Phase 2d — bulk structural read-path ports (THIS CHECKPOINT)
+9a8a176 Phase 2e — finish structural read-path ports (HEAD)
+522e020 checkpointing resume (Resume.md committed by user)
+4d8e405 Phase 2d — bulk structural read-path ports
 e7799ba commit plan
-6b2b0d6 commit plan  (actually Phase 2c content: rolling_usage + fstree_queries + project_access_queries + subtree fixture + perf mitigation)
+6b2b0d6 commit plan  (actually Phase 2c content: rolling_usage + fstree_queries + project_access_queries)
 d870f45 Phase 2b — test_query_functions + representative fixtures
 0bbc737 commit plan
 53d8dde Phase 0-2 checkpoint (TestingConfig fix, mysql-test container, run-webui-dbg.sh rewrite, new_tests skeleton, first schema+views port)
 ```
 
-**NOTE on commit labeling:** two commits are labeled "commit plan" — those are auto-commits from a user slash command that landed work before my own `git commit` ran. Treat `6b2b0d6` as Phase 2c and `e7799ba` as a plan-file update; both contain real work.
+**NOTE on commit labeling:** several commits are labeled "commit plan" — those are auto-commits from a user slash command that landed work before the `git commit` I was about to run. Treat `6b2b0d6` as Phase 2c, `e7799ba` as a plan-file update, and `522e020` as Resume.md. All contain real work.
 
 ---
 
@@ -103,22 +107,27 @@ new_tests/
 ├── pytest.ini                                 # -c flag required; isolated testpaths
 ├── conftest.py                                # Safety guard + session + representative fixtures
 ├── unit/
-│   ├── test_accounting_models.py              # NEW: Contract.is_active tests
-│   ├── test_cli_jupyterhub.py                 # NEW: mocked JupyterHub CLI
-│   ├── test_fmt.py                            # NEW: sam.fmt unit tests (zero DB)
+│   ├── test_accounting_models.py              # Contract.is_active tests
+│   ├── test_active_interface.py               # universal is_active / is_active_at() (Phase 2e)
+│   ├── test_basic_read.py                     # broad ORM smoke reads (Phase 2e)
+│   ├── test_charging_models.py                # Factor / Formula reads (Phase 2e)
+│   ├── test_cli_jupyterhub.py                 # mocked JupyterHub CLI
+│   ├── test_directory_access_queries.py       # group/user populator (Phase 2e)
+│   ├── test_email_notifications.py            # mocked SMTP + templates (Phase 2e)
+│   ├── test_fmt.py                            # sam.fmt unit tests (zero DB)
 │   ├── test_fstree_queries.py                 # module-scoped cached fstree data
-│   ├── test_manage_facilities.py              # NEW: .update() contract tests
-│   ├── test_manage_organizations.py           # NEW: .update() contract tests
-│   ├── test_manage_resources.py               # NEW: .update() contract tests
-│   ├── test_notification_enhancements.py      # NEW: mocked SMTP (zero DB)
-│   ├── test_orm_descriptors.py                # NEW: ORM class introspection (zero DB)
+│   ├── test_manage_facilities.py              # .update() contract tests
+│   ├── test_manage_organizations.py           # .update() contract tests
+│   ├── test_manage_resources.py               # .update() contract tests
+│   ├── test_notification_enhancements.py      # mocked SMTP (zero DB)
+│   ├── test_orm_descriptors.py                # ORM class introspection (zero DB)
 │   ├── test_project_access_queries.py         # structural reads, dynamic branch
-│   ├── test_project_models.py                 # NEW: ProjectCode/FosAoi/ResponsibleParty
-│   ├── test_project_permissions.py            # NEW: pure mocks (zero DB)
+│   ├── test_project_models.py                 # ProjectCode/FosAoi/ResponsibleParty
+│   ├── test_project_permissions.py            # pure mocks (zero DB)
 │   ├── test_query_functions.py                # representative fixtures
 │   ├── test_rolling_usage.py                  # subtree_project + threshold test caveats
-│   ├── test_sam_search_cli.py                 # NEW: CLI with mocked session
-│   ├── test_security_models.py                # NEW: ApiCredentials reads
+│   ├── test_sam_search_cli.py                 # CLI with mocked session
+│   ├── test_security_models.py                # ApiCredentials reads
 │   └── test_smoke.py                          # infrastructure validation
 └── integration/
     ├── test_schema_validation.py              # ORM ↔ MySQL alignment
@@ -268,26 +277,28 @@ Then (biggest), Phase 3b/c/d:
 
 ---
 
-## Remaining read-path files NOT yet ported
+## Remaining files NOT yet ported
 
-These are all pure-read (grep confirmed zero `session.add`/`.create(session)`/`.update(` matches) but I ran out of context in Phase 2d. They're Phase 2e material — trivial ports using the existing representative fixture set:
+**Phase 2e is DONE.** All the structural read-path files have landed. What's left in `tests/unit/` splits cleanly into Phase 3 (write-path + factories), Phase 4 (webapp/Admin/OIDC), and Phase 5 (perf):
 
-| File | Lines | Notes |
-|---|---|---|
-| `test_basic_read.py` | 445 | Broad ORM read coverage — highest priority |
-| `test_email_notifications.py` | 518 | Probably mocked SMTP like test_notification_enhancements |
-| `test_active_interface.py` | 488 | `Model.is_active` hybrid property tests |
-| `test_admin_defaults.py` | 318 | Has one `.count()` query assertion per earlier audit |
-| `test_directory_access_queries.py` | 287 | Structural reads, pattern like test_project_access_queries |
-| `test_charging_models.py` | 236 | Charging model reads |
+| File | Lines | Phase | Why |
+|---|---|---|---|
+| `test_wallclock_exemptions.py` | 146 | **3 (first port)** | 11 `.create()` calls, shallow FK graph (User+Queue) — smallest factory validation |
+| `test_transaction_context.py` | 78 | 3 | Tests commit/rollback semantics explicitly |
+| `test_management_functions.py` | 312 | 3 | `add_user_to_project` etc, needs full User+Project+Account+Allocation graph |
+| `test_crud_operations.py` | 692 | 3b | Broad CRUD coverage |
+| `test_manage_summaries.py` | 710 | 3c | Needs charge summary factories |
+| `test_renew_extend.py` | 727 | 3d | Needs `scenario_allocation_tree()` composer |
+| `test_audit_logging.py` | ? | 3 | Uses `session_commit` explicitly |
+| `test_allocation_tree.py` | ? | 3 | Hardcoded Allocation ID 6077 — replace with factory-built tree |
+| `test_new_models.py` (if present) | ? | 3b | 51 tests per earlier audit; mix of reads/writes |
+| `test_oidc_auth.py` | 607 | **4** | Flask routes + Provider unit tests |
+| `test_admin_defaults.py` | 318 | **4** | Flask Admin ModelView — needs `app` fixture |
+| `test_allocations_performance.py` | 937 | **5** | Performance tier |
 
-**Approach for Phase 2e:** port these one batch, same commit. Check each for hardcoded `benkirk`/`SCSG0001`/`Derecho` references and transform using the representative fixtures. Drop decorative `print()` statements. Should add ~2300 lines / ~100 tests to new_tests/.
+**Also note** — `tests/api/` and `tests/integration/` still have their own contents. `tests/integration/` has `test_legacy_api_parity.py`, `test_sam_search_cli.py` (moved/subset), `test_status_dashboard.py`, `test_status_flow.py`. `tests/api/` has ~14 webapp API endpoint tests. All Phase 4.
 
-Also Phase 2/3/4 mix:
-- `test_oidc_auth.py` (607 lines) — split: `TestOIDCAuthProvider` (lines 30–113) + `TestOIDCUsernameNormalization` (438–462) are read-path → Phase 2e; route tests are Phase 4
-- `test_allocation_tree.py` — hardcoded Allocation ID 6077, defer until factories can build fresh trees (Phase 3c)
-- `test_allocations_performance.py` (937 lines) — hybrid, Phase 5 (perf)
-- `test_basic_read.py` — technically already listed above, just noting it's the simplest win
+**Post-migration cleanup:** when the last file moves, delete `tests/conftest.py`, `tests/fixtures/`, and `tests/` itself. Rename `new_tests/` → `tests/`. Remove `Resume.md`.
 
 ---
 
