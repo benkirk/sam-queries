@@ -185,8 +185,14 @@ def app(test_db_url):
 
     flask_app = create_app(config_overrides={
         "SQLALCHEMY_DATABASE_URI": test_db_url,
-        # SQLALCHEMY_BINDS (system_status) left alone — Phase 4 status tests
-        # can override it later when we port them.
+        # Point the `system_status` bind at the same mysql-test container
+        # so health-endpoint pings succeed. No test in 4b writes through
+        # this bind, so schema mismatch doesn't matter — SELECT 1 works
+        # regardless. Phase 4f status dashboard ports will revisit this
+        # and add a real isolated status DB.
+        "SQLALCHEMY_BINDS": {
+            "system_status": test_db_url,
+        },
     })
 
     # Regression guard — mirrors the legacy app fixture. Fails loudly if
@@ -222,6 +228,35 @@ def auth_client(client, session):
         "benkirk must be preserved in the mysql-test snapshot — "
         "see project_test_db_fixtures.md"
     )
+    with client:
+        with client.session_transaction() as sess_data:
+            sess_data["_user_id"] = str(user.user_id)
+            sess_data["_fresh"] = True
+        yield client
+
+
+@pytest.fixture
+def non_admin_client(client, session):
+    """Test client logged in as a non-admin user from the snapshot.
+
+    Picks any active user who isn't `benkirk` — their username won't be
+    in `TestingConfig.DEV_ROLE_MAPPING`, so `load_user()` assigns them
+    the default `['user']` role. Used by tests that need to verify
+    403-on-admin-only-routes behavior.
+
+    We can't use a factory-built user here: `load_user` goes through
+    Flask-SQLAlchemy's `db.session` (its own connection, not the raw
+    test session), so it only sees committed snapshot rows.
+    """
+    from sam import User
+
+    user = (
+        session.query(User)
+        .filter(User.active == True, User.username != "benkirk")
+        .order_by(User.user_id)
+        .first()
+    )
+    assert user is not None, "snapshot has no active non-benkirk users"
     with client:
         with client.session_transaction() as sess_data:
             sess_data["_user_id"] = str(user.user_id)

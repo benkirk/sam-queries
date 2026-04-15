@@ -35,11 +35,17 @@ def _basic(username: str, password: str) -> str:
 def api_app(app):
     """
     App fixture with a known API_KEYS config for auth decorator tests.
-    Uses rounds=4 for fast hashing in tests.
+    Uses rounds=4 for fast hashing in tests. Saves and restores the
+    original API_KEYS so the mutation doesn't leak into other tests that
+    share the session-scoped `app`.
     """
+    original = app.config.get("API_KEYS")
     good_hash = bcrypt.hashpw(b"good-password", bcrypt.gensalt(rounds=4)).decode()
     app.config["API_KEYS"] = {"testuser": good_hash}
-    return app
+    try:
+        yield app
+    finally:
+        app.config["API_KEYS"] = original
 
 
 @pytest.fixture
