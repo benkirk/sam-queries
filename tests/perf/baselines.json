@@ -1,0 +1,52 @@
+{
+    "_comment": [
+        "Query-count baselines for performance regression tests.",
+        "",
+        "Each key is a test function name (without the test_ prefix).",
+        "  queries  — maximum allowed query count (fail above this)",
+        "  notes    — why this number, when it was last measured",
+        "",
+        "Re-baseline workflow:",
+        "  1. Run:  pytest -m perf -n 0 -v",
+        "  2. If a test fails, the error message shows the actual count.",
+        "  3. If the regression is intentional (e.g. new feature), update",
+        "     the 'queries' value here and commit with the code change.",
+        "  4. If unintentional, fix the N+1 or missing joinedload first.",
+        "",
+        "Baselines set at ~50% headroom above measured values (2025-04-16).",
+        "Tight enough to catch N+1 regressions, loose enough to tolerate",
+        "minor data-shape variation across snapshot refreshes."
+    ],
+    "get_user_dashboard_data": {
+        "queries": 35,
+        "notes": "measured 26 (multi-project user) — primary target of ORM perf push"
+    },
+    "get_project_dashboard_data": {
+        "queries": 55,
+        "notes": "measured 45 — single-project path, many eager loads"
+    },
+    "get_resource_detail_data": {
+        "queries": 15,
+        "notes": "measured 8 — exercises joinedload collapsing"
+    },
+    "get_fstree_data": {
+        "queries": 10,
+        "notes": "measured 3 — most expensive by wall time, few queries"
+    },
+    "get_allocation_summary": {
+        "queries": 10,
+        "notes": "measured 2 — heavy aggregation in single SQL"
+    },
+    "get_allocation_summary_with_usage": {
+        "queries": 10,
+        "notes": "measured 2 — aggregation plus charge joins"
+    },
+    "get_detailed_allocation_usage": {
+        "queries": 50,
+        "notes": "measured 37 — Project instance method, varies with allocation count"
+    },
+    "get_project_rolling_usage": {
+        "queries": 20,
+        "notes": "measured 11 — rolling window charge data"
+    }
+}

@@ -245,6 +245,13 @@ jobs:
             echo "✅ Coverage threshold met and all tests passed"
           fi
 
+      - name: Run perf regression tests (query counts + benchmarks)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker compose exec -T \
+            -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+            webapp bash -c "cd /code && pytest -m perf -n 0 -v --tb=short"
+
       - name: Cleanup
         if: always()
         run: |
