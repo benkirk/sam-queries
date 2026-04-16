@@ -103,90 +103,16 @@ jobs:
           echo "=== Check if MySQL is running ==="
           docker compose ps mysql --format "{{.State}}" || echo "Could not get state"
 
-      - name: Wait for MySQL to be healthy (TCP from host)
-        run: |
-          echo "=== Waiting for MySQL to accept TCP connections on 127.0.0.1:3306 ==="
-          echo "During init, MySQL runs with --skip-networking (socket only)."
-          echo "TCP becomes available only after init scripts complete and MySQL restarts."
-          echo ""
+      - name: Wait for MySQL (main, port 3306)
+        run: scripts/ci/wait-for-mysql.sh
+        env:
+          COMPOSE_SERVICE: mysql
 
-          # Wait for MySQL to accept TCP connections from the HOST.
-          # This is the same connection path used by subsequent steps.
-          # Do NOT use 'docker compose exec' here — it uses Unix socket inside
-          # the container, which works during --skip-networking init phase,
-          # giving a false positive.
-          for i in $(seq 1 60); do
-            if mysql -h 127.0.0.1 -proot -uroot -e "SELECT 1" 2>/dev/null; then
-              echo "✅ MySQL accepting TCP connections after $((i * 5))s"
-              break
-            fi
-
-            # Check if container is still running
-            STATE=$(docker compose ps mysql --format "{{.State}}" 2>/dev/null || echo "unknown")
-            if [ "${STATE}" = "exited" ]; then
-              echo "❌ MySQL container exited!"
-              docker compose logs mysql --tail=200
-              exit 1
-            fi
-
-            if [ $((i % 6)) -eq 0 ]; then
-              echo "  Still waiting... ($((i * 5))s elapsed, container state: ${STATE})"
-            fi
-            sleep 5
-          done
-
-          # Verify the sam database is usable (backup restore complete)
-          echo ""
-          echo "=== Verifying sam database is queryable ==="
-          for i in $(seq 1 12); do
-            if mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" 2>/dev/null; then
-              echo "✅ SAM database is ready"
-              break
-            fi
-            echo "  Waiting for sam database... ($((i * 5))s)"
-            sleep 5
-          done
-
-          mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" || {
-            echo "❌ SAM database not accessible!"
-            docker compose logs mysql --tail=100
-            exit 1
-          }
-
-      - name: Wait for mysql-test container (test DB on 3307)
-        run: |
-          echo "=== Waiting for mysql-test on 127.0.0.1:3307 ==="
-          # Same TCP-vs-socket gotcha as the main mysql service. Poll
-          # the host port instead of `docker compose exec`.
-          for i in $(seq 1 60); do
-            if mysql -h 127.0.0.1 -P 3307 -proot -uroot -e "SELECT 1" 2>/dev/null; then
-              echo "✅ mysql-test accepting TCP connections after $((i * 5))s"
-              break
-            fi
-            STATE=$(docker compose ps mysql-test --format "{{.State}}" 2>/dev/null || echo "unknown")
-            if [ "${STATE}" = "exited" ]; then
-              echo "❌ mysql-test container exited!"
-              docker compose logs mysql-test --tail=200
-              exit 1
-            fi
-            if [ $((i % 6)) -eq 0 ]; then
-              echo "  Still waiting... ($((i * 5))s elapsed, container state: ${STATE})"
-            fi
-            sleep 5
-          done
-          # Verify the sam schema restored into the test DB
-          for i in $(seq 1 12); do
-            if mysql -h 127.0.0.1 -P 3307 -proot -uroot sam -e "SELECT 1" 2>/dev/null; then
-              echo "✅ mysql-test sam database is ready"
-              break
-            fi
-            sleep 5
-          done
-          mysql -h 127.0.0.1 -P 3307 -proot -uroot sam -e "SELECT 1" || {
-            echo "❌ mysql-test sam database not accessible!"
-            docker compose logs mysql-test --tail=100
-            exit 1
-          }
+      - name: Wait for MySQL (test, port 3307)
+        run: scripts/ci/wait-for-mysql.sh
+        env:
+          MYSQL_PORT: "3307"
+          COMPOSE_SERVICE: mysql-test
 
       - name: Wait for webapp to be ready
         run: |

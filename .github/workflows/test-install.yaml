@@ -117,49 +117,12 @@ jobs:
           sleep 5
           docker compose ps -a
 
-      - name: Wait for MySQL to be healthy (TCP from host)
+      - name: Wait for MySQL
         run: |
           cd "${INSTALL_DIR}"
-
-          echo "=== Waiting for MySQL to accept TCP connections on 127.0.0.1:3306 ==="
-          
-          # Wait using HOST mysql client over TCP — same path as subsequent steps.
-          for i in $(seq 1 60); do
-            if mysql -h 127.0.0.1 -proot -uroot -e "SELECT 1" 2>/dev/null; then
-              echo "✅ MySQL accepting TCP connections after $((i * 5))s"
-              break
-            fi
-            
-            STATE=$(docker compose ps mysql --format "{{.State}}" 2>/dev/null || echo "unknown")
-            if [ "${STATE}" = "exited" ]; then
-              echo "❌ MySQL container exited!"
-              docker compose logs mysql --tail=200
-              exit 1
-            fi
-            
-            if [ $((i % 6)) -eq 0 ]; then
-              echo "  Still waiting... ($((i * 5))s elapsed, container state: ${STATE})"
-            fi
-            sleep 5
-          done
-          
-          # Verify sam database is queryable
-          echo ""
-          echo "=== Verifying sam database ==="
-          for i in $(seq 1 12); do
-            if mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" 2>/dev/null; then
-              echo "✅ SAM database is ready"
-              break
-            fi
-            echo "  Waiting for sam database... ($((i * 5))s)"
-            sleep 5
-          done
-          
-          mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" || {
-            echo "❌ SAM database not accessible!"
-            docker compose logs mysql --tail=100
-            exit 1
-          }
+          "${GITHUB_WORKSPACE}/scripts/ci/wait-for-mysql.sh"
+        env:
+          COMPOSE_SERVICE: mysql
 
       - name: Wait for webapp to be ready
         run: |
