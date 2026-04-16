@@ -91,6 +91,7 @@
             <th style="width:2.5rem;"></th>
             <th>Resource</th>
             <th class="text-end">Amount</th>
+            <th class="text-end" style="width:7rem;">Scale</th>
             <th class="text-end">Source Period</th>
             <th class="text-end">Tree</th>
           </tr>
@@ -123,6 +124,14 @@
             </td>
             <td class="text-end small text-muted" style="vertical-align:middle;">
               {{ c.amount | fmt_number }}
+            </td>
+            <td class="text-end" style="vertical-align:middle;">
+              {%- set scale_val = form.get('scale_' ~ c.resource_id, '1') if form else '1' -%}
+              <input type="number" class="form-control form-control-sm text-end d-inline-block"
+                     style="width:6rem;"
+                     name="scale_{{ c.resource_id }}"
+                     value="{{ scale_val }}"
+                     step="0.01" min="0.01" inputmode="decimal">
             </td>
             <td class="text-end small text-muted" style="vertical-align:middle;">
               {{ c.start_date | fmt_date }} →

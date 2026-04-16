@@ -9,7 +9,15 @@ from datetime import date, datetime
 import pytest
 
 import sam.fmt as fmt  # noqa: F401 — kept for parity with legacy module import
-from sam.fmt import COMPACT_THRESHOLD, configure, date_str, number, pct, size
+from sam.fmt import (
+    COMPACT_THRESHOLD,
+    configure,
+    date_str,
+    number,
+    pct,
+    round_to_sig_figs,
+    size,
+)
 
 
 pytestmark = pytest.mark.unit
@@ -99,6 +107,57 @@ class TestNumber:
     def test_per_call_overrides_global(self):
         configure(raw=True)
         assert number(68_567_808, raw=False) == '68.6M'
+
+
+# ============================================================================
+# round_to_sig_figs()
+# ============================================================================
+
+
+class TestRoundToSigFigs:
+
+    def test_large_value_plan_example(self):
+        # 688M × 0.667 = 458,896,000 → 459,000,000 at 3 sig figs
+        assert round_to_sig_figs(458_896_000) == 459_000_000.0
+
+    def test_million_scale(self):
+        # 2.25M × 0.667 = 1,500,750 → 1,500,000 at 3 sig figs
+        assert round_to_sig_figs(1_500_750) == 1_500_000.0
+
+    def test_rounds_up(self):
+        # 33,350 → 33,400 at 3 sig figs (banker's rounding: 3.335 → 3.34? no,
+        # Python round() is banker's for .5 exact, but 33_350 in IEEE float
+        # is exact; at 3 sig figs we round the last kept digit)
+        assert round_to_sig_figs(33_350) == 33_400.0
+
+    def test_zero(self):
+        assert round_to_sig_figs(0) == 0.0
+        assert round_to_sig_figs(0.0) == 0.0
+
+    def test_none_returns_none(self):
+        assert round_to_sig_figs(None) is None
+
+    def test_small_integer_unchanged(self):
+        # Small integers already within 3 sig figs survive unchanged.
+        assert round_to_sig_figs(5) == 5.0
+        assert round_to_sig_figs(42) == 42.0
+        assert round_to_sig_figs(100) == 100.0
+
+    def test_negative(self):
+        assert round_to_sig_figs(-458_896_000) == -459_000_000.0
+        assert round_to_sig_figs(-1_500_750) == -1_500_000.0
+
+    def test_sig_figs_override(self):
+        assert round_to_sig_figs(458_896_000, sig_figs=2) == 460_000_000.0
+        assert round_to_sig_figs(458_896_000, sig_figs=4) == 458_900_000.0
+
+    def test_configure_sig_figs_global(self):
+        configure(sig_figs=2)
+        assert round_to_sig_figs(458_896_000) == 460_000_000.0
+
+    def test_returns_float(self):
+        assert isinstance(round_to_sig_figs(1_000), float)
+        assert isinstance(round_to_sig_figs(0), float)
 
 
 # ============================================================================

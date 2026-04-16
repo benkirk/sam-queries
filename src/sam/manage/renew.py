@@ -30,6 +30,7 @@ from sam.accounting.allocations import (
     Allocation,
     AllocationTransactionType,
 )
+from sam.fmt import round_to_sig_figs
 from sam.projects.projects import Project
 from sam.manage.allocations import (
     create_allocation,
@@ -148,6 +149,7 @@ def renew_project_allocations(
     new_end: datetime,
     resource_ids: List[int],
     user_id: int,
+    scales: Optional[Dict[int, float]] = None,
 ) -> List[Allocation]:
     """Clone a project tree's active-at-a-date allocations into a new period.
 
@@ -183,9 +185,12 @@ def renew_project_allocations(
 
     all_descendants = root_project.get_descendants()
     requested = set(resource_ids)
+    scales = scales or {}
     created_roots: List[Allocation] = []
 
     for resource_id in requested:
+        scale = scales.get(resource_id, 1.0)
+
         source_root = find_source_alloc_at(
             root_project, resource_id, source_active_at
         )
@@ -198,11 +203,18 @@ def renew_project_allocations(
             # Already renewed — nothing to do for this resource.
             continue
 
+        # Scale + round to SAM_SIG_FIGS (allocations are human-defined at
+        # ~3 sig figs). Guarded so scale=1.0 renewals stay byte-identical
+        # to pre-scale behaviour.
+        scaled_root_amount = source_root.amount * scale
+        if scale != 1.0:
+            scaled_root_amount = round_to_sig_figs(scaled_root_amount)
+
         new_root = create_allocation(
             session,
             project_id=root_project_id,
             resource_id=resource_id,
-            amount=source_root.amount,
+            amount=scaled_root_amount,
             start_date=new_start,
             end_date=new_end,
             description=source_root.description,
@@ -217,6 +229,7 @@ def renew_project_allocations(
                 f"Renewed from allocation #{source_root.allocation_id} "
                 f"({source_root.start_date.strftime('%Y-%m-%d')} → "
                 f"{source_root.end_date.strftime('%Y-%m-%d') if source_root.end_date else 'open'})"
+                + (f" — scaled ×{scale:g}" if scale != 1.0 else "")
             ),
             old_values={},
         )
@@ -249,11 +262,15 @@ def renew_project_allocations(
                 new_parent_id = None
                 propagated = False
 
+            scaled_child_amount = source_child.amount * scale
+            if scale != 1.0:
+                scaled_child_amount = round_to_sig_figs(scaled_child_amount)
+
             new_child = Allocation.create(
                 session,
                 project_id=descendant.project_id,
                 resource_id=resource_id,
-                amount=source_child.amount,
+                amount=scaled_child_amount,
                 start_date=new_start,
                 end_date=new_end,
                 description=source_child.description,
@@ -266,6 +283,7 @@ def renew_project_allocations(
                 AllocationTransactionType.RENEW,
                 comment=(
                     f"Renewed from allocation #{source_child.allocation_id}"
+                    + (f" — scaled ×{scale:g}" if scale != 1.0 else "")
                 ),
                 old_values={},
                 propagated=propagated,
