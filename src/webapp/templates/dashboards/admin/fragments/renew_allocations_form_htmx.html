@@ -26,7 +26,8 @@
     '#renewAllocationsFormContainer',
     'Renew Allocations',
     submit_icon='sync-alt',
-    submit_class='btn-primary'
+    submit_class='btn-primary',
+    errors=errors
 ) %}
 
   <div class="alert alert-info small mb-3">
@@ -91,7 +92,7 @@
             <th style="width:2.5rem;"></th>
             <th>Resource</th>
             <th class="text-end">Amount</th>
-            <th class="text-end" style="width:7rem;">Scale</th>
+            <th class="text-end" style="width:4rem;">Scale</th>
             <th class="text-end">Source Period</th>
             <th class="text-end">Tree</th>
           </tr>
@@ -127,8 +128,8 @@
             </td>
             <td class="text-end" style="vertical-align:middle;">
               {%- set scale_val = form.get('scale_' ~ c.resource_id, '1') if form else '1' -%}
-              <input type="number" class="form-control form-control-sm text-end d-inline-block"
-                     style="width:6rem;"
+              <input type="number" class="form-control form-control-sm text-end d-inline-block no-spinner"
+                     style="width:3rem;"
                      name="scale_{{ c.resource_id }}"
                      value="{{ scale_val }}"
                      step="0.01" min="0.01" inputmode="decimal">

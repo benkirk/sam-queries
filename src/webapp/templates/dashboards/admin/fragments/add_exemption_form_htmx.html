@@ -9,7 +9,8 @@
     url_for('admin_dashboard.htmx_add_exemption', username=sam_user.username),
     '#addExemptionFormContainer',
     'Add Exemption',
-    submit_icon='plus'
+    submit_icon='plus',
+    errors=errors
 ) %}
         <div class="mb-3">
             <label class="form-label">User</label>
