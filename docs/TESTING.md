@@ -292,6 +292,22 @@ make perf                                         # performance suite
 
 ---
 
+## Related: ad-hoc parity checks (not in the test suite)
+
+Legacy-vs-new API parity verification lives outside `tests/` because it
+requires the UCAR VPN and hits live production hosts (`sam.ucar.edu` and
+`samuel.k8s.ucar.edu`). Placing it under `tests/` would collide with the
+safety guard that restricts the suite to the `mysql-test` container.
+
+It is a standalone CLI at `utils/parity/check_legacy_apis.py` with its
+own README — see [`utils/parity/README.md`](../utils/parity/README.md).
+The script fetches both APIs, runs ~28 comparison rules (subset checks,
+GID/UID/gecos equality, allocation amounts, ±5% adjusted-usage
+tolerance, etc.), and exits 0/1/2 based on whether parity holds,
+mismatches were found, or preconditions were missing.
+
+---
+
 ## Troubleshooting
 
 **"REFUSING TO RUN tests against this database"** — `SAM_TEST_DB_URL`
