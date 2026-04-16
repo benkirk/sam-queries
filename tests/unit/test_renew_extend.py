@@ -597,7 +597,7 @@ class TestRenewScaling:
             .first()
         )
         assert txn is not None
-        assert '— scaled ×0.667' in txn.comment
+        assert '— scaled ×0.667' in txn.transaction_comment
 
     def test_scale_one_omits_suffix(
         self, session, standalone_project, derecho, acting_user,
@@ -622,7 +622,7 @@ class TestRenewScaling:
             )
             .first()
         )
-        assert 'scaled' not in txn.comment
+        assert 'scaled' not in txn.transaction_comment
 
 
 class TestRenewIdempotency:
