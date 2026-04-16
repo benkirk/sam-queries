@@ -48,6 +48,11 @@
 
 {% else %}
 
+{# Standalone project = root has no children AND no parent.  For such projects
+   the per-resource accordion degenerates into one repeated row, so we render
+   a flat "one row per resource" layout instead. #}
+{% set is_standalone = (root.children | length == 0) and (root.parent_id is none) %}
+
 {# ── Resource Type pill tabs ─────────────────────────────────────────── #}
 <ul class="nav nav-pills mb-3" id="allocResourceTypeTabs" role="tablist">
   {% for tab_label, tab_data in resources_by_tab.items() %}
@@ -104,6 +109,60 @@
       {%- set root_alloc = resources_by_projcode.get(root.projcode, {}).get(resource_name) -%}
       {%- set pct = [root_alloc.percent_used, 100] | min if root_alloc else 0 -%}
 
+      {% if is_standalone %}
+      {# ── Flat row — one per resource (no accordion, edit pencil at rest) ── #}
+      <tbody>
+        <tr style="border-top: 1px solid #dee2e6;">
+
+          {# Col 1: resource name #}
+          <td class="fw-semibold py-2" style="vertical-align:middle;">
+            <i class="fas fa-server text-primary me-2"></i>{{ resource_name }}
+          </td>
+
+          {# Cols 2+3: progress bar with % overlaid on the bar #}
+          <td colspan="2" style="padding:0.25rem 0.6rem; vertical-align:middle;">
+            {% if root_alloc %}
+            <div class="progress" style="height:18px;">
+              <div class="progress-bar
+                   {%- if root_alloc.percent_used >= 90 %} bg-danger
+                   {%- elif root_alloc.percent_used >= 75 %} bg-warning
+                   {%- else %} bg-success{% endif %}"
+                   role="progressbar"
+                   style="width:{{ pct }}%;">
+                {{ root_alloc.percent_used | fmt_pct(decimals=0) }}
+              </div>
+            </div>
+            {% else %}
+            <span class="text-muted small"><em>— no allocation —</em></span>
+            {% endif %}
+          </td>
+
+          {# Col 4: allocated amount #}
+          <td class="text-end small" style="vertical-align:middle; white-space:nowrap;">
+            {% if root_alloc %}{{ root_alloc.allocated | fmt_number }}{% endif %}
+          </td>
+
+          {# Col 5: edit pencil (or shared badge for inherited allocations) #}
+          <td style="vertical-align:middle;">
+            {% if root_alloc and root_alloc.allocation_id and not root_alloc.is_inheriting %}
+            <button class="btn btn-xs btn-outline-warning py-0 px-1"
+                    style="font-size:0.7rem;"
+                    hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', alloc_id=root_alloc.allocation_id) }}"
+                    hx-target="#editAllocationFormContainer"
+                    hx-trigger="click"
+                    data-bs-toggle="modal"
+                    data-bs-target="#editAllocationModal"
+                    title="Edit allocation">
+              <i class="fas fa-pencil-alt"></i>
+            </button>
+            {% elif root_alloc and root_alloc.is_inheriting %}
+            <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+
+      {% else %}
       {# ── Resource header row ──────────────────────────────────────── #}
       <tbody>
         <tr class="table-secondary alloc-resource-header"
@@ -174,6 +233,7 @@
                                      usage_warning_threshold=75,
                                      usage_critical_threshold=90) }}
       </tbody>
+      {% endif %}{# /is_standalone #}
 
       {% endfor %}{# /resource loop #}
     </table>
