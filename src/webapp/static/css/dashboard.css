@@ -429,12 +429,28 @@ body {
     background: linear-gradient(135deg, var(--bg-gray-medium) 0%, #dee2e6 100%);
 }
 
+/* Fluid 1800px cap: smoother than Bootstrap's stepped .container breakpoints
+   on laptop/desktop, without stretching to ultra-wide monitor edges.  Used
+   on navbar, flash messages, footer, and any content block that opts in via
+   the content_container_class block override. */
+.sam-fluid-1800 {
+    max-width: 1800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 .project-stats-box {
     background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
     border-radius: var(--radius-lg);
     padding: 16px;
     margin-bottom: 16px;
     border-left: 4px solid var(--ncar-blue);
+    /* Multi-column responsive grid: single-line key/value pairs pack into
+       columns on desktop; heading + multi-line block items span full width. */
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    column-gap: 24px;
+    row-gap: 0;
     transition: all var(--transition-base);
 }
 
@@ -449,18 +465,22 @@ body {
     margin-bottom: 12px;
     font-size: 0.9rem;
     text-transform: uppercase;
+    grid-column: 1 / -1;
     letter-spacing: 0.5px;
 }
 
 .stat-item {
     display: flex;
-    justify-content: space-between;
+    gap: 0.5rem;
     padding: 6px 0;
-    border-bottom: 1px solid var(--border-color);
 }
 
-.stat-item:last-child {
-    border-bottom: none;
+/* Multi-line items (Organizations, Contracts, Directories) span all columns
+   of the .project-stats-box grid so their label + wrapped list breathe. */
+.stat-item-block {
+    grid-column: 1 / -1;
+    flex-direction: column;
+    align-items: stretch;
 }
 
 .stat-label {
@@ -616,6 +636,9 @@ body {
 
     .project-stats-box {
         padding: 12px;
+        /* Stack single-column on tablet/mobile — revert the desktop grid. */
+        grid-template-columns: 1fr;
+        column-gap: 0;
     }
 
     .table {

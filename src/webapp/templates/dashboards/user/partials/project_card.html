@@ -44,7 +44,7 @@
     </div>
     <!-- Organizations -->
     {% if project.organizations %}
-    <div class="stat-item mt-2">
+    <div class="stat-item stat-item-block mt-2">
       <span class="stat-label d-block mb-1">Organizations:</span>
       <div class="stat-value text-dark text-detail">
         {% for po in project.organizations %}
@@ -58,7 +58,7 @@
     {% endif %}
     <!-- Contracts -->
     {% if project.contracts %}
-    <div class="stat-item mt-2">
+    <div class="stat-item stat-item-block mt-2">
       <span class="stat-label d-block mb-1">Contracts:</span>
       <div class="stat-value text-dark text-detail">
         {% for pc in project.contracts %}
@@ -73,7 +73,7 @@
     {% endif %}
     <!-- Project directories list -->
     {% if project.active_directories %}
-    <div class="stat-item mt-2">
+    <div class="stat-item stat-item-block mt-2">
       <span class="stat-label d-block mb-1">Directories:</span>
       <div class="stat-value text-dark text-detail">
         {% for dir in project.active_directories %}
