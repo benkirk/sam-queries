@@ -2,7 +2,7 @@
 
 Provides:
     count_queries       — context-manager fixture for SQL query counting (standalone engine)
-    route_count_queries ��� same but for Flask-SQLAlchemy's db.engine (route tests)
+    route_count_queries - same but for Flask-SQLAlchemy's db.engine (route tests)
     baseline            — parametrized fixture reading limits from baselines.json
     perf fixtures       — test data fixtures for the baseline targets
 """
