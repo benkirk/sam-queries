@@ -669,6 +669,19 @@ pytest tests/integration/ -v                      # all integration tests
 pytest tests/api/ -v                              # all API tests
 ```
 
+**Performance regression tests** (`tests/perf/`) are gated behind the
+`perf` marker and excluded from the default `pytest` run. They track
+SQL query counts and wall-time latency for the 8 hottest query-layer
+functions (dashboard, allocations, fstree, rolling usage). Baselines
+are recorded in `tests/perf/baselines.json` — if a future change
+introduces an N+1 pattern, the regression is caught immediately.
+
+```bash
+# Run perf tests (serial — required for pytest-benchmark)
+make perf
+# or: pytest -m perf -n 0 -v
+```
+
 If `SAM_TEST_DB_URL` is unset or points at anything other than
 `127.0.0.1:3307`, pytest aborts with `REFUSING TO RUN tests against
 this database` — by design.
