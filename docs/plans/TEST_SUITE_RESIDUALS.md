@@ -1,11 +1,10 @@
 # Test Suite — Residual Work
 
-**Status:** Migration and CI wiring are complete. The test refactor
-described in `~/.claude/plans/composed-doodling-stearns.md` has landed
-in full, except for two optional workstreams — query-count/latency
-regression tests (§5) and gradual Pyright type checking (§6). This
-document exists so those two can be picked up in a fresh session
-without re-reading the full migration plan.
+**Status:** Migration, CI wiring, and performance regression tests are
+complete. Gap A (query-count regression tests) landed in full across
+commits `3d6dc05` and `0ba3fc3` on branch `test_additions`. Gap B
+(Pyright gradual type checking) remains open and can be picked up
+independently.
 
 ---
 
@@ -50,157 +49,100 @@ are done. Key milestones:
 
 ---
 
-## Remaining gap A — Performance & query-count regression tests
+## Gap A — Performance & query-count regression tests — COMPLETED
 
 **Source:** original plan §5 (Performance & query-count regression tests).
 
-**Motivation:** the recent ORM perf push (commits `caf08f2`, `f3eb4cb`,
-`6c54943`, `5178345`, `e89eceb`) added joinedload collapsing, charge
-batching, and `DashboardResource` TypedDict optimizations. None of that
-work landed with regression tests. Future-me reintroducing an N+1
-pattern should see it fail in CI, not surface in user reports.
+**Landed in:** commits `3d6dc05`, `0ba3fc3`, `cfe5550` on branch
+`test_additions` (2026-04-16).
 
-### What's already in place
+### What was built
 
-- `pytest-benchmark` is already in `[project.optional-dependencies].test`
-  (landed in Phase 1).
-- `utils/profiling/` still exists with the `sqlalchemy.event.listen
-  ('before_cursor_execute')` + `_SQLStats` pattern that `profile_user_dashboard.py`
-  uses interactively. That code is production-grade; extract don't rewrite.
-- `tests/unit/test_allocations_performance.py` (Phase 5) tests **cache
-  behavior** (Flask-Caching NullCache, matplotlib `lru_cache`, `TTLCache`
-  purge/hit/miss), not query counts. Adjacent concern, complementary.
-- Root `pytest.ini` already has `perf` in its `markers =` section as a
-  placeholder. A `-m perf` gate is the intended way to run these (not
-  in the default suite, to keep the ~68s inner-loop runtime intact).
+**Infrastructure** (`tests/perf/`):
+- `_query_count.py` — `SQLStats` class (extracted from
+  `utils/profiling/profile_user_dashboard.py`) with `attach()`/`detach()`
+  engine event hooks, wrapped in a `count_queries()` context manager.
+- `conftest.py` — `count_queries` fixture (standalone engine),
+  `route_count_queries` fixture (Flask-SQLAlchemy `db.engine`),
+  `_reset_usage_cache` autouse fixture, `get_baseline()` helper,
+  perf-specific data fixtures.
+- `baselines.json` — measured query counts with ~50% headroom, plus
+  documented re-baseline workflow.
 
-### Scope
+**Function-level query count tests** (9 tests in `test_query_counts.py`):
 
-**1. Query-count infrastructure** (~2 hours)
+| Function | Measured | Baseline |
+|----------|----------|----------|
+| `get_user_dashboard_data` | 26 | 35 |
+| `get_project_dashboard_data` | 45 | 55 |
+| `get_resource_detail_data` | 8 | 15 |
+| `get_fstree_data` | 3 | 10 |
+| `get_allocation_summary` | 2 | 10 |
+| `get_allocation_summary_with_usage` (single resource) | 2 | 10 |
+| `get_allocation_summary_with_usage` (all resources) | 44 | 65 |
+| `Project.get_detailed_allocation_usage` | 37 | 50 |
+| `get_project_rolling_usage` | 11 | 20 |
 
-- Create `tests/perf/__init__.py` + `tests/perf/_query_count.py`.
-- Extract the `_SQLStats` class from `utils/profiling/profile_user_dashboard.py`
-  verbatim. Wrap it in a context manager + fixture:
+**Route-level query count tests** (5 tests in `test_route_query_counts.py`):
 
-  ```python
-  @pytest.fixture
-  def count_queries():
-      @contextmanager
-      def _counter(engine):
-          stats = _SQLStats()
-          stats.attach(engine)
-          try:
-              yield stats
-          finally:
-              stats.detach(engine)
-      return _counter
-  ```
+These hit actual Flask routes via `auth_client.get(...)` and count ALL
+queries through the full stack (data fetch + template render + JSON
+serialization). They catch lazy-load regressions invisible to
+function-level tests.
 
-- Usage pattern in tests:
+| Route | Measured | Baseline | Guards against |
+|-------|----------|----------|----------------|
+| `GET /user/` | 45 | 65 | Cascade-suppression regression (Issues 5, 6) |
+| `GET /allocations/` | 13 | 20 | Summary + facility overview pipeline |
+| `GET /allocations/?show_usage=true` | 54 | 80 | The 52K-query N+1 scenario (Issue 1) |
+| `GET /admin/htmx/organizations-card` | 311 | 450 | Template cascade explosion (Issue 7) |
+| `GET /api/v1/fstree_access/` | 44 | 65 | JSON serialization lazy loads |
 
-  ```python
-  def test_user_dashboard_query_count(session, count_queries, benkirk_user):
-      with count_queries(session.bind) as c:
-          data = get_user_dashboard_data(session, benkirk_user)
-      assert c.total <= 25, f"query count regression: {c.total} > 25 baseline"
-  ```
+**Latency smoke benchmarks** (3 tests in `test_dashboard_latency.py`):
 
-**2. Baseline infrastructure** (~1 hour)
+`pytest-benchmark` smoke tests for user dashboard, project dashboard,
+and allocation summary. No assertions on absolute time — these produce
+the benchmark table for local developer visibility via `make perf`.
 
-- Create `tests/perf/baselines.json` as `{"function_name": {"queries": N, "notes": "..."}}`.
-- Add a small helper in `tests/perf/conftest.py` that reads `baselines.json`
-  and exposes expected counts via a parametrized fixture. Rationale for
-  JSON vs inline constants: when we deliberately improve a query pattern
-  (e.g. add joinedload collapsing), the improvement fails the test until
-  we update the baseline. The update lands in the same PR as the code
-  change, with the `notes` field recording why the count dropped.
-- Document the "re-baseline" workflow in the file's docstring: run the
-  test, copy the new count into `baselines.json`, commit both.
+**Gating:**
+- `pytest.ini`: `-m "not perf"` in default `addopts`
+- `Makefile`: `make perf` target
+- CI: perf step in `sam-ci-docker.yaml` runs after main pytest
+- `filterwarnings` suppresses benchmark-under-xdist noise
 
-**3. Initial baseline set** (~2 hours)
+**Documentation:** `docs/TESTING.md` covers the full architecture.
 
-Target functions + likely baseline query counts (to be measured):
+### Design decision: query counts only, no latency assertions
 
-| Function / Route | Reason to baseline |
-|---|---|
-| `sam.queries.dashboard.get_user_dashboard_data(session, user)` | Primary target of the ORM perf push. Has `utils/profiling/profile_user_dashboard.py` as its profiling reference. |
-| `sam.queries.dashboard.get_project_dashboard_data(session, project)` | Same code path, project-scoped. |
-| `sam.queries.dashboard.get_resource_detail_data(session, resource)` | Adjacent query that exercises joinedload collapsing. |
-| `sam.queries.fstree.get_fstree_data(session, 'Derecho')` | Most expensive single function in the suite (~5–15s when uncached). Even one query count regression is a big deal. |
-| `sam.queries.allocations.get_allocation_summary(session, resource_name='Derecho', projcode='TOTAL')` | Heavy aggregation path. |
-| `sam.queries.allocations.get_allocation_summary_with_usage(...)` | Same plus charge join. |
-| `Project.get_detailed_allocation_usage()` | Method on a hot ORM model, called from templates. |
-| `sam.queries.rolling_usage.get_project_rolling_usage(session, project)` | Used by threshold tests. |
+The original plan proposed latency assertions ("this ran in under N ms,
+loosely"). After implementation and measurement, we decided against
+latency assertions for CI. Rationale:
 
-Expected effort: half a day. Each baseline is one test: one `with` block,
-one assert, one entry in `baselines.json`.
+1. **Every bug we traced was a query count problem.** The 7 performance
+   issues were all N+1 patterns, missing batch fetches, or cascade-loading
+   explosions. Wall time was a direct consequence of query count. Nobody
+   introduced a bug where query count stayed constant but latency exploded.
 
-**4. Latency smoke via `pytest-benchmark`** (~1 hour)
+2. **CI runner timing is too noisy.** GitHub Actions runners have variable
+   CPU/memory/IO across runs. The same function measured 622ms to 4.5s
+   depending on load. Latency assertions that pass Monday and fail Tuesday
+   erode trust in the suite.
 
-- Create `tests/perf/test_dashboard_latency.py` with ~3 smoke benchmarks
-  for the above functions, using the `benchmark` fixture that
-  `pytest-benchmark` provides.
-- These are smoke-only: the assertions are "this ran in under N ms,
-  loosely", not "this ran in exactly N ms". Absolute timings are
-  machine-dependent, so the primary value is catching order-of-magnitude
-  regressions (the 50ms thing that suddenly takes 2000ms).
-- Note: `pytest-benchmark` emits `Benchmarks are automatically disabled
-  because xdist plugin is active` warnings when `-n auto` is in effect.
-  The fix is `filterwarnings = ignore::pytest_benchmark.logger.PytestBenchmarkWarning`
-  in `pytest.ini` — we filed that in the Phase 1 execution log but
-  haven't added it yet because we have no perf tests yet.
+3. **The right tools already exist for latency work.** `pytest-benchmark`
+   produces the benchmark table locally via `make perf` — useful for
+   developers profiling on their own hardware. The `utils/profiling/`
+   scripts remain the tool for deep latency investigation.
 
-**5. Gating** (~30 minutes)
+4. **Schema validation catches the remaining gap.** The one scenario
+   query counts wouldn't catch — a single query becoming catastrophically
+   slow (e.g., dropped index) — is better caught by the schema validation
+   tests in `test_schema_validation.py` than by flaky timing assertions.
 
-- Perf tests are marked `@pytest.mark.perf` (or module-level
-  `pytestmark = pytest.mark.perf`).
-- Default `pytest` run excludes them via `-m "not perf"` in root
-  `pytest.ini` `addopts`.
-- Running perf tests uses `pytest -m perf` (overrides default) and
-  forces serial execution (`-n 0` or `@pytest.mark.xdist_group('perf')`)
-  since `pytest-benchmark` is disabled under xdist fan-out.
-- Add a `perf` make target to `Makefile`:
+### Suite statistics
 
-  ```makefile
-  perf: ## Run perf regression + benchmark suite (serial)
-  	$(config_env) && source etc/config_env.sh && \
-  	    SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam' \
-  	    pytest -m perf -n 0
-  ```
-
-- CI: add a new `pytest-perf` job in `sam-ci-docker.yaml` that runs
-  after the main `pytest` job (dependency via `needs:`), only on push
-  to `main` (not on PRs, since baselines drift is per-PR friction).
-  Decide case-by-case whether a perf regression blocks merge or just
-  emits a warning.
-
-### Acceptance criteria
-
-- `make perf` runs locally and produces baseline numbers for the 8 target
-  functions
-- `tests/perf/baselines.json` committed with the initial counts
-- Intentionally drop a `joinedload` in `sam/queries/dashboard.py`,
-  re-run `make perf`, confirm the test fails with a clear diff
-  (count went from `N` to `M`, baseline is `N`, update `baselines.json`
-  or fix the regression)
-- `pytest` (default) runtime is unchanged (~68s), confirming the
-  `-m "not perf"` gate works
-- CI `pytest-perf` job lands and reports a baseline for main branch
-
-### Effort estimate
-
-**Half a day to one day**, single session. Low risk — everything is
-additive, no changes to existing test code, no changes to source code.
-The `_SQLStats` pattern already works in `utils/profiling/`.
-
-### Potential extensions (NOT in scope for the residual plan)
-
-- Per-view query counts via Flask request middleware (capture
-  `request.endpoint` + query count in a metric table). This is a
-  production feature, not a test feature.
-- Query plan regression tests (`EXPLAIN` diffs). Out of scope —
-  introduces a whole new dimension of flakiness because MySQL
-  optimizer decisions change with statistics.
+- `pytest -m perf -n 0 -v` → **17 passed** in ~26s
+- `pytest` (default) → **1348 passed**, 22 skipped in ~67s (unchanged)
+- `make perf` wired up for convenience
 
 ---
 
@@ -369,13 +311,12 @@ weeks.
 
 1. Read this file (`docs/plans/TEST_SUITE_RESIDUALS.md`) — it has
    everything you need without re-reading the original plan.
-2. Decide which gap to tackle first. My recommendation: **gap A
-   (perf tests) first**. It's more contained, delivers immediate
-   regression-catching value, and doesn't touch source code.
-3. If gap A lands cleanly, gap B becomes the next natural chunk.
-4. Both are independent and can be done in either order, or
-   interleaved, or one now and one in six months.
+2. **Gap A is done.** The remaining work is Gap B (Pyright gradual
+   type checking). It's independent of the perf tests and can be
+   done now or in six months.
+3. See `docs/TESTING.md` for the full test suite architecture
+   including the perf regression tests.
 
 Nothing in this document blocks day-to-day work on the project. The
-test suite is in a fully-supported state as of commit `15a38d6`.
+test suite is in a fully-supported state as of commit `0ba3fc3`.
 These are enhancements, not outstanding bugs.
