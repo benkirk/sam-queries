@@ -1,29 +1,42 @@
 """
 Integration tests for System Status Dashboard.
 
-Verifies that dashboard pages render correctly (status 200) using the new query layer.
+Verifies that dashboard pages render correctly (status 200) using the new
+query layer. Each test seeds minimal Derecho/Casper data into the per-worker
+SQLite tempfile via the `status_session` fixture, then issues authenticated
+HTTP GETs through `auth_client`. Both the seed and the route's `db.session`
+queries route through the same Flask-SQLAlchemy `system_status` bind, so the
+seeded data is visible to the route handler.
+
+Phase 4f port note: the legacy version called `session.commit()` after
+seeding because it ran against a per-worker MySQL `system_status_test_*`
+database. We use the same `commit()` semantics under the SQLite tempfile,
+which gets DELETE-cleaned at the start of each test by the fixture.
 """
+from datetime import datetime
 
 import pytest
-import sys
-from pathlib import Path
-from datetime import datetime, timedelta
-
-# Add python directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from system_status import (
     DerechoStatus,
-    CasperStatus, CasperNodeTypeStatus,
-    QueueStatus, LoginNodeStatus
+    CasperStatus,
+    CasperNodeTypeStatus,
+    QueueStatus,
 )
 
 
+pytestmark = pytest.mark.integration
+
+
 def seed_data(session):
-    """Seed minimal data for dashboard tests."""
+    """Seed minimal data for dashboard tests.
+
+    Mirrors the legacy `seed_data` helper. Creates one Derecho status with
+    one queue, one Casper status with one node-type and one queue. Enough
+    rows to satisfy the dashboard route templates without being verbose.
+    """
     now = datetime.now()
 
-    # Seed Derecho status
     derecho = DerechoStatus(
         timestamp=now,
         cpu_nodes_total=100,
@@ -44,11 +57,10 @@ def seed_data(session):
         memory_allocated_gb=500.0,
         running_jobs=50,
         pending_jobs=10,
-        active_users=20
+        active_users=20,
     )
     session.add(derecho)
 
-    # Seed Derecho Queue
     d_queue = QueueStatus(
         timestamp=now,
         derecho_status=derecho,
@@ -61,11 +73,10 @@ def seed_data(session):
         cores_allocated=100,
         cores_pending=50,
         gpus_allocated=0,
-        gpus_pending=0
+        gpus_pending=0,
     )
     session.add(d_queue)
 
-    # Seed Casper status
     casper = CasperStatus(
         timestamp=now,
         cpu_nodes_total=50,
@@ -93,11 +104,10 @@ def seed_data(session):
         memory_allocated_gb=200.0,
         running_jobs=30,
         pending_jobs=5,
-        active_users=15
+        active_users=15,
     )
     session.add(casper)
 
-    # Seed Casper Node Type
     c_nodetype = CasperNodeTypeStatus(
         timestamp=now,
         casper_status=casper,
@@ -107,11 +117,10 @@ def seed_data(session):
         nodes_down=5,
         nodes_allocated=20,
         utilization_percent=40.0,
-        memory_utilization_percent=30.0
+        memory_utilization_percent=30.0,
     )
     session.add(c_nodetype)
-    
-    # Seed Casper Queue
+
     c_queue = QueueStatus(
         timestamp=now,
         casper_status=casper,
@@ -124,7 +133,7 @@ def seed_data(session):
         cores_allocated=50,
         cores_pending=10,
         gpus_allocated=0,
-        gpus_pending=0
+        gpus_pending=0,
     )
     session.add(c_queue)
 
@@ -143,14 +152,7 @@ class TestStatusDashboard:
 
     def test_nodetype_history(self, auth_client, status_session):
         """Test GET /status/nodetype-history/casper/cpu returns 200."""
-        # Data already seeded by previous test or we can ensure it's there
-        # but let's assume session persists or we re-seed if we clear in fixture
-        # The fixture clears at start, so data from seed_data persists for the class unless cleared
-        
-        # Ensure data exists (idempotent seed or check)
-        if status_session.query(CasperStatus).count() == 0:
-            seed_data(status_session)
-
+        seed_data(status_session)
         response = auth_client.get('/status/nodetype-history/casper/cpu')
         assert response.status_code == 200
         assert b'Node Type History' in response.data
@@ -158,9 +160,7 @@ class TestStatusDashboard:
 
     def test_queue_history(self, auth_client, status_session):
         """Test GET /status/queue-history/derecho/main returns 200."""
-        if status_session.query(DerechoStatus).count() == 0:
-            seed_data(status_session)
-            
+        seed_data(status_session)
         response = auth_client.get('/status/queue-history/derecho/main')
         assert response.status_code == 200
         assert b'main Queue History' in response.data

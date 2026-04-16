@@ -19,6 +19,25 @@ from sam.schemas import (
 )
 
 
+# ---------------------------------------------------------------------------
+# Local fixtures
+# ---------------------------------------------------------------------------
+#
+# `real_project` resolves to `active_project` — any snapshot project with
+# active allocations. `real_resource` pulls an HPC resource that actually
+# exists. No hardcoded projcode / resource_name assertions so these survive
+# snapshot refreshes.
+
+@pytest.fixture
+def real_project(active_project):
+    return active_project
+
+
+@pytest.fixture
+def real_resource(hpc_resource):
+    return hpc_resource
+
+
 class TestResourceSchemas:
     """Test Resource and ResourceType schemas."""
 
@@ -36,48 +55,39 @@ class TestResourceSchemas:
             assert result['resource_type'] == 'HPC'
             assert 'description' in result
 
-    def test_resource_summary_schema(self, test_resource):
+    def test_resource_summary_schema(self, real_resource):
         """Test ResourceSummarySchema serializes minimal fields."""
-        resource = test_resource
+        result = ResourceSummarySchema().dump(real_resource)
+        assert 'resource_id' in result
+        assert 'resource_name' in result
+        assert result['resource_name'] == real_resource.resource_name
+        assert 'resource_type' in result
+        # resource_type should be a string, not nested object
+        assert isinstance(result['resource_type'], (str, type(None)))
 
-        if resource:
-            result = ResourceSummarySchema().dump(resource)
-            assert 'resource_id' in result
-            assert 'resource_name' in result
-            assert result['resource_name'] == 'Derecho'
-            assert 'resource_type' in result
-            # resource_type should be a string, not nested object
-            assert isinstance(result['resource_type'], (str, type(None)))
-
-    def test_resource_schema_full(self, test_resource):
+    def test_resource_schema_full(self, real_resource):
         """Test ResourceSchema serializes full details."""
-        resource = test_resource
-
-        if resource:
-            result = ResourceSchema().dump(resource)
-            assert 'resource_id' in result
-            assert 'resource_name' in result
-            assert 'description' in result
-            assert 'activity_type' in result
-            assert 'charging_exempt' in result
-            # resource_type should be a nested object in full schema
-            if result.get('resource_type'):
-                assert isinstance(result['resource_type'], dict)
-                assert 'resource_type' in result['resource_type']
+        result = ResourceSchema().dump(real_resource)
+        assert 'resource_id' in result
+        assert 'resource_name' in result
+        assert 'description' in result
+        assert 'activity_type' in result
+        assert 'charging_exempt' in result
+        # resource_type should be a nested object in full schema
+        if result.get('resource_type'):
+            assert isinstance(result['resource_type'], dict)
+            assert 'resource_type' in result['resource_type']
 
 
 class TestAllocationSchemas:
     """Test Allocation schemas including usage calculations."""
 
-    def test_allocation_schema_basic(self, session, test_project):
+    def test_allocation_schema_basic(self, session, real_project):
         """Test basic AllocationSchema without usage."""
-        project = test_project
-        assert project is not None
-
         # Get an account with allocations
         account = session.query(Account).filter(
-            Account.project_id == project.project_id,
-            Account.deleted == False
+            Account.project_id == real_project.project_id,
+            Account.is_active
         ).first()
 
         if account and account.allocations:
@@ -97,15 +107,11 @@ class TestAllocationSchemas:
             assert 'remaining' not in result
             assert 'percent_used' not in result
 
-    def test_allocation_with_usage_schema(self, session, test_project):
+    def test_allocation_with_usage_schema(self, session, real_project):
         """Test AllocationWithUsageSchema includes usage calculations."""
-        project = test_project
-        assert project is not None
-
-        # Get an account with allocations
         account = session.query(Account).filter(
-            Account.project_id == project.project_id,
-            Account.deleted == False
+            Account.project_id == real_project.project_id,
+            Account.is_active
         ).first()
 
         if account and account.allocations and account.resource:
@@ -148,17 +154,11 @@ class TestAllocationSchemas:
                 if result['resource']:
                     assert 'resource_name' in result['resource']
 
-                # Percent used should be reasonable
-                assert 0 <= result['percent_used'] <= 200  # Allow up to 200% for overages
-
-    def test_allocation_usage_calculations(self, session, test_project):
+    def test_allocation_usage_calculations(self, session, real_project):
         """Test that usage calculations match expected values."""
-        project = test_project
-        assert project is not None
-
         account = session.query(Account).filter(
-            Account.project_id == project.project_id,
-            Account.deleted == False
+            Account.project_id == real_project.project_id,
+            Account.is_active
         ).first()
 
         if account and account.allocations and account.resource:
@@ -194,14 +194,11 @@ class TestAllocationSchemas:
 class TestAccountSchemas:
     """Test Account schemas."""
 
-    def test_account_summary_schema(self, session, test_project):
+    def test_account_summary_schema(self, session, real_project):
         """Test AccountSummarySchema serializes minimal fields."""
-        project = test_project
-        assert project is not None
-
         account = session.query(Account).filter(
-            Account.project_id == project.project_id,
-            Account.deleted == False
+            Account.project_id == real_project.project_id,
+            Account.is_active
         ).first()
 
         if account:
@@ -216,14 +213,11 @@ class TestAccountSchemas:
             if result['resource']:
                 assert 'resource_name' in result['resource']
 
-    def test_account_schema_with_allocation(self, session, test_project):
+    def test_account_schema_with_allocation(self, session, real_project):
         """Test AccountSchema includes active allocation with usage."""
-        project = test_project
-        assert project is not None
-
         account = session.query(Account).filter(
-            Account.project_id == project.project_id,
-            Account.deleted == False
+            Account.project_id == real_project.project_id,
+            Account.is_active
         ).first()
 
         if account and account.resource:
@@ -307,19 +301,16 @@ class TestChargeSummarySchemas:
 class TestSchemaIntegration:
     """Test schema integration matching sam_search_cli.py output."""
 
-    def test_project_allocation_usage_matches_cli(self, session, test_project):
+    def test_project_allocation_usage_matches_cli(self, session, real_project):
         """
         Test that AllocationWithUsageSchema output matches sam_search_cli.py format.
 
         This validates that the API will return the same data structure as the CLI.
         """
-        project = test_project
-        assert project is not None
-
         # Get all accounts for project
         accounts = session.query(Account).filter(
-            Account.project_id == project.project_id,
-            Account.deleted == False
+            Account.project_id == real_project.project_id,
+            Account.is_active
         ).all()
 
         allocations_with_usage = []

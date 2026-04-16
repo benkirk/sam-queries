@@ -70,7 +70,7 @@ fixperms: ## Fix file permissions for .env
 	done
 
 check: ## Run tests
-	$(config_env) && source etc/config_env.sh && python3 tests/tools/orm_inventory.py
+	$(config_env) && source etc/config_env.sh && python3 scripts/orm_inventory.py
 	$(config_env) && source etc/config_env.sh && python3 -m pytest -v -n auto
 
 docker-build: ## Build docker containers

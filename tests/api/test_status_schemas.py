@@ -5,12 +5,7 @@ Tests schema serialization and deserialization with nested relationships.
 """
 
 import pytest
-import sys
-from pathlib import Path
 from datetime import datetime
-
-# Add python directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from system_status.schemas.status import (
     DerechoStatusSchema,

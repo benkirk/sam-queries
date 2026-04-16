@@ -2,24 +2,30 @@
 Integration tests for System Status database operations.
 
 Tests database persistence and query operations using direct session access
-to ensure data integrity without Flask layer. Transaction rollback ensures
-tests are non-destructive.
+to ensure data integrity. Each test is isolated via the `status_session`
+fixture, which DELETEs all status tables before yielding (see new_tests/
+conftest.py for details).
+
+Phase 4f port note: the legacy version used `status_session.flush()` rather
+than `commit()` because it ran under SAVEPOINT-bridged isolation against a
+per-worker MySQL system_status DB. Our SQLite tempfile + DELETE-cleanup
+fixture means we can use either flush() or commit() interchangeably; the
+data lives only in the per-worker tempfile and gets wiped between tests.
+We use flush() to match the legacy semantics.
 """
 
-import pytest
-import sys
-from pathlib import Path
 from datetime import datetime
 
-# Add python directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
+import pytest
 
 from system_status import (
     DerechoStatus,
     CasperStatus,
     LoginNodeStatus,
-    QueueStatus
 )
+
+
+pytestmark = pytest.mark.integration
 
 
 class TestDerechoIntegration:
@@ -27,13 +33,8 @@ class TestDerechoIntegration:
 
     def test_create_and_query_derecho_with_login_nodes(self, status_session):
         """Test creating Derecho status with login nodes and querying it back."""
-        # Cleanup any existing data from other tests to ensure 'latest' is ours
-        status_session.query(DerechoStatus).delete()
-        status_session.flush()
-
         timestamp = datetime(2100, 1, 25, 14, 30, 0)
 
-        # Create main Derecho status
         derecho = DerechoStatus(
             timestamp=timestamp,
             cpu_nodes_total=2488,
@@ -62,7 +63,6 @@ class TestDerechoIntegration:
         status_session.add(derecho)
         status_session.flush()  # Get the status_id
 
-        # Create login nodes linked to derecho status
         login_nodes = [
             LoginNodeStatus(
                 timestamp=timestamp,
@@ -107,12 +107,10 @@ class TestDerechoIntegration:
         status_session.add_all(login_nodes)
         status_session.flush()
 
-        # Query back the latest Derecho status
         latest = status_session.query(DerechoStatus).order_by(
             DerechoStatus.timestamp.desc()
         ).first()
 
-        # Verify main status matches
         assert latest is not None
         assert latest.cpu_nodes_total == 2488
         assert latest.running_jobs == 1245
@@ -121,10 +119,8 @@ class TestDerechoIntegration:
         # Verify login nodes through relationship
         assert len(latest.login_nodes) == 3
 
-        # Verify individual login node data
         cpu_nodes = [n for n in latest.login_nodes if n.node_type == 'cpu']
         gpu_nodes = [n for n in latest.login_nodes if n.node_type == 'gpu']
-
         assert len(cpu_nodes) == 2
         assert len(gpu_nodes) == 1
 
@@ -144,13 +140,8 @@ class TestCasperIntegration:
 
     def test_create_and_query_casper_with_login_nodes(self, status_session):
         """Test creating Casper status with login nodes and querying it back."""
-        # Cleanup any existing data from other tests to ensure 'latest' is ours
-        status_session.query(CasperStatus).delete()
-        status_session.flush()
-
         timestamp = datetime(2100, 1, 25, 14, 30, 0)
 
-        # Create main Casper status
         casper = CasperStatus(
             timestamp=timestamp,
             cpu_nodes_total=151,
@@ -187,7 +178,6 @@ class TestCasperIntegration:
         status_session.add(casper)
         status_session.flush()
 
-        # Create login nodes
         login_nodes = [
             LoginNodeStatus(
                 timestamp=timestamp,
@@ -219,19 +209,16 @@ class TestCasperIntegration:
         status_session.add_all(login_nodes)
         status_session.flush()
 
-        # Query back latest Casper status
         latest = status_session.query(CasperStatus).order_by(
             CasperStatus.timestamp.desc()
         ).first()
 
-        # Verify main status
         assert latest is not None
         assert latest.cpu_nodes_total == 151
         assert latest.gpu_nodes_total == 22
         assert latest.viz_nodes_total == 15
         assert latest.running_jobs == 456
 
-        # Verify login nodes
         assert len(latest.login_nodes) == 2
 
         casper1 = next(n for n in latest.login_nodes if n.node_name == 'casper1')
@@ -244,14 +231,12 @@ class TestMultipleSnapshots:
 
     def test_latest_returns_most_recent(self, status_session):
         """Test that latest query returns most recent snapshot."""
-
         TESTYEAR = 2150
 
-        # Create three snapshots with different timestamps
         for i, hour in enumerate([10, 12, 14]):
             derecho = DerechoStatus(
                 timestamp=datetime(TESTYEAR, 1, 25, hour, 0, 0),
-                cpu_nodes_total=100 + i,  # Different values to distinguish
+                cpu_nodes_total=100 + i,
                 cpu_nodes_available=80,
                 cpu_nodes_down=5,
                 cpu_nodes_reserved=15,
@@ -267,7 +252,7 @@ class TestMultipleSnapshots:
                 gpu_count_idle=20,
                 memory_total_gb=25600.0,
                 memory_allocated_gb=20000.0,
-                running_jobs=150 + i,  # Different values
+                running_jobs=150 + i,
                 pending_jobs=30,
                 active_users=50
             )
@@ -275,7 +260,6 @@ class TestMultipleSnapshots:
 
         status_session.flush()
 
-        # Query for latest
         latest = status_session.query(DerechoStatus)\
                                .filter(DerechoStatus.timestamp <= datetime(TESTYEAR, 12, 31))\
                                .filter(DerechoStatus.timestamp >= datetime(TESTYEAR,  1,  1))\
@@ -283,12 +267,10 @@ class TestMultipleSnapshots:
                                    DerechoStatus.timestamp.desc()
                                ).first()
 
-        # Should get the 14:00 snapshot (i=2)
-        assert latest.cpu_nodes_total == 102  # 100 + 2
-        assert latest.running_jobs == 152     # 150 + 2
+        assert latest.cpu_nodes_total == 102
+        assert latest.running_jobs == 152
         assert latest.timestamp.hour == 14
 
-        # Verify all three exist
         all_snapshots = status_session.query(DerechoStatus)\
                                       .filter(DerechoStatus.timestamp <= datetime(TESTYEAR, 12, 31))\
                                       .filter(DerechoStatus.timestamp >= datetime(TESTYEAR,  1,  1))\

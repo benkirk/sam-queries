@@ -1,8 +1,26 @@
 """
-API endpoint tests for Charge/Balance endpoints
+API endpoint tests for Charge/Balance endpoints — HTTP-layer-only subset.
 
-Tests HTTP endpoints for project charge summaries and balance calculations.
-This is a CRITICAL endpoint that calculates real-time allocation usage.
+Scope note (Phase 4d): This file is the read-path + failure-mode subset of
+the legacy tests/api/test_charge_endpoints.py. The successful POST tests
+(create/update comp/disk/archive charge summaries) are intentionally
+dropped because they are fully covered at the service layer by Phase 3's
+test_manage_summaries (53 tests against the same upsert functions, under
+SAVEPOINT isolation). Keeping them here would require full Flask-SQLAlchemy
+SAVEPOINT bridging, which the raw `session` fixture cannot provide without
+patching `webapp.extensions.db`.
+
+What this file DOES cover (HTTP-layer concerns that Phase 3 doesn't):
+  - GET /api/v1/projects/<projcode>/charges/summary — real-time balance reads
+  - GET /api/v1/projects/<projcode>/charges — charge detail (may be 404 if not impl)
+  - Schema validation (400) — route wiring + marshmallow error envelope
+  - FK lookup failure (422) — management_transaction rollback path
+  - Auth redirect on unauthenticated POST
+
+None of the tests below produce successful commits: the GET tests are pure
+reads, the validation-error tests fail before any DB touch, and the FK
+lookup tests rely on `management_transaction` rolling back the nested
+upsert call before any row is persisted.
 """
 
 import json
@@ -79,10 +97,6 @@ class TestProjectChargesSummary:
         )
         assert response.status_code == 200
 
-        data = response.get_json()
-        # Should succeed regardless
-        assert response.status_code == 200
-
     def test_charges_summary_not_found(self, auth_client):
         """Test 404 for non-existent project."""
         response = auth_client.get('/api/v1/projects/INVALID999/charges/summary')
@@ -142,12 +156,24 @@ class TestProjectChargesDetail:
 
 
 # ---------------------------------------------------------------------------
-# POST charge summary endpoints
+# POST charge summary endpoints — failure-mode subset
 # ---------------------------------------------------------------------------
+#
+# Only the validation-error and FK-lookup-failure paths are kept from the
+# legacy file. The successful POST tests (create/update on comp/disk/archive)
+# are covered by Phase 3's test_manage_summaries.py at the service layer.
+#
+# `comp_post_body` builds a valid payload by reading snapshot data (benkirk,
+# SCSG0001, Derecho, machine, queue) through the raw `session` fixture.
+# It does NOT write anything — the tests below mutate the payload to trigger
+# specific failure paths in `_handle_charge_summary_post`:
+#   - 400: schema validation error (fails before management_transaction)
+#   - 422: ValueError inside management_transaction → rollback → response
+# Either path leaves the DB unchanged, so SAVEPOINT bridging is unnecessary.
 
 @pytest.fixture
 def comp_post_body(session):
-    """Build a valid POST body for comp charge summary."""
+    """Build a valid POST body for comp charge summary from snapshot data."""
     from sam.core.users import User
     from sam.projects.projects import Project
     from sam.resources.resources import Resource
@@ -184,120 +210,11 @@ def comp_post_body(session):
     }
 
 
-@pytest.fixture
-def storage_post_body(session):
-    """Build a valid POST body for disk/archive charge summary."""
-    from sam.core.users import User
-    from sam.projects.projects import Project
-    from sam.resources.resources import Resource, ResourceType
-    from sam.accounting.accounts import Account
-
-    user = User.get_by_username(session, 'benkirk')
-    project = Project.get_by_projcode(session, 'SCSG0001')
-
-    # Find a DISK resource with an account
-    disk_type = session.query(ResourceType).filter_by(resource_type='DISK').first()
-    if not disk_type:
-        pytest.skip("No DISK resource type")
-
-    resource = session.query(Resource).filter_by(
-        resource_type_id=disk_type.resource_type_id
-    ).first()
-    if not resource:
-        pytest.skip("No DISK resource")
-
-    account = Account.get_by_project_and_resource(
-        session, project.project_id, resource.resource_id
-    )
-    if not account:
-        pytest.skip(f"No account for SCSG0001 on {resource.resource_name}")
-
-    return {
-        'activity_date': '2099-01-15',
-        'act_username': user.username,
-        'act_projcode': project.projcode,
-        'act_unix_uid': user.unix_uid,
-        'resource_name': resource.resource_name,
-        'charges': 25.0,
-        'terabyte_years': 0.5,
-    }
-
-
-@pytest.fixture
-def archive_post_body(session):
-    """Build a valid POST body for archive charge summary."""
-    from sam.core.users import User
-    from sam.projects.projects import Project
-    from sam.resources.resources import Resource, ResourceType
-    from sam.accounting.accounts import Account
-
-    user = User.get_by_username(session, 'benkirk')
-    project = Project.get_by_projcode(session, 'SCSG0001')
-
-    archive_type = session.query(ResourceType).filter_by(resource_type='ARCHIVE').first()
-    if not archive_type:
-        pytest.skip("No ARCHIVE resource type")
-
-    resource = session.query(Resource).filter_by(
-        resource_type_id=archive_type.resource_type_id
-    ).first()
-    if not resource:
-        pytest.skip("No ARCHIVE resource")
-
-    account = Account.get_by_project_and_resource(
-        session, project.project_id, resource.resource_id
-    )
-    if not account:
-        pytest.skip(f"No account for SCSG0001 on {resource.resource_name}")
-
-    return {
-        'activity_date': '2099-01-15',
-        'act_username': user.username,
-        'act_projcode': project.projcode,
-        'act_unix_uid': user.unix_uid,
-        'resource_name': resource.resource_name,
-        'charges': 60.0,
-        'number_of_files': 500,
-        'terabyte_years': 1.2,
-    }
-
-
-class TestPostCompChargeSummary:
-    """Test POST /api/v1/charge-summaries/comp endpoint."""
-
-    def test_post_comp_created(self, auth_client, comp_post_body):
-        """Valid body -> success (201 created or 200 updated if row exists from prior run)."""
-        response = auth_client.post(
-            '/api/v1/charge-summaries/comp',
-            data=json.dumps(comp_post_body),
-            content_type='application/json',
-        )
-        assert response.status_code in [200, 201]
-        data = response.get_json()
-        assert data['success'] is True
-        assert data['action'] in ['created', 'updated']
-        assert 'charge_summary' in data
-
-    def test_post_comp_updated(self, auth_client, comp_post_body):
-        """POST twice same key -> 200, action=updated."""
-        # First insert
-        auth_client.post(
-            '/api/v1/charge-summaries/comp',
-            data=json.dumps(comp_post_body),
-            content_type='application/json',
-        )
-        # Second insert (same natural key)
-        response = auth_client.post(
-            '/api/v1/charge-summaries/comp',
-            data=json.dumps(comp_post_body),
-            content_type='application/json',
-        )
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['action'] == 'updated'
+class TestPostCompChargeSummaryFailures:
+    """Test POST /api/v1/charge-summaries/comp — failure modes only."""
 
     def test_post_comp_validation_error(self, auth_client):
-        """Missing required field -> 400."""
+        """Missing required field -> 400 (fails before DB touch)."""
         response = auth_client.post(
             '/api/v1/charge-summaries/comp',
             data=json.dumps({'act_username': 'benkirk'}),
@@ -308,7 +225,7 @@ class TestPostCompChargeSummary:
         assert 'error' in data
 
     def test_post_comp_unknown_user(self, auth_client, comp_post_body):
-        """Unknown user -> 422."""
+        """Unknown user -> 422 via management_transaction rollback."""
         body = dict(comp_post_body, act_username='nobody_xyz', act_unix_uid=999999999)
         response = auth_client.post(
             '/api/v1/charge-summaries/comp',
@@ -318,7 +235,7 @@ class TestPostCompChargeSummary:
         assert response.status_code == 422
 
     def test_post_comp_queue_missing_no_flag(self, auth_client, comp_post_body):
-        """Unknown queue without flag -> 422 with hint."""
+        """Unknown queue without autocreate flag -> 422 with hint."""
         body = dict(comp_post_body, queue_name='fake_queue_xyz')
         response = auth_client.post(
             '/api/v1/charge-summaries/comp',
@@ -328,54 +245,9 @@ class TestPostCompChargeSummary:
         assert response.status_code == 422
         assert 'create_queue_if_missing' in response.get_json()['error']
 
-    def test_post_comp_queue_autocreate(self, auth_client, comp_post_body):
-        """Unknown queue + flag -> success (queue auto-created)."""
-        body = dict(comp_post_body, queue_name='auto_api_test_queue', create_queue_if_missing=True)
-        response = auth_client.post(
-            '/api/v1/charge-summaries/comp',
-            data=json.dumps(body),
-            content_type='application/json',
-        )
-        assert response.status_code in [200, 201]
 
-    def test_post_comp_no_machine_name(self, auth_client, comp_post_body):
-        """POST without machine_name -> auto-resolves for single-machine resource."""
-        body = dict(comp_post_body, activity_date='2099-07-01')
-        body.pop('machine_name')
-        response = auth_client.post(
-            '/api/v1/charge-summaries/comp',
-            data=json.dumps(body),
-            content_type='application/json',
-        )
-        assert response.status_code in [200, 201]
-        data = response.get_json()
-        assert data['success'] is True
-
-    def test_post_comp_facility_name_override(self, auth_client, comp_post_body):
-        """Explicit facility_name -> success."""
-        body = dict(comp_post_body, facility_name='TEST_FAC', activity_date='2099-06-15')
-        response = auth_client.post(
-            '/api/v1/charge-summaries/comp',
-            data=json.dumps(body),
-            content_type='application/json',
-        )
-        assert response.status_code in [200, 201]
-
-
-class TestPostDiskChargeSummary:
-    """Test POST /api/v1/charge-summaries/disk endpoint."""
-
-    def test_post_disk_created(self, auth_client, storage_post_body):
-        """Valid body -> success."""
-        response = auth_client.post(
-            '/api/v1/charge-summaries/disk',
-            data=json.dumps(storage_post_body),
-            content_type='application/json',
-        )
-        assert response.status_code in [200, 201]
-        data = response.get_json()
-        assert data['success'] is True
-        assert data['action'] in ['created', 'updated']
+class TestPostDiskChargeSummaryFailures:
+    """Test POST /api/v1/charge-summaries/disk — failure modes only."""
 
     def test_post_disk_validation_error(self, auth_client):
         """Missing required field -> 400."""
@@ -385,22 +257,6 @@ class TestPostDiskChargeSummary:
             content_type='application/json',
         )
         assert response.status_code == 400
-
-
-class TestPostArchiveChargeSummary:
-    """Test POST /api/v1/charge-summaries/archive endpoint."""
-
-    def test_post_archive_created(self, auth_client, archive_post_body):
-        """Valid body -> success."""
-        response = auth_client.post(
-            '/api/v1/charge-summaries/archive',
-            data=json.dumps(archive_post_body),
-            content_type='application/json',
-        )
-        assert response.status_code in [200, 201]
-        data = response.get_json()
-        assert data['success'] is True
-        assert data['action'] in ['created', 'updated']
 
 
 class TestPostChargeSummaryAuth:

@@ -1,25 +1,24 @@
-"""
-Tests for WallclockExemption.create() and .update() class/instance methods.
-"""
+"""Tests for WallclockExemption.create() and .update() — Phase 3 port.
 
-import pytest
+Ported from tests/unit/test_wallclock_exemptions.py. The legacy file used
+`session.query(User|Queue).first()` to grab whatever rows the snapshot
+happened to have. Under SAVEPOINT isolation we instead build a fresh User
++ Queue per test via the Layer 2 factories — every row gets rolled back
+at teardown, so two tests in the same xdist worker can't bleed state.
+"""
 from datetime import datetime
 
-from sam import Queue, User, WallclockExemption
+import pytest
+
+from sam import WallclockExemption
+
+from factories import make_queue, make_user, make_wallclock_exemption
+
+pytestmark = pytest.mark.unit
 
 
 class TestWallclockExemption:
     """Tests for WallclockExemption.create() and .update()."""
-
-    def _get_user_and_queue(self, session):
-        """Return a (user, queue) pair suitable for exemption tests."""
-        queue = session.query(Queue).first()
-        if not queue:
-            pytest.skip("No queues in database")
-        user = session.query(User).first()
-        if not user:
-            pytest.skip("No users in database")
-        return user, queue
 
     # ------------------------------------------------------------------
     # WallclockExemption.create()
@@ -27,7 +26,8 @@ class TestWallclockExemption:
 
     def test_create_basic(self, session):
         """create() returns a persisted exemption."""
-        user, queue = self._get_user_and_queue(session)
+        user = make_user(session)
+        queue = make_queue(session)
         start = datetime(2025, 1, 1)
         end = datetime(2025, 6, 1)
 
@@ -40,25 +40,25 @@ class TestWallclockExemption:
         assert ex.queue_id == queue.queue_id
         assert ex.time_limit_hours == 48.0
         assert ex.comment is None
-        session.rollback()
 
     def test_create_with_comment(self, session):
         """create() stores an optional comment."""
-        user, queue = self._get_user_and_queue(session)
+        user = make_user(session)
+        queue = make_queue(session)
         start = datetime(2025, 1, 1)
         end = datetime(2025, 6, 1)
 
         ex = WallclockExemption.create(
             session, user.user_id, queue.queue_id, start, end, 24.0,
-            comment="Special research run"
+            comment="Special research run",
         )
 
         assert ex.comment == "Special research run"
-        session.rollback()
 
     def test_create_invalid_dates(self, session):
         """create() raises ValueError when end <= start."""
-        user, queue = self._get_user_and_queue(session)
+        user = make_user(session)
+        queue = make_queue(session)
         start = datetime(2025, 6, 1)
         end = datetime(2025, 1, 1)   # before start
 
@@ -69,7 +69,8 @@ class TestWallclockExemption:
 
     def test_create_invalid_limit(self, session):
         """create() raises ValueError when time_limit_hours <= 0."""
-        user, queue = self._get_user_and_queue(session)
+        user = make_user(session)
+        queue = make_queue(session)
         start = datetime(2025, 1, 1)
         end = datetime(2025, 6, 1)
 
@@ -84,11 +85,10 @@ class TestWallclockExemption:
 
     def test_update_end_date(self, session):
         """update() can extend the end date."""
-        user, queue = self._get_user_and_queue(session)
         start = datetime(2025, 1, 1)
         end = datetime(2025, 6, 1)
-        ex = WallclockExemption.create(
-            session, user.user_id, queue.queue_id, start, end, 48.0
+        ex = make_wallclock_exemption(
+            session, start_date=start, end_date=end, time_limit_hours=48.0
         )
 
         new_end = datetime(2025, 12, 31)
@@ -97,50 +97,41 @@ class TestWallclockExemption:
         # normalize_end_date converts midnight to 23:59:59 per project convention
         assert updated.end_date == new_end.replace(hour=23, minute=59, second=59)
         assert updated.time_limit_hours == 48.0   # unchanged
-        session.rollback()
 
     def test_update_limit_and_comment(self, session):
         """update() updates limit and comment independently."""
-        user, queue = self._get_user_and_queue(session)
         start = datetime(2025, 1, 1)
         end = datetime(2025, 6, 1)
-        ex = WallclockExemption.create(
-            session, user.user_id, queue.queue_id, start, end, 48.0,
-            comment="original"
+        ex = make_wallclock_exemption(
+            session,
+            start_date=start,
+            end_date=end,
+            time_limit_hours=48.0,
+            comment="original",
         )
 
         updated = ex.update(time_limit_hours=72.0, comment="updated reason")
 
         assert updated.time_limit_hours == 72.0
         assert updated.comment == "updated reason"
-        # normalize_end_date converts midnight to 23:59:59 per project convention
-        assert updated.end_date == end.replace(hour=23, minute=59, second=59)   # unchanged (normalized)
-        session.rollback()
+        # end_date unchanged but normalized to 23:59:59 by the @validates hook
+        assert updated.end_date == end.replace(hour=23, minute=59, second=59)
 
     def test_update_clear_comment(self, session):
         """Passing an empty string for comment clears it to None."""
-        user, queue = self._get_user_and_queue(session)
-        start = datetime(2025, 1, 1)
-        end = datetime(2025, 6, 1)
-        ex = WallclockExemption.create(
-            session, user.user_id, queue.queue_id, start, end, 48.0,
-            comment="to be cleared"
-        )
+        ex = make_wallclock_exemption(session, comment="to be cleared")
 
         updated = ex.update(comment="")
 
         assert updated.comment is None
-        session.rollback()
 
     def test_update_invalid_end_date(self, session):
         """update() raises ValueError when end <= start."""
-        user, queue = self._get_user_and_queue(session)
         start = datetime(2025, 6, 1)
         end = datetime(2025, 12, 1)
-        ex = WallclockExemption.create(
-            session, user.user_id, queue.queue_id, start, end, 48.0
+        ex = make_wallclock_exemption(
+            session, start_date=start, end_date=end, time_limit_hours=48.0
         )
 
         with pytest.raises(ValueError, match="end_date must be after start_date"):
             ex.update(end_date=datetime(2025, 1, 1))   # before start
-        session.rollback()

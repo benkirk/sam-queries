@@ -1,312 +1,215 @@
+"""Tests for sam.manage user/admin functions — Phase 3 port.
+
+Ported from tests/unit/test_management_functions.py. The legacy file used
+`test_user`/`test_project` (benkirk + SCSG0001 from snapshot) plus
+hand-rolled "find a non-member" queries against the snapshot. Each of
+those couplings was a fragility — snapshot refreshes change membership,
+which silently broke "find a user not on this project" lookups.
+
+The port builds a fresh isolated graph for every test:
+  - `make_project()` → fresh Project with a fresh lead User
+  - `make_account(project=...)` → fresh Account; Account.create() auto-
+    propagates the project lead as the first AccountUser
+  - `make_user()` → fresh User who is unambiguously NOT on the project
 """
-Unit tests for project management functions.
-
-Tests the ORM-level management functions in sam.manage module
-for adding/removing project members and changing admin roles.
-
-These tests use the 'session' fixture which automatically rolls back
-all changes, preventing test data from persisting.
-"""
-
 import pytest
 from datetime import datetime, timedelta
-import sys
-from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
-
-from sam.manage import add_user_to_project, remove_user_from_project, change_project_admin
-from sam.projects.projects import Project
 from sam.accounting.accounts import Account, AccountUser
-from sam.core.users import User
+from sam.manage import add_user_to_project, change_project_admin, remove_user_from_project
+
+from factories import make_account, make_project, make_user
+
+pytestmark = pytest.mark.unit
+
+
+def _project_with_account(session):
+    """Build a fresh project that already has one Account on it.
+
+    `make_account` auto-builds a project if not given one — but we want
+    the same project bound to both the returned `project` and the
+    `account.project_id` here, so we build the project first.
+    """
+    project = make_project(session)
+    account = make_account(session, project=project)
+    return project, account
 
 
 class TestAddUserToProject:
-    """Tests for add_user_to_project() function."""
+    """Tests for add_user_to_project()."""
 
     def test_raises_error_for_nonexistent_project(self, session):
         """Raises ValueError if project has no accounts."""
-        # Use a project ID that doesn't exist
+        # Build a user so the FK is valid even though the project ID won't be.
+        user = make_user(session)
         with pytest.raises(ValueError, match="No accounts found"):
-            add_user_to_project(session, project_id=999999, user_id=1)
+            add_user_to_project(session, project_id=999_999_999, user_id=user.user_id)
 
-    def test_adds_user_to_project_accounts(self, session, test_project, test_user):
+    def test_adds_user_to_project_accounts(self, session):
         """Adds AccountUser records for each project account."""
-        # Find a user who is NOT currently on the project
-        member_ids = {
-            au.user_id
-            for account in test_project.accounts
-            for au in account.users  # 'users' is the relationship name
-        }
-        member_ids.add(test_project.project_lead_user_id)
+        project, _ = _project_with_account(session)
+        # Add a second account so we can verify multi-account propagation.
+        make_account(session, project=project)
+        new_user = make_user(session)
 
-        # Find another user not in this set
-        other_user = session.query(User).filter(
-            ~User.user_id.in_(member_ids),
-            User.username.isnot(None)
-        ).first()
+        active_account_count = len([a for a in project.accounts if not a.deleted])
+        assert active_account_count == 2
 
-        if not other_user:
-            pytest.skip("No available user found to add to project")
+        add_user_to_project(session, project.project_id, new_user.user_id)
 
-        # Count accounts before
-        account_count = len([a for a in test_project.accounts if not a.deleted])
-
-        # Add the user
-        add_user_to_project(session, test_project.project_id, other_user.user_id)
-
-        # Verify AccountUser records were created
         new_memberships = session.query(AccountUser).filter(
-            AccountUser.user_id == other_user.user_id,
-            AccountUser.account_id.in_([a.account_id for a in test_project.accounts])
+            AccountUser.user_id == new_user.user_id,
+            AccountUser.account_id.in_([a.account_id for a in project.accounts]),
         ).all()
+        assert len(new_memberships) == active_account_count
 
-        assert len(new_memberships) == account_count
-
-    def test_start_date_defaults_to_now(self, session, test_project):
+    def test_start_date_defaults_to_now(self, session):
         """Start date defaults to current datetime if not provided."""
-        # Find a user not on the project
-        member_ids = {
-            au.user_id
-            for account in test_project.accounts
-            for au in account.users  # 'users' is the relationship name
-        }
-        member_ids.add(test_project.project_lead_user_id)
-
-        other_user = session.query(User).filter(
-            ~User.user_id.in_(member_ids),
-            User.username.isnot(None)
-        ).first()
-
-        if not other_user:
-            pytest.skip("No available user found to add")
+        project, _ = _project_with_account(session)
+        new_user = make_user(session)
 
         before = datetime.now()
-        add_user_to_project(session, test_project.project_id, other_user.user_id)
+        add_user_to_project(session, project.project_id, new_user.user_id)
         after = datetime.now()
 
-        # Check start_date
         membership = session.query(AccountUser).filter(
-            AccountUser.user_id == other_user.user_id,
-            AccountUser.account_id.in_([a.account_id for a in test_project.accounts])
+            AccountUser.user_id == new_user.user_id,
+            AccountUser.account_id.in_([a.account_id for a in project.accounts]),
         ).first()
-
         assert membership is not None
-        # Allow 2 second tolerance for database/test timing differences
         tolerance = timedelta(seconds=2)
         assert before - tolerance <= membership.start_date <= after + tolerance
 
-    def test_custom_dates_are_used(self, session, test_project):
-        """Custom start_date and end_date are applied."""
-        member_ids = {
-            au.user_id
-            for account in test_project.accounts
-            for au in account.users  # 'users' is the relationship name
-        }
-        member_ids.add(test_project.project_lead_user_id)
-
-        other_user = session.query(User).filter(
-            ~User.user_id.in_(member_ids),
-            User.username.isnot(None)
-        ).first()
-
-        if not other_user:
-            pytest.skip("No available user found to add")
+    def test_custom_dates_are_used(self, session):
+        """Custom start_date and end_date are applied (end_date normalized)."""
+        project, _ = _project_with_account(session)
+        new_user = make_user(session)
 
         start = datetime(2100, 1, 1)
         end = datetime(2100, 12, 31)
-
         add_user_to_project(
             session,
-            test_project.project_id,
-            other_user.user_id,
+            project.project_id,
+            new_user.user_id,
             start_date=start,
-            end_date=end
+            end_date=end,
         )
 
         membership = session.query(AccountUser).filter(
-            AccountUser.user_id == other_user.user_id,
-            AccountUser.account_id.in_([a.account_id for a in test_project.accounts])
+            AccountUser.user_id == new_user.user_id,
+            AccountUser.account_id.in_([a.account_id for a in project.accounts]),
         ).first()
-
         assert membership.start_date == start
         # normalize_end_date converts midnight to 23:59:59 per project convention
         assert membership.end_date == end.replace(hour=23, minute=59, second=59)
 
-    def test_skips_existing_member(self, session, test_project, test_user):
-        """Does not raise error if user is already a member, just skips."""
-        # test_user (benkirk) is already on SCSG0001
-        # This should not raise an error, just skip existing memberships
-        add_user_to_project(session, test_project.project_id, test_user.user_id)
+    def test_skips_existing_member(self, session):
+        """Calling twice does not raise — the second call is a no-op."""
+        project, account = _project_with_account(session)
+        # The project lead is already a member (Account.create() propagated).
+        lead_id = project.project_lead_user_id
 
-        # If we get here without error, the test passes
+        # Calling again should silently skip rather than raise.
+        add_user_to_project(session, project.project_id, lead_id)
+
+        # Still exactly one AccountUser row for (account, lead).
+        count = session.query(AccountUser).filter_by(
+            account_id=account.account_id, user_id=lead_id
+        ).count()
+        assert count == 1
 
 
 class TestRemoveUserFromProject:
-    """Tests for remove_user_from_project() function."""
+    """Tests for remove_user_from_project()."""
 
     def test_raises_error_for_nonexistent_project(self, session):
-        """Raises ValueError if project doesn't exist."""
         with pytest.raises(ValueError, match="not found"):
-            remove_user_from_project(session, project_id=999999, user_id=1)
+            remove_user_from_project(session, project_id=999_999_999, user_id=1)
 
-    def test_cannot_remove_project_lead(self, session, test_project):
-        """Raises ValueError when trying to remove project lead."""
-        lead_id = test_project.project_lead_user_id
-
+    def test_cannot_remove_project_lead(self, session):
+        project, _ = _project_with_account(session)
         with pytest.raises(ValueError, match="Cannot remove the project lead"):
-            remove_user_from_project(session, test_project.project_id, lead_id)
+            remove_user_from_project(session, project.project_id, project.project_lead_user_id)
 
-    def test_removes_user_from_all_accounts(self, session, test_project):
-        """Removes AccountUser records from all project accounts."""
-        # First find a member who is NOT the lead
-        lead_id = test_project.project_lead_user_id
-        account_ids = [a.account_id for a in test_project.accounts]
+    def test_removes_user_from_all_accounts(self, session):
+        project, _ = _project_with_account(session)
+        make_account(session, project=project)  # second account on same project
+        member = make_user(session)
+        add_user_to_project(session, project.project_id, member.user_id)
 
-        existing_member = session.query(AccountUser).filter(
+        account_ids = [a.account_id for a in project.accounts]
+        before = session.query(AccountUser).filter(
             AccountUser.account_id.in_(account_ids),
-            AccountUser.user_id != lead_id
-        ).first()
-
-        if not existing_member:
-            pytest.skip("No non-lead member found to remove")
-
-        user_id = existing_member.user_id
-
-        # Count memberships before
-        memberships_before = session.query(AccountUser).filter(
-            AccountUser.account_id.in_(account_ids),
-            AccountUser.user_id == user_id
+            AccountUser.user_id == member.user_id,
         ).count()
+        assert before == len(account_ids) > 0
 
-        assert memberships_before > 0
+        remove_user_from_project(session, project.project_id, member.user_id)
 
-        # Remove the user
-        remove_user_from_project(session, test_project.project_id, user_id)
-
-        # Verify all memberships are gone
-        memberships_after = session.query(AccountUser).filter(
+        after = session.query(AccountUser).filter(
             AccountUser.account_id.in_(account_ids),
-            AccountUser.user_id == user_id
+            AccountUser.user_id == member.user_id,
         ).count()
-
-        assert memberships_after == 0
+        assert after == 0
 
     def test_clears_admin_role_when_removing_admin(self, session):
-        """Clears project_admin_user_id when removing the admin."""
-        # Find a project that has an admin set who is NOT also the lead
-        project = session.query(Project).filter(
-            Project.project_admin_user_id.isnot(None),
-            Project.project_admin_user_id != Project.project_lead_user_id
-        ).first()
+        """Removing the admin user from the project clears project_admin_user_id."""
+        project, _ = _project_with_account(session)
+        admin = make_user(session)
+        add_user_to_project(session, project.project_id, admin.user_id)
+        change_project_admin(session, project.project_id, admin.user_id)
 
-        if not project:
-            # Create the scenario: set an admin on test project
-            project = Project.get_by_projcode(session, 'SCSG0001')
-            if not project:
-                pytest.skip("Test project not found")
+        session.refresh(project)
+        assert project.project_admin_user_id == admin.user_id
+        # Sanity: admin must not be the lead, otherwise remove would error.
+        assert project.project_admin_user_id != project.project_lead_user_id
 
-            # Find a member who can be admin (must NOT be the lead)
-            account_ids = [a.account_id for a in project.accounts]
-            member = session.query(AccountUser).filter(
-                AccountUser.account_id.in_(account_ids),
-                AccountUser.user_id != project.project_lead_user_id
-            ).first()
+        remove_user_from_project(session, project.project_id, admin.user_id)
 
-            if not member:
-                pytest.skip("No member available to make admin")
-
-            project.project_admin_user_id = member.user_id
-            session.flush()
-
-        admin_id = project.project_admin_user_id
-
-        # Sanity check: admin should not be the lead
-        assert admin_id != project.project_lead_user_id, "Test setup error: admin is also the lead"
-
-        # Remove the admin from the project
-        remove_user_from_project(session, project.project_id, admin_id)
-
-        # Verify admin role was cleared
         session.refresh(project)
         assert project.project_admin_user_id is None
 
 
 class TestChangeProjectAdmin:
-    """Tests for change_project_admin() function."""
+    """Tests for change_project_admin()."""
 
     def test_raises_error_for_nonexistent_project(self, session):
-        """Raises ValueError if project doesn't exist."""
         with pytest.raises(ValueError, match="not found"):
-            change_project_admin(session, project_id=999999, new_admin_user_id=1)
+            change_project_admin(session, project_id=999_999_999, new_admin_user_id=1)
 
-    def test_sets_admin_to_project_member(self, session, test_project):
-        """Sets admin to a user who is a project member."""
-        # Find a member who is not the lead
-        account_ids = [a.account_id for a in test_project.accounts]
-        member = session.query(AccountUser).filter(
-            AccountUser.account_id.in_(account_ids),
-            AccountUser.user_id != test_project.project_lead_user_id
-        ).first()
+    def test_sets_admin_to_project_member(self, session):
+        project, _ = _project_with_account(session)
+        member = make_user(session)
+        add_user_to_project(session, project.project_id, member.user_id)
 
-        if not member:
-            pytest.skip("No non-lead member found")
+        change_project_admin(session, project.project_id, member.user_id)
 
-        # Change admin
-        change_project_admin(session, test_project.project_id, member.user_id)
+        session.refresh(project)
+        assert project.project_admin_user_id == member.user_id
 
-        # Verify
-        session.refresh(test_project)
-        assert test_project.project_admin_user_id == member.user_id
+    def test_allows_lead_to_be_admin(self, session):
+        """Project lead is always a valid admin choice (even though redundant)."""
+        project, _ = _project_with_account(session)
+        change_project_admin(session, project.project_id, project.project_lead_user_id)
+        session.refresh(project)
+        assert project.project_admin_user_id == project.project_lead_user_id
 
-    def test_allows_lead_to_be_admin(self, session, test_project):
-        """Project lead can be set as admin (even though redundant)."""
-        lead_id = test_project.project_lead_user_id
+    def test_clears_admin_with_none(self, session):
+        project, _ = _project_with_account(session)
+        admin = make_user(session)
+        add_user_to_project(session, project.project_id, admin.user_id)
+        change_project_admin(session, project.project_id, admin.user_id)
+        session.refresh(project)
+        assert project.project_admin_user_id == admin.user_id
 
-        # This should work - lead is always a valid choice
-        change_project_admin(session, test_project.project_id, lead_id)
+        change_project_admin(session, project.project_id, None)
+        session.refresh(project)
+        assert project.project_admin_user_id is None
 
-        session.refresh(test_project)
-        assert test_project.project_admin_user_id == lead_id
-
-    def test_clears_admin_with_none(self, session, test_project):
-        """Setting admin to None clears the admin role."""
-        # First set an admin if not already set
-        if not test_project.project_admin_user_id:
-            account_ids = [a.account_id for a in test_project.accounts]
-            member = session.query(AccountUser).filter(
-                AccountUser.account_id.in_(account_ids),
-                AccountUser.user_id != test_project.project_lead_user_id
-            ).first()
-
-            if member:
-                test_project.project_admin_user_id = member.user_id
-                session.flush()
-
-        # Clear admin
-        change_project_admin(session, test_project.project_id, None)
-
-        session.refresh(test_project)
-        assert test_project.project_admin_user_id is None
-
-    def test_raises_error_for_non_member(self, session, test_project):
-        """Raises ValueError if user is not a project member."""
-        # Find a user who is NOT a member
-        account_ids = [a.account_id for a in test_project.accounts]
-        member_ids = session.query(AccountUser.user_id).filter(
-            AccountUser.account_id.in_(account_ids)
-        ).distinct().all()
-        member_ids = {u[0] for u in member_ids}
-        member_ids.add(test_project.project_lead_user_id)
-
-        non_member = session.query(User).filter(
-            ~User.user_id.in_(member_ids),
-            User.username.isnot(None)
-        ).first()
-
-        if not non_member:
-            pytest.skip("No non-member user found")
+    def test_raises_error_for_non_member(self, session):
+        """Raises ValueError if proposed admin is not a project member."""
+        project, _ = _project_with_account(session)
+        non_member = make_user(session)  # never added to the project
 
         with pytest.raises(ValueError, match="must be a project member"):
-            change_project_admin(session, test_project.project_id, non_member.user_id)
+            change_project_admin(session, project.project_id, non_member.user_id)

@@ -82,7 +82,9 @@ jobs:
       - name: Build and start services
         run: |
           docker compose build
-          docker compose up -d
+          # --profile test brings up the default stack PLUS the mysql-test
+          # container needed by the test suite's SAM_TEST_DB_URL target.
+          docker compose --profile test up -d
           # Show immediate status
           docker compose ps
           sleep 5
@@ -151,6 +153,41 @@ jobs:
             exit 1
           }
 
+      - name: Wait for mysql-test container (test DB on 3307)
+        run: |
+          echo "=== Waiting for mysql-test on 127.0.0.1:3307 ==="
+          # Same TCP-vs-socket gotcha as the main mysql service. Poll
+          # the host port instead of `docker compose exec`.
+          for i in $(seq 1 60); do
+            if mysql -h 127.0.0.1 -P 3307 -proot -uroot -e "SELECT 1" 2>/dev/null; then
+              echo "✅ mysql-test accepting TCP connections after $((i * 5))s"
+              break
+            fi
+            STATE=$(docker compose ps mysql-test --format "{{.State}}" 2>/dev/null || echo "unknown")
+            if [ "${STATE}" = "exited" ]; then
+              echo "❌ mysql-test container exited!"
+              docker compose logs mysql-test --tail=200
+              exit 1
+            fi
+            if [ $((i % 6)) -eq 0 ]; then
+              echo "  Still waiting... ($((i * 5))s elapsed, container state: ${STATE})"
+            fi
+            sleep 5
+          done
+          # Verify the sam schema restored into the test DB
+          for i in $(seq 1 12); do
+            if mysql -h 127.0.0.1 -P 3307 -proot -uroot sam -e "SELECT 1" 2>/dev/null; then
+              echo "✅ mysql-test sam database is ready"
+              break
+            fi
+            sleep 5
+          done
+          mysql -h 127.0.0.1 -P 3307 -proot -uroot sam -e "SELECT 1" || {
+            echo "❌ mysql-test sam database not accessible!"
+            docker compose logs mysql-test --tail=100
+            exit 1
+          }
+
       - name: Wait for webapp to be ready
         run: |
           timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
@@ -166,11 +203,21 @@ jobs:
           mysql -h 127.0.0.1 -proot -uroot system_status --table -e "SHOW tables;"
           mysql -h 127.0.0.1 -proot -uroot sam --table -e "SHOW tables;"
           mysql -h 127.0.0.1 -proot -uroot sam --table -e "SELECT * from tables_dictionary;"
+          echo "=== mysql-test (3307) ==="
+          mysql -h 127.0.0.1 -P 3307 -proot -uroot sam --table -e "SHOW tables;" | head -20
 
       - name: Run pytest with coverage
         id: pytest
+        # SAM_TEST_DB_URL uses the compose service hostname `mysql-test`
+        # (not 127.0.0.1) because pytest runs inside the webapp container,
+        # which reaches mysql-test via the compose network. The test
+        # suite's safety allowlist has (mysql-test, 3306) approved.
+        # Note: `pytest` with no path arg picks up testpaths=tests from
+        # the root pytest.ini — no need to pass `tests/` explicitly.
         run: |
-          docker compose exec -T webapp bash -c "cd /code && pytest tests/ --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=60"
+          docker compose exec -T \
+            -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+            webapp bash -c "cd /code && pytest --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=60"
 
       - name: Copy coverage report from container
         if: always()
@@ -191,7 +238,7 @@ jobs:
           echo "📊 Coverage report available in GitHub Actions artifacts"
           echo "Download 'coverage-report-html' to view detailed line-by-line coverage"
           echo ""
-          echo "ℹ️  Coverage threshold: 80% minimum required"
+          echo "ℹ️  Coverage threshold: 60% minimum required"
           if [ "${{ steps.pytest.outcome }}" == "failure" ]; then
             echo "❌ Coverage threshold not met or tests failed"
           else

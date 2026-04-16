@@ -172,11 +172,18 @@ jobs:
           cd "${INSTALL_DIR}"
           docker compose ps
 
-      - name: Run pytest in parallel without coverage
-        id: pytest
+      # This workflow verifies install.sh produced a working install. It
+      # does NOT re-run the full test suite — that's sam-ci-docker.yaml's
+      # job. A smoke check against the installed CLI + health endpoint is
+      # enough to prove the install path is healthy end-to-end.
+      - name: Install smoke — sam-search CLI
         run: |
           cd "${INSTALL_DIR}"
-          docker compose exec -T webapp bash -c "cd /code && pytest tests/ -n auto"
+          docker compose exec -T webapp sam-search user csgteam
+
+      - name: Install smoke — webapp /health/live
+        run: |
+          curl -fsS http://localhost:7050/api/v1/health/live | grep -q '"status": "alive"'
 
       - name: Show container logs (on failure)
         if: failure()
