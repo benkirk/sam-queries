@@ -1,4 +1,4 @@
-name: SAM Database CI (Make/Conda Installation)
+name: Check Conda-based Installation
 
 on:
   push:
