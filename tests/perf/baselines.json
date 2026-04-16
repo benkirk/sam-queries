@@ -48,5 +48,29 @@
     "get_project_rolling_usage": {
         "queries": 20,
         "notes": "measured 11 — rolling window charge data"
+    },
+    "get_allocation_summary_with_usage_all_resources": {
+        "queries": 65,
+        "notes": "measured 44 (18 resources, 4189 rows) — was 52,923 before Issue 1 fix"
+    },
+    "user_dashboard_route": {
+        "queries": 65,
+        "notes": "measured 45 — full GET /user/ including template render (benkirk)"
+    },
+    "allocations_index_route": {
+        "queries": 20,
+        "notes": "measured 13 — full GET /allocations/ (show_usage=false)"
+    },
+    "allocations_usage_route": {
+        "queries": 80,
+        "notes": "measured 54 — full GET /allocations/?show_usage=true; was 52,923 before fix"
+    },
+    "admin_orgs_card_route": {
+        "queries": 450,
+        "notes": "measured 311 — full GET /admin/htmx/organizations-card; residual lazy loads in template"
+    },
+    "fstree_api_route": {
+        "queries": 65,
+        "notes": "measured 44 — full GET /api/v1/fstree_access/ (all resources); cached 5min in prod"
     }
 }

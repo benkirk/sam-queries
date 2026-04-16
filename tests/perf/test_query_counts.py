@@ -185,7 +185,44 @@ def test_get_detailed_allocation_usage(session, count_queries, perf_active_proje
 
 
 # ---------------------------------------------------------------------------
-# 8. get_project_rolling_usage
+# 8. get_allocation_summary_with_usage — ALL active resources
+# ---------------------------------------------------------------------------
+
+def test_get_allocation_summary_with_usage_all_resources(session, count_queries):
+    """Query count for allocation summary with usage across ALL active resources.
+
+    The catastrophic Issue 1 (52,923 queries → 42) only manifests when
+    fetching ALL resources at once — the single-resource test above would
+    not catch a regression in the batch bulk-fetch machinery.
+    """
+    from sam.queries.allocations import get_allocation_summary_with_usage
+    from sam.resources.resources import Resource
+
+    active_resources = [
+        r.resource_name for r in
+        session.query(Resource.resource_name)
+        .filter(Resource.is_active)
+        .order_by(Resource.resource_name).all()
+    ]
+    assert len(active_resources) >= 2, "Need multiple active resources to exercise batch path"
+
+    baseline = get_baseline("get_allocation_summary_with_usage_all_resources")
+
+    with count_queries() as stats:
+        data = get_allocation_summary_with_usage(
+            session, resource_name=active_resources,
+        )
+
+    assert isinstance(data, list), "get_allocation_summary_with_usage should return a list"
+    assert stats.count <= baseline, (
+        f"get_allocation_summary_with_usage (all resources) query count regression: "
+        f"{stats.count} queries > {baseline} baseline. "
+        f"{stats.summary()}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 9. get_project_rolling_usage
 # ---------------------------------------------------------------------------
 
 def test_get_project_rolling_usage(session, count_queries, perf_active_project):
