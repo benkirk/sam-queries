@@ -448,13 +448,27 @@ body {
     padding: 16px;
     margin-bottom: 16px;
     border-left: 4px solid var(--ncar-blue);
-    /* Multi-column responsive grid: single-line key/value pairs pack into
-       columns on desktop; heading + multi-line block items span full width. */
+    /* Paired auto/1fr tracks per column so labels share a per-column auto
+       width and values start at a consistent x-position within each column.
+       Stat-items use display:contents so their label+value become direct
+       children of this grid. Column count steps by breakpoint. */
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: auto minmax(0, 1fr);
     column-gap: 24px;
     row-gap: 0;
     transition: all var(--transition-base);
+}
+
+@media (min-width: 768px) {
+    .project-stats-box {
+        grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+    }
+}
+
+@media (min-width: 1200px) {
+    .project-stats-box {
+        grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+    }
 }
 
 .project-stats-box:hover {
@@ -472,18 +486,27 @@ body {
     letter-spacing: 0.5px;
 }
 
+/* Single-line stat-items dissolve into the parent grid so labels share
+   auto-tracks within each column (see .project-stats-box above). */
 .stat-item {
-    display: flex;
-    gap: 0.5rem;
+    display: contents;
+}
+
+.stat-item > .stat-label,
+.stat-item > .stat-value {
     padding: 6px 0;
 }
 
-/* Multi-line items (Organizations, Contracts, Directories) span all columns
-   of the .project-stats-box grid so their label + wrapped list breathe. */
+.stat-item > .stat-label {
+    padding-right: 0.5rem;
+}
+
+/* Multi-line items (Organizations, Contracts, Directories) opt back out
+   of display:contents so they can span all columns of the parent grid. */
 .stat-item-block {
+    display: block;
     grid-column: 1 / -1;
-    flex-direction: column;
-    align-items: stretch;
+    padding: 6px 0;
 }
 
 .stat-label {
@@ -639,9 +662,9 @@ body {
 
     .project-stats-box {
         padding: 12px;
-        /* Stack single-column on tablet/mobile — revert the desktop grid. */
-        grid-template-columns: 1fr;
-        column-gap: 0;
+        /* Stack single-column on tablet/mobile — one auto/1fr pair. */
+        grid-template-columns: auto minmax(0, 1fr);
+        column-gap: 16px;
     }
 
     .table {
@@ -656,10 +679,5 @@ body {
 
     .page-header {
         margin-bottom: 20px;
-    }
-
-    .stat-item {
-        flex-direction: column;
-        gap: 4px;
     }
 }
