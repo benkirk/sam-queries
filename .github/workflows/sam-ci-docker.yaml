@@ -1,4 +1,4 @@
-ame: SAM Test Suite
+name: SAM Test Suite
 
 on:
   push:
