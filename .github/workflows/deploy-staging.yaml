@@ -67,8 +67,11 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          BUILD_DATE="$(date -u '+%Y-%m-%d %H:%M UTC')"
           docker build \
             -f containers/webapp/Dockerfile \
+            --build-arg GIT_SHA="$IMAGE_TAG" \
+            --build-arg BUILD_DATE="$BUILD_DATE" \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
             .

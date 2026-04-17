@@ -37,6 +37,13 @@ WORKDIR /code
 COPY . .
 RUN pip install -e ".[test]"
 
+# Optional build provenance - set by CI via --build-arg; empty locally.
+# Placed AFTER pip install so a changing SHA does not invalidate the install layer.
+ARG GIT_SHA=""
+ARG BUILD_DATE=""
+ENV GIT_SHA=${GIT_SHA}
+ENV BUILD_DATE=${BUILD_DATE}
+
 
 #-------------------------------------------------------------------------------
 # webdev - development flask internal sever config
