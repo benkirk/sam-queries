@@ -1,0 +1,6 @@
+{% from 'dashboards/user/partials/group_card.html' import render_group_card with context %}
+
+{{ render_group_card(group,
+                     members_by_branch=members_by_branch,
+                     primary_gid_users=primary_gid_users,
+                     is_admin=True) }}

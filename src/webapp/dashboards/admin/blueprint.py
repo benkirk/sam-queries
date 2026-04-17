@@ -192,6 +192,44 @@ def user_card(username):
     )
 
 
+@bp.route('/group/<group_name>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def group_card(group_name):
+    """HTML fragment for a single adhoc-group card (admin group search).
+
+    Assembles members across every access branch the group exists in, plus
+    the list of users whose primary_gid points at this group.
+    """
+    from sam.core.groups import AdhocGroup
+    from sam.queries.lookups import get_group_branches, get_group_members
+
+    group = AdhocGroup.get_by_name(db.session, group_name)
+    if group is None:
+        return '<div class="alert alert-warning">Group not found</div>'
+
+    branches = get_group_branches(db.session, group_name, active_only=False)
+    members_by_branch = {}
+    for branch in branches:
+        data = get_group_members(db.session, group_name, branch, active_only=False)
+        if data is not None:
+            members_by_branch[branch] = data['members']
+
+    primary_gid_users = (
+        db.session.query(User)
+        .filter(User.primary_gid == group.unix_gid)
+        .order_by(User.last_name, User.first_name, User.username)
+        .all()
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/group_card_wrapper.html',
+        group=group,
+        members_by_branch=members_by_branch,
+        primary_gid_users=primary_gid_users,
+    )
+
+
 # ============================================================================
 # Expirations Panel
 # ============================================================================
@@ -486,6 +524,26 @@ def htmx_search_users():
     )
 
     return render_template(template, users=users, q=q)
+
+
+@bp.route('/htmx/search/groups')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_search_groups():
+    """Search adhoc groups by name or GID. Returns the result-list fragment."""
+    from sam.queries.lookups import search_groups_by_pattern
+
+    q = request.args.get('q', '').strip()
+    if len(q) < 2:
+        return ''
+
+    active_only = request.args.get('active_only', 'true') == 'true'
+    groups = search_groups_by_pattern(db.session, q, limit=20, active_only=active_only)
+    return render_template(
+        'dashboards/admin/fragments/group_search_results_htmx.html',
+        groups=groups,
+        q=q,
+    )
 
 
 # Keep old impersonate endpoint as alias for backward compatibility

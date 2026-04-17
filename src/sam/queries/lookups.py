@@ -17,6 +17,7 @@ Functions:
 from datetime import datetime
 from typing import List, Optional, Dict
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from sam.core.users import User
@@ -244,3 +245,72 @@ def get_group_members(
         'access_branch_name': access_branch,
         'members': members,
     }
+
+
+def search_groups_by_pattern(
+    session: Session,
+    pattern: str,
+    limit: int = 20,
+    active_only: bool = True,
+) -> List[AdhocGroup]:
+    """Search adhoc groups by name or unix_gid for autocomplete.
+
+    If ``pattern`` is all digits, matches are prefix/substring on unix_gid
+    (cast to string). Otherwise matches are case-insensitive substring on
+    ``group_name``.
+
+    Args:
+        session: SQLAlchemy session.
+        pattern: Search pattern.
+        limit: Maximum results to return (default 20).
+        active_only: If True (default), only return active groups.
+
+    Returns:
+        List of AdhocGroup objects ordered by group_name.
+    """
+    pattern = (pattern or '').strip()
+    if not pattern:
+        return []
+
+    query = session.query(AdhocGroup)
+    if active_only:
+        query = query.filter(AdhocGroup.is_active)
+
+    if pattern.isdigit():
+        gid_int = int(pattern)
+        query = query.filter(
+            or_(
+                AdhocGroup.unix_gid == gid_int,
+                AdhocGroup.group_name.ilike(f"%{pattern}%"),
+            )
+        )
+    else:
+        query = query.filter(AdhocGroup.group_name.ilike(f"%{pattern}%"))
+
+    return query.order_by(AdhocGroup.group_name).limit(limit).all()
+
+
+def get_group_branches(
+    session: Session,
+    group_name: str,
+    active_only: bool = True,
+) -> List[str]:
+    """Return the distinct access branches a group has members in.
+
+    Empty list if the group has no members (or doesn't exist).
+    """
+    gq = session.query(AdhocGroup).filter(AdhocGroup.group_name == group_name)
+    if active_only:
+        gq = gq.filter(AdhocGroup.is_active)
+    group = gq.first()
+    if group is None:
+        return []
+
+    rows = (
+        session.query(AdhocSystemAccountEntry.access_branch_name)
+        .filter(AdhocSystemAccountEntry.group_id == group.group_id)
+        .distinct()
+        .order_by(AdhocSystemAccountEntry.access_branch_name)
+        .all()
+    )
+    return [r[0] for r in rows]

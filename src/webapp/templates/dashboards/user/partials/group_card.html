@@ -1,0 +1,186 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/user_rows.html' import render_user_rows %}
+
+{# Admin: render a single AdhocGroup.
+
+   Context:
+     group:             AdhocGroup ORM object
+     members_by_branch: dict[branch_name] -> list of {username, display_name, primary_email}
+     primary_gid_users: list of User ORM objects whose primary_gid == group.unix_gid
+     is_admin:          bool (admin-only UI gate)
+#}
+{% macro render_group_card(group, members_by_branch=None, primary_gid_users=None, is_admin=False) %}
+{% set members_by_branch = members_by_branch or {} %}
+{% set primary_gid_users = primary_gid_users or [] %}
+{% set branches = members_by_branch.keys() | list %}
+{% set total_members = namespace(n=0) %}
+{% for m in members_by_branch.values() %}{% set total_members.n = total_members.n + (m|length) %}{% endfor %}
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-users"></i>
+            {{ group.group_name }}
+            <span class="badge bg-secondary ms-2">gid {{ group.unix_gid }}</span>
+            {% if not group.is_active %}
+            {{ status_badge('inactive', extra='ms-1') }}
+            {% endif %}
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+
+            {# ── Left: Group Information ───────────────────────────── #}
+            <div class="col-lg-6">
+                <div class="project-stats-box mb-0"
+                     style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
+                    <h6><i class="fas fa-info-circle"></i> Group Information</h6>
+
+                    <div class="stat-item">
+                        <span class="stat-label">Name:</span>
+                        <span class="stat-value"><code>{{ group.group_name }}</code></span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Unix GID:</span>
+                        <span class="stat-value">{{ group.unix_gid }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Status:</span>
+                        <span class="stat-value">
+                            {% if group.is_active %}
+                            {{ status_badge('active') }}
+                            {% else %}
+                            {{ status_badge('inactive') }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Access branches:</span>
+                        <span class="stat-value">
+                            {% if branches %}
+                                {% for b in branches %}<span class="badge bg-secondary">{{ b }}</span>{% if not loop.last %} {% endif %}{% endfor %}
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Total members:</span>
+                        <span class="stat-value">{{ total_members.n | fmt_number }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Primary-GID users:</span>
+                        <span class="stat-value">{{ primary_gid_users | length | fmt_number }}</span>
+                    </div>
+                    {% if group.tags %}
+                    <div class="stat-item">
+                        <span class="stat-label">Tags:</span>
+                        <span class="stat-value">
+                            {% for t in group.tags %}<span class="badge bg-info text-dark">{{ t.tag }}</span>{% if not loop.last %} {% endif %}{% endfor %}
+                        </span>
+                    </div>
+                    {% endif %}
+                    <div class="stat-item">
+                        <span class="stat-label">Created:</span>
+                        <span class="stat-value">{{ group.creation_time | fmt_date }}</span>
+                    </div>
+                    {% if group.pdb_modified_time %}
+                    <div class="stat-item">
+                        <span class="stat-label">PDB modified:</span>
+                        <span class="stat-value">{{ group.pdb_modified_time | fmt_date }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# ── Right: Users with this as primary GID ─────────────── #}
+            <div class="col-lg-6">
+                <div class="project-stats-box mb-0" style="align-content: start;">
+                    <h6>
+                        <i class="fas fa-user-tag"></i> Primary-GID Users
+                        <span class="badge bg-secondary ms-1">{{ primary_gid_users | length }}</span>
+                    </h6>
+                    {% if primary_gid_users %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for u in primary_gid_users %}
+                                <tr class="{% if not u.is_active %}text-muted{% endif %}">
+                                    <td>
+                                        <i class="fas fa-user text-muted me-1"></i>
+                                        <strong>{{ u.display_name }}</strong>
+                                        {% if not u.active %}{{ status_badge('inactive', extra='ms-1', small=True) }}
+                                        {% elif u.locked %}{{ status_badge('locked', extra='ms-1', small=True) }}{% endif %}
+                                    </td>
+                                    <td><code>{{ u.username }}</code></td>
+                                    <td>
+                                        {% if u.primary_email %}<a href="mailto:{{ u.primary_email }}">{{ u.primary_email }}</a>
+                                        {% else %}<span class="text-muted">N/A</span>{% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0"><small>No users have this as their primary group.</small></p>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>{# /.row #}
+
+        {# ── Members by branch (tabbed) ───────────────────────────── #}
+        {% if branches %}
+        <hr class="my-4">
+        <h6><i class="fas fa-users"></i> Members by Access Branch</h6>
+        <ul class="nav nav-tabs" role="tablist">
+            {% for b in branches %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if loop.first %}active{% endif %}" type="button" role="tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#group-{{ group.group_id }}-branch-{{ loop.index }}"
+                        aria-selected="{{ 'true' if loop.first else 'false' }}">
+                    {{ b }}
+                    <span class="badge bg-secondary ms-1">{{ members_by_branch[b] | length }}</span>
+                </button>
+            </li>
+            {% endfor %}
+        </ul>
+        <div class="tab-content border border-top-0 p-3">
+            {% for b in branches %}
+            <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+                 id="group-{{ group.group_id }}-branch-{{ loop.index }}" role="tabpanel">
+                {% if members_by_branch[b] %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>Username</th>
+                                <th>Email</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{ render_user_rows(members_by_branch[b]) }}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0"><small>No members in this branch.</small></p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+    </div>{# /.card-body #}
+</div>{# /.card #}
+{% endmacro %}
