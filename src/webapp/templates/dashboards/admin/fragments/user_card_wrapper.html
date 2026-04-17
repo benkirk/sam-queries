@@ -1,3 +1,5 @@
 {% from 'dashboards/user/partials/user_card.html' import render_user_card with context %}
 
-{{ render_user_card(sam_user, is_admin=True, user_groups=user_groups) }}
+{{ render_user_card(sam_user, is_admin=True, user_groups=user_groups, primary_group_name=primary_group_name,
+                    current_shell=current_shell, allowable_shells=allowable_shells,
+                    can_edit_shell=can_edit_shell) }}

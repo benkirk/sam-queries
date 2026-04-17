@@ -175,16 +175,17 @@ access branch resource.  This reproduces legacy behaviour.
 
 ### Constants
 
-Defined in `src/sam/queries/directory_access.py` matching `Constants.java`:
+Defined in `src/sam/queries/directory_access.py` (with the group-name
+defaults re-exported from `src/sam/core/groups.py`) matching
+`Constants.java`:
 
-| Constant                  | Value      | Meaning                                      |
-|---------------------------|------------|----------------------------------------------|
-| `ACCESS_GRACE_PERIOD`     | 90 days    | Allocations expired within this window are included |
-| `GLOBAL_LDAP_GROUP`       | `"ncar"`   | Name of the global group                     |
-| `GLOBAL_LDAP_GROUP_UNIX_GID` | 1000    | GID for the `ncar` group                     |
-| `DEFAULT_GID`             | 1000       | Fallback GID when `primary_gid` is NULL      |
-| `DEFAULT_SHELL`           | `/bin/tcsh`| Fallback login shell                         |
-| `DEFAULT_HOME_BASE`       | `/home`    | Fallback home directory base path            |
+| Constant                     | Value      | Meaning                                      |
+|------------------------------|------------|----------------------------------------------|
+| `ACCESS_GRACE_PERIOD`        | 90 days    | Allocations expired within this window are included |
+| `DEFAULT_COMMON_GROUP`       | `"ncar"`   | Name of the system-wide default unix group (from `sam.core.groups`) |
+| `DEFAULT_COMMON_GROUP_GID`   | 1000       | GID for the `ncar` group; also the fallback when `primary_gid` is NULL |
+| `DEFAULT_SHELL`              | `/bin/tcsh`| Fallback login shell                         |
+| `DEFAULT_HOME_BASE`          | `/home`    | Fallback home directory base path            |
 
 ---
 

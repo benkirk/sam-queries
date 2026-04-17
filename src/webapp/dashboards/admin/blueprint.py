@@ -25,7 +25,7 @@ from sam.queries.expirations import get_projects_by_allocation_end_date, get_pro
 from sam.queries.lookups import find_project_by_code, get_user_group_access
 from webapp.auth.models import AuthUser
 from sam.core.users import User
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import require_permission, Permission, has_permission
 
 
 bp = Blueprint('admin_dashboard', __name__, url_prefix='/admin')
@@ -173,10 +173,22 @@ def user_card(username):
             'unix_gid': r['unix_gid'],
         })
 
+    from sam.core.groups import resolve_group_name
+    primary_group_name = resolve_group_name(db.session, sam_user.primary_gid)
+
+    from sam.queries.shells import get_user_current_shell, get_allowable_shell_names
+    current_shell = get_user_current_shell(db.session, sam_user)
+    allowable_shells = get_allowable_shell_names(db.session)
+    can_edit_shell = has_permission(current_user, Permission.EDIT_USERS)
+
     return render_template(
         'dashboards/admin/fragments/user_card_wrapper.html',
         sam_user=sam_user,
         user_groups=user_groups,
+        primary_group_name=primary_group_name,
+        current_shell=current_shell,
+        allowable_shells=allowable_shells,
+        can_edit_shell=can_edit_shell,
     )
 
 

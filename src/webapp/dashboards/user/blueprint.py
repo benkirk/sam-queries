@@ -12,13 +12,15 @@ from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
 from marshmallow import ValidationError
 
-from sam.schemas.forms.user import EditAllocationForm
+from sam.schemas.forms.user import EditAllocationForm, SetShellForm
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.rolling_usage import get_project_rolling_usage
 from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project, get_charges_by_projcode
 from sam.queries.lookups import find_project_by_code, get_user_group_access, get_group_members
+from sam.queries.shells import get_allowable_shell_names, get_user_current_shell
+from sam.core.users import User
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import can_edit_consumption_threshold
 from webapp.utils.rbac import require_permission, Permission, has_permission
@@ -56,15 +58,131 @@ def index():
     # Adhoc group memberships, regrouped by access branch for the user card tabs
     user_groups = _group_access_by_branch(db.session, user_to_display.username)
 
+    from sam.core.groups import resolve_group_name
+    primary_group_name = resolve_group_name(db.session, user_to_display.primary_gid)
+
+    current_shell = get_user_current_shell(db.session, user_to_display)
+    allowable_shells = get_allowable_shell_names(db.session)
+
     return render_template(
         'dashboards/user/dashboard.html',
         user=user_to_display,
         dashboard_data=dashboard_data,
         user_groups=user_groups,
+        primary_group_name=primary_group_name,
+        current_shell=current_shell,
+        allowable_shells=allowable_shells,
+        can_edit_shell=True,   # user is editing their own
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
         impersonator_id=impersonator_id
     )
+
+
+# ---------------------------------------------------------------------------
+# Login-shell HTMX routes
+# ---------------------------------------------------------------------------
+
+def _can_edit_shell_for(username):
+    """Self or admin."""
+    return (current_user.is_authenticated and (
+        current_user.username == username
+        or has_permission(current_user, Permission.EDIT_USERS)
+    ))
+
+
+def _load_user_for_shell(username):
+    user = db.session.query(User).filter_by(username=username).first()
+    if user is None:
+        return None, ('<div class="alert alert-warning m-2">User not found</div>', 404)
+    if not _can_edit_shell_for(username):
+        return None, ('<div class="alert alert-danger m-2">Unauthorized</div>', 403)
+    return user, None
+
+
+@bp.route('/htmx/shell-display/<username>')
+@login_required
+def htmx_shell_display(username):
+    """Re-render the read-only shell row (post-save and cancel target)."""
+    user, err = _load_user_for_shell(username)
+    if err:
+        return err
+    return render_template(
+        'dashboards/user/fragments/shell_display_htmx.html',
+        sam_user=user,
+        current_shell=get_user_current_shell(db.session, user),
+        can_edit_shell=True,
+    )
+
+
+@bp.route('/htmx/shell-form/<username>')
+@login_required
+def htmx_shell_form(username):
+    """Render the inline picker + Save/Cancel."""
+    user, err = _load_user_for_shell(username)
+    if err:
+        return err
+    return render_template(
+        'dashboards/user/fragments/shell_form_htmx.html',
+        sam_user=user,
+        current_shell=get_user_current_shell(db.session, user),
+        allowable_shells=get_allowable_shell_names(db.session),
+        errors=[],
+    )
+
+
+@bp.route('/htmx/shell/<username>', methods=['POST'])
+@login_required
+def htmx_set_shell(username):
+    """Apply shell to all active HPC/DAV resources; return the display row."""
+    user, err = _load_user_for_shell(username)
+    if err:
+        return err
+
+    allowable = get_allowable_shell_names(db.session)
+
+    try:
+        form_data = SetShellForm().load(request.form)
+    except ValidationError as e:
+        return render_template(
+            'dashboards/user/fragments/shell_form_htmx.html',
+            sam_user=user,
+            current_shell=get_user_current_shell(db.session, user),
+            allowable_shells=allowable,
+            errors=SetShellForm.flatten_errors(e.messages),
+        )
+
+    shell_name = form_data['shell_name']
+    if shell_name not in allowable:
+        return render_template(
+            'dashboards/user/fragments/shell_form_htmx.html',
+            sam_user=user,
+            current_shell=get_user_current_shell(db.session, user),
+            allowable_shells=allowable,
+            errors=[f'Shell {shell_name!r} is not in the allowable set.'],
+        )
+
+    from sam.manage import management_transaction
+    try:
+        with management_transaction(db.session):
+            user.set_login_shell(shell_name)
+    except ValueError as e:
+        return render_template(
+            'dashboards/user/fragments/shell_form_htmx.html',
+            sam_user=user,
+            current_shell=get_user_current_shell(db.session, user),
+            allowable_shells=allowable,
+            errors=[str(e)],
+        )
+
+    return render_template(
+        'dashboards/user/fragments/shell_display_htmx.html',
+        sam_user=user,
+        current_shell=get_user_current_shell(db.session, user),
+        can_edit_shell=True,
+    )
+
+
 
 
 @bp.route('/htmx/group-members/<group_name>')

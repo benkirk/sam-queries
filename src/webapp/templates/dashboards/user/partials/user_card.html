@@ -1,5 +1,10 @@
-{% macro render_user_card(sam_user, is_admin=False, user_groups=None) %}
-{# user_groups: optional dict[branch_name] -> list of {'group_name', 'unix_gid'} #}
+{% macro render_user_card(sam_user, is_admin=False, user_groups=None, primary_group_name=None,
+                          current_shell=None, allowable_shells=None, can_edit_shell=False) %}
+{# user_groups: optional dict[branch_name] -> list of {'group_name', 'unix_gid'}
+   primary_group_name: optional str — name of the adhoc group matching
+                       sam_user.primary_gid, when one exists
+   current_shell / allowable_shells / can_edit_shell: see fragments under
+   dashboards/user/fragments/shell_*.html #}
 <div class="card mb-3">
     <div class="card-header">
         <h5 class="mb-0">
@@ -31,7 +36,15 @@
             </div>
             <div class="stat-item">
                 <span class="stat-label">Primary GID:</span>
-                <span class="stat-value">{{ sam_user.primary_gid or 'N/A' }}</span>
+                <span class="stat-value">
+                    {{ sam_user.primary_gid or 'N/A' }}
+                    {% if primary_group_name %}
+                    <small class="text-muted ms-1">({{ primary_group_name }})</small>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="stat-item" id="shell-row-{{ sam_user.username }}">
+                {% include 'dashboards/user/fragments/shell_display_htmx.html' %}
             </div>
             {% if sam_user.academic_status %}
             <div class="stat-item">

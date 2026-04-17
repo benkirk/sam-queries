@@ -50,7 +50,13 @@ from sam.queries.statistics import (
 )
 from sam.queries.projects import search_projects_by_code_or_title
 from sam.queries.lookups import get_user_group_access, get_group_members
-from sam.core.groups import AdhocGroup, AdhocSystemAccountEntry
+from sam.core.groups import (
+    AdhocGroup,
+    AdhocSystemAccountEntry,
+    DEFAULT_COMMON_GROUP,
+    DEFAULT_COMMON_GROUP_GID,
+    resolve_group_name,
+)
 
 from factories import make_user
 from factories._seq import next_int, next_seq
@@ -670,3 +676,24 @@ class TestGetGroupMembers:
         data = get_group_members(session, grp.group_name, 'hpc', active_only=False)
         assert data is not None
         assert len(data['members']) == 1
+
+
+class TestResolveGroupName:
+
+    def test_resolves_via_adhoc_group_unix_gid(self, session):
+        grp = _make_adhoc_group(session)
+        assert resolve_group_name(session, grp.unix_gid) == grp.group_name
+
+    def test_default_gid_falls_back_to_default_common_group(self, session):
+        # gid 1000 is the system-wide LDAP default ('ncar') and is NOT
+        # materialized in adhoc_group; we must still label it.
+        assert resolve_group_name(session, DEFAULT_COMMON_GROUP_GID) == DEFAULT_COMMON_GROUP
+
+    def test_unresolved_non_default_gid_returns_none(self, session):
+        # Pick a gid far outside the snapshot range and not equal to the default.
+        bogus_gid = 99_999_999
+        assert bogus_gid != DEFAULT_COMMON_GROUP_GID
+        assert resolve_group_name(session, bogus_gid) is None
+
+    def test_none_gid_returns_none(self, session):
+        assert resolve_group_name(session, None) is None
