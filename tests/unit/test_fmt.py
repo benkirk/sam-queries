@@ -1,24 +1,42 @@
-"""Unit tests for sam.fmt — centralized display formatting."""
-import pytest
+"""Unit tests for sam.fmt — centralized display formatting.
+
+Ported verbatim from tests/unit/test_fmt.py — pure Python, no DB, no
+mocks. The autouse `reset_fmt_config` fixture restores module-level
+defaults around each test so ordering is irrelevant.
+"""
 from datetime import date, datetime
 
-import sam.fmt as fmt
-from sam.fmt import number, pct, date_str, size, configure, COMPACT_THRESHOLD
+import pytest
+
+import sam.fmt as fmt  # noqa: F401 — kept for parity with legacy module import
+from sam.fmt import (
+    COMPACT_THRESHOLD,
+    configure,
+    date_str,
+    number,
+    pct,
+    round_to_sig_figs,
+    size,
+)
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(autouse=True)
 def reset_fmt_config():
-    """Reset module-level config to defaults before each test."""
     configure(raw=False, sig_figs=3, size_units='iec')
     yield
     configure(raw=False, sig_figs=3, size_units='iec')
 
 
-# ── number() ─────────────────────────────────────────────────────────────────
+# ============================================================================
+# number()
+# ============================================================================
+
 
 class TestNumber:
+
     def test_zero(self):
         assert number(0) == '0'
 
@@ -32,7 +50,6 @@ class TestNumber:
         assert number(99_999) == '99,999'
 
     def test_at_threshold_exact(self):
-        # Exactly at threshold stays exact
         assert number(COMPACT_THRESHOLD) == f"{COMPACT_THRESHOLD:,}"
 
     def test_just_above_threshold_compact(self):
@@ -40,7 +57,7 @@ class TestNumber:
 
     def test_thousands(self):
         assert number(123_456) == '123K'
-        assert number(999_999) == '1,000K'   # rounds up at boundary
+        assert number(999_999) == '1,000K'
 
     def test_millions_3sig(self):
         assert number(1_000_000) == '1.00M'
@@ -71,7 +88,6 @@ class TestNumber:
         assert number(1_234_567, raw=True) == '1,234,567'
 
     def test_raw_below_threshold_unchanged(self):
-        # raw=True on a small number has no effect (already exact)
         assert number(1_000, raw=True) == '1,000'
 
     def test_sig_figs_override(self):
@@ -93,9 +109,64 @@ class TestNumber:
         assert number(68_567_808, raw=False) == '68.6M'
 
 
-# ── pct() ─────────────────────────────────────────────────────────────────────
+# ============================================================================
+# round_to_sig_figs()
+# ============================================================================
+
+
+class TestRoundToSigFigs:
+
+    def test_large_value_plan_example(self):
+        # 688M × 0.667 = 458,896,000 → 459,000,000 at 3 sig figs
+        assert round_to_sig_figs(458_896_000) == 459_000_000.0
+
+    def test_million_scale(self):
+        # 2.25M × 0.667 = 1,500,750 → 1,500,000 at 3 sig figs
+        assert round_to_sig_figs(1_500_750) == 1_500_000.0
+
+    def test_rounds_up(self):
+        # 33,350 → 33,400 at 3 sig figs (banker's rounding: 3.335 → 3.34? no,
+        # Python round() is banker's for .5 exact, but 33_350 in IEEE float
+        # is exact; at 3 sig figs we round the last kept digit)
+        assert round_to_sig_figs(33_350) == 33_400.0
+
+    def test_zero(self):
+        assert round_to_sig_figs(0) == 0.0
+        assert round_to_sig_figs(0.0) == 0.0
+
+    def test_none_returns_none(self):
+        assert round_to_sig_figs(None) is None
+
+    def test_small_integer_unchanged(self):
+        # Small integers already within 3 sig figs survive unchanged.
+        assert round_to_sig_figs(5) == 5.0
+        assert round_to_sig_figs(42) == 42.0
+        assert round_to_sig_figs(100) == 100.0
+
+    def test_negative(self):
+        assert round_to_sig_figs(-458_896_000) == -459_000_000.0
+        assert round_to_sig_figs(-1_500_750) == -1_500_000.0
+
+    def test_sig_figs_override(self):
+        assert round_to_sig_figs(458_896_000, sig_figs=2) == 460_000_000.0
+        assert round_to_sig_figs(458_896_000, sig_figs=4) == 458_900_000.0
+
+    def test_configure_sig_figs_global(self):
+        configure(sig_figs=2)
+        assert round_to_sig_figs(458_896_000) == 460_000_000.0
+
+    def test_returns_float(self):
+        assert isinstance(round_to_sig_figs(1_000), float)
+        assert isinstance(round_to_sig_figs(0), float)
+
+
+# ============================================================================
+# pct()
+# ============================================================================
+
 
 class TestPct:
+
     def test_typical(self):
         assert pct(0.4) == '0.4%'
         assert pct(75.0) == '75.0%'
@@ -122,9 +193,13 @@ class TestPct:
         assert pct(0.4) == '0.4'
 
 
-# ── date_str() ────────────────────────────────────────────────────────────────
+# ============================================================================
+# date_str()
+# ============================================================================
+
 
 class TestDateStr:
+
     def test_datetime(self):
         assert date_str(datetime(2024, 10, 1, 12, 30)) == '2024-10-01'
 
@@ -140,14 +215,17 @@ class TestDateStr:
         assert date_str(datetime(2024, 10, 1), fmt='%Y-%m-%d %H:%M') == '2024-10-01 00:00'
 
     def test_not_affected_by_raw(self):
-        # raw mode has no meaning for dates; format is always applied
         configure(raw=True)
         assert date_str(date(2024, 10, 1)) == '2024-10-01'
 
 
-# ── size() ────────────────────────────────────────────────────────────────────
+# ============================================================================
+# size()
+# ============================================================================
+
 
 class TestSize:
+
     def test_bytes(self):
         assert size(0) == '0 B'
         assert size(512) == '512 B'
@@ -198,9 +276,13 @@ class TestSize:
         assert size(1_099_511_627_776) == '1.00 TiB'
 
 
-# ── configure() ──────────────────────────────────────────────────────────────
+# ============================================================================
+# configure()
+# ============================================================================
+
 
 class TestConfigure:
+
     def test_sig_figs_persists(self):
         configure(sig_figs=5)
         assert number(68_567_808) == '68.568M'

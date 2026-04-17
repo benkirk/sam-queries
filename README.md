@@ -100,7 +100,9 @@ source etc/config_env.sh
 sam-search user <your_username>
 
 # 5. Run tests to verify setup
-pytest tests/ --no-cov
+docker compose --profile test up -d mysql-test
+export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'
+pytest
 ```
 
 For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)** or **[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)**.
@@ -151,8 +153,10 @@ For detailed setup instructions, see **[CONTRIBUTING.md](CONTRIBUTING.md)** or *
    ```bash
    # Test CLI
    sam-search user --search "a%" | head -10
-   # Run test suite (fast, without coverage)
-   pytest tests/ --no-cov
+   # Run test suite (requires the mysql-test container — see Testing)
+   docker compose --profile test up -d mysql-test
+   export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'
+   pytest
    ```
 
 **For local development setup**, see **[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)**.
@@ -561,13 +565,13 @@ sam-queries/
 │       ├── utils/               # RBAC, utilities
 │       └── templates/           # Jinja2 templates
 │
-├── tests/                       # Comprehensive test suite (209 tests)
-│   ├── pytest.ini               # Pytest configuration
-│   ├── conftest.py              # Shared fixtures
-│   ├── unit/                    # Unit tests
-│   ├── integration/             # Integration tests
-│   ├── api/                     # API/schema tests
-│   └── mock_data/               # Test data
+├── tests/                       # Comprehensive test suite (~1400 tests)
+│   ├── conftest.py              # Safety guard + session/app/client fixtures
+│   ├── factories/               # Layer-2 builder functions for write-path tests
+│   ├── unit/                    # Unit tests (ORM, queries, CLI, webapp)
+│   ├── integration/             # Integration tests (schema validation, views,
+│   │                            #   status tier, CLI entry-point smoke)
+│   └── api/                     # API endpoint + schema tests
 │
 └── utils/                       # Miscellaneous utilities
     ├── run-webui-dbg.sh         # Debug launcher for Web UI
@@ -593,7 +597,6 @@ sam-queries/
 ### Development Guides
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Comprehensive development guide
 - **[src/webapp/README.md](src/webapp/README.md)** - Web UI and REST API documentation
-- **[tests/docs/README.md](tests/docs/README.md)** - Testing guide and best practices
 
 ### Technical Reference
 - **[CLAUDE.md](CLAUDE.md)** - Detailed technical documentation:
@@ -616,53 +619,72 @@ sam-queries/
 
 ## Testing
 
-The project includes a comprehensive test suite covering:
+**~1400 tests** across ORM, query layer, CLI, API endpoints, webapp
+routes, and Flask-Admin. Passes in ~65 seconds on a laptop with xdist
+parallelism.
 
-- Query functions - Targeted query function testing (41 tests)
-- Schema validation - Prevents ORM/database drift (18 tests)
-- Basic queries - Core ORM functionality (26 tests)
-- CRUD operations - Create/update/delete (17 tests)
-- CLI integration - End-to-end CLI testing (61 tests)
-- API schemas - Marshmallow serialization (multiple tests)
-- Database views - XRAS integration views (24 tests)
-- New models - Recent model additions (51 tests)
-- Code coverage: 77.47% overall (charges 90%, dashboard 79%, allocations 76%)
+The test suite runs against an **isolated `mysql-test` container**
+(host port 3307), never the shared dev database. A hard safety guard
+in `tests/conftest.py` refuses to run against any other target, so
+there is no way for a stray run to touch production or dev data.
+
+**Test data strategy — two tiers:**
+- **Layer 1: representative fixtures** (`tests/conftest.py`) pick any
+  snapshot row matching a structural shape (`active_project`,
+  `hpc_resource`, `multi_project_user`). Tests built on this layer
+  survive obfuscated-snapshot refreshes as long as one row of the
+  required shape exists.
+- **Layer 2: factories** (`tests/factories/`) are plain builder
+  functions that construct fresh synthetic rows inside each test's
+  SAVEPOINT. Used by write-path tests that need to assert on exact
+  counts/values.
+
+Write-path tests use per-test **SAVEPOINT-based rollback isolation**
+so xdist workers can share one test database without stepping on each
+other. The `system_status` tier uses a per-worker SQLite tempfile
+bound via `SQLALCHEMY_BINDS['system_status']` — no separate MySQL DB
+needed.
 
 **Run all tests:**
 ```bash
-# Fast iteration (parallel, no coverage) - recommended for development
-pytest tests/ --no-cov
+# One-time setup
+docker compose --profile test up -d mysql-test
+export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'
 
-# Full validation with coverage report
-pytest tests/
+# Fast iteration (parallel, no coverage) — ~65s
+pytest
+
+# With coverage report
+pytest --cov=src --cov-report=html
 ```
 
 **Test specific areas:**
 ```bash
-# Schema validation
-pytest tests/integration/test_schema_validation.py -v
-
-# CLI integration
-pytest tests/unit/test_sam_search_cli.py -v
-
-# Query functions
-pytest tests/unit/test_query_functions.py -v
-
-# Marshmallow schemas
-pytest tests/api/test_schemas.py -v
-
-# Run by category
-pytest tests/unit/ -v          # Unit tests
-pytest tests/integration/ -v   # Integration tests
-pytest tests/api/ -v           # API tests
+pytest tests/unit/test_query_functions.py -v      # query functions
+pytest tests/integration/test_schema_validation.py -v  # ORM/DB drift
+pytest tests/api/test_schemas.py -v               # Marshmallow schemas
+pytest tests/unit/test_sam_search_cli.py -v       # CLI integration
+pytest tests/unit/ -v                             # all unit tests
+pytest tests/integration/ -v                      # all integration tests
+pytest tests/api/ -v                              # all API tests
 ```
 
-**Expected results:**
-- With read-only database: ~360+ passed, ~20 skipped (CRUD tests)
-- With local development database: 380+ passed, ~16 skipped
-- Execution time: ~32 seconds (parallel without coverage), ~97 seconds (with coverage)
+**Performance regression tests** (`tests/perf/`) are gated behind the
+`perf` marker and excluded from the default `pytest` run. They track
+SQL query counts and wall-time latency for the 8 hottest query-layer
+functions (dashboard, allocations, fstree, rolling usage). Baselines
+are recorded in `tests/perf/baselines.json` — if a future change
+introduces an N+1 pattern, the regression is caught immediately.
 
-For detailed testing documentation, see **[tests/docs/README.md](tests/docs/README.md)**.
+```bash
+# Run perf tests (serial — required for pytest-benchmark)
+make perf
+# or: pytest -m perf -n 0 -v
+```
+
+If `SAM_TEST_DB_URL` is unset or points at anything other than
+`127.0.0.1:3307`, pytest aborts with `REFUSING TO RUN tests against
+this database` — by design.
 
 ---
 
@@ -690,11 +712,11 @@ Before submitting changes:
 
 4. **Run tests before committing:**
    ```bash
-   # Fast check (32 seconds)
-   pytest tests/ --no-cov
+   # Fast check (~65s, parallel via xdist)
+   pytest
 
-   # Full validation with coverage (97 seconds)
-   pytest tests/
+   # Full validation with coverage
+   pytest --cov=src --cov-report=html
    ```
 
 5. **Submit pull request** with:
@@ -713,8 +735,8 @@ Before submitting changes:
 - Run full test suite before committing
 - Add tests for new features
 - Use integration tests for CLI features
-- Use `pytest tests/ --no-cov` for fast iteration (32s)
-- Run with coverage before final commit (97s)
+- Use `pytest` for fast iteration (~65s, parallel)
+- Add `--cov=src --cov-report=html` for a coverage report
 
 **Code style:**
 - Follow existing patterns in codebase
@@ -853,7 +875,7 @@ For additional troubleshooting, see **[CONTRIBUTING.md](CONTRIBUTING.md#troubles
 - **Flask-Login** - Session-based authentication (browser clients)
 - **bcrypt** - Password/API key hashing for machine-to-machine auth
 - **Marshmallow-SQLAlchemy** - JSON serialization schemas
-- **pytest** - Comprehensive test framework (380+ tests, 77.47% coverage)
+- **pytest** - Comprehensive test framework (~1400 tests, parallel via xdist)
 - **pytest-xdist** - Parallel test execution (3x speedup)
 - **Click** - CLI framework for sam-search command
 - **Docker Compose** - Containerized development environment
@@ -894,7 +916,7 @@ Copyright (c) 2025 NCAR CISL
    - **Credential setup** → [docs/CREDENTIALS.md](docs/CREDENTIALS.md)
    - **ORM patterns** → [CLAUDE.md](CLAUDE.md#key-orm-models)
    - **API usage** → [src/webapp/README.md](src/webapp/README.md#rest-api)
-   - **Testing** → [tests/docs/README.md](tests/docs/README.md)
+   - **Testing** → [README.md § Testing](#testing)
 
 3. **Support:**
    - Check existing documentation first

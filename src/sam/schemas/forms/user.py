@@ -47,6 +47,11 @@ class RenewAllocationsForm(HtmxFormSchema):
     new_start_date = f.Date('%Y-%m-%d', required=True)
     new_end_date = f.Str(required=True)   # 23:59:59 convention applied in post_load
     resource_ids = f.List(f.Int(), required=True, validate=v.Length(min=1))
+    scales = f.Dict(
+        keys=f.Int(),
+        values=f.Float(validate=v.Range(min=0, min_inclusive=False)),
+        load_default=dict,
+    )
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):

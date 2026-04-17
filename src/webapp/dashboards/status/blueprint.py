@@ -6,18 +6,11 @@ from flask import Blueprint, render_template, request, flash, redirect, url_for,
 from flask_login import login_required, current_user
 from webapp.utils.rbac import require_permission, Permission
 from datetime import datetime, timedelta
-import sys
-from pathlib import Path
 import logging
 
 from webapp.extensions import db
 from ..charts import generate_nodetype_history_matplotlib, generate_queue_history_matplotlib
 
-# Add system_status to path
-python_dir = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(python_dir))
-
-from system_status import create_status_engine, get_session
 from system_status import queries as status_queries
 
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
@@ -29,65 +22,62 @@ def index():
     Main system status dashboard landing page.
 
     Queries latest status from all systems and renders server-side.
+    Status models are routed to the `system_status` bind via
+    `__bind_key__`, so `db.session` handles both reads and writes.
     """
-    engine, SessionLocal = create_status_engine()
+    session = db.session
 
-    # Create session with expire_on_commit=False so objects remain accessible
-    session = SessionLocal(expire_on_commit=False)
-    try:
-        # Get latest Derecho status
-        derecho_status = status_queries.get_latest_derecho_status(session)
+    # Get latest Derecho status
+    derecho_status = status_queries.get_latest_derecho_status(session)
 
-        derecho_queues = []
-        derecho_filesystems = []
-        derecho_login_nodes = []
-        if derecho_status:
-            derecho_queues = status_queries.get_latest_derecho_queues(session, derecho_status.timestamp)
-            derecho_filesystems = status_queries.get_latest_derecho_filesystems(session, derecho_status.timestamp)
-            derecho_login_nodes = status_queries.get_latest_derecho_login_nodes(session, derecho_status.timestamp)
+    derecho_queues = []
+    derecho_filesystems = []
+    derecho_login_nodes = []
+    if derecho_status:
+        derecho_queues = status_queries.get_latest_derecho_queues(session, derecho_status.timestamp)
+        derecho_filesystems = status_queries.get_latest_derecho_filesystems(session, derecho_status.timestamp)
+        derecho_login_nodes = status_queries.get_latest_derecho_login_nodes(session, derecho_status.timestamp)
 
-        # Get latest Casper status
-        casper_status = status_queries.get_latest_casper_status(session)
+    # Get latest Casper status
+    casper_status = status_queries.get_latest_casper_status(session)
 
-        casper_node_types = []
-        casper_queues = []
-        casper_login_nodes = []
-        casper_filesystems = []
-        if casper_status:
-            casper_node_types = status_queries.get_latest_casper_node_types(session, casper_status.timestamp)
-            casper_queues = status_queries.get_latest_casper_queues(session, casper_status.timestamp)
-            casper_login_nodes = status_queries.get_latest_casper_login_nodes(session, casper_status.timestamp)
-            casper_filesystems = status_queries.get_latest_casper_filesystems(session, casper_status.timestamp)
+    casper_node_types = []
+    casper_queues = []
+    casper_login_nodes = []
+    casper_filesystems = []
+    if casper_status:
+        casper_node_types = status_queries.get_latest_casper_node_types(session, casper_status.timestamp)
+        casper_queues = status_queries.get_latest_casper_queues(session, casper_status.timestamp)
+        casper_login_nodes = status_queries.get_latest_casper_login_nodes(session, casper_status.timestamp)
+        casper_filesystems = status_queries.get_latest_casper_filesystems(session, casper_status.timestamp)
 
-        # Get latest JupyterHub status
-        jupyterhub_status = status_queries.get_latest_jupyterhub_status(session)
+    # Get latest JupyterHub status
+    jupyterhub_status = status_queries.get_latest_jupyterhub_status(session)
 
-        # Get active outages
-        outages = status_queries.get_active_outages(session)
+    # Get active outages
+    outages = status_queries.get_active_outages(session)
 
-        # Get upcoming reservations
-        reservations = status_queries.get_upcoming_reservations(session)
+    # Get upcoming reservations
+    reservations = status_queries.get_upcoming_reservations(session)
 
-        return render_template(
-            'dashboards/status/dashboard.html',
-            user=current_user,
-            derecho_status=derecho_status,
-            derecho_queues=derecho_queues,
-            derecho_filesystems=derecho_filesystems,
-            derecho_login_nodes=derecho_login_nodes,
-            casper_status=casper_status,
-            casper_node_types=casper_node_types,
-            casper_queues=casper_queues,
-            casper_login_nodes=casper_login_nodes,
-            casper_filesystems=casper_filesystems,
-            jupyterhub_status=jupyterhub_status,
-            outages=outages,
-            reservations=reservations,
-            google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
-            now=datetime.now(),
-        )
-    finally:
-        session.close()
+    return render_template(
+        'dashboards/status/dashboard.html',
+        user=current_user,
+        derecho_status=derecho_status,
+        derecho_queues=derecho_queues,
+        derecho_filesystems=derecho_filesystems,
+        derecho_login_nodes=derecho_login_nodes,
+        casper_status=casper_status,
+        casper_node_types=casper_node_types,
+        casper_queues=casper_queues,
+        casper_login_nodes=casper_login_nodes,
+        casper_filesystems=casper_filesystems,
+        jupyterhub_status=jupyterhub_status,
+        outages=outages,
+        reservations=reservations,
+        google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
+        now=datetime.now(),
+    )
 
 
 @bp.route('/nodetype-history/<system>/<node_type>')
@@ -109,43 +99,38 @@ def nodetype_history(system, node_type):
     end_date = datetime.now()
     start_date = end_date - timedelta(hours=hours)
 
-    engine, SessionLocal = create_status_engine()
-    session = SessionLocal(expire_on_commit=False)
+    session = db.session
 
-    try:
-        if system.lower() == 'casper':
-            # Query Casper node type history
-            history_data = status_queries.get_casper_nodetype_history(
-                session, node_type, start_date, end_date
-            )
-
-            # Get latest record for current status
-            latest_status = status_queries.get_latest_casper_nodetype_status(
-                session, node_type
-            )
-
-        else:
-            flash(f'System {system} not yet supported for node type history', 'warning')
-            return redirect(url_for('status_dashboard.index'))
-
-        # Generate chart
-        chart_svg = generate_nodetype_history_matplotlib(history_data, node_type)
-
-        return render_template(
-            'dashboards/status/nodetype_history.html',
-            user=current_user,
-            system=system,
-            node_type=node_type,
-            latest_status=latest_status,
-            history_data=history_data,
-            chart_svg=chart_svg,
-            hours=hours,
-            start_date=start_date,
-            end_date=end_date,
+    if system.lower() == 'casper':
+        # Query Casper node type history
+        history_data = status_queries.get_casper_nodetype_history(
+            session, node_type, start_date, end_date
         )
 
-    finally:
-        session.close()
+        # Get latest record for current status
+        latest_status = status_queries.get_latest_casper_nodetype_status(
+            session, node_type
+        )
+
+    else:
+        flash(f'System {system} not yet supported for node type history', 'warning')
+        return redirect(url_for('status_dashboard.index'))
+
+    # Generate chart
+    chart_svg = generate_nodetype_history_matplotlib(history_data, node_type)
+
+    return render_template(
+        'dashboards/status/nodetype_history.html',
+        user=current_user,
+        system=system,
+        node_type=node_type,
+        latest_status=latest_status,
+        history_data=history_data,
+        chart_svg=chart_svg,
+        hours=hours,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 @bp.route('/partition-history/<system>/<partition>')
@@ -167,59 +152,54 @@ def partition_history(system, partition):
     end_date = datetime.now()
     start_date = end_date - timedelta(hours=hours)
 
-    engine, SessionLocal = create_status_engine()
-    session = SessionLocal(expire_on_commit=False)
+    session = db.session
 
-    try:
-        # Validate system
-        if system.lower() not in ['derecho', 'casper']:
-            flash(f'Unknown system: {system}', 'warning')
-            return redirect(url_for('status_dashboard.index'))
+    # Validate system
+    if system.lower() not in ['derecho', 'casper']:
+        flash(f'Unknown system: {system}', 'warning')
+        return redirect(url_for('status_dashboard.index'))
 
-        # Validate partition
-        partition_lower = partition.lower()
-        if partition_lower not in ['cpu', 'gpu', 'viz']:
-            flash(f'Unknown partition: {partition}', 'warning')
-            return redirect(url_for('status_dashboard.index'))
+    # Validate partition
+    partition_lower = partition.lower()
+    if partition_lower not in ['cpu', 'gpu', 'viz']:
+        flash(f'Unknown partition: {partition}', 'warning')
+        return redirect(url_for('status_dashboard.index'))
 
-        # VIZ is only valid for Casper
-        if partition_lower == 'viz' and system.lower() != 'casper':
-            flash(f'VIZ partition is only available for Casper', 'warning')
-            return redirect(url_for('status_dashboard.index'))
+    # VIZ is only valid for Casper
+    if partition_lower == 'viz' and system.lower() != 'casper':
+        flash(f'VIZ partition is only available for Casper', 'warning')
+        return redirect(url_for('status_dashboard.index'))
 
-        # Query partition history using generic function
-        history_data = status_queries.get_system_partition_history(
-            session, system, partition, start_date, end_date
-        )
+    # Query partition history using generic function
+    history_data = status_queries.get_system_partition_history(
+        session, system, partition, start_date, end_date
+    )
 
-        # Get latest status using generic function
-        latest_status = status_queries.get_latest_system_partition_status(
-            session, system, partition
-        )
+    # Get latest status using generic function
+    latest_status = status_queries.get_latest_system_partition_status(
+        session, system, partition
+    )
 
-        # Format partition name for display
-        partition_display = f"{partition.upper()} Partition"
+    # Format partition name for display
+    partition_display = f"{partition.upper()} Partition"
 
-        # Generate chart
-        chart_svg = generate_nodetype_history_matplotlib(history_data, partition_display)
+    # Generate chart
+    chart_svg = generate_nodetype_history_matplotlib(history_data, partition_display)
 
-        return render_template(
-            'dashboards/status/nodetype_history.html',
-            user=current_user,
-            system=system,
-            node_type=partition_display,
-            partition=partition,
-            is_partition=True,
-            latest_status=latest_status,
-            history_data=history_data,
-            chart_svg=chart_svg,
-            hours=hours,
-            start_date=start_date,
-            end_date=end_date,
-        )
-
-    finally:
-        session.close()
+    return render_template(
+        'dashboards/status/nodetype_history.html',
+        user=current_user,
+        system=system,
+        node_type=partition_display,
+        partition=partition,
+        is_partition=True,
+        latest_status=latest_status,
+        history_data=history_data,
+        chart_svg=chart_svg,
+        hours=hours,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 @bp.route('/queue-history/<system>/<queue_name>')
@@ -241,38 +221,33 @@ def queue_history(system, queue_name):
     end_date = datetime.now()
     start_date = end_date - timedelta(hours=hours)
 
-    engine, SessionLocal = create_status_engine()
-    session = SessionLocal(expire_on_commit=False)
+    session = db.session
 
-    try:
-        # Query queue history
-        history_data = status_queries.get_queue_history(
-            session, system, queue_name, start_date, end_date
-        )
+    # Query queue history
+    history_data = status_queries.get_queue_history(
+        session, system, queue_name, start_date, end_date
+    )
 
-        # Get latest record for current status
-        latest_status = status_queries.get_latest_queue_status(
-            session, system, queue_name
-        )
+    # Get latest record for current status
+    latest_status = status_queries.get_latest_queue_status(
+        session, system, queue_name
+    )
 
-        # Generate chart
-        chart_svg = generate_queue_history_matplotlib(history_data, queue_name, system)
+    # Generate chart
+    chart_svg = generate_queue_history_matplotlib(history_data, queue_name, system)
 
-        return render_template(
-            'dashboards/status/queue_history.html',
-            user=current_user,
-            system=system,
-            queue_name=queue_name,
-            latest_status=latest_status,
-            history_data=history_data,
-            chart_svg=chart_svg,
-            hours=hours,
-            start_date=start_date,
-            end_date=end_date,
-        )
-
-    finally:
-        session.close()
+    return render_template(
+        'dashboards/status/queue_history.html',
+        user=current_user,
+        system=system,
+        queue_name=queue_name,
+        latest_status=latest_status,
+        history_data=history_data,
+        chart_svg=chart_svg,
+        hours=hours,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 # ============================================================================

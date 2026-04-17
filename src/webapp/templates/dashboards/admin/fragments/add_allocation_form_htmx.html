@@ -33,7 +33,8 @@
     url_for('admin_dashboard.htmx_add_allocation', projcode=project.projcode),
     '#addAllocationFormContainer',
     'Create Allocation',
-    submit_icon='plus-circle'
+    submit_icon='plus-circle',
+    errors=errors
 ) %}
 
   {% if not available_resources %}

@@ -18,3 +18,4 @@ megalinter-reports/
 .coverage
 .coverage.*
 Vermilion_NSFNCAR-UCAR-UCP_BrandGuide.pdf
+.playwright-mcp/

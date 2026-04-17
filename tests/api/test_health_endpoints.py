@@ -6,30 +6,15 @@ Covers:
   GET /api/v1/health/live   — public liveness (no DB)
   GET /api/v1/health/ready  — public readiness (delegates to health)
   GET /api/v1/health/db-pool — admin-only pool statistics
+
+The `non_admin_client` fixture lives in new_tests/conftest.py and picks
+any active non-benkirk user from the snapshot — `load_user()` will assign
+that user the default `['user']` role because their username isn't in
+`TestingConfig.DEV_ROLE_MAPPING`.
 """
 
 import pytest
 from unittest.mock import patch
-
-
-# ---------------------------------------------------------------------------
-# Helpers / additional fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def non_admin_client(client, session):
-    """Authenticated test client logged in as a plain user (andersnb)."""
-    from sam.core.users import User
-
-    with client:
-        user = User.get_by_username(session, 'andersnb')
-        assert user is not None, "Test user 'andersnb' not found in database"
-
-        with client.session_transaction() as sess:
-            sess['_user_id'] = str(user.user_id)
-            sess['_fresh'] = True
-
-        yield client
 
 
 # ---------------------------------------------------------------------------

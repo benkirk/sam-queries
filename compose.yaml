@@ -127,9 +127,48 @@ services:
     networks:
       - sam-network
 
+  #------------------------------------
+  # MySQL test container — isolated test database for new_tests/
+  #
+  # Identical image and obfuscated backup as the main mysql service, but:
+  #   - Host port 3307 (not 3306) to prevent collisions with the dev stack
+  #   - Separate named volume so data never mingles with dev MySQL
+  #   - Gated behind `profiles: [test]` so `docker compose up` without a
+  #     profile does NOT start this service (it's only for pytest runs)
+  #
+  # To start it:   docker compose --profile test up -d mysql-test
+  # To stop it:    docker compose --profile test down
+  #
+  # new_tests/conftest.py enforces a hard allowlist that tests will ONLY
+  # run against this container (host 127.0.0.1, port 3307). See
+  # docs/plans/REFACTOR_TESTING.md for the full isolation design.
+  mysql-test:
+    container_name: samuel-mysql-test
+    profiles: [test]
+    build:
+      context: containers/sam-sql-dev
+      dockerfile: Dockerfile
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sam
+    volumes:
+      - samuel-mysql-test-data:/var/lib/mysql
+      - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -proot && mysql -h localhost -u root -proot sam -e 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+    ports:
+      - "3307:3306"
+    networks:
+      - sam-network
+
 networks:
   sam-network:
     driver: bridge
 
 volumes:
   samuel-mysql-data:
+  samuel-mysql-test-data:

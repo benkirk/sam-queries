@@ -1,4 +1,4 @@
-name: SAM Database CI (Docker-only)
+name: SAM Test Suite
 
 on:
   push:
@@ -41,20 +41,20 @@ jobs:
       - name: Verify MySQL backup file exists and is not LFS pointer
         run: |
           BACKUP_FILE="containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
-          
+
           if [ ! -f "${BACKUP_FILE}" ]; then
             echo "❌ Backup file not found: ${BACKUP_FILE}"
             echo "Please ensure backup is committed or use artifacts"
             exit 1
           fi
-          
+
           echo "=== Backup file info ==="
           ls -lh "${BACKUP_FILE}"
-          
+
           # Check if it's a Git LFS pointer (small file starting with "version https")
           FILE_SIZE=$(stat -c%s "${BACKUP_FILE}" 2>/dev/null || stat -f%z "${BACKUP_FILE}" 2>/dev/null)
           echo "File size: ${FILE_SIZE} bytes"
-          
+
           if [ "${FILE_SIZE}" -lt 1000 ]; then
             echo "⚠️ File is very small, checking if it's an LFS pointer..."
             head -c 100 "${BACKUP_FILE}" | cat -v
@@ -68,7 +68,7 @@ jobs:
           else
             echo "✅ Backup file appears to be actual data (${FILE_SIZE} bytes)"
           fi
-          
+
           # Verify it's a valid xz file
           echo ""
           echo "=== Verifying xz format ==="
@@ -82,7 +82,9 @@ jobs:
       - name: Build and start services
         run: |
           docker compose build
-          docker compose up -d
+          # --profile test brings up the default stack PLUS the mysql-test
+          # container needed by the test suite's SAM_TEST_DB_URL target.
+          docker compose --profile test up -d
           # Show immediate status
           docker compose ps
           sleep 5
@@ -92,64 +94,25 @@ jobs:
         run: |
           echo "=== Container status ==="
           docker compose ps -a
-          
+
           echo ""
           echo "=== MySQL container logs ==="
           docker compose logs mysql --tail=100 || true
-          
+
           echo ""
           echo "=== Check if MySQL is running ==="
           docker compose ps mysql --format "{{.State}}" || echo "Could not get state"
 
-      - name: Wait for MySQL to be healthy (TCP from host)
-        run: |
-          echo "=== Waiting for MySQL to accept TCP connections on 127.0.0.1:3306 ==="
-          echo "During init, MySQL runs with --skip-networking (socket only)."
-          echo "TCP becomes available only after init scripts complete and MySQL restarts."
-          echo ""
-          
-          # Wait for MySQL to accept TCP connections from the HOST.
-          # This is the same connection path used by subsequent steps.
-          # Do NOT use 'docker compose exec' here — it uses Unix socket inside
-          # the container, which works during --skip-networking init phase,
-          # giving a false positive.
-          for i in $(seq 1 60); do
-            if mysql -h 127.0.0.1 -proot -uroot -e "SELECT 1" 2>/dev/null; then
-              echo "✅ MySQL accepting TCP connections after $((i * 5))s"
-              break
-            fi
-            
-            # Check if container is still running
-            STATE=$(docker compose ps mysql --format "{{.State}}" 2>/dev/null || echo "unknown")
-            if [ "${STATE}" = "exited" ]; then
-              echo "❌ MySQL container exited!"
-              docker compose logs mysql --tail=200
-              exit 1
-            fi
-            
-            if [ $((i % 6)) -eq 0 ]; then
-              echo "  Still waiting... ($((i * 5))s elapsed, container state: ${STATE})"
-            fi
-            sleep 5
-          done
-          
-          # Verify the sam database is usable (backup restore complete)
-          echo ""
-          echo "=== Verifying sam database is queryable ==="
-          for i in $(seq 1 12); do
-            if mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" 2>/dev/null; then
-              echo "✅ SAM database is ready"
-              break
-            fi
-            echo "  Waiting for sam database... ($((i * 5))s)"
-            sleep 5
-          done
-          
-          mysql -h 127.0.0.1 -proot -uroot sam -e "SELECT 1" || {
-            echo "❌ SAM database not accessible!"
-            docker compose logs mysql --tail=100
-            exit 1
-          }
+      - name: Wait for MySQL (main, port 3306)
+        run: scripts/ci/wait-for-mysql.sh
+        env:
+          COMPOSE_SERVICE: mysql
+
+      - name: Wait for MySQL (test, port 3307)
+        run: scripts/ci/wait-for-mysql.sh
+        env:
+          MYSQL_PORT: "3307"
+          COMPOSE_SERVICE: mysql-test
 
       - name: Wait for webapp to be ready
         run: |
@@ -166,11 +129,21 @@ jobs:
           mysql -h 127.0.0.1 -proot -uroot system_status --table -e "SHOW tables;"
           mysql -h 127.0.0.1 -proot -uroot sam --table -e "SHOW tables;"
           mysql -h 127.0.0.1 -proot -uroot sam --table -e "SELECT * from tables_dictionary;"
+          echo "=== mysql-test (3307) ==="
+          mysql -h 127.0.0.1 -P 3307 -proot -uroot sam --table -e "SHOW tables;" | head -20
 
       - name: Run pytest with coverage
         id: pytest
+        # SAM_TEST_DB_URL uses the compose service hostname `mysql-test`
+        # (not 127.0.0.1) because pytest runs inside the webapp container,
+        # which reaches mysql-test via the compose network. The test
+        # suite's safety allowlist has (mysql-test, 3306) approved.
+        # Note: `pytest` with no path arg picks up testpaths=tests from
+        # the root pytest.ini — no need to pass `tests/` explicitly.
         run: |
-          docker compose exec -T webapp bash -c "cd /code && pytest tests/ --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=60"
+          docker compose exec -T \
+            -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+            webapp bash -c "cd /code && pytest --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=60"
 
       - name: Copy coverage report from container
         if: always()
@@ -191,12 +164,20 @@ jobs:
           echo "📊 Coverage report available in GitHub Actions artifacts"
           echo "Download 'coverage-report-html' to view detailed line-by-line coverage"
           echo ""
-          echo "ℹ️  Coverage threshold: 80% minimum required"
+          echo "ℹ️  Coverage threshold: 60% minimum required"
           if [ "${{ steps.pytest.outcome }}" == "failure" ]; then
             echo "❌ Coverage threshold not met or tests failed"
           else
             echo "✅ Coverage threshold met and all tests passed"
           fi
+
+      - name: Run perf regression tests (query counts + benchmarks)
+        #if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: always()
+        run: |
+          docker compose exec -T \
+            -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+            webapp bash -c "cd /code && pytest -m perf -n 0 -v --tb=short"
 
       - name: Cleanup
         if: always()

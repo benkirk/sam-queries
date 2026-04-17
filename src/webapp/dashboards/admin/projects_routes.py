@@ -849,6 +849,18 @@ def htmx_renew_allocations(projcode):
     data['resource_ids'] = [
         int(v) for v in request.form.getlist('resource_ids') if v
     ]
+    # Per-resource scale inputs: scale_<resource_id> → float. Missing/blank
+    # entries default to 1.0 inside renew_project_allocations().
+    data['scales'] = {
+        int(k.removeprefix('scale_')): v
+        for k, v in request.form.items()
+        if k.startswith('scale_') and v.strip()
+    }
+    # Strip the flattened scale_* keys so marshmallow's unknown=EXCLUDE isn't
+    # invoked on inputs we've already collapsed into the 'scales' dict.
+    for k in list(data):
+        if k.startswith('scale_'):
+            del data[k]
 
     try:
         form_data = RenewAllocationsForm().load(data)
@@ -897,6 +909,7 @@ def htmx_renew_allocations(projcode):
                 new_start=new_start,
                 new_end=new_end,
                 resource_ids=form_data['resource_ids'],
+                scales=form_data.get('scales') or {},
                 user_id=current_user.user_id,
             )
     except Exception as e:

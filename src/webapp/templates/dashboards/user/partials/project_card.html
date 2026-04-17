@@ -44,7 +44,7 @@
     </div>
     <!-- Organizations -->
     {% if project.organizations %}
-    <div class="stat-item mt-2">
+    <div class="stat-item stat-item-block mt-2">
       <span class="stat-label d-block mb-1">Organizations:</span>
       <div class="stat-value text-dark text-detail">
         {% for po in project.organizations %}
@@ -58,7 +58,7 @@
     {% endif %}
     <!-- Contracts -->
     {% if project.contracts %}
-    <div class="stat-item mt-2">
+    <div class="stat-item stat-item-block mt-2">
       <span class="stat-label d-block mb-1">Contracts:</span>
       <div class="stat-value text-dark text-detail">
         {% for pc in project.contracts %}
@@ -73,7 +73,7 @@
     {% endif %}
     <!-- Project directories list -->
     {% if project.active_directories %}
-    <div class="stat-item mt-2">
+    <div class="stat-item stat-item-block mt-2">
       <span class="stat-label d-block mb-1">Directories:</span>
       <div class="stat-value text-dark text-detail">
         {% for dir in project.active_directories %}
@@ -157,7 +157,13 @@
                             <td>
                                 <div class="d-flex justify-content-between small mb-1">
                                     <span class="fw-semibold {% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }} allocated</span>
-                                    <span class="text-muted">{{ percent | fmt_pct }}</span>
+                                    {% if first.bar_state == 'active' and first.days_until_expiration is not none and first.days_until_expiration >= 0 %}
+                                        <span class="text-dark">{{ first.days_until_expiration }}d remaining</span>
+                                    {% elif first.bar_state == 'expired' %}
+                                        <span class="text-muted">expired</span>
+                                    {% elif first.bar_state == 'open-ended' %}
+                                        <span class="text-muted">open-ended</span>
+                                    {% endif %}
                                 </div>
                                 <div class="position-relative">
                                     <div class="progress progress-large">
@@ -167,6 +173,7 @@
                                              aria-valuenow="{{ percent }}"
                                              aria-valuemin="0"
                                              aria-valuemax="100">
+                                            {{ percent | fmt_pct(decimals=0) }}
                                         </div>
                                     </div>
                                     {% if first.bar_state == 'active' and resource.resource_type in ['HPC', 'DAV'] %}

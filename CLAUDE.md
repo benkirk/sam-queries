@@ -639,42 +639,77 @@ for project in user.all_projects:
 ## Testing
 
 ### Current Status
-- **380 tests passed, 16 skipped, 2 xpassed**
-- **Code coverage**: 77.47% (target modules: charges 90%, dashboard 79%, allocations 76%)
-- **Execution time**: ~32 seconds (parallel, no coverage) or ~97 seconds (with coverage)
-- **Parallel execution**: pytest-xdist with auto worker detection
+- **~1400 tests** passing in ~65 seconds under xdist `-n auto`
+- **Parallel execution**: pytest-xdist, all cores by default (configured in root `pytest.ini`)
+- **Isolation model**: per-test SAVEPOINT rollback (`join_transaction_mode="create_savepoint"`),
+  so xdist workers share one `sam_test` database without stepping on each other
+- **Safety guard**: `tests/conftest.py` refuses to run against any database
+  other than the allowlisted `mysql-test` container (host port 3307)
+
+### Test Data Strategy — Two Tiers
+- **Layer 1 — Representative fixtures** (`tests/conftest.py`):
+  `active_project`, `multi_project_user`, `hpc_resource`, `any_*` —
+  pick ANY snapshot row matching a structural shape. Used by read-path
+  tests that want snapshot data but don't care about specific
+  projcodes/usernames. Survives obfuscated-snapshot refreshes as long
+  as at least one row of each shape exists.
+- **Layer 2 — Factories** (`tests/factories/`): plain builder
+  functions (`make_user`, `make_project`, `make_allocation`, ...).
+  `session` is the first positional arg. Each builder auto-builds the
+  minimum FK graph it needs, calls `session.flush()`, returns the
+  flushed instance. Used by write-path tests that need exact
+  counts/values. Composes cleanly with Layer 1 in the same test.
+
+**Never blend Layer 1 and Layer 2 inside a single helper.** But a test
+may compose both: e.g. `active_project` for a Project+Account graph
+and `make_user(session)` for a fresh user that's unambiguously not on
+that project.
 
 ### Test Execution
 ```bash
-# Fast iteration (parallel, no coverage)
-source ../.env && pytest tests/ --no-cov  # 32 seconds
+# One-time setup: start the isolated test container + set URL
+docker compose --profile test up -d mysql-test
+export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'
 
-# Full validation (with coverage)
-source ../.env && pytest tests/  # 97 seconds, generates coverage report
+# Fast iteration (parallel, no coverage)
+source etc/config_env.sh && pytest  # ~65 seconds
+
+# With coverage report
+source etc/config_env.sh && pytest --cov=src --cov-report=html
 
 # Specific test file
-source ../.env && pytest tests/unit/test_query_functions.py -v
+pytest tests/unit/test_query_functions.py -v
 
 # Force serial execution
-source ../.env && pytest tests/ -n 1
+pytest -n 0
 ```
 
-### Key Test Files
-1. **test_query_functions.py** (41 tests): Query function coverage ⭐
-   - Charge aggregations (charges.py: 38% → 90%)
-   - Dashboard queries (dashboard.py: 28% → 79%)
-   - Allocation lookups (allocations.py: 41% → 76%)
-   - Statistics & project searches
-2. **test_schema_validation.py** (18 tests): Schema drift detection ⭐
-3. **test_sam_search_cli.py** (20 tests): CLI integration (modular architecture) ⭐
-4. **test_new_models.py** (51 tests): Security, charging, project models
-5. **test_basic_read.py** (26 tests): ORM queries, relationships
-6. **test_views.py** (24 tests): XRAS views, read-only enforcement
+### Key Test Directories
+- `tests/unit/` — ORM models, query functions, CLI (CliRunner), webapp unit
+  (admin model views, OIDC), cache behavior, allocation performance
+- `tests/integration/` — schema validation (ORM↔MySQL drift),
+  database views, system_status flow/dashboard, CLI subprocess smoke
+- `tests/api/` — all API endpoint tests + Marshmallow schema tests
+- `tests/factories/` — Layer-2 builder module (core, resources,
+  projects, operational)
 
-### Parallel Execution (pytest-xdist)
-- **Worker isolation**: Each worker gets unique database (system_status_test_gw0, etc.)
-- **Auto-detection**: Uses all CPU cores by default (`-n auto`)
-- **Coverage caveat**: Parallel execution doesn't speed up coverage runs
+### The `system_status` tier
+
+The status tests use a per-worker SQLite tempfile bound at
+`SQLALCHEMY_BINDS['system_status']`. Flask-SQLAlchemy routes
+`DerechoStatus`/`CasperStatus`/etc queries to SQLite via
+`__bind_key__`, so test fixtures and route handlers both see the same
+engine/same data. The schema is materialized via
+`db.create_all(bind_key='system_status')` in the `app` session-scoped
+fixture. Per-test isolation is via `DELETE FROM` on all status tables
+(faster than SAVEPOINT bridging for SQLite).
+
+**Critical**: `FLASK_ACTIVE=1` is set in `pytest_configure` (not inside
+the `app` fixture) because `system_status.base.StatusBase` is resolved
+at module import time. If a test module does `from system_status import
+DerechoStatus` at module level, it runs during collection before any
+fixture — without `FLASK_ACTIVE`, `StatusBase` becomes a standalone
+`declarative_base()` and the bind routing never engages.
 
 ---
 
@@ -884,7 +919,7 @@ docker compose up
 3. Add to `sam/__init__.py` imports
 4. Create comprehensive tests in `tests/unit/test_new_models.py`
 5. Run schema validation: `pytest tests/integration/test_schema_validation.py`
-6. Verify all tests pass: `pytest tests/ --no-cov` (fast)
+6. Verify all tests pass: `pytest` (fast, ~65s)
 7. Commit with detailed message
 
 ### Fixing Schema Mismatches
@@ -959,8 +994,8 @@ The migration plan is documented in `docs/plans/FORMAT_DISPLAY.md`.
 docker compose up                                  # Start webapp (http://localhost:5050)
 
 # Testing
-source ../.env && pytest tests/ --no-cov          # Fast tests (32s, parallel)
-source ../.env && pytest tests/                   # Full tests with coverage (97s)
+source etc/config_env.sh && pytest                 # Fast tests (~65s, parallel)
+source etc/config_env.sh && pytest --cov=src       # With coverage report
 
 # CLI - Search
 sam-search user benkirk --list-projects           # User lookup
@@ -997,7 +1032,7 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 ✅ **DO** use bidirectional relationships with back_populates
 ✅ **DO** write tests for query functions (see test_query_functions.py)
 ✅ **DO** use proper exit codes (0, 1, 2, 130)
-✅ **DO** run `pytest tests/ --no-cov` for fast iteration (32s vs 97s)
+✅ **DO** run `pytest` for fast iteration (~65s, parallel via xdist)
 ✅ **DO** use `Model.is_active` for any active check — it's a hybrid property on every model (works in Python and SQL, supports `~Model.is_active` inversion)
 ✅ **DO** unpack query result tuples properly when using `get_projects_by_allocation_end_date()`
 ✅ **DO** add `SessionMixin` to any ORM model that needs an `update()` method (provides `self.session`)
@@ -1006,5 +1041,5 @@ sam-admin project SCSG0001 --reconcile            # Reconcile allocations
 
 ---
 
-*Last Updated: 2026-04-12*
-*Current Branch: refactor_before_expansion*
+*Last Updated: 2026-04-15*
+*Current Branch: tests_refactor*

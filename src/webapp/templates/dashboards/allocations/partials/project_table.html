@@ -1,10 +1,10 @@
 <!-- Project Details Table -->
 <table class="table table-sm table-striped">
-    <thead>
+    <thead class="align-top">
         <tr>
             <th class="sortable-header" data-sort="text">Project</th>
             <th class="sortable-header" data-sort="text">Title</th>
-            <th class="sortable-header" data-sort="numeric">Amount</th>
+            <th class="sortable-header" data-sort="numeric">Total<br>Amount</th>
             <th class="sortable-header" data-sort="numeric">
                 {% if resource_type in ['DISK', 'ARCHIVE'] %}
                     Data<br>Volume
@@ -14,7 +14,7 @@
             </th>
             {% if show_usage %}
             <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-usage">Usage %</th>
-            <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-alloc-remaining">Alloc<br><small class="fw-normal">remaining</small></th>
+            <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-alloc-remaining">Remaining</th>
             {% endif %}
             <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-start">Start</th>
             <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-end">End</th>

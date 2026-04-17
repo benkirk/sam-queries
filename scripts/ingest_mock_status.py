@@ -2,7 +2,7 @@
 """
 Ingest Mock System Status Data
 
-Loads mock data from tests/mock_data/status_mock_data.json and inserts
+Loads mock data from scripts/mock_data/status_mock_data.json and inserts
 it into the system_status database using the ORM models directly.
 
 This script bypasses the API and directly inserts via ORM for quick testing.
@@ -45,7 +45,7 @@ def ingest_mock_data():
     print("=" * 80)
 
     # Load mock data
-    mock_data_file = Path(__file__).parent.parent / 'tests' / 'mock_data' / 'status_mock_data.json'
+    mock_data_file = Path(__file__).parent / 'mock_data' / 'status_mock_data.json'
     print(f"\nLoading mock data from: {mock_data_file}")
 
     try:

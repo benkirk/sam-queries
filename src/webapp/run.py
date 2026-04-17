@@ -33,7 +33,17 @@ from webapp.config import get_webapp_config
 from webapp.logging_config import configure_logging
 
 
-def create_app():
+def create_app(*, config_overrides: dict | None = None):
+    """Build and return a configured Flask application.
+
+    Args:
+        config_overrides: Optional dict merged into `app.config` AFTER the
+            default values are populated but BEFORE `db.init_app(app)` runs.
+            Used by the test suite to point Flask-SQLAlchemy at an isolated
+            test database and/or to supply a SAVEPOINT-scoped connection via
+            `SQLALCHEMY_ENGINE_OPTIONS['creator']` + `StaticPool`. Production
+            callers pass no argument and see identical behavior.
+    """
     import os
 
     # Load and validate environment-based configuration
@@ -79,6 +89,12 @@ def create_app():
         engine_options['connect_args'] = {'ssl': {'ssl_disabled': False}}
 
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
+
+    # Apply caller-supplied overrides AFTER defaults, BEFORE extensions bind.
+    # The test suite uses this to point Flask-SQLAlchemy at the mysql-test
+    # container and/or to supply a pre-existing SAVEPOINT-scoped connection.
+    if config_overrides:
+        app.config.update(config_overrides)
 
     # Initialize db with app
     db.init_app(app)
@@ -205,6 +221,15 @@ def create_app():
     import sam.fmt as fmt
     fmt.register_jinja_filters(app)
 
+    # In dev, Jinja's mtime-based auto-reload doesn't reliably detect template
+    # changes through Docker's bind-mount/watch-sync — the file mtime in the
+    # container updates correctly but the running Jinja env still serves the
+    # cached compile. Disable the env's template cache entirely in debug mode
+    # so every render re-reads from disk. Negligible cost in dev, no effect
+    # on production.
+    if app.config.get('DEBUG'):
+        app.jinja_env.cache = None
+
     # Initialize Flask-Admin
     init_admin(app)
 
@@ -228,4 +253,8 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', debug=True, port=5050)
+    # Port is configurable via WEBAPP_PORT so that an interactive debug
+    # launch (utils/run-webui-dbg.sh) can coexist with `docker compose up
+    # webdev` (which binds host port 5050). Default stays 5050 for backwards
+    # compatibility with existing tooling that expects it.
+    app.run(host='0.0.0.0', debug=True, port=int(os.environ.get('WEBAPP_PORT', 5050)))
