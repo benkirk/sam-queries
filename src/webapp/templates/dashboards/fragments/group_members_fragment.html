@@ -1,0 +1,47 @@
+{# HTMX payload for #groupMembersModal — swaps into #groupMembersContainer.
+
+   group: dict returned by sam.queries.lookups.get_group_members()
+          (keys: group_name, unix_gid, access_branch_name, members)
+#}
+{% from 'dashboards/fragments/user_rows.html' import render_user_rows %}
+
+<div class="modal-header">
+    <h5 class="modal-title">
+        <i class="fas fa-users"></i>
+        {{ group.group_name }}
+        <small class="text-muted ms-2">
+            gid {{ group.unix_gid }}
+            <span class="mx-1">&middot;</span>
+            <span class="badge bg-secondary">{{ group.access_branch_name }}</span>
+        </small>
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="text-muted small">
+            {{ group.members|length }} member{{ 's' if group.members|length != 1 else '' }}
+        </span>
+    </div>
+    {% if group.members %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead class="thead-light">
+                <tr>
+                    <th>Name</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{ render_user_rows(group.members) }}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0"><small>No members in this group.</small></p>
+    {% endif %}
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+</div>

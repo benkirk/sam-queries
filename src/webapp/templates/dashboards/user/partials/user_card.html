@@ -1,4 +1,5 @@
-{% macro render_user_card(sam_user, is_admin=False) %}
+{% macro render_user_card(sam_user, is_admin=False, user_groups=None) %}
+{# user_groups: optional dict[branch_name] -> list of {'group_name', 'unix_gid'} #}
 <div class="card mb-3">
     <div class="card-header">
         <h5 class="mb-0">
@@ -116,7 +117,16 @@
                             {{ project.projcode }}
                         </a>
                         {% else %}
-                        <span class="badge bg-primary me-1 mb-1">{{ project.projcode }}</span>
+                        <button type="button"
+                                class="badge bg-primary border-0 me-1 mb-1"
+                                title="Click to view project details"
+                                hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=project.projcode) }}"
+                                hx-target="#projectDetailsModalBody"
+                                hx-swap="innerHTML"
+                                data-bs-toggle="modal"
+                                data-bs-target="#projectDetailsModal">
+                            {{ project.projcode }}
+                        </button>
                         {% endif %}
                         {% endfor %}
                     {% else %}
@@ -124,6 +134,59 @@
                     {% endif %}
                 </div>
             </div>
+
+            <!-- Active groups (adhoc group membership, tabbed by access branch) -->
+            {% if user_groups is not none %}
+            <div class="stat-item stat-item-block mt-2">
+                <span class="stat-label d-block mb-1">Active Groups:</span>
+                <div class="stat-value text-dark text-detail">
+                    {% set branches = user_groups.keys() | list | sort %}
+                    {% if branches %}
+                    {% set tab_id = 'groupsTabs-' ~ sam_user.username %}
+                    <ul class="nav nav-pills nav-sm mb-2" id="{{ tab_id }}" role="tablist">
+                        {% for branch in branches %}
+                        {% set pane_id = 'groupsPane-' ~ sam_user.username ~ '-' ~ loop.index %}
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link py-1 px-2 {% if loop.first %}active{% endif %}"
+                                    id="{{ pane_id }}-tab"
+                                    data-bs-toggle="pill"
+                                    data-bs-target="#{{ pane_id }}"
+                                    type="button" role="tab"
+                                    aria-controls="{{ pane_id }}"
+                                    aria-selected="{{ 'true' if loop.first else 'false' }}">
+                                {{ branch }}
+                                <span class="badge bg-secondary ms-1">{{ user_groups[branch] | length }}</span>
+                            </button>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    <div class="tab-content">
+                        {% for branch in branches %}
+                        {% set pane_id = 'groupsPane-' ~ sam_user.username ~ '-' ~ loop.index %}
+                        <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+                             id="{{ pane_id }}" role="tabpanel"
+                             aria-labelledby="{{ pane_id }}-tab">
+                            {% for g in user_groups[branch] %}
+                            <button type="button"
+                                    class="badge bg-success border-0 me-1 mb-1"
+                                    title="gid {{ g.unix_gid }} — click to view members"
+                                    hx-get="{{ url_for('user_dashboard.htmx_group_members', group_name=g.group_name) }}?branch={{ branch }}"
+                                    hx-target="#groupMembersContainer"
+                                    hx-swap="innerHTML"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#groupMembersModal">
+                                {{ g.group_name }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <span class="text-muted">No adhoc group memberships</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -204,5 +267,18 @@
         </form>
     </div>
     {% endif %}
+</div>
+
+{# Group-members modal — populated by user_dashboard.htmx_group_members #}
+<div class="modal fade" id="groupMembersModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content" id="groupMembersContainer">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endmacro %}

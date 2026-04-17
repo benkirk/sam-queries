@@ -1,0 +1,30 @@
+{# Shared macro: render generic Name / Username / Email <tr> rows for user lists.
+
+   users: iterable of dicts or objects exposing:
+     - display_name: str
+     - username: str
+     - primary_email: Optional[str]   (preferred key)
+       or 'email' for back-compat with existing project-members table
+
+   Visual style mirrors project_members/fragments/members_table.html so lists
+   of users feel like the same component across the app.
+#}
+{% macro render_user_rows(users) %}
+    {% for u in users %}
+    {% set email = (u.primary_email if u.primary_email is defined else u.email) %}
+    <tr>
+        <td>
+            <i class="fas fa-user text-muted me-1"></i>
+            <strong>{{ u.display_name }}</strong>
+        </td>
+        <td><code>{{ u.username }}</code></td>
+        <td>
+            {% if email %}
+            <a href="mailto:{{ email }}">{{ email }}</a>
+            {% else %}
+            <span class="text-muted">N/A</span>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+{% endmacro %}

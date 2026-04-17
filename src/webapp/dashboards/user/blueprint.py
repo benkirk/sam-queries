@@ -18,7 +18,7 @@ from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.rolling_usage import get_project_rolling_usage
 from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project, get_charges_by_projcode
-from sam.queries.lookups import find_project_by_code
+from sam.queries.lookups import find_project_by_code, get_user_group_access, get_group_members
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import can_edit_consumption_threshold
 from webapp.utils.rbac import require_permission, Permission, has_permission
@@ -53,14 +53,51 @@ def index():
     # Fetch all dashboard data using optimized query helper
     dashboard_data = get_user_dashboard_data(db.session, user_to_display.user_id)
 
+    # Adhoc group memberships, regrouped by access branch for the user card tabs
+    user_groups = _group_access_by_branch(db.session, user_to_display.username)
+
     return render_template(
         'dashboards/user/dashboard.html',
         user=user_to_display,
         dashboard_data=dashboard_data,
+        user_groups=user_groups,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
         impersonator_id=impersonator_id
     )
+
+
+@bp.route('/htmx/group-members/<group_name>')
+@login_required
+def htmx_group_members(group_name):
+    """
+    HTMX payload: group+branch header and member table for the group modal.
+    """
+    branch = request.args.get('branch', '')
+    if not branch:
+        return '<div class="alert alert-danger m-3">Missing access branch</div>', 400
+    data = get_group_members(db.session, group_name, branch)
+    if not data:
+        return '<div class="alert alert-warning m-3">Group not found</div>', 404
+    return render_template(
+        'dashboards/fragments/group_members_fragment.html',
+        group=data,
+    )
+
+
+def _group_access_by_branch(session, username):
+    """Regroup get_user_group_access() output into {branch: [{group_name, unix_gid}, ...]}.
+
+    Returns an empty dict when the user has no adhoc group memberships.
+    """
+    rows = get_user_group_access(session, username=username).get(username, [])
+    by_branch = {}
+    for r in rows:
+        by_branch.setdefault(r['access_branch_name'], []).append({
+            'group_name': r['group_name'],
+            'unix_gid': r['unix_gid'],
+        })
+    return by_branch
 
 
 @bp.route('/resource-details')

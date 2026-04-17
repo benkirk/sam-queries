@@ -33,6 +33,8 @@ from .lookups import (
     find_users_by_name,
     find_project_by_code,
     get_group_by_name,
+    get_user_group_access,
+    get_group_members,
 )
 
 # Expirations
@@ -154,6 +156,8 @@ __all__ = [
     'find_users_by_name',
     'find_project_by_code',
     'get_group_by_name',
+    'get_user_group_access',
+    'get_group_members',
     # Expirations
     'get_projects_by_allocation_end_date',
     'get_projects_expiring_soon',

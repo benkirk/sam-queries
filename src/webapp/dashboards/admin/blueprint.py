@@ -22,7 +22,7 @@ import io
 from webapp.extensions import db, cache
 from sam.queries.dashboard import get_project_dashboard_data
 from sam.queries.expirations import get_projects_by_allocation_end_date, get_projects_with_expired_allocations
-from sam.queries.lookups import find_project_by_code
+from sam.queries.lookups import find_project_by_code, get_user_group_access
 from webapp.auth.models import AuthUser
 from sam.core.users import User
 from webapp.utils.rbac import require_permission, Permission
@@ -165,9 +165,18 @@ def user_card(username):
     if not sam_user:
         return '<div class="alert alert-warning">User not found</div>'
 
+    rows = get_user_group_access(db.session, username=username).get(username, [])
+    user_groups = {}
+    for r in rows:
+        user_groups.setdefault(r['access_branch_name'], []).append({
+            'group_name': r['group_name'],
+            'unix_gid': r['unix_gid'],
+        })
+
     return render_template(
         'dashboards/admin/fragments/user_card_wrapper.html',
-        sam_user=sam_user
+        sam_user=sam_user,
+        user_groups=user_groups,
     )
 
 
