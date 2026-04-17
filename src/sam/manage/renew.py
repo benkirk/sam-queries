@@ -44,6 +44,7 @@ __all__ = [
     'find_source_allocations_at',
     'find_renewable_descendants',
     'renew_project_allocations',
+    'analyze_renew_preconditions',
 ]
 
 
@@ -73,6 +74,33 @@ def find_source_alloc_at(
     return matches[0]
 
 
+def _find_overlapping_allocs(
+    project: Project,
+    resource_id: int,
+    new_start: datetime,
+    new_end: datetime,
+) -> List[Allocation]:
+    """Return non-deleted allocations on ``project`` for ``resource_id``
+    whose date range overlaps [new_start, new_end].
+    """
+    class _Range:
+        def __init__(self, s, e):
+            self.start_date = s
+            self.end_date = e
+
+    target = _Range(new_start, new_end)
+    hits: List[Allocation] = []
+    for account in project.accounts:
+        if account.resource_id != resource_id:
+            continue
+        for alloc in account.allocations:
+            if alloc.deleted:
+                continue
+            if date_ranges_overlap(alloc, target):
+                hits.append(alloc)
+    return hits
+
+
 def _account_has_overlapping_alloc(
     project: Project,
     resource_id: int,
@@ -85,21 +113,34 @@ def _account_has_overlapping_alloc(
     Used to avoid creating a duplicate when renew is clicked twice or when
     the target period already exists.
     """
-    class _Range:
-        def __init__(self, s, e):
-            self.start_date = s
-            self.end_date = e
+    return bool(_find_overlapping_allocs(project, resource_id, new_start, new_end))
 
-    target = _Range(new_start, new_end)
-    for account in project.accounts:
-        if account.resource_id != resource_id:
-            continue
-        for alloc in account.allocations:
-            if alloc.deleted:
-                continue
-            if date_ranges_overlap(alloc, target):
-                return True
-    return False
+
+def _soft_delete_overlapping_allocs(
+    session: Session,
+    project: Project,
+    resource_id: int,
+    new_start: datetime,
+    new_end: datetime,
+    user_id: int,
+    reason: str,
+) -> List[Allocation]:
+    """Mark overlapping allocations as ``deleted=True`` and log a DELETE
+    transaction on each. Returns the list of deleted allocations.
+    """
+    deleted: List[Allocation] = []
+    for alloc in _find_overlapping_allocs(project, resource_id, new_start, new_end):
+        alloc.deleted = True
+        log_allocation_transaction(
+            session,
+            alloc,
+            user_id,
+            AllocationTransactionType.DELETE,
+            comment=reason,
+            old_values={},
+        )
+        deleted.append(alloc)
+    return deleted
 
 
 def find_source_allocations_at(
@@ -123,6 +164,83 @@ def find_source_allocations_at(
             if alloc.is_active_at(source_active_at):
                 candidates.append(alloc)
     return candidates
+
+
+def analyze_renew_preconditions(
+    session: Session,
+    *,
+    root_project_id: int,
+    source_active_at: datetime,
+    new_start: datetime,
+    new_end: datetime,
+    resource_ids: List[int],
+) -> Dict[int, str]:
+    """Classify each requested resource for a Renew request WITHOUT mutating.
+
+    Returns a dict mapping resource_id → one of:
+      'ok'        — renew will create new allocations for this resource
+      'no_source' — root has no non-inheriting allocation active at
+                    ``source_active_at`` (renew would silently skip)
+      'overlap'   — root already has a non-deleted allocation whose date
+                    range overlaps [new_start, new_end] (idempotent skip —
+                    usually indicates renew was applied previously)
+
+    Callers use this to produce accurate messages instead of a single
+    catch-all "nothing was renewed" string.
+    """
+    root = session.get(Project, root_project_id)
+    if root is None:
+        raise ValueError(f"Project {root_project_id} not found")
+
+    result: Dict[int, str] = {}
+    for rid in resource_ids:
+        src = find_source_alloc_at(root, rid, source_active_at)
+        if src is None or src.is_inheriting:
+            result[rid] = 'no_source'
+        elif _account_has_overlapping_alloc(root, rid, new_start, new_end):
+            result[rid] = 'overlap'
+        else:
+            result[rid] = 'ok'
+    return result
+
+
+def analyze_renew_preconditions(
+    session: Session,
+    *,
+    root_project_id: int,
+    source_active_at: datetime,
+    new_start: datetime,
+    new_end: datetime,
+    resource_ids: List[int],
+) -> Dict[int, str]:
+    """Classify each requested resource for a Renew request WITHOUT mutating.
+
+    Returns a dict mapping resource_id → one of:
+      'ok'        — renew will create new allocations for this resource
+      'no_source' — root has no non-inheriting allocation active at
+                    ``source_active_at`` (renew would silently skip)
+      'overlap'   — root already has a non-deleted allocation whose date
+                    range overlaps [new_start, new_end] (idempotent skip —
+                    usually indicates renew was applied previously)
+
+    Callers use this to produce accurate user-facing messages instead of
+    the old catch-all "nothing was renewed" string, and to decide whether
+    to prompt for the ``replace_existing`` override.
+    """
+    root = session.get(Project, root_project_id)
+    if root is None:
+        raise ValueError(f"Project {root_project_id} not found")
+
+    result: Dict[int, str] = {}
+    for rid in resource_ids:
+        src = find_source_alloc_at(root, rid, source_active_at)
+        if src is None or src.is_inheriting:
+            result[rid] = 'no_source'
+        elif _account_has_overlapping_alloc(root, rid, new_start, new_end):
+            result[rid] = 'overlap'
+        else:
+            result[rid] = 'ok'
+    return result
 
 
 def find_renewable_descendants(
@@ -150,6 +268,7 @@ def renew_project_allocations(
     resource_ids: List[int],
     user_id: int,
     scales: Optional[Dict[int, float]] = None,
+    replace_existing: bool = False,
 ) -> List[Allocation]:
     """Clone a project tree's active-at-a-date allocations into a new period.
 
@@ -170,7 +289,10 @@ def renew_project_allocations(
          when inheriting).
       4. Skip any target account that already has an overlapping
          non-deleted allocation in [new_start, new_end] — renew is
-         idempotent on double-click.
+         idempotent on double-click. When ``replace_existing=True`` the
+         overlapping allocations are soft-deleted (``deleted=True``, DELETE
+         transaction logged) BEFORE the new row is created, which lets an
+         admin correct an accidental prior renew onto the same period.
 
     Runs inside the caller's ``management_transaction()`` — does NOT commit.
 
@@ -200,8 +322,17 @@ def renew_project_allocations(
         if _account_has_overlapping_alloc(
             root_project, resource_id, new_start, new_end
         ):
-            # Already renewed — nothing to do for this resource.
-            continue
+            if not replace_existing:
+                # Already renewed — nothing to do for this resource.
+                continue
+            _soft_delete_overlapping_allocs(
+                session, root_project, resource_id, new_start, new_end, user_id,
+                reason=(
+                    f"Superseded by renew on "
+                    f"{new_start.strftime('%Y-%m-%d')} → "
+                    f"{new_end.strftime('%Y-%m-%d')} (replace_existing=True)"
+                ),
+            )
 
         # Scale + round to SAM_SIG_FIGS (allocations are human-defined at
         # ~3 sig figs). Guarded so scale=1.0 renewals stay byte-identical
@@ -253,7 +384,16 @@ def renew_project_allocations(
             if _account_has_overlapping_alloc(
                 descendant, resource_id, new_start, new_end
             ):
-                continue
+                if not replace_existing:
+                    continue
+                _soft_delete_overlapping_allocs(
+                    session, descendant, resource_id, new_start, new_end, user_id,
+                    reason=(
+                        f"Superseded by renew on "
+                        f"{new_start.strftime('%Y-%m-%d')} → "
+                        f"{new_end.strftime('%Y-%m-%d')} (replace_existing=True)"
+                    ),
+                )
 
             if source_child.is_inheriting:
                 new_parent_id = alloc_map.get(descendant.parent_id)

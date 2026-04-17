@@ -1,0 +1,24 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{# htmx: Group search results — clicking a group loads its card. #}
+{% if groups %}
+{% for group in groups %}
+<div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-2">
+    <button type="button" class="flex-grow-1 btn btn-link p-0 text-start text-decoration-none {% if not group.is_active %}text-muted{% else %}text-body{% endif %}"
+            hx-get="{{ url_for('admin_dashboard.group_card', group_name=group.group_name) }}"
+            hx-target="#groupCardContainer"
+            hx-swap="innerHTML"
+            hx-on::after-request="document.getElementById('groupSearchResults').innerHTML = ''; document.getElementById('groupSearchInput').value = '';">
+        <div>
+            <i class="fas fa-users text-muted me-1"></i>
+            <strong>{{ group.group_name }}</strong>
+            <small class="text-muted ms-1">gid {{ group.unix_gid }}</small>
+            {% if not group.is_active %}
+            {{ status_badge('inactive', extra='ms-1') }}
+            {% endif %}
+        </div>
+    </button>
+</div>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted">No groups found</div>
+{% endif %}

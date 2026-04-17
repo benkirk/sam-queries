@@ -49,6 +49,17 @@ from sam.queries.statistics import (
     get_user_statistics,
 )
 from sam.queries.projects import search_projects_by_code_or_title
+from sam.queries.lookups import get_user_group_access, get_group_members
+from sam.core.groups import (
+    AdhocGroup,
+    AdhocSystemAccountEntry,
+    DEFAULT_COMMON_GROUP,
+    DEFAULT_COMMON_GROUP_GID,
+    resolve_group_name,
+)
+
+from factories import make_user
+from factories._seq import next_int, next_seq
 
 
 pytestmark = pytest.mark.unit
@@ -512,3 +523,177 @@ class TestAllocationSummaryWithRates:
                 assert result['start_date'] is not None
                 if result['end_date'] is not None:
                     assert result['end_date'] >= result['start_date']
+
+
+# ============================================================================
+# sam.queries.lookups — get_user_group_access
+# ============================================================================
+
+
+def _make_adhoc_group(session, *, active=True):
+    """Build a fresh AdhocGroup with a worker-namespaced unique unix_gid."""
+    import os
+    worker = int(os.environ.get("PYTEST_XDIST_WORKER", "gw0").removeprefix("gw") or "0")
+    # Snapshot gids are in the low thousands; stake out a high, worker-disjoint range.
+    gid = 50_000_000 + worker * 100_000 + next_int("adhoc_gid")
+    name = next_seq("g")[:30]
+    grp = AdhocGroup(group_name=name, unix_gid=gid, active=active)
+    session.add(grp)
+    session.flush()
+    return grp
+
+
+def _make_membership(session, *, group, username, branch='hpc'):
+    entry = AdhocSystemAccountEntry(
+        group_id=group.group_id,
+        username=username,
+        access_branch_name=branch,
+    )
+    session.add(entry)
+    session.flush()
+    return entry
+
+
+class TestGetUserGroupAccess:
+
+    def test_username_filter_returns_only_that_user(self, session):
+        user = make_user(session)
+        g1 = _make_adhoc_group(session)
+        g2 = _make_adhoc_group(session)
+        _make_membership(session, group=g1, username=user.username, branch='hpc')
+        _make_membership(session, group=g2, username=user.username, branch='hpc-dev')
+
+        result = get_user_group_access(session, username=user.username)
+
+        assert set(result) == {user.username}
+        entries = result[user.username]
+        assert len(entries) == 2
+        by_name = {e['group_name']: e for e in entries}
+        assert by_name[g1.group_name]['unix_gid'] == g1.unix_gid
+        assert by_name[g1.group_name]['access_branch_name'] == 'hpc'
+        assert by_name[g2.group_name]['unix_gid'] == g2.unix_gid
+        assert by_name[g2.group_name]['access_branch_name'] == 'hpc-dev'
+
+    def test_unknown_username_returns_empty_dict(self, session):
+        assert get_user_group_access(session, username='does_not_exist_xyz_zzz') == {}
+
+    def test_no_username_includes_built_user(self, session):
+        user = make_user(session)
+        g = _make_adhoc_group(session)
+        _make_membership(session, group=g, username=user.username)
+
+        result = get_user_group_access(session)
+
+        assert user.username in result
+        assert any(e['group_name'] == g.group_name for e in result[user.username])
+
+    def test_active_only_excludes_inactive_groups(self, session):
+        user = make_user(session)
+        active_grp = _make_adhoc_group(session, active=True)
+        inactive_grp = _make_adhoc_group(session, active=False)
+        _make_membership(session, group=active_grp, username=user.username)
+        _make_membership(session, group=inactive_grp, username=user.username)
+
+        active_result = get_user_group_access(session, username=user.username)
+        all_result = get_user_group_access(session, username=user.username, active_only=False)
+
+        active_names = {e['group_name'] for e in active_result[user.username]}
+        all_names = {e['group_name'] for e in all_result[user.username]}
+        assert active_grp.group_name in active_names
+        assert inactive_grp.group_name not in active_names
+        assert inactive_grp.group_name in all_names
+
+    def test_access_branch_filter(self, session):
+        user = make_user(session)
+        g1 = _make_adhoc_group(session)
+        g2 = _make_adhoc_group(session)
+        _make_membership(session, group=g1, username=user.username, branch='hpc')
+        _make_membership(session, group=g2, username=user.username, branch='hpc-dev')
+
+        hpc_only = get_user_group_access(session, username=user.username, access_branch='hpc')
+
+        assert list(hpc_only) == [user.username]
+        entries = hpc_only[user.username]
+        assert len(entries) == 1
+        assert entries[0]['group_name'] == g1.group_name
+        assert entries[0]['access_branch_name'] == 'hpc'
+
+
+class TestGetGroupMembers:
+
+    def test_returns_group_header_and_members(self, session):
+        from sam.core.users import EmailAddress
+        grp = _make_adhoc_group(session)
+        u1 = make_user(session, first_name='Alice', last_name='Amos')
+        u2 = make_user(session, first_name='Bob', last_name='Byrne')
+        session.add(EmailAddress(user_id=u1.user_id, email_address='alice@example.org', is_primary=True))
+        session.flush()
+        _make_membership(session, group=grp, username=u1.username, branch='hpc')
+        _make_membership(session, group=grp, username=u2.username, branch='hpc')
+
+        data = get_group_members(session, grp.group_name, 'hpc')
+
+        assert data is not None
+        assert data['group_name'] == grp.group_name
+        assert data['unix_gid'] == grp.unix_gid
+        assert data['access_branch_name'] == 'hpc'
+        by_user = {m['username']: m for m in data['members']}
+        assert set(by_user) == {u1.username, u2.username}
+        assert by_user[u1.username]['primary_email'] == 'alice@example.org'
+        assert by_user[u2.username]['primary_email'] is None
+        assert 'Alice' in by_user[u1.username]['display_name']
+
+    def test_branch_filter_excludes_other_branches(self, session):
+        grp = _make_adhoc_group(session)
+        u_hpc = make_user(session)
+        u_dev = make_user(session)
+        _make_membership(session, group=grp, username=u_hpc.username, branch='hpc')
+        _make_membership(session, group=grp, username=u_dev.username, branch='hpc-dev')
+
+        data = get_group_members(session, grp.group_name, 'hpc')
+        usernames = {m['username'] for m in data['members']}
+        assert u_hpc.username in usernames
+        assert u_dev.username not in usernames
+
+    def test_orphan_username_fallback(self, session):
+        grp = _make_adhoc_group(session)
+        _make_membership(session, group=grp, username='ghost_zzz', branch='hpc')
+
+        data = get_group_members(session, grp.group_name, 'hpc')
+        ghost = next(m for m in data['members'] if m['username'] == 'ghost_zzz')
+        assert ghost['display_name'] == 'ghost_zzz'
+        assert ghost['primary_email'] is None
+
+    def test_unknown_group_returns_none(self, session):
+        assert get_group_members(session, 'does_not_exist_xxx', 'hpc') is None
+
+    def test_active_only_hides_inactive_groups(self, session):
+        grp = _make_adhoc_group(session, active=False)
+        u = make_user(session)
+        _make_membership(session, group=grp, username=u.username, branch='hpc')
+
+        assert get_group_members(session, grp.group_name, 'hpc') is None
+        data = get_group_members(session, grp.group_name, 'hpc', active_only=False)
+        assert data is not None
+        assert len(data['members']) == 1
+
+
+class TestResolveGroupName:
+
+    def test_resolves_via_adhoc_group_unix_gid(self, session):
+        grp = _make_adhoc_group(session)
+        assert resolve_group_name(session, grp.unix_gid) == grp.group_name
+
+    def test_default_gid_falls_back_to_default_common_group(self, session):
+        # gid 1000 is the system-wide LDAP default ('ncar') and is NOT
+        # materialized in adhoc_group; we must still label it.
+        assert resolve_group_name(session, DEFAULT_COMMON_GROUP_GID) == DEFAULT_COMMON_GROUP
+
+    def test_unresolved_non_default_gid_returns_none(self, session):
+        # Pick a gid far outside the snapshot range and not equal to the default.
+        bogus_gid = 99_999_999
+        assert bogus_gid != DEFAULT_COMMON_GROUP_GID
+        assert resolve_group_name(session, bogus_gid) is None
+
+    def test_none_gid_returns_none(self, session):
+        assert resolve_group_name(session, None) is None

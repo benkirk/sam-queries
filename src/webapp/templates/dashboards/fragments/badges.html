@@ -1,0 +1,36 @@
+{#
+  Reusable status badge macros.
+
+  Usage:
+      {% from 'dashboards/fragments/badges.html' import status_badge %}
+      {{ status_badge('inactive') }}
+      {{ status_badge('locked', extra='ms-1') }}
+      {{ status_badge('expired', extra='ms-1', small=True) }}
+
+  Known states (case-insensitive): active, inactive, locked, expired, open-ended.
+  Unknown states fall back to bg-secondary with the raw label rendered.
+#}
+
+{%- set _STATUS_VARIANTS = {
+    'active':     'bg-success',
+    'inactive':   'bg-secondary',
+    'locked':     'bg-warning text-dark',
+    'expired':    'bg-secondary',
+    'open-ended': 'bg-info text-dark',
+} -%}
+{%- set _STATUS_LABELS = {
+    'active':     'Active',
+    'inactive':   'Inactive',
+    'locked':     'Locked',
+    'expired':    'Expired',
+    'open-ended': 'Open-ended',
+} -%}
+
+
+{% macro status_badge(state, extra='', small=False, label=None) -%}
+{%- set key = state|lower -%}
+{%- set variant = _STATUS_VARIANTS.get(key, 'bg-secondary') -%}
+{%- set text = label if label is not none else _STATUS_LABELS.get(key, state) -%}
+<span class="badge {{ variant }}{% if extra %} {{ extra }}{% endif %}"
+      {%- if small %} style="font-size:0.7em;"{% endif %}>{{ text }}</span>
+{%- endmacro %}

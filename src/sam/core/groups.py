@@ -4,6 +4,19 @@ from ..base import *
 #-------------------------------------------------------------------------eh-
 
 
+# ---------------------------------------------------------------------------
+# System-wide group conventions
+# ---------------------------------------------------------------------------
+# The "ncar" unix group (gid 1000) is a system-wide LDAP convention every
+# HPC user belongs to. It is NOT materialized as an adhoc_group row, so it
+# will never resolve through AdhocGroup.get_by_unix_gid(). Callers that
+# want to render a name for a unix gid should consult these constants as a
+# fallback.
+
+DEFAULT_COMMON_GROUP = 'ncar'
+DEFAULT_COMMON_GROUP_GID = 1000
+
+
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
 class AdhocGroup(Base, ActiveFlagMixin):
@@ -51,6 +64,17 @@ class AdhocGroup(Base, ActiveFlagMixin):
             >>> group = AdhocGroup.get_by_name(session, 'research_group')
         """
         return session.query(cls).filter(cls.group_name == group_name).first()
+
+    @classmethod
+    def get_by_unix_gid(cls, session, unix_gid: int) -> Optional['AdhocGroup']:
+        """
+        Get a group by its unix gid.
+
+        Note: `users.primary_gid` stores unix gids, so this is the correct
+        lookup for resolving a user's primary group name — despite the
+        column's FK declaration to `adhoc_group.group_id`.
+        """
+        return session.query(cls).filter(cls.unix_gid == unix_gid).first()
 
     def __str__(self):
         return f"{self.group_name}"
@@ -104,6 +128,26 @@ class AdhocSystemAccountEntry(Base):
 
     def __repr__(self):
         return f"<AdhocSystemAccountEntry(id={self.entry_id}, username='{self.username}', branch='{self.access_branch_name}')>"
+
+
+# ---------------------------------------------------------------------------
+# Group-name resolution
+# ---------------------------------------------------------------------------
+
+def resolve_group_name(session, unix_gid):
+    """Return the adhoc group name for a unix gid, or the system default
+    when the gid is the well-known DEFAULT_COMMON_GROUP_GID.
+
+    Returns None for unresolved non-default gids and for None inputs.
+    """
+    if unix_gid is None:
+        return None
+    g = AdhocGroup.get_by_unix_gid(session, unix_gid)
+    if g is not None:
+        return g.group_name
+    if unix_gid == DEFAULT_COMMON_GROUP_GID:
+        return DEFAULT_COMMON_GROUP
+    return None
 
 
 # ============================================================================

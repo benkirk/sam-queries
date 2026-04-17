@@ -33,6 +33,8 @@ from .lookups import (
     find_users_by_name,
     find_project_by_code,
     get_group_by_name,
+    get_user_group_access,
+    get_group_members,
 )
 
 # Expirations
@@ -134,6 +136,13 @@ from .fstree_access import (
 # Rolling window usage (30/90-day trailing charge analysis)
 from .rolling_usage import get_project_rolling_usage
 
+# Shell queries
+from .shells import (
+    active_login_resources,
+    get_allowable_shell_names,
+    get_user_current_shell,
+)
+
 # Admin dashboard queries (heavy eager-load chains)
 from .admin import (
     get_organizations_with_members,
@@ -154,6 +163,8 @@ __all__ = [
     'find_users_by_name',
     'find_project_by_code',
     'get_group_by_name',
+    'get_user_group_access',
+    'get_group_members',
     # Expirations
     'get_projects_by_allocation_end_date',
     'get_projects_expiring_soon',
@@ -219,6 +230,10 @@ __all__ = [
     'get_user_fsdata',
     # Rolling window usage
     'get_project_rolling_usage',
+    # Shells
+    'active_login_resources',
+    'get_allowable_shell_names',
+    'get_user_current_shell',
     # Admin dashboard queries
     'get_organizations_with_members',
     'get_institution_type_tree',

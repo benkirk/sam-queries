@@ -11,6 +11,16 @@ from marshmallow import post_load
 from . import HtmxFormSchema
 
 
+class SetShellForm(HtmxFormSchema):
+    """Set a user's login shell.
+
+    The route enforces that ``shell_name`` is in the allowable set
+    (shells present on every active HPC+DAV resource) — that requires a
+    DB hit and stays in the route per CLAUDE.md §9.
+    """
+    shell_name = f.Str(required=True, validate=v.Length(min=1, max=25))
+
+
 class AddMemberForm(HtmxFormSchema):
     username = f.Str(required=True, validate=v.Length(min=1))
     start_date = f.Date('%Y-%m-%d', load_default=None)
@@ -52,6 +62,11 @@ class RenewAllocationsForm(HtmxFormSchema):
         values=f.Float(validate=v.Range(min=0, min_inclusive=False)),
         load_default=dict,
     )
+    # Admin override: when True, soft-delete any non-deleted allocations
+    # that already overlap the target period before creating the new ones.
+    # Route injects explicit False when the checkbox is unchecked (absent
+    # from request.form).
+    replace_existing = f.Bool(load_default=False)
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):

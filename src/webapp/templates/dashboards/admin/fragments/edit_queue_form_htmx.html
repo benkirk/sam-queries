@@ -25,7 +25,7 @@
         <div class="mb-3">
             <label class="form-label">Start Date</label>
             <div class="form-control-plaintext text-muted">
-                {{ queue.start_date.strftime('%Y-%m-%d') if queue.start_date else '—' }}
+                {{ queue.start_date | fmt_date }}
                 <small>(cannot be changed)</small>
             </div>
         </div>

@@ -22,10 +22,10 @@ import io
 from webapp.extensions import db, cache
 from sam.queries.dashboard import get_project_dashboard_data
 from sam.queries.expirations import get_projects_by_allocation_end_date, get_projects_with_expired_allocations
-from sam.queries.lookups import find_project_by_code
+from sam.queries.lookups import find_project_by_code, get_user_group_access
 from webapp.auth.models import AuthUser
 from sam.core.users import User
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import require_permission, Permission, has_permission
 
 
 bp = Blueprint('admin_dashboard', __name__, url_prefix='/admin')
@@ -165,9 +165,68 @@ def user_card(username):
     if not sam_user:
         return '<div class="alert alert-warning">User not found</div>'
 
+    rows = get_user_group_access(db.session, username=username).get(username, [])
+    user_groups = {}
+    for r in rows:
+        user_groups.setdefault(r['access_branch_name'], []).append({
+            'group_name': r['group_name'],
+            'unix_gid': r['unix_gid'],
+        })
+
+    from sam.core.groups import resolve_group_name
+    primary_group_name = resolve_group_name(db.session, sam_user.primary_gid)
+
+    from sam.queries.shells import get_user_current_shell, get_allowable_shell_names
+    current_shell = get_user_current_shell(db.session, sam_user)
+    allowable_shells = get_allowable_shell_names(db.session)
+    can_edit_shell = has_permission(current_user, Permission.EDIT_USERS)
+
     return render_template(
         'dashboards/admin/fragments/user_card_wrapper.html',
-        sam_user=sam_user
+        sam_user=sam_user,
+        user_groups=user_groups,
+        primary_group_name=primary_group_name,
+        current_shell=current_shell,
+        allowable_shells=allowable_shells,
+        can_edit_shell=can_edit_shell,
+    )
+
+
+@bp.route('/group/<group_name>')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def group_card(group_name):
+    """HTML fragment for a single adhoc-group card (admin group search).
+
+    Assembles members across every access branch the group exists in, plus
+    the list of users whose primary_gid points at this group.
+    """
+    from sam.core.groups import AdhocGroup
+    from sam.queries.lookups import get_group_branches, get_group_members
+
+    group = AdhocGroup.get_by_name(db.session, group_name)
+    if group is None:
+        return '<div class="alert alert-warning">Group not found</div>'
+
+    branches = get_group_branches(db.session, group_name, active_only=False)
+    members_by_branch = {}
+    for branch in branches:
+        data = get_group_members(db.session, group_name, branch, active_only=False)
+        if data is not None:
+            members_by_branch[branch] = data['members']
+
+    primary_gid_users = (
+        db.session.query(User)
+        .filter(User.primary_gid == group.unix_gid)
+        .order_by(User.last_name, User.first_name, User.username)
+        .all()
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/group_card_wrapper.html',
+        group=group,
+        members_by_branch=members_by_branch,
+        primary_gid_users=primary_gid_users,
     )
 
 
@@ -310,6 +369,54 @@ def expirations_fragment():
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
     )
     badge = f'<span id="{view_type}-count" hx-swap-oob="true" class="badge bg-primary">{len(projects_data)}</span>'
+    return html + badge
+
+
+@bp.route('/expirations/deactivate-expired', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def deactivate_expired():
+    """
+    Bulk-deactivate every project currently shown on the Expired (90+ days)
+    tab, respecting the same facility/resource filters. Re-runs the query
+    server-side so the action operates on exactly the set the user saw.
+    """
+    facilities = request.form.getlist('facilities') or ['UNIV', 'WNA']
+    resource = request.form.get('resource') or None
+
+    results = get_projects_with_expired_allocations(
+        db.session,
+        min_days_expired=90,
+        max_days_expired=365,
+        facility_names=facilities,
+        resource_name=resource,
+    )
+    # Query returns (project, allocation, ...) tuples; a project can have
+    # multiple expired allocations — deduplicate by project_id.
+    unique_projects = {p.project_id: p for (p, _a, _r, _d) in results}.values()
+    for project in unique_projects:
+        project.update(active=False)
+    db.session.commit()
+
+    # Re-query so the now-inactive projects fall out (include_inactive_projects
+    # defaults to False), then re-render the Expired fragment + OOB count badge.
+    refreshed = get_projects_with_expired_allocations(
+        db.session,
+        min_days_expired=90,
+        max_days_expired=365,
+        facility_names=facilities,
+        resource_name=resource,
+    )
+    projects_data = _build_expiration_project_data(refreshed)
+    html = render_template(
+        'dashboards/admin/fragments/expirations_cards.html',
+        projects_data=projects_data,
+        view_type='expired',
+        user=current_user,
+        usage_warning_threshold=USAGE_WARNING_THRESHOLD,
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
+    )
+    badge = f'<span id="expired-count" hx-swap-oob="true" class="badge bg-primary">{len(projects_data)}</span>'
     return html + badge
 
 
@@ -465,6 +572,26 @@ def htmx_search_users():
     )
 
     return render_template(template, users=users, q=q)
+
+
+@bp.route('/htmx/search/groups')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_search_groups():
+    """Search adhoc groups by name or GID. Returns the result-list fragment."""
+    from sam.queries.lookups import search_groups_by_pattern
+
+    q = request.args.get('q', '').strip()
+    if len(q) < 2:
+        return ''
+
+    active_only = request.args.get('active_only', 'true') == 'true'
+    groups = search_groups_by_pattern(db.session, q, limit=20, active_only=active_only)
+    return render_template(
+        'dashboards/admin/fragments/group_search_results_htmx.html',
+        groups=groups,
+        q=q,
+    )
 
 
 # Keep old impersonate endpoint as alias for backward compatibility

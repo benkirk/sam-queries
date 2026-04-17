@@ -16,8 +16,8 @@ Group sources (in order of the legacy pipeline):
 
 Constants matching legacy Java Constants.java:
   ACCESS_GRACE_PERIOD = 90  days
-  GLOBAL_LDAP_GROUP  = 'ncar'
-  GLOBAL_LDAP_GROUP_UNIX_GID = 1000
+  DEFAULT_COMMON_GROUP = 'ncar'       (was GLOBAL_LDAP_GROUP)
+  DEFAULT_COMMON_GROUP_GID = 1000     (was GLOBAL_LDAP_GROUP_UNIX_GID)
 """
 
 from typing import Dict, List, Optional, Set, Tuple
@@ -25,15 +25,14 @@ from typing import Dict, List, Optional, Set, Tuple
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from sam.core.groups import DEFAULT_COMMON_GROUP, DEFAULT_COMMON_GROUP_GID
+
 
 # ---------------------------------------------------------------------------
 # Constants (matches legacy Java Constants.java)
 # ---------------------------------------------------------------------------
 
 ACCESS_GRACE_PERIOD = 90         # days after allocation end_date
-GLOBAL_LDAP_GROUP = 'ncar'
-GLOBAL_LDAP_GROUP_UNIX_GID = 1000
-DEFAULT_GID = 1000               # fallback when users.primary_gid is NULL
 DEFAULT_SHELL = '/bin/tcsh'
 DEFAULT_HOME_BASE = '/home'
 
@@ -247,11 +246,11 @@ def group_populator(
         for grp_data in branch_data['groups'].values():
             all_branch_usernames.update(grp_data['usernames'])
 
-        ncar_grp = branch_data['groups'].setdefault(GLOBAL_LDAP_GROUP, {
-            'gid': GLOBAL_LDAP_GROUP_UNIX_GID,
+        ncar_grp = branch_data['groups'].setdefault(DEFAULT_COMMON_GROUP, {
+            'gid': DEFAULT_COMMON_GROUP_GID,
             'usernames': set(),
         })
-        ncar_grp['gid'] = GLOBAL_LDAP_GROUP_UNIX_GID
+        ncar_grp['gid'] = DEFAULT_COMMON_GROUP_GID
         ncar_grp['usernames'].update(all_branch_usernames)
 
     # --- 4. Symmetric username → groups index ---
@@ -304,7 +303,7 @@ def user_populator(
     params = {
         'branch': access_branch,
         'grace_period': grace_period_days,
-        'default_gid': DEFAULT_GID,
+        'default_gid': DEFAULT_COMMON_GROUP_GID,
         'default_shell': DEFAULT_SHELL,
         'default_home_base': DEFAULT_HOME_BASE,
     }

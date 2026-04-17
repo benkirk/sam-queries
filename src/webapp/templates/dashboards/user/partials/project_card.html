@@ -1,3 +1,5 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+
 {# Macro: Project Information Section #}
 {% macro render_project_info(project) %}
 <div class="project-stats-box mb-3">
@@ -123,9 +125,9 @@
                                     <small class="text-muted">{{ first.start_date | fmt_date if first.start_date else '?' }}</small>
                                     <small>
                                         {% if first.bar_state == 'expired' %}
-                                            <span class="badge bg-secondary" style="font-size:.7em;">Expired</span>
+                                            {{ status_badge('expired', small=True) }}
                                         {% elif first.bar_state == 'open-ended' %}
-                                            <span class="badge bg-info text-dark" style="font-size:.7em;">Open-ended</span>
+                                            {{ status_badge('open-ended', small=True) }}
                                         {% elif first.days_until_expiration is not none and first.days_until_expiration >= 0 %}
                                             <span class="text-muted small">{{ first.days_until_expiration }}d left</span>
                                         {% endif %}

@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
 {#
   Admin: Edit Project — Edit Allocation modal form.
   Loaded into #editAllocationFormContainer when an edit button is clicked
@@ -210,11 +211,7 @@
     </div>
     <div class="col-md-6 mt-1">
       <strong>Status:</strong>
-      {% if allocation.is_active %}
-        <span class="badge bg-success">Active</span>
-      {% else %}
-        <span class="badge bg-secondary">Inactive</span>
-      {% endif %}
+      {{ status_badge('active' if allocation.is_active else 'inactive') }}
     </div>
   </div>
 

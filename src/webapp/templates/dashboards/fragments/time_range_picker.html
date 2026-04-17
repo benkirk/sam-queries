@@ -29,7 +29,7 @@
 
             <!-- Current range display -->
             <small class="text-muted ms-auto">
-                {{ start_date.strftime('%Y-%m-%d %H:%M') }} – {{ end_date.strftime('%Y-%m-%d %H:%M') }}
+                {{ start_date | fmt_date(fmt='%Y-%m-%d %H:%M') }} – {{ end_date | fmt_date(fmt='%Y-%m-%d %H:%M') }}
             </small>
         </div>
     </div>

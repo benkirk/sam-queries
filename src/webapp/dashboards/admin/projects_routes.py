@@ -716,19 +716,42 @@ def _parse_active_at_arg(arg: str) -> datetime:
     return datetime.now()
 
 
+def _snap_to_end_of_month(d):
+    """Snap *d* to the nearest natural month-end.
+
+    Admins write allocation end dates as 'end-of-month', not 'May 2nd' or
+    'Jan 1st'. Computed dates from period arithmetic can land a day or
+    two off a month boundary — this normalizes them:
+
+      - day 1  →  last day of the previous month  (May 1 → Apr 30).
+      - any other day → last day of the same month (Apr 15 → Apr 30,
+        Oct 29 → Oct 31, Oct 31 → Oct 31 no-op).
+
+    The day-1 case matters for Renew when an N-year source + an N-year
+    shift lands exactly on the next period's first day (e.g. a Jan 1 →
+    Dec 31 source shifted 2 years gives Jan 1, which should be Dec 31).
+    """
+    import calendar
+    from datetime import timedelta
+    if d.day == 1:
+        return d - timedelta(days=1)
+    last_day = calendar.monthrange(d.year, d.month)[1]
+    return d.replace(day=last_day)
+
+
 def _propose_renew_dates(source_allocs):
     """Return (new_start, new_end) as 'YYYY-MM-DD' strings for the form defaults.
 
     Contiguous renewal: new_start = latest source end_date + 1 day;
-    new_end = new_start + (source_end - source_start). When multiple source
-    allocations are selected, we anchor on the one with the latest end date
-    and preserve its period length exactly — this naturally handles the
-    common fiscal-year case (e.g. Oct 1 → Sep 30 → Oct 1 → Sep 30 next year).
+    new_end = new_start + (source_end - source_start), snapped to the
+    last day of that month. When multiple source allocations are selected,
+    we anchor on the one with the latest end date and preserve its period
+    length — this naturally handles the common fiscal-year case (e.g.
+    Oct 1 → Sep 30 → Oct 1 → Sep 30 next year).
 
     Falls back to ("today", "today + 1 year, last day of month") if the set
     is empty or lacks end dates (open-ended allocations).
     """
-    import calendar
     from datetime import timedelta
 
     dated = [a for a in source_allocs if a.end_date is not None]
@@ -736,14 +759,14 @@ def _propose_renew_dates(source_allocs):
         anchor = max(dated, key=lambda a: a.end_date)
         new_start = anchor.end_date + timedelta(days=1)
         period = anchor.end_date - anchor.start_date
-        new_end = new_start + period
+        new_end = _snap_to_end_of_month(new_start + period)
         return new_start.strftime('%Y-%m-%d'), new_end.strftime('%Y-%m-%d')
 
     now = datetime.now()
-    last_day = calendar.monthrange(now.year + 1, now.month)[1]
+    fallback = _snap_to_end_of_month(now.replace(year=now.year + 1))
     return (
         now.strftime('%Y-%m-%d'),
-        f'{now.year + 1:04d}-{now.month:02d}-{last_day:02d}',
+        fallback.strftime('%Y-%m-%d'),
     )
 
 
@@ -832,7 +855,8 @@ def htmx_renew_allocations_form(projcode):
 def htmx_renew_allocations(projcode):
     """Create renewed allocations for the selected resources."""
     from sam.projects.projects import Project
-    from sam.manage.renew import renew_project_allocations
+    from sam.resources.resources import Resource
+    from sam.manage.renew import renew_project_allocations, analyze_renew_preconditions
     from sam.schemas.forms import RenewAllocationsForm
     from marshmallow import ValidationError
 
@@ -861,6 +885,8 @@ def htmx_renew_allocations(projcode):
     for k in list(data):
         if k.startswith('scale_'):
             del data[k]
+    # Inject explicit False for the replace_existing checkbox when unchecked.
+    data['replace_existing'] = 'replace_existing' in request.form
 
     try:
         form_data = RenewAllocationsForm().load(data)
@@ -900,6 +926,46 @@ def htmx_renew_allocations(projcode):
         form_data['source_active_at'], datetime.min.time()
     )
 
+    replace_existing = form_data.get('replace_existing', False)
+
+    # Pre-flight: classify each requested resource so we can produce accurate
+    # error messages and (when needed) prompt the admin to set replace_existing.
+    preconditions = analyze_renew_preconditions(
+        db.session,
+        root_project_id=root.project_id,
+        source_active_at=source_dt,
+        new_start=new_start,
+        new_end=new_end,
+        resource_ids=form_data['resource_ids'],
+    )
+    resource_name = {
+        r.resource_id: r.resource_name
+        for r in db.session.query(Resource).filter(
+            Resource.resource_id.in_(form_data['resource_ids'])
+        )
+    }
+
+    no_source_ids = [rid for rid, s in preconditions.items() if s == 'no_source']
+    overlap_ids   = [rid for rid, s in preconditions.items() if s == 'overlap']
+
+    # Bail early with a specific error when NOTHING can be renewed.
+    if not any(s == 'ok' for s in preconditions.values()) and not (replace_existing and overlap_ids):
+        msgs = []
+        if overlap_ids:
+            names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in overlap_ids))
+            msgs.append(
+                f'Already has allocations overlapping '
+                f'{new_start.strftime("%Y-%m-%d")} → {new_end.strftime("%Y-%m-%d")}: {names}. '
+                f'Tick "Replace existing" to supersede them.'
+            )
+        if no_source_ids:
+            names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in no_source_ids))
+            msgs.append(
+                f'No active root allocation at '
+                f'{source_dt.strftime("%Y-%m-%d")} for: {names}.'
+            )
+        return _reload_renew_form(msgs)
+
     try:
         with management_transaction(db.session):
             created = renew_project_allocations(
@@ -911,24 +977,32 @@ def htmx_renew_allocations(projcode):
                 resource_ids=form_data['resource_ids'],
                 scales=form_data.get('scales') or {},
                 user_id=current_user.user_id,
+                replace_existing=replace_existing,
             )
     except Exception as e:
         return _reload_renew_form([f'Error renewing allocations: {e}'])
 
     if not created:
+        # Defensive fallback — preconditions said 'ok' for at least one, but
+        # nothing was created. Shouldn't happen but keep a sane message.
         return _reload_renew_form([
-            'No allocations were renewed. Check that the selected resources '
-            'have an active root allocation at the source date.'
+            'No allocations were renewed. Please review the form and try again.'
         ])
 
-    detail = (
+    detail_parts = [
         f'{root.projcode}: renewed {len(created)} allocation(s) for '
         f'{new_start.strftime("%Y-%m-%d")} → {new_end.strftime("%Y-%m-%d")}'
-    )
+    ]
+    if replace_existing and overlap_ids:
+        names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in overlap_ids))
+        detail_parts.append(f'replaced overlapping allocations for: {names}')
+    if no_source_ids:
+        names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in no_source_ids))
+        detail_parts.append(f'skipped (no source at {source_dt.strftime("%Y-%m-%d")}): {names}')
     return htmx_success_message(
         {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
         'Allocations renewed successfully.',
-        detail=detail,
+        detail='; '.join(detail_parts),
     )
 
 
@@ -940,19 +1014,17 @@ def _propose_extend_end(source_allocs):
     """Return ``YYYY-MM-DD`` string: a proposed new end date for Extend.
 
     Anchors on the latest-ending dated source, then adds the source's
-    own period length (end - start). So a 1-year allocation proposes a
-    1-year push; a 6-month allocation proposes 6 months. Open-ended
-    sources are ignored. Falls back to anchor_end + 365 days if no dated
-    source is available.
+    own period length (end - start), snapped to the last day of that
+    month. So a 1-year allocation proposes a 1-year push; a 6-month
+    allocation proposes 6 months. Open-ended sources are ignored.
+    Returns '' if no dated source is available.
     """
-    from datetime import timedelta
-
     dated = [a for a in source_allocs if a.end_date is not None]
     if not dated:
         return ''
     anchor = max(dated, key=lambda a: a.end_date)
     period = anchor.end_date - anchor.start_date
-    return (anchor.end_date + period).strftime('%Y-%m-%d')
+    return _snap_to_end_of_month(anchor.end_date + period).strftime('%Y-%m-%d')
 
 
 def _build_extend_candidates(project, source_active_at):
