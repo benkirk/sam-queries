@@ -12,6 +12,29 @@
     <h2><i class="fas fa-chart-pie"></i> Allocations Dashboard</h2>
 </div>
 
+<!-- Top-level tab navigation -->
+<ul class="nav nav-tabs mb-3" id="allocationsDashboardTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="alloc-projects-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-alloc-projects"
+                type="button" role="tab" aria-controls="tab-alloc-projects" aria-selected="true">
+            <i class="fas fa-folder-open me-1"></i> Projects
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="alloc-transactions-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-alloc-transactions"
+                type="button" role="tab" aria-controls="tab-alloc-transactions" aria-selected="false">
+            <i class="fas fa-exchange-alt me-1"></i> Transactions
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="allocationsDashboardTabsContent">
+
+<!-- Tab 1: Projects -->
+<div class="tab-pane fade show active" id="tab-alloc-projects" role="tabpanel" aria-labelledby="alloc-projects-tab">
+
 <!-- Facility Pie: single container above tabs, swaps when active tab changes -->
 {% if grouped_data %}
 {% if show_usage %}
@@ -344,6 +367,18 @@
     <i class="fas fa-info-circle"></i> No active allocations found for the selected date.
 </div>
 {% endif %}
+
+</div><!-- /#tab-alloc-projects -->
+
+<!-- Tab 2: Transactions (placeholder — content coming soon) -->
+<div class="tab-pane fade" id="tab-alloc-transactions" role="tabpanel" aria-labelledby="alloc-transactions-tab">
+    <div class="alert alert-info mt-3">
+        <i class="fas fa-info-circle"></i>
+        Transactions view coming soon.
+    </div>
+</div>
+
+</div><!-- /#allocationsDashboardTabsContent -->
 
 <!-- Usage Modal -->
 <div class="modal fade" id="usageModal" tabindex="-1" role="dialog">

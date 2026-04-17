@@ -8,7 +8,7 @@ COMPOSE_FILE := ../../compose.yaml
 all: clone
 
 clone:
-	@python3 bootstrap_clone.py
+	@python bootstrap_clone.py
 	@docker compose -f $(COMPOSE_FILE) exec -T mysql  sh -c 'mysql -uroot -proot -e "USE sam; TRUNCATE TABLE api_credentials;"'
 
 clean:

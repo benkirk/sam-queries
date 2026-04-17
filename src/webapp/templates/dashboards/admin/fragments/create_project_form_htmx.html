@@ -16,6 +16,18 @@
     'Create Project',
     submit_icon='folder-plus'
 ) %}
+        <div class="row">
+            <div class="col-md-6">
+                {{ fk_search_field('parent_id', 'Parent Project',
+                                   search_url=url_for('admin_dashboard.htmx_project_search_for_parent'),
+                                   optional_text='(optional — makes this a sub-project)',
+                                   placeholder='Search by project code or title…',
+                                   badge_class='bg-secondary text-light py-1 px-2 font-monospace',
+                                   search_class='form-control form-control-sm',
+                                   id_prefix='createProjectParent') }}
+            </div>
+        </div>
+
         {# Cascading facility/panel/alloc-type selects kept inline — dynamic dependent
            options with conditional descriptions don't fit the generic select macro. #}
         <div class="row g-2 mb-3">
@@ -219,22 +231,9 @@
                                    search_class='form-control form-control-sm',
                                    id_prefix='createProjectOrg') }}
             </div>
-            <div class="col-md-6">
-                {{ fk_search_field('parent_id', 'Parent Project',
-                                   search_url=url_for('admin_dashboard.htmx_project_search_for_parent'),
-                                   optional_text='(optional — makes this a sub-project)',
-                                   placeholder='Search by project code or title…',
-                                   badge_class='bg-secondary text-light py-1 px-2 font-monospace',
-                                   search_class='form-control form-control-sm',
-                                   id_prefix='createProjectParent') }}
-            </div>
         </div>
 
         <div class="row">
-            <div class="col-md-4">
-                {{ checkbox_field('charging_exempt', 'Charging Exempt',
-                                  id='createProjectChargingExempt') }}
-            </div>
             <div class="col-md-4">
                 {{ number_field('unix_gid', 'Unix GID',
                                 min=1,
@@ -244,6 +243,10 @@
                 {{ text_field('ext_alias', 'External Alias',
                               maxlength=64,
                               id='createProjectExtAlias') }}
+            </div>
+            <div class="col-md-4">
+                {{ checkbox_field('charging_exempt', 'Charging Exempt',
+                                  id='createProjectChargingExempt') }}
             </div>
         </div>
 {% endcall %}

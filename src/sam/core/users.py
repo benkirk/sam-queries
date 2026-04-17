@@ -6,7 +6,7 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class User(Base, TimestampMixin):
+class User(Base, TimestampMixin, SessionMixin):
     """Represents a user in the system."""
     __tablename__ = 'users'
 
@@ -512,6 +512,60 @@ class User(Base, TimestampMixin):
     def is_active(cls):
         """Check if user is currently active (SQL side). Equivalent to is_accessible."""
         return and_(cls.active == True, cls.locked == False)
+
+    def set_login_shell(self, shell_name: str) -> 'User':
+        """Apply ``shell_name`` to every active HPC/DAV resource.
+
+        Upserts a ``UserResourceShell`` row per active login resource,
+        pointing at that resource's ``ResourceShell`` with matching
+        ``shell_name``. Raises ``ValueError`` if any active login
+        resource does not offer ``shell_name``.
+
+        Returns self.
+        """
+        from sam.queries.shells import active_login_resources
+
+        session = self.session
+        login_resources = active_login_resources(session)
+        if not login_resources:
+            return self
+
+        # Resolve the target ResourceShell row for each login resource that
+        # offers this shell. Resources without a catalog entry are skipped —
+        # they don't participate in the per-(user, resource) shell schema, so
+        # there is nothing to write for them. Fail only if no login resource
+        # at all offers this shell.
+        target_by_resource = {}
+        for r in login_resources:
+            match = next((s for s in r.shells if s.shell_name == shell_name), None)
+            if match is not None:
+                target_by_resource[r.resource_id] = match
+        if not target_by_resource:
+            raise ValueError(
+                f"Shell {shell_name!r} is not offered by any active HPC/DAV resource."
+            )
+
+        # Upsert per resource. Reuse existing rows (update resource_shell_id in
+        # place) so creation_time is preserved.
+        existing_by_resource = {}
+        for urs in list(self.resource_shells):
+            if urs.resource_shell is None:
+                continue
+            rid = urs.resource_shell.resource_id
+            if rid in target_by_resource:
+                existing_by_resource[rid] = urs
+
+        for rid, target_shell in target_by_resource.items():
+            existing = existing_by_resource.get(rid)
+            if existing is None:
+                self.resource_shells.append(UserResourceShell(
+                    resource_shell_id=target_shell.resource_shell_id,
+                ))
+            elif existing.resource_shell_id != target_shell.resource_shell_id:
+                existing.resource_shell = target_shell
+
+        session.flush()
+        return self
 
     def __str__(self):
         return f"{self.username} ({self.display_name})"

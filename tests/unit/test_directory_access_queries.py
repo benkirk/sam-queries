@@ -6,9 +6,8 @@ at line 70 is a `set.update()` (not ORM), so this entire file is pure-read.
 """
 import pytest
 
+from sam.core.groups import DEFAULT_COMMON_GROUP, DEFAULT_COMMON_GROUP_GID
 from sam.queries.directory_access import (
-    GLOBAL_LDAP_GROUP,
-    GLOBAL_LDAP_GROUP_UNIX_GID,
     build_directory_access_response,
     group_populator,
     user_populator,
@@ -52,16 +51,16 @@ class TestGroupPopulator:
     def test_ncar_global_group_in_every_branch(self, session):
         result = group_populator(session)
         for branch_name, branch_data in result.items():
-            assert GLOBAL_LDAP_GROUP in branch_data['groups'], (
-                f"{GLOBAL_LDAP_GROUP!r} missing from branch {branch_name!r}"
+            assert DEFAULT_COMMON_GROUP in branch_data['groups'], (
+                f"{DEFAULT_COMMON_GROUP!r} missing from branch {branch_name!r}"
             )
 
     def test_ncar_global_group_gid(self, session):
         result = group_populator(session)
         for _branch, branch_data in result.items():
-            ncar = branch_data['groups'].get(GLOBAL_LDAP_GROUP)
+            ncar = branch_data['groups'].get(DEFAULT_COMMON_GROUP)
             if ncar:
-                assert ncar['gid'] == GLOBAL_LDAP_GROUP_UNIX_GID
+                assert ncar['gid'] == DEFAULT_COMMON_GROUP_GID
 
     def test_ncar_group_contains_all_branch_usernames(self, session):
         """The ncar group should contain every username in the branch."""
@@ -69,9 +68,9 @@ class TestGroupPopulator:
         for branch_name, branch_data in result.items():
             all_branch_usernames = set()
             for group_name, grp in branch_data['groups'].items():
-                if group_name != GLOBAL_LDAP_GROUP:
+                if group_name != DEFAULT_COMMON_GROUP:
                     all_branch_usernames.update(grp['usernames'])
-            ncar_members = branch_data['groups'].get(GLOBAL_LDAP_GROUP, {}).get('usernames', set())
+            ncar_members = branch_data['groups'].get(DEFAULT_COMMON_GROUP, {}).get('usernames', set())
             missing = all_branch_usernames - ncar_members
             assert not missing, (
                 f"Branch {branch_name}: {len(missing)} usernames missing from ncar: "
@@ -109,13 +108,13 @@ class TestGroupPopulator:
         """Every user in the branch must appear in ncar via user_groups."""
         result = group_populator(session)
         for branch_name, branch_data in result.items():
-            ncar_members = branch_data['groups'].get(GLOBAL_LDAP_GROUP, {}).get('usernames', set())
+            ncar_members = branch_data['groups'].get(DEFAULT_COMMON_GROUP, {}).get('usernames', set())
             for username in ncar_members:
                 user_group_names = {
                     entry['group_name']
                     for entry in branch_data['user_groups'].get(username, [])
                 }
-                assert GLOBAL_LDAP_GROUP in user_group_names, (
+                assert DEFAULT_COMMON_GROUP in user_group_names, (
                     f"Branch {branch_name}: {username!r} not in user_groups ncar entry"
                 )
 

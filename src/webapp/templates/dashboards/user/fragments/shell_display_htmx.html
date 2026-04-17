@@ -1,0 +1,25 @@
+{# Read-only shell row (inner payload of #shell-row-<username>).
+
+   Inputs:
+     sam_user       — the User being displayed
+     current_shell  — Optional[str] shell_name resolved by get_user_current_shell
+     can_edit_shell — bool; when False the Edit button is omitted
+#}
+<span class="stat-label">Login shell:</span>
+<span class="stat-value">
+    {% if current_shell %}
+    <code>{{ current_shell }}</code>
+    {% else %}
+    <span class="text-muted">N/A</span>
+    {% endif %}
+    {% if can_edit_shell %}
+    <button type="button"
+            class="btn btn-xs btn-outline-secondary ms-2 py-0"
+            title="Change login shell"
+            hx-get="{{ url_for('user_dashboard.htmx_shell_form', username=sam_user.username) }}"
+            hx-target="#shell-row-{{ sam_user.username }}"
+            hx-swap="innerHTML">
+        <i class="fas fa-edit"></i>
+    </button>
+    {% endif %}
+</span>

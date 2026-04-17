@@ -175,6 +175,7 @@ from .user import (
     AddAllocationForm,
     RenewAllocationsForm,
     ExtendAllocationsForm,
+    SetShellForm,
 )
 
 __all__ = [
@@ -224,4 +225,5 @@ __all__ = [
     'AddAllocationForm',
     'RenewAllocationsForm',
     'ExtendAllocationsForm',
+    'SetShellForm',
 ]

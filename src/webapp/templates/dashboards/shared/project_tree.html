@@ -34,6 +34,8 @@
   usage_critical_threshold Progress bar turns red above this %   (default 90).
 #}
 
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+
 {% macro render_project_tree(nodes,
                               current_projcode='',
                               alloc_by_projcode=none,
@@ -72,7 +74,7 @@
       <strong>{{ node.projcode }}</strong>
       {%- endif -%}
       {%- if node.title %} — {{ node.title }}{% endif -%}
-      {%- if not is_active %}<span class="badge bg-secondary ms-1 small">Inactive</span>{% endif -%}
+      {%- if not is_active %}{{ status_badge('inactive', extra='ms-1 small') }}{% endif -%}
     </span>
 
     {# ── Right: allocation data (fixed-width column) ──────────────── #}
@@ -209,7 +211,7 @@
     <strong>{{ node.projcode }}</strong>
     {%- endif -%}
     {%- if node.title %}<span class="text-muted fw-normal ms-1">— {{ node.title }}</span>{% endif -%}
-    {%- if not is_active %}<span class="badge bg-secondary ms-1 small">Inactive</span>{% endif -%}
+    {%- if not is_active %}{{ status_badge('inactive', extra='ms-1 small') }}{% endif -%}
   </td>
 
   {# ── Col 2: progress bar — anchored by table column, always aligned ── #}

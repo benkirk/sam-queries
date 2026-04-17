@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
 {# htmx: User search results — clicking a user loads their card; impersonate icon is permission-gated #}
 {% if users %}
 {% for user in users %}
@@ -12,9 +13,9 @@
             <strong>{{ user.display_name }}</strong>
             <small class="ms-1 {% if not user.active %}text-muted{% endif %}">({{ user.username }})</small>
             {% if not user.active %}
-            <span class="badge bg-secondary ms-1">Inactive</span>
+            {{ status_badge('inactive', extra='ms-1') }}
             {% elif user.locked %}
-            <span class="badge bg-warning ms-1">Locked</span>
+            {{ status_badge('locked', extra='ms-1') }}
             {% endif %}
         </div>
         {% if user.primary_email %}

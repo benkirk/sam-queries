@@ -191,6 +191,19 @@ def create_app(*, config_overrides: dict | None = None):
     # Register context processor for RBAC in templates
     app.context_processor(rbac_context_processor)
 
+    # Expose optional build provenance (set by CI via Docker build args) to all templates
+    @app.context_processor
+    def build_info_context_processor():
+        sha = os.getenv('GIT_SHA', '').strip()
+        if sha:
+            sha = sha[:7]
+        return {
+            'build_info': {
+                'sha': sha or None,
+                'date': os.getenv('BUILD_DATE', '').strip() or None,
+            }
+        }
+
     # Register teardown handler for automatic session cleanup
     @app.teardown_appcontext
     def shutdown_session(exception=None):

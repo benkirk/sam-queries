@@ -126,7 +126,25 @@
     <footer class="footer">
         <div class="{% block footer_container_class %}container-fluid sam-fluid-1800{% endblock %}">
             <div class="text-center text-muted">
-                <small>SAM - Systems Accounting Manager &copy; 2024</small>
+                <small>
+                    This material is based upon work supported by the NSF National
+                    Center for Atmospheric Research, a major facility sponsored by
+                    the U.S. National Science Foundation and managed by the
+                    University Corporation for Atmospheric Research.
+                </small>
+                {% if build_info.sha or build_info.date %}
+                <div class="mt-1">
+                    <small class="text-muted" style="font-size: 0.75rem;">
+                        Build
+                        {% if build_info.sha %}
+                            <code>{{ build_info.sha }}</code>
+                        {% endif %}
+                        {% if build_info.date %}
+                            &middot; {{ build_info.date }}
+                        {% endif %}
+                    </small>
+                </div>
+                {% endif %}
             </div>
         </div>
     </footer>
@@ -150,6 +168,7 @@
     <script src="{{ url_for('static', filename='js/number-preview.js') }}"></script>
     <script src="{{ url_for('static', filename='js/fk-picker.js') }}"></script>
     <script src="{{ url_for('static', filename='js/htmx-config.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/collapse-chevron.js') }}"></script>
 
     {% block extra_js %}{% endblock %}
 </body>
