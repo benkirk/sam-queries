@@ -1,6 +1,19 @@
 {% from 'dashboards/user/partials/project_card.html' import render_project_card with context %}
 
 {% if projects_data %}
+    {% if view_type == 'expired' and has_permission(Permission.EDIT_PROJECTS) %}
+    <div class="mb-3 text-end">
+        <button type="button" class="btn btn-sm btn-outline-danger"
+                hx-post="{{ url_for('admin_dashboard.deactivate_expired') }}"
+                hx-include="#expirations-filters-form"
+                hx-target="#expired-container"
+                hx-swap="innerHTML"
+                hx-confirm="Are you sure you want to deactivate {{ projects_data|length }} expired project{{ 's' if projects_data|length != 1 else '' }}?">
+            <i class="fas fa-ban"></i> Deactivate Expired
+        </button>
+    </div>
+    {% endif %}
+
     <div class="row">
         {% for project_data in projects_data %}
             <div class="col-12">

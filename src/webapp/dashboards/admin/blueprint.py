@@ -372,6 +372,54 @@ def expirations_fragment():
     return html + badge
 
 
+@bp.route('/expirations/deactivate-expired', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def deactivate_expired():
+    """
+    Bulk-deactivate every project currently shown on the Expired (90+ days)
+    tab, respecting the same facility/resource filters. Re-runs the query
+    server-side so the action operates on exactly the set the user saw.
+    """
+    facilities = request.form.getlist('facilities') or ['UNIV', 'WNA']
+    resource = request.form.get('resource') or None
+
+    results = get_projects_with_expired_allocations(
+        db.session,
+        min_days_expired=90,
+        max_days_expired=365,
+        facility_names=facilities,
+        resource_name=resource,
+    )
+    # Query returns (project, allocation, ...) tuples; a project can have
+    # multiple expired allocations — deduplicate by project_id.
+    unique_projects = {p.project_id: p for (p, _a, _r, _d) in results}.values()
+    for project in unique_projects:
+        project.update(active=False)
+    db.session.commit()
+
+    # Re-query so the now-inactive projects fall out (include_inactive_projects
+    # defaults to False), then re-render the Expired fragment + OOB count badge.
+    refreshed = get_projects_with_expired_allocations(
+        db.session,
+        min_days_expired=90,
+        max_days_expired=365,
+        facility_names=facilities,
+        resource_name=resource,
+    )
+    projects_data = _build_expiration_project_data(refreshed)
+    html = render_template(
+        'dashboards/admin/fragments/expirations_cards.html',
+        projects_data=projects_data,
+        view_type='expired',
+        user=current_user,
+        usage_warning_threshold=USAGE_WARNING_THRESHOLD,
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
+    )
+    badge = f'<span id="expired-count" hx-swap-oob="true" class="badge bg-primary">{len(projects_data)}</span>'
+    return html + badge
+
+
 @bp.route('/expirations/export')
 @login_required
 @require_permission(Permission.VIEW_PROJECTS)
