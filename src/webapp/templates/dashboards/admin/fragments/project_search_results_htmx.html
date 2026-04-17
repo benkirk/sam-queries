@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
 {# htmx: Project search results — clicking loads the project card directly #}
 {% if projects %}
 {% for project in projects %}
@@ -9,7 +10,7 @@
     <div>
         <strong>{{ project.projcode }}</strong>
         {% if not project.active %}
-        <span class="badge bg-secondary ms-2">Inactive</span>
+        {{ status_badge('inactive', extra='ms-2') }}
         {% endif %}
     </div>
     <small class="text-muted">{{ project.title or 'No title' }}</small>

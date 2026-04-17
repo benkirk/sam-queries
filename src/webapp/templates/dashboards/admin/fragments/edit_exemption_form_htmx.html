@@ -25,7 +25,7 @@
         <div class="mb-3">
             <label class="form-label">Start Date</label>
             <div class="form-control-plaintext text-muted">
-                {{ exemption.start_date.strftime('%Y-%m-%d') }}
+                {{ exemption.start_date | fmt_date }}
                 <small>(cannot be changed)</small>
             </div>
         </div>

@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
 <!-- Usage Details Modal Content -->
 {% if allocation %}
 <div class="usage-details">
@@ -27,7 +28,7 @@
                     {% if allocation.end_date %}
                         {{ allocation.end_date | fmt_date }}
                     {% elif allocation.is_open_ended %}
-                        <span class="badge bg-info text-dark">Open-ended</span>
+                        {{ status_badge('open-ended') }}
                     {% else %}
                         N/A
                     {% endif %}

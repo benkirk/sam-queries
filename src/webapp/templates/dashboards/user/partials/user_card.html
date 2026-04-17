@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
 {% macro render_user_card(sam_user, is_admin=False, user_groups=None, primary_group_name=None,
                           current_shell=None, allowable_shells=None, can_edit_shell=False) %}
 {# user_groups: optional dict[branch_name] -> list of {'group_name', 'unix_gid'}
@@ -12,9 +13,9 @@
             {{ sam_user.display_name }}
             <span class="badge bg-secondary ms-2">{{ sam_user.username }}</span>
             {% if not sam_user.active %}
-            <span class="badge bg-secondary ms-1">Inactive</span>
+            {{ status_badge('inactive', extra='ms-1') }}
             {% elif sam_user.locked %}
-            <span class="badge bg-warning ms-1">Locked</span>
+            {{ status_badge('locked', extra='ms-1') }}
             {% endif %}
         </h5>
     </div>
@@ -250,11 +251,11 @@
                     <tr class="{% if not ex.is_currently_active %}text-muted{% endif %}">
                         <td>{{ ex.queue.resource.resource_name }}</td>
                         <td>{{ ex.queue.queue_name }}</td>
-                        <td>{{ ex.start_date.strftime('%Y-%m-%d') }}</td>
+                        <td>{{ ex.start_date | fmt_date }}</td>
                         <td>
-                            {{ ex.end_date.strftime('%Y-%m-%d') }}
+                            {{ ex.end_date | fmt_date }}
                             {% if not ex.is_currently_active %}
-                            <span class="badge bg-secondary ms-1" style="font-size:0.7em;">Expired</span>
+                            {{ status_badge('expired', extra='ms-1', small=True) }}
                             {% endif %}
                         </td>
                         <td>{{ ex.time_limit_hours }}</td>

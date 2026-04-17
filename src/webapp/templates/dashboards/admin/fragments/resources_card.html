@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button %}
 {#
   Admin: Resources Card Body (lazy-loaded into the Resources collapsible section)
   Contains three tabs: Resources (types+resources combined), Machines, Queues.
@@ -66,26 +67,18 @@
                             <td></td>
                             <td class="text-end">
                                 {% if is_admin %}
-                                <button class="btn btn-sm btn-outline-secondary"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#editResourceTypeModal"
-                                        hx-get="{{ url_for('admin_dashboard.htmx_resource_type_edit_form', resource_type_id=rt.resource_type_id) }}"
-                                        hx-target="#editResourceTypeFormContainer"
-                                        hx-trigger="click"
-                                        title="Edit resource type"
-                                        onclick="event.stopPropagation()">
-                                    <i class="fas fa-edit"></i>
-                                </button>
+                                {{ edit_modal_button(
+                                    url_for('admin_dashboard.htmx_resource_type_edit_form', resource_type_id=rt.resource_type_id),
+                                    modal_id='editResourceTypeModal',
+                                    target_id='editResourceTypeFormContainer',
+                                    title='Edit resource type',
+                                    stop_propagation=True) }}
                                 {% if has_permission(Permission.DELETE_RESOURCES) %}
-                                <button class="btn btn-sm btn-outline-danger ms-1"
-                                        title="Deactivate resource type"
-                                        hx-delete="{{ url_for('admin_dashboard.htmx_resource_type_delete', resource_type_id=rt.resource_type_id) }}"
-                                        hx-target="closest tr"
-                                        hx-swap="outerHTML"
-                                        hx-confirm="Deactivate resource type '{{ rt.resource_type }}'?"
-                                        onclick="event.stopPropagation()">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
+                                {{ delete_row_button(
+                                    url_for('admin_dashboard.htmx_resource_type_delete', resource_type_id=rt.resource_type_id),
+                                    confirm="Deactivate resource type '" ~ rt.resource_type ~ "'?",
+                                    title='Deactivate resource type',
+                                    stop_propagation=True) }}
                                 {% endif %}
                                 {% endif %}
                             </td>
@@ -99,28 +92,20 @@
                             <td></td>
                             <td class="text-muted small">{{ r.description or '—' }}</td>
                             <td class="text-muted small text-nowrap">
-                                {{ r.commission_date.strftime('%Y-%m-%d') if r.commission_date else '—' }}
+                                {{ r.commission_date | fmt_date }}
                             </td>
                             <td class="text-end text-nowrap">
                                 {% if is_admin %}
-                                <button class="btn btn-sm btn-outline-secondary"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#editResourceModal"
-                                        hx-get="{{ url_for('admin_dashboard.htmx_resource_edit_form', resource_id=r.resource_id) }}"
-                                        hx-target="#editResourceFormContainer"
-                                        hx-trigger="click"
-                                        title="Edit resource">
-                                    <i class="fas fa-edit"></i>
-                                </button>
+                                {{ edit_modal_button(
+                                    url_for('admin_dashboard.htmx_resource_edit_form', resource_id=r.resource_id),
+                                    modal_id='editResourceModal',
+                                    target_id='editResourceFormContainer',
+                                    title='Edit resource') }}
                                 {% if has_permission(Permission.DELETE_RESOURCES) %}
-                                <button class="btn btn-sm btn-outline-danger ms-1"
-                                        title="Decommission resource"
-                                        hx-delete="{{ url_for('admin_dashboard.htmx_resource_delete', resource_id=r.resource_id) }}"
-                                        hx-target="closest tr"
-                                        hx-swap="outerHTML"
-                                        hx-confirm="Decommission resource '{{ r.resource_name }}'? This sets the decommission date to today.">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
+                                {{ delete_row_button(
+                                    url_for('admin_dashboard.htmx_resource_delete', resource_id=r.resource_id),
+                                    confirm="Decommission resource '" ~ r.resource_name ~ "'? This sets the decommission date to today.",
+                                    title='Decommission resource') }}
                                 {% endif %}
                                 {% endif %}
                             </td>
@@ -198,31 +183,23 @@
                             <td data-sort-value="{{ m.cpus_per_node or 0 }}">{{ m.cpus_per_node or '—' }}</td>
                             <td class="text-muted" data-sort-value="{{ m.description or '' }}">{{ m.description or '—' }}</td>
                             <td class="text-nowrap" data-sort-value="{{ m.commission_date.strftime('%Y-%m-%d') if m.commission_date else '' }}">
-                                {{ m.commission_date.strftime('%Y-%m-%d') if m.commission_date else '—' }}
+                                {{ m.commission_date | fmt_date }}
                             </td>
                             <td class="text-nowrap" data-sort-value="{{ m.decommission_date.strftime('%Y-%m-%d') if m.decommission_date else 'Z' }}">
-                                {{ m.decommission_date.strftime('%Y-%m-%d') if m.decommission_date else '—' }}
+                                {{ m.decommission_date | fmt_date }}
                             </td>
                             <td class="text-end text-nowrap">
                                 {% if is_admin %}
-                                <button class="btn btn-sm btn-outline-secondary"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#editMachineModal"
-                                        hx-get="{{ url_for('admin_dashboard.htmx_machine_edit_form', machine_id=m.machine_id) }}"
-                                        hx-target="#editMachineFormContainer"
-                                        hx-trigger="click"
-                                        title="Edit machine">
-                                    <i class="fas fa-edit"></i>
-                                </button>
+                                {{ edit_modal_button(
+                                    url_for('admin_dashboard.htmx_machine_edit_form', machine_id=m.machine_id),
+                                    modal_id='editMachineModal',
+                                    target_id='editMachineFormContainer',
+                                    title='Edit machine') }}
                                 {% if has_permission(Permission.DELETE_RESOURCES) %}
-                                <button class="btn btn-sm btn-outline-danger ms-1"
-                                        title="Decommission machine"
-                                        hx-delete="{{ url_for('admin_dashboard.htmx_machine_delete', machine_id=m.machine_id) }}"
-                                        hx-target="closest tr"
-                                        hx-swap="outerHTML"
-                                        hx-confirm="Decommission machine '{{ m.name }}'? This sets the decommission date to today.">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
+                                {{ delete_row_button(
+                                    url_for('admin_dashboard.htmx_machine_delete', machine_id=m.machine_id),
+                                    confirm="Decommission machine '" ~ m.name ~ "'? This sets the decommission date to today.",
+                                    title='Decommission machine') }}
                                 {% endif %}
                                 {% endif %}
                             </td>
@@ -298,31 +275,23 @@
                             <td></td>
                             <td class="text-muted small">{{ q.wall_clock_hours_limit or '—' }}</td>
                             <td class="text-muted small text-nowrap">
-                                {{ q.start_date.strftime('%Y-%m-%d') if q.start_date else '—' }}
+                                {{ q.start_date | fmt_date }}
                             </td>
                             <td class="text-muted small text-nowrap">
-                                {{ q.end_date.strftime('%Y-%m-%d') if q.end_date else '—' }}
+                                {{ q.end_date | fmt_date }}
                             </td>
                             <td class="text-end">
                                 {% if is_admin %}
-                                <button class="btn btn-sm btn-outline-secondary"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#editQueueModal"
-                                        hx-get="{{ url_for('admin_dashboard.htmx_queue_edit_form', queue_id=q.queue_id) }}"
-                                        hx-target="#editQueueFormContainer"
-                                        hx-trigger="click"
-                                        title="Edit queue">
-                                    <i class="fas fa-edit"></i>
-                                </button>
+                                {{ edit_modal_button(
+                                    url_for('admin_dashboard.htmx_queue_edit_form', queue_id=q.queue_id),
+                                    modal_id='editQueueModal',
+                                    target_id='editQueueFormContainer',
+                                    title='Edit queue') }}
                                 {% if has_permission(Permission.DELETE_RESOURCES) %}
-                                <button class="btn btn-sm btn-outline-danger ms-1"
-                                        title="Expire queue"
-                                        hx-delete="{{ url_for('admin_dashboard.htmx_queue_delete', queue_id=q.queue_id) }}"
-                                        hx-target="closest tr"
-                                        hx-swap="outerHTML"
-                                        hx-confirm="Expire queue '{{ q.queue_name }}'? This sets the end date to today.">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
+                                {{ delete_row_button(
+                                    url_for('admin_dashboard.htmx_queue_delete', queue_id=q.queue_id),
+                                    confirm="Expire queue '" ~ q.queue_name ~ "'? This sets the end date to today.",
+                                    title='Expire queue') }}
                                 {% endif %}
                                 {% endif %}
                             </td>
@@ -379,18 +348,7 @@
 
     document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
 
-    /* Chevron rotation for collapse rows */
-    function attachChevronRotation(paneId, iconClass) {
-        document.querySelectorAll('#' + paneId + ' [data-bs-toggle="collapse"]').forEach(function(trigger) {
-            var target = document.querySelector(trigger.dataset.bsTarget);
-            if (!target) return;
-            var icon = trigger.querySelector('.' + iconClass);
-            if (!icon) return;
-            target.addEventListener('show.bs.collapse', function() { icon.style.transform = 'rotate(90deg)'; });
-            target.addEventListener('hide.bs.collapse', function() { icon.style.transform = ''; });
-        });
-    }
-    attachChevronRotation('resources-pane', 'res-type-collapse-icon');
-    attachChevronRotation('queues-pane', 'queue-res-collapse-icon');
+    SamCollapseChevron.attach('#resources-pane', '.res-type-collapse-icon');
+    SamCollapseChevron.attach('#queues-pane',    '.queue-res-collapse-icon');
 })();
 </script>
