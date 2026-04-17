@@ -716,19 +716,42 @@ def _parse_active_at_arg(arg: str) -> datetime:
     return datetime.now()
 
 
+def _snap_to_end_of_month(d):
+    """Snap *d* to the nearest natural month-end.
+
+    Admins write allocation end dates as 'end-of-month', not 'May 2nd' or
+    'Jan 1st'. Computed dates from period arithmetic can land a day or
+    two off a month boundary — this normalizes them:
+
+      - day 1  →  last day of the previous month  (May 1 → Apr 30).
+      - any other day → last day of the same month (Apr 15 → Apr 30,
+        Oct 29 → Oct 31, Oct 31 → Oct 31 no-op).
+
+    The day-1 case matters for Renew when an N-year source + an N-year
+    shift lands exactly on the next period's first day (e.g. a Jan 1 →
+    Dec 31 source shifted 2 years gives Jan 1, which should be Dec 31).
+    """
+    import calendar
+    from datetime import timedelta
+    if d.day == 1:
+        return d - timedelta(days=1)
+    last_day = calendar.monthrange(d.year, d.month)[1]
+    return d.replace(day=last_day)
+
+
 def _propose_renew_dates(source_allocs):
     """Return (new_start, new_end) as 'YYYY-MM-DD' strings for the form defaults.
 
     Contiguous renewal: new_start = latest source end_date + 1 day;
-    new_end = new_start + (source_end - source_start). When multiple source
-    allocations are selected, we anchor on the one with the latest end date
-    and preserve its period length exactly — this naturally handles the
-    common fiscal-year case (e.g. Oct 1 → Sep 30 → Oct 1 → Sep 30 next year).
+    new_end = new_start + (source_end - source_start), snapped to the
+    last day of that month. When multiple source allocations are selected,
+    we anchor on the one with the latest end date and preserve its period
+    length — this naturally handles the common fiscal-year case (e.g.
+    Oct 1 → Sep 30 → Oct 1 → Sep 30 next year).
 
     Falls back to ("today", "today + 1 year, last day of month") if the set
     is empty or lacks end dates (open-ended allocations).
     """
-    import calendar
     from datetime import timedelta
 
     dated = [a for a in source_allocs if a.end_date is not None]
@@ -736,14 +759,14 @@ def _propose_renew_dates(source_allocs):
         anchor = max(dated, key=lambda a: a.end_date)
         new_start = anchor.end_date + timedelta(days=1)
         period = anchor.end_date - anchor.start_date
-        new_end = new_start + period
+        new_end = _snap_to_end_of_month(new_start + period)
         return new_start.strftime('%Y-%m-%d'), new_end.strftime('%Y-%m-%d')
 
     now = datetime.now()
-    last_day = calendar.monthrange(now.year + 1, now.month)[1]
+    fallback = _snap_to_end_of_month(now.replace(year=now.year + 1))
     return (
         now.strftime('%Y-%m-%d'),
-        f'{now.year + 1:04d}-{now.month:02d}-{last_day:02d}',
+        fallback.strftime('%Y-%m-%d'),
     )
 
 
@@ -991,19 +1014,17 @@ def _propose_extend_end(source_allocs):
     """Return ``YYYY-MM-DD`` string: a proposed new end date for Extend.
 
     Anchors on the latest-ending dated source, then adds the source's
-    own period length (end - start). So a 1-year allocation proposes a
-    1-year push; a 6-month allocation proposes 6 months. Open-ended
-    sources are ignored. Falls back to anchor_end + 365 days if no dated
-    source is available.
+    own period length (end - start), snapped to the last day of that
+    month. So a 1-year allocation proposes a 1-year push; a 6-month
+    allocation proposes 6 months. Open-ended sources are ignored.
+    Returns '' if no dated source is available.
     """
-    from datetime import timedelta
-
     dated = [a for a in source_allocs if a.end_date is not None]
     if not dated:
         return ''
     anchor = max(dated, key=lambda a: a.end_date)
     period = anchor.end_date - anchor.start_date
-    return (anchor.end_date + period).strftime('%Y-%m-%d')
+    return _snap_to_end_of_month(anchor.end_date + period).strftime('%Y-%m-%d')
 
 
 def _build_extend_candidates(project, source_active_at):
