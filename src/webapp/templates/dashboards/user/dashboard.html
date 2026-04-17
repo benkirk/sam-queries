@@ -4,15 +4,6 @@
 
 {% block title %}User Dashboard - SAM{% endblock %}
 
-{# Use a fluid container capped at 1800px so the project list breathes on
-   wide monitors and doesn't jump through Bootstrap's stepped breakpoints.
-   All four chrome regions (navbar / flash / content / footer) opt in together
-   so their left/right edges align on this page. #}
-{% block navbar_container_class %}container-fluid sam-fluid-1800{% endblock %}
-{% block flash_container_class %}container-fluid sam-fluid-1800{% endblock %}
-{% block content_container_class %}container-fluid sam-fluid-1800{% endblock %}
-{% block footer_container_class %}container-fluid sam-fluid-1800{% endblock %}
-
 {% block content %}
 <!-- Tab Navigation -->
 <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">

@@ -13,95 +13,97 @@
         </h5>
     </div>
     <div class="card-body">
-        <div class="row">
-            <!-- User details -->
-            <div class="col-md-6">
-                <table class="table table-sm">
-                    <tr>
-                        <th>Username:</th>
-                        <td>{{ sam_user.username }}</td>
-                    </tr>
-                    <tr>
-                        <th>Name:</th>
-                        <td>{{ sam_user.display_name }}</td>
-                    </tr>
-                    <tr>
-                        <th>Email(s):</th>
-                        <td>
-                            {% for email in sam_user.email_addresses %}
-                            <div>
-                                {{ email.email_address }}
-                                {% if email.is_primary %}
-                                <span class="badge bg-info ms-1" style="font-size:0.7em;">PRIMARY</span>
-                                {% endif %}
-                            </div>
-                            {% else %}
-                            N/A
-                            {% endfor %}
-                        </td>
-                    </tr>
-                    {% if sam_user.phones %}
-                    <tr>
-                        <th>Phone(s):</th>
-                        <td>
-                            {% for phone in sam_user.phones %}
-                            <div>
-                                {{ phone.phone_number }}
-                                {% if phone.phone_type %}
-                                <small class="text-muted">({{ phone.phone_type.phone_type }})</small>
-                                {% endif %}
-                            </div>
-                            {% endfor %}
-                        </td>
-                    </tr>
-                    {% endif %}
-                    <tr>
-                        <th>UID:</th>
-                        <td>{{ sam_user.unix_uid or 'N/A' }}</td>
-                    </tr>
-                    <tr>
-                        <th>Primary GID:</th>
-                        <td>{{ sam_user.primary_gid or 'N/A' }}</td>
-                    </tr>
-                    {% if sam_user.academic_status %}
-                    <tr>
-                        <th>Academic Status:</th>
-                        <td>{{ sam_user.academic_status.description }}</td>
-                    </tr>
-                    {% endif %}
-                    {% if sam_user.institutions %}
-                    <tr>
-                        <th>Institution(s):</th>
-                        <td>
-                            {% for ui in sam_user.institutions %}
-                            <div>{{ ui.institution.name }}
-                                {% if ui.institution.acronym %}
-                                <small class="text-muted">({{ ui.institution.acronym }})</small>
-                                {% endif %}
-                            </div>
-                            {% endfor %}
-                        </td>
-                    </tr>
-                    {% endif %}
-                    {% if sam_user.organizations %}
-                    <tr>
-                        <th>Organization(s):</th>
-                        <td>
-                            {% for uo in sam_user.organizations %}
-                            <div>{{ uo.organization.name }}
-                                <small class="text-muted">({{ uo.organization.acronym }})</small>
-                            </div>
-                            {% endfor %}
-                        </td>
-                    </tr>
-                    {% endif %}
-                </table>
+        <div class="project-stats-box mb-0">
+            <h6><i class="fas fa-id-card"></i> User Information</h6>
+
+            <div class="stat-item">
+                <span class="stat-label">Username:</span>
+                <span class="stat-value">{{ sam_user.username }}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Name:</span>
+                <span class="stat-value">{{ sam_user.display_name }}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">UID:</span>
+                <span class="stat-value">{{ sam_user.unix_uid or 'N/A' }}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Primary GID:</span>
+                <span class="stat-value">{{ sam_user.primary_gid or 'N/A' }}</span>
+            </div>
+            {% if sam_user.academic_status %}
+            <div class="stat-item">
+                <span class="stat-label">Academic Status:</span>
+                <span class="stat-value">{{ sam_user.academic_status.description }}</span>
+            </div>
+            {% endif %}
+
+            <!-- Emails -->
+            <div class="stat-item stat-item-block mt-2">
+                <span class="stat-label d-block mb-1">Email(s):</span>
+                <div class="stat-value text-dark text-detail">
+                    {% for email in sam_user.email_addresses %}
+                    <div class="mb-1">
+                        {{ email.email_address }}
+                        {% if email.is_primary %}
+                        <span class="badge bg-info ms-1" style="font-size:0.7em;">PRIMARY</span>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <span class="text-muted">N/A</span>
+                    {% endfor %}
+                </div>
             </div>
 
+            {% if sam_user.phones %}
+            <div class="stat-item stat-item-block mt-2">
+                <span class="stat-label d-block mb-1">Phone(s):</span>
+                <div class="stat-value text-dark text-detail">
+                    {% for phone in sam_user.phones %}
+                    <div class="mb-1">
+                        {{ phone.phone_number }}
+                        {% if phone.phone_type %}
+                        <small class="text-muted">({{ phone.phone_type.phone_type }})</small>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if sam_user.institutions %}
+            <div class="stat-item stat-item-block mt-2">
+                <span class="stat-label d-block mb-1">Institution(s):</span>
+                <div class="stat-value text-dark text-detail">
+                    {% for ui in sam_user.institutions %}
+                    <div class="mb-1">
+                        <span class="badge bg-light text-dark border">{{ ui.institution.acronym or '—' }}</span>
+                        <span class="text-muted">{{ ui.institution.name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if sam_user.organizations %}
+            <div class="stat-item stat-item-block mt-2">
+                <span class="stat-label d-block mb-1">Organization(s):</span>
+                <div class="stat-value text-dark text-detail">
+                    {% for uo in sam_user.organizations %}
+                    <div class="mb-1">
+                        <span class="badge bg-light text-dark border">{{ uo.organization.acronym }}</span>
+                        <span class="text-muted">{{ uo.organization.name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             <!-- Active projects -->
-            <div class="col-md-6">
-                <strong>Active Projects</strong>
-                <div class="mt-2">
+            <div class="stat-item stat-item-block mt-2">
+                <span class="stat-label d-block mb-1">Active Projects:</span>
+                <div class="stat-value text-dark text-detail">
                     {% set active_projects = sam_user.active_projects() %}
                     {% if active_projects %}
                         {% for project in active_projects %}

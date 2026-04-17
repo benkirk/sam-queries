@@ -17,7 +17,7 @@
 <body>
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="{% block navbar_container_class %}container{% endblock %}">
+        <div class="{% block navbar_container_class %}container-fluid sam-fluid-1800{% endblock %}">
             <a class="navbar-brand" href="{{ url_for('user_dashboard.index') }}">
                 <i class="fas fa-tasks"></i> SAM
             </a>
@@ -104,7 +104,7 @@
     <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-            <div class="{% block flash_container_class %}container{% endblock %} mt-3">
+            <div class="{% block flash_container_class %}container-fluid sam-fluid-1800{% endblock %} mt-3">
                 {% for category, message in messages %}
                 <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
                     {{ message }}
@@ -117,14 +117,14 @@
 
     <!-- Main Content -->
     <div class="main-content">
-        <div class="{% block content_container_class %}container{% endblock %}">
+        <div class="{% block content_container_class %}container-fluid sam-fluid-1800{% endblock %}">
             {% block content %}{% endblock %}
         </div>
     </div>
 
     <!-- Footer -->
     <footer class="footer">
-        <div class="{% block footer_container_class %}container{% endblock %}">
+        <div class="{% block footer_container_class %}container-fluid sam-fluid-1800{% endblock %}">
             <div class="text-center text-muted">
                 <small>SAM - Systems Accounting Manager &copy; 2024</small>
             </div>
