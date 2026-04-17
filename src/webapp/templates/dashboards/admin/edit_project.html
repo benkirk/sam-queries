@@ -240,8 +240,13 @@
 
 <!-- ═══════════════════════════════════════════════ HTMX event handlers -->
 <script>
-  // The htmx_success_message already swapped #editDetailsContainer with a
-  // success fragment; nothing more to do here — htmx handles it.
+  // After a successful project details save, the success fragment is shown
+  // in #editDetailsContainer. Reload the page so the form, header title, and
+  // "Inactive" badge reflect the new values. Brief delay so the user sees
+  // the green checkmark first.
+  document.body.addEventListener('reloadEditProjectDetails', function () {
+    setTimeout(function () { window.location.reload(); }, 800);
+  });
 
   // Reload Allocation Tree after add/edit allocation success.
   // Preserve the current "Active at" date so a historical view is not reset to today.
