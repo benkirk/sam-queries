@@ -19,7 +19,10 @@
         </h5>
     </div>
     <div class="card-body">
-        <div class="project-stats-box mb-0">
+        <div class="row g-3">
+        <div class="col-lg-6">
+        <div class="project-stats-box mb-0"
+             style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
             <h6><i class="fas fa-id-card"></i> User Information</h6>
 
             <div class="stat-item">
@@ -55,7 +58,7 @@
 
             <!-- Emails -->
             <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Email(s):</span>
+                <span class="stat-label d-block mb-1">Email{{ 's' if sam_user.email_addresses|length != 1 else '' }}:</span>
                 <div class="stat-value text-dark text-detail">
                     {% for email in sam_user.email_addresses %}
                     <div class="mb-1">
@@ -72,7 +75,7 @@
 
             {% if sam_user.phones %}
             <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Phone(s):</span>
+                <span class="stat-label d-block mb-1">Phone{{ 's' if sam_user.phones|length != 1 else '' }}:</span>
                 <div class="stat-value text-dark text-detail">
                     {% for phone in sam_user.phones %}
                     <div class="mb-1">
@@ -102,7 +105,7 @@
 
             {% if sam_user.organizations %}
             <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Organization(s):</span>
+                <span class="stat-label d-block mb-1">Organization{{ 's' if sam_user.organizations|length != 1 else '' }}:</span>
                 <div class="stat-value text-dark text-detail">
                     {% for uo in sam_user.organizations %}
                     <div class="mb-1">
@@ -113,6 +116,13 @@
                 </div>
             </div>
             {% endif %}
+
+        </div>
+        </div>
+        <div class="col-lg-6">
+        <div class="project-stats-box mb-0"
+             style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
+            <h6><i class="fas fa-sitemap"></i> Projects &amp; Groups</h6>
 
             <!-- Active projects -->
             <div class="stat-item stat-item-block mt-2">
@@ -200,6 +210,8 @@
                 </div>
             </div>
             {% endif %}
+        </div>
+        </div>
         </div>
     </div>
 
