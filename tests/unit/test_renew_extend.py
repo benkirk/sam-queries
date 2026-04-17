@@ -23,6 +23,7 @@ from sam.accounting.allocations import (
 )
 from sam.manage.extend import extend_project_allocations
 from sam.manage.renew import (
+    analyze_renew_preconditions,
     find_renewable_descendants,
     find_source_alloc_at,
     find_source_allocations_at,
@@ -651,6 +652,320 @@ class TestRenewIdempotency:
         )
         assert len(first) == 1
         assert len(second) == 0
+
+
+# ---------------------------------------------------------------------------
+# analyze_renew_preconditions
+# ---------------------------------------------------------------------------
+
+
+class TestAnalyzeRenewPreconditions:
+
+    def test_ok_when_source_exists_and_no_overlap(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        _seed_standalone_source(session, standalone_project, derecho)
+        result = analyze_renew_preconditions(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+        )
+        assert result == {derecho.resource_id: 'ok'}
+
+    def test_no_source_when_resource_never_allocated(
+        self, session, standalone_project, derecho, casper,
+    ):
+        _seed_standalone_source(session, standalone_project, derecho)
+        result = analyze_renew_preconditions(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[casper.resource_id],
+        )
+        assert result == {casper.resource_id: 'no_source'}
+
+    def test_overlap_after_prior_renew(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        _seed_standalone_source(session, standalone_project, derecho)
+        renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        session.expire_all()
+        result = analyze_renew_preconditions(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+        )
+        assert result == {derecho.resource_id: 'overlap'}
+
+    def test_mixed_statuses_across_resources(
+        self, session, standalone_project, derecho, casper, acting_user,
+    ):
+        # derecho: source exists AND already renewed → 'overlap'
+        # casper:  no source at all → 'no_source'
+        _seed_standalone_source(session, standalone_project, derecho)
+        renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        session.expire_all()
+
+        # Third resource where source exists but no overlap → 'ok'
+        other = make_resource(session)
+        _seed_standalone_source(session, standalone_project, other)
+        session.expire_all()
+
+        result = analyze_renew_preconditions(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id, casper.resource_id, other.resource_id],
+        )
+        assert result == {
+            derecho.resource_id: 'overlap',
+            casper.resource_id: 'no_source',
+            other.resource_id: 'ok',
+        }
+
+
+# ---------------------------------------------------------------------------
+# renew_project_allocations(replace_existing=True)
+# ---------------------------------------------------------------------------
+
+
+class TestRenewReplaceExisting:
+
+    def test_default_skips_overlap(self, session, standalone_project, derecho, acting_user):
+        """Baseline: without replace_existing, the second call still no-ops.
+
+        Guards against regression of the silent-skip behavior that keeps
+        double-click idempotent when replace_existing is left at its default.
+        """
+        _seed_standalone_source(session, standalone_project, derecho)
+        renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        session.expire_all()
+        second = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            # replace_existing defaults to False
+        )
+        assert len(second) == 0
+
+    def test_replace_true_creates_new_row_when_overlap(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        _seed_standalone_source(session, standalone_project, derecho)
+        first = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        session.expire_all()
+        second = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            replace_existing=True,
+        )
+        assert len(second) == 1
+        assert second[0].allocation_id != first[0].allocation_id
+
+    def test_replace_true_soft_deletes_old_row(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        _seed_standalone_source(session, standalone_project, derecho)
+        first = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        old_id = first[0].allocation_id
+        session.expire_all()
+        renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            replace_existing=True,
+        )
+        old = session.get(Allocation, old_id)
+        # Row still exists — soft delete only.
+        assert old is not None
+        assert old.deleted is True
+
+    def test_replace_true_logs_delete_transaction_on_old(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        _seed_standalone_source(session, standalone_project, derecho)
+        first = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        old_id = first[0].allocation_id
+        session.expire_all()
+        renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            replace_existing=True,
+        )
+        txn = (
+            session.query(AllocationTransaction)
+            .filter_by(
+                allocation_id=old_id,
+                transaction_type=AllocationTransactionType.DELETE,
+            )
+            .order_by(AllocationTransaction.allocation_transaction_id.desc())
+            .first()
+        )
+        assert txn is not None
+        assert 'Superseded by renew' in (txn.transaction_comment or '')
+
+    def test_replace_true_supersedes_in_inheriting_tree(
+        self, session, tree_root_with_children, derecho, acting_user,
+    ):
+        descendants = _active_descendants(tree_root_with_children)
+        _seed_inheriting_tree(session, tree_root_with_children, derecho)
+
+        # First renew — creates the period we'll collide with.
+        renew_project_allocations(
+            session,
+            root_project_id=tree_root_with_children.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        session.expire_all()
+
+        # Replace — every descendant's overlapping row should also be soft-deleted.
+        renew_project_allocations(
+            session,
+            root_project_id=tree_root_with_children.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            replace_existing=True,
+        )
+        session.expire_all()
+
+        for descendant in descendants:
+            # Exactly one non-deleted allocation should exist for [NEW_START, NEW_END].
+            rows = (
+                session.query(Allocation)
+                .join(Account, Allocation.account_id == Account.account_id)
+                .filter(
+                    Account.project_id == descendant.project_id,
+                    Account.resource_id == derecho.resource_id,
+                    Allocation.deleted == False,   # noqa: E712
+                    Allocation.start_date == NEW_START,
+                    Allocation.end_date == NEW_END,
+                )
+                .all()
+            )
+            assert len(rows) == 1, f"{descendant.projcode} expected 1 live row, got {len(rows)}"
+            # And at least one soft-deleted row from the superseded renew.
+            deleted_rows = (
+                session.query(Allocation)
+                .join(Account, Allocation.account_id == Account.account_id)
+                .filter(
+                    Account.project_id == descendant.project_id,
+                    Account.resource_id == derecho.resource_id,
+                    Allocation.deleted == True,    # noqa: E712
+                )
+                .all()
+            )
+            assert len(deleted_rows) >= 1, f"{descendant.projcode} missing soft-deleted row"
+
+    def test_replace_false_does_not_touch_existing(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        _seed_standalone_source(session, standalone_project, derecho)
+        first = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        old_id = first[0].allocation_id
+        session.expire_all()
+        renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            replace_existing=False,
+        )
+        old = session.get(Allocation, old_id)
+        assert old.deleted is False
 
 
 # ---------------------------------------------------------------------------

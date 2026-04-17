@@ -62,6 +62,11 @@ class RenewAllocationsForm(HtmxFormSchema):
         values=f.Float(validate=v.Range(min=0, min_inclusive=False)),
         load_default=dict,
     )
+    # Admin override: when True, soft-delete any non-deleted allocations
+    # that already overlap the target period before creating the new ones.
+    # Route injects explicit False when the checkbox is unchecked (absent
+    # from request.form).
+    replace_existing = f.Bool(load_default=False)
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):

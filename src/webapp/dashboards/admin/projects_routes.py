@@ -832,7 +832,8 @@ def htmx_renew_allocations_form(projcode):
 def htmx_renew_allocations(projcode):
     """Create renewed allocations for the selected resources."""
     from sam.projects.projects import Project
-    from sam.manage.renew import renew_project_allocations
+    from sam.resources.resources import Resource
+    from sam.manage.renew import renew_project_allocations, analyze_renew_preconditions
     from sam.schemas.forms import RenewAllocationsForm
     from marshmallow import ValidationError
 
@@ -861,6 +862,8 @@ def htmx_renew_allocations(projcode):
     for k in list(data):
         if k.startswith('scale_'):
             del data[k]
+    # Inject explicit False for the replace_existing checkbox when unchecked.
+    data['replace_existing'] = 'replace_existing' in request.form
 
     try:
         form_data = RenewAllocationsForm().load(data)
@@ -900,6 +903,46 @@ def htmx_renew_allocations(projcode):
         form_data['source_active_at'], datetime.min.time()
     )
 
+    replace_existing = form_data.get('replace_existing', False)
+
+    # Pre-flight: classify each requested resource so we can produce accurate
+    # error messages and (when needed) prompt the admin to set replace_existing.
+    preconditions = analyze_renew_preconditions(
+        db.session,
+        root_project_id=root.project_id,
+        source_active_at=source_dt,
+        new_start=new_start,
+        new_end=new_end,
+        resource_ids=form_data['resource_ids'],
+    )
+    resource_name = {
+        r.resource_id: r.resource_name
+        for r in db.session.query(Resource).filter(
+            Resource.resource_id.in_(form_data['resource_ids'])
+        )
+    }
+
+    no_source_ids = [rid for rid, s in preconditions.items() if s == 'no_source']
+    overlap_ids   = [rid for rid, s in preconditions.items() if s == 'overlap']
+
+    # Bail early with a specific error when NOTHING can be renewed.
+    if not any(s == 'ok' for s in preconditions.values()) and not (replace_existing and overlap_ids):
+        msgs = []
+        if overlap_ids:
+            names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in overlap_ids))
+            msgs.append(
+                f'Already has allocations overlapping '
+                f'{new_start.strftime("%Y-%m-%d")} → {new_end.strftime("%Y-%m-%d")}: {names}. '
+                f'Tick "Replace existing" to supersede them.'
+            )
+        if no_source_ids:
+            names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in no_source_ids))
+            msgs.append(
+                f'No active root allocation at '
+                f'{source_dt.strftime("%Y-%m-%d")} for: {names}.'
+            )
+        return _reload_renew_form(msgs)
+
     try:
         with management_transaction(db.session):
             created = renew_project_allocations(
@@ -911,24 +954,32 @@ def htmx_renew_allocations(projcode):
                 resource_ids=form_data['resource_ids'],
                 scales=form_data.get('scales') or {},
                 user_id=current_user.user_id,
+                replace_existing=replace_existing,
             )
     except Exception as e:
         return _reload_renew_form([f'Error renewing allocations: {e}'])
 
     if not created:
+        # Defensive fallback — preconditions said 'ok' for at least one, but
+        # nothing was created. Shouldn't happen but keep a sane message.
         return _reload_renew_form([
-            'No allocations were renewed. Check that the selected resources '
-            'have an active root allocation at the source date.'
+            'No allocations were renewed. Please review the form and try again.'
         ])
 
-    detail = (
+    detail_parts = [
         f'{root.projcode}: renewed {len(created)} allocation(s) for '
         f'{new_start.strftime("%Y-%m-%d")} → {new_end.strftime("%Y-%m-%d")}'
-    )
+    ]
+    if replace_existing and overlap_ids:
+        names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in overlap_ids))
+        detail_parts.append(f'replaced overlapping allocations for: {names}')
+    if no_source_ids:
+        names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in no_source_ids))
+        detail_parts.append(f'skipped (no source at {source_dt.strftime("%Y-%m-%d")}): {names}')
     return htmx_success_message(
         {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
         'Allocations renewed successfully.',
-        detail=detail,
+        detail='; '.join(detail_parts),
     )
 
 
