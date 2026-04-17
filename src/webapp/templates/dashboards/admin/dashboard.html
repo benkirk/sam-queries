@@ -113,72 +113,67 @@
         <!-- Expirations Section -->
         <div class="row mt-4">
             <div class="col-12">
-                <div class="card">
-                    <div class="card-header cursor-pointer"
-                         data-bs-toggle="collapse" data-bs-target="#expirations-section">
-                        <h5 class="mb-0">
-                            <i class="fas fa-calendar-exclamation"></i> Project Expirations
-                            <i class="fas fa-chevron-down float-end"></i>
-                        </h5>
+                <div class="card mb-3">
+                    <div class="card-header py-2 collapse-toggle collapsed"
+                         data-bs-toggle="collapse" data-bs-target="#expirations-section"
+                         role="button" aria-expanded="false" aria-controls="expirations-section">
+                        <span class="small">
+                            <i class="fas fa-calendar-exclamation me-1"></i>
+                            <strong>Project Expirations</strong>
+                        </span>
                     </div>
                     <div id="expirations-section" class="collapse">
-                        <div class="card-body">
+                        <div class="card-body py-3">
                             <!-- Filters Form -->
-                            <form id="expirations-filters-form" class="mb-3">
-                                <div class="row">
-                                    <!-- Facilities multi-select -->
-                                    <div class="col-md-4">
-                                        <div class="mb-3">
-                                            <label for="facilities-filter"><strong>Facilities</strong></label>
-                                            <select class="form-control" id="facilities-filter" name="facilities" multiple size="7" style="min-width: 200px;">
-                                                <option value="ASD">ASD</option>
-                                                <option value="CSL">CSL</option>
-                                                <option value="CISL">CISL</option>
-                                                <option value="NCAR">NCAR</option>
-                                                <option value="UNIV" selected>UNIV</option>
-                                                <option value="WNA" selected>WNA</option>
-                                                <option value="XSEDE">XSEDE</option>
-                                            </select>
-                                            <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
-                                        </div>
-                                    </div>
-
-                                    <!-- Resource filter -->
-                                    <div class="col-md-4">
-                                        <div class="mb-3">
-                                            <label for="resource-filter"><strong>Resource (optional)</strong></label>
-                                            <input type="text" class="form-control" id="resource-filter"
-                                                   name="resource"
-                                                   placeholder="e.g., Derecho, GLADE">
-                                            <small class="form-text text-muted">Leave blank for all</small>
-                                        </div>
-                                    </div>
-
-                                    <!-- Time range -->
-                                    <div class="col-md-4">
-                                        <div class="mb-3">
-                                            <label for="time-range-filter"><strong>Time Range</strong></label>
-                                            <select class="form-control" id="time-range-filter" name="time_range">
-                                                <option value="7days">Next 7 days</option>
-                                                <option value="31days" selected>Next 31 days</option>
-                                                <option value="60days">Next 60 days</option>
-                                            </select>
-                                            <small class="form-text text-muted">For upcoming</small>
-                                        </div>
-                                    </div>
+                            <form id="expirations-filters-form"
+                                  class="d-flex flex-wrap align-items-start gap-4 mb-3">
+                                <div>
+                                    <label for="facilities-filter" class="form-label small mb-1"><strong>Facilities</strong></label>
+                                    <select class="form-control form-control-sm" id="facilities-filter"
+                                            name="facilities" multiple size="4" style="width: 200px;">
+                                        <option value="ASD">ASD</option>
+                                        <option value="CSL">CSL</option>
+                                        <option value="CISL">CISL</option>
+                                        <option value="NCAR">NCAR</option>
+                                        <option value="UNIV" selected>UNIV</option>
+                                        <option value="WNA" selected>WNA</option>
+                                        <option value="XSEDE">XSEDE</option>
+                                    </select>
+                                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
                                 </div>
 
-                                <div class="row">
-                                    <div class="col-12">
-                                        <button type="button" class="btn btn-primary"
-                                                onclick="reloadActiveExpirationsTab()">
-                                            <i class="fas fa-search"></i> Apply Filters
-                                        </button>
-                                        <button type="button" class="btn btn-success"
-                                                onclick="exportExpirationsCsv()">
-                                            <i class="fas fa-download"></i> Export CSV
-                                        </button>
-                                    </div>
+                                <div>
+                                    <label for="resource-filter" class="form-label small mb-1"><strong>Resource</strong> <span class="text-muted">(optional)</span></label>
+                                    <input type="text" class="form-control form-control-sm" id="resource-filter"
+                                           name="resource"
+                                           placeholder="e.g., Derecho, GLADE"
+                                           style="width: 200px;">
+                                    <small class="form-text text-muted">Leave blank for all</small>
+                                </div>
+
+                                <div>
+                                    <label for="time-range-filter" class="form-label small mb-1"><strong>Time Range</strong></label>
+                                    <select class="form-control form-control-sm" id="time-range-filter"
+                                            name="time_range" style="width: 160px;">
+                                        <option value="7days">Next 7 days</option>
+                                        <option value="31days" selected>Next 31 days</option>
+                                        <option value="60days">Next 60 days</option>
+                                    </select>
+                                    <small class="form-text text-muted">For upcoming</small>
+                                </div>
+
+                                <div class="d-flex flex-column gap-2">
+                                    <label class="form-label small mb-1 invisible">Actions</label>
+                                    <button type="button" class="btn btn-sm btn-primary"
+                                            style="width: 160px;"
+                                            onclick="reloadActiveExpirationsTab()">
+                                        <i class="fas fa-search"></i> Apply Filters
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-success"
+                                            style="width: 160px;"
+                                            onclick="exportExpirationsCsv()">
+                                        <i class="fas fa-download"></i> Export CSV
+                                    </button>
                                 </div>
                             </form>
 
