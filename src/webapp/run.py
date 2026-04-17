@@ -221,6 +221,15 @@ def create_app(*, config_overrides: dict | None = None):
     import sam.fmt as fmt
     fmt.register_jinja_filters(app)
 
+    # In dev, Jinja's mtime-based auto-reload doesn't reliably detect template
+    # changes through Docker's bind-mount/watch-sync — the file mtime in the
+    # container updates correctly but the running Jinja env still serves the
+    # cached compile. Disable the env's template cache entirely in debug mode
+    # so every render re-reads from disk. Negligible cost in dev, no effect
+    # on production.
+    if app.config.get('DEBUG'):
+        app.jinja_env.cache = None
+
     # Initialize Flask-Admin
     init_admin(app)
 

@@ -127,6 +127,37 @@ def _compact(x: float, sig_figs: int) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def round_to_sig_figs(
+    x:        Optional[Union[int, float]],
+    *,
+    sig_figs: Optional[int] = None,
+) -> Optional[float]:
+    """Round a number to N significant figures (numeric, not string).
+
+    Complements number() and size(), which apply sig-figs to *display*.
+    Returns a float suitable for storage or further math.
+
+    Args:
+        x:        Value to round.  None → None.
+        sig_figs: Significant figures.  Default: SAM_SIG_FIGS.
+
+    Examples (sig_figs=3):
+        round_to_sig_figs(458_896_000)  → 459_000_000.0
+        round_to_sig_figs(1_500_750)    → 1_500_000.0
+        round_to_sig_figs(33_350)       → 33_400.0
+        round_to_sig_figs(0)            → 0.0
+        round_to_sig_figs(None)         → None
+    """
+    if x is None:
+        return None
+    if x == 0:
+        return 0.0
+    use_sf = _sig_figs if sig_figs is None else sig_figs
+    mag = math.floor(math.log10(abs(x)))
+    decimals = use_sf - mag - 1
+    return round(float(x), decimals)
+
+
 def number(
     x:        Optional[Union[int, float]],
     *,

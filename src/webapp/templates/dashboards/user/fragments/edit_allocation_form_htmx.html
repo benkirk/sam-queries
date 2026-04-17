@@ -12,7 +12,8 @@
     url_for('user_dashboard.htmx_edit_allocation', allocation_id=allocation.allocation_id),
     '#editAllocationFormContainer',
     'Save Changes',
-    submit_class='btn-primary'
+    submit_class='btn-primary',
+    errors=errors
 ) %}
     <input type="hidden" name="projcode" value="{{ projcode }}">
 

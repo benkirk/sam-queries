@@ -436,6 +436,195 @@ class TestRenewResourceSelection:
         assert casper_renewed is None
 
 
+class TestRenewScaling:
+    """Per-resource scale multiplier applies uniformly across the tree,
+    with amounts rounded to SAM_SIG_FIGS (3) to match the human-defined
+    precision of allocation amounts."""
+
+    def test_standalone_default_scale_is_identity(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        """scales=None is byte-identical to pre-scale behaviour."""
+        source = _seed_standalone_source(session, standalone_project, derecho)
+        created = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            scales=None,
+        )
+        assert created[0].amount == source.amount
+
+    def test_standalone_scale_half_rounds_to_sig_figs(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        """ROOT_AMOUNT=1,000,000 × 0.5 = 500,000 — already 3 sig figs."""
+        _seed_standalone_source(session, standalone_project, derecho)
+        created = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            scales={derecho.resource_id: 0.5},
+        )
+        assert created[0].amount == 500_000.0
+
+    def test_standalone_scale_rounds_to_three_sig_figs(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        """688M × 0.667 = 458,896,000 → 459,000,000 after sig-fig rounding."""
+        _seed_standalone_source(
+            session, standalone_project, derecho, amount=688_000_000.0,
+        )
+        created = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            scales={derecho.resource_id: 0.667},
+        )
+        assert created[0].amount == 459_000_000.0
+
+    def test_divergent_tree_scales_uniformly_across_all_nodes(
+        self, session, tree_root_with_children, derecho, acting_user,
+    ):
+        """Scale applies to root AND every descendant; each is rounded
+        independently to 3 sig figs."""
+        descendants = _active_descendants(tree_root_with_children)
+        _, child_allocs = _seed_divergent_tree(
+            session, tree_root_with_children, derecho,
+        )
+
+        renew_project_allocations(
+            session,
+            root_project_id=tree_root_with_children.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            scales={derecho.resource_id: 0.5},
+        )
+
+        # Root: ROOT_AMOUNT * 0.5 = 500,000 (already 3 sig figs)
+        root_renewed = _find_test_alloc(
+            session, tree_root_with_children, derecho.resource_id, NEW_START,
+        )
+        assert root_renewed.amount == ROOT_AMOUNT * 0.5
+
+        # Each descendant: source * 0.5, rounded to 3 sig figs
+        from sam.fmt import round_to_sig_figs
+
+        for descendant in descendants:
+            _, src_amount = child_allocs[descendant.project_id]
+            renewed = _find_test_alloc(
+                session, descendant, derecho.resource_id, NEW_START,
+            )
+            expected = round_to_sig_figs(src_amount * 0.5)
+            assert renewed.amount == expected, (
+                f"{descendant.projcode}: expected {expected}, got {renewed.amount}"
+            )
+
+    def test_per_resource_scales_independent(
+        self, session, standalone_project, derecho, casper, acting_user,
+    ):
+        """Different resources can carry different scale factors in one call."""
+        _seed_standalone_source(session, standalone_project, derecho)
+        _seed_standalone_source(session, standalone_project, casper)
+
+        created = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id, casper.resource_id],
+            user_id=acting_user.user_id,
+            scales={derecho.resource_id: 0.5, casper.resource_id: 1.0},
+        )
+
+        by_resource = {a.account.resource_id: a for a in created}
+        assert by_resource[derecho.resource_id].amount == 500_000.0
+        assert by_resource[casper.resource_id].amount == ROOT_AMOUNT
+
+    def test_missing_scale_defaults_to_one(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        """A resource with no scale entry keeps its source amount verbatim."""
+        source = _seed_standalone_source(session, standalone_project, derecho)
+        created = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            scales={},  # empty → default 1.0 per resource
+        )
+        assert created[0].amount == source.amount
+
+    def test_scale_suffix_in_transaction_log(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        """Scaled renewals leave a `— scaled ×N` breadcrumb in the txn log."""
+        _seed_standalone_source(session, standalone_project, derecho)
+        created = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            scales={derecho.resource_id: 0.667},
+        )
+        txn = (
+            session.query(AllocationTransaction)
+            .filter_by(
+                allocation_id=created[0].allocation_id,
+                transaction_type=AllocationTransactionType.RENEW,
+            )
+            .first()
+        )
+        assert txn is not None
+        assert '— scaled ×0.667' in txn.transaction_comment
+
+    def test_scale_one_omits_suffix(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        """scale=1.0 renewals leave no suffix (legacy byte-parity)."""
+        _seed_standalone_source(session, standalone_project, derecho)
+        created = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            scales={derecho.resource_id: 1.0},
+        )
+        txn = (
+            session.query(AllocationTransaction)
+            .filter_by(
+                allocation_id=created[0].allocation_id,
+                transaction_type=AllocationTransactionType.RENEW,
+            )
+            .first()
+        )
+        assert 'scaled' not in txn.transaction_comment
+
+
 class TestRenewIdempotency:
 
     def test_second_call_is_noop(self, session, standalone_project, derecho, acting_user):

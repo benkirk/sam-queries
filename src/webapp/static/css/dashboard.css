@@ -423,19 +423,52 @@ body {
 .project-card .card-header {
     cursor: pointer;
     user-select: none;
+    /* Tighter than the global .card-header 16px/24px — each collapsed card
+       is a single-line summary, so the extra padding only fluffed the list. */
+    padding: 8px 16px;
 }
 
 .project-card .card-header:hover {
     background: linear-gradient(135deg, var(--bg-gray-medium) 0%, #dee2e6 100%);
 }
 
+/* Fluid 1800px cap: smoother than Bootstrap's stepped .container breakpoints
+   on laptop/desktop, without stretching to ultra-wide monitor edges.  Used
+   on navbar, flash messages, footer, and any content block that opts in via
+   the content_container_class block override. */
+.sam-fluid-1800 {
+    max-width: 1800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 .project-stats-box {
     background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
     border-radius: var(--radius-lg);
-    padding: 16px;
+    padding: 12px 16px;
     margin-bottom: 16px;
     border-left: 4px solid var(--ncar-blue);
+    /* Paired auto/1fr tracks per column so labels share a per-column auto
+       width and values start at a consistent x-position within each column.
+       Stat-items use display:contents so their label+value become direct
+       children of this grid. Column count steps by breakpoint. */
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 24px;
+    row-gap: 0;
     transition: all var(--transition-base);
+}
+
+@media (min-width: 768px) {
+    .project-stats-box {
+        grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+    }
+}
+
+@media (min-width: 1200px) {
+    .project-stats-box {
+        grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+    }
 }
 
 .project-stats-box:hover {
@@ -446,21 +479,36 @@ body {
 .project-stats-box h6 {
     color: var(--ncar-navy);
     font-weight: 700;
-    margin-bottom: 12px;
+    margin-bottom: 6px;
     font-size: 0.9rem;
     text-transform: uppercase;
+    grid-column: 1 / -1;
     letter-spacing: 0.5px;
 }
 
+/* Single-line stat-items dissolve into the parent grid so labels share
+   auto-tracks within each column (see .project-stats-box above). */
 .stat-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 6px 0;
-    border-bottom: 1px solid var(--border-color);
+    display: contents;
 }
 
-.stat-item:last-child {
-    border-bottom: none;
+.stat-item > .stat-label,
+.stat-item > .stat-value {
+    padding: 2px 0;
+}
+
+.stat-item > .stat-label {
+    padding-right: 0.5rem;
+}
+
+/* Multi-line items (Organizations, Contracts, Directories) opt back out
+   of display:contents so they can span all columns of the parent grid.
+   Tighter top margin than Bootstrap's .mt-2 to keep the box compact. */
+.stat-item-block {
+    display: block;
+    grid-column: 1 / -1;
+    padding: 2px 0;
+    margin-top: 4px !important;
 }
 
 .stat-label {
@@ -616,6 +664,9 @@ body {
 
     .project-stats-box {
         padding: 12px;
+        /* Stack single-column on tablet/mobile — one auto/1fr pair. */
+        grid-template-columns: auto minmax(0, 1fr);
+        column-gap: 16px;
     }
 
     .table {
@@ -630,10 +681,5 @@ body {
 
     .page-header {
         margin-bottom: 20px;
-    }
-
-    .stat-item {
-        flex-direction: column;
-        gap: 4px;
     }
 }
