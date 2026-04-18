@@ -7,21 +7,28 @@ power the charges API endpoints and dashboard usage visualizations.
 
 Functions:
     get_adjustment_totals_by_date: Get ChargeAdjustment totals grouped by date
+    get_recent_charge_adjustments: Cross-project charge-adjustment query with
+        flexible filters (date range, project, resource, facility, user, type)
     get_daily_charge_trends_for_accounts: Get daily charge trends by date
     get_raw_charge_summaries_for_accounts: Get raw charge summary records
     get_user_breakdown_for_project: Get per-user usage breakdown
 """
 
 from datetime import datetime
-from typing import List, Optional, Dict, Union
+from typing import Any, List, Optional, Dict, Union
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from sam.core.users import User
 from sam.summaries.comp_summaries import CompChargeSummary
-from sam.accounting.adjustments import ChargeAdjustment
+from sam.accounting.accounts import Account
+from sam.accounting.adjustments import ChargeAdjustment, ChargeAdjustmentType
+from sam.accounting.allocations import AllocationType
 from sam.accounting.calculator import get_charge_models_for_resource
+from sam.projects.projects import Project
+from sam.resources.facilities import Facility, Panel
+from sam.resources.resources import Resource
 
 
 # ============================================================================
@@ -61,6 +68,142 @@ def get_adjustment_totals_by_date(
         d = adj_date.date() if hasattr(adj_date, 'date') else adj_date
         result[d] = result.get(d, 0.0) + float(amount or 0.0)
     return result
+
+
+def get_recent_charge_adjustments(
+    session: Session,
+    *,
+    projcode: Optional[Union[str, List[str]]] = None,
+    resource_name: Optional[Union[str, List[str]]] = None,
+    facility_name: Optional[Union[str, List[str]]] = None,
+    adjustment_types: Optional[Union[str, List[str]]] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    user_id: Optional[int] = None,
+    username: Optional[str] = None,
+    include_deleted: bool = False,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Query charge adjustments across projects/resources with flexible filters.
+
+    Mirrors ``get_recent_allocation_transactions`` but for ``ChargeAdjustment``:
+    scalar-or-list scope filters (``"TOTAL"`` is a no-op), inclusive
+    ``adjustment_date`` range, responsible-user filter via mutually-exclusive
+    ``user_id`` / ``username``, and a ``limit`` cap. Results are ordered
+    ``adjustment_date DESC`` and returned as denormalized dicts.
+
+    Args:
+        projcode, resource_name, facility_name: scope filters.
+        adjustment_types: single name or list of ``ChargeAdjustmentType.type``
+            values (e.g. ``"Credit"``, ``["Debit", "Refund"]``).
+        start_date, end_date: inclusive bounds on ``adjustment_date``.
+        user_id: filter by ``adjusted_by_id``. Mutually exclusive with ``username``.
+        username: filter by adjusted-by user's username.
+        include_deleted: when False (default), hide adjustments whose parent
+            ``Account`` is soft-deleted. ``ChargeAdjustment`` itself has no
+            ``deleted`` column.
+        limit: optional row cap.
+
+    Returns:
+        A list of dicts, one per adjustment, with keys: ``adjustment_id``,
+        ``account_id``, ``amount``, ``adjustment_date``, ``comment``,
+        ``adjustment_type``, ``projcode``, ``project_id``, ``resource_name``,
+        ``resource_id``, ``facility_name``, ``user_id``, ``username``,
+        ``user_full_name``. User fields are ``None`` when ``adjusted_by_id``
+        is NULL; ``facility_name`` is ``None`` when the project has no
+        allocation-type chain.
+    """
+    if user_id is not None and username is not None:
+        raise ValueError("Pass user_id OR username, not both")
+
+    query = session.query(
+        ChargeAdjustment,
+        Project,
+        Resource,
+        ChargeAdjustmentType.type.label('adjustment_type_name'),
+        Facility.facility_name.label('facility_name_val'),
+        User,
+    ).join(Account, ChargeAdjustment.account_id == Account.account_id)\
+     .join(Project, Account.project_id == Project.project_id)\
+     .join(Resource, Account.resource_id == Resource.resource_id)\
+     .join(
+         ChargeAdjustmentType,
+         ChargeAdjustment.charge_adjustment_type_id
+             == ChargeAdjustmentType.charge_adjustment_type_id,
+     )\
+     .outerjoin(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+     .outerjoin(Panel, AllocationType.panel_id == Panel.panel_id)\
+     .outerjoin(Facility, Panel.facility_id == Facility.facility_id)\
+     .outerjoin(User, ChargeAdjustment.adjusted_by_id == User.user_id)
+
+    if projcode and projcode != "TOTAL":
+        if isinstance(projcode, list):
+            query = query.filter(Project.projcode.in_(projcode))
+        else:
+            query = query.filter(Project.projcode == projcode)
+
+    if resource_name and resource_name != "TOTAL":
+        if isinstance(resource_name, list):
+            query = query.filter(Resource.resource_name.in_(resource_name))
+        else:
+            query = query.filter(Resource.resource_name == resource_name)
+
+    if facility_name and facility_name != "TOTAL":
+        if isinstance(facility_name, list):
+            query = query.filter(Facility.facility_name.in_(facility_name))
+        else:
+            query = query.filter(Facility.facility_name == facility_name)
+
+    if adjustment_types is not None:
+        if isinstance(adjustment_types, (list, tuple, set)):
+            values = [str(t) for t in adjustment_types]
+            query = query.filter(ChargeAdjustmentType.type.in_(values))
+        else:
+            query = query.filter(ChargeAdjustmentType.type == str(adjustment_types))
+
+    if start_date is not None:
+        query = query.filter(ChargeAdjustment.adjustment_date >= start_date)
+    if end_date is not None:
+        query = query.filter(ChargeAdjustment.adjustment_date <= end_date)
+
+    if user_id is not None:
+        query = query.filter(ChargeAdjustment.adjusted_by_id == user_id)
+    elif username is not None:
+        query = query.filter(User.username == username)
+
+    if not include_deleted:
+        query = query.filter(Account.deleted == False)
+
+    query = query.order_by(
+        ChargeAdjustment.adjustment_date.desc(),
+        ChargeAdjustment.charge_adjustment_id.desc(),
+    )
+
+    if limit is not None:
+        query = query.limit(limit)
+
+    rows = query.all()
+
+    return [
+        {
+            'adjustment_id': adj.charge_adjustment_id,
+            'account_id': adj.account_id,
+            'amount': adj.amount,
+            'adjustment_date': adj.adjustment_date,
+            'comment': adj.comment,
+            'adjustment_type': at_name,
+            'projcode': project.projcode,
+            'project_id': project.project_id,
+            'resource_name': resource.resource_name,
+            'resource_id': resource.resource_id,
+            'facility_name': fac_name,
+            'user_id': user.user_id if user is not None else None,
+            'username': user.username if user is not None else None,
+            'user_full_name': user.full_name if user is not None else None,
+        }
+        for adj, project, resource, at_name, fac_name, user in rows
+    ]
 
 
 def get_daily_charge_trends_for_accounts(

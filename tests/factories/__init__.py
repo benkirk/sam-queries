@@ -17,6 +17,7 @@ from .projects import (
     make_allocation_transaction,
     make_aoi,
     make_aoi_group,
+    make_charge_adjustment,
     make_facility,
     make_project,
 )
@@ -40,4 +41,5 @@ __all__ = [
     "make_account",
     "make_allocation",
     "make_allocation_transaction",
+    "make_charge_adjustment",
 ]

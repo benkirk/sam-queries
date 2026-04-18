@@ -55,6 +55,7 @@ from .dashboard import (
 from .charges import (
     get_daily_charge_trends_for_accounts,
     get_raw_charge_summaries_for_accounts,
+    get_recent_charge_adjustments,
     get_user_breakdown_for_project,
     get_user_queue_breakdown_for_project,
     get_daily_breakdown_for_project,
@@ -177,6 +178,7 @@ __all__ = [
     # Charges
     'get_daily_charge_trends_for_accounts',
     'get_raw_charge_summaries_for_accounts',
+    'get_recent_charge_adjustments',
     'get_user_breakdown_for_project',
     'get_user_queue_breakdown_for_project',
     'get_daily_breakdown_for_project',

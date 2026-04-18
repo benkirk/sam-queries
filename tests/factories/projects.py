@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from sam.accounting.accounts import Account
+from sam.accounting.adjustments import ChargeAdjustment, ChargeAdjustmentType
 from sam.accounting.allocations import Allocation, AllocationTransaction
 from sam.core.users import User
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
@@ -232,3 +233,42 @@ def make_allocation_transaction(
     session.add(txn)
     session.flush()
     return txn
+
+
+def make_charge_adjustment(
+    session,
+    *,
+    account: Optional[Account] = None,
+    adjusted_by: Optional[User] = None,
+    adjustment_type: Optional[ChargeAdjustmentType] = None,
+    amount: float = -100.0,
+    adjustment_date: Optional[datetime] = None,
+    comment: Optional[str] = None,
+) -> ChargeAdjustment:
+    """Build and flush a fresh ChargeAdjustment, auto-building an Account if needed.
+
+    ``ChargeAdjustmentType`` is snapshot-seeded reference data; when none is
+    passed, pick any row. Tests that need a specific type name should fetch
+    the row themselves and pass it in.
+    """
+    if account is None:
+        account = make_account(session)
+    if adjustment_date is None:
+        adjustment_date = datetime.now()
+    if adjustment_type is None:
+        adjustment_type = session.query(ChargeAdjustmentType).first()
+        if adjustment_type is None:
+            import pytest
+            pytest.skip("No ChargeAdjustmentType reference rows in test database")
+
+    adj = ChargeAdjustment(
+        account_id=account.account_id,
+        adjusted_by_id=adjusted_by.user_id if adjusted_by is not None else None,
+        charge_adjustment_type_id=adjustment_type.charge_adjustment_type_id,
+        amount=amount,
+        adjustment_date=adjustment_date,
+        comment=comment,
+    )
+    session.add(adj)
+    session.flush()
+    return adj

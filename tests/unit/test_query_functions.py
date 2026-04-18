@@ -28,8 +28,10 @@ from sam import (
 from sam.queries.charges import (
     get_daily_charge_trends_for_accounts,
     get_raw_charge_summaries_for_accounts,
+    get_recent_charge_adjustments,
     get_user_breakdown_for_project,
 )
+from sam.accounting.adjustments import ChargeAdjustmentType
 from sam.queries.dashboard import (
     _build_project_resources_data,
     _build_user_projects_resources_batched,
@@ -63,6 +65,7 @@ from sam.core.groups import (
 from factories import (
     make_allocation,
     make_allocation_transaction,
+    make_charge_adjustment,
     make_user,
 )
 from factories._seq import next_int, next_seq
@@ -556,6 +559,193 @@ class TestRecentAllocationTransactions:
             )
 
         rows = get_recent_allocation_transactions(
+            session, projcode=projcode, limit=3,
+        )
+        assert len(rows) == 3
+
+
+# ============================================================================
+# sam.queries.charges.get_recent_charge_adjustments
+# ============================================================================
+
+
+EXPECTED_ADJ_KEYS = {
+    'adjustment_id', 'account_id', 'amount', 'adjustment_date', 'comment',
+    'adjustment_type',
+    'projcode', 'project_id', 'resource_name', 'resource_id', 'facility_name',
+    'user_id', 'username', 'user_full_name',
+}
+
+
+class TestRecentChargeAdjustments:
+    """Tests for get_recent_charge_adjustments. Each test seeds its own
+    adjustments scoped to a fresh projcode so assertions are deterministic
+    against snapshot data."""
+
+    def test_returns_dicts_with_expected_keys_ordered_desc(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        base = datetime(2099, 6, 15, 12, 0, 0)
+        make_charge_adjustment(session, account=account, adjustment_date=base - timedelta(days=30))
+        make_charge_adjustment(session, account=account, adjustment_date=base - timedelta(days=5))
+        make_charge_adjustment(session, account=account, adjustment_date=base)
+
+        rows = get_recent_charge_adjustments(session, projcode=projcode)
+
+        assert len(rows) == 3
+        for r in rows:
+            assert set(r.keys()) == EXPECTED_ADJ_KEYS
+            assert r['projcode'] == projcode
+        dates = [r['adjustment_date'] for r in rows]
+        assert dates == sorted(dates, reverse=True)
+
+    def test_projcode_list_filter(self, session):
+        a1 = make_allocation(session)
+        a2 = make_allocation(session)
+        make_charge_adjustment(session, account=a1.account)
+        make_charge_adjustment(session, account=a2.account)
+
+        codes = [a1.account.project.projcode, a2.account.project.projcode]
+        rows = get_recent_charge_adjustments(session, projcode=codes)
+        returned = {r['projcode'] for r in rows}
+        assert set(codes).issubset(returned)
+
+    def test_resource_filter(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        make_charge_adjustment(session, account=account)
+
+        resource_name = account.resource.resource_name
+        rows = get_recent_charge_adjustments(
+            session, projcode=projcode, resource_name=resource_name,
+        )
+        assert len(rows) == 1
+        assert rows[0]['resource_name'] == resource_name
+
+        empty = get_recent_charge_adjustments(
+            session, projcode=projcode, resource_name="__no_such_resource__",
+        )
+        assert empty == []
+
+    def test_date_range_is_inclusive(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        base = datetime(2099, 6, 15)
+        make_charge_adjustment(
+            session, account=account, adjustment_date=base - timedelta(days=1),
+        )
+        on_start = make_charge_adjustment(
+            session, account=account, adjustment_date=base,
+        )
+        on_end = make_charge_adjustment(
+            session, account=account, adjustment_date=base + timedelta(days=10),
+        )
+        make_charge_adjustment(
+            session, account=account, adjustment_date=base + timedelta(days=11),
+        )
+
+        rows = get_recent_charge_adjustments(
+            session, projcode=projcode,
+            start_date=base, end_date=base + timedelta(days=10),
+        )
+        ids = {r['adjustment_id'] for r in rows}
+        assert ids == {on_start.charge_adjustment_id, on_end.charge_adjustment_id}
+
+    def test_adjustment_types_scalar_and_list(self, session):
+        types = session.query(ChargeAdjustmentType).limit(2).all()
+        if len(types) < 2:
+            pytest.skip("Need ≥2 ChargeAdjustmentType rows for this test")
+        t_a, t_b = types[0], types[1]
+
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        make_charge_adjustment(session, account=account, adjustment_type=t_a)
+        make_charge_adjustment(session, account=account, adjustment_type=t_a)
+        make_charge_adjustment(session, account=account, adjustment_type=t_b)
+
+        scalar = get_recent_charge_adjustments(
+            session, projcode=projcode, adjustment_types=t_a.type,
+        )
+        assert len(scalar) == 2
+        assert {r['adjustment_type'] for r in scalar} == {t_a.type}
+
+        both = get_recent_charge_adjustments(
+            session, projcode=projcode, adjustment_types=[t_a.type, t_b.type],
+        )
+        assert len(both) == 3
+        assert {r['adjustment_type'] for r in both} == {t_a.type, t_b.type}
+
+    def test_user_id_and_username_filters(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        alice = make_user(session)
+        bob = make_user(session)
+        make_charge_adjustment(session, account=account, adjusted_by=alice)
+        make_charge_adjustment(session, account=account, adjusted_by=bob)
+        make_charge_adjustment(session, account=account, adjusted_by=None)
+
+        by_id = get_recent_charge_adjustments(
+            session, projcode=projcode, user_id=alice.user_id,
+        )
+        by_name = get_recent_charge_adjustments(
+            session, projcode=projcode, username=alice.username,
+        )
+        assert len(by_id) == 1 and len(by_name) == 1
+        assert by_id[0]['user_id'] == alice.user_id
+        assert by_name[0]['username'] == alice.username
+
+        with pytest.raises(ValueError):
+            get_recent_charge_adjustments(
+                session, projcode=projcode,
+                user_id=alice.user_id, username=alice.username,
+            )
+
+    def test_outer_join_returns_rows_with_no_user(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        make_charge_adjustment(session, account=account, adjusted_by=None)
+
+        rows = get_recent_charge_adjustments(session, projcode=projcode)
+        assert len(rows) == 1
+        assert rows[0]['user_id'] is None
+        assert rows[0]['username'] is None
+        assert rows[0]['user_full_name'] is None
+
+    def test_include_deleted_hides_then_shows_soft_deleted_account(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        make_charge_adjustment(session, account=account, comment="after-delete")
+        account.deleted = True
+        session.flush()
+
+        hidden = get_recent_charge_adjustments(session, projcode=projcode)
+        assert hidden == []
+
+        shown = get_recent_charge_adjustments(
+            session, projcode=projcode, include_deleted=True,
+        )
+        assert len(shown) == 1
+        assert shown[0]['comment'] == "after-delete"
+
+    def test_limit_caps_results(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        base = datetime(2099, 6, 15)
+        for i in range(5):
+            make_charge_adjustment(
+                session, account=account,
+                adjustment_date=base - timedelta(minutes=i),
+            )
+
+        rows = get_recent_charge_adjustments(
             session, projcode=projcode, limit=3,
         )
         assert len(rows) == 3
