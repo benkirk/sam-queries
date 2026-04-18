@@ -26,10 +26,14 @@ from sam import (
     Allocation, User,
 )
 from sam.queries.charges import (
+    CHARGE_ADJUSTMENT_SORT_COLUMNS,
+    count_recent_charge_adjustments,
     get_daily_charge_trends_for_accounts,
     get_raw_charge_summaries_for_accounts,
+    get_recent_charge_adjustments,
     get_user_breakdown_for_project,
 )
+from sam.accounting.adjustments import ChargeAdjustmentType
 from sam.queries.dashboard import (
     _build_project_resources_data,
     _build_user_projects_resources_batched,
@@ -38,12 +42,16 @@ from sam.queries.dashboard import (
     get_user_dashboard_data,
 )
 from sam.queries.allocations import (
+    ALLOCATION_TRANSACTION_SORT_COLUMNS,
+    count_recent_allocation_transactions,
     get_allocation_history,
     get_allocation_summary,
     get_allocation_summary_with_usage,
     get_allocations_by_resource,
     get_project_allocations,
+    get_recent_allocation_transactions,
 )
+from sam.accounting.allocations import AllocationTransactionType
 from sam.queries.statistics import (
     get_project_statistics,
     get_user_statistics,
@@ -58,7 +66,12 @@ from sam.core.groups import (
     resolve_group_name,
 )
 
-from factories import make_user
+from factories import (
+    make_allocation,
+    make_allocation_transaction,
+    make_charge_adjustment,
+    make_user,
+)
 from factories._seq import next_int, next_seq
 
 
@@ -341,6 +354,597 @@ class TestAllocationQueries:
             session, hpc_resource.resource_name, active_only=True
         )
         assert len(all_allocs) >= len(active_allocs)
+
+
+# ============================================================================
+# sam.queries.allocations.get_recent_allocation_transactions
+# ============================================================================
+
+
+EXPECTED_TXN_KEYS = {
+    'transaction_id', 'allocation_id', 'transaction_type', 'creation_time',
+    'transaction_amount', 'requested_amount', 'alloc_start_date', 'alloc_end_date',
+    'transaction_comment', 'auth_at_panel_mtg', 'propagated',
+    'projcode', 'project_id', 'resource_name', 'resource_id',
+    'facility_name', 'allocation_type',
+    'user_id', 'username', 'user_full_name',
+}
+
+
+class TestRecentAllocationTransactions:
+    """Tests for get_recent_allocation_transactions. Each test seeds its own
+    allocation + transactions and scopes the query by the fresh projcode so
+    assertions are deterministic against snapshot data."""
+
+    def test_returns_dicts_with_expected_keys_ordered_desc(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        now = datetime.now()
+        make_allocation_transaction(
+            session, allocation=allocation, transaction_type="CREATE",
+            creation_time=now - timedelta(days=30),
+        )
+        make_allocation_transaction(
+            session, allocation=allocation, transaction_type="EDIT",
+            creation_time=now - timedelta(days=5),
+        )
+        make_allocation_transaction(
+            session, allocation=allocation, transaction_type="EXTENSION",
+            creation_time=now - timedelta(hours=1),
+        )
+
+        rows = get_recent_allocation_transactions(session, projcode=projcode)
+
+        assert len(rows) == 3
+        for r in rows:
+            assert set(r.keys()) == EXPECTED_TXN_KEYS
+            assert r['projcode'] == projcode
+        times = [r['creation_time'] for r in rows]
+        assert times == sorted(times, reverse=True)
+
+    def test_projcode_list_filter(self, session):
+        a1 = make_allocation(session)
+        a2 = make_allocation(session)
+        make_allocation_transaction(session, allocation=a1, transaction_type="CREATE")
+        make_allocation_transaction(session, allocation=a2, transaction_type="CREATE")
+
+        codes = [a1.account.project.projcode, a2.account.project.projcode]
+        rows = get_recent_allocation_transactions(session, projcode=codes)
+        returned = {r['projcode'] for r in rows}
+        assert set(codes).issubset(returned)
+
+    def test_resource_and_facility_filter(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(session, allocation=allocation)
+
+        resource_name = allocation.account.resource.resource_name
+        rows = get_recent_allocation_transactions(
+            session, projcode=projcode, resource_name=resource_name,
+        )
+        assert len(rows) == 1
+        assert rows[0]['resource_name'] == resource_name
+
+        # Non-matching resource yields empty
+        rows = get_recent_allocation_transactions(
+            session, projcode=projcode, resource_name="__no_such_resource__",
+        )
+        assert rows == []
+
+    def test_date_range_is_inclusive(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        base = datetime(2099, 6, 15, 12, 0, 0)
+        make_allocation_transaction(
+            session, allocation=allocation, creation_time=base - timedelta(days=1),
+        )
+        on_start = make_allocation_transaction(
+            session, allocation=allocation, creation_time=base,
+        )
+        on_end = make_allocation_transaction(
+            session, allocation=allocation,
+            creation_time=base + timedelta(days=10),
+        )
+        make_allocation_transaction(
+            session, allocation=allocation,
+            creation_time=base + timedelta(days=11),
+        )
+
+        rows = get_recent_allocation_transactions(
+            session, projcode=projcode,
+            start_date=base, end_date=base + timedelta(days=10),
+        )
+        ids = {r['transaction_id'] for r in rows}
+        assert ids == {on_start.allocation_transaction_id,
+                       on_end.allocation_transaction_id}
+
+    def test_transaction_types_accepts_enum_and_string(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(session, allocation=allocation, transaction_type="EDIT")
+        make_allocation_transaction(session, allocation=allocation, transaction_type="EXTENSION")
+        make_allocation_transaction(session, allocation=allocation, transaction_type="CREATE")
+
+        via_enum = get_recent_allocation_transactions(
+            session, projcode=projcode,
+            transaction_types=AllocationTransactionType.EDIT,
+        )
+        via_str = get_recent_allocation_transactions(
+            session, projcode=projcode, transaction_types="EDIT",
+        )
+        via_list = get_recent_allocation_transactions(
+            session, projcode=projcode,
+            transaction_types=[AllocationTransactionType.EDIT,
+                               AllocationTransactionType.EXTENSION],
+        )
+
+        assert {r['transaction_type'] for r in via_enum} == {"EDIT"}
+        assert {r['transaction_type'] for r in via_str} == {"EDIT"}
+        assert {r['transaction_type'] for r in via_list} == {"EDIT", "EXTENSION"}
+
+    def test_user_id_and_username_filters(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        alice = make_user(session)
+        bob = make_user(session)
+        make_allocation_transaction(session, allocation=allocation, user=alice)
+        make_allocation_transaction(session, allocation=allocation, user=bob)
+        make_allocation_transaction(session, allocation=allocation, user=None)
+
+        by_id = get_recent_allocation_transactions(
+            session, projcode=projcode, user_id=alice.user_id,
+        )
+        by_name = get_recent_allocation_transactions(
+            session, projcode=projcode, username=alice.username,
+        )
+        assert len(by_id) == 1 and len(by_name) == 1
+        assert by_id[0]['user_id'] == alice.user_id
+        assert by_name[0]['username'] == alice.username
+
+        with pytest.raises(ValueError):
+            get_recent_allocation_transactions(
+                session, projcode=projcode,
+                user_id=alice.user_id, username=alice.username,
+            )
+
+    def test_outer_join_returns_rows_with_no_user(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(session, allocation=allocation, user=None)
+
+        rows = get_recent_allocation_transactions(session, projcode=projcode)
+        assert len(rows) == 1
+        assert rows[0]['user_id'] is None
+        assert rows[0]['username'] is None
+        assert rows[0]['user_full_name'] is None
+
+    def test_include_deleted_hides_then_shows_soft_deleted(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(session, allocation=allocation, transaction_type="DELETE")
+        allocation.deleted = True
+        session.flush()
+
+        hidden = get_recent_allocation_transactions(session, projcode=projcode)
+        assert hidden == []
+
+        shown = get_recent_allocation_transactions(
+            session, projcode=projcode, include_deleted=True,
+        )
+        assert len(shown) == 1
+        assert shown[0]['transaction_type'] == "DELETE"
+
+    def test_include_propagated_toggle(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(
+            session, allocation=allocation, transaction_type="EDIT", propagated=False,
+        )
+        make_allocation_transaction(
+            session, allocation=allocation, transaction_type="EDIT", propagated=True,
+        )
+
+        default = get_recent_allocation_transactions(session, projcode=projcode)
+        trimmed = get_recent_allocation_transactions(
+            session, projcode=projcode, include_propagated=False,
+        )
+        assert len(default) == 2
+        assert len(trimmed) == 1
+        assert trimmed[0]['propagated'] is False
+
+    def test_limit_caps_results(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        now = datetime.now()
+        for i in range(5):
+            make_allocation_transaction(
+                session, allocation=allocation,
+                creation_time=now - timedelta(minutes=i),
+            )
+
+        rows = get_recent_allocation_transactions(
+            session, projcode=projcode, limit=3,
+        )
+        assert len(rows) == 3
+
+    def test_sort_by_amount_asc_and_desc(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        for amt in (250.0, 50.0, 500.0, 100.0):
+            make_allocation_transaction(
+                session, allocation=allocation, transaction_amount=amt,
+            )
+        asc = get_recent_allocation_transactions(
+            session, projcode=projcode,
+            sort_by='transaction_amount', sort_dir='asc',
+        )
+        desc = get_recent_allocation_transactions(
+            session, projcode=projcode,
+            sort_by='transaction_amount', sort_dir='desc',
+        )
+        asc_amts = [r['transaction_amount'] for r in asc]
+        desc_amts = [r['transaction_amount'] for r in desc]
+        assert asc_amts == sorted(asc_amts)
+        assert desc_amts == sorted(desc_amts, reverse=True)
+
+    @pytest.mark.parametrize('sort_by', list(ALLOCATION_TRANSACTION_SORT_COLUMNS))
+    def test_sort_by_whitelist_all_succeed(self, session, sort_by):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(session, allocation=allocation)
+        rows = get_recent_allocation_transactions(
+            session, projcode=projcode, sort_by=sort_by,
+        )
+        assert len(rows) == 1
+
+    def test_unknown_sort_by_raises(self, session):
+        with pytest.raises(ValueError, match='Unknown sort_by'):
+            get_recent_allocation_transactions(session, sort_by='bogus_col')
+
+    def test_bad_sort_dir_raises(self, session):
+        with pytest.raises(ValueError, match="sort_dir"):
+            get_recent_allocation_transactions(session, sort_dir='sideways')
+
+    def test_offset_and_limit_pagination(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        now = datetime.now()
+        # Seed 7 txns with distinct creation_time values so the DESC order is stable.
+        for i in range(7):
+            make_allocation_transaction(
+                session, allocation=allocation,
+                creation_time=now - timedelta(hours=i),
+            )
+        all_rows = get_recent_allocation_transactions(session, projcode=projcode)
+        assert len(all_rows) == 7
+
+        page1 = get_recent_allocation_transactions(
+            session, projcode=projcode, limit=3,
+        )
+        page2 = get_recent_allocation_transactions(
+            session, projcode=projcode, offset=3, limit=3,
+        )
+        page3 = get_recent_allocation_transactions(
+            session, projcode=projcode, offset=6, limit=3,
+        )
+        assert [r['transaction_id'] for r in page1] == \
+               [r['transaction_id'] for r in all_rows[:3]]
+        assert [r['transaction_id'] for r in page2] == \
+               [r['transaction_id'] for r in all_rows[3:6]]
+        assert [r['transaction_id'] for r in page3] == \
+               [r['transaction_id'] for r in all_rows[6:]]
+
+    def test_count_matches_unlimited_get(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        for _ in range(4):
+            make_allocation_transaction(session, allocation=allocation)
+        total = count_recent_allocation_transactions(session, projcode=projcode)
+        rows = get_recent_allocation_transactions(session, projcode=projcode)
+        assert total == len(rows) == 4
+
+        # Filter-consistency: count must honor the same filters as get_recent.
+        make_allocation_transaction(
+            session, allocation=allocation,
+            transaction_type="EDIT", propagated=True,
+        )
+        assert count_recent_allocation_transactions(
+            session, projcode=projcode, include_propagated=False,
+        ) == 4  # the new propagated txn is excluded by both
+
+    def test_transaction_id_filter_returns_single_row(self, session):
+        allocation = make_allocation(session)
+        txn_a = make_allocation_transaction(session, allocation=allocation)
+        make_allocation_transaction(session, allocation=allocation)
+
+        rows = get_recent_allocation_transactions(
+            session, transaction_id=txn_a.allocation_transaction_id,
+        )
+        assert len(rows) == 1
+        assert rows[0]['transaction_id'] == txn_a.allocation_transaction_id
+
+    def test_transaction_id_unknown_returns_empty(self, session):
+        rows = get_recent_allocation_transactions(session, transaction_id=99_999_999)
+        assert rows == []
+
+
+# ============================================================================
+# sam.queries.charges.get_recent_charge_adjustments
+# ============================================================================
+
+
+EXPECTED_ADJ_KEYS = {
+    'adjustment_id', 'account_id', 'amount', 'adjustment_date', 'comment',
+    'adjustment_type',
+    'projcode', 'project_id', 'resource_name', 'resource_id', 'facility_name',
+    'user_id', 'username', 'user_full_name',
+}
+
+
+class TestRecentChargeAdjustments:
+    """Tests for get_recent_charge_adjustments. Each test seeds its own
+    adjustments scoped to a fresh projcode so assertions are deterministic
+    against snapshot data."""
+
+    def test_returns_dicts_with_expected_keys_ordered_desc(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        base = datetime(2099, 6, 15, 12, 0, 0)
+        make_charge_adjustment(session, account=account, adjustment_date=base - timedelta(days=30))
+        make_charge_adjustment(session, account=account, adjustment_date=base - timedelta(days=5))
+        make_charge_adjustment(session, account=account, adjustment_date=base)
+
+        rows = get_recent_charge_adjustments(session, projcode=projcode)
+
+        assert len(rows) == 3
+        for r in rows:
+            assert set(r.keys()) == EXPECTED_ADJ_KEYS
+            assert r['projcode'] == projcode
+        dates = [r['adjustment_date'] for r in rows]
+        assert dates == sorted(dates, reverse=True)
+
+    def test_projcode_list_filter(self, session):
+        a1 = make_allocation(session)
+        a2 = make_allocation(session)
+        make_charge_adjustment(session, account=a1.account)
+        make_charge_adjustment(session, account=a2.account)
+
+        codes = [a1.account.project.projcode, a2.account.project.projcode]
+        rows = get_recent_charge_adjustments(session, projcode=codes)
+        returned = {r['projcode'] for r in rows}
+        assert set(codes).issubset(returned)
+
+    def test_resource_filter(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        make_charge_adjustment(session, account=account)
+
+        resource_name = account.resource.resource_name
+        rows = get_recent_charge_adjustments(
+            session, projcode=projcode, resource_name=resource_name,
+        )
+        assert len(rows) == 1
+        assert rows[0]['resource_name'] == resource_name
+
+        empty = get_recent_charge_adjustments(
+            session, projcode=projcode, resource_name="__no_such_resource__",
+        )
+        assert empty == []
+
+    def test_date_range_is_inclusive(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        base = datetime(2099, 6, 15)
+        make_charge_adjustment(
+            session, account=account, adjustment_date=base - timedelta(days=1),
+        )
+        on_start = make_charge_adjustment(
+            session, account=account, adjustment_date=base,
+        )
+        on_end = make_charge_adjustment(
+            session, account=account, adjustment_date=base + timedelta(days=10),
+        )
+        make_charge_adjustment(
+            session, account=account, adjustment_date=base + timedelta(days=11),
+        )
+
+        rows = get_recent_charge_adjustments(
+            session, projcode=projcode,
+            start_date=base, end_date=base + timedelta(days=10),
+        )
+        ids = {r['adjustment_id'] for r in rows}
+        assert ids == {on_start.charge_adjustment_id, on_end.charge_adjustment_id}
+
+    def test_adjustment_types_scalar_and_list(self, session):
+        types = session.query(ChargeAdjustmentType).limit(2).all()
+        if len(types) < 2:
+            pytest.skip("Need ≥2 ChargeAdjustmentType rows for this test")
+        t_a, t_b = types[0], types[1]
+
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        make_charge_adjustment(session, account=account, adjustment_type=t_a)
+        make_charge_adjustment(session, account=account, adjustment_type=t_a)
+        make_charge_adjustment(session, account=account, adjustment_type=t_b)
+
+        scalar = get_recent_charge_adjustments(
+            session, projcode=projcode, adjustment_types=t_a.type,
+        )
+        assert len(scalar) == 2
+        assert {r['adjustment_type'] for r in scalar} == {t_a.type}
+
+        both = get_recent_charge_adjustments(
+            session, projcode=projcode, adjustment_types=[t_a.type, t_b.type],
+        )
+        assert len(both) == 3
+        assert {r['adjustment_type'] for r in both} == {t_a.type, t_b.type}
+
+    def test_user_id_and_username_filters(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        alice = make_user(session)
+        bob = make_user(session)
+        make_charge_adjustment(session, account=account, adjusted_by=alice)
+        make_charge_adjustment(session, account=account, adjusted_by=bob)
+        make_charge_adjustment(session, account=account, adjusted_by=None)
+
+        by_id = get_recent_charge_adjustments(
+            session, projcode=projcode, user_id=alice.user_id,
+        )
+        by_name = get_recent_charge_adjustments(
+            session, projcode=projcode, username=alice.username,
+        )
+        assert len(by_id) == 1 and len(by_name) == 1
+        assert by_id[0]['user_id'] == alice.user_id
+        assert by_name[0]['username'] == alice.username
+
+        with pytest.raises(ValueError):
+            get_recent_charge_adjustments(
+                session, projcode=projcode,
+                user_id=alice.user_id, username=alice.username,
+            )
+
+    def test_outer_join_returns_rows_with_no_user(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        make_charge_adjustment(session, account=account, adjusted_by=None)
+
+        rows = get_recent_charge_adjustments(session, projcode=projcode)
+        assert len(rows) == 1
+        assert rows[0]['user_id'] is None
+        assert rows[0]['username'] is None
+        assert rows[0]['user_full_name'] is None
+
+    def test_include_deleted_hides_then_shows_soft_deleted_account(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        make_charge_adjustment(session, account=account, comment="after-delete")
+        account.deleted = True
+        session.flush()
+
+        hidden = get_recent_charge_adjustments(session, projcode=projcode)
+        assert hidden == []
+
+        shown = get_recent_charge_adjustments(
+            session, projcode=projcode, include_deleted=True,
+        )
+        assert len(shown) == 1
+        assert shown[0]['comment'] == "after-delete"
+
+    def test_limit_caps_results(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        base = datetime(2099, 6, 15)
+        for i in range(5):
+            make_charge_adjustment(
+                session, account=account,
+                adjustment_date=base - timedelta(minutes=i),
+            )
+
+        rows = get_recent_charge_adjustments(
+            session, projcode=projcode, limit=3,
+        )
+        assert len(rows) == 3
+
+    def test_sort_by_amount_asc_and_desc(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        for amt in (-250.0, -50.0, -500.0, -100.0):
+            make_charge_adjustment(session, account=account, amount=amt)
+        asc = get_recent_charge_adjustments(
+            session, projcode=projcode, sort_by='amount', sort_dir='asc',
+        )
+        desc = get_recent_charge_adjustments(
+            session, projcode=projcode, sort_by='amount', sort_dir='desc',
+        )
+        assert [r['amount'] for r in asc] == sorted(r['amount'] for r in asc)
+        assert [r['amount'] for r in desc] == \
+               sorted((r['amount'] for r in desc), reverse=True)
+
+    @pytest.mark.parametrize('sort_by', list(CHARGE_ADJUSTMENT_SORT_COLUMNS))
+    def test_sort_by_whitelist_all_succeed(self, session, sort_by):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        make_charge_adjustment(session, account=account)
+        rows = get_recent_charge_adjustments(
+            session, projcode=projcode, sort_by=sort_by,
+        )
+        assert len(rows) == 1
+
+    def test_unknown_sort_by_raises(self, session):
+        with pytest.raises(ValueError, match='Unknown sort_by'):
+            get_recent_charge_adjustments(session, sort_by='bogus_col')
+
+    def test_bad_sort_dir_raises(self, session):
+        with pytest.raises(ValueError, match='sort_dir'):
+            get_recent_charge_adjustments(session, sort_dir='sideways')
+
+    def test_offset_and_limit_pagination(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        base = datetime(2099, 6, 15)
+        for i in range(7):
+            make_charge_adjustment(
+                session, account=account,
+                adjustment_date=base - timedelta(hours=i),
+            )
+        all_rows = get_recent_charge_adjustments(session, projcode=projcode)
+        assert len(all_rows) == 7
+        page1 = get_recent_charge_adjustments(
+            session, projcode=projcode, limit=3,
+        )
+        page2 = get_recent_charge_adjustments(
+            session, projcode=projcode, offset=3, limit=3,
+        )
+        assert [r['adjustment_id'] for r in page1] == \
+               [r['adjustment_id'] for r in all_rows[:3]]
+        assert [r['adjustment_id'] for r in page2] == \
+               [r['adjustment_id'] for r in all_rows[3:6]]
+
+    def test_count_matches_unlimited_get(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        for _ in range(4):
+            make_charge_adjustment(session, account=account)
+        total = count_recent_charge_adjustments(session, projcode=projcode)
+        rows = get_recent_charge_adjustments(session, projcode=projcode)
+        assert total == len(rows) == 4
+
+        # Filter-consistency: count honors the same filters as get_recent.
+        account.deleted = True
+        session.flush()
+        assert count_recent_charge_adjustments(session, projcode=projcode) == 0
+        assert count_recent_charge_adjustments(
+            session, projcode=projcode, include_deleted=True,
+        ) == 4
+
+    def test_adjustment_id_filter_returns_single_row(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        adj_a = make_charge_adjustment(session, account=account)
+        make_charge_adjustment(session, account=account)
+
+        rows = get_recent_charge_adjustments(
+            session, adjustment_id=adj_a.charge_adjustment_id,
+        )
+        assert len(rows) == 1
+        assert rows[0]['adjustment_id'] == adj_a.charge_adjustment_id
+
+    def test_adjustment_id_unknown_returns_empty(self, session):
+        rows = get_recent_charge_adjustments(session, adjustment_id=99_999_999)
+        assert rows == []
 
 
 # ============================================================================

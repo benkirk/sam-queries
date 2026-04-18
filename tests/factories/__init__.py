@@ -14,8 +14,10 @@ from .operational import make_wallclock_exemption
 from .projects import (
     make_account,
     make_allocation,
+    make_allocation_transaction,
     make_aoi,
     make_aoi_group,
+    make_charge_adjustment,
     make_facility,
     make_project,
 )
@@ -38,4 +40,6 @@ __all__ = [
     "make_project",
     "make_account",
     "make_allocation",
+    "make_allocation_transaction",
+    "make_charge_adjustment",
 ]

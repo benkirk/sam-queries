@@ -1,0 +1,105 @@
+{#
+  Shared filter bar for audit-style tables (Transactions, Adjustments).
+
+  Each caller instantiates this macro independently. State lives in the form
+  inputs — there is no URL-param coupling between instances, so the
+  Transactions form and Adjustments form are fully isolated.
+
+  Parameters:
+    form_id       - unique id for this form (e.g. "tx-filters")
+    fragment_url  - HTMX endpoint to GET on submit
+    target_id     - id of the fragment container (innerHTML swap)
+    start_date    - initial YYYY-MM-DD string
+    end_date      - initial YYYY-MM-DD string
+    projcode      - initial projcode value (string or '')
+    username      - initial username value
+    all_resources - list of available resource names (for the multi-select)
+    selected_resources - list of currently selected resource names
+#}
+{% macro audit_filters(form_id, fragment_url, target_id,
+                       start_date='', end_date='',
+                       projcode='', username='',
+                       all_resources=[], selected_resources=[]) %}
+<form id="{{ form_id }}"
+      class="card mb-3"
+      hx-get="{{ fragment_url }}"
+      hx-target="#{{ target_id }}"
+      hx-swap="innerHTML"
+      hx-trigger="submit">
+    <div class="card-body py-3">
+        <div class="d-flex flex-wrap align-items-start gap-3">
+
+            {# Left column: four inputs stacked over the Search/Reset row. #}
+            <div class="d-flex flex-column gap-3">
+
+                <div class="d-flex flex-wrap gap-3">
+                    <div>
+                        <label class="form-label small mb-1">
+                            <strong><i class="fas fa-calendar me-1 text-muted"></i>From</strong>
+                        </label>
+                        <input type="date" class="form-control form-control-sm"
+                               name="start_date" value="{{ start_date }}"
+                               style="width:150px;">
+                    </div>
+
+                    <div>
+                        <label class="form-label small mb-1"><strong>To</strong></label>
+                        <input type="date" class="form-control form-control-sm"
+                               name="end_date" value="{{ end_date }}"
+                               style="width:150px;">
+                    </div>
+
+                    <div>
+                        <label class="form-label small mb-1">
+                            <strong><i class="fas fa-folder-open me-1 text-muted"></i>Project</strong>
+                        </label>
+                        <input type="text" class="form-control form-control-sm"
+                               name="projcode" value="{{ projcode or '' }}"
+                               placeholder="e.g. SCSG0001" style="width:140px;">
+                    </div>
+
+                    <div>
+                        <label class="form-label small mb-1">
+                            <strong><i class="fas fa-user me-1 text-muted"></i>Responsible user</strong>
+                        </label>
+                        <input type="text" class="form-control form-control-sm"
+                               name="username" value="{{ username or '' }}"
+                               placeholder="username" style="width:160px;">
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            onclick="document.getElementById('{{ form_id }}').reset(); htmx.trigger('#{{ form_id }}', 'submit');"
+                            title="Reset to default filters">
+                        <i class="fas fa-rotate-left"></i> Reset
+                    </button>
+                </div>
+
+            </div>
+
+            {# Right column: the tall Resources picker sits alongside the left column. #}
+            {% if all_resources %}
+            <div>
+                <label class="form-label small mb-1">
+                    <strong><i class="fas fa-server me-1 text-muted"></i>Resources</strong>
+                </label>
+                <select class="form-control form-control-sm"
+                        name="resource_name" multiple size="4"
+                        style="width:220px;">
+                    {% for res in all_resources %}
+                    <option value="{{ res }}"
+                        {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
+                    {% endfor %}
+                </select>
+                <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</form>
+{% endmacro %}

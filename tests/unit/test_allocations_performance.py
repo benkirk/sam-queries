@@ -290,6 +290,90 @@ class TestUsageModalRoute:
         assert response.status_code == 200
 
 
+class TestTransactionsFragmentRoute:
+    """Tests for GET /allocations/transactions_fragment."""
+
+    def test_default_returns_200(self, auth_client):
+        response = auth_client.get('/allocations/transactions_fragment')
+        assert response.status_code == 200
+        assert b'<table' in response.data
+
+    def test_sort_by_amount_asc(self, auth_client):
+        response = auth_client.get(
+            '/allocations/transactions_fragment?sort_by=transaction_amount&sort_dir=asc'
+        )
+        assert response.status_code == 200
+
+    def test_unknown_sort_by_is_ignored(self, auth_client):
+        """Bogus sort_by from a malicious URL should not 500 — route silently
+        falls back to the default sort."""
+        response = auth_client.get('/allocations/transactions_fragment?sort_by=nope')
+        assert response.status_code == 200
+
+    def test_pagination_params(self, auth_client):
+        response = auth_client.get(
+            '/allocations/transactions_fragment?page=2&per_page=10'
+        )
+        assert response.status_code == 200
+
+    def test_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/transactions_fragment')
+        assert response.status_code in (302, 401)
+
+
+class TestAdjustmentsFragmentRoute:
+    """Tests for GET /allocations/adjustments_fragment."""
+
+    def test_default_returns_200(self, auth_client):
+        response = auth_client.get('/allocations/adjustments_fragment')
+        assert response.status_code == 200
+        assert b'<table' in response.data
+
+    def test_sort_by_amount_desc(self, auth_client):
+        response = auth_client.get(
+            '/allocations/adjustments_fragment?sort_by=amount&sort_dir=desc'
+        )
+        assert response.status_code == 200
+
+    def test_unknown_sort_by_is_ignored(self, auth_client):
+        response = auth_client.get('/allocations/adjustments_fragment?sort_by=nope')
+        assert response.status_code == 200
+
+    def test_projcode_filter(self, auth_client):
+        response = auth_client.get(
+            '/allocations/adjustments_fragment?projcode=FAKE999'
+        )
+        assert response.status_code == 200
+        # Unknown project → no rows
+        assert b'No adjustments match' in response.data
+
+    def test_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/adjustments_fragment')
+        assert response.status_code in (302, 401)
+
+
+class TestAuditDetailsFragmentRoutes:
+    """Tests for the per-row detail fragments (transaction_details / adjustment_details)."""
+
+    def test_transaction_details_unknown_id_returns_not_found(self, auth_client):
+        response = auth_client.get('/allocations/transaction_details/99999999')
+        assert response.status_code == 200
+        assert b'Transaction not found' in response.data
+
+    def test_adjustment_details_unknown_id_returns_not_found(self, auth_client):
+        response = auth_client.get('/allocations/adjustment_details/99999999')
+        assert response.status_code == 200
+        assert b'Adjustment not found' in response.data
+
+    def test_transaction_details_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/transaction_details/1')
+        assert response.status_code in (302, 401)
+
+    def test_adjustment_details_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/adjustment_details/1')
+        assert response.status_code in (302, 401)
+
+
 # ============================================================================
 # Caching Behavior
 # ============================================================================
