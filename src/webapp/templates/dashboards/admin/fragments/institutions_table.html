@@ -1,0 +1,314 @@
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button %}
+{% from 'dashboards/admin/fragments/institution_filters.html' import institution_filters %}
+{#
+  Admin Institutions table fragment (HTMX-swapped).
+
+  Context:
+    institution_types_grouped  - list of (InstitutionType, [Institution, ...])
+    total_institutions         - int total (post-filter)
+    inst_to_mnemonic           - dict {institution_id: mnemonic or None}
+    user_chips                 - dict {institution_id: [(username, is_active), ...]}
+                                 (empty dict unless show_users_projects is on)
+    project_chips              - dict {institution_id: [(projcode, is_active), ...]}
+                                 (empty dict unless show_users_projects is on)
+    countries, state_provs     - for the filter dropdowns
+    country_id, state_prov_id  - selected filter ids (or None)
+    active_only                - outer Organizations-card state (read-only here)
+    show_users_projects        - bool; governs the # Users / # Projects columns
+                                 and the expand row
+    active_users_projects      - bool; filters chip lists + counts (only
+                                 relevant when show_users_projects is on)
+    is_admin                   - bool
+#}
+{% set ncols = 7 if show_users_projects else 5 %}
+
+<div class="p-3">
+    {{ institution_filters('inst-filters',
+                           url_for('admin_dashboard.htmx_institutions_fragment'),
+                           'institutions-pane',
+                           countries=countries,
+                           state_provs=state_provs,
+                           country_id=country_id,
+                           state_prov_id=state_prov_id,
+                           active_only=active_only,
+                           show_users_projects=show_users_projects,
+                           active_users_projects=active_users_projects) }}
+</div>
+
+<div class="table-responsive">
+    <table class="table table-sm mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Name / Acronym</th>
+                <th>Count</th>
+                <th>Location</th>
+                <th>Mnemonic</th>
+                {% if show_users_projects %}
+                <th class="text-end"># Users</th>
+                <th class="text-end"># Projects</th>
+                {% endif %}
+                <th class="text-end">Actions</th>
+            </tr>
+        </thead>
+        {% if institution_types_grouped %}
+        {% for it, insts in institution_types_grouped %}
+        {# ── Institution Type row (clickable trigger) ── #}
+        <tbody>
+            <tr class="cursor-pointer table-light fw-semibold"
+                data-bs-toggle="collapse"
+                data-bs-target="#inst-type-{{ it.institution_type_id }}"
+                aria-expanded="false">
+                <td>
+                    <i class="fas fa-chevron-right small text-muted me-1 inst-type-collapse-icon"
+                       style="transition: transform 0.2s;"></i>
+                    {{ it.type }}
+                </td>
+                <td class="text-muted small">{{ insts|length }} institution{{ 's' if insts|length != 1 else '' }}</td>
+                <td></td>
+                <td></td>
+                {% if show_users_projects %}
+                <td></td>
+                <td></td>
+                {% endif %}
+                <td class="text-end">
+                    {% if is_admin %}
+                    {{ edit_modal_button(
+                        url_for('admin_dashboard.htmx_institution_type_edit_form', institution_type_id=it.institution_type_id),
+                        modal_id='editInstitutionTypeModal',
+                        target_id='editInstitutionTypeFormContainer',
+                        title='Edit institution type',
+                        stop_propagation=True) }}
+                    {% endif %}
+                </td>
+            </tr>
+        </tbody>
+        {# ── Institution child rows (collapsed by default) ── #}
+        <tbody class="collapse" id="inst-type-{{ it.institution_type_id }}">
+            {% for inst in insts %}
+            {% set sp = inst.state_prov %}
+            {% set state_label = (sp.code or sp.name) if sp else None %}
+            {% set country_label = (sp.country.code if sp and sp.country else None) %}
+            {% set _users = user_chips.get(inst.institution_id, []) %}
+            {% set _projects = project_chips.get(inst.institution_id, []) %}
+            {% set _visible_users = _users if not active_users_projects else _users | selectattr(1) | list %}
+            {% set _visible_projects = _projects if not active_users_projects else _projects | selectattr(1) | list %}
+            {% set _expandable = show_users_projects and (_visible_users or _visible_projects) %}
+            {# ── Institution row — clickable when U&P are shown and non-empty ── #}
+            <tr class="table-secondary{% if _expandable %} cursor-pointer inst-expand-trigger{% endif %}"
+                {% if _expandable %}data-inst-target="inst-users-{{ inst.institution_id }}"{% endif %}>
+                <td class="ps-4">
+                    {% if _expandable %}
+                    <i class="fas fa-chevron-right small text-muted me-1 inst-expand-icon"
+                       style="transition: transform 0.2s;"></i>
+                    {% else %}
+                    <i class="fas fa-circle small me-1" style="font-size:0.35em; color:#ccc; vertical-align:middle;"></i>
+                    {% endif %}
+                    {{ inst.name }}
+                    {% if inst.acronym %}
+                    <span class="text-muted small ms-1">({{ inst.acronym }})</span>
+                    {% endif %}
+                </td>
+                <td></td>
+                <td class="text-muted small">
+                    {% set _loc_parts = [inst.city, state_label, country_label] | select | list %}
+                    {{ _loc_parts | join(', ') if _loc_parts else '—' }}
+                </td>
+                <td>
+                    {% set mc = inst_to_mnemonic.get(inst.institution_id) %}
+                    {% if mc %}
+                    <span class="badge bg-secondary font-monospace">{{ mc }}</span>
+                    {% elif is_admin and has_permission(Permission.CREATE_RESOURCES) %}
+                    <button class="btn btn-link p-0 border-0"
+                            data-bs-toggle="modal"
+                            data-bs-target="#createMnemonicCodeModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form', description=((inst.name ~ ', ' ~ inst.city) if inst.city else inst.name)) }}"
+                            hx-target="#createMnemonicCodeFormContainer"
+                            hx-trigger="click"
+                            title="No mnemonic match — click to create one">
+                        <span class="badge bg-warning text-dark font-monospace">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </span>
+                    </button>
+                    {% else %}
+                    <span class="badge bg-secondary font-monospace text-white-50" title="No mnemonic match — project routing may fail"><i class="fas fa-exclamation-triangle"></i></span>
+                    {% endif %}
+                </td>
+                {% if show_users_projects %}
+                <td class="text-muted small text-end">
+                    {{ _visible_users | length }}
+                </td>
+                <td class="text-muted small text-end">
+                    {{ _visible_projects | length }}
+                </td>
+                {% endif %}
+                <td class="text-end" onclick="event.stopPropagation();">
+                    {% if is_admin %}
+                    {{ edit_modal_button(
+                        url_for('admin_dashboard.htmx_institution_edit_form', inst_id=inst.institution_id),
+                        modal_id='editInstitutionModal',
+                        target_id='editInstitutionFormContainer',
+                        title='Edit institution') }}
+                    {% endif %}
+                </td>
+            </tr>
+            {# ── Users / Projects sub-row (only when U&P are shown) ── #}
+            {% if _expandable %}
+            <tr id="inst-users-{{ inst.institution_id }}" style="display: none;">
+                <td colspan="{{ ncols }}" class="ps-5 pt-1 pb-2">
+                    <div class="small">
+                        <span class="text-muted fw-semibold me-2" style="min-width:4.5rem; display:inline-block;">Users:</span>
+                        {% for username, is_active in _visible_users %}
+                        <a href="#"
+                           class="me-3 text-decoration-none{% if not is_active %} text-muted fst-italic{% endif %}"
+                           data-bs-toggle="modal"
+                           data-bs-target="#userDetailsModal"
+                           hx-get="{{ url_for('admin_dashboard.user_card', username=username) }}"
+                           hx-target="#userDetailsModalBody"
+                           hx-swap="innerHTML"
+                           {% if not is_active %}title="Inactive user"{% endif %}>
+                            <i class="fas fa-user fa-xs me-1 text-muted"></i>{{ username }}
+                        </a>
+                        {% else %}
+                        <span class="text-muted fst-italic">(none)</span>
+                        {% endfor %}
+                    </div>
+                    <div class="small mt-1">
+                        <span class="text-muted fw-semibold me-2" style="min-width:4.5rem; display:inline-block;">Projects:</span>
+                        {% for projcode, is_active in _visible_projects %}
+                        <a href="#"
+                           class="me-3 text-decoration-none font-monospace{% if not is_active %} text-muted fst-italic{% endif %}"
+                           data-bs-toggle="modal"
+                           data-bs-target="#projectDetailsModal"
+                           hx-get="{{ url_for('admin_dashboard.project_card', projcode=projcode) }}"
+                           hx-target="#projectDetailsModalBody"
+                           hx-swap="innerHTML"
+                           {% if not is_active %}title="Inactive project"{% endif %}>
+                            <i class="fas fa-folder-open fa-xs me-1 text-muted"></i>{{ projcode }}
+                        </a>
+                        {% else %}
+                        <span class="text-muted fst-italic">(none)</span>
+                        {% endfor %}
+                    </div>
+                </td>
+            </tr>
+            {% endif %}
+            {% else %}
+            <tr class="table-secondary">
+                <td colspan="{{ ncols }}" class="ps-4 text-muted fst-italic">No institutions of this type.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        {% endfor %}
+        {% else %}
+        <tbody>
+            <tr><td colspan="{{ ncols }}" class="text-center text-muted py-3">
+                {% if country_id or state_prov_id or active_only or show_users_projects %}
+                No institutions match the current filter.
+                {% else %}
+                No institution types found.
+                {% endif %}
+            </td></tr>
+        </tbody>
+        {% endif %}
+    </table>
+</div>
+<div class="d-flex justify-content-between align-items-center px-3 py-2">
+    <span class="text-muted small">
+        Showing {{ institution_types_grouped|length }} type{{ 's' if institution_types_grouped|length != 1 else '' }}, {{ total_institutions }} institution{{ 's' if total_institutions != 1 else '' }}
+        {% if country_id or state_prov_id or active_only or show_users_projects %}
+        <span class="ms-1">(filtered)</span>
+        {% endif %}
+    </span>
+    {% if has_permission(Permission.CREATE_RESOURCES) %}
+    <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-success"
+                data-bs-toggle="modal"
+                data-bs-target="#createInstitutionTypeModal"
+                hx-get="{{ url_for('admin_dashboard.htmx_institution_type_create_form') }}"
+                hx-target="#createInstitutionTypeFormContainer"
+                hx-trigger="click">
+            <i class="fas fa-plus"></i> Create Type
+        </button>
+        <button class="btn btn-sm btn-outline-success"
+                data-bs-toggle="modal"
+                data-bs-target="#createInstitutionModal"
+                hx-get="{{ url_for('admin_dashboard.htmx_institution_create_form') }}"
+                hx-target="#createInstitutionFormContainer"
+                hx-trigger="click">
+            <i class="fas fa-plus"></i> Create Institution
+        </button>
+        <button class="btn btn-sm btn-outline-success"
+                data-bs-toggle="modal"
+                data-bs-target="#createMnemonicCodeModal"
+                hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form') }}"
+                hx-target="#createMnemonicCodeFormContainer"
+                hx-trigger="click">
+            <i class="fas fa-plus"></i> Create Mnemonic Code
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+(function() {
+    if (window.SamCollapseChevron) {
+        SamCollapseChevron.attach('#institutions-pane', '.inst-type-collapse-icon');
+    }
+
+    // Institution expand rows use a plain JS display toggle (not Bootstrap
+    // collapse, since they're <tr>s nested inside the type tbody so they
+    // hide/show naturally with the type). Persist their state under the same
+    // `collapse:<id>` localStorage key used by nav-view-persistence.js, so
+    // HTMX re-renders (filter/toggle changes) don't lose user expansions.
+    var COLLAPSE_PREFIX = 'collapse:';
+
+    function setExpanded(row, userRow, expanded) {
+        userRow.style.display = expanded ? '' : 'none';
+        var icon = row.querySelector('.inst-expand-icon');
+        if (icon) icon.style.transform = expanded ? 'rotate(90deg)' : '';
+    }
+
+    function restoreRow(row) {
+        var targetId = row.dataset.instTarget;
+        var userRow = document.getElementById(targetId);
+        if (!userRow) return;
+        var saved = null;
+        try { saved = localStorage.getItem(COLLAPSE_PREFIX + targetId); } catch (_) {}
+        if (saved) setExpanded(row, userRow, true);
+    }
+
+    document.querySelectorAll('#institutions-pane .inst-expand-trigger').forEach(function(row) {
+        var targetId = row.dataset.instTarget;
+        var userRow = document.getElementById(targetId);
+        if (!userRow) return;
+
+        restoreRow(row);
+
+        row.addEventListener('click', function() {
+            var willExpand = userRow.style.display === 'none';
+            setExpanded(row, userRow, willExpand);
+            try {
+                if (willExpand) localStorage.setItem(COLLAPSE_PREFIX + targetId, '1');
+                else            localStorage.removeItem(COLLAPSE_PREFIX + targetId);
+            } catch (_) {}
+        });
+    });
+
+    // After a Search submit, nav-view-persistence.js calls
+    // bootstrap.Collapse.show() on the parent tbody to restore InstitutionType
+    // expansion. Its ~350ms transition's completion callback clobbers child
+    // <tr style="display:"> back to none. Re-restore after the transition
+    // completes (shown.bs.collapse fires exactly then) so we win the race.
+    // Guard against double-binding: the fragment script runs on every HTMX
+    // swap, so flag the institutions-pane container.
+    var pane = document.getElementById('institutions-pane');
+    if (pane && !pane.dataset.instCollapseBound) {
+        pane.dataset.instCollapseBound = '1';
+        pane.addEventListener('shown.bs.collapse', function(e) {
+            var tbody = e.target;
+            if (!tbody || !tbody.id || tbody.id.indexOf('inst-type-') !== 0) return;
+            tbody.querySelectorAll('.inst-expand-trigger').forEach(restoreRow);
+        });
+    }
+})();
+</script>

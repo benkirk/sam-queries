@@ -23,6 +23,7 @@ from sam.queries.admin import (
     get_organizations_with_members,
     get_institution_type_tree,
     get_institutions_with_members,
+    get_countries_with_institutions,
     get_aoi_groups_with_areas,
     get_areas_of_interest_with_projects,
     get_contracts_with_pi,
@@ -129,8 +130,6 @@ def htmx_organizations_card():
 
     org_tree = _dfs(None, 0)
 
-    institution_types = get_institution_type_tree(db.session)
-    institutions = get_institutions_with_members(db.session)
     aoi_groups = get_aoi_groups_with_areas(db.session, active_only=active_only)
     aois = get_areas_of_interest_with_projects(db.session, active_only=active_only)
 
@@ -143,10 +142,6 @@ def htmx_organizations_card():
     nsf_programs = get_nsf_programs_with_contracts(db.session, active_only=active_only)
 
     _mc_lookup = MnemonicCode.build_lookup(db.session)
-    inst_to_mnemonic = {
-        inst.institution_id: MnemonicCode.resolve_for_institution(inst, _mc_lookup)
-        for inst in institutions
-    }
     org_to_mnemonic = {
         org.organization_id: MnemonicCode.resolve_for_organization(org, _mc_lookup)
         for org in organizations
@@ -156,18 +151,139 @@ def htmx_organizations_card():
         'dashboards/admin/fragments/organization_card.html',
         organizations=organizations,
         org_tree=org_tree,
-        institution_types=institution_types,
-        institutions=institutions,
         aoi_groups=aoi_groups,
         aois=aois,
         contract_sources=contract_sources,
         contracts=contracts,
         nsf_programs=nsf_programs,
-        inst_to_mnemonic=inst_to_mnemonic,
         org_to_mnemonic=org_to_mnemonic,
         is_admin=True,
         now=now,
         active_only=active_only,
+    )
+
+
+@bp.route('/htmx/institutions-fragment')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+@cache.cached(query_string=True)
+def htmx_institutions_fragment():
+    """HTMX fragment: filterable, nested table of institutions by institution type.
+
+    Query params:
+      - ``country_id``, ``state_prov_id``: geography filters (blank → None;
+        ``state_prov_id`` is ignored unless ``country_id`` is set).
+      - ``active_only``: institution-level filter (from the outer
+        Organizations card). Keep only institutions with ≥1 currently-active
+        ``UserInstitution`` linked to an active ``User``.
+      - ``show_users_projects``: when set, eager-load users + their lead /
+        admin projects and render the ``# Users`` / ``# Projects`` columns
+        + expand row. When off we do no user/project work.
+      - ``active_users_projects``: when set (and U&P shown), filter the
+        chip lists to active users / active projects. Institutions with
+        zero visible users AND zero visible projects are dropped.
+    """
+    from sam.core.organizations import MnemonicCode
+    from sam.geography import StateProv
+
+    def _int_or_none(val):
+        val = (val or '').strip()
+        if not val:
+            return None
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return None
+
+    country_id = _int_or_none(request.args.get('country_id'))
+    state_prov_id = _int_or_none(request.args.get('state_prov_id')) if country_id else None
+    active_only = request.args.get('active_only') == '1'
+    show_users_projects = request.args.get('show_users_projects') == '1'
+    active_users_projects = request.args.get('active_users_projects') == '1'
+
+    institutions = get_institutions_with_members(
+        db.session,
+        country_id=country_id,
+        state_prov_id=state_prov_id,
+        active_only=active_only,
+        include_projects=show_users_projects,
+    )
+
+    # Per-institution chip lists — only built when the U&P view is on.
+    user_chips = {}
+    project_chips = {}
+    if show_users_projects:
+        for inst in institutions:
+            user_chips[inst.institution_id] = sorted(
+                [(ui.user.username, bool(ui.user.is_active)) for ui in inst.users],
+                key=lambda t: t[0].lower(),
+            )
+            seen = {}
+            for ui in inst.users:
+                for p in list(ui.user.led_projects) + list(ui.user.admin_projects):
+                    # Dedupe by projcode; "active" wins if any link is active.
+                    is_active = bool(p.is_active)
+                    prev = seen.get(p.projcode)
+                    if prev is None or (is_active and not prev):
+                        seen[p.projcode] = is_active
+            project_chips[inst.institution_id] = sorted(
+                seen.items(), key=lambda t: t[0].lower()
+            )
+
+        # Drop institutions whose visible-users AND visible-projects are both
+        # empty under the current active_users_projects filter.
+        def _has_visible(chips):
+            if active_users_projects:
+                return any(is_active for _, is_active in chips)
+            return bool(chips)
+
+        institutions = [
+            inst for inst in institutions
+            if _has_visible(user_chips[inst.institution_id])
+            or _has_visible(project_chips[inst.institution_id])
+        ]
+
+    # Group (possibly filtered) institutions by institution_type.
+    all_types = get_institution_type_tree(db.session)
+    by_type_id = {}
+    for inst in institutions:
+        by_type_id.setdefault(inst.institution_type_id, []).append(inst)
+    institution_types_grouped = [
+        (it, by_type_id[it.institution_type_id])
+        for it in all_types
+        if it.institution_type_id in by_type_id
+    ]
+
+    _mc_lookup = MnemonicCode.build_lookup(db.session)
+    inst_to_mnemonic = {
+        inst.institution_id: MnemonicCode.resolve_for_institution(inst, _mc_lookup)
+        for inst in institutions
+    }
+
+    countries = get_countries_with_institutions(db.session)
+    state_provs = (
+        db.session.query(StateProv)
+        .filter_by(ext_country_id=country_id)
+        .order_by(StateProv.name)
+        .all()
+        if country_id else []
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/institutions_table.html',
+        institution_types_grouped=institution_types_grouped,
+        total_institutions=len(institutions),
+        inst_to_mnemonic=inst_to_mnemonic,
+        user_chips=user_chips,
+        project_chips=project_chips,
+        countries=countries,
+        state_provs=state_provs,
+        country_id=country_id,
+        state_prov_id=state_prov_id,
+        active_only=active_only,
+        show_users_projects=show_users_projects,
+        active_users_projects=active_users_projects,
+        is_admin=True,
     )
 
 

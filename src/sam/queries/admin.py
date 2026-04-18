@@ -5,7 +5,7 @@ Centralizes the heavy selectinload/subqueryload chains used by the admin
 HTMX card endpoints, keeping the view layer thin.
 """
 
-from sqlalchemy.orm import subqueryload, selectinload, lazyload
+from sqlalchemy.orm import subqueryload, selectinload, lazyload, joinedload
 
 
 def get_organizations_with_members(session, active_only=False):
@@ -28,47 +28,107 @@ def get_organizations_with_members(session, active_only=False):
 
 
 def get_institution_type_tree(session):
-    """Load all institution types with their institutions and member users.
+    """Load all institution types, ordered by type name.
 
-    Used by the admin organizations card (InstitutionTypes tab).
-
-    Returns:
-        list of InstitutionType (with deep .institutions → .users eager loads)
+    Used by the admin Institutions tab to label/group institutions by type.
+    The caller provides the Institution rows separately (from
+    ``get_institutions_with_members``) and joins them to types in Python,
+    so no nested eager loads are needed here.
     """
-    from sam.core.organizations import InstitutionType, Institution, UserInstitution
-    from sam.core.users import User
+    from sam.core.organizations import InstitutionType
 
-    return session.query(InstitutionType).options(
-        selectinload(InstitutionType.institutions)
-            .selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.accounts),
-        selectinload(InstitutionType.institutions)
-            .selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.email_addresses),
-    ).order_by(InstitutionType.type).all()
+    return session.query(InstitutionType).order_by(InstitutionType.type).all()
 
 
-def get_institutions_with_members(session):
-    """Load all institutions with their member users.
+def get_institutions_with_members(session, *, country_id=None, state_prov_id=None,
+                                  active_only=False, include_projects=False):
+    """Load institutions, optionally filtered by geography and membership status.
 
-    Used by the admin organizations card (Institutions tab).
+    Used by the admin organizations card (Institutions tab). Eagerly loads
+    ``state_prov`` and ``state_prov.country`` so the Location column can render
+    without per-row lazy queries.
+
+    Args:
+        country_id: filter to institutions whose state_prov belongs to this
+            country. Ignored when ``state_prov_id`` is given.
+        state_prov_id: filter to institutions with this state/province.
+        active_only: if True, limit results to institutions that have at
+            least one currently-active ``UserInstitution`` linked to an
+            active ``User`` (EXISTS subquery).
+        include_projects: if True, eager-load each member user plus their
+            ``led_projects`` and ``admin_projects`` so the view can render
+            user/project chips without N+1 queries. When False, the
+            ``users`` relationship is left lazy — the default view doesn't
+            touch it, so no extra queries fire.
 
     Returns:
         list of Institution ordered by name
     """
     from sam.core.organizations import Institution, UserInstitution
     from sam.core.users import User
+    from sam.projects.projects import Project
+    from sam.geography import StateProv
 
-    return session.query(Institution).options(
-        selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.accounts),
-        selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.email_addresses),
-    ).order_by(Institution.name).all()
+    q = session.query(Institution).options(
+        joinedload(Institution.state_prov).joinedload(StateProv.country),
+    )
+    if include_projects:
+        q = q.options(
+            selectinload(Institution.users)
+                .selectinload(UserInstitution.user)
+                .lazyload(User.accounts),
+            selectinload(Institution.users)
+                .selectinload(UserInstitution.user)
+                .lazyload(User.email_addresses),
+            selectinload(Institution.users)
+                .selectinload(UserInstitution.user)
+                .selectinload(User.led_projects)
+                .lazyload(Project.accounts),
+            selectinload(Institution.users)
+                .selectinload(UserInstitution.user)
+                .selectinload(User.admin_projects)
+                .lazyload(Project.accounts),
+        )
+
+    if state_prov_id:
+        q = q.filter(Institution.state_prov_id == state_prov_id)
+    elif country_id:
+        q = q.join(StateProv, Institution.state_prov_id == StateProv.ext_state_prov_id) \
+             .filter(StateProv.ext_country_id == country_id)
+
+    if active_only:
+        q = q.filter(
+            session.query(UserInstitution)
+                .join(User, User.user_id == UserInstitution.user_id)
+                .filter(UserInstitution.institution_id == Institution.institution_id)
+                .filter(UserInstitution.is_active)
+                .filter(User.is_active)
+                .exists()
+        )
+
+    return q.order_by(Institution.name).all()
+
+
+def get_countries_with_institutions(session):
+    """Return distinct Country rows that have at least one linked institution.
+
+    Used to populate the Country filter dropdown — skips countries with no
+    institutions so the dropdown stays short.
+
+    Returns:
+        list of Country ordered by name
+    """
+    from sam.core.organizations import Institution
+    from sam.geography import Country, StateProv
+
+    return (
+        session.query(Country)
+        .join(StateProv, StateProv.ext_country_id == Country.ext_country_id)
+        .join(Institution, Institution.state_prov_id == StateProv.ext_state_prov_id)
+        .distinct()
+        .order_by(Country.name)
+        .all()
+    )
 
 
 def get_aoi_groups_with_areas(session, active_only=False):
