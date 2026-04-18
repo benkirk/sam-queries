@@ -23,6 +23,7 @@ from sam.queries.admin import (
     get_organizations_with_members,
     get_institution_type_tree,
     get_institutions_with_members,
+    get_countries_with_institutions,
     get_aoi_groups_with_areas,
     get_areas_of_interest_with_projects,
     get_contracts_with_pi,
@@ -129,8 +130,6 @@ def htmx_organizations_card():
 
     org_tree = _dfs(None, 0)
 
-    institution_types = get_institution_type_tree(db.session)
-    institutions = get_institutions_with_members(db.session)
     aoi_groups = get_aoi_groups_with_areas(db.session, active_only=active_only)
     aois = get_areas_of_interest_with_projects(db.session, active_only=active_only)
 
@@ -143,10 +142,6 @@ def htmx_organizations_card():
     nsf_programs = get_nsf_programs_with_contracts(db.session, active_only=active_only)
 
     _mc_lookup = MnemonicCode.build_lookup(db.session)
-    inst_to_mnemonic = {
-        inst.institution_id: MnemonicCode.resolve_for_institution(inst, _mc_lookup)
-        for inst in institutions
-    }
     org_to_mnemonic = {
         org.organization_id: MnemonicCode.resolve_for_organization(org, _mc_lookup)
         for org in organizations
@@ -156,18 +151,87 @@ def htmx_organizations_card():
         'dashboards/admin/fragments/organization_card.html',
         organizations=organizations,
         org_tree=org_tree,
-        institution_types=institution_types,
-        institutions=institutions,
         aoi_groups=aoi_groups,
         aois=aois,
         contract_sources=contract_sources,
         contracts=contracts,
         nsf_programs=nsf_programs,
-        inst_to_mnemonic=inst_to_mnemonic,
         org_to_mnemonic=org_to_mnemonic,
         is_admin=True,
         now=now,
         active_only=active_only,
+    )
+
+
+@bp.route('/htmx/institutions-fragment')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+@cache.cached(query_string=True)
+def htmx_institutions_fragment():
+    """HTMX fragment: filterable, nested table of institutions by institution type.
+
+    Filters (query params): ``country_id``, ``state_prov_id``. Blank → None.
+    ``state_prov_id`` is forced to None if ``country_id`` is absent to keep
+    the dependent dropdown consistent.
+    """
+    from sam.core.organizations import MnemonicCode
+    from sam.geography import StateProv
+
+    def _int_or_none(val):
+        val = (val or '').strip()
+        if not val:
+            return None
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return None
+
+    country_id = _int_or_none(request.args.get('country_id'))
+    state_prov_id = _int_or_none(request.args.get('state_prov_id')) if country_id else None
+
+    institutions = get_institutions_with_members(
+        db.session,
+        country_id=country_id,
+        state_prov_id=state_prov_id,
+    )
+
+    # Group filtered institutions by institution_type, preserving type order
+    # from get_institution_type_tree. Hide types with zero matching institutions.
+    all_types = get_institution_type_tree(db.session)
+    by_type_id = {}
+    for inst in institutions:
+        by_type_id.setdefault(inst.institution_type_id, []).append(inst)
+    institution_types_grouped = [
+        (it, by_type_id[it.institution_type_id])
+        for it in all_types
+        if it.institution_type_id in by_type_id
+    ]
+
+    _mc_lookup = MnemonicCode.build_lookup(db.session)
+    inst_to_mnemonic = {
+        inst.institution_id: MnemonicCode.resolve_for_institution(inst, _mc_lookup)
+        for inst in institutions
+    }
+
+    countries = get_countries_with_institutions(db.session)
+    state_provs = (
+        db.session.query(StateProv)
+        .filter_by(ext_country_id=country_id)
+        .order_by(StateProv.name)
+        .all()
+        if country_id else []
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/institutions_table.html',
+        institution_types_grouped=institution_types_grouped,
+        total_institutions=len(institutions),
+        inst_to_mnemonic=inst_to_mnemonic,
+        countries=countries,
+        state_provs=state_provs,
+        country_id=country_id,
+        state_prov_id=state_prov_id,
+        is_admin=True,
     )
 
 

@@ -5,7 +5,7 @@ Centralizes the heavy selectinload/subqueryload chains used by the admin
 HTMX card endpoints, keeping the view layer thin.
 """
 
-from sqlalchemy.orm import subqueryload, selectinload, lazyload
+from sqlalchemy.orm import subqueryload, selectinload, lazyload, joinedload
 
 
 def get_organizations_with_members(session, active_only=False):
@@ -50,25 +50,62 @@ def get_institution_type_tree(session):
     ).order_by(InstitutionType.type).all()
 
 
-def get_institutions_with_members(session):
-    """Load all institutions with their member users.
+def get_institutions_with_members(session, *, country_id=None, state_prov_id=None):
+    """Load institutions with their member users, optionally filtered by geography.
 
-    Used by the admin organizations card (Institutions tab).
+    Used by the admin organizations card (Institutions tab). Eagerly loads
+    ``state_prov`` and ``state_prov.country`` so the Location column can render
+    without per-row lazy queries.
+
+    Args:
+        country_id: filter to institutions whose state_prov belongs to this
+            country. Ignored when ``state_prov_id`` is given.
+        state_prov_id: filter to institutions with this state/province.
 
     Returns:
         list of Institution ordered by name
     """
     from sam.core.organizations import Institution, UserInstitution
     from sam.core.users import User
+    from sam.geography import StateProv
 
-    return session.query(Institution).options(
+    q = session.query(Institution).options(
         selectinload(Institution.users)
             .selectinload(UserInstitution.user)
             .lazyload(User.accounts),
         selectinload(Institution.users)
             .selectinload(UserInstitution.user)
             .lazyload(User.email_addresses),
-    ).order_by(Institution.name).all()
+        joinedload(Institution.state_prov).joinedload(StateProv.country),
+    )
+    if state_prov_id:
+        q = q.filter(Institution.state_prov_id == state_prov_id)
+    elif country_id:
+        q = q.join(StateProv, Institution.state_prov_id == StateProv.ext_state_prov_id) \
+             .filter(StateProv.ext_country_id == country_id)
+    return q.order_by(Institution.name).all()
+
+
+def get_countries_with_institutions(session):
+    """Return distinct Country rows that have at least one linked institution.
+
+    Used to populate the Country filter dropdown — skips countries with no
+    institutions so the dropdown stays short.
+
+    Returns:
+        list of Country ordered by name
+    """
+    from sam.core.organizations import Institution
+    from sam.geography import Country, StateProv
+
+    return (
+        session.query(Country)
+        .join(StateProv, StateProv.ext_country_id == Country.ext_country_id)
+        .join(Institution, Institution.state_prov_id == StateProv.ext_state_prov_id)
+        .distinct()
+        .order_by(Country.name)
+        .all()
+    )
 
 
 def get_aoi_groups_with_areas(session, active_only=False):
