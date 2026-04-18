@@ -110,7 +110,8 @@
                 </td>
                 <td></td>
                 <td class="text-muted small">
-                    {{ inst.city or '—' }}, {{ state_label or '—' }}, {{ country_label or '—' }}
+                    {% set _loc_parts = [inst.city, state_label, country_label] | select | list %}
+                    {{ _loc_parts | join(', ') if _loc_parts else '—' }}
                 </td>
                 <td>
                     {% set mc = inst_to_mnemonic.get(inst.institution_id) %}
@@ -137,7 +138,7 @@
                     {{ _visible_users | length }}
                 </td>
                 <td class="text-muted small text-end">
-                    {{ _visible_projects | length }}{% if active_users_projects and _projects | length != _visible_projects | length %}<span class="text-muted"> / {{ _projects | length }}</span>{% endif %}
+                    {{ _visible_projects | length }}
                 </td>
                 {% endif %}
                 <td class="text-end" onclick="event.stopPropagation();">
@@ -259,14 +260,6 @@
     // hide/show naturally with the type). Persist their state under the same
     // `collapse:<id>` localStorage key used by nav-view-persistence.js, so
     // HTMX re-renders (filter/toggle changes) don't lose user expansions.
-    //
-    // KNOWN LIMITATION: when an inner filter (Search) re-renders the fragment,
-    // the row briefly restores then is reverted to display:none ~500ms later
-    // by an as-yet-unidentified handler — possibly tied to the Bootstrap
-    // collapse transition on the parent <tbody>. localStorage is preserved,
-    // so toggling the row again (or re-opening the type) restores it.
-    // See docs/plans/INSTITUTIONS_ROW_PERSISTENCE_DEBUG.md for repro and
-    // suggested next-session approaches.
     var COLLAPSE_PREFIX = 'collapse:';
 
     function setExpanded(row, userRow, expanded) {
@@ -275,14 +268,21 @@
         if (icon) icon.style.transform = expanded ? 'rotate(90deg)' : '';
     }
 
+    function restoreRow(row) {
+        var targetId = row.dataset.instTarget;
+        var userRow = document.getElementById(targetId);
+        if (!userRow) return;
+        var saved = null;
+        try { saved = localStorage.getItem(COLLAPSE_PREFIX + targetId); } catch (_) {}
+        if (saved) setExpanded(row, userRow, true);
+    }
+
     document.querySelectorAll('#institutions-pane .inst-expand-trigger').forEach(function(row) {
         var targetId = row.dataset.instTarget;
         var userRow = document.getElementById(targetId);
         if (!userRow) return;
 
-        var saved = null;
-        try { saved = localStorage.getItem(COLLAPSE_PREFIX + targetId); } catch (_) {}
-        if (saved) setExpanded(row, userRow, true);
+        restoreRow(row);
 
         row.addEventListener('click', function() {
             var willExpand = userRow.style.display === 'none';
@@ -293,5 +293,22 @@
             } catch (_) {}
         });
     });
+
+    // After a Search submit, nav-view-persistence.js calls
+    // bootstrap.Collapse.show() on the parent tbody to restore InstitutionType
+    // expansion. Its ~350ms transition's completion callback clobbers child
+    // <tr style="display:"> back to none. Re-restore after the transition
+    // completes (shown.bs.collapse fires exactly then) so we win the race.
+    // Guard against double-binding: the fragment script runs on every HTMX
+    // swap, so flag the institutions-pane container.
+    var pane = document.getElementById('institutions-pane');
+    if (pane && !pane.dataset.instCollapseBound) {
+        pane.dataset.instCollapseBound = '1';
+        pane.addEventListener('shown.bs.collapse', function(e) {
+            var tbody = e.target;
+            if (!tbody || !tbody.id || tbody.id.indexOf('inst-type-') !== 0) return;
+            tbody.querySelectorAll('.inst-expand-trigger').forEach(restoreRow);
+        });
+    }
 })();
 </script>
