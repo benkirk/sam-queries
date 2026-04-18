@@ -1,0 +1,108 @@
+{% from 'dashboards/fragments/pagination.html' import pagination %}
+{#
+  Transactions-table HTMX fragment.
+
+  Context:
+    rows, total, page, sort, filters
+    fragment_url, target_id, form_id, sortable_columns
+#}
+{% macro sort_link(col, label, align='') %}
+{% if col in sortable_columns %}
+    {% set is_active = (sort['sort_by'] == col) %}
+    {% set next_dir = 'asc' if (is_active and sort['sort_dir'] == 'desc') else 'desc' %}
+    <a class="text-decoration-none {{ align }}"
+       href="#"
+       hx-get="{{ fragment_url }}?sort_by={{ col }}&sort_dir={{ next_dir }}&page=1"
+       hx-target="#{{ target_id }}"
+       hx-include="#{{ form_id }}"
+       hx-swap="innerHTML">
+        {{ label }}
+        {% if is_active %}
+            {% if sort['sort_dir'] == 'asc' %}
+                <i class="fas fa-caret-up ms-1"></i>
+            {% else %}
+                <i class="fas fa-caret-down ms-1"></i>
+            {% endif %}
+        {% else %}
+            <i class="fas fa-sort text-muted small ms-1"></i>
+        {% endif %}
+    </a>
+{% else %}
+    {{ label }}
+{% endif %}
+{% endmacro %}
+
+<div>
+    <table class="table table-sm table-striped table-hover mb-0 audit-table">
+        <thead class="table-light">
+            <tr>
+                <th style="white-space:nowrap;">{{ sort_link('creation_time', 'Date') }}</th>
+                <th>{{ sort_link('transaction_type', 'Type') }}</th>
+                <th>{{ sort_link('projcode', 'Project') }}</th>
+                <th>{{ sort_link('resource_name', 'Resource') }}</th>
+                <th>{{ sort_link('facility_name', 'Facility') }}</th>
+                <th class="text-end">{{ sort_link('transaction_amount', 'Amount', align='text-end') }}</th>
+                <th>{{ sort_link('username', 'Processed by') }}</th>
+                <th>Comment</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                <td style="white-space:nowrap;">
+                    {% if r.propagated %}
+                    <i class="fas fa-code-branch text-muted me-1"
+                       title="Propagated from parent allocation"></i>
+                    {% endif %}
+                    {{ r.creation_time | fmt_date }}
+                </td>
+                <td>
+                    <span class="badge bg-secondary">{{ r.transaction_type }}</span>
+                </td>
+                <td>
+                    {% if r.projcode %}
+                    <button class="btn btn-link p-0"
+                            title="View project details"
+                            data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                            hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode) }}"
+                            hx-target="#projectDetailsModalBody"
+                            hx-swap="innerHTML">
+                        <strong>{{ r.projcode }}</strong>
+                    </button>
+                    {% endif %}
+                </td>
+                <td>{{ r.resource_name or '—' }}</td>
+                <td>{{ r.facility_name or '—' }}</td>
+                <td class="text-end" style="white-space:nowrap;">
+                    {% if r.transaction_amount is not none %}
+                        {{ r.transaction_amount | fmt_number }}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if r.username %}
+                        <span title="{{ r.user_full_name or '' }}">{{ r.username }}</span>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="small text-muted"
+                    title="{{ r.transaction_comment or '' }}"
+                    style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    {{ r.transaction_comment or '' }}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8" class="text-center text-muted py-4">
+                    <i class="fas fa-inbox"></i>
+                    No transactions match the current filter.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {{ pagination(page, total, fragment_url, target_id, form_id, sort) }}
+</div>

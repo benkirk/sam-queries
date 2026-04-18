@@ -26,6 +26,8 @@ from sam import (
     Allocation, User,
 )
 from sam.queries.charges import (
+    CHARGE_ADJUSTMENT_SORT_COLUMNS,
+    count_recent_charge_adjustments,
     get_daily_charge_trends_for_accounts,
     get_raw_charge_summaries_for_accounts,
     get_recent_charge_adjustments,
@@ -40,6 +42,8 @@ from sam.queries.dashboard import (
     get_user_dashboard_data,
 )
 from sam.queries.allocations import (
+    ALLOCATION_TRANSACTION_SORT_COLUMNS,
+    count_recent_allocation_transactions,
     get_allocation_history,
     get_allocation_summary,
     get_allocation_summary_with_usage,
@@ -563,6 +567,91 @@ class TestRecentAllocationTransactions:
         )
         assert len(rows) == 3
 
+    def test_sort_by_amount_asc_and_desc(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        for amt in (250.0, 50.0, 500.0, 100.0):
+            make_allocation_transaction(
+                session, allocation=allocation, transaction_amount=amt,
+            )
+        asc = get_recent_allocation_transactions(
+            session, projcode=projcode,
+            sort_by='transaction_amount', sort_dir='asc',
+        )
+        desc = get_recent_allocation_transactions(
+            session, projcode=projcode,
+            sort_by='transaction_amount', sort_dir='desc',
+        )
+        asc_amts = [r['transaction_amount'] for r in asc]
+        desc_amts = [r['transaction_amount'] for r in desc]
+        assert asc_amts == sorted(asc_amts)
+        assert desc_amts == sorted(desc_amts, reverse=True)
+
+    @pytest.mark.parametrize('sort_by', list(ALLOCATION_TRANSACTION_SORT_COLUMNS))
+    def test_sort_by_whitelist_all_succeed(self, session, sort_by):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(session, allocation=allocation)
+        rows = get_recent_allocation_transactions(
+            session, projcode=projcode, sort_by=sort_by,
+        )
+        assert len(rows) == 1
+
+    def test_unknown_sort_by_raises(self, session):
+        with pytest.raises(ValueError, match='Unknown sort_by'):
+            get_recent_allocation_transactions(session, sort_by='bogus_col')
+
+    def test_bad_sort_dir_raises(self, session):
+        with pytest.raises(ValueError, match="sort_dir"):
+            get_recent_allocation_transactions(session, sort_dir='sideways')
+
+    def test_offset_and_limit_pagination(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        now = datetime.now()
+        # Seed 7 txns with distinct creation_time values so the DESC order is stable.
+        for i in range(7):
+            make_allocation_transaction(
+                session, allocation=allocation,
+                creation_time=now - timedelta(hours=i),
+            )
+        all_rows = get_recent_allocation_transactions(session, projcode=projcode)
+        assert len(all_rows) == 7
+
+        page1 = get_recent_allocation_transactions(
+            session, projcode=projcode, limit=3,
+        )
+        page2 = get_recent_allocation_transactions(
+            session, projcode=projcode, offset=3, limit=3,
+        )
+        page3 = get_recent_allocation_transactions(
+            session, projcode=projcode, offset=6, limit=3,
+        )
+        assert [r['transaction_id'] for r in page1] == \
+               [r['transaction_id'] for r in all_rows[:3]]
+        assert [r['transaction_id'] for r in page2] == \
+               [r['transaction_id'] for r in all_rows[3:6]]
+        assert [r['transaction_id'] for r in page3] == \
+               [r['transaction_id'] for r in all_rows[6:]]
+
+    def test_count_matches_unlimited_get(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        for _ in range(4):
+            make_allocation_transaction(session, allocation=allocation)
+        total = count_recent_allocation_transactions(session, projcode=projcode)
+        rows = get_recent_allocation_transactions(session, projcode=projcode)
+        assert total == len(rows) == 4
+
+        # Filter-consistency: count must honor the same filters as get_recent.
+        make_allocation_transaction(
+            session, allocation=allocation,
+            transaction_type="EDIT", propagated=True,
+        )
+        assert count_recent_allocation_transactions(
+            session, projcode=projcode, include_propagated=False,
+        ) == 4  # the new propagated txn is excluded by both
+
 
 # ============================================================================
 # sam.queries.charges.get_recent_charge_adjustments
@@ -749,6 +838,82 @@ class TestRecentChargeAdjustments:
             session, projcode=projcode, limit=3,
         )
         assert len(rows) == 3
+
+    def test_sort_by_amount_asc_and_desc(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        for amt in (-250.0, -50.0, -500.0, -100.0):
+            make_charge_adjustment(session, account=account, amount=amt)
+        asc = get_recent_charge_adjustments(
+            session, projcode=projcode, sort_by='amount', sort_dir='asc',
+        )
+        desc = get_recent_charge_adjustments(
+            session, projcode=projcode, sort_by='amount', sort_dir='desc',
+        )
+        assert [r['amount'] for r in asc] == sorted(r['amount'] for r in asc)
+        assert [r['amount'] for r in desc] == \
+               sorted((r['amount'] for r in desc), reverse=True)
+
+    @pytest.mark.parametrize('sort_by', list(CHARGE_ADJUSTMENT_SORT_COLUMNS))
+    def test_sort_by_whitelist_all_succeed(self, session, sort_by):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        make_charge_adjustment(session, account=account)
+        rows = get_recent_charge_adjustments(
+            session, projcode=projcode, sort_by=sort_by,
+        )
+        assert len(rows) == 1
+
+    def test_unknown_sort_by_raises(self, session):
+        with pytest.raises(ValueError, match='Unknown sort_by'):
+            get_recent_charge_adjustments(session, sort_by='bogus_col')
+
+    def test_bad_sort_dir_raises(self, session):
+        with pytest.raises(ValueError, match='sort_dir'):
+            get_recent_charge_adjustments(session, sort_dir='sideways')
+
+    def test_offset_and_limit_pagination(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        base = datetime(2099, 6, 15)
+        for i in range(7):
+            make_charge_adjustment(
+                session, account=account,
+                adjustment_date=base - timedelta(hours=i),
+            )
+        all_rows = get_recent_charge_adjustments(session, projcode=projcode)
+        assert len(all_rows) == 7
+        page1 = get_recent_charge_adjustments(
+            session, projcode=projcode, limit=3,
+        )
+        page2 = get_recent_charge_adjustments(
+            session, projcode=projcode, offset=3, limit=3,
+        )
+        assert [r['adjustment_id'] for r in page1] == \
+               [r['adjustment_id'] for r in all_rows[:3]]
+        assert [r['adjustment_id'] for r in page2] == \
+               [r['adjustment_id'] for r in all_rows[3:6]]
+
+    def test_count_matches_unlimited_get(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        projcode = account.project.projcode
+        for _ in range(4):
+            make_charge_adjustment(session, account=account)
+        total = count_recent_charge_adjustments(session, projcode=projcode)
+        rows = get_recent_charge_adjustments(session, projcode=projcode)
+        assert total == len(rows) == 4
+
+        # Filter-consistency: count honors the same filters as get_recent.
+        account.deleted = True
+        session.flush()
+        assert count_recent_charge_adjustments(session, projcode=projcode) == 0
+        assert count_recent_charge_adjustments(
+            session, projcode=projcode, include_deleted=True,
+        ) == 4
 
 
 # ============================================================================

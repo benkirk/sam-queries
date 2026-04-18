@@ -11,7 +11,18 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache
-from sam.queries.allocations import get_allocation_summary, _aggregate_usage_to_total
+from sam.queries.allocations import (
+    ALLOCATION_TRANSACTION_SORT_COLUMNS,
+    count_recent_allocation_transactions,
+    get_allocation_summary,
+    get_recent_allocation_transactions,
+    _aggregate_usage_to_total,
+)
+from sam.queries.charges import (
+    CHARGE_ADJUSTMENT_SORT_COLUMNS,
+    count_recent_charge_adjustments,
+    get_recent_charge_adjustments,
+)
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
 from webapp.utils.rbac import require_permission, Permission
@@ -383,6 +394,11 @@ def index():
                 ) if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
             }
 
+    # Defaults for the shared audit filter (Transactions + Adjustments tabs).
+    # Default window is last 30 days; each tab's filter form is pre-filled with these.
+    audit_end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    audit_start_date = audit_end_date - timedelta(days=30)
+
     return render_template(
         'dashboards/allocations/dashboard.html',
         grouped_data=grouped_data,
@@ -395,7 +411,9 @@ def index():
         all_resources=all_resources,
         selected_resources=selected_resources,
         resource_types=resource_types,
-        show_usage=show_usage
+        show_usage=show_usage,
+        audit_start_date=audit_start_date.strftime('%Y-%m-%d'),
+        audit_end_date=audit_end_date.strftime('%Y-%m-%d'),
     )
 
 
@@ -488,6 +506,133 @@ def projects_fragment():
         active_at_dt=active_at,
         resource_type=resource_type,
         show_usage=show_usage
+    )
+
+
+def _parse_audit_filters(request_args, sort_whitelist):
+    """Parse shared filter + sort + pagination params for the audit fragments.
+
+    Returns ``(filters, sort, page)``:
+
+    - ``filters``: dict of filter kwargs forwarded verbatim to the query/count
+      function (``projcode``, ``resource_name``, ``username``, ``start_date``,
+      ``end_date``). Blank values normalize to ``None`` so the query treats
+      them as no-ops.
+    - ``sort``: ``{'sort_by': str|None, 'sort_dir': 'asc'|'desc'}``.
+    - ``page``: ``{'n': int ≥ 1, 'per_page': int clamped to [10, 200]}``.
+
+    Default 30-day window is applied iff **neither** ``start_date`` nor
+    ``end_date`` appears in the query string (empty bounds explicitly = all
+    time).
+    """
+    projcode = (request_args.get('projcode') or '').strip() or None
+    resource_names = request_args.getlist('resource_name') or None
+    username = (request_args.get('username') or '').strip() or None
+    start_date_str = (request_args.get('start_date') or '').strip()
+    end_date_str = (request_args.get('end_date') or '').strip()
+
+    if 'start_date' not in request_args and 'end_date' not in request_args:
+        # First-load default: last 30 days, ending now.
+        start_date = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                      - timedelta(days=30))
+        end_date = datetime.now()
+    else:
+        try:
+            start_date = (datetime.strptime(start_date_str, '%Y-%m-%d')
+                          if start_date_str else None)
+        except ValueError:
+            start_date = None
+        try:
+            end_date = (datetime.strptime(end_date_str, '%Y-%m-%d')
+                        .replace(hour=23, minute=59, second=59)
+                        if end_date_str else None)
+        except ValueError:
+            end_date = None
+
+    filters = {
+        'projcode': projcode,
+        'resource_name': resource_names,
+        'username': username,
+        'start_date': start_date,
+        'end_date': end_date,
+    }
+
+    sort_by = request_args.get('sort_by') or None
+    if sort_by and sort_by not in sort_whitelist:
+        sort_by = None
+    sort_dir = request_args.get('sort_dir', 'desc')
+    if sort_dir not in ('asc', 'desc'):
+        sort_dir = 'desc'
+
+    try:
+        page_n = max(1, int(request_args.get('page', 1)))
+    except (TypeError, ValueError):
+        page_n = 1
+    try:
+        per_page = int(request_args.get('per_page', 50))
+    except (TypeError, ValueError):
+        per_page = 50
+    per_page = max(10, min(per_page, 200))
+
+    return filters, {'sort_by': sort_by, 'sort_dir': sort_dir}, \
+           {'n': page_n, 'per_page': per_page}
+
+
+@bp.route('/transactions_fragment')
+@login_required
+@require_permission(Permission.VIEW_PROJECTS)
+def transactions_fragment():
+    """HTMX fragment: sortable, paginated table of recent allocation transactions."""
+    filters, sort, page = _parse_audit_filters(
+        request.args, ALLOCATION_TRANSACTION_SORT_COLUMNS,
+    )
+    offset = (page['n'] - 1) * page['per_page']
+
+    rows = get_recent_allocation_transactions(
+        db.session,
+        **filters,
+        sort_by=sort['sort_by'], sort_dir=sort['sort_dir'],
+        offset=offset, limit=page['per_page'],
+    )
+    total = count_recent_allocation_transactions(db.session, **filters)
+
+    return render_template(
+        'dashboards/allocations/partials/transactions_table.html',
+        rows=rows, total=total,
+        page=page, sort=sort, filters=filters,
+        fragment_url=url_for('allocations_dashboard.transactions_fragment'),
+        target_id='alloc-transactions-fragment',
+        form_id='tx-filters',
+        sortable_columns=sorted(ALLOCATION_TRANSACTION_SORT_COLUMNS),
+    )
+
+
+@bp.route('/adjustments_fragment')
+@login_required
+@require_permission(Permission.VIEW_PROJECTS)
+def adjustments_fragment():
+    """HTMX fragment: sortable, paginated table of recent charge adjustments."""
+    filters, sort, page = _parse_audit_filters(
+        request.args, CHARGE_ADJUSTMENT_SORT_COLUMNS,
+    )
+    offset = (page['n'] - 1) * page['per_page']
+
+    rows = get_recent_charge_adjustments(
+        db.session,
+        **filters,
+        sort_by=sort['sort_by'], sort_dir=sort['sort_dir'],
+        offset=offset, limit=page['per_page'],
+    )
+    total = count_recent_charge_adjustments(db.session, **filters)
+
+    return render_template(
+        'dashboards/allocations/partials/adjustments_table.html',
+        rows=rows, total=total,
+        page=page, sort=sort, filters=filters,
+        fragment_url=url_for('allocations_dashboard.adjustments_fragment'),
+        target_id='alloc-adjustments-fragment',
+        form_id='adj-filters',
+        sortable_columns=sorted(CHARGE_ADJUSTMENT_SORT_COLUMNS),
     )
 
 
