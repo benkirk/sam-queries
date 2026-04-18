@@ -1,0 +1,13 @@
+project:
+  type: default
+
+format:
+  pptx:
+    reference-doc: assets/ncar-template.pptx   # replace with actual NCAR/CISL template
+    slide-level: 2
+    toc: false
+
+# Mermaid diagrams render to PNG automatically during quarto render
+diagram:
+  mermaid:
+    theme: default
