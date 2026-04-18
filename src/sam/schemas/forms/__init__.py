@@ -177,6 +177,9 @@ from .user import (
     ExtendAllocationsForm,
     SetShellForm,
 )
+from .adjustments import (
+    CreateChargeAdjustmentForm,
+)
 
 __all__ = [
     'HtmxFormSchema',
@@ -226,4 +229,6 @@ __all__ = [
     'RenewAllocationsForm',
     'ExtendAllocationsForm',
     'SetShellForm',
+    # Adjustments
+    'CreateChargeAdjustmentForm',
 ]

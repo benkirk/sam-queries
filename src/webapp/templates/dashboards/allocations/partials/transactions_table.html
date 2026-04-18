@@ -39,11 +39,12 @@
                 <th style="white-space:nowrap;">{{ sort_link('creation_time', 'Date') }}</th>
                 <th>{{ sort_link('transaction_type', 'Type') }}</th>
                 <th>{{ sort_link('projcode', 'Project') }}</th>
-                <th>{{ sort_link('resource_name', 'Resource') }}</th>
+                <th style="width:140px;">{{ sort_link('resource_name', 'Resource') }}</th>
                 <th>{{ sort_link('facility_name', 'Facility') }}</th>
+                <th style="width:150px;">{{ sort_link('allocation_type', 'Alloc type') }}</th>
                 <th class="text-end">{{ sort_link('transaction_amount', 'Amount', align='text-end') }}</th>
                 <th>{{ sort_link('username', 'Processed by') }}</th>
-                <th>Comment</th>
+                <th style="width:99%;">Comment</th>
             </tr>
         </thead>
         <tbody>
@@ -76,8 +77,15 @@
                     </button>
                     {% endif %}
                 </td>
-                <td>{{ r.resource_name or '—' }}</td>
+                <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                    title="{{ r.resource_name or '' }}">
+                    {{ r.resource_name or '—' }}
+                </td>
                 <td>{{ r.facility_name or '—' }}</td>
+                <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                    title="{{ r.allocation_type or '' }}">
+                    {{ r.allocation_type or '—' }}
+                </td>
                 <td class="text-end" style="white-space:nowrap;">
                     {% if r.transaction_amount is not none %}
                         {{ r.transaction_amount | fmt_number }}
@@ -87,20 +95,20 @@
                 </td>
                 <td>
                     {% if r.username %}
-                        <span title="{{ r.user_full_name or '' }}">{{ r.username }}</span>
+                        <span title="{{ r.user_display_name or '' }}">{{ r.username }}</span>
                     {% else %}
                         <span class="text-muted">—</span>
                     {% endif %}
                 </td>
                 <td class="small text-muted"
                     title="{{ r.transaction_comment or '' }}"
-                    style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                     {{ r.transaction_comment or '' }}
                 </td>
             </tr>
             {% else %}
             <tr>
-                <td colspan="8" class="text-center text-muted py-4">
+                <td colspan="9" class="text-center text-muted py-4">
                     <i class="fas fa-inbox"></i>
                     No transactions match the current filter.
                 </td>

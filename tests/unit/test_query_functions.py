@@ -367,7 +367,7 @@ EXPECTED_TXN_KEYS = {
     'transaction_comment', 'auth_at_panel_mtg', 'propagated',
     'projcode', 'project_id', 'resource_name', 'resource_id',
     'facility_name', 'allocation_type',
-    'user_id', 'username', 'user_full_name',
+    'user_id', 'username', 'user_display_name',
 }
 
 
@@ -516,7 +516,7 @@ class TestRecentAllocationTransactions:
         assert len(rows) == 1
         assert rows[0]['user_id'] is None
         assert rows[0]['username'] is None
-        assert rows[0]['user_full_name'] is None
+        assert rows[0]['user_display_name'] is None
 
     def test_include_deleted_hides_then_shows_soft_deleted(self, session):
         allocation = make_allocation(session)
@@ -677,7 +677,7 @@ EXPECTED_ADJ_KEYS = {
     'adjustment_id', 'account_id', 'amount', 'adjustment_date', 'comment',
     'adjustment_type',
     'projcode', 'project_id', 'resource_name', 'resource_id', 'facility_name',
-    'user_id', 'username', 'user_full_name',
+    'user_id', 'username', 'user_display_name',
 }
 
 
@@ -819,7 +819,7 @@ class TestRecentChargeAdjustments:
         assert len(rows) == 1
         assert rows[0]['user_id'] is None
         assert rows[0]['username'] is None
-        assert rows[0]['user_full_name'] is None
+        assert rows[0]['user_display_name'] is None
 
     def test_include_deleted_hides_then_shows_soft_deleted_account(self, session):
         allocation = make_allocation(session)

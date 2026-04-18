@@ -207,9 +207,9 @@ def get_recent_charge_adjustments(
         ``account_id``, ``amount``, ``adjustment_date``, ``comment``,
         ``adjustment_type``, ``projcode``, ``project_id``, ``resource_name``,
         ``resource_id``, ``facility_name``, ``user_id``, ``username``,
-        ``user_full_name``. User fields are ``None`` when ``adjusted_by_id``
-        is NULL; ``facility_name`` is ``None`` when the project has no
-        allocation-type chain.
+        ``user_display_name``. User fields are ``None`` when
+        ``adjusted_by_id`` is NULL; ``facility_name`` is ``None`` when the
+        project has no allocation-type chain.
     """
     if sort_by is not None and sort_by not in CHARGE_ADJUSTMENT_SORT_COLUMNS:
         raise ValueError(
@@ -268,7 +268,7 @@ def get_recent_charge_adjustments(
             'facility_name': fac_name,
             'user_id': user.user_id if user is not None else None,
             'username': user.username if user is not None else None,
-            'user_full_name': user.full_name if user is not None else None,
+            'user_display_name': user.display_name if user is not None else None,
         }
         for adj, project, resource, at_name, fac_name, user in rows
     ]
