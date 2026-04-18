@@ -28,26 +28,16 @@ def get_organizations_with_members(session, active_only=False):
 
 
 def get_institution_type_tree(session):
-    """Load all institution types with their institutions and member users.
+    """Load all institution types, ordered by type name.
 
-    Used by the admin organizations card (InstitutionTypes tab).
-
-    Returns:
-        list of InstitutionType (with deep .institutions → .users eager loads)
+    Used by the admin Institutions tab to label/group institutions by type.
+    The caller provides the Institution rows separately (from
+    ``get_institutions_with_members``) and joins them to types in Python,
+    so no nested eager loads are needed here.
     """
-    from sam.core.organizations import InstitutionType, Institution, UserInstitution
-    from sam.core.users import User
+    from sam.core.organizations import InstitutionType
 
-    return session.query(InstitutionType).options(
-        selectinload(InstitutionType.institutions)
-            .selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.accounts),
-        selectinload(InstitutionType.institutions)
-            .selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.email_addresses),
-    ).order_by(InstitutionType.type).all()
+    return session.query(InstitutionType).order_by(InstitutionType.type).all()
 
 
 def get_institutions_with_members(session, *, country_id=None, state_prov_id=None,
@@ -76,6 +66,7 @@ def get_institutions_with_members(session, *, country_id=None, state_prov_id=Non
     """
     from sam.core.organizations import Institution, UserInstitution
     from sam.core.users import User
+    from sam.projects.projects import Project
     from sam.geography import StateProv
 
     q = session.query(Institution).options(
@@ -91,10 +82,12 @@ def get_institutions_with_members(session, *, country_id=None, state_prov_id=Non
                 .lazyload(User.email_addresses),
             selectinload(Institution.users)
                 .selectinload(UserInstitution.user)
-                .selectinload(User.led_projects),
+                .selectinload(User.led_projects)
+                .lazyload(Project.accounts),
             selectinload(Institution.users)
                 .selectinload(UserInstitution.user)
-                .selectinload(User.admin_projects),
+                .selectinload(User.admin_projects)
+                .lazyload(Project.accounts),
         )
 
     if state_prov_id:

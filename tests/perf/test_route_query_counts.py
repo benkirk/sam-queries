@@ -133,7 +133,66 @@ def test_admin_orgs_card_route(auth_client, route_count_queries):
 
 
 # ---------------------------------------------------------------------------
-# 5. Fstree API — GET /api/v1/fstree_access/
+# 5. Admin institutions fragment (default) — GET /admin/htmx/institutions-fragment
+# ---------------------------------------------------------------------------
+
+def test_admin_institutions_default_route(auth_client, route_count_queries):
+    """Full-stack query count for the Institutions tab fragment (default view).
+
+    U&P toggle OFF — the route should only load Institution rows with
+    joinedload(state_prov.country), plus the type tree and country
+    dropdown.  The ``users`` relationship must stay lazy and untouched.
+    """
+    baseline = get_baseline("admin_institutions_default_route")
+
+    with route_count_queries() as stats:
+        response = auth_client.get('/admin/htmx/institutions-fragment')
+
+    assert response.status_code == 200, (
+        f"GET /admin/htmx/institutions-fragment returned {response.status_code}"
+    )
+    assert stats.count <= baseline, (
+        f"Admin institutions default route query regression: "
+        f"{stats.count} queries > {baseline} baseline. "
+        f"{stats.summary()}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 6. Admin institutions fragment (U&P on) — GET /admin/htmx/institutions-fragment
+#    ?show_users_projects=1
+# ---------------------------------------------------------------------------
+
+def test_admin_institutions_users_projects_route(auth_client, route_count_queries):
+    """Full-stack query count for the Institutions tab with U&P fanout enabled.
+
+    ``show_users_projects=1`` enables the 4-level eager-load chain
+    (Institution → UserInstitution → User → led_projects ∪ admin_projects)
+    and the per-institution chip-building loop that iterates every user's
+    project relationships.  A template or route change that accesses an
+    un-eager-loaded attribute here becomes a per-user N+1 across the
+    entire institution graph.
+    """
+    baseline = get_baseline("admin_institutions_users_projects_route")
+
+    with route_count_queries() as stats:
+        response = auth_client.get(
+            '/admin/htmx/institutions-fragment?show_users_projects=1'
+        )
+
+    assert response.status_code == 200, (
+        f"GET /admin/htmx/institutions-fragment?show_users_projects=1 "
+        f"returned {response.status_code}"
+    )
+    assert stats.count <= baseline, (
+        f"Admin institutions U&P route query regression: "
+        f"{stats.count} queries > {baseline} baseline. "
+        f"{stats.summary()}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 7. Fstree API — GET /api/v1/fstree_access/
 # ---------------------------------------------------------------------------
 
 def test_fstree_api_route(auth_client, route_count_queries):

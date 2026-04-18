@@ -3,8 +3,8 @@
         "Query-count baselines for performance regression tests.",
         "",
         "Each key is a test function name (without the test_ prefix).",
-        "  queries  — maximum allowed query count (fail above this)",
-        "  notes    — why this number, when it was last measured",
+        "  queries  \u2014 maximum allowed query count (fail above this)",
+        "  notes    \u2014 why this number, when it was last measured",
         "",
         "Re-baseline workflow:",
         "  1. Run:  pytest -m perf -n 0 -v",
@@ -19,58 +19,70 @@
     ],
     "get_user_dashboard_data": {
         "queries": 35,
-        "notes": "measured 26 (multi-project user) — primary target of ORM perf push"
+        "notes": "measured 26 (multi-project user) \u2014 primary target of ORM perf push"
     },
     "get_project_dashboard_data": {
         "queries": 55,
-        "notes": "measured 45 — single-project path, many eager loads"
+        "notes": "measured 45 \u2014 single-project path, many eager loads"
     },
     "get_resource_detail_data": {
         "queries": 15,
-        "notes": "measured 8 — exercises joinedload collapsing"
+        "notes": "measured 8 \u2014 exercises joinedload collapsing"
     },
     "get_fstree_data": {
         "queries": 10,
-        "notes": "measured 3 — most expensive by wall time, few queries"
+        "notes": "measured 3 \u2014 most expensive by wall time, few queries"
     },
     "get_allocation_summary": {
         "queries": 10,
-        "notes": "measured 2 — heavy aggregation in single SQL"
+        "notes": "measured 2 \u2014 heavy aggregation in single SQL"
     },
     "get_allocation_summary_with_usage": {
         "queries": 10,
-        "notes": "measured 2 — aggregation plus charge joins"
+        "notes": "measured 2 \u2014 aggregation plus charge joins"
     },
     "get_detailed_allocation_usage": {
         "queries": 50,
-        "notes": "measured 37 — Project instance method, varies with allocation count"
+        "notes": "measured 37 \u2014 Project instance method, varies with allocation count"
     },
     "get_project_rolling_usage": {
         "queries": 20,
-        "notes": "measured 11 — rolling window charge data"
+        "notes": "measured 11 \u2014 rolling window charge data"
     },
     "get_allocation_summary_with_usage_all_resources": {
         "queries": 65,
-        "notes": "measured 44 (18 resources, 4189 rows) — was 52,923 before Issue 1 fix"
+        "notes": "measured 44 (18 resources, 4189 rows) \u2014 was 52,923 before Issue 1 fix"
     },
     "user_dashboard_route": {
         "queries": 65,
-        "notes": "measured 45 — full GET /user/ including template render (benkirk)"
+        "notes": "measured 45 \u2014 full GET /user/ including template render (benkirk)"
     },
     "allocations_index_route": {
         "queries": 20,
-        "notes": "measured 13 — full GET /allocations/ (show_usage=false)"
+        "notes": "measured 13 \u2014 full GET /allocations/ (show_usage=false)"
     },
     "allocations_usage_route": {
         "queries": 80,
-        "notes": "measured 54 — full GET /allocations/?show_usage=true; was 52,923 before fix"
+        "notes": "measured 54 \u2014 full GET /allocations/?show_usage=true; was 52,923 before fix"
     },
     "admin_orgs_card_route": {
         "queries": 450,
-        "notes": "measured 311 — full GET /admin/htmx/organizations-card; residual lazy loads in template"
+        "notes": "measured 311 \u2014 full GET /admin/htmx/organizations-card; residual lazy loads in template"
+    },
+    "admin_institutions_default_route": {
+        "queries": 25,
+        "notes": "measured 13 — full GET /admin/htmx/institutions-fragment (U&P off)"
+    },
+    "admin_institutions_users_projects_route": {
+        "queries": 200,
+        "notes": "measured 130 — full GET /admin/htmx/institutions-fragment?show_users_projects=1; selectinload chunks × 1367 institutions × users × (led_projects + admin_projects)"
+    },
+    "get_institutions_with_members_include_projects": {
+        "queries": 180,
+        "notes": "measured 119 — function-level with include_projects=True; selectinload chunking across 1367 institutions"
     },
     "fstree_api_route": {
         "queries": 65,
-        "notes": "measured 44 — full GET /api/v1/fstree_access/ (all resources); cached 5min in prod"
+        "notes": "measured 44 \u2014 full GET /api/v1/fstree_access/ (all resources); cached 5min in prod"
     }
 }

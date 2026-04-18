@@ -241,3 +241,40 @@ def test_get_project_rolling_usage(session, count_queries, perf_active_project):
         f"{stats.count} queries > {baseline} baseline. "
         f"Breakdown: {stats.summary()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 10. get_institutions_with_members — full fanout (include_projects=True)
+# ---------------------------------------------------------------------------
+
+def test_get_institutions_with_members_include_projects(session, count_queries):
+    """Query count for the admin Institutions tab fanout path.
+
+    Exercises the worst-case eager-load chain:
+        Institution → UserInstitution → User → (led_projects ∪ admin_projects)
+    plus joinedload(Institution.state_prov.country).
+
+    A regression here — e.g. a missing selectinload or a new lazy access
+    during the route's chip-building loop — would produce a large N+1 over
+    every institution's members.
+    """
+    from sam.queries.admin import get_institutions_with_members
+
+    baseline = get_baseline("get_institutions_with_members_include_projects")
+
+    with count_queries() as stats:
+        data = get_institutions_with_members(session, include_projects=True)
+        # Touch the attributes the route iterates so any lazy loads fire
+        # inside the counted block, not after.
+        for inst in data:
+            for ui in inst.users:
+                _ = ui.user.username
+                _ = list(ui.user.led_projects)
+                _ = list(ui.user.admin_projects)
+
+    assert isinstance(data, list), "get_institutions_with_members should return a list"
+    assert stats.count <= baseline, (
+        f"get_institutions_with_members(include_projects=True) query count regression: "
+        f"{stats.count} queries > {baseline} baseline. "
+        f"Breakdown: {stats.summary()}"
+    )
