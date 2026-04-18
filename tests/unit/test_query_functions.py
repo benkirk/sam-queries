@@ -652,6 +652,21 @@ class TestRecentAllocationTransactions:
             session, projcode=projcode, include_propagated=False,
         ) == 4  # the new propagated txn is excluded by both
 
+    def test_transaction_id_filter_returns_single_row(self, session):
+        allocation = make_allocation(session)
+        txn_a = make_allocation_transaction(session, allocation=allocation)
+        make_allocation_transaction(session, allocation=allocation)
+
+        rows = get_recent_allocation_transactions(
+            session, transaction_id=txn_a.allocation_transaction_id,
+        )
+        assert len(rows) == 1
+        assert rows[0]['transaction_id'] == txn_a.allocation_transaction_id
+
+    def test_transaction_id_unknown_returns_empty(self, session):
+        rows = get_recent_allocation_transactions(session, transaction_id=99_999_999)
+        assert rows == []
+
 
 # ============================================================================
 # sam.queries.charges.get_recent_charge_adjustments
@@ -914,6 +929,22 @@ class TestRecentChargeAdjustments:
         assert count_recent_charge_adjustments(
             session, projcode=projcode, include_deleted=True,
         ) == 4
+
+    def test_adjustment_id_filter_returns_single_row(self, session):
+        allocation = make_allocation(session)
+        account = allocation.account
+        adj_a = make_charge_adjustment(session, account=account)
+        make_charge_adjustment(session, account=account)
+
+        rows = get_recent_charge_adjustments(
+            session, adjustment_id=adj_a.charge_adjustment_id,
+        )
+        assert len(rows) == 1
+        assert rows[0]['adjustment_id'] == adj_a.charge_adjustment_id
+
+    def test_adjustment_id_unknown_returns_empty(self, session):
+        rows = get_recent_charge_adjustments(session, adjustment_id=99_999_999)
+        assert rows == []
 
 
 # ============================================================================

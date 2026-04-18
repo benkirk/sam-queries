@@ -352,6 +352,28 @@ class TestAdjustmentsFragmentRoute:
         assert response.status_code in (302, 401)
 
 
+class TestAuditDetailsFragmentRoutes:
+    """Tests for the per-row detail fragments (transaction_details / adjustment_details)."""
+
+    def test_transaction_details_unknown_id_returns_not_found(self, auth_client):
+        response = auth_client.get('/allocations/transaction_details/99999999')
+        assert response.status_code == 200
+        assert b'Transaction not found' in response.data
+
+    def test_adjustment_details_unknown_id_returns_not_found(self, auth_client):
+        response = auth_client.get('/allocations/adjustment_details/99999999')
+        assert response.status_code == 200
+        assert b'Adjustment not found' in response.data
+
+    def test_transaction_details_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/transaction_details/1')
+        assert response.status_code in (302, 401)
+
+    def test_adjustment_details_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/adjustment_details/1')
+        assert response.status_code in (302, 401)
+
+
 # ============================================================================
 # Caching Behavior
 # ============================================================================

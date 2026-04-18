@@ -48,7 +48,11 @@
         </thead>
         <tbody>
             {% for r in rows %}
-            <tr>
+            <tr style="cursor:pointer;"
+                data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                hx-get="{{ url_for('allocations_dashboard.adjustment_details', adjustment_id=r.adjustment_id) }}"
+                hx-target="#auditDetailsModalBody"
+                hx-swap="innerHTML">
                 <td style="white-space:nowrap;">{{ r.adjustment_date | fmt_date }}</td>
                 <td>
                     <span class="badge bg-secondary">{{ r.adjustment_type }}</span>
@@ -60,7 +64,8 @@
                             data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
                             hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode) }}"
                             hx-target="#projectDetailsModalBody"
-                            hx-swap="innerHTML">
+                            hx-swap="innerHTML"
+                            onclick="event.stopPropagation()">
                         <strong>{{ r.projcode }}</strong>
                     </button>
                     {% endif %}

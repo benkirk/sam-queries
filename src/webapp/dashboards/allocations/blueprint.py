@@ -636,6 +636,48 @@ def adjustments_fragment():
     )
 
 
+@bp.route('/transaction_details/<int:transaction_id>')
+@login_required
+@require_permission(Permission.VIEW_PROJECTS)
+def transaction_details(transaction_id: int):
+    """HTMX fragment: full detail for a single allocation transaction.
+
+    Ignores ``include_deleted`` / ``include_propagated`` at the user-facing
+    filter level because we always want to render the row the user just
+    clicked, even if its parent allocation has since been soft-deleted.
+    """
+    rows = get_recent_allocation_transactions(
+        db.session,
+        transaction_id=transaction_id,
+        include_deleted=True,
+        include_propagated=True,
+    )
+    if not rows:
+        return '<p class="text-danger mb-0">Transaction not found.</p>'
+    return render_template(
+        'dashboards/allocations/partials/transaction_details_modal.html',
+        r=rows[0],
+    )
+
+
+@bp.route('/adjustment_details/<int:adjustment_id>')
+@login_required
+@require_permission(Permission.VIEW_PROJECTS)
+def adjustment_details(adjustment_id: int):
+    """HTMX fragment: full detail for a single charge adjustment."""
+    rows = get_recent_charge_adjustments(
+        db.session,
+        adjustment_id=adjustment_id,
+        include_deleted=True,
+    )
+    if not rows:
+        return '<p class="text-danger mb-0">Adjustment not found.</p>'
+    return render_template(
+        'dashboards/allocations/partials/adjustment_details_modal.html',
+        r=rows[0],
+    )
+
+
 @bp.route('/usage/<projcode>/<resource>')
 @login_required
 @require_permission(Permission.VIEW_PROJECTS)

@@ -48,7 +48,11 @@
         </thead>
         <tbody>
             {% for r in rows %}
-            <tr>
+            <tr style="cursor:pointer;"
+                data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                hx-get="{{ url_for('allocations_dashboard.transaction_details', transaction_id=r.transaction_id) }}"
+                hx-target="#auditDetailsModalBody"
+                hx-swap="innerHTML">
                 <td style="white-space:nowrap;">
                     {% if r.propagated %}
                     <i class="fas fa-code-branch text-muted me-1"
@@ -66,7 +70,8 @@
                             data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
                             hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode) }}"
                             hx-target="#projectDetailsModalBody"
-                            hx-swap="innerHTML">
+                            hx-swap="innerHTML"
+                            onclick="event.stopPropagation()">
                         <strong>{{ r.projcode }}</strong>
                     </button>
                     {% endif %}

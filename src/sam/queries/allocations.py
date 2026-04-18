@@ -152,6 +152,7 @@ ALLOCATION_TRANSACTION_SORT_COLUMNS = {
 def _apply_transaction_filters(
     query,
     *,
+    transaction_id,
     projcode,
     resource_name,
     facility_name,
@@ -168,6 +169,11 @@ def _apply_transaction_filters(
     JOINs (see ``_transactions_query`` / the get/count callers)."""
     if user_id is not None and username is not None:
         raise ValueError("Pass user_id OR username, not both")
+
+    if transaction_id is not None:
+        query = query.filter(
+            AllocationTransaction.allocation_transaction_id == transaction_id
+        )
 
     if projcode and projcode != "TOTAL":
         if isinstance(projcode, list):
@@ -239,6 +245,7 @@ def _join_transaction_query(query):
 def get_recent_allocation_transactions(
     session: Session,
     *,
+    transaction_id: Optional[int] = None,
     projcode: Optional[Union[str, List[str]]] = None,
     resource_name: Optional[Union[str, List[str]]] = None,
     facility_name: Optional[Union[str, List[str]]] = None,
@@ -319,6 +326,7 @@ def get_recent_allocation_transactions(
     ))
     query = _apply_transaction_filters(
         query,
+        transaction_id=transaction_id,
         projcode=projcode, resource_name=resource_name, facility_name=facility_name,
         allocation_type=allocation_type, transaction_types=transaction_types,
         start_date=start_date, end_date=end_date,
@@ -369,6 +377,7 @@ def get_recent_allocation_transactions(
 def count_recent_allocation_transactions(
     session: Session,
     *,
+    transaction_id: Optional[int] = None,
     projcode: Optional[Union[str, List[str]]] = None,
     resource_name: Optional[Union[str, List[str]]] = None,
     facility_name: Optional[Union[str, List[str]]] = None,
@@ -391,6 +400,7 @@ def count_recent_allocation_transactions(
     )
     query = _apply_transaction_filters(
         query,
+        transaction_id=transaction_id,
         projcode=projcode, resource_name=resource_name, facility_name=facility_name,
         allocation_type=allocation_type, transaction_types=transaction_types,
         start_date=start_date, end_date=end_date,

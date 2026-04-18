@@ -84,6 +84,7 @@ CHARGE_ADJUSTMENT_SORT_COLUMNS = {
 def _apply_adjustment_filters(
     query,
     *,
+    adjustment_id,
     projcode,
     resource_name,
     facility_name,
@@ -98,6 +99,9 @@ def _apply_adjustment_filters(
     JOINs (see ``_join_adjustment_query``)."""
     if user_id is not None and username is not None:
         raise ValueError("Pass user_id OR username, not both")
+
+    if adjustment_id is not None:
+        query = query.filter(ChargeAdjustment.charge_adjustment_id == adjustment_id)
 
     if projcode and projcode != "TOTAL":
         if isinstance(projcode, list):
@@ -159,6 +163,7 @@ def _join_adjustment_query(query):
 def get_recent_charge_adjustments(
     session: Session,
     *,
+    adjustment_id: Optional[int] = None,
     projcode: Optional[Union[str, List[str]]] = None,
     resource_name: Optional[Union[str, List[str]]] = None,
     facility_name: Optional[Union[str, List[str]]] = None,
@@ -227,6 +232,7 @@ def get_recent_charge_adjustments(
     ))
     query = _apply_adjustment_filters(
         query,
+        adjustment_id=adjustment_id,
         projcode=projcode, resource_name=resource_name, facility_name=facility_name,
         adjustment_types=adjustment_types,
         start_date=start_date, end_date=end_date,
@@ -271,6 +277,7 @@ def get_recent_charge_adjustments(
 def count_recent_charge_adjustments(
     session: Session,
     *,
+    adjustment_id: Optional[int] = None,
     projcode: Optional[Union[str, List[str]]] = None,
     resource_name: Optional[Union[str, List[str]]] = None,
     facility_name: Optional[Union[str, List[str]]] = None,
@@ -291,6 +298,7 @@ def count_recent_charge_adjustments(
     )
     query = _apply_adjustment_filters(
         query,
+        adjustment_id=adjustment_id,
         projcode=projcode, resource_name=resource_name, facility_name=facility_name,
         adjustment_types=adjustment_types,
         start_date=start_date, end_date=end_date,
