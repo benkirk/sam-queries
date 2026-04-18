@@ -50,8 +50,9 @@ def get_institution_type_tree(session):
     ).order_by(InstitutionType.type).all()
 
 
-def get_institutions_with_members(session, *, country_id=None, state_prov_id=None):
-    """Load institutions with their member users, optionally filtered by geography.
+def get_institutions_with_members(session, *, country_id=None, state_prov_id=None,
+                                  active_only=False, include_projects=False):
+    """Load institutions, optionally filtered by geography and membership status.
 
     Used by the admin organizations card (Institutions tab). Eagerly loads
     ``state_prov`` and ``state_prov.country`` so the Location column can render
@@ -61,6 +62,14 @@ def get_institutions_with_members(session, *, country_id=None, state_prov_id=Non
         country_id: filter to institutions whose state_prov belongs to this
             country. Ignored when ``state_prov_id`` is given.
         state_prov_id: filter to institutions with this state/province.
+        active_only: if True, limit results to institutions that have at
+            least one currently-active ``UserInstitution`` linked to an
+            active ``User`` (EXISTS subquery).
+        include_projects: if True, eager-load each member user plus their
+            ``led_projects`` and ``admin_projects`` so the view can render
+            user/project chips without N+1 queries. When False, the
+            ``users`` relationship is left lazy — the default view doesn't
+            touch it, so no extra queries fire.
 
     Returns:
         list of Institution ordered by name
@@ -70,19 +79,40 @@ def get_institutions_with_members(session, *, country_id=None, state_prov_id=Non
     from sam.geography import StateProv
 
     q = session.query(Institution).options(
-        selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.accounts),
-        selectinload(Institution.users)
-            .selectinload(UserInstitution.user)
-            .lazyload(User.email_addresses),
         joinedload(Institution.state_prov).joinedload(StateProv.country),
     )
+    if include_projects:
+        q = q.options(
+            selectinload(Institution.users)
+                .selectinload(UserInstitution.user)
+                .lazyload(User.accounts),
+            selectinload(Institution.users)
+                .selectinload(UserInstitution.user)
+                .lazyload(User.email_addresses),
+            selectinload(Institution.users)
+                .selectinload(UserInstitution.user)
+                .selectinload(User.led_projects),
+            selectinload(Institution.users)
+                .selectinload(UserInstitution.user)
+                .selectinload(User.admin_projects),
+        )
+
     if state_prov_id:
         q = q.filter(Institution.state_prov_id == state_prov_id)
     elif country_id:
         q = q.join(StateProv, Institution.state_prov_id == StateProv.ext_state_prov_id) \
              .filter(StateProv.ext_country_id == country_id)
+
+    if active_only:
+        q = q.filter(
+            session.query(UserInstitution)
+                .join(User, User.user_id == UserInstitution.user_id)
+                .filter(UserInstitution.institution_id == Institution.institution_id)
+                .filter(UserInstitution.is_active)
+                .filter(User.is_active)
+                .exists()
+        )
+
     return q.order_by(Institution.name).all()
 
 

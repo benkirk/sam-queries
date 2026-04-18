@@ -5,16 +5,22 @@
 
   Context:
     institution_types_grouped  - list of (InstitutionType, [Institution, ...])
-                                 tuples ordered by type.type, institutions
-                                 already filtered and name-sorted
     total_institutions         - int total (post-filter)
     inst_to_mnemonic           - dict {institution_id: mnemonic or None}
-    countries                  - list of Country
-    state_provs                - list of StateProv for selected country (or [])
-    country_id                 - currently selected country id (int or None)
-    state_prov_id              - currently selected state/prov id (int or None)
+    user_chips                 - dict {institution_id: [(username, is_active), ...]}
+                                 (empty dict unless show_users_projects is on)
+    project_chips              - dict {institution_id: [(projcode, is_active), ...]}
+                                 (empty dict unless show_users_projects is on)
+    countries, state_provs     - for the filter dropdowns
+    country_id, state_prov_id  - selected filter ids (or None)
+    active_only                - outer Organizations-card state (read-only here)
+    show_users_projects        - bool; governs the # Users / # Projects columns
+                                 and the expand row
+    active_users_projects      - bool; filters chip lists + counts (only
+                                 relevant when show_users_projects is on)
     is_admin                   - bool
 #}
+{% set ncols = 7 if show_users_projects else 5 %}
 
 <div class="p-3">
     {{ institution_filters('inst-filters',
@@ -23,7 +29,10 @@
                            countries=countries,
                            state_provs=state_provs,
                            country_id=country_id,
-                           state_prov_id=state_prov_id) }}
+                           state_prov_id=state_prov_id,
+                           active_only=active_only,
+                           show_users_projects=show_users_projects,
+                           active_users_projects=active_users_projects) }}
 </div>
 
 <div class="table-responsive">
@@ -34,7 +43,10 @@
                 <th>Count</th>
                 <th>Location</th>
                 <th>Mnemonic</th>
-                <th># Users</th>
+                {% if show_users_projects %}
+                <th class="text-end"># Users</th>
+                <th class="text-end"># Projects</th>
+                {% endif %}
                 <th class="text-end">Actions</th>
             </tr>
         </thead>
@@ -54,7 +66,10 @@
                 <td class="text-muted small">{{ insts|length }} institution{{ 's' if insts|length != 1 else '' }}</td>
                 <td></td>
                 <td></td>
+                {% if show_users_projects %}
                 <td></td>
+                <td></td>
+                {% endif %}
                 <td class="text-end">
                     {% if is_admin %}
                     {{ edit_modal_button(
@@ -73,11 +88,16 @@
             {% set sp = inst.state_prov %}
             {% set state_label = (sp.code or sp.name) if sp else None %}
             {% set country_label = (sp.country.code if sp and sp.country else None) %}
-            {# ── Institution row — clickable if it has users ── #}
-            <tr class="table-secondary{% if inst.users %} cursor-pointer inst-expand-trigger{% endif %}"
-                {% if inst.users %}data-inst-target="inst-users-{{ inst.institution_id }}"{% endif %}>
+            {% set _users = user_chips.get(inst.institution_id, []) %}
+            {% set _projects = project_chips.get(inst.institution_id, []) %}
+            {% set _visible_users = _users if not active_users_projects else _users | selectattr(1) | list %}
+            {% set _visible_projects = _projects if not active_users_projects else _projects | selectattr(1) | list %}
+            {% set _expandable = show_users_projects and (_visible_users or _visible_projects) %}
+            {# ── Institution row — clickable when U&P are shown and non-empty ── #}
+            <tr class="table-secondary{% if _expandable %} cursor-pointer inst-expand-trigger{% endif %}"
+                {% if _expandable %}data-inst-target="inst-users-{{ inst.institution_id }}"{% endif %}>
                 <td class="ps-4">
-                    {% if inst.users %}
+                    {% if _expandable %}
                     <i class="fas fa-chevron-right small text-muted me-1 inst-expand-icon"
                        style="transition: transform 0.2s;"></i>
                     {% else %}
@@ -112,7 +132,14 @@
                     <span class="badge bg-secondary font-monospace text-white-50" title="No mnemonic match — project routing may fail"><i class="fas fa-exclamation-triangle"></i></span>
                     {% endif %}
                 </td>
-                <td class="text-muted small">{{ inst.users|length }}</td>
+                {% if show_users_projects %}
+                <td class="text-muted small text-end">
+                    {{ _visible_users | length }}
+                </td>
+                <td class="text-muted small text-end">
+                    {{ _visible_projects | length }}{% if active_users_projects and _projects | length != _visible_projects | length %}<span class="text-muted"> / {{ _projects | length }}</span>{% endif %}
+                </td>
+                {% endif %}
                 <td class="text-end" onclick="event.stopPropagation();">
                     {% if is_admin %}
                     {{ edit_modal_button(
@@ -123,35 +150,58 @@
                     {% endif %}
                 </td>
             </tr>
-            {# ── User sub-row (hidden by default, toggled via JS) ── #}
-            {% if inst.users %}
+            {# ── Users / Projects sub-row (only when U&P are shown) ── #}
+            {% if _expandable %}
             <tr id="inst-users-{{ inst.institution_id }}" style="display: none;">
-                <td colspan="6" class="ps-5 pt-1 pb-2">
-                    {% for ui in inst.users | sort(attribute='user.username') %}
-                    <a href="#"
-                       class="me-3 small text-decoration-none"
-                       data-bs-toggle="modal"
-                       data-bs-target="#userDetailsModal"
-                       hx-get="{{ url_for('admin_dashboard.user_card', username=ui.user.username) }}"
-                       hx-target="#userDetailsModalBody"
-                       hx-swap="innerHTML">
-                        <i class="fas fa-user fa-xs me-1 text-muted"></i>{{ ui.user.username }}
-                    </a>
-                    {% endfor %}
+                <td colspan="{{ ncols }}" class="ps-5 pt-1 pb-2">
+                    <div class="small">
+                        <span class="text-muted fw-semibold me-2" style="min-width:4.5rem; display:inline-block;">Users:</span>
+                        {% for username, is_active in _visible_users %}
+                        <a href="#"
+                           class="me-3 text-decoration-none{% if not is_active %} text-muted fst-italic{% endif %}"
+                           data-bs-toggle="modal"
+                           data-bs-target="#userDetailsModal"
+                           hx-get="{{ url_for('admin_dashboard.user_card', username=username) }}"
+                           hx-target="#userDetailsModalBody"
+                           hx-swap="innerHTML"
+                           {% if not is_active %}title="Inactive user"{% endif %}>
+                            <i class="fas fa-user fa-xs me-1 text-muted"></i>{{ username }}
+                        </a>
+                        {% else %}
+                        <span class="text-muted fst-italic">(none)</span>
+                        {% endfor %}
+                    </div>
+                    <div class="small mt-1">
+                        <span class="text-muted fw-semibold me-2" style="min-width:4.5rem; display:inline-block;">Projects:</span>
+                        {% for projcode, is_active in _visible_projects %}
+                        <a href="#"
+                           class="me-3 text-decoration-none font-monospace{% if not is_active %} text-muted fst-italic{% endif %}"
+                           data-bs-toggle="modal"
+                           data-bs-target="#projectDetailsModal"
+                           hx-get="{{ url_for('admin_dashboard.project_card', projcode=projcode) }}"
+                           hx-target="#projectDetailsModalBody"
+                           hx-swap="innerHTML"
+                           {% if not is_active %}title="Inactive project"{% endif %}>
+                            <i class="fas fa-folder-open fa-xs me-1 text-muted"></i>{{ projcode }}
+                        </a>
+                        {% else %}
+                        <span class="text-muted fst-italic">(none)</span>
+                        {% endfor %}
+                    </div>
                 </td>
             </tr>
             {% endif %}
             {% else %}
             <tr class="table-secondary">
-                <td colspan="6" class="ps-4 text-muted fst-italic">No institutions of this type.</td>
+                <td colspan="{{ ncols }}" class="ps-4 text-muted fst-italic">No institutions of this type.</td>
             </tr>
             {% endfor %}
         </tbody>
         {% endfor %}
         {% else %}
         <tbody>
-            <tr><td colspan="6" class="text-center text-muted py-3">
-                {% if country_id or state_prov_id %}
+            <tr><td colspan="{{ ncols }}" class="text-center text-muted py-3">
+                {% if country_id or state_prov_id or active_only or show_users_projects %}
                 No institutions match the current filter.
                 {% else %}
                 No institution types found.
@@ -164,7 +214,7 @@
 <div class="d-flex justify-content-between align-items-center px-3 py-2">
     <span class="text-muted small">
         Showing {{ institution_types_grouped|length }} type{{ 's' if institution_types_grouped|length != 1 else '' }}, {{ total_institutions }} institution{{ 's' if total_institutions != 1 else '' }}
-        {% if country_id or state_prov_id %}
+        {% if country_id or state_prov_id or active_only or show_users_projects %}
         <span class="ms-1">(filtered)</span>
         {% endif %}
     </span>
@@ -203,18 +253,45 @@
     if (window.SamCollapseChevron) {
         SamCollapseChevron.attach('#institutions-pane', '.inst-type-collapse-icon');
     }
-    // Institution row expand/collapse (JS toggle — keeps user rows inside the parent
-    // tbody so they disappear naturally when the institution type is collapsed)
+
+    // Institution expand rows use a plain JS display toggle (not Bootstrap
+    // collapse, since they're <tr>s nested inside the type tbody so they
+    // hide/show naturally with the type). Persist their state under the same
+    // `collapse:<id>` localStorage key used by nav-view-persistence.js, so
+    // HTMX re-renders (filter/toggle changes) don't lose user expansions.
+    //
+    // KNOWN LIMITATION: when an inner filter (Search) re-renders the fragment,
+    // the row briefly restores then is reverted to display:none ~500ms later
+    // by an as-yet-unidentified handler — possibly tied to the Bootstrap
+    // collapse transition on the parent <tbody>. localStorage is preserved,
+    // so toggling the row again (or re-opening the type) restores it.
+    // See docs/plans/INSTITUTIONS_ROW_PERSISTENCE_DEBUG.md for repro and
+    // suggested next-session approaches.
+    var COLLAPSE_PREFIX = 'collapse:';
+
+    function setExpanded(row, userRow, expanded) {
+        userRow.style.display = expanded ? '' : 'none';
+        var icon = row.querySelector('.inst-expand-icon');
+        if (icon) icon.style.transform = expanded ? 'rotate(90deg)' : '';
+    }
+
     document.querySelectorAll('#institutions-pane .inst-expand-trigger').forEach(function(row) {
+        var targetId = row.dataset.instTarget;
+        var userRow = document.getElementById(targetId);
+        if (!userRow) return;
+
+        var saved = null;
+        try { saved = localStorage.getItem(COLLAPSE_PREFIX + targetId); } catch (_) {}
+        if (saved) setExpanded(row, userRow, true);
+
         row.addEventListener('click', function() {
-            var userRow = document.getElementById(this.dataset.instTarget);
-            if (!userRow) return;
-            var icon = this.querySelector('.inst-expand-icon');
-            var isHidden = userRow.style.display === 'none';
-            userRow.style.display = isHidden ? '' : 'none';
-            if (icon) icon.style.transform = isHidden ? 'rotate(90deg)' : '';
+            var willExpand = userRow.style.display === 'none';
+            setExpanded(row, userRow, willExpand);
+            try {
+                if (willExpand) localStorage.setItem(COLLAPSE_PREFIX + targetId, '1');
+                else            localStorage.removeItem(COLLAPSE_PREFIX + targetId);
+            } catch (_) {}
         });
     });
 })();
 </script>
-

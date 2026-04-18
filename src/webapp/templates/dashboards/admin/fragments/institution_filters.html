@@ -2,24 +2,38 @@
   Filter bar for the admin Institutions tab.
 
   Parameters:
-    form_id            - unique id for this form (e.g. "inst-filters")
-    fragment_url       - HTMX endpoint to GET on submit / change
-    target_id          - id of the fragment container (innerHTML swap)
-    countries          - list of Country rows (for the Country <select>)
-    state_provs        - list of StateProv rows for the currently-selected
-                         country (empty when no country is selected)
-    country_id         - currently-selected country id (int or None)
-    state_prov_id      - currently-selected state/prov id (int or None)
+    form_id                - unique id for this form (e.g. "inst-filters")
+    fragment_url           - HTMX endpoint to GET on submit / change
+    target_id              - id of the fragment container (innerHTML swap)
+    countries              - list of Country rows (for the Country <select>)
+    state_provs            - list of StateProv rows for the currently-selected
+                             country (empty when no country is selected)
+    country_id             - currently-selected country id (int or None)
+    state_prov_id          - currently-selected state/prov id (int or None)
+    active_only            - outer "Active only" state (from the Organizations
+                             card). Carried as a hidden input so HTMX submits
+                             from this form preserve it.
+    show_users_projects    - True if the "Show users & projects" toggle is on
+    active_users_projects  - True if the "Active only (users & projects)"
+                             toggle is on. Only meaningful — and only
+                             rendered — when show_users_projects is True.
 #}
 {% macro institution_filters(form_id, fragment_url, target_id,
                              countries=[], state_provs=[],
-                             country_id=None, state_prov_id=None) %}
+                             country_id=None, state_prov_id=None,
+                             active_only=False,
+                             show_users_projects=False,
+                             active_users_projects=False) %}
 <form id="{{ form_id }}"
       class="card mb-3"
       hx-get="{{ fragment_url }}"
       hx-target="#{{ target_id }}"
       hx-swap="innerHTML"
       hx-trigger="submit">
+
+    {# Outer Organizations-card state — preserved across inner submits. #}
+    <input type="hidden" name="active_only" value="{{ 1 if active_only else 0 }}">
+
     <div class="card-body py-3">
         <div class="d-flex flex-wrap align-items-end gap-3">
 
@@ -65,7 +79,38 @@
                 </select>
             </div>
 
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-column gap-1 align-self-center">
+                <div class="form-check form-check-sm">
+                    <input class="form-check-input" type="checkbox"
+                           name="show_users_projects" value="1"
+                           id="{{ form_id }}-show-up"
+                           {% if show_users_projects %}checked{% endif %}
+                           hx-get="{{ fragment_url }}"
+                           hx-target="#{{ target_id }}"
+                           hx-swap="innerHTML"
+                           hx-include="#{{ form_id }}">
+                    <label class="form-check-label small" for="{{ form_id }}-show-up">
+                        Show users &amp; projects
+                    </label>
+                </div>
+                {% if show_users_projects %}
+                <div class="form-check form-check-sm">
+                    <input class="form-check-input" type="checkbox"
+                           name="active_users_projects" value="1"
+                           id="{{ form_id }}-active-up"
+                           {% if active_users_projects %}checked{% endif %}
+                           hx-get="{{ fragment_url }}"
+                           hx-target="#{{ target_id }}"
+                           hx-swap="innerHTML"
+                           hx-include="#{{ form_id }}">
+                    <label class="form-check-label small" for="{{ form_id }}-active-up">
+                        Active users &amp; projects only
+                    </label>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="d-flex gap-2 align-self-center">
                 <button type="submit" class="btn btn-sm btn-primary">
                     <i class="fas fa-search"></i> Search
                 </button>
