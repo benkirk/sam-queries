@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from sam.accounting.accounts import Account
-from sam.accounting.allocations import Allocation
+from sam.accounting.allocations import Allocation, AllocationTransaction
 from sam.core.users import User
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
 from sam.projects.projects import Project
@@ -181,3 +181,54 @@ def make_allocation(
         description=description,
         parent_allocation_id=parent.allocation_id if parent is not None else None,
     )
+
+
+def make_allocation_transaction(
+    session,
+    *,
+    allocation: Optional[Allocation] = None,
+    user: Optional[User] = None,
+    transaction_type: str = "EDIT",
+    transaction_amount: Optional[float] = None,
+    requested_amount: Optional[float] = None,
+    creation_time: Optional[datetime] = None,
+    alloc_start_date: Optional[datetime] = None,
+    alloc_end_date: Optional[datetime] = None,
+    transaction_comment: Optional[str] = None,
+    propagated: bool = False,
+    auth_at_panel_mtg: Optional[bool] = None,
+) -> AllocationTransaction:
+    """Build and flush a fresh AllocationTransaction, auto-building an Allocation if needed.
+
+    Bypasses the production ``log_allocation_transaction()`` helper so tests can
+    set ``creation_time`` explicitly (for date-range filter tests) and mix
+    arbitrary ``transaction_type`` / ``propagated`` / ``user`` combinations.
+    """
+    if allocation is None:
+        allocation = make_allocation(session)
+
+    txn = AllocationTransaction(
+        allocation_id=allocation.allocation_id,
+        user_id=user.user_id if user is not None else None,
+        transaction_type=transaction_type,
+        transaction_amount=(
+            transaction_amount if transaction_amount is not None else allocation.amount
+        ),
+        requested_amount=(
+            requested_amount if requested_amount is not None else allocation.amount
+        ),
+        alloc_start_date=(
+            alloc_start_date if alloc_start_date is not None else allocation.start_date
+        ),
+        alloc_end_date=(
+            alloc_end_date if alloc_end_date is not None else allocation.end_date
+        ),
+        transaction_comment=transaction_comment,
+        propagated=propagated,
+        auth_at_panel_mtg=auth_at_panel_mtg,
+    )
+    if creation_time is not None:
+        txn.creation_time = creation_time
+    session.add(txn)
+    session.flush()
+    return txn

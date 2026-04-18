@@ -43,7 +43,9 @@ from sam.queries.allocations import (
     get_allocation_summary_with_usage,
     get_allocations_by_resource,
     get_project_allocations,
+    get_recent_allocation_transactions,
 )
+from sam.accounting.allocations import AllocationTransactionType
 from sam.queries.statistics import (
     get_project_statistics,
     get_user_statistics,
@@ -58,7 +60,11 @@ from sam.core.groups import (
     resolve_group_name,
 )
 
-from factories import make_user
+from factories import (
+    make_allocation,
+    make_allocation_transaction,
+    make_user,
+)
 from factories._seq import next_int, next_seq
 
 
@@ -341,6 +347,218 @@ class TestAllocationQueries:
             session, hpc_resource.resource_name, active_only=True
         )
         assert len(all_allocs) >= len(active_allocs)
+
+
+# ============================================================================
+# sam.queries.allocations.get_recent_allocation_transactions
+# ============================================================================
+
+
+EXPECTED_TXN_KEYS = {
+    'transaction_id', 'allocation_id', 'transaction_type', 'creation_time',
+    'transaction_amount', 'requested_amount', 'alloc_start_date', 'alloc_end_date',
+    'transaction_comment', 'auth_at_panel_mtg', 'propagated',
+    'projcode', 'project_id', 'resource_name', 'resource_id',
+    'facility_name', 'allocation_type',
+    'user_id', 'username', 'user_full_name',
+}
+
+
+class TestRecentAllocationTransactions:
+    """Tests for get_recent_allocation_transactions. Each test seeds its own
+    allocation + transactions and scopes the query by the fresh projcode so
+    assertions are deterministic against snapshot data."""
+
+    def test_returns_dicts_with_expected_keys_ordered_desc(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        now = datetime.now()
+        make_allocation_transaction(
+            session, allocation=allocation, transaction_type="CREATE",
+            creation_time=now - timedelta(days=30),
+        )
+        make_allocation_transaction(
+            session, allocation=allocation, transaction_type="EDIT",
+            creation_time=now - timedelta(days=5),
+        )
+        make_allocation_transaction(
+            session, allocation=allocation, transaction_type="EXTENSION",
+            creation_time=now - timedelta(hours=1),
+        )
+
+        rows = get_recent_allocation_transactions(session, projcode=projcode)
+
+        assert len(rows) == 3
+        for r in rows:
+            assert set(r.keys()) == EXPECTED_TXN_KEYS
+            assert r['projcode'] == projcode
+        times = [r['creation_time'] for r in rows]
+        assert times == sorted(times, reverse=True)
+
+    def test_projcode_list_filter(self, session):
+        a1 = make_allocation(session)
+        a2 = make_allocation(session)
+        make_allocation_transaction(session, allocation=a1, transaction_type="CREATE")
+        make_allocation_transaction(session, allocation=a2, transaction_type="CREATE")
+
+        codes = [a1.account.project.projcode, a2.account.project.projcode]
+        rows = get_recent_allocation_transactions(session, projcode=codes)
+        returned = {r['projcode'] for r in rows}
+        assert set(codes).issubset(returned)
+
+    def test_resource_and_facility_filter(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(session, allocation=allocation)
+
+        resource_name = allocation.account.resource.resource_name
+        rows = get_recent_allocation_transactions(
+            session, projcode=projcode, resource_name=resource_name,
+        )
+        assert len(rows) == 1
+        assert rows[0]['resource_name'] == resource_name
+
+        # Non-matching resource yields empty
+        rows = get_recent_allocation_transactions(
+            session, projcode=projcode, resource_name="__no_such_resource__",
+        )
+        assert rows == []
+
+    def test_date_range_is_inclusive(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        base = datetime(2099, 6, 15, 12, 0, 0)
+        make_allocation_transaction(
+            session, allocation=allocation, creation_time=base - timedelta(days=1),
+        )
+        on_start = make_allocation_transaction(
+            session, allocation=allocation, creation_time=base,
+        )
+        on_end = make_allocation_transaction(
+            session, allocation=allocation,
+            creation_time=base + timedelta(days=10),
+        )
+        make_allocation_transaction(
+            session, allocation=allocation,
+            creation_time=base + timedelta(days=11),
+        )
+
+        rows = get_recent_allocation_transactions(
+            session, projcode=projcode,
+            start_date=base, end_date=base + timedelta(days=10),
+        )
+        ids = {r['transaction_id'] for r in rows}
+        assert ids == {on_start.allocation_transaction_id,
+                       on_end.allocation_transaction_id}
+
+    def test_transaction_types_accepts_enum_and_string(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(session, allocation=allocation, transaction_type="EDIT")
+        make_allocation_transaction(session, allocation=allocation, transaction_type="EXTENSION")
+        make_allocation_transaction(session, allocation=allocation, transaction_type="CREATE")
+
+        via_enum = get_recent_allocation_transactions(
+            session, projcode=projcode,
+            transaction_types=AllocationTransactionType.EDIT,
+        )
+        via_str = get_recent_allocation_transactions(
+            session, projcode=projcode, transaction_types="EDIT",
+        )
+        via_list = get_recent_allocation_transactions(
+            session, projcode=projcode,
+            transaction_types=[AllocationTransactionType.EDIT,
+                               AllocationTransactionType.EXTENSION],
+        )
+
+        assert {r['transaction_type'] for r in via_enum} == {"EDIT"}
+        assert {r['transaction_type'] for r in via_str} == {"EDIT"}
+        assert {r['transaction_type'] for r in via_list} == {"EDIT", "EXTENSION"}
+
+    def test_user_id_and_username_filters(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        alice = make_user(session)
+        bob = make_user(session)
+        make_allocation_transaction(session, allocation=allocation, user=alice)
+        make_allocation_transaction(session, allocation=allocation, user=bob)
+        make_allocation_transaction(session, allocation=allocation, user=None)
+
+        by_id = get_recent_allocation_transactions(
+            session, projcode=projcode, user_id=alice.user_id,
+        )
+        by_name = get_recent_allocation_transactions(
+            session, projcode=projcode, username=alice.username,
+        )
+        assert len(by_id) == 1 and len(by_name) == 1
+        assert by_id[0]['user_id'] == alice.user_id
+        assert by_name[0]['username'] == alice.username
+
+        with pytest.raises(ValueError):
+            get_recent_allocation_transactions(
+                session, projcode=projcode,
+                user_id=alice.user_id, username=alice.username,
+            )
+
+    def test_outer_join_returns_rows_with_no_user(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(session, allocation=allocation, user=None)
+
+        rows = get_recent_allocation_transactions(session, projcode=projcode)
+        assert len(rows) == 1
+        assert rows[0]['user_id'] is None
+        assert rows[0]['username'] is None
+        assert rows[0]['user_full_name'] is None
+
+    def test_include_deleted_hides_then_shows_soft_deleted(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(session, allocation=allocation, transaction_type="DELETE")
+        allocation.deleted = True
+        session.flush()
+
+        hidden = get_recent_allocation_transactions(session, projcode=projcode)
+        assert hidden == []
+
+        shown = get_recent_allocation_transactions(
+            session, projcode=projcode, include_deleted=True,
+        )
+        assert len(shown) == 1
+        assert shown[0]['transaction_type'] == "DELETE"
+
+    def test_include_propagated_toggle(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        make_allocation_transaction(
+            session, allocation=allocation, transaction_type="EDIT", propagated=False,
+        )
+        make_allocation_transaction(
+            session, allocation=allocation, transaction_type="EDIT", propagated=True,
+        )
+
+        default = get_recent_allocation_transactions(session, projcode=projcode)
+        trimmed = get_recent_allocation_transactions(
+            session, projcode=projcode, include_propagated=False,
+        )
+        assert len(default) == 2
+        assert len(trimmed) == 1
+        assert trimmed[0]['propagated'] is False
+
+    def test_limit_caps_results(self, session):
+        allocation = make_allocation(session)
+        projcode = allocation.account.project.projcode
+        now = datetime.now()
+        for i in range(5):
+            make_allocation_transaction(
+                session, allocation=allocation,
+                creation_time=now - timedelta(minutes=i),
+            )
+
+        rows = get_recent_allocation_transactions(
+            session, projcode=projcode, limit=3,
+        )
+        assert len(rows) == 3
 
 
 # ============================================================================
