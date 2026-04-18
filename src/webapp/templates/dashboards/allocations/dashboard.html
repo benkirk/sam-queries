@@ -402,6 +402,18 @@
 
 <!-- Tab 3: Adjustments — sortable/paginated audit log, lazy-loaded -->
 <div class="tab-pane fade" id="tab-alloc-adjustments" role="tabpanel" aria-labelledby="alloc-adjustments-tab">
+    {% if has_permission(Permission.EDIT_ALLOCATIONS) %}
+    <div class="d-flex justify-content-end mb-2">
+        <button type="button" class="btn btn-sm btn-success"
+                data-bs-toggle="modal" data-bs-target="#createAdjustmentModal"
+                hx-get="{{ url_for('allocations_dashboard.htmx_create_adjustment_form') }}"
+                hx-target="#createAdjustmentFormContainer"
+                hx-swap="innerHTML">
+            <i class="fas fa-plus"></i> Create Adjustment
+        </button>
+    </div>
+    {% endif %}
+
     {{ audit_filters(
         form_id='adj-filters',
         fragment_url=url_for('allocations_dashboard.adjustments_fragment'),
@@ -462,12 +474,36 @@
     </div>
 </div>
 
-<!-- Audit row-detail modal (shared by Transactions + Adjustments rows) -->
+{% if has_permission(Permission.EDIT_ALLOCATIONS) %}
+<!-- Create Adjustment modal (Adjustments tab → "Create Adjustment" button) -->
+<div class="modal fade" id="createAdjustmentModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> Create Charge Adjustment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createAdjustmentFormContainer">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading…</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Audit row-detail modal (shared by Transactions + Adjustments rows).
+     The title text is swapped in via hx-swap-oob from each fragment template
+     so e.g. a transaction row shows "Allocation Transaction Details" and an
+     adjustment row shows "Charge Adjustment Details". -->
 <div class="modal fade" id="auditDetailsModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Details</h5>
+                <h5 class="modal-title" id="auditDetailsModalTitle">Details</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="auditDetailsModalBody">
@@ -566,6 +602,21 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
             });
         });
     });
+});
+
+/* After a successful "Create Adjustment" POST, reload the adjustments
+   table fragment, carrying the current filter form so the view stays
+   consistent with what the user was looking at. */
+document.body.addEventListener('refreshAdjustmentsTab', function() {
+    var target = document.getElementById('alloc-adjustments-fragment');
+    if (!target) return;
+    /* 300ms matches Bootstrap's modal close animation so the reload lands
+       after the modal has fully animated out of view. */
+    setTimeout(function() {
+        htmx.ajax('GET', "{{ url_for('allocations_dashboard.adjustments_fragment') }}",
+                  {target: '#alloc-adjustments-fragment', swap: 'innerHTML',
+                   source: '#adj-filters'});
+    }, 300);
 });
 
 /* Swap facility pie chart above the tabs when the active resource tab changes */

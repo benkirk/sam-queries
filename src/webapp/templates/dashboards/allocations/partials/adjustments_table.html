@@ -39,11 +39,10 @@
                 <th style="white-space:nowrap;">{{ sort_link('adjustment_date', 'Date') }}</th>
                 <th>{{ sort_link('adjustment_type', 'Type') }}</th>
                 <th>{{ sort_link('projcode', 'Project') }}</th>
-                <th>{{ sort_link('resource_name', 'Resource') }}</th>
-                <th>{{ sort_link('facility_name', 'Facility') }}</th>
+                <th style="width:130px;">{{ sort_link('resource_name', 'Resource') }}</th>
                 <th class="text-end">{{ sort_link('amount', 'Amount', align='text-end') }}</th>
                 <th>{{ sort_link('username', 'Adjusted by') }}</th>
-                <th>Comment</th>
+                <th style="width:99%;">Comment</th>
             </tr>
         </thead>
         <tbody>
@@ -70,8 +69,10 @@
                     </button>
                     {% endif %}
                 </td>
-                <td>{{ r.resource_name or '—' }}</td>
-                <td>{{ r.facility_name or '—' }}</td>
+                <td style="max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                    title="{{ r.resource_name or '' }}">
+                    {{ r.resource_name or '—' }}
+                </td>
                 <td class="text-end" style="white-space:nowrap;">
                     {% if r.amount is not none %}
                         {% set cls = 'text-success' if r.amount > 0 else ('text-danger' if r.amount < 0 else '') %}
@@ -82,20 +83,20 @@
                 </td>
                 <td>
                     {% if r.username %}
-                        <span title="{{ r.user_full_name or '' }}">{{ r.username }}</span>
+                        <span title="{{ r.user_display_name or '' }}">{{ r.username }}</span>
                     {% else %}
                         <span class="text-muted">—</span>
                     {% endif %}
                 </td>
                 <td class="small text-muted"
                     title="{{ r.comment or '' }}"
-                    style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                     {{ r.comment or '' }}
                 </td>
             </tr>
             {% else %}
             <tr>
-                <td colspan="8" class="text-center text-muted py-4">
+                <td colspan="7" class="text-center text-muted py-4">
                     <i class="fas fa-inbox"></i>
                     No adjustments match the current filter.
                 </td>

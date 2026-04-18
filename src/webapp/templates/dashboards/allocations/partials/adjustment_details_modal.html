@@ -4,6 +4,12 @@
    Style mirrors ``render_project_info`` in project_card.html. Empty / None
    fields are omitted entirely. #}
 
+{# Set the modal title out-of-band so the shared audit modal reflects the
+   fragment type. The target id is declared on the <h5> in dashboard.html. #}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Charge Adjustment Details
+</h5>
+
 <div class="mb-3 d-flex align-items-center flex-wrap gap-2">
     <span class="badge bg-secondary fs-6">{{ r.adjustment_type }}</span>
     <span class="text-muted">·</span>
@@ -58,7 +64,7 @@
     <div class="stat-item">
         <span class="stat-label">Adjusted by:</span>
         <span class="stat-value">
-            {{ r.user_full_name or r.username }}
+            {{ r.user_display_name or r.username }}
             <small class="text-muted">({{ r.username }})</small>
         </span>
     </div>

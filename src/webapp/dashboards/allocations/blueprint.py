@@ -6,11 +6,12 @@ grouped hierarchically by Resource → Facility → Allocation Type → Projects
 """
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache
+from webapp.utils.htmx import handle_htmx_form_post
 from sam.queries.allocations import (
     ALLOCATION_TRANSACTION_SORT_COLUMNS,
     count_recent_allocation_transactions,
@@ -25,6 +26,7 @@ from sam.queries.charges import (
 )
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
+from sam.schemas.forms import CreateChargeAdjustmentForm
 from webapp.utils.rbac import require_permission, Permission
 from sam.resources.resources import Resource
 from ..charts import generate_facility_pie_chart_matplotlib, generate_allocation_type_pie_chart_matplotlib
@@ -750,3 +752,168 @@ def purge_cache():
 def cache_status():
     """Return usage cache statistics as JSON (admin/staff only)."""
     return jsonify(usage_cache_info())
+
+
+# ── Create Charge Adjustment ──────────────────────────────────────────────
+#
+# Staff-facing write path for the Adjustments tab. The user enters a
+# positive amount; ChargeAdjustment.create() applies the sign by type
+# (Credits/Refunds → negative, Debits/Reservations → positive). The set of
+# exposed types lives in sam.accounting.adjustments._SIGN_BY_TYPE; the
+# route resolves it to ChargeAdjustmentType rows via
+# ChargeAdjustment.supported_types(session).
+
+
+_CREATE_ADJUSTMENT_FORM_TEMPLATE = (
+    'dashboards/allocations/fragments/create_adjustment_form_htmx.html'
+)
+
+
+def _create_adjustment_form_context():
+    """Build the context dict used for initial render + error re-render."""
+    from sam.accounting.adjustments import ChargeAdjustment
+    return {
+        'types': ChargeAdjustment.supported_types(db.session),
+    }
+
+
+@bp.route('/htmx/create_adjustment_form')
+@login_required
+@require_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_create_adjustment_form():
+    """Return the Create Adjustment form fragment (loaded into the modal)."""
+    ctx = _create_adjustment_form_context()
+    return render_template(
+        _CREATE_ADJUSTMENT_FORM_TEMPLATE,
+        errors=[],
+        form={},
+        **ctx,
+    )
+
+
+@bp.route('/htmx/project_search_for_adjustment')
+@login_required
+@require_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_project_search_for_adjustment():
+    """Search-as-you-type backend for the Create Adjustment project picker.
+
+    Mirrors ``admin_dashboard.htmx_project_search_for_parent`` but guarded
+    by ``EDIT_ALLOCATIONS`` (the permission that also gates the Create
+    Adjustment button). Returns the same results template so the shared
+    ``fk-picker.js`` click handler populates the hidden ``project_id``
+    input on selection.
+    """
+    from sam.queries.projects import search_projects_by_code_or_title
+
+    query = (request.args.get('q') or '').strip()
+    if len(query) < 1:
+        return ''
+
+    projects = search_projects_by_code_or_title(
+        db.session, query, active=True,
+    )[:10]
+
+    return render_template(
+        'dashboards/admin/fragments/project_search_results_fk_htmx.html',
+        projects=projects,
+    )
+
+
+@bp.route('/htmx/resources_for_project')
+@login_required
+@require_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_resources_for_project():
+    """Return <option> fragment for the Resource select, filtered to
+    the given project's active HPC/DAV accounts.
+
+    Query string: project_id=<int>. If absent/empty/unknown, returns a
+    single placeholder option so the select remains usable.
+    """
+    from sam.accounting.accounts import Account
+    from sam.projects.projects import Project
+    from sam.resources.resources import ResourceType
+
+    project_id_str = (request.args.get('project_id') or '').strip()
+    if not project_id_str:
+        return '<option value="">-- Select a project first --</option>'
+    try:
+        project_id = int(project_id_str)
+    except ValueError:
+        return '<option value="">-- Select a project first --</option>'
+
+    project = db.session.get(Project, project_id)
+    if project is None:
+        return '<option value="">-- Unknown project --</option>'
+
+    rows = (
+        db.session.query(Resource.resource_id, Resource.resource_name)
+        .join(Account, Account.resource_id == Resource.resource_id)
+        .join(ResourceType, Resource.resource_type_id == ResourceType.resource_type_id)
+        .filter(
+            Account.project_id == project.project_id,
+            Account.is_active,
+            Resource.is_active,
+            ResourceType.resource_type.in_(('HPC', 'DAV')),
+            ~Resource.resource_name.in_(HIDDEN_RESOURCES),
+        )
+        .distinct()
+        .order_by(Resource.resource_name)
+        .all()
+    )
+
+    if not rows:
+        return (
+            '<option value="">-- No compute accounts for this project --</option>'
+        )
+
+    opts = ['<option value="">-- Select a resource --</option>']
+    for resource_id, resource_name in rows:
+        opts.append(f'<option value="{resource_id}">{resource_name}</option>')
+    return '\n'.join(opts)
+
+
+@bp.route('/htmx/create_adjustment', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_create_adjustment():
+    """Create a ChargeAdjustment row. Server applies the sign by type."""
+    from sam.accounting.accounts import Account
+    from sam.accounting.adjustments import ChargeAdjustment
+    from sam.projects.projects import Project
+
+    def do_action(data):
+        project = db.session.get(Project, data['project_id'])
+        if project is None:
+            raise ValueError(f"Project {data['project_id']} not found")
+
+        account = Account.get_by_project_and_resource(
+            db.session, project.project_id, data['resource_id'],
+            exclude_deleted=True,
+        )
+        if account is None:
+            raise ValueError(
+                f"No active account for project {project.projcode} on the "
+                f"selected resource"
+            )
+
+        return ChargeAdjustment.create(
+            db.session,
+            account_id=account.account_id,
+            charge_adjustment_type_id=data['charge_adjustment_type_id'],
+            amount=data['amount'],
+            adjusted_by_id=current_user.user_id,
+            comment=data.get('comment'),
+        )
+
+    return handle_htmx_form_post(
+        schema_cls=CreateChargeAdjustmentForm,
+        template=_CREATE_ADJUSTMENT_FORM_TEMPLATE,
+        do_action=do_action,
+        success_triggers={
+            'closeActiveModal': {},
+            'refreshAdjustmentsTab': {},
+        },
+        success_message='Charge adjustment saved.',
+        error_prefix='Error creating adjustment',
+        context_fn=_create_adjustment_form_context,
+    )

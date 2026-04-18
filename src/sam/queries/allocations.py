@@ -145,6 +145,7 @@ ALLOCATION_TRANSACTION_SORT_COLUMNS = {
     'projcode': Project.projcode,
     'resource_name': Resource.resource_name,
     'facility_name': Facility.facility_name,
+    'allocation_type': AllocationType.allocation_type,
     'username': User.username,
 }
 
@@ -302,8 +303,8 @@ def get_recent_allocation_transactions(
         - ``projcode``, ``project_id``
         - ``resource_name``, ``resource_id``
         - ``facility_name``, ``allocation_type``
-        - ``user_id``, ``username``, ``user_full_name`` (all ``None`` when the
-          transaction has no responsible user)
+        - ``user_id``, ``username``, ``user_display_name`` (all ``None`` when
+          the transaction has no responsible user)
     """
     if sort_by is not None and sort_by not in ALLOCATION_TRANSACTION_SORT_COLUMNS:
         raise ValueError(
@@ -368,7 +369,7 @@ def get_recent_allocation_transactions(
             'allocation_type': at_name,
             'user_id': user.user_id if user is not None else None,
             'username': user.username if user is not None else None,
-            'user_full_name': user.full_name if user is not None else None,
+            'user_display_name': user.display_name if user is not None else None,
         }
         for txn, project, resource, at_name, fac_name, user in rows
     ]
