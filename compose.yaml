@@ -63,8 +63,6 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
-      - DISABLE_AUTH=1         # WARNING: dev-only — NEVER set in production
-      - DEV_AUTO_LOGIN_USER=benkirk  # WARNING: dev-only — NEVER set in production
       - FLASK_DEBUG=1
       - AUDIT_ENABLED=1
       - AUDIT_LOG_PATH=/var/log/sam/model_audit.log
