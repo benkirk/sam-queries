@@ -150,11 +150,14 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
 
     # nusd: read, edit,everything + write to projects, allocations
     # and system status. Does NOT confer write on users/groups/facilities/
-    # org_metadata (those remain admin-only).
+    # org_metadata (those remain admin-only). May impersonate any user
+    # whose permission set is a subset of nusd's (the can_impersonate
+    # rule blocks escalation).
     'nusd': ALL_VIEW | ALL_EDIT | {
         Permission.ACCESS_ADMIN_DASHBOARD,
         Permission.CREATE_PROJECTS,
         Permission.CREATE_ALLOCATIONS,
+        Permission.IMPERSONATE_USERS,
     },
 
     # hsg: read-only across the board,
@@ -254,6 +257,32 @@ def has_all_permissions(user, *permissions: Permission) -> bool:
     """
     user_perms = get_user_permissions(user)
     return set(permissions).issubset(user_perms)
+
+
+def can_impersonate(caller, target) -> bool:
+    """
+    Decide whether ``caller`` is permitted to impersonate ``target``.
+
+    No-escalation rule: ``target``'s permission set must be a subset of
+    ``caller``'s. Equal sets (peer impersonation) are allowed; strictly
+    smaller sets ("lessor" users — regular users, project leads with no
+    system permissions, etc.) are allowed; any permission ``target``
+    holds that ``caller`` does not blocks the impersonation.
+
+    Note: this does NOT check whether ``caller`` has
+    ``Permission.IMPERSONATE_USERS`` — the route decorator should still
+    gate that. ``can_impersonate`` only enforces the no-escalation
+    invariant once impersonation is otherwise allowed.
+
+    Args:
+        caller: AuthUser doing the impersonation.
+        target: AuthUser being impersonated.
+
+    Returns:
+        True if ``target``'s permissions are a (non-strict) subset of
+        ``caller``'s permissions; False otherwise.
+    """
+    return get_user_permissions(target) <= get_user_permissions(caller)
 
 
 def has_role(user, role_name: str) -> bool:

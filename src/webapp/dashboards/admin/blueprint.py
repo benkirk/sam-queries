@@ -25,7 +25,12 @@ from sam.queries.expirations import get_projects_by_allocation_end_date, get_pro
 from sam.queries.lookups import find_project_by_code, get_user_group_access
 from webapp.auth.models import AuthUser
 from sam.core.users import User
-from webapp.utils.rbac import require_permission, Permission, has_permission
+from webapp.utils.rbac import (
+    can_impersonate, get_user_permissions, has_permission,
+    Permission, require_permission,
+)
+import logging
+logger = logging.getLogger(__name__)
 
 
 bp = Blueprint('admin_dashboard', __name__, url_prefix='/admin')
@@ -79,10 +84,21 @@ def impersonate():
 
     user_to_impersonate = AuthUser(sam_user_to_impersonate)
 
-    # Prevent impersonating other admins unless you are a super-admin
-    if user_to_impersonate.has_role('admin') and not current_user.has_role('admin'):
-         flash('You do not have permission to impersonate an administrator.', 'danger')
-         return redirect(url_for('admin_dashboard.index'))
+    # No-escalation guard: caller may only impersonate users whose
+    # permission set is a subset of their own. Peers and "lessor" users
+    # (regular users, project leads with no system permissions, …) are
+    # fine; users with extra permissions are not.
+    if not can_impersonate(current_user, user_to_impersonate):
+        extra = get_user_permissions(user_to_impersonate) - get_user_permissions(current_user)
+        logger.warning(
+            "Impersonation refused: caller=%s target=%s extra_perms=%s",
+            current_user.username, username, sorted(p.value for p in extra),
+        )
+        flash(
+            f'Cannot impersonate {username} — they hold permissions you do not.',
+            'danger',
+        )
+        return redirect(url_for('admin_dashboard.index'))
 
     # Store current user in session to be able to go back
     session['impersonator_id'] = impersonator_id
