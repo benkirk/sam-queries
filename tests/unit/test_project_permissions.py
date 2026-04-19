@@ -10,11 +10,16 @@ from unittest.mock import Mock
 import pytest
 
 from webapp.utils.project_permissions import (
+    _is_project_steward,
     can_change_admin,
+    can_edit_allocations,
+    can_edit_consumption_threshold,
     can_manage_project_members,
+    can_redistribute_allocations,
     can_view_project_members,
     get_user_role_in_project,
 )
+from webapp.utils.rbac import Permission
 
 
 pytestmark = pytest.mark.unit
@@ -32,11 +37,17 @@ def create_mock_user(user_id: int, roles: list = None):
     return user
 
 
-def create_mock_project(project_lead_user_id: int, project_admin_user_id: int = None):
-    """Create a mock project object for testing."""
+def create_mock_project(project_lead_user_id: int, project_admin_user_id: int = None,
+                        parent: Mock = None):
+    """Create a mock project object for testing.
+
+    ``parent`` is the Project ORM ``parent`` relationship — used by the
+    Phase-2 ancestor-walk tests. Default None means root.
+    """
     project = Mock()
     project.project_lead_user_id = project_lead_user_id
     project.project_admin_user_id = project_admin_user_id
+    project.parent = parent
     return project
 
 
@@ -148,3 +159,137 @@ class TestGetUserRoleInProject:
         """If the same user is both lead and admin, returns 'Lead' (lead is checked first)."""
         project = create_mock_project(project_lead_user_id=1, project_admin_user_id=1)
         assert get_user_role_in_project(1, project) == 'Lead'
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: _is_project_steward — central authorization primitive
+# ---------------------------------------------------------------------------
+
+class TestIsProjectSteward:
+    """All ``can_*`` helpers route through ``_is_project_steward``."""
+
+    def test_system_permission_holder_passes_without_role_check(self):
+        # admin bundle grants every permission, including EDIT_ALLOCATIONS.
+        user = create_mock_user(user_id=100, roles=['admin'])
+        project = create_mock_project(project_lead_user_id=1, project_admin_user_id=2)
+        assert _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+
+    def test_lead_passes_for_their_project(self):
+        user = create_mock_user(user_id=42, roles=['user'])
+        project = create_mock_project(project_lead_user_id=42)
+        assert _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+
+    def test_admin_passes_for_their_project(self):
+        user = create_mock_user(user_id=42, roles=['user'])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=42)
+        assert _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+
+    def test_outsider_blocked(self):
+        user = create_mock_user(user_id=42, roles=['user'])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
+        assert not _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+
+    def test_ancestor_lead_passes_when_include_ancestors(self):
+        grandparent = create_mock_project(project_lead_user_id=42)
+        parent = create_mock_project(project_lead_user_id=999, parent=grandparent)
+        child = create_mock_project(project_lead_user_id=998, parent=parent)
+        user = create_mock_user(user_id=42, roles=['user'])
+        assert _is_project_steward(
+            user, child, Permission.EDIT_ALLOCATIONS, include_ancestors=True
+        )
+
+    def test_ancestor_lead_blocked_without_include_ancestors(self):
+        parent = create_mock_project(project_lead_user_id=42)
+        child = create_mock_project(project_lead_user_id=999, parent=parent)
+        user = create_mock_user(user_id=42, roles=['user'])
+        assert not _is_project_steward(
+            user, child, Permission.EDIT_ALLOCATIONS, include_ancestors=False
+        )
+
+    def test_ancestor_admin_passes_when_include_ancestors(self):
+        parent = create_mock_project(project_lead_user_id=999, project_admin_user_id=42)
+        child = create_mock_project(project_lead_user_id=998, parent=parent)
+        user = create_mock_user(user_id=42, roles=['user'])
+        assert _is_project_steward(
+            user, child, Permission.EDIT_ALLOCATIONS, include_ancestors=True
+        )
+
+    def test_unauthenticated_user_blocked(self):
+        user = Mock()
+        user.user_id = None  # AnonymousUserMixin path
+        user.roles = set()
+        user.has_role = lambda r: False
+        project = create_mock_project(project_lead_user_id=42)
+        assert not _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: can_edit_allocations BEHAVIOR CHANGE
+# ---------------------------------------------------------------------------
+
+class TestCanEditAllocations:
+    """``can_edit_allocations`` previously short-circuited to
+    ``has_permission(EDIT_ALLOCATIONS)`` only — i.e. system admins only.
+    Phase 2 grants project lead/admin (and ancestor lead/admin) too,
+    enabling allocation redistribution within a project subtree."""
+
+    def test_lead_can_edit_their_allocation(self):
+        # Regression target — used to return False for non-system users.
+        user = create_mock_user(user_id=42, roles=['user'])
+        project = create_mock_project(project_lead_user_id=42)
+        assert can_edit_allocations(user, project)
+
+    def test_admin_can_edit_their_allocation(self):
+        user = create_mock_user(user_id=42, roles=['user'])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=42)
+        assert can_edit_allocations(user, project)
+
+    def test_ancestor_lead_can_edit_descendant_allocation(self):
+        # The redistribution-within-tree use case.
+        parent = create_mock_project(project_lead_user_id=42)
+        child = create_mock_project(project_lead_user_id=998, parent=parent)
+        user = create_mock_user(user_id=42, roles=['user'])
+        assert can_edit_allocations(user, child)
+
+    def test_outsider_still_blocked(self):
+        user = create_mock_user(user_id=42, roles=['user'])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
+        assert not can_edit_allocations(user, project)
+
+    def test_facility_manager_grants_via_system_permission(self):
+        user = create_mock_user(user_id=99, roles=['facility_manager'])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
+        assert can_edit_allocations(user, project)
+
+    def test_redistribute_is_alias(self):
+        # Same authorization, different name at the call site.
+        assert can_redistribute_allocations is can_edit_allocations
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: can_edit_consumption_threshold — should NOT walk ancestors
+# ---------------------------------------------------------------------------
+
+class TestCanEditConsumptionThreshold:
+    """Threshold is a per-project tuning, not a tree-scoped operation."""
+
+    def test_lead_can_edit_threshold(self):
+        user = create_mock_user(user_id=42, roles=['user'])
+        project = create_mock_project(project_lead_user_id=42)
+        assert can_edit_consumption_threshold(user, project)
+
+    def test_admin_can_edit_threshold(self):
+        user = create_mock_user(user_id=42, roles=['user'])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=42)
+        assert can_edit_consumption_threshold(user, project)
+
+    def test_ancestor_lead_cannot_edit_descendant_threshold(self):
+        parent = create_mock_project(project_lead_user_id=42)
+        child = create_mock_project(project_lead_user_id=999, parent=parent)
+        user = create_mock_user(user_id=42, roles=['user'])
+        assert not can_edit_consumption_threshold(user, child)
+
+    def test_outsider_blocked(self):
+        user = create_mock_user(user_id=42, roles=['user'])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
+        assert not can_edit_consumption_threshold(user, project)
