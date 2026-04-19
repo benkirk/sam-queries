@@ -304,26 +304,19 @@ def index():
     resource_overviews = {}
     for rn in grouped_data.keys():
         overview_data = all_overviews.get(rn, [])
-        rt = resource_types.get(rn, 'HPC')
-        if rt in ['DISK', 'ARCHIVE']:
-            chart_title = f'Data Volume by Facility\n{rn}'
-        else:
-            chart_title = f'Annual Rate by Facility\n{rn}'
-
         resource_overviews[rn] = {
             'table_data': overview_data,
-            'chart': generate_facility_pie_chart_matplotlib(overview_data, title=chart_title),
+            'chart': generate_facility_pie_chart_matplotlib(overview_data),
         }
 
     # Generate allocation type pie chart SVGs per resource/facility
     allocation_type_charts = {}
     for resource_name, facilities in grouped_data.items():
         allocation_type_charts[resource_name] = {}
-        rt = resource_types.get(resource_name, 'HPC')
         for facility_name, types in facilities.items():
             if len(types) > 1:
                 allocation_type_charts[resource_name][facility_name] = \
-                    generate_allocation_type_pie_chart_matplotlib(types, rt, resource_name, facility_name)
+                    generate_allocation_type_pie_chart_matplotlib(types)
             else:
                 allocation_type_charts[resource_name][facility_name] = None
 
@@ -358,7 +351,6 @@ def index():
 
         for resource_name, facilities in grouped_data.items():
             allocation_type_usage_charts[resource_name] = {}
-            rt = resource_types.get(resource_name, 'HPC')
             for facility_name, types in facilities.items():
                 usage_rows = usage_by_resource_facility.get(resource_name, {}).get(facility_name, [])
                 # Reuse allocation type chart fn — build minimal dicts with total_used as value
@@ -375,7 +367,7 @@ def index():
                 ]
                 if len(chartable) > 1:
                     allocation_type_usage_charts[resource_name][facility_name] = \
-                        generate_allocation_type_pie_chart_matplotlib(chartable, rt, resource_name, facility_name)
+                        generate_allocation_type_pie_chart_matplotlib(chartable)
                 else:
                     allocation_type_usage_charts[resource_name][facility_name] = None
 
@@ -390,10 +382,8 @@ def index():
             chartable = [d for d in usage_overview_data if d.get('total_used', 0.0) > 0]
             resource_usage_overviews[rn] = {
                 'table_data': usage_overview_data,
-                'chart': generate_facility_pie_chart_matplotlib(
-                    chartable,
-                    title=f'Usage by Facility\n{rn}'
-                ) if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
+                'chart': generate_facility_pie_chart_matplotlib(chartable)
+                         if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
             }
 
     # Defaults for the shared audit filter (Transactions + Adjustments tabs).
