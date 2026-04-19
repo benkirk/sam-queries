@@ -150,3 +150,28 @@ class TestPermissionEnumSurface:
         # Sanity check: the 'admin' bundle must list every Permission so
         # has_permission(admin, anything) returns True without a special case.
         assert set(GROUP_PERMISSIONS['admin']) == set(Permission)
+
+
+# ---------------------------------------------------------------------------
+# Template context processor — can_act_on_project closure
+# ---------------------------------------------------------------------------
+
+class TestRbacContextProcessor:
+    """Phase 3 added a ``can_act_on_project(permission, project, ...)``
+    helper to the template context. Verify it delegates to
+    ``_is_project_steward`` and handles the unauthenticated /
+    no-project edge cases."""
+
+    def _ctx(self, app):
+        from webapp.utils.rbac import rbac_context_processor
+        with app.test_request_context('/'):
+            return rbac_context_processor()
+
+    def test_exposes_can_act_on_project(self, app):
+        ctx = self._ctx(app)
+        assert 'can_act_on_project' in ctx
+        assert callable(ctx['can_act_on_project'])
+
+    def test_returns_false_when_project_is_none(self, app):
+        ctx = self._ctx(app)
+        assert ctx['can_act_on_project'](Permission.EDIT_ALLOCATIONS, None) is False

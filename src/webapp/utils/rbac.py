@@ -403,10 +403,31 @@ def rbac_context_processor():
         {% if has_permission(Permission.EDIT_USERS) %}
             <a href="/users/edit">Edit Users</a>
         {% endif %}
+
+        {# Project-scoped check via the conditional helper. Returns True
+           when current_user has the system permission OR is project
+           lead/admin (or ancestor lead/admin if include_ancestors=True). #}
+        {% if can_act_on_project(Permission.EDIT_ALLOCATIONS, project, include_ancestors=True) %}
+            <a href="...">Redistribute</a>
+        {% endif %}
     """
+    # Late import to avoid the circular path
+    # rbac → project_permissions → rbac at module import time.
+    from webapp.utils.project_permissions import _is_project_steward
+
+    def _can_act_on_project(permission, project, include_ancestors=False):
+        if project is None:
+            return False
+        if current_user is None or not current_user.is_authenticated:
+            return False
+        return _is_project_steward(
+            current_user, project, permission, include_ancestors=include_ancestors
+        )
+
     return {
         'Permission': Permission,
         'has_permission': lambda p: has_permission(current_user, p) if current_user.is_authenticated else False,
         'has_role': lambda r: has_role(current_user, r) if current_user.is_authenticated else False,
         'user_permissions': get_user_permissions(current_user) if current_user.is_authenticated else set(),
+        'can_act_on_project': _can_act_on_project,
     }
