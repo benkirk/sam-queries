@@ -55,10 +55,13 @@ class TestGroupBundleComposition:
         user = _StubUser(roles=[])
         assert get_user_permissions(user) == set()
 
-    def test_csg_bundle_grants_every_permission(self):
-        # csg is the full-access bundle; every Permission must be in it
-        # so authorization checks for csg members never need a special case.
-        user = _StubUser(roles=['csg'])
+    def test_admin_testing_only_bundle_grants_every_permission(self):
+        # 'admin-testing-only' is the synthetic test-session bundle
+        # (registered by the autouse fixture in tests/conftest.py) that
+        # carries every Permission. Real production bundles (csg/nusd/hsg)
+        # may grow or shrink — tests that need 'full admin' semantics
+        # should depend on this bundle, not on csg's exact contents.
+        user = _StubUser(roles=['admin-testing-only'])
         assert get_user_permissions(user) == set(Permission)
 
 
@@ -148,10 +151,12 @@ class TestPermissionEnumSurface:
     def test_new_permission_member_exists(self, perm_name):
         assert hasattr(Permission, perm_name)
 
-    def test_csg_bundle_covers_every_permission(self):
-        # Sanity check: the 'csg' bundle must list every Permission so
-        # has_permission(csg, anything) returns True without a special case.
-        assert set(GROUP_PERMISSIONS['csg']) == set(Permission)
+    def test_admin_testing_only_bundle_is_registered_with_full_permission_set(self):
+        # The autouse session-scoped fixture in tests/conftest.py
+        # registers 'admin-testing-only' as the synthetic full-access
+        # bundle for the test session. Guard against the fixture
+        # silently regressing or not running.
+        assert set(GROUP_PERMISSIONS['admin-testing-only']) == set(Permission)
 
 
 # ---------------------------------------------------------------------------
