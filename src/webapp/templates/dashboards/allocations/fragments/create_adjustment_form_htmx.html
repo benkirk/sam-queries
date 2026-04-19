@@ -51,21 +51,21 @@
                  {% if tid != _selected_type_id %}style="display:none;"{% endif %}>
                 {% if t.type == 'Refund' %}
                 <strong>Refund.</strong>
-                Use Refund to return compute to a project because of a
+                Use Refund to return compute resources to a project because of a
                 system-caused failure — node crash, hardware fault, or a
-                job preempted through no fault of the user. This is the
+                job otherwise failed through no fault of the user. This is the
                 most common adjustment type and creates the clearest audit
                 trail for system-caused returns.
                 {% elif t.type == 'Credit' %}
                 <strong>Credit.</strong>
                 Use Credit for administrative balance additions unrelated
-                to a specific job failure — goodwill, approved allocation
-                increase, or a cross-project transfer.
+                to a specific job failure — goodwill, credit for a mistake,
+                etc...
                 {% elif t.type == 'Debit' %}
                 <strong>Debit.</strong>
                 Use Debit to capture a compute charge that automated
                 accounting missed. The amount will be added to this
-                account's usage total.
+                account's usage total, decreasing available resources.
                 {% elif t.type == 'Reservation' %}
                 <strong>Reservation.</strong>
                 Use Reservation to set aside compute on this account for
