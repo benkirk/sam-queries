@@ -10,7 +10,7 @@ from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from typing import List, Dict
 
-from webapp.extensions import db, cache
+from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.htmx import handle_htmx_form_post
 from sam.queries.allocations import (
     ALLOCATION_TRANSACTION_SORT_COLUMNS,
@@ -234,7 +234,7 @@ def get_resource_types(session) -> Dict[str, str]:
 @bp.route('/')
 @login_required
 @require_permission(Permission.VIEW_PROJECTS)
-@cache.cached(query_string=True)
+@cache.cached(make_cache_key=user_aware_cache_key)
 def index():
     """
     Main allocations dashboard page.
@@ -412,7 +412,7 @@ def index():
 @bp.route('/projects')
 @login_required
 @require_permission(Permission.VIEW_PROJECTS)
-@cache.cached(query_string=True)
+@cache.cached(make_cache_key=user_aware_cache_key)
 def projects_fragment():
     """
     AJAX fragment showing individual projects for a specific Resource/Facility/Type.
