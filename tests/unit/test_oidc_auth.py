@@ -470,14 +470,15 @@ class TestUPNClaimStripping:
 
 
 # ---------------------------------------------------------------------------
-# DB role resolution tests
+# Group-based role resolution tests
 # ---------------------------------------------------------------------------
 
-class TestDBRoleResolution:
-    """Test that AuthUser.roles falls back to database role_user table."""
+class TestGroupRoleResolution:
+    """Test that AuthUser.roles derives from POSIX groups (or dev_group_mapping
+    when supplied). The legacy ``role_user`` table is not consulted."""
 
     def test_dev_mapping_takes_priority(self, session):
-        """When user is in dev_role_mapping, those roles are used."""
+        """When user is in dev_group_mapping, those bundles are used."""
         from webapp.auth.models import AuthUser
         from sam.core.users import User
 
@@ -485,11 +486,11 @@ class TestDBRoleResolution:
         if user is None:
             pytest.skip("Test user not in database")
 
-        auth_user = AuthUser(user, dev_role_mapping={'benkirk': ['admin']})
+        auth_user = AuthUser(user, dev_group_mapping={'benkirk': ['admin']})
         assert 'admin' in auth_user.roles
 
-    def test_db_roles_when_not_in_dev_mapping(self, session):
-        """When user is NOT in dev_role_mapping, roles come from role_user table."""
+    def test_dev_mapping_filters_unknown_bundles(self, session):
+        """Group names with no GROUP_PERMISSIONS bundle are filtered out."""
         from webapp.auth.models import AuthUser
         from sam.core.users import User
 
@@ -497,27 +498,49 @@ class TestDBRoleResolution:
         if user is None:
             pytest.skip("Test user not in database")
 
-        auth_user = AuthUser(user, dev_role_mapping={})
+        auth_user = AuthUser(
+            user, dev_group_mapping={'benkirk': ['admin', 'no_such_bundle']}
+        )
+        assert auth_user.roles == {'admin'}
+
+    def test_posix_groups_used_when_no_dev_mapping(self, session):
+        """Without dev_group_mapping, roles derive from POSIX group lookup."""
+        from webapp.auth.models import AuthUser
+        from webapp.utils.rbac import GROUP_PERMISSIONS
+        from sam.core.users import User
+        from sam.queries.lookups import get_user_group_access
+
+        user = User.get_by_username(session, 'benkirk')
+        if user is None:
+            pytest.skip("Test user not in database")
+
+        auth_user = AuthUser(user, dev_group_mapping={})
         roles = auth_user.roles
         assert isinstance(roles, set)
-        db_role_names = {ra.role.name for ra in user.role_assignments}
-        assert roles == db_role_names
 
-    def test_empty_roles_when_no_assignments(self, session):
-        """User with no role_user entries and no dev mapping gets empty roles."""
+        posix_groups = {
+            r['group_name']
+            for r in get_user_group_access(session, username='benkirk').get('benkirk', [])
+        }
+        expected = {g for g in posix_groups if g in GROUP_PERMISSIONS}
+        assert roles == expected
+
+    def test_empty_roles_when_no_groups(self, session):
+        """User with no POSIX groups and no dev mapping gets empty roles."""
         from webapp.auth.models import AuthUser
         from sam.core.users import User
+        from sam.queries.lookups import get_user_group_access
 
         users = session.query(User).filter(User.is_active).all()
-        user_no_roles = None
+        user_no_groups = None
         for u in users:
-            if not u.role_assignments:
-                user_no_roles = u
+            if not get_user_group_access(session, username=u.username).get(u.username):
+                user_no_groups = u
                 break
-        if user_no_roles is None:
-            pytest.skip("No user without role assignments found in database")
+        if user_no_groups is None:
+            pytest.skip("No user without POSIX group memberships found in database")
 
-        auth_user = AuthUser(user_no_roles, dev_role_mapping={})
+        auth_user = AuthUser(user_no_groups, dev_group_mapping={})
         assert auth_user.roles == set()
 
 

@@ -208,7 +208,7 @@ def app(test_db_url, status_db_url):
 
     Uses `create_app(config_overrides=...)` to point Flask-SQLAlchemy at
     the test DB without touching `sam.session.connection_string`. Everything
-    else (DEV_ROLE_MAPPING, API_KEYS, TESTING=True, WTF_CSRF_ENABLED=False,
+    else (DEV_GROUP_MAPPING, API_KEYS, TESTING=True, WTF_CSRF_ENABLED=False,
     ALLOCATION_USAGE_CACHE_TTL=0) comes from `TestingConfig`, selected via
     `FLASK_CONFIG='testing'`.
 
@@ -240,7 +240,7 @@ def app(test_db_url, status_db_url):
     })
 
     # Regression guard — mirrors the legacy app fixture. Fails loudly if
-    # TestingConfig didn't load (which would mean DEV_ROLE_MAPPING, API_KEYS,
+    # TestingConfig didn't load (which would mean DEV_GROUP_MAPPING, API_KEYS,
     # and cache disables are all wrong).
     assert flask_app.config["ALLOCATION_USAGE_CACHE_TTL"] == 0, (
         "TestingConfig not loaded — check FLASK_CONFIG env var and "
@@ -267,11 +267,11 @@ def client(app):
 
 @pytest.fixture
 def auth_client(client, session):
-    """Test client logged in as `benkirk` — admin via TestingConfig.DEV_ROLE_MAPPING.
+    """Test client logged in as `benkirk` — admin via TestingConfig.DEV_GROUP_MAPPING.
 
     Uses Flask-Login's session-cookie mechanism (`client.session_transaction()`
     → `sess['_user_id']`). This triggers the `load_user()` callback in the
-    login_manager, which reads `DEV_ROLE_MAPPING` from TestingConfig so
+    login_manager, which reads `DEV_GROUP_MAPPING` from TestingConfig so
     benkirk gets the `admin` role without needing any real `role_user`
     rows in the DB. Same pattern as the legacy fixture.
     """
@@ -294,7 +294,7 @@ def non_admin_client(client, session):
     """Test client logged in as a non-admin user from the snapshot.
 
     Picks any active user who isn't `benkirk` — their username won't be
-    in `TestingConfig.DEV_ROLE_MAPPING`, so `load_user()` assigns them
+    in `TestingConfig.DEV_GROUP_MAPPING`, so `load_user()` assigns them
     the default `['user']` role. Used by tests that need to verify
     403-on-admin-only-routes behavior.
 

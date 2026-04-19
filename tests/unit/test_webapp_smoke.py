@@ -6,7 +6,7 @@ These two tests prove that the Phase 4 fixture scaffolding works end-to-end:
      and responds to unauthenticated GETs.
   2. `auth_client` — Flask-Login session-cookie login as `benkirk` lets
      authenticated routes through (and the `benkirk → admin` mapping from
-     `TestingConfig.DEV_ROLE_MAPPING` is in effect).
+     `TestingConfig.DEV_GROUP_MAPPING` is in effect).
 
 If either fails, no Phase 4 port can proceed. If both pass, the rest of
 Phase 4 is unblocked and the fixture patterns in `new_tests/conftest.py`

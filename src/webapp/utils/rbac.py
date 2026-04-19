@@ -1,12 +1,37 @@
 """
 Role-Based Access Control (RBAC) utilities for SAM Web UI.
 
-Defines permissions, role mappings, and utility functions for checking access.
-Works with both Flask-Admin views and custom API endpoints.
+Defines permissions, POSIX-group-to-permission mappings, and utility
+functions for checking access. Works with both Flask-Admin views and
+custom API endpoints.
+
+Authorization model
+-------------------
+A user's permissions are derived from two sources, unioned together:
+
+1. **POSIX group membership** — each group the user belongs to may map
+   to a bundle of permissions in ``GROUP_PERMISSIONS``. In production,
+   group membership is read from ``adhoc_system_account_entry`` via
+   ``get_user_group_access()``. In dev/test, ``DEV_GROUP_MAPPING``
+   in app config supplies synthetic group names per username.
+
+2. **Per-user overrides** — ``USER_PERMISSION_OVERRIDES`` grants
+   additional permissions to specific usernames on top of whatever
+   their groups confer. Useful for one-off privilege grants without
+   touching group membership.
+
+There is **no dependency on the SAM ``role_user`` / ``role`` tables**;
+those are not consulted by the webapp's RBAC layer.
+
+The string set returned by ``AuthUser.roles`` is the set of POSIX group
+names the user belongs to that have a ``GROUP_PERMISSIONS`` bundle.
+This keeps ``has_role('admin')``-style checks working as a coarse
+display label, but the source of truth for authorization is the
+permission set, not the role label.
 """
 
 from enum import Enum
-from typing import Set, List
+from typing import Set, List, Dict
 from functools import wraps
 from flask import abort
 from flask_login import current_user
@@ -16,8 +41,10 @@ class Permission(Enum):
     """
     System-wide permissions for SAM Web UI.
 
-    These permissions can be assigned to roles and checked
-    in views, templates, and API endpoints.
+    These permissions can be assigned to POSIX-group bundles (see
+    ``GROUP_PERMISSIONS``) or granted to individual users (see
+    ``USER_PERMISSION_OVERRIDES``), and checked in views, templates,
+    and API endpoints.
     """
 
     # User management
@@ -40,11 +67,30 @@ class Permission(Enum):
     CREATE_ALLOCATIONS = "create_allocations"
     DELETE_ALLOCATIONS = "delete_allocations"
 
-    # Resource management
+    # Resource management (machines, queues, resource definitions)
     VIEW_RESOURCES = "view_resources"
     EDIT_RESOURCES = "edit_resources"
     CREATE_RESOURCES = "create_resources"
     DELETE_RESOURCES = "delete_resources"
+
+    # Facility management (UNIV, WNA, ...)
+    VIEW_FACILITIES = "view_facilities"
+    EDIT_FACILITIES = "edit_facilities"
+    CREATE_FACILITIES = "create_facilities"
+    DELETE_FACILITIES = "delete_facilities"
+
+    # Group management (adhoc/POSIX groups)
+    VIEW_GROUPS = "view_groups"
+    EDIT_GROUPS = "edit_groups"
+    CREATE_GROUPS = "create_groups"
+    DELETE_GROUPS = "delete_groups"
+
+    # Organizational metadata: organizations, institutions, contracts,
+    # NSF programs, areas of interest. Slowly-changing reference data.
+    VIEW_ORG_METADATA = "view_org_metadata"
+    EDIT_ORG_METADATA = "edit_org_metadata"
+    CREATE_ORG_METADATA = "create_org_metadata"
+    DELETE_ORG_METADATA = "delete_org_metadata"
 
     # Reports and analytics
     VIEW_REPORTS = "view_reports"
@@ -61,14 +107,22 @@ class Permission(Enum):
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 
-# Role-to-Permission mapping
-# This can later be moved to database for dynamic role management
-ROLE_PERMISSIONS = {
-    # System administrator - full access
-    "admin": [p for p in Permission],
-
-    # Facility manager - can manage projects, allocations, resources
-    "facility_manager": [
+# POSIX-group-to-Permission mapping
+#
+# Keys are POSIX group names (e.g. real groups like 'nusd', 'hsg', 'csg',
+# **and** synthetic dev-only bundles selected by ``DEV_GROUP_MAPPING``).
+# A user receives the union of permissions across all groups they belong
+# to that appear here.
+#
+# Groups that don't appear in this dict simply confer no permissions.
+#
+# TODO(rbac_refactor): the real POSIX group → permission bundles below
+# (`nusd`, `hsg`, `csg`) are provisional. Confirm group names and
+# permission contents with the team before the next deploy.
+GROUP_PERMISSIONS: Dict[str, List[Permission]] = {
+    # ---- Real POSIX group bundles (provisional) ----
+    'nusd': [p for p in Permission],  # admin-equivalent: full access
+    'hsg': [
         Permission.VIEW_USERS,
         Permission.VIEW_PROJECTS,
         Permission.EDIT_PROJECTS,
@@ -80,37 +134,80 @@ ROLE_PERMISSIONS = {
         Permission.CREATE_ALLOCATIONS,
         Permission.VIEW_RESOURCES,
         Permission.EDIT_RESOURCES,
+        Permission.VIEW_FACILITIES,
+        Permission.VIEW_GROUPS,
+        Permission.VIEW_ORG_METADATA,
         Permission.VIEW_REPORTS,
         Permission.VIEW_CHARGE_SUMMARIES,
         Permission.EXPORT_DATA,
         Permission.VIEW_SYSTEM_STATS,
         Permission.EDIT_SYSTEM_STATUS,
     ],
-
-    # Project lead - can view their projects and allocations
-    "project_lead": [
-        Permission.VIEW_USERS,
-        Permission.VIEW_PROJECTS,
-        Permission.VIEW_PROJECT_MEMBERS,
-        Permission.VIEW_ALLOCATIONS,
-        Permission.VIEW_REPORTS,
-        Permission.VIEW_CHARGE_SUMMARIES,
-    ],
-
-    # Regular user - read-only access to their own data
-    "user": [
-        Permission.VIEW_PROJECTS,
-        Permission.VIEW_ALLOCATIONS,
-        Permission.VIEW_CHARGE_SUMMARIES,
-    ],
-
-    # Read-only analyst - can view everything but not modify
-    "analyst": [
+    'csg': [
         Permission.VIEW_USERS,
         Permission.VIEW_PROJECTS,
         Permission.VIEW_PROJECT_MEMBERS,
         Permission.VIEW_ALLOCATIONS,
         Permission.VIEW_RESOURCES,
+        Permission.VIEW_FACILITIES,
+        Permission.VIEW_GROUPS,
+        Permission.VIEW_ORG_METADATA,
+        Permission.VIEW_REPORTS,
+        Permission.VIEW_CHARGE_SUMMARIES,
+        Permission.EXPORT_DATA,
+        Permission.VIEW_SYSTEM_STATS,
+    ],
+
+    # ---- Synthetic bundles selected by DEV_GROUP_MAPPING ----
+    # These keys are not real POSIX groups; they let dev/test configs
+    # assign specific permission sets to named usernames without
+    # depending on adhoc_group data.
+    'admin': [p for p in Permission],
+    'facility_manager': [
+        Permission.VIEW_USERS,
+        Permission.VIEW_PROJECTS,
+        Permission.EDIT_PROJECTS,
+        Permission.CREATE_PROJECTS,
+        Permission.VIEW_PROJECT_MEMBERS,
+        Permission.EDIT_PROJECT_MEMBERS,
+        Permission.VIEW_ALLOCATIONS,
+        Permission.EDIT_ALLOCATIONS,
+        Permission.CREATE_ALLOCATIONS,
+        Permission.VIEW_RESOURCES,
+        Permission.EDIT_RESOURCES,
+        Permission.VIEW_FACILITIES,
+        Permission.VIEW_GROUPS,
+        Permission.VIEW_ORG_METADATA,
+        Permission.VIEW_REPORTS,
+        Permission.VIEW_CHARGE_SUMMARIES,
+        Permission.EXPORT_DATA,
+        Permission.VIEW_SYSTEM_STATS,
+        Permission.EDIT_SYSTEM_STATUS,
+    ],
+    'project_lead': [
+        Permission.VIEW_USERS,
+        Permission.VIEW_PROJECTS,
+        Permission.VIEW_PROJECT_MEMBERS,
+        Permission.VIEW_ALLOCATIONS,
+        Permission.VIEW_RESOURCES,
+        Permission.VIEW_FACILITIES,
+        Permission.VIEW_REPORTS,
+        Permission.VIEW_CHARGE_SUMMARIES,
+    ],
+    'user': [
+        Permission.VIEW_PROJECTS,
+        Permission.VIEW_ALLOCATIONS,
+        Permission.VIEW_CHARGE_SUMMARIES,
+    ],
+    'analyst': [
+        Permission.VIEW_USERS,
+        Permission.VIEW_PROJECTS,
+        Permission.VIEW_PROJECT_MEMBERS,
+        Permission.VIEW_ALLOCATIONS,
+        Permission.VIEW_RESOURCES,
+        Permission.VIEW_FACILITIES,
+        Permission.VIEW_GROUPS,
+        Permission.VIEW_ORG_METADATA,
         Permission.VIEW_REPORTS,
         Permission.VIEW_CHARGE_SUMMARIES,
         Permission.EXPORT_DATA,
@@ -119,22 +216,44 @@ ROLE_PERMISSIONS = {
 }
 
 
+# Per-user permission overrides
+#
+# Grants additional permissions to a specific username on top of
+# whatever their group memberships confer. Useful for one-off privilege
+# grants (e.g. a non-`hsg` user who needs EXPORT_DATA temporarily)
+# without modifying group bundles or POSIX group membership.
+#
+# Keys: usernames. Values: set of Permission enum members to grant.
+USER_PERMISSION_OVERRIDES: Dict[str, Set[Permission]] = {
+    # 'someuser': {Permission.EXPORT_DATA, Permission.VIEW_REPORTS},
+}
+
+
 def get_user_permissions(user) -> Set[Permission]:
     """
-    Get all permissions for a user based on their roles.
+    Get all permissions for a user.
+
+    Composes the union of:
+    - Permissions from each POSIX group the user belongs to that has a
+      bundle in ``GROUP_PERMISSIONS`` (read from ``user.roles``, which
+      is the set of bundle-matching group names the AuthUser exposed)
+    - Per-user overrides from ``USER_PERMISSION_OVERRIDES``
 
     Args:
-        user: AuthUser object with roles
+        user: AuthUser object (Flask-Login current_user)
 
     Returns:
         Set of Permission enum values the user has
     """
-    permissions = set()
+    permissions: Set[Permission] = set()
 
-    # Get permissions from all user's roles
-    for role_name in user.roles:
-        if role_name in ROLE_PERMISSIONS:
-            permissions.update(ROLE_PERMISSIONS[role_name])
+    for group_name in user.roles:
+        if group_name in GROUP_PERMISSIONS:
+            permissions.update(GROUP_PERMISSIONS[group_name])
+
+    overrides = USER_PERMISSION_OVERRIDES.get(getattr(user, 'username', None))
+    if overrides:
+        permissions.update(overrides)
 
     return permissions
 
@@ -150,12 +269,7 @@ def has_permission(user, permission: Permission) -> bool:
     Returns:
         True if user has the permission, False otherwise
     """
-    # System admins always have all permissions
-    if user.has_role('admin'):
-        return True
-
-    user_perms = get_user_permissions(user)
-    return permission in user_perms
+    return permission in get_user_permissions(user)
 
 
 def has_any_permission(user, *permissions: Permission) -> bool:
@@ -190,28 +304,19 @@ def has_all_permissions(user, *permissions: Permission) -> bool:
 
 def has_role(user, role_name: str) -> bool:
     """
-    Check if user has a specific role.
+    Check if user belongs to a specific group bundle (display label).
 
-    Args:
-        user: AuthUser object
-        role_name: Name of role to check
-
-    Returns:
-        True if user has the role, False otherwise
+    Note: 'role' here is the name of a ``GROUP_PERMISSIONS`` bundle
+    (POSIX group name or synthetic dev bundle name). For authorization
+    decisions prefer ``has_permission``; use this only for display logic
+    or coarse role-name checks.
     """
     return user.has_role(role_name)
 
 
 def has_any_role(user, *role_names: str) -> bool:
     """
-    Check if user has any of the specified roles.
-
-    Args:
-        user: AuthUser object
-        *role_names: Role names to check
-
-    Returns:
-        True if user has at least one role, False otherwise
+    Check if user belongs to any of the specified group bundles.
     """
     return user.has_any_role(*role_names)
 
@@ -265,7 +370,7 @@ def require_any_permission(*permissions: Permission):
 
 def require_role(*role_names: str):
     """
-    Decorator to require any of the specified roles.
+    Decorator to require any of the specified group bundles.
 
     Usage:
         @app.route('/admin')

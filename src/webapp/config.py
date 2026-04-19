@@ -75,8 +75,9 @@ class DevelopmentConfig(SAMWebappConfig):
         'collector': '$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2',
     }
 
-    # Development role mapping (bypasses role DB tables)
-    DEV_ROLE_MAPPING = {
+    # Development group mapping (bypasses POSIX group lookup)
+    # Values are GROUP_PERMISSIONS bundle names — see webapp.utils.rbac.
+    DEV_GROUP_MAPPING = {
         'benkirk':  ['admin'],
         'mtrahan':  ['facility_manager'],
         'rory':     ['project_lead'],
@@ -135,11 +136,11 @@ class TestingConfig(SAMWebappConfig):
     ALLOCATION_USAGE_CACHE_TTL  = 0
     ALLOCATION_USAGE_CACHE_SIZE = 0
 
-    # Role mapping for the auth_client fixture — mirrors DevelopmentConfig so
-    # test users resolve to the same permissions they did when tests were
+    # Group mapping for the auth_client fixture — mirrors DevelopmentConfig
+    # so test users resolve to the same permissions they did when tests were
     # inadvertently running under DevelopmentConfig. Consumed by
-    # run.py:load_user via AuthUser(dev_role_mapping=...).
-    DEV_ROLE_MAPPING = {
+    # run.py:load_user via AuthUser(dev_group_mapping=...).
+    DEV_GROUP_MAPPING = {
         'benkirk':  ['admin'],
         'mtrahan':  ['facility_manager'],
         'rory':     ['project_lead'],
