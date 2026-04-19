@@ -117,7 +117,7 @@ def nodetype_history(system, node_type):
         return redirect(url_for('status_dashboard.index'))
 
     # Generate chart
-    chart_svg = generate_nodetype_history_matplotlib(history_data, node_type)
+    chart_svg = generate_nodetype_history_matplotlib(history_data)
 
     return render_template(
         'dashboards/status/nodetype_history.html',
@@ -184,7 +184,7 @@ def partition_history(system, partition):
     partition_display = f"{partition.upper()} Partition"
 
     # Generate chart
-    chart_svg = generate_nodetype_history_matplotlib(history_data, partition_display)
+    chart_svg = generate_nodetype_history_matplotlib(history_data)
 
     return render_template(
         'dashboards/status/nodetype_history.html',
@@ -234,7 +234,7 @@ def queue_history(system, queue_name):
     )
 
     # Generate chart
-    chart_svg = generate_queue_history_matplotlib(history_data, queue_name, system)
+    chart_svg = generate_queue_history_matplotlib(history_data)
 
     return render_template(
         'dashboards/status/queue_history.html',

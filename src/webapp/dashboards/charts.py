@@ -108,7 +108,7 @@ _attach_cache_methods(generate_usage_timeseries_matplotlib, _cached_usage_timese
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=64)
-def _cached_nodetype_history(data_key: tuple, node_type: str) -> str:
+def _cached_nodetype_history(data_key: tuple) -> str:
     import matplotlib.cm as cm
 
     history_data = [dict(items) for items in data_key]
@@ -127,7 +127,6 @@ def _cached_nodetype_history(data_key: tuple, node_type: str) -> str:
                   colors=['C3', 'C0', 'C9'])
     ax1.set_ylabel('Number of Nodes', fontsize=11)
     ax1.set_ylim([0, None])
-    ax1.set_title(f'{node_type} - Node Availability Over Time', fontsize=13, fontweight='bold')
     ax1.legend(loc=2, fontsize=10)
     ax1.grid(True, alpha=0.3, color='grey')
 
@@ -155,20 +154,20 @@ def _cached_nodetype_history(data_key: tuple, node_type: str) -> str:
     return svg_io.getvalue()
 
 
-def generate_nodetype_history_matplotlib(history_data: List[Dict], node_type: str) -> str:
+def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
     """
     Generate node type history chart showing availability and utilization.
+    Title is rendered in the surrounding HTML (see status dashboard template).
 
     Args:
         history_data: List of dicts with timestamp, nodes_*, utilization_percent
-        node_type: Name of the node type (for title)
 
     Returns:
         SVG string ready for template rendering
     """
     if not history_data:
         return '<div class="text-center text-muted">No history data available for this node type</div>'
-    return _cached_nodetype_history(_hashable_list_of_dicts(history_data), node_type)
+    return _cached_nodetype_history(_hashable_list_of_dicts(history_data))
 
 
 _attach_cache_methods(generate_nodetype_history_matplotlib, _cached_nodetype_history)
@@ -179,7 +178,7 @@ _attach_cache_methods(generate_nodetype_history_matplotlib, _cached_nodetype_his
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=64)
-def _cached_queue_history(data_key: tuple, queue_name: str, system_name: str) -> str:
+def _cached_queue_history(data_key: tuple) -> str:
     history_data = [dict(items) for items in data_key]
 
     timestamps = [d['timestamp'] for d in history_data]
@@ -196,13 +195,12 @@ def _cached_queue_history(data_key: tuple, queue_name: str, system_name: str) ->
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 
-    ax1.plot(timestamps, running_jobs, 'g-', linewidth=2, label='Running', marker='o', markersize=3)
-    ax1.plot(timestamps, pending_jobs, 'orange', linewidth=2, label='Pending', marker='o', markersize=3)
-    ax1.plot(timestamps, held_jobs, 'r-', linewidth=2, label='Held', marker='o', markersize=3)
-    ax1.plot(timestamps, active_users, 'b--', linewidth=1.5, label='Active Users', marker='s', markersize=2)
+    ax1.plot(timestamps, running_jobs, 'g-', linewidth=3, label='Running')
+    ax1.plot(timestamps, pending_jobs, 'orange', linewidth=3, label='Pending')
+    ax1.plot(timestamps, held_jobs, 'r-', linewidth=3, label='Held')
+    ax1.plot(timestamps, active_users, 'b--', linewidth=2, label='Active Users')
     ax1.set_ylim([0, None])
     ax1.set_ylabel('Count', fontsize=11)
-    ax1.set_title(f'{system_name.upper()} - {queue_name} Queue Activity', fontsize=13, fontweight='bold')
     ax1.legend(loc=2, fontsize=10)
     ax1.grid(True, alpha=0.3)
 
@@ -227,21 +225,20 @@ def _cached_queue_history(data_key: tuple, queue_name: str, system_name: str) ->
     return svg_io.getvalue()
 
 
-def generate_queue_history_matplotlib(history_data: List[Dict], queue_name: str, system_name: str) -> str:
+def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
     """
     Generate queue history chart showing job flow and resource demand.
+    Title is rendered in the surrounding HTML (see status dashboard template).
 
     Args:
         history_data: List of dicts with timestamp, job counts, resources
-        queue_name: Name of the queue (for title)
-        system_name: System name (for title)
 
     Returns:
         SVG string ready for template rendering
     """
     if not history_data:
         return '<div class="text-center text-muted">No history data available for this queue</div>'
-    return _cached_queue_history(_hashable_list_of_dicts(history_data), queue_name, system_name)
+    return _cached_queue_history(_hashable_list_of_dicts(history_data))
 
 
 _attach_cache_methods(generate_queue_history_matplotlib, _cached_queue_history)

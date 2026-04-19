@@ -127,6 +127,10 @@
     <div class="card-body">
         <div class="chart-container">
             <center>
+                <h6 class="text-center fw-bold mb-2">
+                    Node Availability Over Time
+                    <span class="text-muted fw-normal">— {{ node_type }}</span>
+                </h6>
                 {{ chart_svg | safe }}
             </center>
         </div>

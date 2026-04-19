@@ -471,8 +471,8 @@ class TestMatplotlibCaching:
         data = [{'timestamp': ts, 'nodes_total': 100, 'nodes_available': 80,
                  'nodes_down': 5, 'nodes_allocated': 15,
                  'utilization_percent': 85.0, 'memory_utilization_percent': 60.0}]
-        r1 = generate_nodetype_history_matplotlib(data, 'CPU')
-        r2 = generate_nodetype_history_matplotlib(data, 'CPU')
+        r1 = generate_nodetype_history_matplotlib(data)
+        r2 = generate_nodetype_history_matplotlib(data)
         assert r1 is r2
         assert generate_nodetype_history_matplotlib.cache_info().hits >= 1
 
@@ -485,8 +485,8 @@ class TestMatplotlibCaching:
         data = [{'timestamp': ts, 'running_jobs': 50, 'pending_jobs': 10,
                  'held_jobs': 2, 'active_users': 15, 'cores_allocated': 1000,
                  'cores_pending': 200, 'gpus_allocated': 0, 'gpus_pending': 0}]
-        r1 = generate_queue_history_matplotlib(data, 'main', 'derecho')
-        r2 = generate_queue_history_matplotlib(data, 'main', 'derecho')
+        r1 = generate_queue_history_matplotlib(data)
+        r2 = generate_queue_history_matplotlib(data)
         assert r1 is r2
         assert generate_queue_history_matplotlib.cache_info().hits >= 1
 
