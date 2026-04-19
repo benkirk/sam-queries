@@ -106,6 +106,38 @@ def pytest_configure(config):
         sys.path.insert(0, tests_path)
 
 
+# ---- Test-only RBAC bundle ------------------------------------------------
+#
+# Registers a synthetic group bundle ``admin-testing-only`` that grants
+# every ``Permission``, used by stub-user tests that need a "system
+# admin" without depending on the contents of any real production
+# bundle (csg / nusd / hsg). Keeping this bundle defined inside the
+# test session means production code never sees it — `GROUP_PERMISSIONS`
+# in `webapp/utils/rbac.py` stays restricted to real POSIX groups.
+#
+# Tests opt in by writing `roles=['admin-testing-only']` on their stub
+# user. The fixture is autouse + session-scoped so the registration
+# happens once per xdist worker before any test runs and is removed at
+# the end of the session.
+
+ADMIN_TESTING_BUNDLE = 'admin-testing-only'
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _register_admin_testing_bundle():
+    from webapp.utils.rbac import GROUP_PERMISSIONS, Permission
+
+    assert ADMIN_TESTING_BUNDLE not in GROUP_PERMISSIONS, (
+        f"{ADMIN_TESTING_BUNDLE!r} collides with a real bundle — rename "
+        "the test-only bundle in tests/conftest.py."
+    )
+    GROUP_PERMISSIONS[ADMIN_TESTING_BUNDLE] = set(Permission)
+    try:
+        yield
+    finally:
+        GROUP_PERMISSIONS.pop(ADMIN_TESTING_BUNDLE, None)
+
+
 # ---- Engine / session fixtures --------------------------------------------
 
 
@@ -208,7 +240,7 @@ def app(test_db_url, status_db_url):
 
     Uses `create_app(config_overrides=...)` to point Flask-SQLAlchemy at
     the test DB without touching `sam.session.connection_string`. Everything
-    else (DEV_GROUP_MAPPING, API_KEYS, TESTING=True, WTF_CSRF_ENABLED=False,
+    else (API_KEYS, TESTING=True, WTF_CSRF_ENABLED=False,
     ALLOCATION_USAGE_CACHE_TTL=0) comes from `TestingConfig`, selected via
     `FLASK_CONFIG='testing'`.
 
@@ -240,8 +272,8 @@ def app(test_db_url, status_db_url):
     })
 
     # Regression guard — mirrors the legacy app fixture. Fails loudly if
-    # TestingConfig didn't load (which would mean DEV_GROUP_MAPPING, API_KEYS,
-    # and cache disables are all wrong).
+    # TestingConfig didn't load (which would mean API_KEYS and cache
+    # disables are all wrong).
     assert flask_app.config["ALLOCATION_USAGE_CACHE_TTL"] == 0, (
         "TestingConfig not loaded — check FLASK_CONFIG env var and "
         "webapp.config.get_webapp_config() class selection"
@@ -267,13 +299,14 @@ def client(app):
 
 @pytest.fixture
 def auth_client(client, session):
-    """Test client logged in as `benkirk` — admin via TestingConfig.DEV_GROUP_MAPPING.
+    """Test client logged in as `benkirk` — admin-equivalent via
+    `USER_PERMISSION_OVERRIDES['benkirk']` in `webapp.utils.rbac`.
 
     Uses Flask-Login's session-cookie mechanism (`client.session_transaction()`
     → `sess['_user_id']`). This triggers the `load_user()` callback in the
-    login_manager, which reads `DEV_GROUP_MAPPING` from TestingConfig so
-    benkirk gets the `admin` role without needing any real `role_user`
-    rows in the DB. Same pattern as the legacy fixture.
+    login_manager. `benkirk` resolves to the full Permission set via the
+    user-override layer — no POSIX-group membership required, no
+    `role_user` rows required.
     """
     from sam import User
 
@@ -293,10 +326,11 @@ def auth_client(client, session):
 def non_admin_client(client, session):
     """Test client logged in as a non-admin user from the snapshot.
 
-    Picks any active user who isn't `benkirk` — their username won't be
-    in `TestingConfig.DEV_GROUP_MAPPING`, so `load_user()` assigns them
-    the default `['user']` role. Used by tests that need to verify
-    403-on-admin-only-routes behavior.
+    Picks any active user who isn't `benkirk` — they're not in
+    `USER_PERMISSION_OVERRIDES`, and the obfuscated test snapshot
+    typically gives them no POSIX-group membership in any
+    `GROUP_PERMISSIONS` bundle, so they end up with no permissions.
+    Used by tests that need to verify 403-on-admin-only-routes behavior.
 
     We can't use a factory-built user here: `load_user` goes through
     Flask-SQLAlchemy's `db.session` (its own connection, not the raw

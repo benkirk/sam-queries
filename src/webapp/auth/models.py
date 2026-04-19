@@ -25,30 +25,21 @@ class AuthUser(UserMixin):
     have a bundle in ``GROUP_PERMISSIONS`` (i.e. groups that confer
     permissions).
 
-    In production, group membership comes from
-    ``adhoc_system_account_entry`` via ``get_user_group_access()``.
-    In dev/test, ``dev_group_mapping`` (passed by the Flask app's
-    ``DEV_GROUP_MAPPING`` config) supplies synthetic group names per
-    username, bypassing the database lookup.
+    Group membership comes from ``adhoc_system_account_entry`` via
+    ``get_user_group_access()`` — in dev, test, and production alike.
+    Per-user incremental grants live in ``USER_PERMISSION_OVERRIDES``.
 
     The SAM ``role_user`` / ``role`` tables are **not** consulted.
     """
 
-    def __init__(self, sam_user: User, dev_group_mapping: dict = None):
+    def __init__(self, sam_user: User):
         """
         Initialize with a SAM User object.
 
         Args:
             sam_user: SAM User ORM object
-            dev_group_mapping: Optional dict mapping username -> list of
-                group names. Bypasses the POSIX group lookup; used in
-                dev/test where the database may be read-only or the
-                user's real adhoc-group membership doesn't reflect the
-                permissions we want to grant for testing.
-                Example: {'admin_user': ['admin'], 'test_user': ['user']}
         """
         self.sam_user = sam_user
-        self.dev_group_mapping = dev_group_mapping or {}
         self._roles = None
 
     def get_id(self):
@@ -75,28 +66,17 @@ class AuthUser(UserMixin):
         """
         Get group-bundle names the user belongs to, as a set.
 
-        Only includes groups that have a bundle in ``GROUP_PERMISSIONS``
-        (groups conferring no permissions are filtered out — they're
-        irrelevant to authorization).
+        Derived from POSIX group membership (``get_user_group_access``),
+        filtered to groups that actually have a ``GROUP_PERMISSIONS``
+        bundle — groups conferring no permissions are noise as far as
+        RBAC is concerned.
 
-        Priority:
-        1. ``dev_group_mapping`` if the username has an entry there
-           (used in dev/test to bypass the DB)
-        2. POSIX group membership from ``get_user_group_access()``
-        3. Empty set (no group bundles matched)
-
-        The result is cached on the instance.
+        Cached on the instance.
         """
         if self._roles is None:
-            if self.username in self.dev_group_mapping:
-                candidate_groups = set(self.dev_group_mapping[self.username])
-            else:
-                candidate_groups = self._posix_group_names()
-
-            # Filter to bundle-conferring groups. Other group memberships
-            # are noise as far as RBAC is concerned.
-            self._roles = {g for g in candidate_groups if g in GROUP_PERMISSIONS}
-
+            self._roles = {
+                g for g in self._posix_group_names() if g in GROUP_PERMISSIONS
+            }
         return self._roles
 
     def _posix_group_names(self) -> set:

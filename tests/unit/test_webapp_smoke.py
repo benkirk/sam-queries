@@ -5,8 +5,8 @@ These two tests prove that the Phase 4 fixture scaffolding works end-to-end:
      `create_app(config_overrides={'SQLALCHEMY_DATABASE_URI': test_db_url})`
      and responds to unauthenticated GETs.
   2. `auth_client` — Flask-Login session-cookie login as `benkirk` lets
-     authenticated routes through (and the `benkirk → admin` mapping from
-     `TestingConfig.DEV_GROUP_MAPPING` is in effect).
+     authenticated routes through (benkirk gets the full Permission set
+     via `USER_PERMISSION_OVERRIDES['benkirk']` in `webapp.utils.rbac`).
 
 If either fails, no Phase 4 port can proceed. If both pass, the rest of
 Phase 4 is unblocked and the fixture patterns in `new_tests/conftest.py`

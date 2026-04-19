@@ -103,7 +103,11 @@ class TestRequireProjectPermission:
         assert result == 'ok'
 
     def test_system_permission_holder_passes(self, mini_app):
-        user = _stub_user(user_id=99, roles=['admin'])
+        # 'admin-testing-only' (registered in conftest) grants every
+        # Permission, including EDIT_PROJECT_MEMBERS, so this user gets
+        # through on the system-permission branch even though they're
+        # neither lead nor admin of the project.
+        user = _stub_user(user_id=99, roles=['admin-testing-only'])
         project = _stub_project(lead_id=1, admin_id=2)
         result, _ = self._call_decorated(mini_app, user, project)
         assert result == 'ok'
@@ -234,7 +238,7 @@ class TestRequireAllocationPermission:
         alloc = Mock()
         alloc.allocation_id = 123
         alloc.account = None
-        user = _stub_user(user_id=42, roles=['admin'])  # even admin gets 403
+        user = _stub_user(user_id=42, roles=['admin-testing-only'])  # even full-admin gets 403
         with pytest.raises(Forbidden):
             self._call(mini_app, user, alloc)
 

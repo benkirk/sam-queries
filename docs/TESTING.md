@@ -99,7 +99,7 @@ app (session-scoped)
 `TestingConfig` is loaded via `FLASK_CONFIG=testing`. Key properties:
 - `TESTING = True`, `WTF_CSRF_ENABLED = False`
 - `ALLOCATION_USAGE_CACHE_TTL = 0` (caching disabled)
-- `DEV_ROLE_MAPPING` gives `benkirk` the admin role
+- `USER_PERMISSION_OVERRIDES['benkirk']` (in `webapp.utils.rbac`) gives `benkirk` the full Permission set
 - `NullCache` for Flask-Caching (no `@cache.cached` interference)
 
 ---

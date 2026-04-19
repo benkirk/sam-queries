@@ -474,37 +474,12 @@ class TestUPNClaimStripping:
 # ---------------------------------------------------------------------------
 
 class TestGroupRoleResolution:
-    """Test that AuthUser.roles derives from POSIX groups (or dev_group_mapping
-    when supplied). The legacy ``role_user`` table is not consulted."""
+    """Test that AuthUser.roles derives from POSIX group membership,
+    filtered to groups that have a ``GROUP_PERMISSIONS`` bundle. The
+    legacy ``role_user`` table is not consulted."""
 
-    def test_dev_mapping_takes_priority(self, session):
-        """When user is in dev_group_mapping, those bundles are used."""
-        from webapp.auth.models import AuthUser
-        from sam.core.users import User
-
-        user = User.get_by_username(session, 'benkirk')
-        if user is None:
-            pytest.skip("Test user not in database")
-
-        auth_user = AuthUser(user, dev_group_mapping={'benkirk': ['admin']})
-        assert 'admin' in auth_user.roles
-
-    def test_dev_mapping_filters_unknown_bundles(self, session):
-        """Group names with no GROUP_PERMISSIONS bundle are filtered out."""
-        from webapp.auth.models import AuthUser
-        from sam.core.users import User
-
-        user = User.get_by_username(session, 'benkirk')
-        if user is None:
-            pytest.skip("Test user not in database")
-
-        auth_user = AuthUser(
-            user, dev_group_mapping={'benkirk': ['admin', 'no_such_bundle']}
-        )
-        assert auth_user.roles == {'admin'}
-
-    def test_posix_groups_used_when_no_dev_mapping(self, session):
-        """Without dev_group_mapping, roles derive from POSIX group lookup."""
+    def test_roles_derive_from_posix_groups(self, session):
+        """Roles match POSIX group membership filtered by GROUP_PERMISSIONS."""
         from webapp.auth.models import AuthUser
         from webapp.utils.rbac import GROUP_PERMISSIONS
         from sam.core.users import User
@@ -514,7 +489,7 @@ class TestGroupRoleResolution:
         if user is None:
             pytest.skip("Test user not in database")
 
-        auth_user = AuthUser(user, dev_group_mapping={})
+        auth_user = AuthUser(user)
         roles = auth_user.roles
         assert isinstance(roles, set)
 
@@ -526,7 +501,7 @@ class TestGroupRoleResolution:
         assert roles == expected
 
     def test_empty_roles_when_no_groups(self, session):
-        """User with no POSIX groups and no dev mapping gets empty roles."""
+        """User with no bundle-conferring POSIX groups gets empty roles."""
         from webapp.auth.models import AuthUser
         from sam.core.users import User
         from sam.queries.lookups import get_user_group_access
@@ -540,7 +515,7 @@ class TestGroupRoleResolution:
         if user_no_groups is None:
             pytest.skip("No user without POSIX group memberships found in database")
 
-        auth_user = AuthUser(user_no_groups, dev_group_mapping={})
+        auth_user = AuthUser(user_no_groups)
         assert auth_user.roles == set()
 
 

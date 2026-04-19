@@ -10,10 +10,9 @@ Authorization model
 A user's permissions are derived from two sources, unioned together:
 
 1. **POSIX group membership** — each group the user belongs to may map
-   to a bundle of permissions in ``GROUP_PERMISSIONS``. In production,
-   group membership is read from ``adhoc_system_account_entry`` via
-   ``get_user_group_access()``. In dev/test, ``DEV_GROUP_MAPPING``
-   in app config supplies synthetic group names per username.
+   to a bundle of permissions in ``GROUP_PERMISSIONS``. Group membership
+   is read from ``adhoc_system_account_entry`` via
+   ``get_user_group_access()`` in dev, test, and production alike.
 
 2. **Per-user overrides** — ``USER_PERMISSION_OVERRIDES`` grants
    additional permissions to specific usernames on top of whatever
@@ -25,9 +24,9 @@ those are not consulted by the webapp's RBAC layer.
 
 The string set returned by ``AuthUser.roles`` is the set of POSIX group
 names the user belongs to that have a ``GROUP_PERMISSIONS`` bundle.
-This keeps ``has_role('admin')``-style checks working as a coarse
-display label, but the source of truth for authorization is the
-permission set, not the role label.
+This keeps ``has_role('csg')``-style checks working as a coarse display
+label, but the source of truth for authorization is the permission set,
+not the role label.
 """
 
 from enum import Enum
@@ -138,75 +137,34 @@ ALL_DELETE = _perms_with_action('delete')
 
 # POSIX-group-to-Permission mapping
 #
-# Keys are POSIX group names (e.g. real groups like 'csg', 'nusd', 'hsg',
-# **and** synthetic dev-only bundles selected by ``DEV_GROUP_MAPPING``).
+# Keys are POSIX group names (e.g. real groups like 'csg', 'nusd', 'hsg'.
 # A user receives the union of permissions across all groups they belong
 # to that appear here.
 #
 # Groups that don't appear in this dict simply confer no permissions.
-#
-# TODO(rbac_refactor): the real POSIX group → permission bundles below
-# (`csg`, `nusd`, `hsg`) are provisional. Confirm group names and
-# permission contents with the team before the next deploy.
 GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     # ---- Real POSIX group bundles (provisional) ----
 
     # csg: full access (admin-equivalent).
     'csg': set(Permission),
 
-    # nusd: read everything + write to projects, allocations, resources,
+    # nusd: read, edit,everything + write to projects, allocations
     # and system status. Does NOT confer write on users/groups/facilities/
     # org_metadata (those remain admin-only) and does NOT include
     # IMPERSONATE_USERS — nusd staff land on the admin dashboard but
     # cannot log in as other users.
-    'nusd': ALL_VIEW | {
+    'nusd': ALL_VIEW | ALL_EDIT | {
         Permission.ACCESS_ADMIN_DASHBOARD,
-        Permission.EDIT_PROJECTS,        Permission.CREATE_PROJECTS,
-        Permission.EDIT_PROJECT_MEMBERS,
-        Permission.EDIT_ALLOCATIONS,     Permission.CREATE_ALLOCATIONS,
-        Permission.EDIT_RESOURCES,
-        Permission.EDIT_SYSTEM_STATUS,
-        Permission.EXPORT_DATA,
+        Permission.CREATE_PROJECTS,
+        Permission.CREATE_ALLOCATIONS,
     },
 
     # hsg: read-only across the board + data export.
-    'hsg': ALL_VIEW | {Permission.EXPORT_DATA},
-
-    # ---- Synthetic bundles selected by DEV_GROUP_MAPPING ----
-    # These keys are not real POSIX groups; they let dev/test configs
-    # assign specific permission sets to named usernames without
-    # depending on adhoc_group data.
-
-    'admin': set(Permission),
-
-    # Mirrors nusd — facility managers and nusd staff get the same
-    # write surface today.
-    'facility_manager': ALL_VIEW | {
+    'hsg': ALL_VIEW | {
         Permission.ACCESS_ADMIN_DASHBOARD,
-        Permission.EDIT_PROJECTS,        Permission.CREATE_PROJECTS,
-        Permission.EDIT_PROJECT_MEMBERS,
-        Permission.EDIT_ALLOCATIONS,     Permission.CREATE_ALLOCATIONS,
-        Permission.EDIT_RESOURCES,
-        Permission.EDIT_SYSTEM_STATUS,
-        Permission.EXPORT_DATA,
+        Permission.EDIT_RESOURCES, Permission.CREATE_RESOURCES,
+        Permission.EDIT_SYSTEM_STATUS
     },
-
-    # project_lead: subset of read access — no groups/org_metadata/system_stats.
-    'project_lead': ALL_VIEW - {
-        Permission.VIEW_GROUPS,
-        Permission.VIEW_ORG_METADATA,
-        Permission.VIEW_SYSTEM_STATS,
-    },
-
-    # user: minimal — just enough to see their own projects/allocations/charges.
-    'user': {
-        Permission.VIEW_PROJECTS,
-        Permission.VIEW_ALLOCATIONS,
-        Permission.VIEW_CHARGE_SUMMARIES,
-    },
-
-    # analyst: read-only across the board + data export (same shape as hsg).
-    'analyst': ALL_VIEW | {Permission.EXPORT_DATA},
 }
 
 
@@ -302,9 +260,9 @@ def has_role(user, role_name: str) -> bool:
     Check if user belongs to a specific group bundle (display label).
 
     Note: 'role' here is the name of a ``GROUP_PERMISSIONS`` bundle
-    (POSIX group name or synthetic dev bundle name). For authorization
-    decisions prefer ``has_permission``; use this only for display logic
-    or coarse role-name checks.
+    (POSIX group name). For authorization decisions prefer
+    ``has_permission``; use this only for display logic or coarse
+    role-name checks.
     """
     return user.has_role(role_name)
 

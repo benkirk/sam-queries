@@ -185,7 +185,7 @@ def create_app(*, config_overrides: dict | None = None):
         """Load user by ID for Flask-Login."""
         sam_user = db.session.query(User).filter_by(user_id=int(user_id)).first()
         if sam_user:
-            return AuthUser(sam_user, dev_group_mapping=app.config.get('DEV_GROUP_MAPPING'))
+            return AuthUser(sam_user)
         return None
 
     # Register context processor for RBAC in templates

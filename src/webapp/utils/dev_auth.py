@@ -44,9 +44,7 @@ def auto_login_middleware(app, db):
         sam_user = provider.authenticate(auto_login_username, 'dev-password')  # Stub accepts any password
 
         if sam_user:
-            # Get dev group mapping from config
-            dev_group_mapping = app.config.get('DEV_GROUP_MAPPING', {})
-            auth_user = AuthUser(sam_user, dev_group_mapping=dev_group_mapping)
+            auth_user = AuthUser(sam_user)
 
             # Auto-login without session persistence
             login_user(auth_user, remember=False)

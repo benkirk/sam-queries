@@ -9,8 +9,8 @@ Covers:
 
 The `non_admin_client` fixture lives in tests/conftest.py and picks any
 active non-benkirk user from the snapshot — `load_user()` will resolve
-that user's permissions from POSIX group membership (no entry in
-`TestingConfig.DEV_GROUP_MAPPING`), which in the test snapshot typically
+that user's permissions from POSIX group membership (and they're not in
+`USER_PERMISSION_OVERRIDES`), which in the test snapshot typically
 means an empty role/permission set.
 """
 
