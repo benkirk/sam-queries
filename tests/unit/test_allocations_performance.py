@@ -290,6 +290,90 @@ class TestUsageModalRoute:
         assert response.status_code == 200
 
 
+class TestTransactionsFragmentRoute:
+    """Tests for GET /allocations/transactions_fragment."""
+
+    def test_default_returns_200(self, auth_client):
+        response = auth_client.get('/allocations/transactions_fragment')
+        assert response.status_code == 200
+        assert b'<table' in response.data
+
+    def test_sort_by_amount_asc(self, auth_client):
+        response = auth_client.get(
+            '/allocations/transactions_fragment?sort_by=transaction_amount&sort_dir=asc'
+        )
+        assert response.status_code == 200
+
+    def test_unknown_sort_by_is_ignored(self, auth_client):
+        """Bogus sort_by from a malicious URL should not 500 — route silently
+        falls back to the default sort."""
+        response = auth_client.get('/allocations/transactions_fragment?sort_by=nope')
+        assert response.status_code == 200
+
+    def test_pagination_params(self, auth_client):
+        response = auth_client.get(
+            '/allocations/transactions_fragment?page=2&per_page=10'
+        )
+        assert response.status_code == 200
+
+    def test_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/transactions_fragment')
+        assert response.status_code in (302, 401)
+
+
+class TestAdjustmentsFragmentRoute:
+    """Tests for GET /allocations/adjustments_fragment."""
+
+    def test_default_returns_200(self, auth_client):
+        response = auth_client.get('/allocations/adjustments_fragment')
+        assert response.status_code == 200
+        assert b'<table' in response.data
+
+    def test_sort_by_amount_desc(self, auth_client):
+        response = auth_client.get(
+            '/allocations/adjustments_fragment?sort_by=amount&sort_dir=desc'
+        )
+        assert response.status_code == 200
+
+    def test_unknown_sort_by_is_ignored(self, auth_client):
+        response = auth_client.get('/allocations/adjustments_fragment?sort_by=nope')
+        assert response.status_code == 200
+
+    def test_projcode_filter(self, auth_client):
+        response = auth_client.get(
+            '/allocations/adjustments_fragment?projcode=FAKE999'
+        )
+        assert response.status_code == 200
+        # Unknown project → no rows
+        assert b'No adjustments match' in response.data
+
+    def test_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/adjustments_fragment')
+        assert response.status_code in (302, 401)
+
+
+class TestAuditDetailsFragmentRoutes:
+    """Tests for the per-row detail fragments (transaction_details / adjustment_details)."""
+
+    def test_transaction_details_unknown_id_returns_not_found(self, auth_client):
+        response = auth_client.get('/allocations/transaction_details/99999999')
+        assert response.status_code == 200
+        assert b'Transaction not found' in response.data
+
+    def test_adjustment_details_unknown_id_returns_not_found(self, auth_client):
+        response = auth_client.get('/allocations/adjustment_details/99999999')
+        assert response.status_code == 200
+        assert b'Adjustment not found' in response.data
+
+    def test_transaction_details_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/transaction_details/1')
+        assert response.status_code in (302, 401)
+
+    def test_adjustment_details_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/adjustment_details/1')
+        assert response.status_code in (302, 401)
+
+
 # ============================================================================
 # Caching Behavior
 # ============================================================================
@@ -349,8 +433,8 @@ class TestMatplotlibCaching:
             {'facility': 'UNIV', 'annualized_rate': 500, 'count': 10, 'percent': 62.5},
             {'facility': 'WNA', 'annualized_rate': 300, 'count': 5, 'percent': 37.5},
         ]
-        r1 = generate_facility_pie_chart_matplotlib(data, 'Test')
-        r2 = generate_facility_pie_chart_matplotlib(data, 'Test')
+        r1 = generate_facility_pie_chart_matplotlib(data)
+        r2 = generate_facility_pie_chart_matplotlib(data)
         assert r1 is r2
         assert generate_facility_pie_chart_matplotlib.cache_info().hits >= 1
 
@@ -360,8 +444,8 @@ class TestMatplotlibCaching:
 
         data_a = [{'facility': 'UNIV', 'annualized_rate': 500, 'count': 10, 'percent': 100}]
         data_b = [{'facility': 'WNA', 'annualized_rate': 300, 'count': 5, 'percent': 100}]
-        r1 = generate_facility_pie_chart_matplotlib(data_a, 'Test A')
-        r2 = generate_facility_pie_chart_matplotlib(data_b, 'Test B')
+        r1 = generate_facility_pie_chart_matplotlib(data_a)
+        r2 = generate_facility_pie_chart_matplotlib(data_b)
         assert r1 != r2
         assert generate_facility_pie_chart_matplotlib.cache_info().misses >= 2
 
@@ -373,8 +457,8 @@ class TestMatplotlibCaching:
             {'allocation_type': 'NSC', 'total_amount': 1000, 'count': 5, 'avg_amount': 200},
             {'allocation_type': 'Small', 'total_amount': 500, 'count': 10, 'avg_amount': 50},
         ]
-        r1 = generate_allocation_type_pie_chart_matplotlib(data, 'HPC', 'Derecho', 'UNIV')
-        r2 = generate_allocation_type_pie_chart_matplotlib(data, 'HPC', 'Derecho', 'UNIV')
+        r1 = generate_allocation_type_pie_chart_matplotlib(data)
+        r2 = generate_allocation_type_pie_chart_matplotlib(data)
         assert r1 is r2
         assert generate_allocation_type_pie_chart_matplotlib.cache_info().hits >= 1
 
@@ -387,8 +471,8 @@ class TestMatplotlibCaching:
         data = [{'timestamp': ts, 'nodes_total': 100, 'nodes_available': 80,
                  'nodes_down': 5, 'nodes_allocated': 15,
                  'utilization_percent': 85.0, 'memory_utilization_percent': 60.0}]
-        r1 = generate_nodetype_history_matplotlib(data, 'CPU')
-        r2 = generate_nodetype_history_matplotlib(data, 'CPU')
+        r1 = generate_nodetype_history_matplotlib(data)
+        r2 = generate_nodetype_history_matplotlib(data)
         assert r1 is r2
         assert generate_nodetype_history_matplotlib.cache_info().hits >= 1
 
@@ -401,8 +485,8 @@ class TestMatplotlibCaching:
         data = [{'timestamp': ts, 'running_jobs': 50, 'pending_jobs': 10,
                  'held_jobs': 2, 'active_users': 15, 'cores_allocated': 1000,
                  'cores_pending': 200, 'gpus_allocated': 0, 'gpus_pending': 0}]
-        r1 = generate_queue_history_matplotlib(data, 'main', 'derecho')
-        r2 = generate_queue_history_matplotlib(data, 'main', 'derecho')
+        r1 = generate_queue_history_matplotlib(data)
+        r2 = generate_queue_history_matplotlib(data)
         assert r1 is r2
         assert generate_queue_history_matplotlib.cache_info().hits >= 1
 
@@ -419,7 +503,7 @@ class TestMatplotlibCaching:
 
     def test_empty_data_returns_fallback(self):
         from webapp.dashboards.charts import generate_facility_pie_chart_matplotlib
-        result = generate_facility_pie_chart_matplotlib([], 'Empty')
+        result = generate_facility_pie_chart_matplotlib([])
         assert 'text-muted' in result
         assert '<svg' not in result.lower()
 

@@ -15,7 +15,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from sam.accounting.accounts import Account
-from sam.accounting.allocations import Allocation
+from sam.accounting.adjustments import ChargeAdjustment, ChargeAdjustmentType
+from sam.accounting.allocations import Allocation, AllocationTransaction
 from sam.core.users import User
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
 from sam.projects.projects import Project
@@ -181,3 +182,93 @@ def make_allocation(
         description=description,
         parent_allocation_id=parent.allocation_id if parent is not None else None,
     )
+
+
+def make_allocation_transaction(
+    session,
+    *,
+    allocation: Optional[Allocation] = None,
+    user: Optional[User] = None,
+    transaction_type: str = "EDIT",
+    transaction_amount: Optional[float] = None,
+    requested_amount: Optional[float] = None,
+    creation_time: Optional[datetime] = None,
+    alloc_start_date: Optional[datetime] = None,
+    alloc_end_date: Optional[datetime] = None,
+    transaction_comment: Optional[str] = None,
+    propagated: bool = False,
+    auth_at_panel_mtg: Optional[bool] = None,
+) -> AllocationTransaction:
+    """Build and flush a fresh AllocationTransaction, auto-building an Allocation if needed.
+
+    Bypasses the production ``log_allocation_transaction()`` helper so tests can
+    set ``creation_time`` explicitly (for date-range filter tests) and mix
+    arbitrary ``transaction_type`` / ``propagated`` / ``user`` combinations.
+    """
+    if allocation is None:
+        allocation = make_allocation(session)
+
+    txn = AllocationTransaction(
+        allocation_id=allocation.allocation_id,
+        user_id=user.user_id if user is not None else None,
+        transaction_type=transaction_type,
+        transaction_amount=(
+            transaction_amount if transaction_amount is not None else allocation.amount
+        ),
+        requested_amount=(
+            requested_amount if requested_amount is not None else allocation.amount
+        ),
+        alloc_start_date=(
+            alloc_start_date if alloc_start_date is not None else allocation.start_date
+        ),
+        alloc_end_date=(
+            alloc_end_date if alloc_end_date is not None else allocation.end_date
+        ),
+        transaction_comment=transaction_comment,
+        propagated=propagated,
+        auth_at_panel_mtg=auth_at_panel_mtg,
+    )
+    if creation_time is not None:
+        txn.creation_time = creation_time
+    session.add(txn)
+    session.flush()
+    return txn
+
+
+def make_charge_adjustment(
+    session,
+    *,
+    account: Optional[Account] = None,
+    adjusted_by: Optional[User] = None,
+    adjustment_type: Optional[ChargeAdjustmentType] = None,
+    amount: float = -100.0,
+    adjustment_date: Optional[datetime] = None,
+    comment: Optional[str] = None,
+) -> ChargeAdjustment:
+    """Build and flush a fresh ChargeAdjustment, auto-building an Account if needed.
+
+    ``ChargeAdjustmentType`` is snapshot-seeded reference data; when none is
+    passed, pick any row. Tests that need a specific type name should fetch
+    the row themselves and pass it in.
+    """
+    if account is None:
+        account = make_account(session)
+    if adjustment_date is None:
+        adjustment_date = datetime.now()
+    if adjustment_type is None:
+        adjustment_type = session.query(ChargeAdjustmentType).first()
+        if adjustment_type is None:
+            import pytest
+            pytest.skip("No ChargeAdjustmentType reference rows in test database")
+
+    adj = ChargeAdjustment(
+        account_id=account.account_id,
+        adjusted_by_id=adjusted_by.user_id if adjusted_by is not None else None,
+        charge_adjustment_type_id=adjustment_type.charge_adjustment_type_id,
+        amount=amount,
+        adjustment_date=adjustment_date,
+        comment=comment,
+    )
+    session.add(adj)
+    session.flush()
+    return adj

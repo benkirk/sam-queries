@@ -53,8 +53,10 @@ from .dashboard import (
 
 # Charges
 from .charges import (
+    count_recent_charge_adjustments,
     get_daily_charge_trends_for_accounts,
     get_raw_charge_summaries_for_accounts,
+    get_recent_charge_adjustments,
     get_user_breakdown_for_project,
     get_user_queue_breakdown_for_project,
     get_daily_breakdown_for_project,
@@ -88,10 +90,12 @@ from .users import (
 
 # Allocations
 from .allocations import (
+    count_recent_allocation_transactions,
     get_project_allocations,
     get_active_allocation,
     get_latest_allocation_for_project,
     get_allocation_history,
+    get_recent_allocation_transactions,
     get_allocations_by_type,
     get_allocations_by_resource,
     get_allocation_summary_by_facility,
@@ -174,8 +178,10 @@ __all__ = [
     'get_project_dashboard_data',
     'get_resource_detail_data',
     # Charges
+    'count_recent_charge_adjustments',
     'get_daily_charge_trends_for_accounts',
     'get_raw_charge_summaries_for_accounts',
+    'get_recent_charge_adjustments',
     'get_user_breakdown_for_project',
     'get_user_queue_breakdown_for_project',
     'get_daily_breakdown_for_project',
@@ -204,6 +210,8 @@ __all__ = [
     'get_active_allocation',
     'get_latest_allocation_for_project',
     'get_allocation_history',
+    'get_recent_allocation_transactions',
+    'count_recent_allocation_transactions',
     'get_allocations_by_type',
     'get_allocations_by_resource',
     'get_allocation_summary_by_facility',

@@ -1,0 +1,136 @@
+{# Transaction details — HTMX fragment rendered into #auditDetailsModalBody.
+
+   Context: ``r`` is a single row dict from ``get_recent_allocation_transactions``.
+   Style matches the ``.project-stats-box`` / ``.stat-item`` language used in
+   ``render_project_info`` (dashboards/user/partials/project_card.html). Fields
+   with empty / None values are simply omitted — the user doesn't see rows
+   like "Requested amount —". #}
+
+{# Set the modal title out-of-band so the shared audit modal reflects the
+   fragment type. The target id is declared on the <h5> in dashboard.html. #}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Allocation Transaction Details
+</h5>
+
+{# Heading: type badge + date + optional propagated chip. #}
+<div class="mb-3 d-flex align-items-center flex-wrap gap-2">
+    <span class="badge bg-secondary fs-6">{{ r.transaction_type }}</span>
+    <span class="text-muted">·</span>
+    <span class="text-dark">{{ r.creation_time | fmt_date }}</span>
+    {% if r.propagated %}
+    <span class="badge bg-info text-dark" title="Cascaded from a parent allocation edit">
+        <i class="fas fa-code-branch me-1"></i>propagated
+    </span>
+    {% endif %}
+</div>
+
+<div class="project-stats-box" style="grid-template-columns: auto minmax(0, 1fr);">
+    <h6><i class="fas fa-info-circle"></i> Transaction Information</h6>
+
+    <div class="stat-item">
+        <span class="stat-label">Date:</span>
+        <span class="stat-value">{{ r.creation_time.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+    </div>
+
+    <div class="stat-item">
+        <span class="stat-label">Type:</span>
+        <span class="stat-value">{{ r.transaction_type }}</span>
+    </div>
+
+    {% if r.projcode %}
+    <div class="stat-item">
+        <span class="stat-label">Project:</span>
+        <span class="stat-value">{{ r.projcode }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.resource_name %}
+    <div class="stat-item">
+        <span class="stat-label">Resource:</span>
+        <span class="stat-value">{{ r.resource_name }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.facility_name %}
+    <div class="stat-item">
+        <span class="stat-label">Facility:</span>
+        <span class="stat-value">{{ r.facility_name }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.allocation_type %}
+    <div class="stat-item">
+        <span class="stat-label">Allocation type:</span>
+        <span class="stat-value">{{ r.allocation_type }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.transaction_amount is not none %}
+    <div class="stat-item">
+        <span class="stat-label">Transaction amount:</span>
+        <span class="stat-value">{{ r.transaction_amount | fmt_number }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.requested_amount is not none %}
+    <div class="stat-item">
+        <span class="stat-label">Requested amount:</span>
+        <span class="stat-value">{{ r.requested_amount | fmt_number }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.alloc_start_date %}
+    <div class="stat-item">
+        <span class="stat-label">Allocation start:</span>
+        <span class="stat-value">{{ r.alloc_start_date | fmt_date }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.alloc_end_date %}
+    <div class="stat-item">
+        <span class="stat-label">Allocation end:</span>
+        <span class="stat-value">{{ r.alloc_end_date | fmt_date }}</span>
+    </div>
+    {% endif %}
+
+    <div class="stat-item">
+        <span class="stat-label">Propagated:</span>
+        <span class="stat-value">{{ 'Yes' if r.propagated else 'No' }}</span>
+    </div>
+
+    {% if r.auth_at_panel_mtg is not none %}
+    <div class="stat-item">
+        <span class="stat-label">Auth at panel:</span>
+        <span class="stat-value">{{ 'Yes' if r.auth_at_panel_mtg else 'No' }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.username %}
+    <div class="stat-item">
+        <span class="stat-label">Processed by:</span>
+        <span class="stat-value">
+            {{ r.user_display_name or r.username }}
+            <small class="text-muted">({{ r.username }})</small>
+        </span>
+    </div>
+    {% endif %}
+
+    <div class="stat-item">
+        <span class="stat-label">Transaction ID:</span>
+        <span class="stat-value"><code>{{ r.transaction_id }}</code></span>
+    </div>
+
+    <div class="stat-item">
+        <span class="stat-label">Allocation ID:</span>
+        <span class="stat-value"><code>{{ r.allocation_id }}</code></span>
+    </div>
+
+    {% if r.transaction_comment %}
+    <div class="stat-item stat-item-block">
+        <span class="stat-label d-block mb-1">Comment:</span>
+        <pre class="stat-value mb-0 p-2 bg-light border rounded"
+             style="white-space:pre-wrap; word-break:break-word; font-size:0.85rem; font-weight:normal;">{{ r.transaction_comment }}</pre>
+    </div>
+    {% endif %}
+
+</div>

@@ -1,4 +1,5 @@
 {% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/audit_filters.html' import audit_filters %}
 
 {% block title %}Allocations Dashboard{% endblock %}
 
@@ -26,6 +27,13 @@
                 data-bs-toggle="tab" data-bs-target="#tab-alloc-transactions"
                 type="button" role="tab" aria-controls="tab-alloc-transactions" aria-selected="false">
             <i class="fas fa-exchange-alt me-1"></i> Transactions
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="alloc-adjustments-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-alloc-adjustments"
+                type="button" role="tab" aria-controls="tab-alloc-adjustments" aria-selected="false">
+            <i class="fas fa-balance-scale me-1"></i> Adjustments
         </button>
     </li>
 </ul>
@@ -57,10 +65,15 @@
             <div id="facilityPieContainer" class="chart-container">
                 {% for resource_name, _ in grouped_data.items()|sort %}
                 {% set overview = resource_overviews[resource_name] %}
+                {% set is_storage = resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
                 {% if overview.table_data|length > 1 %}
                 <div class="facility-pie-panel"
                      data-resource="{{ resource_name|replace(' ', '_') }}"
                      style="display:none;">
+                    <h6 class="text-center fw-bold mb-2">
+                        {{ 'Data Volume by Facility' if is_storage else 'Annual Rate by Facility' }}
+                        <span class="text-muted fw-normal">— {{ resource_name }}</span>
+                    </h6>
                     {{ overview.chart|safe }}
                 </div>
                 {% endif %}
@@ -75,6 +88,10 @@
                 <div class="facility-usage-pie-panel"
                      data-resource="{{ resource_name|replace(' ', '_') }}"
                      style="display:none;">
+                    <h6 class="text-center fw-bold mb-2">
+                        Usage by Facility
+                        <span class="text-muted fw-normal">— {{ resource_name }}</span>
+                    </h6>
                     {{ usage_overview.chart|safe }}
                 </div>
                 {% elif usage_overview and usage_overview.table_data|length == 1 %}
@@ -94,10 +111,15 @@
 <div id="facilityPieContainer" class="chart-container mb-3">
     {% for resource_name, _ in grouped_data.items()|sort %}
     {% set overview = resource_overviews[resource_name] %}
+    {% set is_storage = resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
     {% if overview.table_data|length > 1 %}
     <div class="facility-pie-panel"
          data-resource="{{ resource_name|replace(' ', '_') }}"
          style="display:none;">
+        <h6 class="text-center fw-bold mb-2">
+            {{ 'Data Volume by Facility' if is_storage else 'Annual Rate by Facility' }}
+            <span class="text-muted fw-normal">— {{ resource_name }}</span>
+        </h6>
         {{ overview.chart|safe }}
     </div>
     {% endif %}
@@ -312,14 +334,26 @@
                                 <div class="tab-content">
                                     <div class="tab-pane fade show active" id="type-alloc-{{ fac_id }}">
                                         {% if type_chart %}
-                                        <div class="chart-container p-3">{{ type_chart|safe }}</div>
+                                        <div class="chart-container p-3">
+                                            <h6 class="text-center fw-bold mb-2">
+                                                {{ 'Data Volume by Type' if is_storage else 'Allocation by Type' }}
+                                                <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
+                                            </h6>
+                                            {{ type_chart|safe }}
+                                        </div>
                                         {% else %}
                                         <div class="text-center text-muted small py-3">No chart available</div>
                                         {% endif %}
                                     </div>
                                     <div class="tab-pane fade" id="type-usage-{{ fac_id }}">
                                         {% if usage_type_chart %}
-                                        <div class="chart-container p-3">{{ usage_type_chart|safe }}</div>
+                                        <div class="chart-container p-3">
+                                            <h6 class="text-center fw-bold mb-2">
+                                                Usage by Type
+                                                <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
+                                            </h6>
+                                            {{ usage_type_chart|safe }}
+                                        </div>
                                         {% else %}
                                         <div class="text-center text-muted small py-3">No usage data yet</div>
                                         {% endif %}
@@ -328,6 +362,10 @@
                             </div>
                             {% else %}
                             <div class="chart-container p-3">
+                                <h6 class="text-center fw-bold mb-2">
+                                    {{ 'Data Volume by Type' if is_storage else 'Allocation by Type' }}
+                                    <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
+                                </h6>
                                 {{ type_chart|safe }}
                             </div>
                             {% endif %}
@@ -370,11 +408,59 @@
 
 </div><!-- /#tab-alloc-projects -->
 
-<!-- Tab 2: Transactions (placeholder — content coming soon) -->
+<!-- Tab 2: Transactions — sortable/paginated audit log, lazy-loaded -->
 <div class="tab-pane fade" id="tab-alloc-transactions" role="tabpanel" aria-labelledby="alloc-transactions-tab">
-    <div class="alert alert-info mt-3">
-        <i class="fas fa-info-circle"></i>
-        Transactions view coming soon.
+    {{ audit_filters(
+        form_id='tx-filters',
+        fragment_url=url_for('allocations_dashboard.transactions_fragment'),
+        target_id='alloc-transactions-fragment',
+        start_date=audit_start_date, end_date=audit_end_date,
+        all_resources=all_resources, selected_resources=[]) }}
+
+    <div id="alloc-transactions-fragment"
+         hx-get="{{ url_for('allocations_dashboard.transactions_fragment') }}"
+         hx-trigger="shown.bs.tab from:#alloc-transactions-tab once"
+         hx-include="#tx-filters"
+         hx-swap="innerHTML">
+        <div class="text-center text-muted py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading…</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 3: Adjustments — sortable/paginated audit log, lazy-loaded -->
+<div class="tab-pane fade" id="tab-alloc-adjustments" role="tabpanel" aria-labelledby="alloc-adjustments-tab">
+    {% if has_permission(Permission.EDIT_ALLOCATIONS) %}
+    <div class="d-flex justify-content-end mb-2">
+        <button type="button" class="btn btn-sm btn-success"
+                data-bs-toggle="modal" data-bs-target="#createAdjustmentModal"
+                hx-get="{{ url_for('allocations_dashboard.htmx_create_adjustment_form') }}"
+                hx-target="#createAdjustmentFormContainer"
+                hx-swap="innerHTML">
+            <i class="fas fa-plus"></i> Create Adjustment
+        </button>
+    </div>
+    {% endif %}
+
+    {{ audit_filters(
+        form_id='adj-filters',
+        fragment_url=url_for('allocations_dashboard.adjustments_fragment'),
+        target_id='alloc-adjustments-fragment',
+        start_date=audit_start_date, end_date=audit_end_date,
+        all_resources=all_resources, selected_resources=[]) }}
+
+    <div id="alloc-adjustments-fragment"
+         hx-get="{{ url_for('allocations_dashboard.adjustments_fragment') }}"
+         hx-trigger="shown.bs.tab from:#alloc-adjustments-tab once"
+         hx-include="#adj-filters"
+         hx-swap="innerHTML">
+        <div class="text-center text-muted py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading…</span>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -411,6 +497,49 @@
                 <div class="text-center">
                     <div class="spinner-border text-primary" role="status">
                         <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if has_permission(Permission.EDIT_ALLOCATIONS) %}
+<!-- Create Adjustment modal (Adjustments tab → "Create Adjustment" button) -->
+<div class="modal fade" id="createAdjustmentModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> Create Charge Adjustment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="createAdjustmentFormContainer">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading…</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Audit row-detail modal (shared by Transactions + Adjustments rows).
+     The title text is swapped in via hx-swap-oob from each fragment template
+     so e.g. a transaction row shows "Allocation Transaction Details" and an
+     adjustment row shows "Charge Adjustment Details". -->
+<div class="modal fade" id="auditDetailsModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="auditDetailsModalTitle">Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="auditDetailsModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading…</span>
                     </div>
                 </div>
             </div>
@@ -503,6 +632,21 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
             });
         });
     });
+});
+
+/* After a successful "Create Adjustment" POST, reload the adjustments
+   table fragment, carrying the current filter form so the view stays
+   consistent with what the user was looking at. */
+document.body.addEventListener('refreshAdjustmentsTab', function() {
+    var target = document.getElementById('alloc-adjustments-fragment');
+    if (!target) return;
+    /* 300ms matches Bootstrap's modal close animation so the reload lands
+       after the modal has fully animated out of view. */
+    setTimeout(function() {
+        htmx.ajax('GET', "{{ url_for('allocations_dashboard.adjustments_fragment') }}",
+                  {target: '#alloc-adjustments-fragment', swap: 'innerHTML',
+                   source: '#adj-filters'});
+    }, 300);
 });
 
 /* Swap facility pie chart above the tabs when the active resource tab changes */

@@ -1,0 +1,91 @@
+{# Adjustment details — HTMX fragment rendered into #auditDetailsModalBody.
+
+   Context: ``r`` is a single row dict from ``get_recent_charge_adjustments``.
+   Style mirrors ``render_project_info`` in project_card.html. Empty / None
+   fields are omitted entirely. #}
+
+{# Set the modal title out-of-band so the shared audit modal reflects the
+   fragment type. The target id is declared on the <h5> in dashboard.html. #}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Charge Adjustment Details
+</h5>
+
+<div class="mb-3 d-flex align-items-center flex-wrap gap-2">
+    <span class="badge bg-secondary fs-6">{{ r.adjustment_type }}</span>
+    <span class="text-muted">·</span>
+    <span class="text-dark">{{ r.adjustment_date | fmt_date }}</span>
+</div>
+
+<div class="project-stats-box" style="grid-template-columns: auto minmax(0, 1fr);">
+    <h6><i class="fas fa-info-circle"></i> Adjustment Information</h6>
+
+    <div class="stat-item">
+        <span class="stat-label">Date:</span>
+        <span class="stat-value">{{ r.adjustment_date.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+    </div>
+
+    <div class="stat-item">
+        <span class="stat-label">Type:</span>
+        <span class="stat-value">{{ r.adjustment_type }}</span>
+    </div>
+
+    {% if r.projcode %}
+    <div class="stat-item">
+        <span class="stat-label">Project:</span>
+        <span class="stat-value">{{ r.projcode }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.resource_name %}
+    <div class="stat-item">
+        <span class="stat-label">Resource:</span>
+        <span class="stat-value">{{ r.resource_name }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.facility_name %}
+    <div class="stat-item">
+        <span class="stat-label">Facility:</span>
+        <span class="stat-value">{{ r.facility_name }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.amount is not none %}
+    <div class="stat-item">
+        <span class="stat-label">Amount:</span>
+        <span class="stat-value">
+            {% set cls = 'text-success' if r.amount > 0 else ('text-danger' if r.amount < 0 else '') %}
+            <span class="{{ cls }}">{{ r.amount | fmt_number }}</span>
+        </span>
+    </div>
+    {% endif %}
+
+    {% if r.username %}
+    <div class="stat-item">
+        <span class="stat-label">Adjusted by:</span>
+        <span class="stat-value">
+            {{ r.user_display_name or r.username }}
+            <small class="text-muted">({{ r.username }})</small>
+        </span>
+    </div>
+    {% endif %}
+
+    <div class="stat-item">
+        <span class="stat-label">Adjustment ID:</span>
+        <span class="stat-value"><code>{{ r.adjustment_id }}</code></span>
+    </div>
+
+    <div class="stat-item">
+        <span class="stat-label">Account ID:</span>
+        <span class="stat-value"><code>{{ r.account_id }}</code></span>
+    </div>
+
+    {% if r.comment %}
+    <div class="stat-item stat-item-block">
+        <span class="stat-label d-block mb-1">Comment:</span>
+        <pre class="stat-value mb-0 p-2 bg-light border rounded"
+             style="white-space:pre-wrap; word-break:break-word; font-size:0.85rem; font-weight:normal;">{{ r.comment }}</pre>
+    </div>
+    {% endif %}
+
+</div>

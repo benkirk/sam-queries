@@ -10,6 +10,8 @@ Functions:
     get_active_allocation: Get currently active allocation for a project
     get_latest_allocation_for_project: Get most recent allocation
     get_allocation_history: Get transaction history for a project
+    get_recent_allocation_transactions: Cross-project transaction query with
+        flexible filters (date range, project, resource, facility, user, …)
     get_allocations_by_type: Get allocations of a specific type
     get_allocations_by_resource: Get allocations for a specific resource
     get_allocation_summary_by_facility: Get summary statistics by facility
@@ -24,7 +26,12 @@ from sqlalchemy.orm import Session, noload
 
 from sam.core.users import User
 from sam.projects.projects import Project
-from sam.accounting.allocations import Allocation, AllocationTransaction, AllocationType
+from sam.accounting.allocations import (
+    Allocation,
+    AllocationTransaction,
+    AllocationTransactionType,
+    AllocationType,
+)
 from sam.resources.resources import Resource, ResourceType
 from sam.resources.facilities import Facility, Panel
 from sam.accounting.accounts import Account
@@ -129,6 +136,279 @@ def get_allocation_history(
         })
 
     return history
+
+
+ALLOCATION_TRANSACTION_SORT_COLUMNS = {
+    'creation_time': AllocationTransaction.creation_time,
+    'transaction_type': AllocationTransaction.transaction_type,
+    'transaction_amount': AllocationTransaction.transaction_amount,
+    'projcode': Project.projcode,
+    'resource_name': Resource.resource_name,
+    'facility_name': Facility.facility_name,
+    'allocation_type': AllocationType.allocation_type,
+    'username': User.username,
+}
+
+
+def _apply_transaction_filters(
+    query,
+    *,
+    transaction_id,
+    projcode,
+    resource_name,
+    facility_name,
+    allocation_type,
+    transaction_types,
+    start_date,
+    end_date,
+    user_id,
+    username,
+    include_deleted,
+    include_propagated,
+):
+    """Apply the shared WHERE clauses. ``query`` must already have the standard
+    JOINs (see ``_transactions_query`` / the get/count callers)."""
+    if user_id is not None and username is not None:
+        raise ValueError("Pass user_id OR username, not both")
+
+    if transaction_id is not None:
+        query = query.filter(
+            AllocationTransaction.allocation_transaction_id == transaction_id
+        )
+
+    if projcode and projcode != "TOTAL":
+        if isinstance(projcode, list):
+            query = query.filter(Project.projcode.in_(projcode))
+        else:
+            query = query.filter(Project.projcode == projcode)
+
+    if resource_name and resource_name != "TOTAL":
+        if isinstance(resource_name, list):
+            query = query.filter(Resource.resource_name.in_(resource_name))
+        else:
+            query = query.filter(Resource.resource_name == resource_name)
+
+    if facility_name and facility_name != "TOTAL":
+        if isinstance(facility_name, list):
+            query = query.filter(Facility.facility_name.in_(facility_name))
+        else:
+            query = query.filter(Facility.facility_name == facility_name)
+
+    if allocation_type and allocation_type != "TOTAL":
+        if isinstance(allocation_type, list):
+            query = query.filter(AllocationType.allocation_type.in_(allocation_type))
+        else:
+            query = query.filter(AllocationType.allocation_type == allocation_type)
+
+    if transaction_types is not None:
+        if isinstance(transaction_types, (list, tuple, set)):
+            values = [str(t) for t in transaction_types]
+            query = query.filter(AllocationTransaction.transaction_type.in_(values))
+        else:
+            query = query.filter(
+                AllocationTransaction.transaction_type == str(transaction_types)
+            )
+
+    if start_date is not None:
+        query = query.filter(AllocationTransaction.creation_time >= start_date)
+    if end_date is not None:
+        query = query.filter(AllocationTransaction.creation_time <= end_date)
+
+    if user_id is not None:
+        query = query.filter(AllocationTransaction.user_id == user_id)
+    elif username is not None:
+        query = query.filter(User.username == username)
+
+    if not include_deleted:
+        query = query.filter(
+            Allocation.deleted == False,
+            Account.deleted == False,
+        )
+
+    if not include_propagated:
+        query = query.filter(AllocationTransaction.propagated == False)
+
+    return query
+
+
+def _join_transaction_query(query):
+    """Apply the shared JOIN chain used by get/count variants."""
+    return query.join(Allocation, AllocationTransaction.allocation_id == Allocation.allocation_id)\
+                .join(Account, Allocation.account_id == Account.account_id)\
+                .join(Project, Account.project_id == Project.project_id)\
+                .join(Resource, Account.resource_id == Resource.resource_id)\
+                .outerjoin(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+                .outerjoin(Panel, AllocationType.panel_id == Panel.panel_id)\
+                .outerjoin(Facility, Panel.facility_id == Facility.facility_id)\
+                .outerjoin(User, AllocationTransaction.user_id == User.user_id)
+
+
+def get_recent_allocation_transactions(
+    session: Session,
+    *,
+    transaction_id: Optional[int] = None,
+    projcode: Optional[Union[str, List[str]]] = None,
+    resource_name: Optional[Union[str, List[str]]] = None,
+    facility_name: Optional[Union[str, List[str]]] = None,
+    allocation_type: Optional[Union[str, List[str]]] = None,
+    transaction_types: Optional[Union[str, List[str]]] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    user_id: Optional[int] = None,
+    username: Optional[str] = None,
+    include_deleted: bool = False,
+    include_propagated: bool = True,
+    sort_by: Optional[str] = None,
+    sort_dir: str = "desc",
+    offset: int = 0,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Query allocation transactions across projects/resources with flexible filters.
+
+    Filter conventions follow get_allocation_summary: each scope argument accepts
+    a scalar, a list, None (no filter), or the literal "TOTAL" (also a no-op).
+    Dates filter on ``AllocationTransaction.creation_time``. Results are returned
+    as denormalized dicts suitable for table/report rendering.
+
+    Args:
+        projcode: project code(s) to include.
+        resource_name: resource name(s) to include.
+        facility_name: facility name(s) to include (joined via Project →
+            AllocationType → Panel → Facility).
+        allocation_type: allocation type name(s) to include.
+        transaction_types: one or more ``AllocationTransactionType`` values (enum
+            members or raw strings such as ``"EDIT"``).
+        start_date, end_date: inclusive bounds on ``creation_time``.
+        user_id: filter by responsible-user FK. Mutually exclusive with ``username``.
+        username: filter by responsible-user username (joined via User).
+        include_deleted: when False (default), hide transactions whose Allocation
+            or Account is soft-deleted.
+        include_propagated: when False, hide cascaded child-allocation transactions
+            (those written when a parent allocation edit fanned out).
+        sort_by: column name to sort by. Must be a key in
+            ``ALLOCATION_TRANSACTION_SORT_COLUMNS``. Defaults to ``creation_time``.
+        sort_dir: ``"asc"`` or ``"desc"``. Default ``"desc"``.
+        offset: zero-based row offset for pagination.
+        limit: optional row cap.
+
+    Returns:
+        A list of dicts, one per transaction, with the keys:
+
+        - ``transaction_id``, ``allocation_id``, ``transaction_type``,
+          ``creation_time``
+        - ``transaction_amount``, ``requested_amount``
+        - ``alloc_start_date``, ``alloc_end_date``
+        - ``transaction_comment``, ``auth_at_panel_mtg``, ``propagated``
+        - ``projcode``, ``project_id``
+        - ``resource_name``, ``resource_id``
+        - ``facility_name``, ``allocation_type``
+        - ``user_id``, ``username``, ``user_display_name`` (all ``None`` when
+          the transaction has no responsible user)
+    """
+    if sort_by is not None and sort_by not in ALLOCATION_TRANSACTION_SORT_COLUMNS:
+        raise ValueError(
+            f"Unknown sort_by={sort_by!r}; allowed: "
+            f"{sorted(ALLOCATION_TRANSACTION_SORT_COLUMNS)}"
+        )
+    if sort_dir not in ("asc", "desc"):
+        raise ValueError(f"sort_dir must be 'asc' or 'desc', got {sort_dir!r}")
+
+    sort_col = ALLOCATION_TRANSACTION_SORT_COLUMNS[sort_by] if sort_by \
+        else AllocationTransaction.creation_time
+
+    query = _join_transaction_query(session.query(
+        AllocationTransaction,
+        Project,
+        Resource,
+        AllocationType.allocation_type.label('allocation_type_name'),
+        Facility.facility_name.label('facility_name_val'),
+        User,
+    ))
+    query = _apply_transaction_filters(
+        query,
+        transaction_id=transaction_id,
+        projcode=projcode, resource_name=resource_name, facility_name=facility_name,
+        allocation_type=allocation_type, transaction_types=transaction_types,
+        start_date=start_date, end_date=end_date,
+        user_id=user_id, username=username,
+        include_deleted=include_deleted, include_propagated=include_propagated,
+    )
+
+    order = sort_col.asc() if sort_dir == "asc" else sort_col.desc()
+    query = query.order_by(
+        order,
+        AllocationTransaction.allocation_transaction_id.desc(),
+    )
+
+    if offset:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
+
+    rows = query.all()
+
+    return [
+        {
+            'transaction_id': txn.allocation_transaction_id,
+            'allocation_id': txn.allocation_id,
+            'transaction_type': txn.transaction_type,
+            'creation_time': txn.creation_time,
+            'transaction_amount': txn.transaction_amount,
+            'requested_amount': txn.requested_amount,
+            'alloc_start_date': txn.alloc_start_date,
+            'alloc_end_date': txn.alloc_end_date,
+            'transaction_comment': txn.transaction_comment,
+            'auth_at_panel_mtg': txn.auth_at_panel_mtg,
+            'propagated': txn.propagated,
+            'projcode': project.projcode,
+            'project_id': project.project_id,
+            'resource_name': resource.resource_name,
+            'resource_id': resource.resource_id,
+            'facility_name': fac_name,
+            'allocation_type': at_name,
+            'user_id': user.user_id if user is not None else None,
+            'username': user.username if user is not None else None,
+            'user_display_name': user.display_name if user is not None else None,
+        }
+        for txn, project, resource, at_name, fac_name, user in rows
+    ]
+
+
+def count_recent_allocation_transactions(
+    session: Session,
+    *,
+    transaction_id: Optional[int] = None,
+    projcode: Optional[Union[str, List[str]]] = None,
+    resource_name: Optional[Union[str, List[str]]] = None,
+    facility_name: Optional[Union[str, List[str]]] = None,
+    allocation_type: Optional[Union[str, List[str]]] = None,
+    transaction_types: Optional[Union[str, List[str]]] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    user_id: Optional[int] = None,
+    username: Optional[str] = None,
+    include_deleted: bool = False,
+    include_propagated: bool = True,
+) -> int:
+    """Return the total number of allocation transactions matching the filters.
+
+    Shares filter semantics with :func:`get_recent_allocation_transactions`;
+    intended for pagination ("page 2 of 47") and summary displays.
+    """
+    query = _join_transaction_query(
+        session.query(func.count(AllocationTransaction.allocation_transaction_id))
+    )
+    query = _apply_transaction_filters(
+        query,
+        transaction_id=transaction_id,
+        projcode=projcode, resource_name=resource_name, facility_name=facility_name,
+        allocation_type=allocation_type, transaction_types=transaction_types,
+        start_date=start_date, end_date=end_date,
+        user_id=user_id, username=username,
+        include_deleted=include_deleted, include_propagated=include_propagated,
+    )
+    return query.scalar() or 0
 
 
 def get_allocations_by_type(

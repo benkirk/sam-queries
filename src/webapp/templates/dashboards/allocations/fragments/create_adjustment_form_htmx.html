@@ -1,0 +1,122 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import number_field, textarea_field, fk_search_field with context %}
+{#
+  htmx: Create Charge Adjustment form (loaded into #createAdjustmentFormContainer).
+
+  Context:
+    types   — list of ChargeAdjustmentType rows (supported by the webapp,
+              in display order with Refund first)
+    errors  — list of validation/creation error messages
+    form    — request.form from the previous POST (on re-render) or {}
+
+  Flow: user picks type (intent text swaps) → picks project via
+  search-as-you-type (fk_search_field + fk-picker.js stores project_id) →
+  fk:selected event triggers a refresh of the Resource select with options
+  filtered to the project's active HPC/DAV accounts → user picks resource,
+  enters positive amount (sign applied server-side), optional comment.
+#}
+
+{% call htmx_form(
+    url_for('allocations_dashboard.htmx_create_adjustment'),
+    '#createAdjustmentFormContainer',
+    'Create Adjustment',
+    submit_icon='plus',
+    errors=errors
+) %}
+
+        {# ── Type ──────────────────────────────────────────────────────── #}
+        <div class="mb-3">
+            <label for="adjustmentType" class="form-label">
+                Type <span class="text-danger">*</span>
+            </label>
+            <select class="form-select" id="adjustmentType" name="charge_adjustment_type_id" required
+                    onchange="var v=this.value; document.querySelectorAll('#createAdjustmentFormContainer .adj-intent').forEach(function(el){ el.style.display = (el.dataset.typeId === v) ? '' : 'none'; });">
+                <option value="">-- Select a type --</option>
+                {% for t in types %}
+                <option value="{{ t.charge_adjustment_type_id }}"
+                    {% if form and form.get('charge_adjustment_type_id')|string == t.charge_adjustment_type_id|string %}selected{% endif %}>
+                    {{ t.type }}
+                </option>
+                {% endfor %}
+            </select>
+
+            {# Intent boilerplate — one visible at a time, toggled by the
+               select's onchange handler. Wording grounded in legacy_sam/
+               doc/data_structures/charge_adjustments.md §5. #}
+            {% set _selected_type_id = form.get('charge_adjustment_type_id')|string if form else '' %}
+            {% for t in types %}
+            {% set tid = t.charge_adjustment_type_id|string %}
+            <div class="alert alert-info mt-2 mb-0 adj-intent small"
+                 data-type-id="{{ tid }}"
+                 {% if tid != _selected_type_id %}style="display:none;"{% endif %}>
+                {% if t.type == 'Refund' %}
+                <strong>Refund.</strong>
+                Use Refund to return compute to a project because of a
+                system-caused failure — node crash, hardware fault, or a
+                job preempted through no fault of the user. This is the
+                most common adjustment type and creates the clearest audit
+                trail for system-caused returns.
+                {% elif t.type == 'Credit' %}
+                <strong>Credit.</strong>
+                Use Credit for administrative balance additions unrelated
+                to a specific job failure — goodwill, approved allocation
+                increase, or a cross-project transfer.
+                {% elif t.type == 'Debit' %}
+                <strong>Debit.</strong>
+                Use Debit to capture a compute charge that automated
+                accounting missed. The amount will be added to this
+                account's usage total.
+                {% elif t.type == 'Reservation' %}
+                <strong>Reservation.</strong>
+                Use Reservation to set aside compute on this account for
+                a planned use — for example, a dedicated block for a
+                workshop or a benchmarking run. Reserved hours count
+                against the account's used total immediately.
+                {% else %}
+                <em>{{ t.type }}.</em>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        {# ── Project (search-as-you-type FK picker) ──────────────────── #}
+        {{ fk_search_field('project_id', 'Project',
+                           search_url=url_for('allocations_dashboard.htmx_project_search_for_adjustment'),
+                           required=True,
+                           placeholder='Search by project code or title…',
+                           badge_class='bg-secondary text-light py-1 px-2 font-monospace',
+                           id_prefix='createAdjProject') }}
+
+        {# ── Resource ─────────────────────────────────────────────────── #}
+        {# Re-populates on fk:selected (and clears back to placeholder on
+           fk:cleared). Both events bubble from fk-picker.js. The hidden
+           project_id input (id=createAdjProject_id) is hx-included so
+           the endpoint sees the currently-selected project. #}
+        <div class="mb-3">
+            <label for="adjustmentResourceSelect" class="form-label">
+                Resource <span class="text-danger">*</span>
+            </label>
+            <select class="form-select" id="adjustmentResourceSelect"
+                    name="resource_id" required
+                    hx-get="{{ url_for('allocations_dashboard.htmx_resources_for_project') }}"
+                    hx-trigger="fk:selected from:body, fk:cleared from:body"
+                    hx-target="this"
+                    hx-swap="innerHTML"
+                    hx-include="#createAdjProject_id">
+                <option value="">-- Select a project first --</option>
+            </select>
+        </div>
+
+        {# ── Amount ──────────────────────────────────────────────────── #}
+        {{ number_field('amount', 'Amount',
+                        required=True, min=0.01, step='any',
+                        placeholder='e.g. 100',
+                        id='adjustmentAmount',
+                        help='Enter a positive number. The sign is applied automatically by type — Credits and Refunds reduce the account\'s used total; Debits and Reservations increase it.') }}
+
+        {# ── Comment ─────────────────────────────────────────────────── #}
+        {{ textarea_field('comment', 'Comment', rows=2,
+                          placeholder='Reason for this adjustment (e.g. ticket #, system event)…',
+                          id='adjustmentComment') }}
+
+{% endcall %}

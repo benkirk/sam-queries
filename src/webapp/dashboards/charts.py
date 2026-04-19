@@ -108,7 +108,7 @@ _attach_cache_methods(generate_usage_timeseries_matplotlib, _cached_usage_timese
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=64)
-def _cached_nodetype_history(data_key: tuple, node_type: str) -> str:
+def _cached_nodetype_history(data_key: tuple) -> str:
     import matplotlib.cm as cm
 
     history_data = [dict(items) for items in data_key]
@@ -127,7 +127,6 @@ def _cached_nodetype_history(data_key: tuple, node_type: str) -> str:
                   colors=['C3', 'C0', 'C9'])
     ax1.set_ylabel('Number of Nodes', fontsize=11)
     ax1.set_ylim([0, None])
-    ax1.set_title(f'{node_type} - Node Availability Over Time', fontsize=13, fontweight='bold')
     ax1.legend(loc=2, fontsize=10)
     ax1.grid(True, alpha=0.3, color='grey')
 
@@ -155,20 +154,20 @@ def _cached_nodetype_history(data_key: tuple, node_type: str) -> str:
     return svg_io.getvalue()
 
 
-def generate_nodetype_history_matplotlib(history_data: List[Dict], node_type: str) -> str:
+def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
     """
     Generate node type history chart showing availability and utilization.
+    Title is rendered in the surrounding HTML (see status dashboard template).
 
     Args:
         history_data: List of dicts with timestamp, nodes_*, utilization_percent
-        node_type: Name of the node type (for title)
 
     Returns:
         SVG string ready for template rendering
     """
     if not history_data:
         return '<div class="text-center text-muted">No history data available for this node type</div>'
-    return _cached_nodetype_history(_hashable_list_of_dicts(history_data), node_type)
+    return _cached_nodetype_history(_hashable_list_of_dicts(history_data))
 
 
 _attach_cache_methods(generate_nodetype_history_matplotlib, _cached_nodetype_history)
@@ -179,7 +178,7 @@ _attach_cache_methods(generate_nodetype_history_matplotlib, _cached_nodetype_his
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=64)
-def _cached_queue_history(data_key: tuple, queue_name: str, system_name: str) -> str:
+def _cached_queue_history(data_key: tuple) -> str:
     history_data = [dict(items) for items in data_key]
 
     timestamps = [d['timestamp'] for d in history_data]
@@ -196,13 +195,12 @@ def _cached_queue_history(data_key: tuple, queue_name: str, system_name: str) ->
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 
-    ax1.plot(timestamps, running_jobs, 'g-', linewidth=2, label='Running', marker='o', markersize=3)
-    ax1.plot(timestamps, pending_jobs, 'orange', linewidth=2, label='Pending', marker='o', markersize=3)
-    ax1.plot(timestamps, held_jobs, 'r-', linewidth=2, label='Held', marker='o', markersize=3)
-    ax1.plot(timestamps, active_users, 'b--', linewidth=1.5, label='Active Users', marker='s', markersize=2)
+    ax1.plot(timestamps, running_jobs, 'g-', linewidth=3, label='Running')
+    ax1.plot(timestamps, pending_jobs, 'orange', linewidth=3, label='Pending')
+    ax1.plot(timestamps, held_jobs, 'r-', linewidth=3, label='Held')
+    ax1.plot(timestamps, active_users, 'b--', linewidth=2, label='Active Users')
     ax1.set_ylim([0, None])
     ax1.set_ylabel('Count', fontsize=11)
-    ax1.set_title(f'{system_name.upper()} - {queue_name} Queue Activity', fontsize=13, fontweight='bold')
     ax1.legend(loc=2, fontsize=10)
     ax1.grid(True, alpha=0.3)
 
@@ -227,21 +225,20 @@ def _cached_queue_history(data_key: tuple, queue_name: str, system_name: str) ->
     return svg_io.getvalue()
 
 
-def generate_queue_history_matplotlib(history_data: List[Dict], queue_name: str, system_name: str) -> str:
+def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
     """
     Generate queue history chart showing job flow and resource demand.
+    Title is rendered in the surrounding HTML (see status dashboard template).
 
     Args:
         history_data: List of dicts with timestamp, job counts, resources
-        queue_name: Name of the queue (for title)
-        system_name: System name (for title)
 
     Returns:
         SVG string ready for template rendering
     """
     if not history_data:
         return '<div class="text-center text-muted">No history data available for this queue</div>'
-    return _cached_queue_history(_hashable_list_of_dicts(history_data), queue_name, system_name)
+    return _cached_queue_history(_hashable_list_of_dicts(history_data))
 
 
 _attach_cache_methods(generate_queue_history_matplotlib, _cached_queue_history)
@@ -269,7 +266,7 @@ def _pie_trim(names: list, values: list) -> tuple[list, list]:
 
 
 @lru_cache(maxsize=32)
-def _cached_facility_pie(data_key: tuple, title: str) -> str:
+def _cached_facility_pie(data_key: tuple) -> str:
     facility_data = [dict(items) for items in data_key]
 
     raw_names = [d['facility'] for d in facility_data]
@@ -294,7 +291,6 @@ def _cached_facility_pie(data_key: tuple, title: str) -> str:
         at.set_fontweight('bold')
         at.set_fontsize(8)
 
-    ax.set_title(title, fontsize=11, fontweight='bold', pad=12)
     ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
 
     svg_io = StringIO()
@@ -303,20 +299,20 @@ def _cached_facility_pie(data_key: tuple, title: str) -> str:
     return svg_io.getvalue()
 
 
-def generate_facility_pie_chart_matplotlib(facility_data: List[Dict], title: str = 'Annualized Rate Distribution by Facility') -> str:
+def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
     """
-    Generate pie chart showing annualized rate distribution by facility.
+    Generate pie chart showing distribution by facility. Title is rendered
+    in the surrounding HTML (see allocations dashboard template).
 
     Args:
         facility_data: List of dicts with facility, annualized_rate, count, percent
-        title: Chart title
 
     Returns:
         SVG string ready for template rendering
     """
     if not facility_data:
         return '<div class="text-center text-muted">No facility data available</div>'
-    return _cached_facility_pie(_hashable_list_of_dicts(facility_data), title)
+    return _cached_facility_pie(_hashable_list_of_dicts(facility_data))
 
 
 _attach_cache_methods(generate_facility_pie_chart_matplotlib, _cached_facility_pie)
@@ -327,7 +323,7 @@ _attach_cache_methods(generate_facility_pie_chart_matplotlib, _cached_facility_p
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=64)
-def _cached_alloc_type_pie(data_key: tuple, resource_type: str, resource_name: str, facility_name: str) -> str:
+def _cached_alloc_type_pie(data_key: tuple) -> str:
     type_data = [dict(items) for items in data_key]
 
     raw_names = [d['allocation_type'] for d in type_data]
@@ -336,11 +332,6 @@ def _cached_alloc_type_pie(data_key: tuple, resource_type: str, resource_name: s
 
     legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(names, values)]
     colors = plt.cm.tab20.colors[:len(names)]
-
-    if resource_type in ['DISK', 'ARCHIVE']:
-        chart_title = f'Data Volume by Type\n{resource_name} — {facility_name}'
-    else:
-        chart_title = f'Allocation by Type\n{resource_name} — {facility_name}'
 
     fig, ax = plt.subplots(figsize=(7, 4))
     wedges, _texts, autotexts = ax.pie(
@@ -357,7 +348,6 @@ def _cached_alloc_type_pie(data_key: tuple, resource_type: str, resource_name: s
         at.set_fontweight('bold')
         at.set_fontsize(8)
 
-    ax.set_title(chart_title, fontsize=11, fontweight='bold', pad=12)
     ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
 
     svg_io = StringIO()
@@ -366,22 +356,20 @@ def _cached_alloc_type_pie(data_key: tuple, resource_type: str, resource_name: s
     return svg_io.getvalue()
 
 
-def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict], resource_type: str, resource_name: str, facility_name: str) -> str:
+def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
     """
     Generate pie chart showing allocation distribution by type within a facility.
+    Title is rendered in the surrounding HTML (see allocations dashboard template).
 
     Args:
         type_data: List of dicts with allocation_type, total_amount, count, avg_amount
-        resource_type: Resource type string ('HPC', 'DAV', 'DISK', 'ARCHIVE')
-        resource_name: Resource name for chart title
-        facility_name: Facility name for chart title
 
     Returns:
         SVG string ready for template rendering
     """
     if not type_data:
         return '<div class="text-center text-muted">No allocation type data available</div>'
-    return _cached_alloc_type_pie(_hashable_list_of_dicts(type_data), resource_type, resource_name, facility_name)
+    return _cached_alloc_type_pie(_hashable_list_of_dicts(type_data))
 
 
 _attach_cache_methods(generate_allocation_type_pie_chart_matplotlib, _cached_alloc_type_pie)

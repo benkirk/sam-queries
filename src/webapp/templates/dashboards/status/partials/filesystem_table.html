@@ -18,7 +18,6 @@
                 <thead class="thead-light">
                     <tr>
                         <th>Filesystem</th>
-                        <th>Status</th>
                         <th>Used (TiB)</th>
                         <th>Capacity (TiB)</th>
                         <th>Utilization</th>
@@ -26,12 +25,13 @@
                 </thead>
                 <tbody>
                     {% for fs in filesystems %}
+                    {% if fs.available %}
                     <tr>
-                        <td><strong>{{ fs.filesystem_name }}</strong></td>
                         <td>
-                            <span class="status-badge status-{{ fs.status_name }}">
-                                {{ fs.status_name|capitalize }}
-                            </span>
+                            <strong>{{ fs.filesystem_name }}</strong>
+                            {% if fs.degraded %}
+                            <span class="badge bg-warning text-dark ms-1">Degraded</span>
+                            {% endif %}
                         </td>
                         <td>
                             {% if fs.used_tb is not none %}
@@ -60,6 +60,12 @@
                             {% endif %}
                         </td>
                     </tr>
+                    {% else %}
+                    <tr class="text-muted">
+                        <td><strong>{{ fs.filesystem_name }}</strong></td>
+                        <td colspan="3" class="fst-italic">Inaccessible</td>
+                    </tr>
+                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
@@ -71,7 +77,6 @@
                 <thead class="thead-light">
                     <tr>
                         <th>Filesystem</th>
-                        <th>Status</th>
                         <th>Used (Inodes)</th>
                         <th>Capacity (Inodes)</th>
                         <th>Utilization</th>
@@ -79,12 +84,13 @@
                 </thead>
                 <tbody>
                     {% for fs in filesystems %}
+                    {% if fs.available %}
                     <tr>
-                        <td><strong>{{ fs.filesystem_name }}</strong></td>
                         <td>
-                            <span class="status-badge status-{{ fs.status_name }}">
-                                {{ fs.status_name|capitalize }}
-                            </span>
+                            <strong>{{ fs.filesystem_name }}</strong>
+                            {% if fs.degraded %}
+                            <span class="badge bg-warning text-dark ms-1">Degraded</span>
+                            {% endif %}
                         </td>
                         <td>
                             {% if fs.used_inodes is not none %}
@@ -113,6 +119,12 @@
                             {% endif %}
                         </td>
                     </tr>
+                    {% else %}
+                    <tr class="text-muted">
+                        <td><strong>{{ fs.filesystem_name }}</strong></td>
+                        <td colspan="3" class="fst-italic">Inaccessible</td>
+                    </tr>
+                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>

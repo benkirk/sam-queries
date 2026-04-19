@@ -77,6 +77,10 @@
 
         {% if chart_svg %}
         <div class="chart-container">
+            <h6 class="text-center fw-bold mb-2">
+                Queue Activity
+                <span class="text-muted fw-normal">— {{ system|upper }} · {{ queue_name }}</span>
+            </h6>
             {{ chart_svg|safe }}
         </div>
         {% else %}

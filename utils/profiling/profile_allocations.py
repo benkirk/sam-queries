@@ -197,24 +197,18 @@ def run_scenario_no_usage(session, selected_resources, active_at) -> Dict[str, f
     resource_overviews = {}
     for rn in grouped_data.keys():
         overview_data = all_overviews.get(rn, [])
-        rt = resource_types.get(rn, 'HPC')
-        title = ('Data Volume by Facility\n' if rt in ('DISK', 'ARCHIVE')
-                 else 'Annual Rate by Facility\n') + rn
         resource_overviews[rn] = {
             'table_data': overview_data,
-            'chart': generate_facility_pie_chart_matplotlib(overview_data, title=title),
+            'chart': generate_facility_pie_chart_matplotlib(overview_data),
         }
     phases['facility pie chart generation (lru cold)'] = time.perf_counter() - t
 
     # Phase 6 — allocation type pie charts
     t = time.perf_counter()
     for resource_name, facilities in grouped_data.items():
-        rt = resource_types.get(resource_name, 'HPC')
         for facility_name, types in facilities.items():
             if len(types) > 1:
-                generate_allocation_type_pie_chart_matplotlib(
-                    types, rt, resource_name, facility_name
-                )
+                generate_allocation_type_pie_chart_matplotlib(types)
     phases['alloc-type pie chart generation (lru cold)'] = time.perf_counter() - t
 
     phases['TOTAL'] = time.perf_counter() - t0
@@ -258,23 +252,17 @@ def run_scenario_with_usage(session, selected_resources, active_at) -> Dict[str,
     resource_overviews = {}
     for rn in grouped_data.keys():
         overview_data = all_overviews.get(rn, [])
-        rt = resource_types.get(rn, 'HPC')
-        title = ('Data Volume by Facility\n' if rt in ('DISK', 'ARCHIVE')
-                 else 'Annual Rate by Facility\n') + rn
         resource_overviews[rn] = {
             'table_data': overview_data,
-            'chart': generate_facility_pie_chart_matplotlib(overview_data, title=title),
+            'chart': generate_facility_pie_chart_matplotlib(overview_data),
         }
     phases['facility pie chart generation (lru cold)'] = time.perf_counter() - t
 
     t = time.perf_counter()
     for resource_name, facilities in grouped_data.items():
-        rt = resource_types.get(resource_name, 'HPC')
         for facility_name, types in facilities.items():
             if len(types) > 1:
-                generate_allocation_type_pie_chart_matplotlib(
-                    types, rt, resource_name, facility_name
-                )
+                generate_allocation_type_pie_chart_matplotlib(types)
     phases['alloc-type pie chart generation (lru cold)'] = time.perf_counter() - t
 
     # Phase 7 — per-project usage: single fetch (projcode=None), mirrors refactored blueprint
@@ -305,7 +293,6 @@ def run_scenario_with_usage(session, selected_resources, active_at) -> Dict[str,
     allocation_type_usage_charts: Dict[str, Dict] = {}
     for resource_name, facilities in grouped_data.items():
         allocation_type_usage_charts[resource_name] = {}
-        rt = resource_types.get(resource_name, 'HPC')
         for facility_name, types in facilities.items():
             usage_rows = usage_by_rf.get(resource_name, {}).get(facility_name, [])
             chartable = [
@@ -318,9 +305,7 @@ def run_scenario_with_usage(session, selected_resources, active_at) -> Dict[str,
                 for row in usage_rows if row.get('total_used', 0.0) > 0
             ]
             if len(chartable) > 1:
-                generate_allocation_type_pie_chart_matplotlib(
-                    chartable, rt, resource_name, facility_name
-                )
+                generate_allocation_type_pie_chart_matplotlib(chartable)
     phases['usage type pie chart generation'] = time.perf_counter() - t
 
     # Phase 9 — facility usage overviews from pre-fetched data (no DB call)
@@ -336,9 +321,7 @@ def run_scenario_with_usage(session, selected_resources, active_at) -> Dict[str,
         usage_overview_data = all_usage_overviews.get(rn, [])
         chartable = [d for d in usage_overview_data if d.get('total_used', 0.0) > 0]
         if chartable:
-            generate_facility_pie_chart_matplotlib(
-                chartable, title=f'Usage by Facility\n{rn}'
-            )
+            generate_facility_pie_chart_matplotlib(chartable)
     phases['usage facility pie chart generation'] = time.perf_counter() - t
 
     phases['TOTAL'] = time.perf_counter() - t0
