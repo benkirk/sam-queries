@@ -261,7 +261,7 @@ def create_app(*, config_overrides: dict | None = None):
             # access — including users granted admin via
             # USER_PERMISSION_OVERRIDES rather than a group bundle.
             from webapp.utils.rbac import has_permission, Permission
-            if has_permission(current_user, Permission.IMPERSONATE_USERS):
+            if has_permission(current_user, Permission.ACCESS_ADMIN_DASHBOARD):
                 return redirect(url_for('admin_dashboard.index'))
             else:
                 return redirect(url_for('user_dashboard.index'))

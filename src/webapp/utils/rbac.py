@@ -99,8 +99,9 @@ class Permission(Enum):
     EXPORT_DATA = "export_data"
 
     # System administration
+    ACCESS_ADMIN_DASHBOARD = "access_admin_dashboard"  # Land on /admin/ and see the navbar tab
     MANAGE_ROLES = "manage_roles"
-    IMPERSONATE_USERS = "impersonate_users"
+    IMPERSONATE_USERS = "impersonate_users"  # Actually log in as another user
     VIEW_SYSTEM_STATS = "view_system_stats"
     MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data (collector/API)
     EDIT_SYSTEM_STATUS = "edit_system_status"  # GUI create/edit/delete outages
@@ -155,8 +156,11 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
 
     # nusd: read everything + write to projects, allocations, resources,
     # and system status. Does NOT confer write on users/groups/facilities/
-    # org_metadata (those remain admin-only).
+    # org_metadata (those remain admin-only) and does NOT include
+    # IMPERSONATE_USERS — nusd staff land on the admin dashboard but
+    # cannot log in as other users.
     'nusd': ALL_VIEW | {
+        Permission.ACCESS_ADMIN_DASHBOARD,
         Permission.EDIT_PROJECTS,        Permission.CREATE_PROJECTS,
         Permission.EDIT_PROJECT_MEMBERS,
         Permission.EDIT_ALLOCATIONS,     Permission.CREATE_ALLOCATIONS,
@@ -178,6 +182,7 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     # Mirrors nusd — facility managers and nusd staff get the same
     # write surface today.
     'facility_manager': ALL_VIEW | {
+        Permission.ACCESS_ADMIN_DASHBOARD,
         Permission.EDIT_PROJECTS,        Permission.CREATE_PROJECTS,
         Permission.EDIT_PROJECT_MEMBERS,
         Permission.EDIT_ALLOCATIONS,     Permission.CREATE_ALLOCATIONS,

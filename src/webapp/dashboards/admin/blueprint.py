@@ -45,7 +45,7 @@ UPCOMING_PRESETS = {
 
 @bp.route('/')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission(Permission.ACCESS_ADMIN_DASHBOARD)
 def index():
     """
     Admin dashboard main page.

@@ -33,7 +33,7 @@ def _redirect_for_role(auth_user):
     than a group bundle.
     """
     from webapp.utils.rbac import has_permission, Permission
-    if has_permission(auth_user, Permission.IMPERSONATE_USERS):
+    if has_permission(auth_user, Permission.ACCESS_ADMIN_DASHBOARD):
         return redirect(url_for('admin_dashboard.index'))
     return redirect(url_for('user_dashboard.index'))
 
