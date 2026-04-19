@@ -33,7 +33,7 @@ _FACILITY_TRIGGERS = {'closeActiveModal': {}, 'reloadFacilitiesCard': {}}
 
 @bp.route('/htmx/facilities')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_FACILITIES)
 def htmx_facilities_card():
     """
     Return the Facility card body fragment with four tabs:
@@ -62,7 +62,7 @@ def htmx_facilities_card():
 
 @bp.route('/htmx/facility-edit-form/<int:facility_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_FACILITIES)
 def htmx_facility_edit_form(facility_id):
     """Return the facility edit form fragment (loaded into modal)."""
     from sam.resources.facilities import Facility
@@ -79,7 +79,7 @@ def htmx_facility_edit_form(facility_id):
 
 @bp.route('/htmx/facility-edit/<int:facility_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_FACILITIES)
 def htmx_facility_edit(facility_id):
     """Update a facility."""
     from sam.resources.facilities import Facility
@@ -107,7 +107,7 @@ def htmx_facility_edit(facility_id):
 
 @bp.route('/htmx/facility-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_FACILITIES)
 def htmx_facility_create_form():
     """Return the facility create form fragment (loaded into modal)."""
     return render_template('dashboards/admin/fragments/create_facility_form_htmx.html')
@@ -115,7 +115,7 @@ def htmx_facility_create_form():
 
 @bp.route('/htmx/facility-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_FACILITIES)
 def htmx_facility_create():
     """Create a new facility."""
     from sam.resources.facilities import Facility
@@ -140,7 +140,7 @@ def htmx_facility_create():
 
 @bp.route('/htmx/facility-delete/<int:facility_id>', methods=['DELETE'])
 @login_required
-@require_permission(Permission.DELETE_RESOURCES)
+@require_permission(Permission.DELETE_FACILITIES)
 def htmx_facility_delete(facility_id):
     """Soft-delete (deactivate) a facility."""
     from sam.resources.facilities import Facility
@@ -156,7 +156,7 @@ def htmx_facility_delete(facility_id):
 
 @bp.route('/htmx/panel-edit-form/<int:panel_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_FACILITIES)
 def htmx_panel_edit_form(panel_id):
     """Return the panel edit form fragment (loaded into modal)."""
     from sam.resources.facilities import Panel
@@ -173,7 +173,7 @@ def htmx_panel_edit_form(panel_id):
 
 @bp.route('/htmx/panel-edit/<int:panel_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_FACILITIES)
 def htmx_panel_edit(panel_id):
     """Update a panel."""
     from sam.resources.facilities import Panel
@@ -210,7 +210,7 @@ def htmx_panel_edit(panel_id):
 
 @bp.route('/htmx/panel-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_FACILITIES)
 def htmx_panel_create_form():
     """Return the panel create form fragment (loaded into modal)."""
     from sam.resources.facilities import Facility
@@ -235,7 +235,7 @@ def _active_facilities():
 
 @bp.route('/htmx/panel-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_FACILITIES)
 def htmx_panel_create():
     """Create a new panel."""
     from sam.resources.facilities import Panel
@@ -260,7 +260,7 @@ def htmx_panel_create():
 
 @bp.route('/htmx/panel-delete/<int:panel_id>', methods=['DELETE'])
 @login_required
-@require_permission(Permission.DELETE_RESOURCES)
+@require_permission(Permission.DELETE_FACILITIES)
 def htmx_panel_delete(panel_id):
     """Soft-delete (deactivate) a panel."""
     from sam.resources.facilities import Panel
@@ -276,7 +276,7 @@ def htmx_panel_delete(panel_id):
 
 @bp.route('/htmx/panel-session-edit-form/<int:panel_session_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_FACILITIES)
 def htmx_panel_session_edit_form(panel_session_id):
     """Return the panel session edit form fragment (loaded into modal)."""
     from sam.resources.facilities import PanelSession
@@ -293,7 +293,7 @@ def htmx_panel_session_edit_form(panel_session_id):
 
 @bp.route('/htmx/panel-session-edit/<int:panel_session_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_FACILITIES)
 def htmx_panel_session_edit(panel_session_id):
     """Update a panel session."""
     from sam.resources.facilities import PanelSession
@@ -350,7 +350,7 @@ def htmx_panel_session_edit(panel_session_id):
 
 @bp.route('/htmx/allocation-type-edit-form/<int:allocation_type_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_FACILITIES)
 def htmx_allocation_type_edit_form(allocation_type_id):
     """Return the allocation type edit form fragment (loaded into modal)."""
     from sam.accounting.allocations import AllocationType
@@ -367,7 +367,7 @@ def htmx_allocation_type_edit_form(allocation_type_id):
 
 @bp.route('/htmx/allocation-type-edit/<int:allocation_type_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_FACILITIES)
 def htmx_allocation_type_edit(allocation_type_id):
     """Update an allocation type."""
     from sam.accounting.allocations import AllocationType
@@ -395,7 +395,7 @@ def htmx_allocation_type_edit(allocation_type_id):
 
 @bp.route('/htmx/allocation-type-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_FACILITIES)
 def htmx_allocation_type_create_form():
     """Return the allocation type create form fragment (loaded into modal)."""
     return render_template(
@@ -430,7 +430,7 @@ def _alloc_type_create_context():
 
 @bp.route('/htmx/allocation-type-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_FACILITIES)
 def htmx_allocation_type_create():
     """Create a new allocation type."""
     from sam.accounting.allocations import AllocationType
@@ -456,7 +456,7 @@ def htmx_allocation_type_create():
 
 @bp.route('/htmx/allocation-type-delete/<int:allocation_type_id>', methods=['DELETE'])
 @login_required
-@require_permission(Permission.DELETE_RESOURCES)
+@require_permission(Permission.DELETE_FACILITIES)
 def htmx_allocation_type_delete(allocation_type_id):
     """Soft-delete (deactivate) an allocation type."""
     from sam.accounting.allocations import AllocationType

@@ -32,44 +32,21 @@ SAM_DB_USERNAME=your-username
 SAM_DB_PASSWORD=your-password
 ```
 
-### 3. Configure Development Roles
+### 3. Configure Permissions
 
-**For Read-Only Database (Development):**
+The webapp resolves a user's permissions from two sources, unioned:
 
-Edit `src/webapp/run.py` and add your username to the `DEV_ROLE_MAPPING`:
+1. **POSIX group membership** — `get_user_group_access()` reads
+   `adhoc_system_account_entry`. Groups that have a bundle in
+   `GROUP_PERMISSIONS` (currently `csg`, `nusd`, `hsg`) confer that
+   bundle to anyone in the group.
+2. **`USER_PERMISSION_OVERRIDES`** in `webapp/utils/rbac.py` — a
+   per-username dict for one-off grants on top of group bundles.
 
-```python
-app.config['DEV_ROLE_MAPPING'] = {
-    'your_username': ['admin'],          # Full access
-    # 'other_user': ['facility_manager'], # Limited access
-    # 'test_user': ['user'],              # Read-only
-}
-```
-
-Available roles: `admin`, `facility_manager`, `project_lead`, `user`, `analyst`
-
-See `config_example.py` for detailed role/permission mappings.
-
-**For Production Database (Future):**
-
-When you have write access, create roles in the database:
-
-```sql
--- Create test roles
-INSERT INTO role (name, description) VALUES
-  ('admin', 'System Administrator'),
-  ('facility_manager', 'Facility Manager'),
-  ('project_lead', 'Project Lead'),
-  ('user', 'Regular User');
-
--- Assign admin role to your user
-INSERT INTO role_user (role_id, user_id)
-SELECT r.role_id, u.user_id
-FROM role r, users u
-WHERE r.name = 'admin' AND u.username = 'your_username';
-```
-
-Then uncomment the database role code in `auth/models.py` (line 93) and remove `DEV_ROLE_MAPPING`.
+To grant yourself elevated permissions in dev, add your username to
+`USER_PERMISSION_OVERRIDES` (e.g. `'your_username': set(Permission)`
+for full access). No DB writes, no fake role tables — same code path
+as production.
 
 ### 4. Run Development Server
 

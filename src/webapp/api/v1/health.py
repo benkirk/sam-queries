@@ -9,11 +9,12 @@ Intended consumers:
 from datetime import datetime
 
 from flask import Blueprint, jsonify
-from flask_login import login_required, current_user
+from flask_login import login_required
 from sqlalchemy import text
 
 from webapp.extensions import db
 from webapp.api.helpers import register_error_handlers
+from webapp.utils.rbac import require_permission, Permission
 
 bp = Blueprint('api_health', __name__)
 register_error_handlers(bp)
@@ -100,14 +101,13 @@ def readiness():
 
 @bp.route('/db-pool', methods=['GET'])
 @login_required
+@require_permission(Permission.SYSTEM_ADMIN)
 def db_pool():
-    """Connection pool statistics for all configured DB engines (admin only).
+    """Connection pool statistics for all configured DB engines.
 
     Returns pool size, utilisation, overflow, and a health assessment
-    for each configured engine bind.
+    for each configured engine bind. Requires SYSTEM_ADMIN permission.
     """
-    if 'admin' not in current_user.roles:
-        return jsonify({'error': 'Admin access required'}), 403
 
     def _pool_stats(pool):
         size = pool.size()

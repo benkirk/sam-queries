@@ -185,7 +185,7 @@ def create_app(*, config_overrides: dict | None = None):
         """Load user by ID for Flask-Login."""
         sam_user = db.session.query(User).filter_by(user_id=int(user_id)).first()
         if sam_user:
-            return AuthUser(sam_user, dev_role_mapping=app.config.get('DEV_ROLE_MAPPING'))
+            return AuthUser(sam_user)
         return None
 
     # Register context processor for RBAC in templates
@@ -254,8 +254,14 @@ def create_app(*, config_overrides: dict | None = None):
     @app.route('/')
     def index():
         if current_user.is_authenticated:
-            # Redirect admin users to admin dashboard, regular users to user dashboard
-            if 'admin' in current_user.roles:
+            # Redirect admin-capable users to admin dashboard, others to
+            # user dashboard. Gate on the same permission that gates the
+            # Admin nav tab (see templates/dashboards/base.html), so the
+            # redirect target is always something the user can actually
+            # access — including users granted admin via
+            # USER_PERMISSION_OVERRIDES rather than a group bundle.
+            from webapp.utils.rbac import has_permission, Permission
+            if has_permission(current_user, Permission.ACCESS_ADMIN_DASHBOARD):
                 return redirect(url_for('admin_dashboard.index'))
             else:
                 return redirect(url_for('user_dashboard.index'))

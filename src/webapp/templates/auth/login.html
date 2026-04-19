@@ -99,13 +99,15 @@
 
         <div class="quick-login-section">
             <h5>Quick Login (Test Users)</h5>
-            {% for username, roles in test_users.items() %}
+            {% for username, label in test_users %}
             <form method="POST" action="{{ url_for('auth.login') }}" class="login-form">
                 <input type="hidden" name="username" value="{{ username }}">
                 <input type="hidden" name="password" value="test">
                 <button type="submit" class="btn user-btn">
                     <strong>{{ username }}</strong>
-                    <span class="role-badge">{{ roles|join(', ') }}</span>
+                    {% if label %}
+                    <span class="role-badge">{{ label }}</span>
+                    {% endif %}
                 </button>
             </form>
             {% endfor %}

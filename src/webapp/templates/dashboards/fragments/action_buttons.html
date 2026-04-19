@@ -16,13 +16,42 @@
           confirm="Deactivate foo '" ~ foo.name ~ "'?",
           title='Deactivate foo') }}
 
+  Permission self-gating
+  ----------------------
+  When ``permission=Permission.X`` is passed, the macro renders nothing
+  if the current user lacks that system-wide permission. When both
+  ``permission=`` and ``project=`` are passed, the macro uses the
+  project-scoped helper ``can_act_on_project`` (system permission OR
+  project lead/admin); pass ``include_ancestors=True`` for subtree
+  operations like allocation redistribution.
+
+  Backwards-compatible: omitting ``permission=`` renders the button
+  unconditionally — existing call sites are unaffected until they
+  opt into self-gating.
+
+      {{ edit_modal_button(url, ...,
+          permission=Permission.EDIT_RESOURCES) }}
+
+      {{ delete_row_button(url, ...,
+          permission=Permission.EDIT_PROJECT_MEMBERS,
+          project=project) }}
+
   Pass stop_propagation=True when the button sits inside a row that is
   itself a Bootstrap collapse trigger, to prevent the click from toggling
   the parent collapse.
 #}
 
 
-{% macro edit_modal_button(url, modal_id, target_id, title='Edit', stop_propagation=False) -%}
+{% macro edit_modal_button(url, modal_id, target_id, title='Edit',
+                           stop_propagation=False,
+                           permission=None, project=None,
+                           include_ancestors=False) -%}
+{%- set _allowed = (
+    permission is none
+    or (project is not none and can_act_on_project(permission, project, include_ancestors=include_ancestors))
+    or (project is none and has_permission(permission))
+) -%}
+{%- if _allowed -%}
 <button class="btn btn-sm btn-outline-secondary"
         data-bs-toggle="modal"
         data-bs-target="#{{ modal_id }}"
@@ -33,10 +62,20 @@
         {%- if stop_propagation %} onclick="event.stopPropagation()"{% endif %}>
     <i class="fas fa-edit"></i>
 </button>
+{%- endif -%}
 {%- endmacro %}
 
 
-{% macro delete_row_button(url, confirm, title='Delete', stop_propagation=False) -%}
+{% macro delete_row_button(url, confirm, title='Delete',
+                           stop_propagation=False,
+                           permission=None, project=None,
+                           include_ancestors=False) -%}
+{%- set _allowed = (
+    permission is none
+    or (project is not none and can_act_on_project(permission, project, include_ancestors=include_ancestors))
+    or (project is none and has_permission(permission))
+) -%}
+{%- if _allowed -%}
 <button class="btn btn-sm btn-outline-danger ms-1"
         title="{{ title }}"
         hx-delete="{{ url }}"
@@ -46,4 +85,5 @@
         {%- if stop_propagation %} onclick="event.stopPropagation()"{% endif %}>
     <i class="fas fa-trash-alt"></i>
 </button>
+{%- endif -%}
 {%- endmacro %}

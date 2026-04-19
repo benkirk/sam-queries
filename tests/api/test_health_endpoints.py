@@ -7,10 +7,11 @@ Covers:
   GET /api/v1/health/ready  — public readiness (delegates to health)
   GET /api/v1/health/db-pool — admin-only pool statistics
 
-The `non_admin_client` fixture lives in new_tests/conftest.py and picks
-any active non-benkirk user from the snapshot — `load_user()` will assign
-that user the default `['user']` role because their username isn't in
-`TestingConfig.DEV_ROLE_MAPPING`.
+The `non_admin_client` fixture lives in tests/conftest.py and picks any
+active non-benkirk user from the snapshot — `load_user()` will resolve
+that user's permissions from POSIX group membership (and they're not in
+`USER_PERMISSION_OVERRIDES`), which in the test snapshot typically
+means an empty role/permission set.
 """
 
 import pytest
