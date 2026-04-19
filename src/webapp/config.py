@@ -75,16 +75,24 @@ class DevelopmentConfig(SAMWebappConfig):
         'collector': '$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2',
     }
 
-    # Development role mapping (bypasses role DB tables)
-    DEV_ROLE_MAPPING = {
-        'benkirk':  ['admin'],
-        'mtrahan':  ['facility_manager'],
-        'rory':     ['project_lead'],
-        'andersnb': ['user'],
-        'negins':   ['user'],
-        'bdobbins': ['user'],
-        'tcraig':   ['user'],
-    }
+    # Usernames rendered as "Quick Login" buttons on the dev login page.
+    # Format: 'username[:LABEL]'. The optional ':LABEL' suffix is shown
+    # as a badge on the button so reviewers can see at a glance what
+    # permission tier a given test account is expected to land in.
+    # Bare usernames (no colon) are rendered without a badge.
+    #
+    # The label is purely cosmetic — actual permissions still resolve
+    # through POSIX groups + USER_PERMISSION_OVERRIDES (see
+    # webapp.utils.rbac), so an out-of-date label here cannot grant or
+    # revoke access; keep it in sync by hand.
+    DEV_QUICK_LOGIN_USERS = [
+        'benkirk:ADMIN',
+        'mtrahan:CSG',
+        'rory:CSG',
+        'andersnb:HSG',
+        'tfair:NUSD',
+        'bdobbins',
+    ]
 
 
 class ProductionConfig(SAMWebappConfig):
@@ -134,20 +142,6 @@ class TestingConfig(SAMWebappConfig):
     # Disable usage cache in tests to prevent cross-test pollution
     ALLOCATION_USAGE_CACHE_TTL  = 0
     ALLOCATION_USAGE_CACHE_SIZE = 0
-
-    # Role mapping for the auth_client fixture — mirrors DevelopmentConfig so
-    # test users resolve to the same permissions they did when tests were
-    # inadvertently running under DevelopmentConfig. Consumed by
-    # run.py:load_user via AuthUser(dev_role_mapping=...).
-    DEV_ROLE_MAPPING = {
-        'benkirk':  ['admin'],
-        'mtrahan':  ['facility_manager'],
-        'rory':     ['project_lead'],
-        'andersnb': ['user'],
-        'negins':   ['user'],
-        'bdobbins': ['user'],
-        'tcraig':   ['user'],
-    }
 
 
 _configs = {

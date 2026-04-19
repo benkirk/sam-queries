@@ -25,8 +25,15 @@ def _is_safe_redirect(target: str) -> bool:
 
 
 def _redirect_for_role(auth_user):
-    """Redirect to admin or user dashboard based on roles."""
-    if 'admin' in auth_user.roles:
+    """Redirect to admin or user dashboard based on permissions.
+
+    Gated on the same permission that gates the Admin nav tab so the
+    redirect target is always something the user can actually access —
+    including users granted admin via USER_PERMISSION_OVERRIDES rather
+    than a group bundle.
+    """
+    from webapp.utils.rbac import has_permission, Permission
+    if has_permission(auth_user, Permission.ACCESS_ADMIN_DASHBOARD):
         return redirect(url_for('admin_dashboard.index'))
     return redirect(url_for('user_dashboard.index'))
 
@@ -52,8 +59,7 @@ def login():
         sam_user = provider.authenticate(username, password)
 
         if sam_user:
-            dev_role_mapping = current_app.config.get('DEV_ROLE_MAPPING', {})
-            auth_user = AuthUser(sam_user, dev_role_mapping=dev_role_mapping)
+            auth_user = AuthUser(sam_user)
 
             remember = request.form.get('remember', False)
             login_user(auth_user, remember=remember)
@@ -67,8 +73,13 @@ def login():
             logger.warning("Login failed (stub): user=%s", username)
             flash('Invalid username or password', 'error')
 
-    dev_role_mapping = current_app.config.get('DEV_ROLE_MAPPING', {})
-    test_users = {u: r for u, r in dev_role_mapping.items()}
+    # DEV_QUICK_LOGIN_USERS entries are 'username[:LABEL]' strings.
+    # Split into (username, label) pairs for the template — label is
+    # an optional cosmetic badge, blank for bare usernames.
+    test_users = [
+        tuple((entry.split(':', 1) + [''])[:2])
+        for entry in current_app.config.get('DEV_QUICK_LOGIN_USERS', [])
+    ]
 
     return render_template(
         'auth/login.html',
@@ -125,8 +136,7 @@ def oidc_callback():
         flash('Your account was not found in SAM or is inactive.', 'error')
         return redirect(url_for('auth.login'))
 
-    dev_role_mapping = current_app.config.get('DEV_ROLE_MAPPING', {})
-    auth_user = AuthUser(sam_user, dev_role_mapping=dev_role_mapping)
+    auth_user = AuthUser(sam_user)
     login_user(auth_user, remember=False)
     logger.info("OIDC login success: user=%s", sam_user.username)
 

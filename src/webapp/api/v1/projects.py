@@ -19,7 +19,11 @@ from sam.schemas import (
     AllocationWithUsageSchema, UserSummarySchema, CompJobSchema
 )
 from webapp.api.helpers import register_error_handlers, get_project_or_404, parse_date_range
-from webapp.api.access_control import require_project_access, require_project_member_access
+from webapp.api.access_control import (
+    require_project_access,
+    require_project_member_access,
+    require_project_permission,
+)
 from datetime import datetime, timedelta
 
 bp = Blueprint('api_projects', __name__)
@@ -386,7 +390,8 @@ def get_recently_expired_projects():
 
 @bp.route('/<projcode>/members', methods=['POST'])
 @login_required
-def add_member(projcode):
+@require_project_permission(Permission.EDIT_PROJECT_MEMBERS)
+def add_member(project):
     """
     POST /api/v1/projects/<projcode>/members - Add a member to a project.
 
@@ -400,16 +405,8 @@ def add_member(projcode):
     """
     from sam.manage import add_user_to_project, management_transaction
     from sam.core.users import User
-    from webapp.utils.project_permissions import can_manage_project_members
     from sam.schemas.forms import AddMemberForm
     from marshmallow import ValidationError
-
-    project, error = get_project_or_404(db.session, projcode)
-    if error:
-        return error
-
-    if not can_manage_project_members(current_user, project):
-        return jsonify({'error': 'Unauthorized - insufficient permissions'}), 403
 
     # Validate and coerce input (dates, ordering) via form schema
     data = request.get_json() or request.form
@@ -437,7 +434,7 @@ def add_member(projcode):
 
     return jsonify({
         'success': True,
-        'message': f'Added {username} to project {projcode}',
+        'message': f'Added {username} to project {project.projcode}',
         'member': {
             'username': user.username,
             'display_name': user.display_name,
@@ -448,7 +445,8 @@ def add_member(projcode):
 
 @bp.route('/<projcode>/members/<username>', methods=['DELETE'])
 @login_required
-def remove_member(projcode, username):
+@require_project_permission(Permission.EDIT_PROJECT_MEMBERS)
+def remove_member(project, username):
     """
     DELETE /api/v1/projects/<projcode>/members/<username> - Remove a member from a project.
 
@@ -457,14 +455,6 @@ def remove_member(projcode, username):
     """
     from sam.manage import remove_user_from_project, management_transaction
     from sam.core.users import User
-    from webapp.utils.project_permissions import can_manage_project_members
-
-    project, error = get_project_or_404(db.session, projcode)
-    if error:
-        return error
-
-    if not can_manage_project_members(current_user, project):
-        return jsonify({'error': 'Unauthorized - insufficient permissions'}), 403
 
     user = db.session.query(User).filter_by(username=username).first()
     if not user:
@@ -480,7 +470,7 @@ def remove_member(projcode, username):
 
     return jsonify({
         'success': True,
-        'message': f'Removed {username} from project {projcode}'
+        'message': f'Removed {username} from project {project.projcode}'
     })
 
 

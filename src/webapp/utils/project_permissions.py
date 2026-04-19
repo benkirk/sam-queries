@@ -1,162 +1,163 @@
 """
 Project-level permission utilities for SAM Web UI.
 
-Provides project-specific authorization checks that combine:
-1. Project-level roles (Lead, Admin, Member) - scoped per-project
-2. System-wide RBAC permissions (admin, facility_manager) - global override
+Provides project-scoped authorization checks that combine:
+1. Project-level roles (Lead, Admin, Member) — scoped per-project
+2. System-wide RBAC permissions (admin, facility_manager, …) — global override
 
-This allows both project owners AND system administrators to manage project membership.
+This allows both project owners AND system administrators to manage
+project-scoped operations (member changes, allocation edits, threshold
+tuning, etc.).
+
+The shared shape — "system permission OR project lead/admin (optionally
+walking ancestors)" — lives in ``_is_project_steward``. All public
+``can_*`` helpers delegate to it so the rule set stays consistent.
 """
 
 from webapp.utils.rbac import has_permission, Permission
 
 
-def can_manage_project_members(user, project) -> bool:
+def _is_project_steward(
+    user,
+    project,
+    system_permission: Permission,
+    *,
+    include_ancestors: bool = False,
+) -> bool:
     """
-    Check if user can add/remove members from a project.
+    Authorization primitive used by every project-scoped ``can_*`` check.
 
-    Authorization is granted if ANY of these conditions are true:
-    - User has system-wide EDIT_PROJECT_MEMBERS permission (admin, facility_manager)
-    - User is the project lead
-    - User is the project admin
+    Returns True if **any** of:
+    - The user has ``system_permission`` (e.g. EDIT_PROJECT_MEMBERS,
+      EDIT_ALLOCATIONS) — system-wide override.
+    - The user is the project lead.
+    - The user is the project admin.
+    - When ``include_ancestors`` is True: the user is lead or admin of
+      any ancestor in the project tree (walks ``project.parent`` up to
+      the root).
+
+    ``include_ancestors=True`` is the right choice for operations that
+    apply to a project's subtree — e.g. allocation redistribution,
+    where the lead of a parent project should be able to act on
+    allocations of its children.
 
     Args:
         user: AuthUser object (Flask-Login current_user)
         project: Project ORM object
-
-    Returns:
-        True if user can manage members, False otherwise
+        system_permission: System-wide permission that grants access
+            without consulting project-level roles.
+        include_ancestors: If True, lead/admin of any ancestor counts.
     """
-    # System-wide permission (admin, facility_manager)
-    if has_permission(user, Permission.EDIT_PROJECT_MEMBERS):
+    if has_permission(user, system_permission):
         return True
 
-    # Project lead
-    if project.project_lead_user_id == user.user_id:
-        return True
+    user_id = getattr(user, 'user_id', None)
+    if user_id is None:
+        return False
 
-    # Project admin
-    if project.project_admin_user_id and project.project_admin_user_id == user.user_id:
-        return True
+    candidates = [project]
+    if include_ancestors:
+        current = project.parent
+        while current is not None:
+            candidates.append(current)
+            current = current.parent
+
+    for p in candidates:
+        if p.project_lead_user_id == user_id:
+            return True
+        if p.project_admin_user_id and p.project_admin_user_id == user_id:
+            return True
 
     return False
+
+
+def can_manage_project_members(user, project) -> bool:
+    """
+    Add/remove members from a project.
+
+    Granted to: system EDIT_PROJECT_MEMBERS holders, project lead,
+    project admin.
+    """
+    return _is_project_steward(user, project, Permission.EDIT_PROJECT_MEMBERS)
 
 
 def can_change_admin(user, project) -> bool:
     """
-    Check if user can change the project admin role.
+    Change the project admin role.
 
-    Only the project lead or system admin can change who the admin is.
-    The current admin cannot reassign the admin role to someone else.
-
-    Args:
-        user: AuthUser object (Flask-Login current_user)
-        project: Project ORM object
-
-    Returns:
-        True if user can change admin, False otherwise
+    Granted to: system EDIT_PROJECT_MEMBERS holders or the project lead.
+    The current admin can NOT reassign the admin role to someone else
+    (lead-only invariant).
     """
-    # System-wide permission (admin, facility_manager)
     if has_permission(user, Permission.EDIT_PROJECT_MEMBERS):
         return True
 
-    # Only project lead (not admin) can change admin
-    if project.project_lead_user_id == user.user_id:
-        return True
-
-    return False
+    user_id = getattr(user, 'user_id', None)
+    if user_id is None:
+        return False
+    return project.project_lead_user_id == user_id
 
 
 def can_view_project_members(user, project) -> bool:
     """
-    Check if user can view project members.
+    View a project's member list.
 
-    Currently all authenticated users who are members of a project can view
-    its members. System users with VIEW_PROJECT_MEMBERS can view any project.
-
-    Args:
-        user: AuthUser object (Flask-Login current_user)
-        project: Project ORM object
-
-    Returns:
-        True if user can view members, False otherwise
+    Permissive: system VIEW_PROJECT_MEMBERS holders, project lead/admin,
+    and any authenticated user (members of a project are non-sensitive).
+    Tighten if requirements change.
     """
-    # System-wide permission
     if has_permission(user, Permission.VIEW_PROJECT_MEMBERS):
         return True
 
-    # Project lead or admin
-    if project.project_lead_user_id == user.user_id:
+    user_id = getattr(user, 'user_id', None)
+    if user_id is None:
+        return False
+    if project.project_lead_user_id == user_id:
         return True
-    if project.project_admin_user_id and project.project_admin_user_id == user.user_id:
+    if project.project_admin_user_id and project.project_admin_user_id == user_id:
         return True
 
-    # For now, any authenticated user can view members of projects they're on
-    # This could be restricted further if needed
+    # Permissive default — see docstring.
     return True
 
 
 def can_edit_allocations(user, project) -> bool:
     """
-    Check if user can edit allocations for a project.
+    Edit allocation values (amount, dates, description).
 
-    Authorization is granted if:
-    - User has system-wide EDIT_ALLOCATIONS permission (admin, facility_manager)
-
-    Note: This is intentionally restricted to system administrators only.
-    Project leads/admins do NOT have allocation edit permissions by default,
-    as this is a sensitive operation requiring central oversight.
-
-    Args:
-        user: AuthUser object (Flask-Login current_user)
-        project: Project ORM object
-
-    Returns:
-        True if user can edit allocations, False otherwise
+    Granted to: system EDIT_ALLOCATIONS holders, OR project lead/admin
+    of this project OR any ancestor in the project tree. The
+    ancestor walk supports redistribution within a subtree the user
+    leads — e.g. a lead of project A can edit allocations on its
+    children A1, A2.
     """
-    # System-wide permission (admin, facility_manager)
-    return has_permission(user, Permission.EDIT_ALLOCATIONS)
+    return _is_project_steward(
+        user, project, Permission.EDIT_ALLOCATIONS, include_ancestors=True
+    )
+
+
+# Allocation redistribution is a specialization of allocation editing
+# (same authorization, distinct UI/API surface). The alias exists so
+# callers can use the name that reads best at the call site.
+can_redistribute_allocations = can_edit_allocations
 
 
 def can_edit_consumption_threshold(user, project) -> bool:
     """
-    Check if user can set/change rolling consumption rate thresholds for a project.
+    Set/change rolling consumption-rate thresholds for a project.
 
-    Same authorization as can_manage_project_members: system admin, project lead,
-    or project admin. Regular members may not edit thresholds.
-
-    Args:
-        user: AuthUser object (Flask-Login current_user)
-        project: Project ORM object
-
-    Returns:
-        True if user can edit thresholds, False otherwise
+    Granted to: system EDIT_PROJECT_MEMBERS holders, project lead,
+    project admin. Does NOT walk ancestors — thresholds are scoped to
+    the specific project.
     """
-    # System-wide permission (admin, facility_manager)
-    if has_permission(user, Permission.EDIT_PROJECT_MEMBERS):
-        return True
-
-    # Project lead
-    if project.project_lead_user_id == user.user_id:
-        return True
-
-    # Project admin
-    if project.project_admin_user_id and project.project_admin_user_id == user.user_id:
-        return True
-
-    return False
+    return _is_project_steward(user, project, Permission.EDIT_PROJECT_MEMBERS)
 
 
 def get_user_role_in_project(user_id: int, project) -> str:
     """
     Get the role of a user in a project.
 
-    Args:
-        user_id: The user's ID to check
-        project: Project ORM object
-
-    Returns:
-        Role string: 'Lead', 'Admin', or 'Member'
+    Returns: 'Lead', 'Admin', or 'Member'.
     """
     if project.project_lead_user_id == user_id:
         return 'Lead'

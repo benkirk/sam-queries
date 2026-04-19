@@ -16,6 +16,7 @@ from sam.schemas import AllocationWithUsageSchema
 from sam import Allocation
 from sam.manage import update_allocation, management_transaction
 from webapp.api.helpers import register_error_handlers
+from webapp.api.access_control import require_allocation_permission
 from sam.schemas.forms import EditAllocationForm
 from marshmallow import ValidationError
 from datetime import datetime
@@ -61,8 +62,8 @@ def get_allocation(allocation_id):
 
 @bp.route('/<int:allocation_id>', methods=['PUT'])
 @login_required
-@require_permission(Permission.EDIT_ALLOCATIONS)
-def update_allocation_endpoint(allocation_id):
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def update_allocation_endpoint(allocation):
     """
     PUT /api/v1/allocations/<allocation_id> - Update allocation with audit logging.
 
@@ -76,11 +77,10 @@ def update_allocation_endpoint(allocation_id):
         JSON with updated allocation details
 
     Requires:
-        EDIT_ALLOCATIONS permission
+        EDIT_ALLOCATIONS permission, OR project lead/admin of the
+        allocation's project (or any ancestor in its tree).
     """
-    allocation = db.session.get(Allocation, allocation_id)
-    if not allocation:
-        return jsonify({'error': f'Allocation {allocation_id} not found'}), 404
+    allocation_id = allocation.allocation_id
 
     # Get data from JSON body
     data = request.get_json()

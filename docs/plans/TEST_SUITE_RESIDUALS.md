@@ -42,7 +42,7 @@ are done. Key milestones:
 
 - **Snapshot hash lock (`snapshot.lock` + `make test-snapshot-rehash`)** — replaced with the representative-fixture strategy, which solves the same value-drift problem differently. Tests don't assert on exact values from the snapshot; they use "any row of shape X" fixtures that survive snapshot refreshes as long as one row of the required shape exists. Could revisit if a snapshot refresh breaks the suite in practice.
 - **Per-worker MySQL DB cloning for `system_status`** — replaced with per-worker SQLite tempfile, which is ~25 lines of fixture code vs ~80 lines of the original plan's env-var-ordered MySQL setup.
-- **`TESTING_AUTO_LOGIN_USER` auth bypass config** — not needed. `TestingConfig.DEV_ROLE_MAPPING` + Flask-Login session cookies gave us the `auth_client` fixture without the bypass.
+- **`TESTING_AUTO_LOGIN_USER` auth bypass config** — not needed. `USER_PERMISSION_OVERRIDES['benkirk']` + Flask-Login session cookies gave us the `auth_client` fixture without the bypass.
 - **Legacy API parity tests** — dropped (28 tests). Required `SAM_LEGACY_USER/PASS` + `PROD_SAM_DB_*` env vars to cross-check against the live `sam.ucar.edu` legacy API. Never runnable in CI; skipped in practice.
 - **Most of `test_sam_search_cli.py` subprocess coverage (44 of 61 tests)** — redundant with the ported CliRunner version (`tests/unit/test_sam_search_cli.py` + `test_sam_search_cli_allocations.py`). One subprocess smoke (`tests/integration/test_cli_smoke.py`) retains entry-point verification.
 - **ORM `Mapped[]` migration** — out of scope per the original plan; stays out of scope.

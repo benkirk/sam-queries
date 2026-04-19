@@ -23,6 +23,7 @@ from typing import Callable, Any
 
 from webapp.extensions import db
 from webapp.utils.rbac import has_permission, Permission
+from webapp.utils.project_permissions import _is_project_steward
 from webapp.api.helpers import get_project_or_404
 
 
@@ -148,6 +149,102 @@ def require_project_member_access(permission: Permission) -> Callable:
                 return f(project, *args, **kwargs)
 
             abort(403)
+
+        return decorated_function
+    return decorator
+
+
+def require_project_permission(
+    permission: Permission, *, include_ancestors: bool = False
+) -> Callable:
+    """
+    Decorator factory for project-mutating routes.
+
+    Grants access if the user has ``permission`` system-wide OR is the
+    project's lead/admin (optionally walking the project tree).
+    Resolves ``<projcode>`` from the URL and passes the ``project``
+    object to the decorated function.
+
+    This is the right decorator for project-scoped mutations (member
+    add/remove, threshold edits, allocation redistribution within a
+    subtree). For pure read access where any project member should
+    be allowed, use ``require_project_member_access`` instead.
+
+    Args:
+        permission: System-wide permission that grants access without
+            consulting project-level roles.
+        include_ancestors: If True, lead/admin of any ancestor project
+            counts. Use this for operations that act on a subtree
+            (e.g. allocation redistribution).
+
+    Usage:
+        @bp.route('/<projcode>/members', methods=['POST'])
+        @login_required
+        @require_project_permission(Permission.EDIT_PROJECT_MEMBERS)
+        def add_member(project):
+            ...
+    """
+    def decorator(f: Callable) -> Callable:
+        @wraps(f)
+        def decorated_function(projcode: str, *args, **kwargs):
+            project, error = get_project_or_404(db.session, projcode)
+            if error:
+                return error
+
+            if not _is_project_steward(
+                current_user, project, permission, include_ancestors=include_ancestors
+            ):
+                abort(403)
+
+            return f(project, *args, **kwargs)
+
+        return decorated_function
+    return decorator
+
+
+def require_allocation_permission(permission: Permission) -> Callable:
+    """
+    Decorator factory for allocation-mutating routes.
+
+    Resolves ``<allocation_id>`` (or ``<int:allocation_id>``) from the
+    URL to an Allocation, walks ``allocation.account.project``, and
+    grants access if the user has ``permission`` system-wide OR is
+    lead/admin of the allocation's project or any ancestor (covers
+    redistribution within a subtree the user owns).
+
+    Passes the ``allocation`` object to the decorated function in
+    place of ``allocation_id``.
+
+    Usage:
+        @bp.route('/<int:allocation_id>', methods=['PUT'])
+        @login_required
+        @require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+        def update_allocation(allocation):
+            ...
+    """
+    # Late import: Allocation lives in sam.accounting and importing it
+    # at module load triggers the SAM ORM init chain.
+    from sam.accounting.allocations import Allocation
+
+    def decorator(f: Callable) -> Callable:
+        @wraps(f)
+        def decorated_function(allocation_id: int, *args, **kwargs):
+            allocation = db.session.get(Allocation, int(allocation_id))
+            if allocation is None:
+                abort(404)
+
+            account = allocation.account
+            project = account.project if account is not None else None
+            if project is None:
+                # Orphaned allocation — no project to authorize against.
+                abort(403)
+
+            if not _is_project_steward(
+                current_user, project, permission, include_ancestors=True
+            ):
+                abort(403)
+
+            return f(allocation, *args, **kwargs)
 
         return decorated_function
     return decorator

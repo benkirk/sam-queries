@@ -5,7 +5,10 @@ This provides a thin adapter between SAM's User model and Flask-Login's requirem
 """
 
 from flask_login import UserMixin
+from sqlalchemy.orm import Session
+
 from sam.core.users import User
+from webapp.utils.rbac import GROUP_PERMISSIONS
 
 
 class AuthUser(UserMixin):
@@ -15,22 +18,28 @@ class AuthUser(UserMixin):
     Wraps a SAM User object to provide Flask-Login required methods.
     This allows us to use SAM's existing User model without modification.
 
-    Supports both database-backed roles (via role_user table) and
-    hard-coded development roles (via dev_role_mapping config).
+    Authorization model
+    -------------------
+    The user's permissions are derived from POSIX group membership.
+    ``self.roles`` is the set of group names the user belongs to that
+    have a bundle in ``GROUP_PERMISSIONS`` (i.e. groups that confer
+    permissions).
+
+    Group membership comes from ``adhoc_system_account_entry`` via
+    ``get_user_group_access()`` — in dev, test, and production alike.
+    Per-user incremental grants live in ``USER_PERMISSION_OVERRIDES``.
+
+    The SAM ``role_user`` / ``role`` tables are **not** consulted.
     """
 
-    def __init__(self, sam_user: User, dev_role_mapping: dict = None):
+    def __init__(self, sam_user: User):
         """
         Initialize with a SAM User object.
 
         Args:
             sam_user: SAM User ORM object
-            dev_role_mapping: Optional dict mapping username -> list of roles
-                             For development with read-only database.
-                             Example: {'admin_user': ['admin'], 'test_user': ['user']}
         """
         self.sam_user = sam_user
-        self.dev_role_mapping = dev_role_mapping or {}
         self._roles = None
 
     def get_id(self):
@@ -55,27 +64,49 @@ class AuthUser(UserMixin):
     @property
     def roles(self):
         """
-        Get user's role names as a set.
+        Get group-bundle names the user belongs to, as a set.
 
-        Priority:
-        1. Hard-coded dev_role_mapping (for read-only database)
-        2. Database role_assignments (for production)
-        3. Empty set (no roles)
+        Derived from POSIX group membership (``get_user_group_access``),
+        filtered to groups that actually have a ``GROUP_PERMISSIONS``
+        bundle — groups conferring no permissions are noise as far as
+        RBAC is concerned.
+
+        Cached on the instance.
         """
         if self._roles is None:
-            if self.username in self.dev_role_mapping:
-                self._roles = set(self.dev_role_mapping[self.username])
-            else:
-                self._roles = {ra.role.name for ra in self.sam_user.role_assignments}
-
+            self._roles = {
+                g for g in self._posix_group_names() if g in GROUP_PERMISSIONS
+            }
         return self._roles
 
+    def _posix_group_names(self) -> set:
+        """
+        Look up POSIX group names for this user via SAM's
+        ``get_user_group_access()`` query.
+
+        Returns the set of unique group names across all access branches
+        (we don't filter by branch here — a group bundle applies whenever
+        the user is a member of that group on any branch).
+
+        Returns an empty set if no session is bound to the wrapped User
+        object (e.g. the User was detached from its session).
+        """
+        # Late import to avoid circular: AuthUser is imported very early.
+        from sam.queries.lookups import get_user_group_access
+
+        session = Session.object_session(self.sam_user)
+        if session is None:
+            return set()
+
+        rows = get_user_group_access(session, username=self.username).get(self.username, [])
+        return {r['group_name'] for r in rows}
+
     def has_role(self, role_name: str) -> bool:
-        """Check if user has a specific role."""
+        """Check if user has a specific group bundle."""
         return role_name in self.roles
 
     def has_any_role(self, *role_names) -> bool:
-        """Check if user has any of the specified roles."""
+        """Check if user has any of the specified group bundles."""
         return bool(self.roles.intersection(role_names))
 
     def __repr__(self):

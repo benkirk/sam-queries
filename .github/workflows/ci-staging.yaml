@@ -3,6 +3,9 @@ name: Staging CI
 on:
   pull_request:
     branches: [staging]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   workflow_dispatch:
 
 concurrency:

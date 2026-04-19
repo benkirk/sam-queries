@@ -24,6 +24,7 @@ from sam.core.users import User
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import can_edit_consumption_threshold
 from webapp.utils.rbac import require_permission, Permission, has_permission
+from webapp.api.access_control import require_allocation_permission
 from ..charts import generate_usage_timeseries_matplotlib
 
 
@@ -445,19 +446,13 @@ def project_details_modal(projcode):
 
 @bp.route('/htmx/edit-allocation-form/<int:allocation_id>')
 @login_required
-@require_permission(Permission.EDIT_ALLOCATIONS)
-def htmx_edit_allocation_form(allocation_id):
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_edit_allocation_form(allocation):
     """
     Return the edit allocation form as an HTML fragment, pre-populated from DB.
 
     Replaces the JS pattern of: fetch JSON → populate form fields client-side.
     """
-    from sam.accounting.allocations import Allocation
-
-    allocation = db.session.get(Allocation, allocation_id)
-    if not allocation:
-        return '<div class="alert alert-danger m-3">Allocation not found</div>', 404
-
     # Derive resource name and projcode from the allocation's account
     account = allocation.account
     resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
@@ -486,8 +481,8 @@ def htmx_edit_allocation_form(allocation_id):
 
 @bp.route('/htmx/edit-allocation/<int:allocation_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_ALLOCATIONS)
-def htmx_edit_allocation(allocation_id):
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_edit_allocation(allocation):
     """
     Handle edit allocation form submission (htmx).
 
@@ -495,13 +490,9 @@ def htmx_edit_allocation(allocation_id):
     On success: returns a script that closes the modal and triggers a
     refresh event so any open project details modal reloads.
     """
-    from sam.accounting.allocations import Allocation
     from sam.manage import update_allocation, management_transaction
 
-    allocation = db.session.get(Allocation, allocation_id)
-    if not allocation:
-        return '<div class="alert alert-danger m-3">Allocation not found</div>', 404
-
+    allocation_id = allocation.allocation_id
     account = allocation.account
     resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
     projcode = request.form.get('projcode', '')
