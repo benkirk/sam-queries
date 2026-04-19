@@ -26,7 +26,7 @@ def _is_safe_redirect(target: str) -> bool:
 
 def _redirect_for_role(auth_user):
     """Redirect to admin or user dashboard based on roles."""
-    if 'admin' in auth_user.roles:
+    if auth_user.has_role('admin'):
         return redirect(url_for('admin_dashboard.index'))
     return redirect(url_for('user_dashboard.index'))
 

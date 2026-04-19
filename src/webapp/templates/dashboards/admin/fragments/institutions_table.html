@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button %}
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {% from 'dashboards/admin/fragments/institution_filters.html' import institution_filters %}
 {#
   Admin Institutions table fragment (HTMX-swapped).
@@ -18,7 +18,6 @@
                                  and the expand row
     active_users_projects      - bool; filters chip lists + counts (only
                                  relevant when show_users_projects is on)
-    is_admin                   - bool
 #}
 {% set ncols = 7 if show_users_projects else 5 %}
 
@@ -71,14 +70,13 @@
                 <td></td>
                 {% endif %}
                 <td class="text-end">
-                    {% if is_admin %}
                     {{ edit_modal_button(
                         url_for('admin_dashboard.htmx_institution_type_edit_form', institution_type_id=it.institution_type_id),
                         modal_id='editInstitutionTypeModal',
                         target_id='editInstitutionTypeFormContainer',
                         title='Edit institution type',
-                        stop_propagation=True) }}
-                    {% endif %}
+                        stop_propagation=True,
+                        permission=Permission.EDIT_ORG_METADATA) }}
                 </td>
             </tr>
         </tbody>
@@ -117,7 +115,7 @@
                     {% set mc = inst_to_mnemonic.get(inst.institution_id) %}
                     {% if mc %}
                     <span class="badge bg-secondary font-monospace">{{ mc }}</span>
-                    {% elif is_admin and has_permission(Permission.CREATE_RESOURCES) %}
+                    {% elif has_permission(Permission.CREATE_ORG_METADATA) %}
                     <button class="btn btn-link p-0 border-0"
                             data-bs-toggle="modal"
                             data-bs-target="#createMnemonicCodeModal"
@@ -142,13 +140,12 @@
                 </td>
                 {% endif %}
                 <td class="text-end" onclick="event.stopPropagation();">
-                    {% if is_admin %}
                     {{ edit_modal_button(
                         url_for('admin_dashboard.htmx_institution_edit_form', inst_id=inst.institution_id),
                         modal_id='editInstitutionModal',
                         target_id='editInstitutionFormContainer',
-                        title='Edit institution') }}
-                    {% endif %}
+                        title='Edit institution',
+                        permission=Permission.EDIT_ORG_METADATA) }}
                 </td>
             </tr>
             {# ── Users / Projects sub-row (only when U&P are shown) ── #}
@@ -219,7 +216,7 @@
         <span class="ms-1">(filtered)</span>
         {% endif %}
     </span>
-    {% if has_permission(Permission.CREATE_RESOURCES) %}
+    {% if has_permission(Permission.CREATE_ORG_METADATA) %}
     <div class="d-flex gap-2">
         <button class="btn btn-sm btn-outline-success"
                 data-bs-toggle="modal"

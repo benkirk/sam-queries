@@ -95,7 +95,7 @@ def _active_contract_sources():
 
 @bp.route('/htmx/organizations-card')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_ORG_METADATA)
 @cache.cached(query_string=True)
 def htmx_organizations_card():
     """
@@ -165,7 +165,7 @@ def htmx_organizations_card():
 
 @bp.route('/htmx/institutions-fragment')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_ORG_METADATA)
 @cache.cached(query_string=True)
 def htmx_institutions_fragment():
     """HTMX fragment: filterable, nested table of institutions by institution type.
@@ -292,7 +292,7 @@ def htmx_institutions_fragment():
 
 @bp.route('/htmx/organization-edit-form/<int:org_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_organization_edit_form(org_id):
     """Return the organization edit form fragment (loaded into modal)."""
     from sam.core.organizations import Organization
@@ -309,7 +309,7 @@ def htmx_organization_edit_form(org_id):
 
 @bp.route('/htmx/organization-edit/<int:org_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_organization_edit(org_id):
     """Update an organization."""
     from sam.core.organizations import Organization
@@ -337,7 +337,7 @@ def htmx_organization_edit(org_id):
 
 @bp.route('/htmx/organization-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_organization_create_form():
     """Return the organization create form fragment (loaded into modal)."""
     return render_template(
@@ -348,7 +348,7 @@ def htmx_organization_create_form():
 
 @bp.route('/htmx/organization-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_organization_create():
     """Create a new organization."""
     from sam.core.organizations import Organization
@@ -374,7 +374,7 @@ def htmx_organization_create():
 
 @bp.route('/htmx/organization-delete/<int:org_id>', methods=['DELETE'])
 @login_required
-@require_permission(Permission.DELETE_RESOURCES)
+@require_permission(Permission.DELETE_ORG_METADATA)
 def htmx_organization_delete(org_id):
     """Soft-delete (deactivate) an organization."""
     from sam.core.organizations import Organization
@@ -390,7 +390,7 @@ def htmx_organization_delete(org_id):
 
 @bp.route('/htmx/institution-type-edit-form/<int:institution_type_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_institution_type_edit_form(institution_type_id):
     """Return the institution type edit form fragment (loaded into modal)."""
     from sam.core.organizations import InstitutionType
@@ -407,7 +407,7 @@ def htmx_institution_type_edit_form(institution_type_id):
 
 @bp.route('/htmx/institution-type-edit/<int:institution_type_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_institution_type_edit(institution_type_id):
     """Update an institution type."""
     from sam.core.organizations import InstitutionType
@@ -431,7 +431,7 @@ def htmx_institution_type_edit(institution_type_id):
 
 @bp.route('/htmx/institution-type-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_institution_type_create_form():
     """Return the institution type create form fragment (loaded into modal)."""
     return render_template('dashboards/admin/fragments/create_institution_type_form_htmx.html')
@@ -439,7 +439,7 @@ def htmx_institution_type_create_form():
 
 @bp.route('/htmx/institution-type-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_institution_type_create():
     """Create a new institution type."""
     from sam.core.organizations import InstitutionType
@@ -458,7 +458,7 @@ def htmx_institution_type_create():
 
 @bp.route('/htmx/institution-edit-form/<int:inst_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_institution_edit_form(inst_id):
     """Return the institution edit form fragment (loaded into modal)."""
     from sam.core.organizations import Institution
@@ -475,7 +475,7 @@ def htmx_institution_edit_form(inst_id):
 
 @bp.route('/htmx/institution-edit/<int:inst_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_institution_edit(inst_id):
     """Update an institution."""
     from sam.core.organizations import Institution
@@ -507,7 +507,7 @@ def htmx_institution_edit(inst_id):
 
 @bp.route('/htmx/institution-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_institution_create_form():
     """Return the institution create form fragment (loaded into modal)."""
     return render_template(
@@ -518,7 +518,7 @@ def htmx_institution_create_form():
 
 @bp.route('/htmx/institution-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_institution_create():
     """Create a new institution."""
     from sam.core.organizations import Institution
@@ -546,7 +546,7 @@ def htmx_institution_create():
 
 @bp.route('/htmx/mnemonic-code-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_mnemonic_code_create_form():
     """Return the mnemonic code create form fragment (loaded into modal)."""
     from sam.core.organizations import Institution, Organization
@@ -588,7 +588,7 @@ def _mnemonic_create_context():
 
 @bp.route('/htmx/mnemonic-code-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_mnemonic_code_create():
     """Create a new mnemonic code.
 
@@ -635,7 +635,7 @@ def htmx_mnemonic_code_create():
 
 @bp.route('/htmx/aoi-group-edit-form/<int:group_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_aoi_group_edit_form(group_id):
     """Return the AOI group edit form fragment (loaded into modal)."""
     from sam.projects.areas import AreaOfInterestGroup
@@ -652,7 +652,7 @@ def htmx_aoi_group_edit_form(group_id):
 
 @bp.route('/htmx/aoi-group-edit/<int:group_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_aoi_group_edit(group_id):
     """Update an AOI group."""
     from sam.projects.areas import AreaOfInterestGroup
@@ -676,7 +676,7 @@ def htmx_aoi_group_edit(group_id):
 
 @bp.route('/htmx/aoi-group-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_aoi_group_create_form():
     """Return the AOI group create form fragment."""
     return render_template('dashboards/admin/fragments/create_aoi_group_form_htmx.html')
@@ -684,7 +684,7 @@ def htmx_aoi_group_create_form():
 
 @bp.route('/htmx/aoi-group-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_aoi_group_create():
     """Create a new AOI group."""
     from sam.projects.areas import AreaOfInterestGroup
@@ -703,7 +703,7 @@ def htmx_aoi_group_create():
 
 @bp.route('/htmx/aoi-group-delete/<int:group_id>', methods=['DELETE'])
 @login_required
-@require_permission(Permission.DELETE_RESOURCES)
+@require_permission(Permission.DELETE_ORG_METADATA)
 def htmx_aoi_group_delete(group_id):
     """Soft-delete (deactivate) an AOI group."""
     from sam.projects.areas import AreaOfInterestGroup
@@ -719,7 +719,7 @@ def htmx_aoi_group_delete(group_id):
 
 @bp.route('/htmx/aoi-edit-form/<int:aoi_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_aoi_edit_form(aoi_id):
     """Return the AOI edit form fragment (loaded into modal)."""
     from sam.projects.areas import AreaOfInterest
@@ -737,7 +737,7 @@ def htmx_aoi_edit_form(aoi_id):
 
 @bp.route('/htmx/aoi-edit/<int:aoi_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_aoi_edit(aoi_id):
     """Update an area of interest."""
     from sam.projects.areas import AreaOfInterest
@@ -766,7 +766,7 @@ def htmx_aoi_edit(aoi_id):
 
 @bp.route('/htmx/aoi-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_aoi_create_form():
     """Return the AOI create form fragment."""
     return render_template(
@@ -777,7 +777,7 @@ def htmx_aoi_create_form():
 
 @bp.route('/htmx/aoi-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_aoi_create():
     """Create a new area of interest."""
     from sam.projects.areas import AreaOfInterest
@@ -801,7 +801,7 @@ def htmx_aoi_create():
 
 @bp.route('/htmx/aoi-delete/<int:aoi_id>', methods=['DELETE'])
 @login_required
-@require_permission(Permission.DELETE_RESOURCES)
+@require_permission(Permission.DELETE_ORG_METADATA)
 def htmx_aoi_delete(aoi_id):
     """Soft-delete (deactivate) an area of interest."""
     from sam.projects.areas import AreaOfInterest
@@ -817,7 +817,7 @@ def htmx_aoi_delete(aoi_id):
 
 @bp.route('/htmx/contract-source-edit-form/<int:source_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_contract_source_edit_form(source_id):
     """Return the contract source edit form fragment (loaded into modal)."""
     from sam.projects.contracts import ContractSource
@@ -834,7 +834,7 @@ def htmx_contract_source_edit_form(source_id):
 
 @bp.route('/htmx/contract-source-edit/<int:source_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_contract_source_edit(source_id):
     """Update a contract source."""
     from sam.projects.contracts import ContractSource
@@ -860,7 +860,7 @@ def htmx_contract_source_edit(source_id):
 
 @bp.route('/htmx/contract-source-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_contract_source_create_form():
     """Return the contract source create form fragment."""
     return render_template('dashboards/admin/fragments/create_contract_source_form_htmx.html')
@@ -868,7 +868,7 @@ def htmx_contract_source_create_form():
 
 @bp.route('/htmx/contract-source-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_contract_source_create():
     """Create a new contract source."""
     from sam.projects.contracts import ContractSource
@@ -889,7 +889,7 @@ def htmx_contract_source_create():
 
 @bp.route('/htmx/contract-source-delete/<int:source_id>', methods=['DELETE'])
 @login_required
-@require_permission(Permission.DELETE_RESOURCES)
+@require_permission(Permission.DELETE_ORG_METADATA)
 def htmx_contract_source_delete(source_id):
     """Soft-delete (deactivate) a contract source."""
     from sam.projects.contracts import ContractSource
@@ -905,7 +905,7 @@ def htmx_contract_source_delete(source_id):
 
 @bp.route('/htmx/contract-edit-form/<int:contract_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_contract_edit_form(contract_id):
     """Return the contract edit form fragment (loaded into modal)."""
     from sam.projects.contracts import Contract
@@ -922,7 +922,7 @@ def htmx_contract_edit_form(contract_id):
 
 @bp.route('/htmx/contract-edit/<int:contract_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_contract_edit(contract_id):
     """Update a contract."""
     from sam.projects.contracts import Contract
@@ -951,7 +951,7 @@ def htmx_contract_edit(contract_id):
 
 @bp.route('/htmx/contract-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_contract_create_form():
     """Return the contract create form fragment."""
     return render_template(
@@ -963,7 +963,7 @@ def htmx_contract_create_form():
 
 @bp.route('/htmx/contract-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_contract_create():
     """Create a new contract."""
     from sam.projects.contracts import Contract
@@ -995,7 +995,7 @@ def htmx_contract_create():
 
 @bp.route('/htmx/contract-delete/<int:contract_id>', methods=['DELETE'])
 @login_required
-@require_permission(Permission.DELETE_RESOURCES)
+@require_permission(Permission.DELETE_ORG_METADATA)
 def htmx_contract_delete(contract_id):
     """Soft-delete (expire) a contract."""
     from sam.projects.contracts import Contract
@@ -1019,7 +1019,7 @@ def htmx_contract_delete(contract_id):
 
 @bp.route('/htmx/nsf-program-edit-form/<int:nsf_program_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_nsf_program_edit_form(nsf_program_id):
     """Return the NSF program edit form fragment (loaded into modal)."""
     from sam.projects.contracts import NSFProgram
@@ -1036,7 +1036,7 @@ def htmx_nsf_program_edit_form(nsf_program_id):
 
 @bp.route('/htmx/nsf-program-edit/<int:nsf_program_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_ORG_METADATA)
 def htmx_nsf_program_edit(nsf_program_id):
     """Update an NSF program."""
     from sam.projects.contracts import NSFProgram
@@ -1062,7 +1062,7 @@ def htmx_nsf_program_edit(nsf_program_id):
 
 @bp.route('/htmx/nsf-program-create-form')
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_nsf_program_create_form():
     """Return the NSF program create form fragment."""
     return render_template('dashboards/admin/fragments/create_nsf_program_form_htmx.html')
@@ -1070,7 +1070,7 @@ def htmx_nsf_program_create_form():
 
 @bp.route('/htmx/nsf-program-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_RESOURCES)
+@require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_nsf_program_create():
     """Create a new NSF program."""
     from sam.projects.contracts import NSFProgram
@@ -1091,7 +1091,7 @@ def htmx_nsf_program_create():
 
 @bp.route('/htmx/nsf-program-delete/<int:nsf_program_id>', methods=['DELETE'])
 @login_required
-@require_permission(Permission.DELETE_RESOURCES)
+@require_permission(Permission.DELETE_ORG_METADATA)
 def htmx_nsf_program_delete(nsf_program_id):
     """Soft-delete (deactivate) an NSF program."""
     from sam.projects.contracts import NSFProgram

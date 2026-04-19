@@ -255,7 +255,7 @@ def create_app(*, config_overrides: dict | None = None):
     def index():
         if current_user.is_authenticated:
             # Redirect admin users to admin dashboard, regular users to user dashboard
-            if 'admin' in current_user.roles:
+            if current_user.has_role('admin'):
                 return redirect(url_for('admin_dashboard.index'))
             else:
                 return redirect(url_for('user_dashboard.index'))

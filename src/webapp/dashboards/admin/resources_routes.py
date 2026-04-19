@@ -49,7 +49,7 @@ def _all_resource_types():
 
 @bp.route('/htmx/resources')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_RESOURCES)
 def htmx_resources_card():
     """
     Return the Resources card body fragment with four tabs:
@@ -96,7 +96,7 @@ def htmx_resources_card():
 
 @bp.route('/htmx/resource-edit-form/<int:resource_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_RESOURCES)
 def htmx_resource_edit_form(resource_id):
     """Return the resource edit form fragment (loaded into modal)."""
     from sam.resources.resources import Resource
@@ -113,7 +113,7 @@ def htmx_resource_edit_form(resource_id):
 
 @bp.route('/htmx/resource-edit/<int:resource_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_RESOURCES)
 def htmx_resource_edit(resource_id):
     """Update a resource."""
     from sam.resources.resources import Resource
@@ -205,7 +205,7 @@ def htmx_resource_delete(resource_id):
 
 @bp.route('/htmx/resource-type-edit-form/<int:resource_type_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_RESOURCES)
 def htmx_resource_type_edit_form(resource_type_id):
     """Return the resource type edit form fragment (loaded into modal)."""
     from sam.resources.resources import ResourceType
@@ -222,7 +222,7 @@ def htmx_resource_type_edit_form(resource_type_id):
 
 @bp.route('/htmx/resource-type-edit/<int:resource_type_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_RESOURCES)
 def htmx_resource_type_edit(resource_type_id):
     """Update a resource type."""
     from sam.resources.resources import ResourceType
@@ -295,7 +295,7 @@ def htmx_resource_type_delete(resource_type_id):
 
 @bp.route('/htmx/machine-edit-form/<int:machine_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_RESOURCES)
 def htmx_machine_edit_form(machine_id):
     """Return the machine edit form fragment (loaded into modal)."""
     from sam.resources.machines import Machine
@@ -312,7 +312,7 @@ def htmx_machine_edit_form(machine_id):
 
 @bp.route('/htmx/machine-edit/<int:machine_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_RESOURCES)
 def htmx_machine_edit(machine_id):
     """Update a machine."""
     from sam.resources.machines import Machine
@@ -402,7 +402,7 @@ def htmx_machine_delete(machine_id):
 
 @bp.route('/htmx/queue-edit-form/<int:queue_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_RESOURCES)
 def htmx_queue_edit_form(queue_id):
     """Return the queue edit form fragment (loaded into modal)."""
     from sam.resources.machines import Queue
@@ -419,7 +419,7 @@ def htmx_queue_edit_form(queue_id):
 
 @bp.route('/htmx/queue-edit/<int:queue_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_RESOURCES)
 def htmx_queue_edit(queue_id):
     """Update a queue."""
     from sam.resources.machines import Queue

@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button %}
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button with context %}
 {#
   Admin: Organization Card Body (lazy-loaded into the Organization collapsible section)
   Contains five tabs: Organizations, Institutions (types+institutions combined),
@@ -84,19 +84,17 @@
                             </td>
                             <td>{{ org.users|length }}</td>
                             <td class="text-end">
-                                {% if is_admin %}
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_organization_edit_form', org_id=org.organization_id),
                                     modal_id='editOrganizationModal',
                                     target_id='editOrganizationFormContainer',
-                                    title='Edit organization') }}
-                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                    title='Edit organization',
+                                    permission=Permission.EDIT_ORG_METADATA) }}
                                 {{ delete_row_button(
                                     url_for('admin_dashboard.htmx_organization_delete', org_id=org.organization_id),
                                     confirm="Deactivate '" ~ org.name ~ "'? This will mark it as inactive.",
-                                    title='Deactivate organization') }}
-                                {% endif %}
-                                {% endif %}
+                                    title='Deactivate organization',
+                                    permission=Permission.DELETE_ORG_METADATA) }}
                             </td>
                         </tr>
                         {% else %}
@@ -109,7 +107,7 @@
                 <span class="text-muted small">
                     Showing {{ organizations|length }} organization{{ 's' if organizations|length != 1 else '' }}
                 </span>
-                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                {% if has_permission(Permission.CREATE_ORG_METADATA) %}
                 <button class="btn btn-sm btn-outline-success"
                         data-bs-toggle="modal"
                         data-bs-target="#createOrganizationModal"
@@ -162,21 +160,19 @@
                             </td>
                             <td class="text-muted small">{{ g.areas|length }} area{{ 's' if g.areas|length != 1 else '' }}</td>
                             <td class="text-end">
-                                {% if is_admin %}
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_aoi_group_edit_form', group_id=g.area_of_interest_group_id),
                                     modal_id='editAoiGroupModal',
                                     target_id='editAoiGroupFormContainer',
                                     title='Edit group',
-                                    stop_propagation=True) }}
-                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                    stop_propagation=True,
+                                    permission=Permission.EDIT_ORG_METADATA) }}
                                 {{ delete_row_button(
                                     url_for('admin_dashboard.htmx_aoi_group_delete', group_id=g.area_of_interest_group_id),
                                     confirm="Deactivate group '" ~ g.name ~ "'?",
                                     title='Deactivate AOI group',
-                                    stop_propagation=True) }}
-                                {% endif %}
-                                {% endif %}
+                                    stop_propagation=True,
+                                    permission=Permission.DELETE_ORG_METADATA) }}
                             </td>
                         </tr>
                     </tbody>
@@ -187,19 +183,17 @@
                             <td class="ps-4">{{ a.area_of_interest }}</td>
                             <td class="text-muted small">{{ a.projects|length }} project{{ 's' if a.projects|length != 1 else '' }}</td>
                             <td class="text-end">
-                                {% if is_admin %}
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_aoi_edit_form', aoi_id=a.area_of_interest_id),
                                     modal_id='editAoiModal',
                                     target_id='editAoiFormContainer',
-                                    title='Edit area of interest') }}
-                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                    title='Edit area of interest',
+                                    permission=Permission.EDIT_ORG_METADATA) }}
                                 {{ delete_row_button(
                                     url_for('admin_dashboard.htmx_aoi_delete', aoi_id=a.area_of_interest_id),
                                     confirm="Deactivate '" ~ a.area_of_interest ~ "'?",
-                                    title='Deactivate area of interest') }}
-                                {% endif %}
-                                {% endif %}
+                                    title='Deactivate area of interest',
+                                    permission=Permission.DELETE_ORG_METADATA) }}
                             </td>
                         </tr>
                         {% else %}
@@ -220,7 +214,7 @@
                 <span class="text-muted small">
                     Showing {{ aois|length }} area{{ 's' if aois|length != 1 else '' }}
                 </span>
-                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                {% if has_permission(Permission.CREATE_ORG_METADATA) %}
                 <div class="d-flex gap-2">
                     <button class="btn btn-sm btn-outline-success"
                             data-bs-toggle="modal"
@@ -277,21 +271,19 @@
                             <td></td>
                             <td></td>
                             <td class="text-end">
-                                {% if is_admin %}
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_contract_source_edit_form', source_id=cs.contract_source_id),
                                     modal_id='editContractSourceModal',
                                     target_id='editContractSourceFormContainer',
                                     title='Edit source',
-                                    stop_propagation=True) }}
-                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                    stop_propagation=True,
+                                    permission=Permission.EDIT_ORG_METADATA) }}
                                 {{ delete_row_button(
                                     url_for('admin_dashboard.htmx_contract_source_delete', source_id=cs.contract_source_id),
                                     confirm="Deactivate source '" ~ cs.contract_source ~ "'?",
                                     title='Deactivate contract source',
-                                    stop_propagation=True) }}
-                                {% endif %}
-                                {% endif %}
+                                    stop_propagation=True,
+                                    permission=Permission.DELETE_ORG_METADATA) }}
                             </td>
                         </tr>
                     </tbody>
@@ -312,19 +304,17 @@
                                 {{ c.end_date | fmt_date }}
                             </td>
                             <td class="text-end">
-                                {% if is_admin %}
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_contract_edit_form', contract_id=c.contract_id),
                                     modal_id='editContractModal',
                                     target_id='editContractFormContainer',
-                                    title='Edit contract') }}
-                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                    title='Edit contract',
+                                    permission=Permission.EDIT_ORG_METADATA) }}
                                 {{ delete_row_button(
                                     url_for('admin_dashboard.htmx_contract_delete', contract_id=c.contract_id),
                                     confirm="Expire contract '" ~ c.contract_number ~ "'? This sets the end date to today.",
-                                    title='Expire contract') }}
-                                {% endif %}
-                                {% endif %}
+                                    title='Expire contract',
+                                    permission=Permission.DELETE_ORG_METADATA) }}
                             </td>
                         </tr>
                         {% else %}
@@ -345,7 +335,7 @@
                 <span class="text-muted small">
                     Showing {{ contracts|length }} contract{{ 's' if contracts|length != 1 else '' }}
                 </span>
-                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                {% if has_permission(Permission.CREATE_ORG_METADATA) %}
                 <div class="d-flex gap-2">
                     <button class="btn btn-sm btn-outline-success"
                             data-bs-toggle="modal"
@@ -386,19 +376,17 @@
                             <td data-sort-value="{{ p.nsf_program_name }}">{{ p.nsf_program_name }}</td>
                             <td data-sort-value="{{ p.contracts|length }}">{{ p.contracts|length }}</td>
                             <td class="text-end">
-                                {% if is_admin %}
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_nsf_program_edit_form', nsf_program_id=p.nsf_program_id),
                                     modal_id='editNsfProgramModal',
                                     target_id='editNsfProgramFormContainer',
-                                    title='Edit NSF program') }}
-                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                    title='Edit NSF program',
+                                    permission=Permission.EDIT_ORG_METADATA) }}
                                 {{ delete_row_button(
                                     url_for('admin_dashboard.htmx_nsf_program_delete', nsf_program_id=p.nsf_program_id),
                                     confirm="Deactivate NSF program '" ~ p.nsf_program_name ~ "'?",
-                                    title='Deactivate NSF program') }}
-                                {% endif %}
-                                {% endif %}
+                                    title='Deactivate NSF program',
+                                    permission=Permission.DELETE_ORG_METADATA) }}
                             </td>
                         </tr>
                         {% else %}
@@ -411,7 +399,7 @@
                 <span class="text-muted small">
                     Showing {{ nsf_programs|length }} program{{ 's' if nsf_programs|length != 1 else '' }}
                 </span>
-                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                {% if has_permission(Permission.CREATE_ORG_METADATA) %}
                 <button class="btn btn-sm btn-outline-success"
                         data-bs-toggle="modal"
                         data-bs-target="#createNsfProgramModal"

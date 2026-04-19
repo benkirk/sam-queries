@@ -45,7 +45,7 @@ UPCOMING_PRESETS = {
 
 @bp.route('/')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_PROJECTS)
 def index():
     """
     Admin dashboard main page.
@@ -152,7 +152,7 @@ def project_card(projcode):
 
 @bp.route('/user/<username>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_USERS)
 def user_card(username):
     """
     Get HTML fragment for a single user card (for admin user search).
@@ -194,7 +194,7 @@ def user_card(username):
 
 @bp.route('/group/<group_name>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_GROUPS)
 def group_card(group_name):
     """HTML fragment for a single adhoc-group card (admin group search).
 
@@ -529,7 +529,7 @@ def expirations_export():
 
 @bp.route('/htmx/search/users')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_USERS)
 def htmx_search_users():
     """Unified user search endpoint.
 
@@ -576,7 +576,7 @@ def htmx_search_users():
 
 @bp.route('/htmx/search/groups')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_GROUPS)
 def htmx_search_groups():
     """Search adhoc groups by name or GID. Returns the result-list fragment."""
     from sam.queries.lookups import search_groups_by_pattern
@@ -597,7 +597,7 @@ def htmx_search_groups():
 # Keep old impersonate endpoint as alias for backward compatibility
 @bp.route('/htmx/search-users-impersonate')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.IMPERSONATE_USERS)
 def htmx_search_users_impersonate():
     """Alias for /htmx/search/users?context=impersonate (deprecated)."""
     from sam.queries.users import search_users_by_pattern
@@ -618,7 +618,7 @@ def htmx_search_users_impersonate():
 
 @bp.route('/htmx/search-projects')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_PROJECTS)
 def htmx_search_projects():
     """
     Search projects and return results as HTML fragments.
@@ -650,7 +650,7 @@ def htmx_search_projects():
 
 @bp.route('/htmx/exemption-form/<username>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_USERS)
 def htmx_add_exemption_form(username):
     """
     Return the add-exemption form fragment for a user (loaded into modal).
@@ -680,7 +680,7 @@ def htmx_add_exemption_form(username):
 
 @bp.route('/htmx/exemption/<username>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_USERS)
 def htmx_add_exemption(username):
     """
     Create a wallclock exemption for the given user.
@@ -790,7 +790,7 @@ def htmx_add_exemption(username):
 
 @bp.route('/htmx/exemption-edit-form/<int:exemption_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_USERS)
 def htmx_edit_exemption_form(exemption_id):
     """
     Return the edit-exemption form fragment (loaded into modal).
@@ -809,7 +809,7 @@ def htmx_edit_exemption_form(exemption_id):
 
 @bp.route('/htmx/exemption-edit/<int:exemption_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.EDIT_USERS)
 def htmx_edit_exemption(exemption_id):
     """
     Update a wallclock exemption.
@@ -884,7 +884,7 @@ def htmx_edit_exemption(exemption_id):
 
 @bp.route('/htmx/queues-for-resource')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission(Permission.VIEW_RESOURCES)
 def htmx_queues_for_resource():
     """
     Return queue <option> elements for a given resource_id (cascading select).
