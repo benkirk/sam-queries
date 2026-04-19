@@ -107,9 +107,37 @@ class Permission(Enum):
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 
+# Building blocks for group bundles
+# ----------------------------------
+# ``_perms_with_action`` returns every Permission whose value starts
+# with one of the given action prefixes — e.g. all ``VIEW_*`` or all
+# ``EDIT_*``. The four ``ALL_*`` constants below pre-compute the common
+# slices so bundles can use plain set arithmetic:
+#
+#     'foo': ALL_VIEW | ALL_EDIT | {Permission.EXPORT_DATA}
+#     'bar': ALL_VIEW - {Permission.VIEW_GROUPS}
+#
+# When a new entity domain (e.g. CONTRACTS) gets a full CRUD set in the
+# Permission enum, every bundle expressed via these constants picks up
+# the new permissions automatically — no need to edit each bundle.
+def _perms_with_action(*action_prefixes: str) -> Set[Permission]:
+    """All Permission members whose value starts with one of the given
+    action prefixes (``'view'``, ``'edit'``, ``'create'``, ``'delete'``)."""
+    return {
+        p for p in Permission
+        if any(p.value.startswith(f'{a}_') for a in action_prefixes)
+    }
+
+
+ALL_VIEW   = _perms_with_action('view')
+ALL_EDIT   = _perms_with_action('edit')
+ALL_CREATE = _perms_with_action('create')
+ALL_DELETE = _perms_with_action('delete')
+
+
 # POSIX-group-to-Permission mapping
 #
-# Keys are POSIX group names (e.g. real groups like 'nusd', 'hsg', 'csg',
+# Keys are POSIX group names (e.g. real groups like 'csg', 'nusd', 'hsg',
 # **and** synthetic dev-only bundles selected by ``DEV_GROUP_MAPPING``).
 # A user receives the union of permissions across all groups they belong
 # to that appear here.
@@ -117,102 +145,63 @@ class Permission(Enum):
 # Groups that don't appear in this dict simply confer no permissions.
 #
 # TODO(rbac_refactor): the real POSIX group → permission bundles below
-# (`nusd`, `hsg`, `csg`) are provisional. Confirm group names and
+# (`csg`, `nusd`, `hsg`) are provisional. Confirm group names and
 # permission contents with the team before the next deploy.
-GROUP_PERMISSIONS: Dict[str, List[Permission]] = {
+GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     # ---- Real POSIX group bundles (provisional) ----
-    'nusd': [p for p in Permission],  # admin-equivalent: full access
-    'hsg': [
-        Permission.VIEW_USERS,
-        Permission.VIEW_PROJECTS,
-        Permission.EDIT_PROJECTS,
-        Permission.CREATE_PROJECTS,
-        Permission.VIEW_PROJECT_MEMBERS,
+
+    # csg: full access (admin-equivalent).
+    'csg': set(Permission),
+
+    # nusd: read everything + write to projects, allocations, resources,
+    # and system status. Does NOT confer write on users/groups/facilities/
+    # org_metadata (those remain admin-only).
+    'nusd': ALL_VIEW | {
+        Permission.EDIT_PROJECTS,        Permission.CREATE_PROJECTS,
         Permission.EDIT_PROJECT_MEMBERS,
-        Permission.VIEW_ALLOCATIONS,
-        Permission.EDIT_ALLOCATIONS,
-        Permission.CREATE_ALLOCATIONS,
-        Permission.VIEW_RESOURCES,
+        Permission.EDIT_ALLOCATIONS,     Permission.CREATE_ALLOCATIONS,
         Permission.EDIT_RESOURCES,
-        Permission.VIEW_FACILITIES,
-        Permission.VIEW_GROUPS,
-        Permission.VIEW_ORG_METADATA,
-        Permission.VIEW_REPORTS,
-        Permission.VIEW_CHARGE_SUMMARIES,
-        Permission.EXPORT_DATA,
-        Permission.VIEW_SYSTEM_STATS,
         Permission.EDIT_SYSTEM_STATUS,
-    ],
-    'csg': [
-        Permission.VIEW_USERS,
-        Permission.VIEW_PROJECTS,
-        Permission.VIEW_PROJECT_MEMBERS,
-        Permission.VIEW_ALLOCATIONS,
-        Permission.VIEW_RESOURCES,
-        Permission.VIEW_FACILITIES,
-        Permission.VIEW_GROUPS,
-        Permission.VIEW_ORG_METADATA,
-        Permission.VIEW_REPORTS,
-        Permission.VIEW_CHARGE_SUMMARIES,
         Permission.EXPORT_DATA,
-        Permission.VIEW_SYSTEM_STATS,
-    ],
+    },
+
+    # hsg: read-only across the board + data export.
+    'hsg': ALL_VIEW | {Permission.EXPORT_DATA},
 
     # ---- Synthetic bundles selected by DEV_GROUP_MAPPING ----
     # These keys are not real POSIX groups; they let dev/test configs
     # assign specific permission sets to named usernames without
     # depending on adhoc_group data.
-    'admin': [p for p in Permission],
-    'facility_manager': [
-        Permission.VIEW_USERS,
-        Permission.VIEW_PROJECTS,
-        Permission.EDIT_PROJECTS,
-        Permission.CREATE_PROJECTS,
-        Permission.VIEW_PROJECT_MEMBERS,
+
+    'admin': set(Permission),
+
+    # Mirrors nusd — facility managers and nusd staff get the same
+    # write surface today.
+    'facility_manager': ALL_VIEW | {
+        Permission.EDIT_PROJECTS,        Permission.CREATE_PROJECTS,
         Permission.EDIT_PROJECT_MEMBERS,
-        Permission.VIEW_ALLOCATIONS,
-        Permission.EDIT_ALLOCATIONS,
-        Permission.CREATE_ALLOCATIONS,
-        Permission.VIEW_RESOURCES,
+        Permission.EDIT_ALLOCATIONS,     Permission.CREATE_ALLOCATIONS,
         Permission.EDIT_RESOURCES,
-        Permission.VIEW_FACILITIES,
-        Permission.VIEW_GROUPS,
-        Permission.VIEW_ORG_METADATA,
-        Permission.VIEW_REPORTS,
-        Permission.VIEW_CHARGE_SUMMARIES,
-        Permission.EXPORT_DATA,
-        Permission.VIEW_SYSTEM_STATS,
         Permission.EDIT_SYSTEM_STATUS,
-    ],
-    'project_lead': [
-        Permission.VIEW_USERS,
-        Permission.VIEW_PROJECTS,
-        Permission.VIEW_PROJECT_MEMBERS,
-        Permission.VIEW_ALLOCATIONS,
-        Permission.VIEW_RESOURCES,
-        Permission.VIEW_FACILITIES,
-        Permission.VIEW_REPORTS,
-        Permission.VIEW_CHARGE_SUMMARIES,
-    ],
-    'user': [
-        Permission.VIEW_PROJECTS,
-        Permission.VIEW_ALLOCATIONS,
-        Permission.VIEW_CHARGE_SUMMARIES,
-    ],
-    'analyst': [
-        Permission.VIEW_USERS,
-        Permission.VIEW_PROJECTS,
-        Permission.VIEW_PROJECT_MEMBERS,
-        Permission.VIEW_ALLOCATIONS,
-        Permission.VIEW_RESOURCES,
-        Permission.VIEW_FACILITIES,
+        Permission.EXPORT_DATA,
+    },
+
+    # project_lead: subset of read access — no groups/org_metadata/system_stats.
+    'project_lead': ALL_VIEW - {
         Permission.VIEW_GROUPS,
         Permission.VIEW_ORG_METADATA,
-        Permission.VIEW_REPORTS,
-        Permission.VIEW_CHARGE_SUMMARIES,
-        Permission.EXPORT_DATA,
         Permission.VIEW_SYSTEM_STATS,
-    ],
+    },
+
+    # user: minimal — just enough to see their own projects/allocations/charges.
+    'user': {
+        Permission.VIEW_PROJECTS,
+        Permission.VIEW_ALLOCATIONS,
+        Permission.VIEW_CHARGE_SUMMARIES,
+    },
+
+    # analyst: read-only across the board + data export (same shape as hsg).
+    'analyst': ALL_VIEW | {Permission.EXPORT_DATA},
 }
 
 
@@ -226,6 +215,7 @@ GROUP_PERMISSIONS: Dict[str, List[Permission]] = {
 # Keys: usernames. Values: set of Permission enum members to grant.
 USER_PERMISSION_OVERRIDES: Dict[str, Set[Permission]] = {
     # 'someuser': {Permission.EXPORT_DATA, Permission.VIEW_REPORTS},
+    'benkirk' : [p for p in Permission],  # admin-equivalent: full access
 }
 
 
