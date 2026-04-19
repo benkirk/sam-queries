@@ -269,7 +269,7 @@ def _pie_trim(names: list, values: list) -> tuple[list, list]:
 
 
 @lru_cache(maxsize=32)
-def _cached_facility_pie(data_key: tuple, title: str) -> str:
+def _cached_facility_pie(data_key: tuple) -> str:
     facility_data = [dict(items) for items in data_key]
 
     raw_names = [d['facility'] for d in facility_data]
@@ -294,7 +294,6 @@ def _cached_facility_pie(data_key: tuple, title: str) -> str:
         at.set_fontweight('bold')
         at.set_fontsize(8)
 
-    ax.set_title(title, fontsize=11, fontweight='bold', pad=12)
     ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
 
     svg_io = StringIO()
@@ -303,20 +302,20 @@ def _cached_facility_pie(data_key: tuple, title: str) -> str:
     return svg_io.getvalue()
 
 
-def generate_facility_pie_chart_matplotlib(facility_data: List[Dict], title: str = 'Annualized Rate Distribution by Facility') -> str:
+def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
     """
-    Generate pie chart showing annualized rate distribution by facility.
+    Generate pie chart showing distribution by facility. Title is rendered
+    in the surrounding HTML (see allocations dashboard template).
 
     Args:
         facility_data: List of dicts with facility, annualized_rate, count, percent
-        title: Chart title
 
     Returns:
         SVG string ready for template rendering
     """
     if not facility_data:
         return '<div class="text-center text-muted">No facility data available</div>'
-    return _cached_facility_pie(_hashable_list_of_dicts(facility_data), title)
+    return _cached_facility_pie(_hashable_list_of_dicts(facility_data))
 
 
 _attach_cache_methods(generate_facility_pie_chart_matplotlib, _cached_facility_pie)
@@ -327,7 +326,7 @@ _attach_cache_methods(generate_facility_pie_chart_matplotlib, _cached_facility_p
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=64)
-def _cached_alloc_type_pie(data_key: tuple, resource_type: str, resource_name: str, facility_name: str) -> str:
+def _cached_alloc_type_pie(data_key: tuple) -> str:
     type_data = [dict(items) for items in data_key]
 
     raw_names = [d['allocation_type'] for d in type_data]
@@ -336,11 +335,6 @@ def _cached_alloc_type_pie(data_key: tuple, resource_type: str, resource_name: s
 
     legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(names, values)]
     colors = plt.cm.tab20.colors[:len(names)]
-
-    if resource_type in ['DISK', 'ARCHIVE']:
-        chart_title = f'Data Volume by Type\n{resource_name} — {facility_name}'
-    else:
-        chart_title = f'Allocation by Type\n{resource_name} — {facility_name}'
 
     fig, ax = plt.subplots(figsize=(7, 4))
     wedges, _texts, autotexts = ax.pie(
@@ -357,7 +351,6 @@ def _cached_alloc_type_pie(data_key: tuple, resource_type: str, resource_name: s
         at.set_fontweight('bold')
         at.set_fontsize(8)
 
-    ax.set_title(chart_title, fontsize=11, fontweight='bold', pad=12)
     ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
 
     svg_io = StringIO()
@@ -366,22 +359,20 @@ def _cached_alloc_type_pie(data_key: tuple, resource_type: str, resource_name: s
     return svg_io.getvalue()
 
 
-def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict], resource_type: str, resource_name: str, facility_name: str) -> str:
+def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
     """
     Generate pie chart showing allocation distribution by type within a facility.
+    Title is rendered in the surrounding HTML (see allocations dashboard template).
 
     Args:
         type_data: List of dicts with allocation_type, total_amount, count, avg_amount
-        resource_type: Resource type string ('HPC', 'DAV', 'DISK', 'ARCHIVE')
-        resource_name: Resource name for chart title
-        facility_name: Facility name for chart title
 
     Returns:
         SVG string ready for template rendering
     """
     if not type_data:
         return '<div class="text-center text-muted">No allocation type data available</div>'
-    return _cached_alloc_type_pie(_hashable_list_of_dicts(type_data), resource_type, resource_name, facility_name)
+    return _cached_alloc_type_pie(_hashable_list_of_dicts(type_data))
 
 
 _attach_cache_methods(generate_allocation_type_pie_chart_matplotlib, _cached_alloc_type_pie)

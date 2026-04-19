@@ -433,8 +433,8 @@ class TestMatplotlibCaching:
             {'facility': 'UNIV', 'annualized_rate': 500, 'count': 10, 'percent': 62.5},
             {'facility': 'WNA', 'annualized_rate': 300, 'count': 5, 'percent': 37.5},
         ]
-        r1 = generate_facility_pie_chart_matplotlib(data, 'Test')
-        r2 = generate_facility_pie_chart_matplotlib(data, 'Test')
+        r1 = generate_facility_pie_chart_matplotlib(data)
+        r2 = generate_facility_pie_chart_matplotlib(data)
         assert r1 is r2
         assert generate_facility_pie_chart_matplotlib.cache_info().hits >= 1
 
@@ -444,8 +444,8 @@ class TestMatplotlibCaching:
 
         data_a = [{'facility': 'UNIV', 'annualized_rate': 500, 'count': 10, 'percent': 100}]
         data_b = [{'facility': 'WNA', 'annualized_rate': 300, 'count': 5, 'percent': 100}]
-        r1 = generate_facility_pie_chart_matplotlib(data_a, 'Test A')
-        r2 = generate_facility_pie_chart_matplotlib(data_b, 'Test B')
+        r1 = generate_facility_pie_chart_matplotlib(data_a)
+        r2 = generate_facility_pie_chart_matplotlib(data_b)
         assert r1 != r2
         assert generate_facility_pie_chart_matplotlib.cache_info().misses >= 2
 
@@ -457,8 +457,8 @@ class TestMatplotlibCaching:
             {'allocation_type': 'NSC', 'total_amount': 1000, 'count': 5, 'avg_amount': 200},
             {'allocation_type': 'Small', 'total_amount': 500, 'count': 10, 'avg_amount': 50},
         ]
-        r1 = generate_allocation_type_pie_chart_matplotlib(data, 'HPC', 'Derecho', 'UNIV')
-        r2 = generate_allocation_type_pie_chart_matplotlib(data, 'HPC', 'Derecho', 'UNIV')
+        r1 = generate_allocation_type_pie_chart_matplotlib(data)
+        r2 = generate_allocation_type_pie_chart_matplotlib(data)
         assert r1 is r2
         assert generate_allocation_type_pie_chart_matplotlib.cache_info().hits >= 1
 
@@ -503,7 +503,7 @@ class TestMatplotlibCaching:
 
     def test_empty_data_returns_fallback(self):
         from webapp.dashboards.charts import generate_facility_pie_chart_matplotlib
-        result = generate_facility_pie_chart_matplotlib([], 'Empty')
+        result = generate_facility_pie_chart_matplotlib([])
         assert 'text-muted' in result
         assert '<svg' not in result.lower()
 

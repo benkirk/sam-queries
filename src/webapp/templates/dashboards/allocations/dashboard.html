@@ -65,10 +65,15 @@
             <div id="facilityPieContainer" class="chart-container">
                 {% for resource_name, _ in grouped_data.items()|sort %}
                 {% set overview = resource_overviews[resource_name] %}
+                {% set is_storage = resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
                 {% if overview.table_data|length > 1 %}
                 <div class="facility-pie-panel"
                      data-resource="{{ resource_name|replace(' ', '_') }}"
                      style="display:none;">
+                    <h6 class="text-center fw-bold mb-2">
+                        {{ 'Data Volume by Facility' if is_storage else 'Annual Rate by Facility' }}
+                        <span class="text-muted fw-normal">— {{ resource_name }}</span>
+                    </h6>
                     {{ overview.chart|safe }}
                 </div>
                 {% endif %}
@@ -83,6 +88,10 @@
                 <div class="facility-usage-pie-panel"
                      data-resource="{{ resource_name|replace(' ', '_') }}"
                      style="display:none;">
+                    <h6 class="text-center fw-bold mb-2">
+                        Usage by Facility
+                        <span class="text-muted fw-normal">— {{ resource_name }}</span>
+                    </h6>
                     {{ usage_overview.chart|safe }}
                 </div>
                 {% elif usage_overview and usage_overview.table_data|length == 1 %}
@@ -102,10 +111,15 @@
 <div id="facilityPieContainer" class="chart-container mb-3">
     {% for resource_name, _ in grouped_data.items()|sort %}
     {% set overview = resource_overviews[resource_name] %}
+    {% set is_storage = resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
     {% if overview.table_data|length > 1 %}
     <div class="facility-pie-panel"
          data-resource="{{ resource_name|replace(' ', '_') }}"
          style="display:none;">
+        <h6 class="text-center fw-bold mb-2">
+            {{ 'Data Volume by Facility' if is_storage else 'Annual Rate by Facility' }}
+            <span class="text-muted fw-normal">— {{ resource_name }}</span>
+        </h6>
         {{ overview.chart|safe }}
     </div>
     {% endif %}
@@ -320,14 +334,26 @@
                                 <div class="tab-content">
                                     <div class="tab-pane fade show active" id="type-alloc-{{ fac_id }}">
                                         {% if type_chart %}
-                                        <div class="chart-container p-3">{{ type_chart|safe }}</div>
+                                        <div class="chart-container p-3">
+                                            <h6 class="text-center fw-bold mb-2">
+                                                {{ 'Data Volume by Type' if is_storage else 'Allocation by Type' }}
+                                                <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
+                                            </h6>
+                                            {{ type_chart|safe }}
+                                        </div>
                                         {% else %}
                                         <div class="text-center text-muted small py-3">No chart available</div>
                                         {% endif %}
                                     </div>
                                     <div class="tab-pane fade" id="type-usage-{{ fac_id }}">
                                         {% if usage_type_chart %}
-                                        <div class="chart-container p-3">{{ usage_type_chart|safe }}</div>
+                                        <div class="chart-container p-3">
+                                            <h6 class="text-center fw-bold mb-2">
+                                                Usage by Type
+                                                <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
+                                            </h6>
+                                            {{ usage_type_chart|safe }}
+                                        </div>
                                         {% else %}
                                         <div class="text-center text-muted small py-3">No usage data yet</div>
                                         {% endif %}
@@ -336,6 +362,10 @@
                             </div>
                             {% else %}
                             <div class="chart-container p-3">
+                                <h6 class="text-center fw-bold mb-2">
+                                    {{ 'Data Volume by Type' if is_storage else 'Allocation by Type' }}
+                                    <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
+                                </h6>
                                 {{ type_chart|safe }}
                             </div>
                             {% endif %}
