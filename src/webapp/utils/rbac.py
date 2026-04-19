@@ -146,20 +146,19 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     # ---- Real POSIX group bundles (provisional) ----
 
     # csg: full access (admin-equivalent).
-    'csg': set(Permission),
+    #'csg': set(Permission),
 
     # nusd: read, edit,everything + write to projects, allocations
     # and system status. Does NOT confer write on users/groups/facilities/
-    # org_metadata (those remain admin-only) and does NOT include
-    # IMPERSONATE_USERS — nusd staff land on the admin dashboard but
-    # cannot log in as other users.
+    # org_metadata (those remain admin-only).
     'nusd': ALL_VIEW | ALL_EDIT | {
         Permission.ACCESS_ADMIN_DASHBOARD,
         Permission.CREATE_PROJECTS,
         Permission.CREATE_ALLOCATIONS,
     },
 
-    # hsg: read-only across the board + data export.
+    # hsg: read-only across the board,
+    # resources permissions, and edit system status (for outages etc...)
     'hsg': ALL_VIEW | {
         Permission.ACCESS_ADMIN_DASHBOARD,
         Permission.EDIT_RESOURCES, Permission.CREATE_RESOURCES,
@@ -167,6 +166,8 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     },
 }
 
+# csg - same as nusd
+GROUP_PERMISSIONS['csg'] = GROUP_PERMISSIONS['nusd']
 
 # Per-user permission overrides
 #
