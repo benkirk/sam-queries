@@ -254,8 +254,14 @@ def create_app(*, config_overrides: dict | None = None):
     @app.route('/')
     def index():
         if current_user.is_authenticated:
-            # Redirect admin users to admin dashboard, regular users to user dashboard
-            if current_user.has_role('admin'):
+            # Redirect admin-capable users to admin dashboard, others to
+            # user dashboard. Gate on the same permission that gates the
+            # Admin nav tab (see templates/dashboards/base.html), so the
+            # redirect target is always something the user can actually
+            # access — including users granted admin via
+            # USER_PERMISSION_OVERRIDES rather than a group bundle.
+            from webapp.utils.rbac import has_permission, Permission
+            if has_permission(current_user, Permission.IMPERSONATE_USERS):
                 return redirect(url_for('admin_dashboard.index'))
             else:
                 return redirect(url_for('user_dashboard.index'))
