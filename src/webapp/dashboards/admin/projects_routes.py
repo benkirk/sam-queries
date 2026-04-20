@@ -12,7 +12,9 @@ from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from flask_login import login_required, current_user
 
 from webapp.extensions import db
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import require_permission, has_permission, Permission
+from webapp.api.access_control import require_project_permission
+from webapp.utils.project_permissions import can_edit_project_governance
 from sam.manage import management_transaction
 
 from .blueprint import bp
@@ -363,21 +365,20 @@ def htmx_project_create():
 
 @bp.route('/project/<projcode>/edit')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def edit_project_page(projcode):
+@require_project_permission(Permission.EDIT_PROJECTS)
+def edit_project_page(project):
     """Full edit-project page (not a modal).
 
     Renders a three-tab page: Details | Allocations | Members.
     The Allocations tab is lazy-loaded on first click.
+
+    Access: system EDIT_PROJECTS, or project lead, or project admin
+    (``can_access_edit_project_page``). Non-admin stewards see every
+    tab but a limited edit surface gated by ``can_edit_governance``.
     """
-    from sam.projects.projects import Project
     from sam.queries.dashboard import get_project_dashboard_data
 
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return redirect(url_for('admin_dashboard.index'))
-
-    project_data = get_project_dashboard_data(db.session, projcode)
+    project_data = get_project_dashboard_data(db.session, project.projcode)
 
     # Reverse-lookup facility_id / panel_id for cascading dropdown pre-population.
     current_facility_id = None
@@ -397,30 +398,44 @@ def edit_project_page(projcode):
         pre_fill['panel_id'] = str(current_panel_id)
     form_data = _project_form_data(form=pre_fill or None)
 
+    can_edit_governance = can_edit_project_governance(current_user, project)
+    can_access_admin = has_permission(current_user, Permission.ACCESS_ADMIN_DASHBOARD)
+
     return render_template(
         'dashboards/admin/edit_project.html',
         project=project,
         project_data=project_data,
         current_facility_id=current_facility_id,
         current_panel_id=current_panel_id,
+        can_edit_governance=can_edit_governance,
+        can_access_admin=can_access_admin,
         **form_data,
     )
 
 
+GOVERNANCE_FIELDS = frozenset({
+    'facility_id', 'panel_id', 'allocation_type_id',
+    'project_lead_user_id', 'project_admin_user_id',
+    'active', 'charging_exempt', 'ext_alias',
+})
+
+
 @bp.route('/htmx/project-update/<projcode>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_project_update(projcode):
-    """Validate and apply project metadata updates."""
-    from sam.projects.projects import Project
+@require_project_permission(Permission.EDIT_PROJECTS)
+def htmx_project_update(project):
+    """Validate and apply project metadata updates.
+
+    Access: system EDIT_PROJECTS, or project lead/admin. Non-admin
+    stewards can only change metadata fields (title / abstract /
+    area_of_interest_id); governance-field submissions are stripped
+    server-side before validation.
+    """
     from sam.projects.areas import AreaOfInterest
     from sam.accounting.allocations import AllocationType
     from sam.core.users import User
     from sam.schemas.forms import EditProjectForm
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger">Project not found.</div>', 404
+    from marshmallow import ValidationError
 
     current_facility_id = None
     current_panel_id = None
@@ -429,41 +444,59 @@ def htmx_project_update(projcode):
         if project.allocation_type.panel.facility:
             current_facility_id = project.allocation_type.panel.facility_id
 
-    def _do_action(data):
-        validate_fk_existence(
-            db.session,
-            (User, data['project_lead_user_id'], 'project lead'),
-            (User, data.get('project_admin_user_id'), 'project admin'),
-            (AreaOfInterest, data['area_of_interest_id'], 'area of interest'),
-            (AllocationType, data.get('allocation_type_id'), 'allocation type'),
-        )
-        # project.update() only writes non-None kwargs, so scalar fields
-        # the user left blank (stripped to None by the schema) pass
-        # through unchanged.
-        project.update(**data)
-        return project
+    # Governance fields are admin-only. When a non-admin steward submits,
+    # drop those keys before marshmallow sees them. Defense-in-depth: the
+    # template renders them as read-only text for non-admins (so browsers
+    # don't submit them), but a crafted curl request could include them.
+    if can_edit_project_governance(current_user, project):
+        form_input = request.form
+    else:
+        form_input = {k: v for k, v in request.form.items()
+                      if k not in GOVERNANCE_FIELDS}
 
-    return handle_htmx_form_post(
-        schema_cls=EditProjectForm,
-        template='dashboards/admin/fragments/edit_project_details_htmx.html',
-        context_fn=lambda: _project_form_data(form=request.form),
-        extra_context={
-            'project': project,
-            'current_facility_id': current_facility_id,
-            'current_panel_id': current_panel_id,
-        },
-        success_triggers={'reloadEditProjectDetails': projcode},
-        success_message='Project updated successfully.',
-        success_detail=lambda p: f'{p.projcode} — {p.title}',
-        error_prefix='Error updating project',
-        do_action=_do_action,
+    def _render_with_errors(errs):
+        return render_template(
+            'dashboards/admin/fragments/edit_project_details_htmx.html',
+            project=project,
+            current_facility_id=current_facility_id,
+            current_panel_id=current_panel_id,
+            can_edit_governance=can_edit_project_governance(current_user, project),
+            errors=errs,
+            form=request.form,
+            **_project_form_data(form=request.form),
+        )
+
+    try:
+        data = EditProjectForm().load(form_input, partial=True)
+    except ValidationError as e:
+        return _render_with_errors(EditProjectForm.flatten_errors(e.messages))
+
+    try:
+        with management_transaction(db.session):
+            validate_fk_existence(
+                db.session,
+                (User, data.get('project_lead_user_id'), 'project lead'),
+                (User, data.get('project_admin_user_id'), 'project admin'),
+                (AreaOfInterest, data.get('area_of_interest_id'), 'area of interest'),
+                (AllocationType, data.get('allocation_type_id'), 'allocation type'),
+            )
+            project.update(**data)
+    except FKValidationError as e:
+        return _render_with_errors(e.errors)
+    except Exception as e:  # noqa: BLE001
+        return _render_with_errors([f'Error updating project: {e}'])
+
+    return htmx_success_message(
+        {'reloadEditProjectDetails': project.projcode},
+        'Project updated successfully.',
+        detail=f'{project.projcode} — {project.title}',
     )
 
 
 @bp.route('/htmx/project-allocation-tree/<projcode>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_project_allocation_tree(projcode):
+@require_project_permission(Permission.EDIT_PROJECTS)
+def htmx_project_allocation_tree(project):
     """Lazy-loaded allocation tree for the Edit Project Allocations tab.
 
     Builds a {projcode: {resource_name: resource_dict}} lookup for all active
@@ -475,7 +508,6 @@ def htmx_project_allocation_tree(projcode):
     """
     from collections import OrderedDict
     from datetime import datetime
-    from sam.projects.projects import Project
     from sam.queries.dashboard import _build_project_resources_data
 
     # Parse optional active_at date; default to today.
@@ -486,10 +518,6 @@ def htmx_project_allocation_tree(projcode):
         active_at = None
     now_str = datetime.now().strftime('%Y-%m-%d')
     active_at_str = active_at.strftime('%Y-%m-%d') if active_at else now_str
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-warning">Project not found.</div>'
 
     root = project.get_root() if hasattr(project, 'get_root') else project
 
@@ -532,11 +560,12 @@ def htmx_project_allocation_tree(projcode):
     return render_template(
         'dashboards/admin/fragments/project_allocation_tree_htmx.html',
         root=root,
-        projcode=projcode,
+        projcode=project.projcode,
         resources_by_tab=resources_by_tab,
         resources_by_projcode=resources_by_projcode,
         active_at=active_at_str,
         now_str=now_str,
+        can_edit_governance=can_edit_project_governance(current_user, project),
     )
 
 
@@ -1505,6 +1534,7 @@ def _linked_elements_context(project):
         active_organizations=[po for po in project.organizations if po.is_active],
         contracts=project.contracts,
         active_directories=[pd for pd in project.directories if pd.is_active],
+        can_edit_governance=can_edit_project_governance(current_user, project),
         errors=[],
     )
 
@@ -1521,15 +1551,14 @@ def _render_linked_elements(project, errors=None):
 
 @bp.route('/htmx/project/<projcode>/linked-elements')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_project_linked_elements(projcode):
-    """Render the linked-elements section for an edit-project page."""
-    from sam.projects.projects import Project
+@require_project_permission(Permission.EDIT_PROJECTS)
+def htmx_project_linked_elements(project):
+    """Render the linked-elements section for an edit-project page.
 
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-warning">Project not found.</div>'
-
+    Access: system EDIT_PROJECTS, or project lead/admin. Add / remove
+    actions inside the fragment remain gated by the admin-only
+    ``can_edit_governance`` flag.
+    """
     return _render_linked_elements(project)
 
 

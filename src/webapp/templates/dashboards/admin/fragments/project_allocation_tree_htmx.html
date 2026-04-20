@@ -144,7 +144,7 @@
 
           {# Col 5: edit pencil (or shared badge for inherited allocations) #}
           <td style="vertical-align:middle;">
-            {% if root_alloc and root_alloc.allocation_id and not root_alloc.is_inheriting %}
+            {% if can_edit_governance and root_alloc and root_alloc.allocation_id and not root_alloc.is_inheriting %}
             <button class="btn btn-xs btn-outline-warning py-0 px-1"
                     style="font-size:0.7rem;"
                     hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', alloc_id=root_alloc.allocation_id) }}"
@@ -228,7 +228,7 @@
                                      current_projcode=projcode,
                                      alloc_by_projcode=alloc_by_projcode,
                                      can_view=true,
-                                     can_edit_allocations=true,
+                                     can_edit_allocations=can_edit_governance,
                                      active_only=true,
                                      usage_warning_threshold=75,
                                      usage_critical_threshold=90) }}

@@ -404,8 +404,10 @@
                 </script>
                 {% endif %}
 
-                {# Edit Project button — inside the card body, visible only when expanded #}
-                {% if has_permission(Permission.EDIT_PROJECTS) %}
+                {# Edit Project button — inside the card body, visible only when expanded.
+                   Project leads/admins also see the button (they land on the same page
+                   with a constrained edit surface). #}
+                {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
                 <div class="d-flex justify-content-end mt-3 pt-2 border-top">
                     <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
                        class="btn btn-sm btn-warning">

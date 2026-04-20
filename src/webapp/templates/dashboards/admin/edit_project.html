@@ -16,14 +16,22 @@
 <div class="d-flex align-items-center mb-3">
   <nav aria-label="breadcrumb" class="mb-0">
     <ol class="breadcrumb mb-0">
+      {% if can_access_admin %}
       <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard.index') }}">Admin</a></li>
+      {% endif %}
       <li class="breadcrumb-item active">Edit Project</li>
       <li class="breadcrumb-item active">{{ project.projcode }}</li>
     </ol>
   </nav>
+  {% if can_access_admin %}
   <a href="{{ url_for('admin_dashboard.index') }}" class="btn btn-outline-secondary btn-sm ms-auto">
     <i class="fas fa-arrow-left"></i> Back to Admin
   </a>
+  {% else %}
+  <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-outline-secondary btn-sm ms-auto">
+    <i class="fas fa-arrow-left"></i> Back to Dashboard
+  </a>
+  {% endif %}
 </div>
 
 <!-- Page header -->
@@ -91,6 +99,7 @@
 
   <!-- ── Tab 2: Allocations ─────────────────────────────────────────── -->
   <div class="tab-pane fade" id="tab-allocations" role="tabpanel">
+    {% if can_edit_governance %}
     <div class="d-flex justify-content-end gap-2 mb-3">
       <button class="btn btn-sm btn-warning"
               hx-get="{{ url_for('admin_dashboard.htmx_extend_allocations_form', projcode=project.projcode) }}"
@@ -119,6 +128,7 @@
         <i class="fas fa-plus-circle"></i> Add Allocation
       </button>
     </div>
+    {% endif %}
     <div id="allocationTreeContainer">
       <div class="text-center text-muted py-4">
         <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
