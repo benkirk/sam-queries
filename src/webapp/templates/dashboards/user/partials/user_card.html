@@ -1,11 +1,14 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% macro render_user_card(sam_user, is_admin=False, user_groups=None, primary_group_name=None,
-                          current_shell=None, allowable_shells=None, can_edit_shell=False) %}
+                          current_shell=None, allowable_shells=None, can_edit_shell=False,
+                          available_groups=None, can_edit_primary_gid=False) %}
 {# user_groups: optional dict[branch_name] -> list of {'group_name', 'unix_gid'}
    primary_group_name: optional str — name of the adhoc group matching
                        sam_user.primary_gid, when one exists
    current_shell / allowable_shells / can_edit_shell: see fragments under
-   dashboards/user/fragments/shell_*.html #}
+   dashboards/user/fragments/shell_*.html
+   available_groups / can_edit_primary_gid: see fragments under
+   dashboards/user/fragments/primary_gid_*.html #}
 <div class="card mb-3">
     <div class="card-header">
         <h5 class="mb-0">
@@ -38,14 +41,8 @@
                 <span class="stat-label">UID:</span>
                 <span class="stat-value">{{ sam_user.unix_uid or 'N/A' }}</span>
             </div>
-            <div class="stat-item">
-                <span class="stat-label">Primary GID:</span>
-                <span class="stat-value">
-                    {{ sam_user.primary_gid or 'N/A' }}
-                    {% if primary_group_name %}
-                    <small class="text-muted ms-1">({{ primary_group_name }})</small>
-                    {% endif %}
-                </span>
+            <div class="stat-item" id="primary-gid-row-{{ sam_user.username }}">
+                {% include 'dashboards/user/fragments/primary_gid_display_htmx.html' %}
             </div>
             <div class="stat-item" id="shell-row-{{ sam_user.username }}">
                 {% include 'dashboards/user/fragments/shell_display_htmx.html' %}

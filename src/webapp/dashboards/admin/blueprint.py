@@ -197,6 +197,10 @@ def user_card(username):
     allowable_shells = get_allowable_shell_names(db.session)
     can_edit_shell = has_permission(current_user, Permission.EDIT_USERS)
 
+    from webapp.dashboards.user.blueprint import _available_primary_groups
+    available_groups = _available_primary_groups(db.session, sam_user.username)
+    can_edit_primary_gid = has_permission(current_user, Permission.EDIT_USERS)
+
     return render_template(
         'dashboards/admin/fragments/user_card_wrapper.html',
         sam_user=sam_user,
@@ -205,6 +209,8 @@ def user_card(username):
         current_shell=current_shell,
         allowable_shells=allowable_shells,
         can_edit_shell=can_edit_shell,
+        available_groups=available_groups,
+        can_edit_primary_gid=can_edit_primary_gid,
     )
 
 

@@ -1,0 +1,24 @@
+{# Read-only primary-GID row (inner payload of #primary-gid-row-<username>).
+
+   Inputs:
+     sam_user              — the User being displayed
+     primary_group_name    — Optional[str] resolved via resolve_group_name
+     can_edit_primary_gid  — bool; when False the Edit button is omitted
+#}
+<span class="stat-label">Primary GID:</span>
+<span class="stat-value">
+    {{ sam_user.primary_gid or 'N/A' }}
+    {% if primary_group_name %}
+    <small class="text-muted ms-1">({{ primary_group_name }})</small>
+    {% endif %}
+    {% if can_edit_primary_gid %}
+    <button type="button"
+            class="btn btn-xs btn-outline-secondary ms-2 py-0"
+            title="Change primary GID"
+            hx-get="{{ url_for('user_dashboard.htmx_primary_gid_form', username=sam_user.username) }}"
+            hx-target="#primary-gid-row-{{ sam_user.username }}"
+            hx-swap="innerHTML">
+        <i class="fas fa-edit"></i>
+    </button>
+    {% endif %}
+</span>

@@ -125,12 +125,20 @@ def get_user_group_access(
     username: Optional[str] = None,
     access_branch: Optional[str] = None,
     active_only: bool = True,
+    include_projects: bool = False,
 ) -> Dict[str, List[Dict]]:
     """
     Efficient user -> adhoc group/gid mapping via AdhocSystemAccountEntry.
 
     Runs a single JOIN of adhoc_system_account_entry against adhoc_group, so
     cost is independent of whether the caller filters by username.
+
+    With ``include_projects=True``, also include project-derived groups
+    (``LOWER(projcode)`` as group_name, ``project.unix_gid``) that the
+    user is entitled to via active allocations on configurable resources
+    — matching legacy SAM's ``userDirectoryAccessHpcGroups`` union.
+    Default is False, which preserves the adhoc-only behavior every
+    existing caller depends on.
 
     Args:
         session: SQLAlchemy session.
@@ -139,6 +147,9 @@ def get_user_group_access(
         access_branch: If provided, restrict to this access branch (e.g. 'hpc',
             'hpc-data', 'hpc-dev'). If None, all branches are included.
         active_only: If True (default), only include active AdhocGroups.
+        include_projects: If True, also include project-derived groups
+            (projcode-as-group-name) via ``directory_access.group_populator``.
+            Default False.
 
     Returns:
         Dict keyed by username, each value a list of dicts with keys
@@ -172,6 +183,40 @@ def get_user_group_access(
             'unix_gid': unix_gid,
             'access_branch_name': branch_name,
         })
+
+    if include_projects:
+        # Project-derived groups live in directory_access.group_populator
+        # (the one place that module's interface is touched). Merge in
+        # any (username, branch, group_name, gid) entries not already
+        # present from the adhoc query above.
+        from sam.queries.directory_access import group_populator
+
+        branches = group_populator(session, access_branch=access_branch)
+        for branch_name, branch_data in branches.items():
+            for uname, entries in branch_data.get('user_groups', {}).items():
+                if username is not None and uname != username:
+                    continue
+                existing = result.setdefault(uname, [])
+                seen = {(e['access_branch_name'], e['group_name'], e['unix_gid'])
+                        for e in existing}
+                for entry in entries:
+                    key = (branch_name, entry['group_name'], entry['gid'])
+                    if key in seen:
+                        continue
+                    existing.append({
+                        'group_name': entry['group_name'],
+                        'unix_gid': entry['gid'],
+                        'access_branch_name': branch_name,
+                    })
+                    seen.add(key)
+
+        # Re-sort each user's list to keep the (branch, group_name) ordering
+        # that adhoc-only callers have always seen.
+        for uname in result:
+            result[uname].sort(
+                key=lambda e: (e['access_branch_name'] or '', e['group_name'] or '')
+            )
+
     return result
 
 

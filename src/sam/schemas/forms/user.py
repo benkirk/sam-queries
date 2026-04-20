@@ -21,6 +21,17 @@ class SetShellForm(HtmxFormSchema):
     shell_name = f.Str(required=True, validate=v.Length(min=1, max=25))
 
 
+class SetPrimaryGidForm(HtmxFormSchema):
+    """Set a user's primary GID.
+
+    Membership validation (``unix_gid`` must be in the user's allowable
+    set from ``get_user_group_access(..., include_projects=True)``)
+    happens inside ``User.set_primary_gid`` — requires a DB hit, so it
+    stays on the model per CLAUDE.md §9.
+    """
+    unix_gid = f.Integer(required=True)
+
+
 class AddMemberForm(HtmxFormSchema):
     username = f.Str(required=True, validate=v.Length(min=1))
     start_date = f.Date('%Y-%m-%d', load_default=None)
