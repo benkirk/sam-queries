@@ -490,29 +490,39 @@ def resource_details():
 
 @bp.route('/tree/<projcode>')
 @login_required
-def tree_fragment(projcode):
+@require_project_access(include_ancestors=True)
+def tree_fragment(project):
     """
     Lazy-loaded HTML fragment showing project hierarchy tree.
 
     Renders the shared render_project_tree macro
     (dashboards/shared/project_tree.html) via a thin wrapper template.
 
+    Clickability (``can_view``) is true when the user has system
+    VIEW_PROJECTS OR has any affiliation with the tree root (direct
+    member / lead / admin, or lead/admin of an ancestor of the root).
+    When true, every node in the displayed tree is clickable. When
+    false, nodes render as plain text — the user can still enter a
+    specific node's modal via other affordances if they're affiliated
+    there, but the tree itself surfaces only the structure.
+
     Returns:
         HTML tree structure (no full page layout)
     """
-    project = find_project_by_code(db.session, projcode)
-
-    if not project:
-        return '<p class="text-danger mb-0">Project not found</p>'
+    from webapp.api.access_control import _user_can_access_project, _get_sam_user
 
     active_only = request.args.get('active_only') == '1'
     root = project.get_root() if hasattr(project, 'get_root') else project
-    can_view = has_permission(current_user, Permission.VIEW_PROJECTS)
+    sam_user = _get_sam_user()
+    can_view = (
+        has_permission(current_user, Permission.VIEW_PROJECTS)
+        or _user_can_access_project(sam_user, root, include_ancestors=True)
+    )
 
     return render_template(
         'dashboards/user/fragments/tree_htmx.html',
         root=root,
-        current_projcode=projcode,
+        current_projcode=project.projcode,
         active_only=active_only,
         can_view=can_view,
     )
