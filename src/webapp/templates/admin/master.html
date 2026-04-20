@@ -16,12 +16,6 @@
             <li class="dropdown-header">Logged in as {{ current_user.username }}</li>
             <li role="separator" class="divider"></li>
             <li>
-                <a href="{{ url_for('auth.profile') }}">
-                    <i class="glyphicon glyphicon-user"></i> My Profile
-                </a>
-            </li>
-            <li role="separator" class="divider"></li>
-            <li>
                 <a href="{{ url_for('auth.logout') }}" class="logout-link">
                     <i class="glyphicon glyphicon-log-out"></i> Switch User / Logout
                 </a>

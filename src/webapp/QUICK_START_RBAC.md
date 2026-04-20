@@ -48,9 +48,10 @@ expected tabs appear in the navbar.
 
 ## Step 4: Verify your permissions
 
-Visit `http://localhost:5050/auth/profile` to see your username, the
-`roles` set (POSIX-group names with `GROUP_PERMISSIONS` bundles), and
-the resolved permission set.
+Visit `http://localhost:5050/` — the user card includes a
+"SAM Permissions" section (shown only when you have any) listing the
+resolved permission set derived from your `roles` (POSIX-group names with
+`GROUP_PERMISSIONS` bundles) plus any `USER_PERMISSION_OVERRIDES`.
 
 ## Step 5: Test individual permissions
 
