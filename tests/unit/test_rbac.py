@@ -12,6 +12,7 @@ from webapp.utils import rbac
 from webapp.utils.rbac import (
     GROUP_PERMISSIONS,
     Permission,
+    can_impersonate,
     get_user_permissions,
     has_all_permissions,
     has_any_permission,
@@ -136,6 +137,71 @@ class TestPredicates:
         assert not has_all_permissions(
             user, Permission.VIEW_PROJECTS, Permission.SYSTEM_ADMIN
         )
+
+
+# ---------------------------------------------------------------------------
+# Impersonation no-escalation rule
+# ---------------------------------------------------------------------------
+
+class TestCanImpersonate:
+    """``can_impersonate(caller, target)`` enforces no privilege escalation:
+    target's permissions must be a (non-strict) subset of caller's."""
+
+    def test_peer_impersonation_allowed(self):
+        # Two nusd users — equal permission sets — peer is fine.
+        caller = _StubUser(roles=['nusd'], username='travis')
+        target = _StubUser(roles=['nusd'], username='other_nusd')
+        assert can_impersonate(caller, target)
+
+    def test_caller_can_impersonate_lessor_user(self):
+        # nusd impersonating a user with no bundle-conferring groups.
+        caller = _StubUser(roles=['nusd'], username='travis')
+        target = _StubUser(roles=[], username='regular_user')
+        assert can_impersonate(caller, target)
+
+    def test_caller_cannot_impersonate_more_privileged_user(self, monkeypatch):
+        # nusd cannot impersonate a user with USER_PERMISSION_OVERRIDES
+        # granting the full Permission set (escalation blocked).
+        monkeypatch.setattr(
+            rbac,
+            'USER_PERMISSION_OVERRIDES',
+            {'benkirk': set(Permission)},
+        )
+        caller = _StubUser(roles=['nusd'], username='travis')
+        target = _StubUser(roles=[], username='benkirk')
+        assert not can_impersonate(caller, target)
+
+    def test_full_admin_can_impersonate_anyone(self, monkeypatch):
+        # A user with the full Permission set (via override) may
+        # impersonate any user — every target's perms are a subset.
+        monkeypatch.setattr(
+            rbac,
+            'USER_PERMISSION_OVERRIDES',
+            {'super': set(Permission)},
+        )
+        caller = _StubUser(roles=[], username='super')
+        for target_roles in (['nusd'], ['hsg'], []):
+            target = _StubUser(roles=target_roles, username='someone')
+            assert can_impersonate(caller, target)
+
+    def test_self_impersonation_trivially_allowed(self):
+        # caller == target → identical permission sets → subset check passes.
+        user = _StubUser(roles=['nusd'], username='travis')
+        assert can_impersonate(user, user)
+
+    def test_disjoint_extras_block_impersonation(self, monkeypatch):
+        # If target has any permission caller lacks — even one — block.
+        # Here target has EXPORT_DATA via override; caller doesn't.
+        monkeypatch.setattr(
+            rbac,
+            'USER_PERMISSION_OVERRIDES',
+            {'has_export': {Permission.EXPORT_DATA}},
+        )
+        caller = _StubUser(roles=['nusd'], username='travis')
+        target = _StubUser(roles=['nusd'], username='has_export')
+        # nusd doesn't include EXPORT_DATA — verify the premise first.
+        assert Permission.EXPORT_DATA not in GROUP_PERMISSIONS['nusd']
+        assert not can_impersonate(caller, target)
 
 
 # ---------------------------------------------------------------------------

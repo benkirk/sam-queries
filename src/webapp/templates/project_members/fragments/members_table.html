@@ -70,7 +70,10 @@
                                 hx-vals='{"admin_username": ""}'
                                 hx-target="#htmx-members-{{ projcode }}"
                                 hx-swap="innerHTML"
-                                hx-confirm="Remove admin role from {{ member.display_name }}? They will remain a project member.">
+                                hx-confirm="Remove admin role from {{ member.display_name }}? They will remain a project member."
+                                data-confirm-title="Change admin role"
+                                data-confirm-variant="warning"
+                                data-confirm-label="Remove admin role">
                             <i class="fas fa-user-minus"></i>
                         </button>
                         {% endif %}
@@ -91,7 +94,10 @@
                                 hx-vals='{"admin_username": "{{ member.username }}"}'
                                 hx-target="#htmx-members-{{ projcode }}"
                                 hx-swap="innerHTML"
-                                hx-confirm="Make {{ member.display_name }} the project admin?">
+                                hx-confirm="Make {{ member.display_name }} the project admin?"
+                                data-confirm-title="Change admin role"
+                                data-confirm-variant="warning"
+                                data-confirm-label="Make admin">
                             <i class="fas fa-user-shield"></i>
                         </button>
                         {% endif %}

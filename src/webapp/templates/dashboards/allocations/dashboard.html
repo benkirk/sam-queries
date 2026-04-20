@@ -43,12 +43,10 @@
 <!-- Tab 1: Projects -->
 <div class="tab-pane fade show active" id="tab-alloc-projects" role="tabpanel" aria-labelledby="alloc-projects-tab">
 
-<!-- Facility Pie: single container above tabs, swaps when active tab changes -->
+<!-- Facility Pie: Allocated | Usage pill tabs above resource tabs, swaps when active tab changes -->
 {% if grouped_data %}
-{% if show_usage %}
-<!-- 2-tab interface: Allocated | Usage -->
 <div class="mb-3">
-    <ul class="nav nav-pills nav-fill mb-2 justify-content-center" id="pieChartTabs" role="tablist" style="max-width:320px; margin-left:auto; margin-right:auto;">
+    <ul class="nav nav-pills nav-fill mb-2 justify-content-center" id="pieChartTabs" role="tablist" style="max-width:420px; margin-left:auto; margin-right:auto;">
         <li class="nav-item" role="presentation">
             <button class="nav-link active py-1 px-3 small" id="pie-allocated-tab"
                     data-bs-toggle="pill" data-bs-target="#pie-allocated"
@@ -58,6 +56,11 @@
             <button class="nav-link py-1 px-3 small" id="pie-usage-tab"
                     data-bs-toggle="pill" data-bs-target="#pie-usage"
                     type="button" role="tab">Usage</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link py-1 px-3 small" id="pie-pace-tab"
+                    data-bs-toggle="pill" data-bs-target="#pie-pace"
+                    type="button" role="tab">Pace</button>
         </li>
     </ul>
     <div class="tab-content">
@@ -104,28 +107,26 @@
                 {% endfor %}
             </div>
         </div>
+        <div class="tab-pane fade" id="pie-pace" role="tabpanel">
+            <div id="facilityPaceContainer" class="chart-container pace-chart">
+                {% for resource_name, _ in grouped_data.items()|sort %}
+                {% set pace_chart = resource_pace_charts.get(resource_name) %}
+                {% if pace_chart %}
+                <div class="facility-pace-panel"
+                     data-resource="{{ resource_name|replace(' ', '_') }}"
+                     style="display:none;">
+                    <h6 class="text-center fw-bold mb-2">
+                        Allocation Pace
+                        <span class="text-muted fw-normal">— {{ resource_name }}</span>
+                    </h6>
+                    {{ pace_chart|safe }}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
     </div>
 </div>
-{% else %}
-<!-- Standard single pie chart (no usage toggle) -->
-<div id="facilityPieContainer" class="chart-container mb-3">
-    {% for resource_name, _ in grouped_data.items()|sort %}
-    {% set overview = resource_overviews[resource_name] %}
-    {% set is_storage = resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
-    {% if overview.table_data|length > 1 %}
-    <div class="facility-pie-panel"
-         data-resource="{{ resource_name|replace(' ', '_') }}"
-         style="display:none;">
-        <h6 class="text-center fw-bold mb-2">
-            {{ 'Data Volume by Facility' if is_storage else 'Annual Rate by Facility' }}
-            <span class="text-muted fw-normal">— {{ resource_name }}</span>
-        </h6>
-        {{ overview.chart|safe }}
-    </div>
-    {% endif %}
-    {% endfor %}
-</div>
-{% endif %}
 {% endif %}
 
 <!-- Filter Panel: collapsed-by-default summary bar; placed below the chart
@@ -149,8 +150,6 @@
             Resources: <strong class="text-dark">{{ _resource_summary }}</strong>
             <span class="mx-2">·</span>
             Active at: <strong class="text-dark">{{ active_at }}</strong>
-            <span class="mx-2">·</span>
-            Usage: <strong class="text-dark">{{ 'on' if show_usage else 'off' }}</strong>
         </span>
     </div>
     <div class="collapse" id="allocationsFilterPanel">
@@ -172,13 +171,6 @@
                         <label for="active_at" class="form-label small mb-1"><strong>Active at</strong></label>
                         <input type="date" class="form-control form-control-sm" id="active_at"
                                name="active_at" value="{{ active_at }}" style="width: 160px;">
-                    </div>
-
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="showUsage"
-                               name="show_usage" value="true"
-                               {% if show_usage %}checked{% endif %}>
-                        <label class="form-check-label small" for="showUsage">Show usage</label>
                     </div>
 
                     <button type="submit" class="btn btn-sm btn-primary" style="width: 160px;">
@@ -281,7 +273,7 @@
                     </tr>
                     <tr class="project-details-row" data-fac-id="{{ fac_id }}" id="{{ details_id }}">
                         <td colspan="7"
-                            hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}&show_usage={{ 'true' if show_usage else 'false' }}"
+                            hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}"
                             hx-trigger="load-details"
                             hx-swap="innerHTML">
                             <div class="p-3 text-center">
@@ -310,14 +302,14 @@
 
                     <!-- Type Pie Chart Row (if >1 type and chart available) -->
                     {% set type_chart = allocation_type_charts.get(resource_name, {}).get(facility_name) %}
-                    {% set usage_type_chart = allocation_type_usage_charts.get(resource_name, {}).get(facility_name) if show_usage else none %}
-                    {% if types|length > 1 and (type_chart or usage_type_chart) %}
+                    {% set usage_type_chart = allocation_type_usage_charts.get(resource_name, {}).get(facility_name) %}
+                    {% set pace_chart = facility_pace_charts.get(resource_name, {}).get(facility_name) %}
+                    {% if types|length > 1 and (type_chart or usage_type_chart or pace_chart) %}
                     <tr class="alloc-type-chart-row" data-fac-id="{{ fac_id }}">
                         <td colspan="7" class="p-0">
-                            {% if show_usage %}
                             <div class="p-2 pb-0">
                                 <ul class="nav nav-pills nav-fill mb-2 justify-content-center"
-                                    style="max-width:320px; margin-left:auto; margin-right:auto;">
+                                    style="max-width:420px; margin-left:auto; margin-right:auto;">
                                     <li class="nav-item">
                                         <button class="nav-link active py-1 px-3 small"
                                                 data-bs-toggle="pill"
@@ -329,6 +321,12 @@
                                                 data-bs-toggle="pill"
                                                 data-bs-target="#type-usage-{{ fac_id }}"
                                                 type="button">Usage</button>
+                                    </li>
+                                    <li class="nav-item">
+                                        <button class="nav-link py-1 px-3 small"
+                                                data-bs-toggle="pill"
+                                                data-bs-target="#type-pace-{{ fac_id }}"
+                                                type="button">Pace</button>
                                     </li>
                                 </ul>
                                 <div class="tab-content">
@@ -358,17 +356,21 @@
                                         <div class="text-center text-muted small py-3">No usage data yet</div>
                                         {% endif %}
                                     </div>
+                                    <div class="tab-pane fade" id="type-pace-{{ fac_id }}">
+                                        {% if pace_chart %}
+                                        <div class="chart-container pace-chart p-3">
+                                            <h6 class="text-center fw-bold mb-2">
+                                                Allocation Pace
+                                                <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
+                                            </h6>
+                                            {{ pace_chart|safe }}
+                                        </div>
+                                        {% else %}
+                                        <div class="text-center text-muted small py-3">No allocations in window</div>
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </div>
-                            {% else %}
-                            <div class="chart-container p-3">
-                                <h6 class="text-center fw-bold mb-2">
-                                    {{ 'Data Volume by Type' if is_storage else 'Allocation by Type' }}
-                                    <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
-                                </h6>
-                                {{ type_chart|safe }}
-                            </div>
-                            {% endif %}
                         </td>
                     </tr>
                     {% endif %}
@@ -656,6 +658,9 @@ document.body.addEventListener('refreshAdjustmentsTab', function() {
             p.style.display = p.dataset.resource === resourceId ? '' : 'none';
         });
         document.querySelectorAll('.facility-usage-pie-panel').forEach(function (p) {
+            p.style.display = p.dataset.resource === resourceId ? '' : 'none';
+        });
+        document.querySelectorAll('.facility-pace-panel').forEach(function (p) {
             p.style.display = p.dataset.resource === resourceId ? '' : 'none';
         });
     }

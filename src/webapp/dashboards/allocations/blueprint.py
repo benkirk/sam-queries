@@ -29,7 +29,11 @@ from sam.queries.lookups import find_project_by_code
 from sam.schemas.forms import CreateChargeAdjustmentForm
 from webapp.utils.rbac import require_permission, Permission
 from sam.resources.resources import Resource
-from ..charts import generate_facility_pie_chart_matplotlib, generate_allocation_type_pie_chart_matplotlib
+from ..charts import (
+    generate_facility_pie_chart_matplotlib,
+    generate_allocation_type_pie_chart_matplotlib,
+    generate_pace_chart_matplotlib,
+)
 
 bp = Blueprint('allocations_dashboard', __name__, url_prefix='/allocations')
 
@@ -257,9 +261,6 @@ def index():
     else:
         active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Parse show_usage toggle (default: off)
-    show_usage = request.args.get('show_usage', 'false').lower() == 'true'
-
     # Allow cache bypass for debugging / stale data
     force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
 
@@ -320,71 +321,88 @@ def index():
             else:
                 allocation_type_charts[resource_name][facility_name] = None
 
-    # When show_usage is enabled, build usage-based charts.
+    # Build usage-based charts.
     # Compute per-project usage ONCE; derive projcode="TOTAL" grouping Python-side
     # to avoid a second _fetch_all_allocations + full charge query pass.
+    per_project_usage = cached_allocation_usage(
+        session=db.session,
+        resource_name=selected_resources,
+        facility_name=None,
+        allocation_type=None,
+        projcode=None,      # Per-project rows; covers both usage views
+        active_only=True,
+        active_at=active_at,
+        force_refresh=force_refresh,
+        root_only=True,     # Exclude inheriting child allocations — root amount == total
+    )
+
+    # Derive TOTAL grouping (resource+facility+type, no projcode) Python-side
+    usage_type_data = _aggregate_usage_to_total(per_project_usage)
+
+    # Index by resource → facility for allocation-type chart generation
+    usage_by_resource_facility: Dict[str, Dict[str, List]] = {}
+    for row in usage_type_data:
+        usage_by_resource_facility\
+            .setdefault(row['resource'], {})\
+            .setdefault(row['facility'], [])\
+            .append(row)
+
     allocation_type_usage_charts = {}
+    for resource_name, facilities in grouped_data.items():
+        allocation_type_usage_charts[resource_name] = {}
+        for facility_name, types in facilities.items():
+            usage_rows = usage_by_resource_facility.get(resource_name, {}).get(facility_name, [])
+            # Reuse allocation type chart fn — build minimal dicts with total_used as value
+            # (must exclude non-hashable fields like charges_by_type)
+            chartable = [
+                {
+                    'allocation_type': row['allocation_type'],
+                    'total_amount': row.get('total_used', 0.0),
+                    'count': row.get('count', 0),
+                    'avg_amount': row.get('total_used', 0.0),
+                }
+                for row in usage_rows
+                if row.get('total_used', 0.0) > 0
+            ]
+            if len(chartable) > 1:
+                allocation_type_usage_charts[resource_name][facility_name] = \
+                    generate_allocation_type_pie_chart_matplotlib(chartable)
+            else:
+                allocation_type_usage_charts[resource_name][facility_name] = None
+
+    # Build usage-based facility pie charts — reuse per_project_usage (no second DB call)
+    all_usage_overviews = get_all_facility_usage_overviews(
+        db.session, list(grouped_data.keys()), active_at,
+        _usage=per_project_usage,
+    )
     resource_usage_overviews = {}
-    if show_usage:
-        per_project_usage = cached_allocation_usage(
-            session=db.session,
-            resource_name=selected_resources,
-            facility_name=None,
-            allocation_type=None,
-            projcode=None,      # Per-project rows; covers both usage views
-            active_only=True,
-            active_at=active_at,
-            force_refresh=force_refresh,
-            root_only=True,     # Exclude inheriting child allocations — root amount == total
+    for rn in grouped_data.keys():
+        usage_overview_data = all_usage_overviews.get(rn, [])
+        # Only pass facilities that have actual usage (pie requires positive values)
+        chartable = [d for d in usage_overview_data if d.get('total_used', 0.0) > 0]
+        resource_usage_overviews[rn] = {
+            'table_data': usage_overview_data,
+            'chart': generate_facility_pie_chart_matplotlib(chartable)
+                     if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
+        }
+
+    # Build pace charts — reuse per_project_usage (no extra DB calls).
+    # One chart per resource (top-level) and one per (resource, facility).
+    resource_pace_charts = {}
+    facility_pace_charts = {}
+    for rn, facilities in grouped_data.items():
+        rn_rows = [r for r in per_project_usage if r.get('resource') == rn]
+        resource_pace_charts[rn] = (
+            generate_pace_chart_matplotlib(rn_rows, active_at, resource_name=rn)
+            if rn_rows else None
         )
-
-        # Derive TOTAL grouping (resource+facility+type, no projcode) Python-side
-        usage_type_data = _aggregate_usage_to_total(per_project_usage)
-
-        # Index by resource → facility for allocation-type chart generation
-        usage_by_resource_facility: Dict[str, Dict[str, List]] = {}
-        for row in usage_type_data:
-            usage_by_resource_facility\
-                .setdefault(row['resource'], {})\
-                .setdefault(row['facility'], [])\
-                .append(row)
-
-        for resource_name, facilities in grouped_data.items():
-            allocation_type_usage_charts[resource_name] = {}
-            for facility_name, types in facilities.items():
-                usage_rows = usage_by_resource_facility.get(resource_name, {}).get(facility_name, [])
-                # Reuse allocation type chart fn — build minimal dicts with total_used as value
-                # (must exclude non-hashable fields like charges_by_type)
-                chartable = [
-                    {
-                        'allocation_type': row['allocation_type'],
-                        'total_amount': row.get('total_used', 0.0),
-                        'count': row.get('count', 0),
-                        'avg_amount': row.get('total_used', 0.0),
-                    }
-                    for row in usage_rows
-                    if row.get('total_used', 0.0) > 0
-                ]
-                if len(chartable) > 1:
-                    allocation_type_usage_charts[resource_name][facility_name] = \
-                        generate_allocation_type_pie_chart_matplotlib(chartable)
-                else:
-                    allocation_type_usage_charts[resource_name][facility_name] = None
-
-        # Build usage-based facility pie charts — reuse per_project_usage (no second DB call)
-        all_usage_overviews = get_all_facility_usage_overviews(
-            db.session, list(grouped_data.keys()), active_at,
-            _usage=per_project_usage,
-        )
-        for rn in grouped_data.keys():
-            usage_overview_data = all_usage_overviews.get(rn, [])
-            # Only pass facilities that have actual usage (pie requires positive values)
-            chartable = [d for d in usage_overview_data if d.get('total_used', 0.0) > 0]
-            resource_usage_overviews[rn] = {
-                'table_data': usage_overview_data,
-                'chart': generate_facility_pie_chart_matplotlib(chartable)
-                         if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
-            }
+        facility_pace_charts[rn] = {}
+        for fn in facilities.keys():
+            fn_rows = [r for r in rn_rows if r.get('facility') == fn]
+            facility_pace_charts[rn][fn] = (
+                generate_pace_chart_matplotlib(fn_rows, active_at, resource_name=rn)
+                if fn_rows else None
+            )
 
     # Defaults for the shared audit filter (Transactions + Adjustments tabs).
     # Default window is last 30 days; each tab's filter form is pre-filled with these.
@@ -396,6 +414,8 @@ def index():
         grouped_data=grouped_data,
         resource_overviews=resource_overviews,
         resource_usage_overviews=resource_usage_overviews,
+        resource_pace_charts=resource_pace_charts,
+        facility_pace_charts=facility_pace_charts,
         allocation_type_charts=allocation_type_charts,
         allocation_type_usage_charts=allocation_type_usage_charts,
         type_annualized_rates=type_annualized_rates,
@@ -403,7 +423,6 @@ def index():
         all_resources=all_resources,
         selected_resources=selected_resources,
         resource_types=resource_types,
-        show_usage=show_usage,
         audit_start_date=audit_start_date.strftime('%Y-%m-%d'),
         audit_end_date=audit_end_date.strftime('%Y-%m-%d'),
     )
@@ -430,7 +449,6 @@ def projects_fragment():
     facility = request.args.get('facility')
     allocation_type = request.args.get('allocation_type')
     active_at_str = request.args.get('active_at')
-    show_usage = request.args.get('show_usage', 'false').lower() == 'true'
     force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
 
     # Validate required params
@@ -446,28 +464,17 @@ def projects_fragment():
     else:
         active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Fetch projects — with or without usage data
-    if show_usage:
-        projects = cached_allocation_usage(
-            session=db.session,
-            resource_name=resource,
-            facility_name=facility,
-            allocation_type=allocation_type,
-            projcode=None,
-            active_only=True,
-            active_at=active_at,
-            force_refresh=force_refresh,
-        )
-    else:
-        projects = get_allocation_summary(
-            session=db.session,
-            resource_name=resource,
-            facility_name=facility,
-            allocation_type=allocation_type,
-            projcode=None,  # Group by individual projects
-            active_only=True,
-            active_at=active_at
-        )
+    # Fetch projects with usage data
+    projects = cached_allocation_usage(
+        session=db.session,
+        resource_name=resource,
+        facility_name=facility,
+        allocation_type=allocation_type,
+        projcode=None,
+        active_only=True,
+        active_at=active_at,
+        force_refresh=force_refresh,
+    )
 
     if not projects:
         return '<p class="text-muted mb-0">No active projects found</p>'
@@ -478,11 +485,8 @@ def projects_fragment():
         project = find_project_by_code(db.session, project_data['projcode'])
         project_data['title'] = project.title if project else None
 
-    # Sort by amount descending (usage mode: sort by used desc, then amount)
-    if show_usage:
-        projects.sort(key=lambda p: p.get('total_used', 0.0), reverse=True)
-    else:
-        projects.sort(key=lambda p: p['total_amount'], reverse=True)
+    # Sort by used descending
+    projects.sort(key=lambda p: p.get('total_used', 0.0), reverse=True)
 
     # Get resource type for conditional display
     resource_types = get_resource_types(db.session)
@@ -497,7 +501,6 @@ def projects_fragment():
         active_at=active_at.strftime('%Y-%m-%d'),
         active_at_dt=active_at,
         resource_type=resource_type,
-        show_usage=show_usage
     )
 
 

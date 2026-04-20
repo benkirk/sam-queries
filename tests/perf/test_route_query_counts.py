@@ -9,8 +9,7 @@ are invisible to the function-level tests in ``test_query_counts.py``.
 Each test mirrors one of the profiling scripts in ``utils/profiling/``:
 
     test_user_dashboard_route       ← profile_user_dashboard.py  (Issues 5, 6)
-    test_allocations_index_route    ← profile_allocations.py     (show_usage=False)
-    test_allocations_usage_route    ← profile_allocations.py     (show_usage=True — Issue 1)
+    test_allocations_index_route    ← profile_allocations.py     (always-on usage, Issue 1)
     test_admin_orgs_card_route      ← profile_admin_orgs.py      (Issue 7)
     test_fstree_api_route           ← production 5min cache       (expensive API)
 
@@ -58,10 +57,13 @@ def test_user_dashboard_route(auth_client, route_count_queries):
 # ---------------------------------------------------------------------------
 
 def test_allocations_index_route(auth_client, route_count_queries):
-    """Full-stack query count for allocations dashboard (no usage).
+    """Full-stack query count for the allocations dashboard.
 
-    Tests the summary + facility overview pipeline from
-    profile_allocations.py scenario 1.
+    Also the critical regression test for Issue 1 — the scenario that
+    produced 52,923 queries before the bulk-fetch fix. Exercises
+    ``get_allocation_summary_with_usage()`` with ALL active resources,
+    ``_aggregate_usage_to_total()``, and chart generation through the
+    full route.
     """
     baseline = get_baseline("allocations_index_route")
 
@@ -73,34 +75,6 @@ def test_allocations_index_route(auth_client, route_count_queries):
     )
     assert stats.count <= baseline, (
         f"Allocations index route query regression: "
-        f"{stats.count} queries > {baseline} baseline. "
-        f"{stats.summary()}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# 3. Allocations with usage — GET /allocations/?show_usage=true
-# ---------------------------------------------------------------------------
-
-def test_allocations_usage_route(auth_client, route_count_queries):
-    """Full-stack query count for allocations dashboard WITH usage.
-
-    This is the critical regression test for Issue 1 — the scenario that
-    produced 52,923 queries before the bulk-fetch fix.  Exercises
-    ``get_allocation_summary_with_usage()`` with ALL active resources,
-    ``_aggregate_usage_to_total()``, and chart generation through the
-    full route.
-    """
-    baseline = get_baseline("allocations_usage_route")
-
-    with route_count_queries() as stats:
-        response = auth_client.get('/allocations/?show_usage=true')
-
-    assert response.status_code == 200, (
-        f"GET /allocations/?show_usage=true returned {response.status_code}"
-    )
-    assert stats.count <= baseline, (
-        f"Allocations usage route query regression: "
         f"{stats.count} queries > {baseline} baseline. "
         f"{stats.summary()}"
     )

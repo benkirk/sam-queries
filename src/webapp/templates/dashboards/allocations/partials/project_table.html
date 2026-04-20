@@ -13,10 +13,8 @@
                     Annual<br>Rate
                 {% endif %}
             </th>
-            {% if show_usage %}
             <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-usage">Usage %</th>
             <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-alloc-remaining">Remaining</th>
-            {% endif %}
             <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-start">Start</th>
             <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-end">End</th>
             <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-duration">Dur<br><small class="fw-normal">(days)</small></th>
@@ -78,8 +76,7 @@
             {% else %}
                 {% set elapsed_pct = 0 %}{% set bar_state = 'no-duration' %}
             {% endif %}
-            {% if show_usage %}
-            {# ── Combined usage + date cell (colspan=5) ────────────────────────── #}
+            {# ── Combined usage + date cell ────────────────────────────────────── #}
             <td colspan="6" style="min-width:280px; padding:4px 8px;"
                 data-sort-usage="{{ pct }}"
                 data-sort-alloc-remaining="{{ (project['total_amount'] - project['total_used']) if project.get('total_used') is not none else 0 }}"
@@ -122,33 +119,6 @@
                 <span class="text-muted small">No usage data</span>
                 {% endif %}
             </td>
-            {% else %}
-            {# ── Date-only cell (colspan=4) ────────────────────────────────────── #}
-            <td colspan="4" style="min-width:260px; padding:4px 8px;"
-                data-sort-start="{{ sort_start }}"
-                data-sort-end="{{ sort_end }}"
-                data-sort-duration="{{ sort_duration }}"
-                data-sort-remaining="{{ sort_remaining }}">
-                {% if bar_state == 'no-dates' %}
-                    <span class="text-muted small">N/A</span>
-                {% else %}
-                    <div class="progress progress-small mb-1">
-                        <div class="progress-bar bg-secondary{% if bar_state in ['expired', 'open-ended'] %} opacity-50{% endif %}"
-                             role="progressbar" style="width:{{ elapsed_pct }}%;"></div>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <small class="text-muted">{{ sd | fmt_date if sd else '?' }}</small>
-                        <small>
-                            {% if bar_state == 'expired' %}{{ status_badge('expired', small=True) }}
-                            {% elif bar_state == 'open-ended' %}{{ status_badge('open-ended', small=True) }}
-                            {% elif bar_state == 'active' %}<span class="text-muted">{{ sort_remaining }}d left</span>
-                            {% else %}<span class="text-muted">—</span>{% endif %}
-                        </small>
-                        <small class="text-muted">{% if ed %}{{ ed | fmt_date }}{% elif open_ended %}∞{% else %}?{% endif %}</small>
-                    </div>
-                {% endif %}
-            </td>
-            {% endif %}
         </tr>
         {% endfor %}
     </tbody>

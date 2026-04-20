@@ -8,7 +8,9 @@
                 hx-include="#expirations-filters-form"
                 hx-target="#expired-container"
                 hx-swap="innerHTML"
-                hx-confirm="Are you sure you want to deactivate {{ projects_data|length }} expired project{{ 's' if projects_data|length != 1 else '' }}?">
+                hx-confirm="Deactivate {{ projects_data|length }} expired project{{ 's' if projects_data|length != 1 else '' }}? This cannot be undone from this view."
+                data-confirm-title="Deactivate expired projects"
+                data-confirm-label="Deactivate {{ projects_data|length }}">
             <i class="fas fa-ban"></i> Deactivate Expired
         </button>
     </div>
