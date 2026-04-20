@@ -33,7 +33,7 @@ def _get_sam_user():
     return db.session.query(User).filter_by(user_id=current_user.user_id).first()
 
 
-def _user_can_access_project(user, project) -> bool:
+def _user_can_access_project(user, project, *, include_ancestors: bool = False) -> bool:
     """
     Check if a SAM user can access project data.
 
@@ -42,9 +42,18 @@ def _user_can_access_project(user, project) -> bool:
     - The project lead
     - A project admin
 
+    With ``include_ancestors=True``, also grant access when the user
+    is the lead or admin of any ancestor in the project tree. This
+    models tree-governance: a user who leads a parent can view (or
+    act on, depending on the caller) projects within the subtree they
+    govern. Plain ``AccountUser`` membership is intentionally NOT
+    propagated up the tree — being a member of a parent does not
+    imply visibility into child projects.
+
     Args:
         user: SAM User object
         project: Project object to check access for
+        include_ancestors: If True, lead/admin of any ancestor counts.
 
     Returns:
         bool: True if user can access, False otherwise
@@ -52,12 +61,23 @@ def _user_can_access_project(user, project) -> bool:
     if not user:
         return False
 
-    # Build set of all user's project IDs
-    user_projects = {p.project_id for p in user.active_projects()}
-    user_projects.update({p.project_id for p in user.led_projects})
-    user_projects.update({p.project_id for p in user.admin_projects})
+    # Direct affiliation on THIS project.
+    direct_projects = {p.project_id for p in user.active_projects()}
+    direct_projects.update({p.project_id for p in user.led_projects})
+    direct_projects.update({p.project_id for p in user.admin_projects})
+    if project.project_id in direct_projects:
+        return True
 
-    return project.project_id in user_projects
+    if include_ancestors:
+        led_or_admin = {p.project_id for p in user.led_projects}
+        led_or_admin.update({p.project_id for p in user.admin_projects})
+        current = project.parent
+        while current is not None:
+            if current.project_id in led_or_admin:
+                return True
+            current = current.parent
+
+    return False
 
 
 def require_permission_decorator(permission: Permission) -> Callable:
@@ -84,33 +104,44 @@ def require_permission_decorator(permission: Permission) -> Callable:
     return decorator
 
 
-def require_project_access(f: Callable) -> Callable:
+def require_project_access(f: Callable = None, *, include_ancestors: bool = False):
     """
     Decorator to require access to project specified by projcode URL parameter.
 
     The decorated function receives the project object instead of projcode.
-    Access is granted if user has VIEW_PROJECTS permission OR is a project member.
+    Access is granted if user has VIEW_PROJECTS permission OR is a project
+    member. With ``include_ancestors=True``, also admits the lead/admin of
+    any ancestor in the project tree (tree-governance grant).
 
-    Usage:
+    Supports both bare and factory usage:
+
         @bp.route('/<projcode>/data')
         @login_required
-        @require_project_access
-        def get_project_data(project):  # Receives project object
-            return jsonify({'projcode': project.projcode})
+        @require_project_access                 # bare — no ancestor walk
+        def get_project_data(project):
+            ...
+
+        @bp.route('/<projcode>/modal')
+        @login_required
+        @require_project_access(include_ancestors=True)
+        def project_modal(project):
+            ...
     """
+    # Factory-form: @require_project_access(include_ancestors=True)
+    if f is None:
+        return lambda fn: require_project_access(fn, include_ancestors=include_ancestors)
+
     @wraps(f)
     def decorated_function(projcode: str, *args, **kwargs):
-        # Look up project
         project, error = get_project_or_404(db.session, projcode)
         if error:
             return error
 
-        # Check access: admin permission OR user is project member
         if has_permission(current_user, Permission.VIEW_PROJECTS):
             return f(project, *args, **kwargs)
 
         sam_user = _get_sam_user()
-        if _user_can_access_project(sam_user, project):
+        if _user_can_access_project(sam_user, project, include_ancestors=include_ancestors):
             return f(project, *args, **kwargs)
 
         abort(403)
@@ -118,12 +149,16 @@ def require_project_access(f: Callable) -> Callable:
     return decorated_function
 
 
-def require_project_member_access(permission: Permission) -> Callable:
+def require_project_member_access(
+    permission: Permission, *, include_ancestors: bool = False
+) -> Callable:
     """
     Decorator factory for project endpoints requiring specific permission OR membership.
 
     Args:
-        permission: Permission that grants access without membership check
+        permission: Permission that grants access without membership check.
+        include_ancestors: If True, also admits the lead/admin of any
+            ancestor in the project tree (tree-governance grant).
 
     Usage:
         @bp.route('/<projcode>/members')
@@ -145,7 +180,7 @@ def require_project_member_access(permission: Permission) -> Callable:
                 return f(project, *args, **kwargs)
 
             sam_user = _get_sam_user()
-            if _user_can_access_project(sam_user, project):
+            if _user_can_access_project(sam_user, project, include_ancestors=include_ancestors):
                 return f(project, *args, **kwargs)
 
             abort(403)

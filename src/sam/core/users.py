@@ -567,6 +567,29 @@ class User(Base, TimestampMixin, SessionMixin):
         session.flush()
         return self
 
+    def set_primary_gid(self, unix_gid: int) -> 'User':
+        """Set this user's primary GID to ``unix_gid``.
+
+        Validates via ``get_user_group_access(..., include_projects=True)``
+        — the same union legacy SAM's ``UserGroupExistsValidator`` used
+        (project-derived + adhoc groups, both gated by active allocations
+        on configurable resources). Raises ``ValueError`` if ``unix_gid``
+        is not in that set. Returns self.
+        """
+        from sam.queries.lookups import get_user_group_access
+
+        memberships = get_user_group_access(
+            self.session, username=self.username, include_projects=True,
+        ).get(self.username, [])
+        allowed = {m['unix_gid'] for m in memberships if m['unix_gid'] is not None}
+        if unix_gid not in allowed:
+            raise ValueError(
+                f"GID {unix_gid} is not in {self.username}'s available groups."
+            )
+        self.primary_gid = unix_gid
+        self.session.flush()
+        return self
+
     def __str__(self):
         return f"{self.username} ({self.display_name})"
 

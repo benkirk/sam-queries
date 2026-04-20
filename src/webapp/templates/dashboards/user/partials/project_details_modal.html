@@ -28,6 +28,30 @@
 
         {# Render members section (collapsed by default, lazy loaded) #}
         {{ render_project_members(project, unique_id='modal') }}
+
+        {# Project Hierarchy — collapsible, lazy-loaded on first expand.
+           Rendered only when the project is actually part of a tree. #}
+        {% if project_data.has_children or project.parent_id %}
+        <div class="mt-3">
+            <h6 class="mb-2">
+                <i class="fas fa-sitemap"></i> Project Hierarchy
+                <button class="btn btn-sm btn-link" data-bs-toggle="collapse"
+                        data-bs-target="#tree-modal" aria-expanded="false">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </h6>
+            <div id="tree-modal" class="collapse">
+                <div class="tree-container p-3 bg-light rounded"
+                     hx-get="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode, active_only=1) }}"
+                     hx-trigger="show.bs.collapse from:#tree-modal once"
+                     hx-swap="innerHTML">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="sr-only">Loading tree...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     {% else %}
         <p class="alert alert-warning">No project data available</p>
     {% endif %}

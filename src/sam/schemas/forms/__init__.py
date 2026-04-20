@@ -176,6 +176,7 @@ from .user import (
     RenewAllocationsForm,
     ExtendAllocationsForm,
     SetShellForm,
+    SetPrimaryGidForm,
 )
 from .adjustments import (
     CreateChargeAdjustmentForm,
@@ -229,6 +230,7 @@ __all__ = [
     'RenewAllocationsForm',
     'ExtendAllocationsForm',
     'SetShellForm',
+    'SetPrimaryGidForm',
     # Adjustments
     'CreateChargeAdjustmentForm',
 ]
