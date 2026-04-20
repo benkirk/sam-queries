@@ -67,6 +67,7 @@
     </div>
   </div>
 
+  {% if can_edit_governance %}
   <!-- ── Facility / Panel / Allocation Type ──────────────────────── -->
   <div class="row g-2 mb-3">
     <div class="col-md-4">
@@ -136,6 +137,17 @@
       </select>
     </div>
   </div>
+  {% else %}
+  <!-- ── Governance display (non-admin steward) ────────────────── -->
+  <div class="row g-2 mb-3">
+    <div class="col-md-4">
+      <label class="form-label">Allocation Type</label>
+      <div class="form-control-plaintext text-muted">
+        {{ project.allocation_type.allocation_type if project.allocation_type else '—' }}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   {{ text_field('title', 'Title',
                 required=True, maxlength=255, default=project.title,
@@ -149,6 +161,7 @@
   <div class="row">
     <!-- ── Project Lead ──────────────────────────────────────────── -->
     <div class="col-md-6">
+      {% if can_edit_governance %}
       {{ fk_search_field('project_lead_user_id', 'Project Lead',
                          search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
                          required=True,
@@ -159,10 +172,19 @@
                          selected_id=project.project_lead_user_id,
                          selected_label=project.lead.display_name if project.lead else '',
                          id_prefix='editProjectLead') }}
+      {% else %}
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Project Lead</label>
+        <div class="form-control-plaintext">
+          {{ project.lead.display_name if project.lead else '—' }}
+        </div>
+      </div>
+      {% endif %}
     </div>
 
     <!-- ── Project Admin ─────────────────────────────────────────── -->
     <div class="col-md-6">
+      {% if can_edit_governance %}
       {{ fk_search_field('project_admin_user_id', 'Project Admin',
                          search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
                          placeholder='Search to change or set admin…',
@@ -171,6 +193,15 @@
                          selected_id=project.project_admin_user_id or '',
                          selected_label=project.admin.display_name if project.admin else '',
                          id_prefix='editProjectAdmin') }}
+      {% else %}
+      <div class="mb-3">
+        <label class="form-label">Project Admin</label>
+        <div class="form-control-plaintext">
+          {{ project.admin.display_name if project.admin else '—' }}
+          <small class="text-muted ms-1">(change via Members tab)</small>
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -203,15 +234,22 @@
         <label for="editProjectExtAlias" class="form-label">
           Ext. Alias <span class="text-muted">(optional)</span>
         </label>
+        {% if can_edit_governance %}
         <input type="text" class="form-control form-control-sm" id="editProjectExtAlias"
                name="ext_alias"
                value="{{ f.get('ext_alias', project.ext_alias or '') if f else (project.ext_alias or '') }}">
+        {% else %}
+        <div class="form-control-plaintext text-muted">
+          {{ project.ext_alias or '—' }}
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
 
   <!-- ── Flags ─────────────────────────────────────────────────────── -->
   <div class="row mb-3">
+    {% if can_edit_governance %}
     <div class="col-auto">
       <div class="form-check form-switch">
         <input class="form-check-input" type="checkbox" id="editProjectActive"
@@ -233,6 +271,20 @@
         </label>
       </div>
     </div>
+    {% else %}
+    <div class="col-auto">
+      <label class="form-label d-block mb-0">Active</label>
+      <span class="badge {{ 'bg-success' if project.active else 'bg-secondary' }}">
+        {{ 'Yes' if project.active else 'No' }}
+      </span>
+    </div>
+    <div class="col-auto">
+      <label class="form-label d-block mb-0">Charging Exempt</label>
+      <span class="badge {{ 'bg-warning text-dark' if project.charging_exempt else 'bg-light text-dark border' }}">
+        {{ 'Yes' if project.charging_exempt else 'No' }}
+      </span>
+    </div>
+    {% endif %}
   </div>
 
   <!-- ── Submit ────────────────────────────────────────────────────── -->

@@ -6,7 +6,7 @@ Covers: Add Member, Edit Allocation.
 
 import marshmallow.fields as f
 import marshmallow.validate as v
-from marshmallow import post_load
+from marshmallow import post_load, validates_schema, ValidationError
 
 from . import HtmxFormSchema
 
@@ -104,6 +104,27 @@ class ExtendAllocationsForm(HtmxFormSchema):
     def coerce_and_validate_dates(self, data, **kwargs):
         data['new_end_date'] = self.normalize_end_date(data['new_end_date'])
         return data
+
+
+class ExchangeAllocationForm(HtmxFormSchema):
+    """Move ``amount`` from one dedicated allocation to another.
+
+    The route enforces (all require DB access, so they stay inline):
+    - both allocation IDs exist, are not deleted, and are not inheriting;
+    - both allocations are on the same resource;
+    - both owning projects lie within the edit-page project's subtree;
+    - amount does not push FROM below its currently-used balance.
+    """
+    from_allocation_id = f.Int(required=True)
+    to_allocation_id = f.Int(required=True)
+    amount = f.Float(required=True, validate=v.Range(min=0, min_inclusive=False))
+
+    @validates_schema
+    def _distinct(self, data, **kwargs):
+        if data.get('from_allocation_id') == data.get('to_allocation_id'):
+            raise ValidationError(
+                {'to_allocation_id': ['FROM and TO allocations must differ.']}
+            )
 
 
 class AddAllocationForm(HtmxFormSchema):

@@ -10,7 +10,7 @@ Domain-specific routes are split into sub-modules imported at the bottom:
   orgs_routes.py       — Organizations, Institutions, AOIs, Contracts, NSF Programs
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response, abort
 from webapp.utils.htmx import htmx_success, htmx_success_message
 from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
@@ -551,19 +551,24 @@ def expirations_export():
 
 @bp.route('/htmx/search/users')
 @login_required
-@require_permission(Permission.VIEW_USERS)
 def htmx_search_users():
     """Unified user search endpoint.
 
-    The ``context`` query parameter selects the response template:
-      fk          → FK-picker badge list (create_resource, create_contract, create_project)
-      impersonate → admin user list with active_only filter (impersonation panel)
-      member      → project member add list, excludes existing members (projcode required)
+    The ``context`` query parameter selects the response template AND
+    the permission gate:
+      fk          → FK-picker badge list (create_resource, create_contract,
+                    create_project); requires system VIEW_USERS.
+      impersonate → admin user list with active_only filter (impersonation
+                    panel); requires system IMPERSONATE_USERS.
+      member      → project member add list; requires can_manage_project_members
+                    on the target project (projcode required), so project
+                    leads/admins can search when building the add-member form.
 
     All other contexts fall back to ``fk``.
     """
     from sam.queries.users import search_users_by_pattern, get_project_member_user_ids
     from sam.projects.projects import Project
+    from webapp.utils.project_permissions import can_manage_project_members
 
     q = request.args.get('q', '').strip()
     context = request.args.get('context', 'fk')
@@ -583,10 +588,20 @@ def htmx_search_users():
 
     if context == 'member':
         projcode = request.args.get('projcode', '')
-        if projcode:
-            project = db.session.query(Project).filter_by(projcode=projcode).first()
-            if project:
-                exclude_ids = get_project_member_user_ids(db.session, project.project_id)
+        if not projcode:
+            abort(400)
+        project = db.session.query(Project).filter_by(projcode=projcode).first()
+        if not project:
+            abort(404)
+        if not can_manage_project_members(current_user, project):
+            abort(403)
+        exclude_ids = get_project_member_user_ids(db.session, project.project_id)
+    elif context == 'impersonate':
+        if not has_permission(current_user, Permission.IMPERSONATE_USERS):
+            abort(403)
+    else:
+        if not has_permission(current_user, Permission.VIEW_USERS):
+            abort(403)
 
     users = search_users_by_pattern(
         db.session, q, limit=20 if context == 'impersonate' else 15,

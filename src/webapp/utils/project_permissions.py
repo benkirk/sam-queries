@@ -71,6 +71,31 @@ def _is_project_steward(
     return False
 
 
+def can_access_edit_project_page(user, project) -> bool:
+    """
+    Enter the admin Edit Project page (/admin/project/<projcode>/edit).
+
+    Granted to: system EDIT_PROJECTS holders, project lead, project admin.
+    The page itself opens all three tabs (Details, Allocations, Members);
+    per-field / per-action gates on each tab constrain what a non-admin
+    steward can actually change.
+    """
+    return _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+
+
+def can_edit_project_governance(user, project) -> bool:
+    """
+    Edit the governance fields on the Details tab — facility, panel,
+    allocation type, lead, admin, active, charging_exempt, ext_alias.
+
+    These fields shape the project's financial / organizational
+    identity. System EDIT_PROJECTS holders only — no steward override.
+    Project leads can still reassign the admin role via the Members
+    tab's dedicated change-admin flow (``can_change_admin``).
+    """
+    return has_permission(user, Permission.EDIT_PROJECTS)
+
+
 def can_manage_project_members(user, project) -> bool:
     """
     Add/remove members from a project.

@@ -1,0 +1,195 @@
+{#
+  Admin: Edit Project — Exchange Allocation modal form.
+  Loaded into #exchangeAllocationFormContainer when the Exchange button is
+  clicked on a resource row in the allocation tree.
+
+  An "exchange" moves allocation amount from one dedicated allocation to
+  another on the same resource, within the current project's subtree. The
+  overall combined amount is preserved; dates and descriptions are never
+  changed.
+
+  Context variables:
+    project     — the edit-page Project ORM object (form action scope)
+    resource    — the Resource ORM object being exchanged on
+    candidates  — list of {allocation_id, amount, used, projcode,
+                  project_id, resource_name}; already filtered to dedicated,
+                  non-inheriting, non-deleted allocations within the subtree
+    errors      — list of validation errors (on re-render)
+    form        — request.form on validation re-render
+#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_exchange_allocation', projcode=project.projcode),
+    '#exchangeAllocationFormContainer',
+    'Exchange',
+    submit_icon='exchange-alt',
+    submit_class='btn-info',
+    errors=errors
+) %}
+
+  <input type="hidden" name="resource_id" value="{{ resource.resource_id }}">
+  <input type="hidden" name="active_at" value="{{ active_at }}">
+
+  <div class="alert alert-info py-2 mb-3 small">
+    <i class="fas fa-exchange-alt me-1"></i>
+    Moves amount between dedicated allocations on
+    <strong>{{ resource.resource_name }}</strong> within
+    <code>{{ project.projcode }}</code>'s subtree. Dates are not changed.
+    Inherited descendants of either side cascade automatically.
+  </div>
+
+  {# FROM project #}
+  <div class="mb-3">
+    <label for="exchangeFromProject" class="form-label fw-semibold">
+      From <span class="text-danger">*</span>
+    </label>
+    <select class="form-select" id="exchangeFromProject"
+            name="from_allocation_id" required>
+      <option value="">— Select source project —</option>
+      {% for c in candidates %}
+      <option value="{{ c.allocation_id }}"
+              data-amount="{{ c.amount }}"
+              data-used="{{ c.used }}"
+              data-projcode="{{ c.projcode }}"
+              {% if form and form.get('from_allocation_id') == c.allocation_id|string %}selected{% endif %}>
+        {{ c.projcode }} — {{ c.amount | fmt_number }}{% if c.title %} — {{ c.title | truncate(50, True, '…') }}{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    <div class="form-text">
+      <span id="exchangeFromPreview" class="text-muted"></span>
+    </div>
+  </div>
+
+  {# TO project #}
+  <div class="mb-3">
+    <label for="exchangeToProject" class="form-label fw-semibold">
+      To <span class="text-danger">*</span>
+    </label>
+    <select class="form-select" id="exchangeToProject"
+            name="to_allocation_id" required>
+      <option value="">— Select destination project —</option>
+      {% for c in candidates %}
+      <option value="{{ c.allocation_id }}"
+              data-amount="{{ c.amount }}"
+              data-projcode="{{ c.projcode }}"
+              {% if form and form.get('to_allocation_id') == c.allocation_id|string %}selected{% endif %}>
+        {{ c.projcode }} — {{ c.amount | fmt_number }}{% if c.title %} — {{ c.title | truncate(50, True, '…') }}{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    <div class="form-text">
+      <span id="exchangeToPreview" class="text-muted"></span>
+    </div>
+  </div>
+
+  {# Amount to transfer #}
+  <div class="mb-3">
+    <label for="exchangeAmount" class="form-label fw-semibold">
+      Amount to transfer <span class="text-danger">*</span>
+    </label>
+    <input type="number" class="form-control" id="exchangeAmount"
+           name="amount" min="0.01" step="any" required
+           data-number-preview
+           value="{{ form.get('amount', '') if form else '' }}"
+           placeholder="e.g. 100000">
+    <div class="form-text">
+      <span class="number-preview text-primary fw-semibold"></span>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.getElementById('exchangeAllocationFormContainer');
+      if (!root) return;
+      var fromSel = root.querySelector('#exchangeFromProject');
+      var toSel   = root.querySelector('#exchangeToProject');
+      var amtInp  = root.querySelector('#exchangeAmount');
+      var fromP   = root.querySelector('#exchangeFromPreview');
+      var toP     = root.querySelector('#exchangeToPreview');
+      if (!fromSel || !toSel || !amtInp || !fromP || !toP) return;
+
+      function fmt(n) {
+        if (!isFinite(n)) return '';
+        return n.toLocaleString('en-US');
+      }
+
+      function pickedData(sel) {
+        var opt = sel.options[sel.selectedIndex];
+        if (!opt || !opt.value) return null;
+        return {
+          amount: parseFloat(opt.dataset.amount) || 0,
+          used: parseFloat(opt.dataset.used) || 0,
+          projcode: opt.dataset.projcode || ''
+        };
+      }
+
+      // Disable the currently-picked value of ``sourceSel`` in ``targetSel``
+      // so the user can't pick the same project on both sides. If the
+      // target already has that value selected, clear it.
+      function syncDisabled(sourceSel, targetSel) {
+        var pick = sourceSel.value;
+        for (var i = 0; i < targetSel.options.length; i++) {
+          var o = targetSel.options[i];
+          if (!o.value) continue; // skip placeholder
+          o.disabled = (o.value === pick);
+        }
+        if (targetSel.value && targetSel.value === pick) {
+          targetSel.value = '';
+        }
+      }
+
+      function render() {
+        var from = pickedData(fromSel);
+        var to   = pickedData(toSel);
+        var amt  = parseFloat(amtInp.value) || 0;
+
+        if (from) {
+          var newFrom = from.amount - amt;
+          var remaining = from.amount - from.used;
+          var flag = '';
+          if (amt > 0 && amt > remaining) {
+            flag = ' <span class="text-danger fw-semibold">⚠ below used (' + fmt(from.used) + ')</span>';
+          }
+          fromP.innerHTML =
+            '<strong>' + from.projcode + '</strong>: ' +
+            fmt(from.amount) + ' − ' + fmt(amt) + ' = <strong>' + fmt(newFrom) + '</strong>' +
+            ' <span class="text-muted">(used: ' + fmt(from.used) + ')</span>' + flag;
+        } else {
+          fromP.textContent = '';
+        }
+
+        if (to) {
+          var newTo = to.amount + amt;
+          toP.innerHTML =
+            '<strong>' + to.projcode + '</strong>: ' +
+            fmt(to.amount) + ' + ' + fmt(amt) + ' = <strong>' + fmt(newTo) + '</strong>';
+        } else {
+          toP.textContent = '';
+        }
+
+        var sameSelected = from && to && fromSel.value === toSel.value;
+        if (sameSelected) {
+          toP.innerHTML = '<span class="text-danger">FROM and TO must differ.</span>';
+        }
+      }
+
+      fromSel.addEventListener('change', function () {
+        syncDisabled(fromSel, toSel);
+        render();
+      });
+      toSel.addEventListener('change', function () {
+        syncDisabled(toSel, fromSel);
+        render();
+      });
+      amtInp.addEventListener('input', render);
+      // Prime: if the form re-rendered after a validation error with a
+      // FROM already picked, apply the disabled state up-front.
+      syncDisabled(fromSel, toSel);
+      syncDisabled(toSel, fromSel);
+      render();
+    })();
+  </script>
+
+{% endcall %}

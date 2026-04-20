@@ -10,8 +10,9 @@
         {# Check if user can edit allocations #}
         {% set user_can_edit_allocations = has_permission(Permission.EDIT_ALLOCATIONS) if has_permission is defined and Permission is defined else false %}
 
-        {# Edit Project link — visible to EDIT_PROJECTS permission holders #}
-        {% if has_permission(Permission.EDIT_PROJECTS) %}
+        {# Edit Project link — visible to EDIT_PROJECTS permission holders
+           AND to project leads/admins (matches can_access_edit_project_page). #}
+        {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
         <div class="d-flex justify-content-end mb-2">
             <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
                class="btn btn-sm btn-warning">
