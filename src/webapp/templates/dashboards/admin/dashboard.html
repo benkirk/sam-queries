@@ -513,10 +513,17 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
 document.addEventListener('click', function(e) {
     var btn = e.target.closest('.impersonate-user-btn');
     if (btn && btn.dataset.username) {
-        if (confirm('Impersonate user ' + btn.dataset.username + '?')) {
-            document.getElementById('selectedUsernameImpersonate').value = btn.dataset.username;
-            document.getElementById('impersonateUserForm').submit();
-        }
+        var username = btn.dataset.username;
+        samConfirm({
+            title: 'Impersonate user',
+            message: 'Impersonate user ' + username + '?',
+            variant: 'warning',
+            label: 'Impersonate',
+            onConfirm: function() {
+                document.getElementById('selectedUsernameImpersonate').value = username;
+                document.getElementById('impersonateUserForm').submit();
+            }
+        });
     }
 
     var link = e.target.closest('.project-code-link');

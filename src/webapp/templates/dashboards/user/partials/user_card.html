@@ -285,7 +285,7 @@
     {% if is_admin and has_permission(Permission.IMPERSONATE_USERS) %}
     <div class="card-footer">
         <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}"
-              onsubmit="return confirm('Impersonate {{ sam_user.display_name }} ({{ sam_user.username }})?');">
+              onsubmit="event.preventDefault(); var f=this; samConfirm({title:'Impersonate user', message:'Impersonate {{ sam_user.display_name|e }} ({{ sam_user.username }})?', variant:'warning', label:'Impersonate', onConfirm:function(){f.submit();}}); return false;">
             <input type="hidden" name="username" value="{{ sam_user.username }}">
             <button type="submit" class="btn btn-sm btn-warning">
                 <i class="fas fa-user-secret"></i> Impersonate {{ sam_user.username }}

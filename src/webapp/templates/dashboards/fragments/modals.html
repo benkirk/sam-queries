@@ -30,6 +30,40 @@
     size         - 'lg' / 'xl' to apply modal-lg / modal-xl to modal-dialog
 #}
 
+{#
+  Singleton confirmation modal used by the htmx:confirm interceptor and the
+  window.samConfirm() helper (see js/htmx-config.js). Rendered once in
+  dashboards/base.html. Title, body, variant styling, and confirm-button
+  label are populated by JS on every open.
+
+  Call sites do NOT render this macro themselves — they just set hx-confirm
+  (for HTMX requests) or call samConfirm({...}) (for non-HTMX actions), and
+  optionally set data-confirm-variant / data-confirm-label / data-confirm-title
+  / data-confirm-body on the triggering element.
+#}
+{% macro confirm_modal() %}
+<div class="modal fade" id="samConfirmModal" tabindex="-1"
+     aria-labelledby="samConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white" id="samConfirmModalHeader">
+                <h5 class="modal-title" id="samConfirmModalLabel">
+                    <i class="fas fa-exclamation-triangle" id="samConfirmModalIcon"></i>
+                    <span id="samConfirmModalTitle">Confirm action</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" id="samConfirmModalClose"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="samConfirmModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="samConfirmModalConfirm">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
 {% macro modal_scaffold(modal_id, title, icon, container_id, variant='create', size=None) %}
 {%- if variant == 'edit' -%}
   {%- set _header_class = 'bg-warning' -%}
