@@ -28,6 +28,7 @@ from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, 
 from sam.queries.lookups import find_project_by_code
 from sam.schemas.forms import CreateChargeAdjustmentForm
 from webapp.utils.rbac import require_permission, Permission
+from webapp.api.access_control import require_project_access
 from sam.resources.resources import Resource
 from ..charts import (
     generate_facility_pie_chart_matplotlib,
@@ -675,10 +676,13 @@ def adjustment_details(adjustment_id: int):
 
 @bp.route('/usage/<projcode>/<resource>')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
-def usage_modal(projcode: str, resource: str):
+@require_project_access(include_ancestors=True)
+def usage_modal(project, resource: str):
     """
     AJAX fragment showing detailed usage for a specific project+resource.
+
+    Access: system VIEW_PROJECTS, direct project affiliation, or
+    lead/admin of any ancestor in the project tree.
 
     Returns:
         HTML fragment for Bootstrap modal body showing usage breakdown
@@ -694,16 +698,11 @@ def usage_modal(projcode: str, resource: str):
     else:
         active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Get project
-    project = find_project_by_code(db.session, projcode)
-    if not project:
-        return '<p class="text-danger mb-0">Project not found</p>'
-
     # Get allocation with usage details
     usage_data = cached_allocation_usage(
         session=db.session,
         resource_name=resource,
-        projcode=projcode,
+        projcode=project.projcode,
         active_only=True,
         active_at=active_at
     )

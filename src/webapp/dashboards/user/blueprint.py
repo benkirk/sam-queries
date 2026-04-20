@@ -24,7 +24,7 @@ from sam.core.users import User
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import can_edit_consumption_threshold
 from webapp.utils.rbac import require_permission, Permission, has_permission
-from webapp.api.access_control import require_allocation_permission
+from webapp.api.access_control import require_allocation_permission, require_project_access
 from ..charts import generate_usage_timeseries_matplotlib
 
 
@@ -521,21 +521,18 @@ def tree_fragment(projcode):
 
 @bp.route('/project-details-modal/<projcode>')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
-def project_details_modal(projcode):
+@require_project_access(include_ancestors=True)
+def project_details_modal(project):
     """
     Get HTML fragment for project details modal content (reusable across dashboards).
+
+    Access: system VIEW_PROJECTS, direct project affiliation (member /
+    lead / admin), or lead/admin of any ancestor in the project tree.
 
     Returns:
         HTML fragment with project info and resources for modal body
     """
-    # Validate project exists
-    project = find_project_by_code(db.session, projcode)
-    if not project:
-        return '<p class="alert alert-danger">Project not found</p>'
-
-    # Get full project data
-    project_data = get_project_dashboard_data(db.session, projcode)
+    project_data = get_project_dashboard_data(db.session, project.projcode)
 
     import json
     resp = make_response(render_template(
@@ -545,7 +542,7 @@ def project_details_modal(projcode):
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
     ))
-    resp.headers['HX-Trigger'] = json.dumps({'setModalTitle': f'Project Details \u2014 {projcode}'})
+    resp.headers['HX-Trigger'] = json.dumps({'setModalTitle': f'Project Details \u2014 {project.projcode}'})
     return resp
 
 
