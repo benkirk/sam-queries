@@ -172,6 +172,7 @@ from .projects import (
 from .user import (
     AddMemberForm,
     EditAllocationForm,
+    ExchangeAllocationForm,
     AddAllocationForm,
     RenewAllocationsForm,
     ExtendAllocationsForm,
@@ -226,6 +227,7 @@ __all__ = [
     # User
     'AddMemberForm',
     'EditAllocationForm',
+    'ExchangeAllocationForm',
     'AddAllocationForm',
     'RenewAllocationsForm',
     'ExtendAllocationsForm',
