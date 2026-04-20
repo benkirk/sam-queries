@@ -101,14 +101,15 @@
             </div>
             {% endif %}
 
-            {% if sam_user.organizations %}
+            {% set unique_orgs = sam_user.organizations | map(attribute='organization') | unique(attribute='organization_id') | list %}
+            {% if unique_orgs %}
             <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Organization{{ 's' if sam_user.organizations|length != 1 else '' }}:</span>
+                <span class="stat-label d-block mb-1">Organization{{ 's' if unique_orgs|length != 1 else '' }}:</span>
                 <div class="stat-value text-dark text-detail">
-                    {% for uo in sam_user.organizations %}
+                    {% for org in unique_orgs %}
                     <div class="mb-1">
-                        <span class="badge bg-light text-dark border">{{ uo.organization.acronym }}</span>
-                        <span class="text-muted">{{ uo.organization.name }}</span>
+                        <span class="badge bg-light text-dark border">{{ org.acronym }}</span>
+                        <span class="text-muted">{{ org.name }}</span>
                     </div>
                     {% endfor %}
                 </div>

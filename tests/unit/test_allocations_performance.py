@@ -279,7 +279,12 @@ class TestUsageModalRoute:
 
     def test_nonexistent_project_returns_error(self, auth_client):
         response = auth_client.get('/allocations/usage/FAKE9999/Derecho')
-        assert b'Project not found' in response.data
+        # Route is now guarded by @require_project_access, which returns a
+        # 404 JSON body via get_project_or_404 on unknown projcodes
+        # (replaces the prior hand-rolled inline early return).
+        assert response.status_code == 404
+        assert b'not found' in response.data
+        assert b'FAKE9999' in response.data
 
     def test_invalid_date_returns_error(self, auth_client):
         response = auth_client.get('/allocations/usage/SCSG0001/Derecho?active_at=bad')
