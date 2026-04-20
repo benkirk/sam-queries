@@ -46,7 +46,7 @@
 <!-- Facility Pie: Allocated | Usage pill tabs above resource tabs, swaps when active tab changes -->
 {% if grouped_data %}
 <div class="mb-3">
-    <ul class="nav nav-pills nav-fill mb-2 justify-content-center" id="pieChartTabs" role="tablist" style="max-width:320px; margin-left:auto; margin-right:auto;">
+    <ul class="nav nav-pills nav-fill mb-2 justify-content-center" id="pieChartTabs" role="tablist" style="max-width:420px; margin-left:auto; margin-right:auto;">
         <li class="nav-item" role="presentation">
             <button class="nav-link active py-1 px-3 small" id="pie-allocated-tab"
                     data-bs-toggle="pill" data-bs-target="#pie-allocated"
@@ -56,6 +56,11 @@
             <button class="nav-link py-1 px-3 small" id="pie-usage-tab"
                     data-bs-toggle="pill" data-bs-target="#pie-usage"
                     type="button" role="tab">Usage</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link py-1 px-3 small" id="pie-pace-tab"
+                    data-bs-toggle="pill" data-bs-target="#pie-pace"
+                    type="button" role="tab">Pace</button>
         </li>
     </ul>
     <div class="tab-content">
@@ -97,6 +102,24 @@
                      data-resource="{{ resource_name|replace(' ', '_') }}"
                      style="display:none;">
                     <div class="text-center text-muted small py-3">Single facility — no pie chart</div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        <div class="tab-pane fade" id="pie-pace" role="tabpanel">
+            <div id="facilityPaceContainer" class="chart-container pace-chart">
+                {% for resource_name, _ in grouped_data.items()|sort %}
+                {% set pace_chart = resource_pace_charts.get(resource_name) %}
+                {% if pace_chart %}
+                <div class="facility-pace-panel"
+                     data-resource="{{ resource_name|replace(' ', '_') }}"
+                     style="display:none;">
+                    <h6 class="text-center fw-bold mb-2">
+                        Allocation Pace
+                        <span class="text-muted fw-normal">— {{ resource_name }}</span>
+                    </h6>
+                    {{ pace_chart|safe }}
                 </div>
                 {% endif %}
                 {% endfor %}
@@ -280,12 +303,13 @@
                     <!-- Type Pie Chart Row (if >1 type and chart available) -->
                     {% set type_chart = allocation_type_charts.get(resource_name, {}).get(facility_name) %}
                     {% set usage_type_chart = allocation_type_usage_charts.get(resource_name, {}).get(facility_name) %}
-                    {% if types|length > 1 and (type_chart or usage_type_chart) %}
+                    {% set pace_chart = facility_pace_charts.get(resource_name, {}).get(facility_name) %}
+                    {% if types|length > 1 and (type_chart or usage_type_chart or pace_chart) %}
                     <tr class="alloc-type-chart-row" data-fac-id="{{ fac_id }}">
                         <td colspan="7" class="p-0">
                             <div class="p-2 pb-0">
                                 <ul class="nav nav-pills nav-fill mb-2 justify-content-center"
-                                    style="max-width:320px; margin-left:auto; margin-right:auto;">
+                                    style="max-width:420px; margin-left:auto; margin-right:auto;">
                                     <li class="nav-item">
                                         <button class="nav-link active py-1 px-3 small"
                                                 data-bs-toggle="pill"
@@ -297,6 +321,12 @@
                                                 data-bs-toggle="pill"
                                                 data-bs-target="#type-usage-{{ fac_id }}"
                                                 type="button">Usage</button>
+                                    </li>
+                                    <li class="nav-item">
+                                        <button class="nav-link py-1 px-3 small"
+                                                data-bs-toggle="pill"
+                                                data-bs-target="#type-pace-{{ fac_id }}"
+                                                type="button">Pace</button>
                                     </li>
                                 </ul>
                                 <div class="tab-content">
@@ -324,6 +354,19 @@
                                         </div>
                                         {% else %}
                                         <div class="text-center text-muted small py-3">No usage data yet</div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="tab-pane fade" id="type-pace-{{ fac_id }}">
+                                        {% if pace_chart %}
+                                        <div class="chart-container pace-chart p-3">
+                                            <h6 class="text-center fw-bold mb-2">
+                                                Allocation Pace
+                                                <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
+                                            </h6>
+                                            {{ pace_chart|safe }}
+                                        </div>
+                                        {% else %}
+                                        <div class="text-center text-muted small py-3">No allocations in window</div>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -615,6 +658,9 @@ document.body.addEventListener('refreshAdjustmentsTab', function() {
             p.style.display = p.dataset.resource === resourceId ? '' : 'none';
         });
         document.querySelectorAll('.facility-usage-pie-panel').forEach(function (p) {
+            p.style.display = p.dataset.resource === resourceId ? '' : 'none';
+        });
+        document.querySelectorAll('.facility-pace-panel').forEach(function (p) {
             p.style.display = p.dataset.resource === resourceId ? '' : 'none';
         });
     }

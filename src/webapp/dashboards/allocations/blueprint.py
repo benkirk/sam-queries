@@ -29,7 +29,11 @@ from sam.queries.lookups import find_project_by_code
 from sam.schemas.forms import CreateChargeAdjustmentForm
 from webapp.utils.rbac import require_permission, Permission
 from sam.resources.resources import Resource
-from ..charts import generate_facility_pie_chart_matplotlib, generate_allocation_type_pie_chart_matplotlib
+from ..charts import (
+    generate_facility_pie_chart_matplotlib,
+    generate_allocation_type_pie_chart_matplotlib,
+    generate_pace_chart_matplotlib,
+)
 
 bp = Blueprint('allocations_dashboard', __name__, url_prefix='/allocations')
 
@@ -382,6 +386,24 @@ def index():
                      if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
         }
 
+    # Build pace charts — reuse per_project_usage (no extra DB calls).
+    # One chart per resource (top-level) and one per (resource, facility).
+    resource_pace_charts = {}
+    facility_pace_charts = {}
+    for rn, facilities in grouped_data.items():
+        rn_rows = [r for r in per_project_usage if r.get('resource') == rn]
+        resource_pace_charts[rn] = (
+            generate_pace_chart_matplotlib(rn_rows, active_at, resource_name=rn)
+            if rn_rows else None
+        )
+        facility_pace_charts[rn] = {}
+        for fn in facilities.keys():
+            fn_rows = [r for r in rn_rows if r.get('facility') == fn]
+            facility_pace_charts[rn][fn] = (
+                generate_pace_chart_matplotlib(fn_rows, active_at, resource_name=rn)
+                if fn_rows else None
+            )
+
     # Defaults for the shared audit filter (Transactions + Adjustments tabs).
     # Default window is last 30 days; each tab's filter form is pre-filled with these.
     audit_end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -392,6 +414,8 @@ def index():
         grouped_data=grouped_data,
         resource_overviews=resource_overviews,
         resource_usage_overviews=resource_usage_overviews,
+        resource_pace_charts=resource_pace_charts,
+        facility_pace_charts=facility_pace_charts,
         allocation_type_charts=allocation_type_charts,
         allocation_type_usage_charts=allocation_type_usage_charts,
         type_annualized_rates=type_annualized_rates,

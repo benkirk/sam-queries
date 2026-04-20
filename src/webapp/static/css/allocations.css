@@ -99,6 +99,11 @@
     height: auto;
 }
 
+/* Pace chart breaks out of the pie's 720px cap and fills the dashboard column */
+.chart-container.pace-chart svg {
+    max-width: none;
+}
+
 /* ===================================================================
    Sortable Table Headers
    =================================================================== */
