@@ -19,6 +19,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+import numpy as np
 
 from sam import fmt
 
@@ -426,18 +427,14 @@ def _pace_bands(allocations: List[Dict], active_at: datetime,
         if past_rate <= 0 and future_rate <= 0:
             continue
 
-        rates = [0.0] * n_days
+        rates = np.zeros(n_days)
         s_idx = max(0, (s - window_start).days)
         e_idx = min(n_days, (e - window_start).days + 1)
 
-        # Past fills [s_idx, min(today_idx, e_idx))
         if past_rate > 0:
-            for i in range(s_idx, min(today_idx, e_idx)):
-                rates[i] = past_rate
-        # Future fills [max(today_idx, s_idx), e_idx)
+            rates[s_idx:min(today_idx, e_idx)] = past_rate
         if future_rate > 0:
-            for i in range(max(today_idx, s_idx), e_idx):
-                rates[i] = future_rate
+            rates[max(today_idx, s_idx):e_idx] = future_rate
 
         bands.append((a.get('projcode', ''), amount, rates))
 
@@ -497,17 +494,30 @@ def _cached_pace_chart(data_key: tuple, active_at_iso: str,
     n_other_projs = len(proj_totals) - len(top_projs)
     other_label = f'Other ({n_other_projs} project{"s" if n_other_projs != 1 else ""})'
 
-    # Sort bands: top-N first (grouped by projcode, largest amount at bottom
-    # of its group), "Other" last so it caps the stack.
-    def _sort_key(band):
-        pc, amount, _ = band
-        if pc in color_map:
-            return (0, top_projs.index(pc), -amount)
-        return (1, 0, -amount)
-    bands.sort(key=_sort_key)
+    # Collapse per-allocation bands into one band per color group BEFORE
+    # handing to matplotlib. Stackplot emits one <path> per band; without
+    # this aggregation, a ~1000-project resource produces 1000 paths and a
+    # ~20 MB SVG. Stacking is associative, so element-wise summing the rate
+    # arrays within each color group is mathematically identical and
+    # visually identical (the group shares one color anyway).
+    n_days = len(days)
+    OTHER_KEY = '__other__'
+    group_keys = list(top_projs) + [OTHER_KEY]
+    group_rates: Dict[str, np.ndarray] = {k: np.zeros(n_days) for k in group_keys}
+    group_totals: Dict[str, float] = {k: 0.0 for k in group_keys}
 
-    rates_matrix = [b[2] for b in bands]
-    colors = [color_map.get(b[0], _PACE_OTHER_COLOR) for b in bands]
+    for pc, amount, rates in bands:
+        key = pc if pc in color_map else OTHER_KEY
+        group_totals[key] += amount
+        group_rates[key] += rates
+
+    # Stack order: top-N (ranked) first, Other capping the top. Drop empty
+    # groups so stackplot doesn't emit a zero-area path.
+    ordered = [(k, group_rates[k]) for k in top_projs] + [(OTHER_KEY, group_rates[OTHER_KEY])]
+    ordered = [(k, r) for k, r in ordered if r.any()]
+
+    rates_matrix = [r for _, r in ordered]
+    colors = [color_map.get(k, _PACE_OTHER_COLOR) for k, _ in ordered]
 
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.stackplot(days, rates_matrix, colors=colors, edgecolor='none',
@@ -525,10 +535,9 @@ def _cached_pace_chart(data_key: tuple, active_at_iso: str,
                               label=f'{pc} ({fmt.number(proj_totals[pc])})')
                for pc in top_projs]
     if n_other_projs > 0:
-        other_total = sum(v for pc, v in proj_totals.items() if pc not in color_map)
         handles.append(mpatches.Patch(
             color=_PACE_OTHER_COLOR,
-            label=f'{other_label} ({fmt.number(other_total)})'
+            label=f'{other_label} ({fmt.number(group_totals[OTHER_KEY])})'
         ))
     ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1.0, 0.5),
               fontsize=9, frameon=False)
