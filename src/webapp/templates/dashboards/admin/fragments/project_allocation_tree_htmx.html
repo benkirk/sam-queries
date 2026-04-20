@@ -164,30 +164,23 @@
 
       {% else %}
       {# ── Resource header row ──────────────────────────────────────── #}
-      {# Collapse toggle lives on cols 1–4 (not the <tr>) so clicks on
-         the Exchange button in Col 5 don't match Bootstrap 5's
-         capture-phase collapse delegation. Bootstrap's data-api resolves
-         via ``event.target.closest('[data-bs-toggle="collapse"]')``, so
-         keeping the attribute off Col 5 and the row itself is the only
-         selector-free way to skip the toggle for that specific cell. #}
-      {%- set _toggle_attrs = 'data-bs-toggle="collapse" data-bs-target="#' ~ body_id
-                              ~ '" aria-expanded="false" aria-controls="' ~ body_id ~ '"' -%}
       <tbody>
         <tr class="table-secondary alloc-resource-header"
-            style="border-top: 2px solid #ced4da;">
+            style="cursor:pointer; border-top: 2px solid #ced4da;"
+            data-bs-toggle="collapse"
+            data-bs-target="#{{ body_id }}"
+            aria-expanded="false"
+            aria-controls="{{ body_id }}">
 
           {# Col 1: resource name + caret #}
-          <td class="fw-semibold py-2"
-              style="vertical-align:middle; cursor:pointer;"
-              {{ _toggle_attrs | safe }}>
+          <td class="fw-semibold py-2" style="vertical-align:middle;">
             <i class="fas fa-chevron-right alloc-caret me-2 small text-muted"></i>
             <i class="fas fa-server text-primary me-1"></i>
             {{ resource_name }}
           </td>
 
           {# Col 2: progress bar — same column as tree rows #}
-          <td style="padding:0.25rem 0.4rem; vertical-align:middle; cursor:pointer;"
-              {{ _toggle_attrs | safe }}>
+          <td style="padding:0.25rem 0.4rem; vertical-align:middle;">
             {% if root_alloc %}
             <div class="progress" style="height:8px;">
               <div class="progress-bar
@@ -200,38 +193,17 @@
           </td>
 
           {# Col 3: % used #}
-          <td class="text-end small text-muted"
-              style="vertical-align:middle; white-space:nowrap; cursor:pointer;"
-              {{ _toggle_attrs | safe }}>
+          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
             {% if root_alloc %}{{ root_alloc.percent_used | fmt_pct }} used{% endif %}
           </td>
 
           {# Col 4: allocated amount #}
-          <td class="text-end small text-muted"
-              style="vertical-align:middle; white-space:nowrap; cursor:pointer;"
-              {{ _toggle_attrs | safe }}>
+          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
             {% if root_alloc %}{{ root_alloc.allocated | fmt_number }}{% endif %}
           </td>
 
-          {# Col 5: shared badge + Exchange button.
-             Deliberately NOT a collapse toggle — clicks here only open
-             the Exchange modal; the row's accordion stays put. #}
+          {# Col 5: shared badge #}
           <td style="vertical-align:middle;">
-            {% if can_exchange and resource_name in exchange_eligible_resources %}
-            <button class="btn btn-xs btn-outline-info py-0 px-1"
-                    style="font-size:0.7rem;"
-                    hx-get="{{ url_for('admin_dashboard.htmx_exchange_allocation_form',
-                                       projcode=projcode,
-                                       resource_id=resource_id_by_name[resource_name]) }}"
-                    hx-target="#exchangeAllocationFormContainer"
-                    hx-include="#alloc-active-at"
-                    hx-trigger="click"
-                    data-bs-toggle="modal"
-                    data-bs-target="#exchangeAllocationModal"
-                    title="Exchange allocation between projects in this subtree">
-              <i class="fas fa-exchange-alt"></i>
-            </button>
-            {% endif %}
             {% if root_alloc and root_alloc.is_inheriting %}
             <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
             {% endif %}
@@ -250,6 +222,15 @@
         {%- endif -%}
       {%- endfor -%}
 
+      {#- Per-resource Exchange URL: only set for eligible resources; the
+          macro renders the button only on the current (edit-page) row. -#}
+      {%- set _exchange_url = none -%}
+      {%- if can_exchange and resource_name in exchange_eligible_resources -%}
+        {%- set _exchange_url = url_for('admin_dashboard.htmx_exchange_allocation_form',
+                                         projcode=projcode,
+                                         resource_id=resource_id_by_name[resource_name]) -%}
+      {%- endif -%}
+
       <tbody id="{{ body_id }}" class="collapse alloc-tree-body">
         {{ render_project_tree_rows([root],
                                      depth=0,
@@ -259,7 +240,8 @@
                                      can_edit_allocations=can_edit_governance,
                                      active_only=true,
                                      usage_warning_threshold=75,
-                                     usage_critical_threshold=90) }}
+                                     usage_critical_threshold=90,
+                                     exchange_url=_exchange_url) }}
       </tbody>
       {% endif %}{# /is_standalone #}
 
