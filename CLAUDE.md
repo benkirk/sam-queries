@@ -937,6 +937,16 @@ docker compose up
    inline, gate `updates` dicts on original `data` keys for PUT.
 4. See §9 *Form Validation in HTMX and API Routes* for the full pattern.
 
+### Skipping CI for trivial changes
+Put `[skip ci]`, `[ci skip]`, or `[no ci]` in either the commit message
+or the PR title to skip test/lint workflows (`sam-ci-docker`,
+`sam-ci-conda_make`, `test-install`, `ci-staging`, `mega-linter`). Use
+for comment-only edits, non-code config tweaks, or changes covered by
+separate manual verification.
+
+Does NOT skip: `build-images-cirrus-deploy` and `deploy-staging` — the
+deploy-path TruffleHog scan runs unconditionally.
+
 ---
 
 ## Key Contacts & Context
