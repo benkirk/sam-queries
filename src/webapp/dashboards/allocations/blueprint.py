@@ -27,7 +27,11 @@ from sam.queries.charges import (
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
 from sam.schemas.forms import CreateChargeAdjustmentForm
-from webapp.utils.rbac import require_permission, Permission
+from flask import abort
+from webapp.utils.rbac import (
+    apply_facility_scope, filter_rows_by_facility, require_permission,
+    require_permission_any_facility, user_facility_scope, Permission,
+)
 from webapp.api.access_control import require_project_access
 from sam.resources.resources import Resource
 from ..charts import (
@@ -238,7 +242,7 @@ def get_resource_types(session) -> Dict[str, str]:
 
 @bp.route('/')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 @cache.cached(make_cache_key=user_aware_cache_key)
 def index():
     """
@@ -264,6 +268,39 @@ def index():
 
     # Allow cache bypass for debugging / stale data
     force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+
+    # Facility scope resolution.
+    # ``allowed_facility_names`` is the user's universe — every facility
+    # they may *ever* see on this dashboard. For unscoped users that's
+    # every active facility; for scoped users it's their grant.
+    # ``selected_facilities`` is the currently-displayed subset, built
+    # from ``?facilities=...`` clamped against allowed — so a forged
+    # out-of-scope value falls back to the full allowed set rather than
+    # widening or erroring.
+    from sam.resources.facilities import Facility as FacilityModel
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is None:
+        allowed_facility_names = [
+            f.facility_name for f in
+            db.session.query(FacilityModel)
+            .filter(FacilityModel.is_active)
+            .order_by(FacilityModel.facility_name)
+            .all()
+        ]
+    else:
+        allowed_facility_names = sorted(allowed)
+    requested_facilities = request.args.getlist('facilities')
+    selected_facilities = apply_facility_scope(
+        requested_facilities, Permission.VIEW_PROJECTS,
+        default=allowed_facility_names,
+    )
+    # Normalize: ``apply_facility_scope`` returns ``None`` for the
+    # unscoped-with-no-request path; for row filtering we need the
+    # effective allowed set either way.
+    effective_facilities = (
+        allowed_facility_names if selected_facilities is None
+        else list(selected_facilities)
+    )
 
     # Get all active resources for the selector
     all_resources = [
@@ -292,15 +329,35 @@ def index():
         root_only=True,          # Exclude inheriting child allocations — root amount == total
     )
 
+    # Drop rows for facilities outside the user's effective selection.
+    # Every downstream aggregator keys off row['facility'], so one
+    # filter at the source cascades through grouped_data, overviews,
+    # pace charts, and allocation-type charts.
+    summary_data = filter_rows_by_facility(summary_data, effective_facilities)
+
     # Group results hierarchically for tab structure
     grouped_data = group_by_resource_facility(summary_data)
 
     # Get resource type mapping for conditional display
     resource_types = get_resource_types(db.session)
 
-    # Batch-fetch all facility overviews in a single query
-    # Also returns per-type annualized rates (same query, grouped one level deeper)
-    all_overviews, type_annualized_rates = get_all_facility_overviews(db.session, list(grouped_data.keys()), active_at)
+    # Batch-fetch all facility overviews in a single query.
+    # Also returns per-type annualized rates (same query, grouped one level deeper).
+    # The helper issues an un-facility-filtered fetch internally, so we
+    # post-filter both returns to respect ``effective_facilities``.
+    all_overviews, type_annualized_rates = get_all_facility_overviews(
+        db.session, list(grouped_data.keys()), active_at,
+    )
+    if effective_facilities is not None:
+        _allowed_set = set(effective_facilities)
+        all_overviews = {
+            rn: [row for row in rows if row.get('facility') in _allowed_set]
+            for rn, rows in all_overviews.items()
+        }
+        type_annualized_rates = {
+            key: rate for key, rate in type_annualized_rates.items()
+            if key[1] in _allowed_set  # key is (resource, facility, allocation_type)
+        }
 
     # Generate facility pie chart SVGs (cached via lru_cache)
     resource_overviews = {}
@@ -336,6 +393,9 @@ def index():
         force_refresh=force_refresh,
         root_only=True,     # Exclude inheriting child allocations — root amount == total
     )
+    # Scope filter: pace charts, usage pies, allocation-type usage
+    # charts all iterate this list and key off row['facility'].
+    per_project_usage = filter_rows_by_facility(per_project_usage, effective_facilities)
 
     # Derive TOTAL grouping (resource+facility+type, no projcode) Python-side
     usage_type_data = _aggregate_usage_to_total(per_project_usage)
@@ -426,12 +486,14 @@ def index():
         resource_types=resource_types,
         audit_start_date=audit_start_date.strftime('%Y-%m-%d'),
         audit_end_date=audit_end_date.strftime('%Y-%m-%d'),
+        allowed_facility_names=allowed_facility_names,
+        selected_facilities=effective_facilities,
     )
 
 
 @bp.route('/projects')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 @cache.cached(make_cache_key=user_aware_cache_key)
 def projects_fragment():
     """
@@ -455,6 +517,15 @@ def projects_fragment():
     # Validate required params
     if not resource or not facility or not allocation_type:
         return '<p class="text-danger mb-0">Missing required parameters</p>'
+
+    # Enforce facility scope: a scoped user must not be able to drill
+    # into a facility outside their grant by hand-crafting the URL.
+    # Unlike the index route (where we clamp to the allowed set), here
+    # the user asked for *exactly one* facility — if it's out of scope
+    # that's a forged request, not a narrowing choice.
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is not None and facility not in allowed:
+        abort(403)
 
     # Parse date
     if active_at_str:
@@ -576,11 +647,18 @@ def _parse_audit_filters(request_args, sort_whitelist):
 
 @bp.route('/transactions_fragment')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def transactions_fragment():
     """HTMX fragment: sortable, paginated table of recent allocation transactions."""
     filters, sort, page = _parse_audit_filters(
         request.args, ALLOCATION_TRANSACTION_SORT_COLUMNS,
+    )
+    # Intersect the user-chosen facility filter (shared with the index
+    # route) against their scope. ``None`` → unrestricted (unscoped
+    # user, no ``?facilities=`` param); a list is passed through to
+    # the query's ``facility_name`` kwarg for SQL-time filtering.
+    filters['facility_name'] = apply_facility_scope(
+        request.args.getlist('facilities'), Permission.VIEW_PROJECTS,
     )
     offset = (page['n'] - 1) * page['per_page']
 
@@ -605,11 +683,14 @@ def transactions_fragment():
 
 @bp.route('/adjustments_fragment')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def adjustments_fragment():
     """HTMX fragment: sortable, paginated table of recent charge adjustments."""
     filters, sort, page = _parse_audit_filters(
         request.args, CHARGE_ADJUSTMENT_SORT_COLUMNS,
+    )
+    filters['facility_name'] = apply_facility_scope(
+        request.args.getlist('facilities'), Permission.VIEW_PROJECTS,
     )
     offset = (page['n'] - 1) * page['per_page']
 
@@ -634,7 +715,7 @@ def adjustments_fragment():
 
 @bp.route('/transaction_details/<int:transaction_id>')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def transaction_details(transaction_id: int):
     """HTMX fragment: full detail for a single allocation transaction.
 
@@ -650,6 +731,11 @@ def transaction_details(transaction_id: int):
     )
     if not rows:
         return '<p class="text-danger mb-0">Transaction not found.</p>'
+    # Facility-scope the lookup: deny inspecting a transaction whose
+    # project lives outside the user's allowed set.
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is not None and rows[0].get('facility') not in allowed:
+        abort(403)
     return render_template(
         'dashboards/allocations/partials/transaction_details_modal.html',
         r=rows[0],
@@ -658,7 +744,7 @@ def transaction_details(transaction_id: int):
 
 @bp.route('/adjustment_details/<int:adjustment_id>')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def adjustment_details(adjustment_id: int):
     """HTMX fragment: full detail for a single charge adjustment."""
     rows = get_recent_charge_adjustments(
@@ -668,6 +754,9 @@ def adjustment_details(adjustment_id: int):
     )
     if not rows:
         return '<p class="text-danger mb-0">Adjustment not found.</p>'
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is not None and rows[0].get('facility') not in allowed:
+        abort(403)
     return render_template(
         'dashboards/allocations/partials/adjustment_details_modal.html',
         r=rows[0],

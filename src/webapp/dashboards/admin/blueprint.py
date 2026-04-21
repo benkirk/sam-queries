@@ -26,44 +26,15 @@ from sam.queries.lookups import find_project_by_code, get_user_group_access
 from webapp.auth.models import AuthUser
 from sam.core.users import User
 from webapp.utils.rbac import (
-    can_impersonate, get_user_permissions, has_permission,
-    Permission, require_permission, require_permission_any_facility,
-    user_facility_scope,
+    apply_facility_scope, can_impersonate, get_user_permissions,
+    has_permission, Permission, require_permission,
+    require_permission_any_facility, user_facility_scope,
 )
 import logging
 logger = logging.getLogger(__name__)
 
 
 bp = Blueprint('admin_dashboard', __name__, url_prefix='/admin')
-
-
-def _apply_facility_scope(requested, permission, default=None):
-    """
-    Combine a user-submitted ``facilities`` list with the caller's
-    facility-scoped RBAC grants for ``permission``.
-
-    Returns the effective facility-name list to pass to downstream
-    queries. ``None`` (or an empty returned list where the caller
-    coerces falsy) means "no restriction".
-
-    Semantics:
-    - Unscoped users (system-permission holders): their ``requested``
-      selection wins; if empty, ``default`` applies.
-    - Scoped users: the returned list is the intersection of their
-      allowed set with the request, or their full allowed set when
-      the request is empty / the intersection is empty.
-    - Users with an empty scope (no entry at all) get an empty list —
-      the caller should treat that as "no rows".
-    """
-    allowed = user_facility_scope(current_user, permission)
-    if allowed is None:
-        return list(requested) if requested else (list(default) if default else None)
-    if not allowed:
-        return []
-    if not requested:
-        return sorted(allowed)
-    intersected = [f for f in requested if f in allowed]
-    return intersected or sorted(allowed)
 
 
 # Usage threshold configuration (percentage)
@@ -395,7 +366,7 @@ def expirations_fragment():
         HTML fragment with project cards or user table
     """
     view_type = request.args.get('view', 'upcoming')
-    facilities = _apply_facility_scope(
+    facilities = apply_facility_scope(
         request.args.getlist('facilities'),
         Permission.VIEW_PROJECTS,
         default=['UNIV', 'WNA'],
@@ -463,7 +434,7 @@ def deactivate_expired():
     tab, respecting the same facility/resource filters. Re-runs the query
     server-side so the action operates on exactly the set the user saw.
     """
-    facilities = _apply_facility_scope(
+    facilities = apply_facility_scope(
         request.form.getlist('facilities'),
         Permission.EDIT_PROJECTS,
         default=['UNIV', 'WNA'],
@@ -523,7 +494,7 @@ def expirations_export():
         CSV file download
     """
     export_type = request.args.get('export_type', 'upcoming')
-    facilities = _apply_facility_scope(
+    facilities = apply_facility_scope(
         request.args.getlist('facilities'),
         Permission.VIEW_PROJECTS,
         default=['UNIV', 'WNA'],

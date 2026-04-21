@@ -14,7 +14,7 @@
        href="#"
        hx-get="{{ fragment_url }}?sort_by={{ col }}&sort_dir={{ next_dir }}&page=1"
        hx-target="#{{ target_id }}"
-       hx-include="#{{ form_id }}"
+       hx-include="#{{ form_id }}, #allocations-facility-filter-form"
        hx-swap="innerHTML">
         {{ label }}
         {% if is_active %}
@@ -105,5 +105,6 @@
         </tbody>
     </table>
 
-    {{ pagination(page, total, fragment_url, target_id, form_id, sort) }}
+    {{ pagination(page, total, fragment_url, target_id, form_id, sort,
+                   extra_include='#allocations-facility-filter-form') }}
 </div>

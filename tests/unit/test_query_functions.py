@@ -366,7 +366,7 @@ EXPECTED_TXN_KEYS = {
     'transaction_amount', 'requested_amount', 'alloc_start_date', 'alloc_end_date',
     'transaction_comment', 'auth_at_panel_mtg', 'propagated',
     'projcode', 'project_id', 'resource_name', 'resource_id',
-    'facility_name', 'allocation_type',
+    'facility', 'allocation_type',
     'user_id', 'username', 'user_display_name',
 }
 
@@ -676,7 +676,7 @@ class TestRecentAllocationTransactions:
 EXPECTED_ADJ_KEYS = {
     'adjustment_id', 'account_id', 'amount', 'adjustment_date', 'comment',
     'adjustment_type',
-    'projcode', 'project_id', 'resource_name', 'resource_id', 'facility_name',
+    'projcode', 'project_id', 'resource_name', 'resource_id', 'facility',
     'user_id', 'username', 'user_display_name',
 }
 

@@ -359,6 +359,53 @@ def user_facility_scope(user, permission: Permission):
     return {f for f, perms in scoped.items() if permission in perms}
 
 
+def apply_facility_scope(requested, permission: Permission, default=None):
+    """
+    Combine a user-submitted ``facilities`` list with the caller's
+    facility-scoped RBAC grants for ``permission``, returning the
+    effective facility-name list to pass to downstream queries.
+
+    Semantics:
+    - **Unscoped users** (system-permission holders): ``requested``
+      wins; if empty, ``default`` applies; ``None`` means
+      "no restriction".
+    - **Scoped users**: returns the intersection of ``requested`` with
+      their allowed set. Falls back to the full allowed set when the
+      request is empty or the intersection is empty (clamp, don't
+      error — the user just asked for nothing they can see).
+    - **Users with an empty scope** (no entry at all): returns ``[]``.
+      Caller should treat as "no rows".
+
+    Used as the single source of truth for "what facility names do I
+    actually filter on, given this user + this request?" at both the
+    admin expirations/search routes and the allocations dashboard.
+    """
+    allowed = user_facility_scope(current_user, permission)
+    if allowed is None:
+        return list(requested) if requested else (list(default) if default else None)
+    if not allowed:
+        return []
+    if not requested:
+        return sorted(allowed)
+    intersected = [f for f in requested if f in allowed]
+    return intersected or sorted(allowed)
+
+
+def filter_rows_by_facility(rows, allowed):
+    """Drop rows whose ``'facility'`` key isn't in ``allowed``.
+
+    Pass ``None`` for ``allowed`` to skip filtering (unscoped / global
+    view). Used by the allocations dashboard's post-fetch scope filter
+    — every row returned by the summary / usage / transactions
+    queries carries a ``'facility'`` field."""
+    if allowed is None:
+        return rows
+    if not allowed:
+        return []
+    allowed_set = allowed if isinstance(allowed, (set, frozenset)) else set(allowed)
+    return [r for r in rows if r.get('facility') in allowed_set]
+
+
 def has_any_permission(user, *permissions: Permission) -> bool:
     """
     Check if user has any of the specified permissions.

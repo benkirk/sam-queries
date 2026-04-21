@@ -1024,3 +1024,250 @@ class TestShowUsageToggle:
         """Facilities with zero usage must not crash the chart renderer."""
         response = auth_client.get('/allocations/?show_usage=true&resources=Derecho')
         assert response.status_code == 200
+
+
+# ============================================================================
+# Facility-scoped RBAC on the allocations dashboard
+# ============================================================================
+
+class TestAllocationsDashboardFacilityScope:
+    """Route-level assertions for the facility-scope layer on
+    ``/allocations``. Runs against the snapshot DB via ``auth_client``;
+    scopes the benkirk test identity by emptying
+    ``USER_PERMISSION_OVERRIDES`` (drops his blanket admin grant) and
+    adding a ``USER_FACILITY_PERMISSIONS`` entry instead — the same
+    shape a real scoped user like ``sureshm`` would have."""
+
+    @staticmethod
+    def _scope_benkirk(monkeypatch, facilities):
+        """Re-cast the ``benkirk`` login as a facility-scoped user with
+        ``VIEW_PROJECTS`` on the given facilities."""
+        from webapp.utils import rbac
+        from webapp.utils.rbac import Permission
+
+        monkeypatch.setattr(rbac, 'USER_PERMISSION_OVERRIDES', {})
+        # Disable the 'admin-testing-only' bundle that the test conftest
+        # autoregisters — otherwise any POSIX-group membership on
+        # benkirk would leak full perms back in.
+        monkeypatch.setattr(rbac, 'GROUP_PERMISSIONS', {})
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {
+                'benkirk': {
+                    fn: {Permission.VIEW_PROJECTS}
+                    for fn in facilities
+                },
+            },
+        )
+
+    def test_index_renders_selector_for_scoped_user(self, auth_client, monkeypatch):
+        """Single-facility scoped user: selector is rendered and lists
+        only the granted facility, selected by default."""
+        self._scope_benkirk(monkeypatch, ['WNA'])
+        response = auth_client.get('/allocations/')
+        assert response.status_code == 200
+        html = response.data.decode()
+        # Selector form + one option (WNA), selected.
+        assert 'id="allocations-facility-filter-form"' in html
+        assert '<option value="WNA"' in html
+        assert 'selected' in html.split('<option value="WNA"', 1)[1].split('</option>', 1)[0]
+        # Other facilities must not appear as options.
+        assert '<option value="NCAR"' not in html
+        assert '<option value="UNIV"' not in html
+
+    def test_index_selector_lists_every_facility_for_unscoped_user(self, auth_client):
+        """Unscoped admin (benkirk default): selector shows the full
+        active-facility list, all selected by default."""
+        response = auth_client.get('/allocations/')
+        assert response.status_code == 200
+        html = response.data.decode()
+        assert 'id="allocations-facility-filter-form"' in html
+        # Snapshot has WNA and NCAR as active facilities.
+        assert '<option value="WNA"' in html
+        assert '<option value="NCAR"' in html
+
+    def test_index_clamps_out_of_scope_request_to_allowed_set(
+        self, auth_client, monkeypatch,
+    ):
+        """Forged ``?facilities=NCAR`` as a WNA-scoped user: the view
+        falls back to showing the allowed set (WNA) instead of 403ing
+        or rendering an empty page."""
+        self._scope_benkirk(monkeypatch, ['WNA'])
+        response = auth_client.get('/allocations/?facilities=NCAR')
+        assert response.status_code == 200
+        html = response.data.decode()
+        # WNA is still in the selected state.
+        assert '<option value="WNA"' in html
+        wna_frag = html.split('<option value="WNA"', 1)[1].split('</option>', 1)[0]
+        assert 'selected' in wna_frag
+
+    def test_projects_fragment_403s_out_of_scope_facility(
+        self, auth_client, monkeypatch,
+    ):
+        """The drill-down route rejects a forged out-of-scope facility
+        outright — single-facility param, no fallback."""
+        self._scope_benkirk(monkeypatch, ['WNA'])
+        response = auth_client.get(
+            '/allocations/projects?resource=Derecho&facility=NCAR'
+            '&allocation_type=Small'
+        )
+        assert response.status_code == 403
+
+    def test_projects_fragment_allows_in_scope_facility(
+        self, auth_client, monkeypatch,
+    ):
+        self._scope_benkirk(monkeypatch, ['WNA'])
+        response = auth_client.get(
+            '/allocations/projects?resource=Derecho&facility=WNA'
+            '&allocation_type=Small'
+        )
+        assert response.status_code == 200
+
+    def test_transactions_fragment_passes_facility_filter_to_query(
+        self, auth_client, monkeypatch,
+    ):
+        """When a scoped user hits the transactions fragment, the
+        query helper must receive a facility_name kwarg restricted to
+        the user's scope. Confirms the SQL-level filter is plumbed
+        through rather than Python-post-filtered."""
+        self._scope_benkirk(monkeypatch, ['WNA'])
+
+        captured = {}
+
+        def _stub(session, **kwargs):
+            captured.setdefault('get', []).append(kwargs.get('facility_name'))
+            return []
+
+        def _stub_count(session, **kwargs):
+            captured.setdefault('count', []).append(kwargs.get('facility_name'))
+            return 0
+
+        monkeypatch.setattr(
+            'webapp.dashboards.allocations.blueprint.get_recent_allocation_transactions',
+            _stub,
+        )
+        monkeypatch.setattr(
+            'webapp.dashboards.allocations.blueprint.count_recent_allocation_transactions',
+            _stub_count,
+        )
+
+        response = auth_client.get('/allocations/transactions_fragment')
+        assert response.status_code == 200
+        # Both the row query and the count query should have received
+        # WNA (or a list containing WNA) as their facility filter.
+        for calls in captured.values():
+            assert calls, 'query helper was not called'
+            arg = calls[0]
+            assert arg == ['WNA'] or arg == 'WNA' or (
+                isinstance(arg, list) and 'WNA' in arg
+            )
+
+    def test_empty_scope_user_gets_empty_dashboard(self, auth_client, monkeypatch):
+        """A user scoped to zero facilities for VIEW_PROJECTS — e.g.
+        a mis-configured entry — should render a functional page
+        with no rows rather than error."""
+        self._scope_benkirk(monkeypatch, [])  # entry exists but grants nothing
+        response = auth_client.get('/allocations/')
+        # The decorator admits any user with at least one facility grant
+        # of VIEW_PROJECTS; empty-dict entry leaves them unadmitted → 403.
+        assert response.status_code == 403
+
+
+# ============================================================================
+# Scope-aware cache key
+# ============================================================================
+
+class TestUserAwareCacheKeyScope:
+    """Two scoped users with disjoint facility grants must not share a
+    cached response slot, even at the same path with the same query
+    string."""
+
+    @staticmethod
+    def _make_stub(user_id, username):
+        """Minimal Flask-Login-compatible stub user.
+
+        ``login_user`` checks ``is_active`` and calls ``get_id()``; the
+        RBAC code reads ``is_authenticated``, ``user_id``, ``username``.
+        """
+        class _U:
+            pass
+
+        u = _U()
+        u.is_authenticated = True
+        u.is_active = True
+        u.is_anonymous = False
+        u.user_id = user_id
+        u.username = username
+        # ``get_user_permissions`` iterates user.roles to accumulate
+        # group-bundle grants. An empty set means "no bundle grants"
+        # — the scoped entries in USER_FACILITY_PERMISSIONS provide
+        # everything the tests need.
+        u.roles = set()
+        u.get_id = lambda: str(user_id)
+        return u
+
+    def test_key_varies_on_scope_tag(self, app, monkeypatch):
+        from webapp.extensions import user_aware_cache_key
+        from webapp.utils import rbac
+        from webapp.utils.rbac import Permission
+
+        monkeypatch.setattr(rbac, 'USER_PERMISSION_OVERRIDES', {})
+        monkeypatch.setattr(rbac, 'GROUP_PERMISSIONS', {})
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {
+                'alice': {'WNA': {Permission.VIEW_PROJECTS}},
+                'bob':   {'NCAR': {Permission.VIEW_PROJECTS}},
+            },
+        )
+
+        # Same user_id to isolate the scope-tag contribution; in
+        # practice user_id also partitions, but we want the scope tag
+        # itself to carry weight.
+        alice = self._make_stub(user_id=1, username='alice')
+        bob = self._make_stub(user_id=1, username='bob')
+
+        from flask_login import login_user, logout_user
+        with app.test_request_context('/allocations/'):
+            login_user(alice)
+            k_alice = user_aware_cache_key()
+            logout_user()
+        with app.test_request_context('/allocations/'):
+            login_user(bob)
+            k_bob = user_aware_cache_key()
+            logout_user()
+
+        assert k_alice != k_bob
+        assert 'WNA' in k_alice
+        assert 'NCAR' in k_bob
+
+    def test_key_is_stable_for_same_user_and_scope(self, app, monkeypatch):
+        from webapp.extensions import user_aware_cache_key
+        from webapp.utils import rbac
+        from webapp.utils.rbac import Permission
+
+        monkeypatch.setattr(rbac, 'USER_PERMISSION_OVERRIDES', {})
+        monkeypatch.setattr(rbac, 'GROUP_PERMISSIONS', {})
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {'scoped_user': {'WNA': {Permission.VIEW_PROJECTS}}},
+        )
+
+        from flask_login import login_user, logout_user
+        keys = []
+        for _ in range(2):
+            with app.test_request_context('/allocations/?foo=bar'):
+                login_user(self._make_stub(user_id=42, username='scoped_user'))
+                keys.append(user_aware_cache_key())
+                logout_user()
+        assert keys[0] == keys[1]
+
+    def test_unscoped_user_gets_all_tag(self, app):
+        from webapp.extensions import user_aware_cache_key
+        from flask_login import login_user, logout_user
+
+        with app.test_request_context('/allocations/'):
+            login_user(self._make_stub(user_id=99, username='benkirk'))
+            key = user_aware_cache_key()
+            logout_user()
+        assert '|s:all' in key

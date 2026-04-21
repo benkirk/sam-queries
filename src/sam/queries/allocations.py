@@ -144,7 +144,10 @@ ALLOCATION_TRANSACTION_SORT_COLUMNS = {
     'transaction_amount': AllocationTransaction.transaction_amount,
     'projcode': Project.projcode,
     'resource_name': Resource.resource_name,
-    'facility_name': Facility.facility_name,
+    # URL-facing sort key is the row-dict key ('facility'); maps to the
+    # underlying SQL column ``Facility.facility_name``. Keep the key
+    # consistent with the row-level identifier produced below.
+    'facility': Facility.facility_name,
     'allocation_type': AllocationType.allocation_type,
     'username': User.username,
 }
@@ -365,7 +368,7 @@ def get_recent_allocation_transactions(
             'project_id': project.project_id,
             'resource_name': resource.resource_name,
             'resource_id': resource.resource_id,
-            'facility_name': fac_name,
+            'facility': fac_name,
             'allocation_type': at_name,
             'user_id': user.user_id if user is not None else None,
             'username': user.username if user is not None else None,
