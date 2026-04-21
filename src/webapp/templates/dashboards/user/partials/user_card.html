@@ -214,6 +214,20 @@
         </div>
     </div>
 
+    <!-- SAM Permissions (only for the logged-in viewer's own card, when they have any) -->
+    {% if sam_user.username == current_user.username and user_permissions %}
+    <div class="card-body border-top pt-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong><i class="fas fa-key"></i> SAM Permissions</strong>
+        </div>
+        <div class="scrollable-list">
+            {% for perm in user_permissions | sort(attribute='value') %}
+            <span class="badge bg-info me-1 mb-1">{{ perm.value }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Wallclock Exemptions -->
     {% set exemptions = sam_user.wallclock_exemptions %}
     {% if exemptions or is_admin %}

@@ -173,14 +173,3 @@ def logout():
                 logger.exception("Failed to get OIDC end_session_endpoint")
 
     return redirect(url_for('status_dashboard.index'))
-
-
-# ---------------------------------------------------------------------------
-# Profile
-# ---------------------------------------------------------------------------
-
-@bp.route('/profile')
-@login_required
-def profile():
-    """User profile page showing current user's info and roles."""
-    return render_template('auth/profile.html', user=current_user)

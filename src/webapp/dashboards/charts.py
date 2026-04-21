@@ -24,16 +24,6 @@ import numpy as np
 from sam import fmt
 
 
-def format_number(value: float, decimals: int = 2) -> str:
-    """Format a number with thousands separators."""
-    if value >= 1000000:
-        return f"{value/1000000:.{decimals}f}M"
-    elif value >= 1000:
-        return f"{value/1000:.{decimals}f}K"
-    else:
-        return f"{value:.{decimals}f}"
-
-
 # ---------------------------------------------------------------------------
 # Hashability helpers
 # ---------------------------------------------------------------------------
@@ -78,6 +68,7 @@ def _cached_usage_timeseries(data_key: tuple) -> str:
     fig, ax = plt.subplots(figsize=(12, 4))
     ax.bar(dates, comp, width=1, lw=2)
     ax.set_ylabel('Charges')
+    ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, alpha=0.3)
     fig.autofmt_xdate()
 
@@ -129,6 +120,7 @@ def _cached_nodetype_history(data_key: tuple) -> str:
                   colors=['C3', 'C0', 'C9'])
     ax1.set_ylabel('Number of Nodes', fontsize=11)
     ax1.set_ylim([0, None])
+    ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax1.legend(loc=2, fontsize=10)
     ax1.grid(True, alpha=0.3, color='grey')
 
@@ -142,9 +134,10 @@ def _cached_nodetype_history(data_key: tuple) -> str:
         mem_vals = [m for m in memory_utilization if m is not None]
         ax2.plot(mem_times, mem_vals, 'c', linewidth=3, label='Memory Utilization')
 
-    ax2.set_ylabel('Utilization (%)', fontsize=11)
+    ax2.set_ylabel('Utilization', fontsize=11)
     ax2.set_xlabel('Time', fontsize=11)
     ax2.set_ylim(0, 100)
+    ax2.yaxis.set_major_formatter(fmt.mpl_pct_formatter())
     ax2.legend(loc='best', fontsize=10)
     ax2.grid(True, alpha=0.3)
 
@@ -203,6 +196,7 @@ def _cached_queue_history(data_key: tuple) -> str:
     ax1.plot(timestamps, active_users, 'b--', linewidth=2, label='Active Users')
     ax1.set_ylim([0, None])
     ax1.set_ylabel('Count', fontsize=11)
+    ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax1.legend(loc=2, fontsize=10)
     ax1.grid(True, alpha=0.3)
 
@@ -216,6 +210,7 @@ def _cached_queue_history(data_key: tuple) -> str:
     ax2.set_ylim([0, None])
     ax2.set_ylabel('Resources', fontsize=11)
     ax2.set_xlabel('Time', fontsize=11)
+    ax2.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax2.legend(loc=2, fontsize=10)
     ax2.grid(True, alpha=0.3)
 
@@ -282,7 +277,7 @@ def _cached_facility_pie(data_key: tuple) -> str:
     wedges, _texts, autotexts = ax.pie(
         values,
         labels=None,
-        autopct=lambda pct: f'{pct:.1f}%' if pct >= 5 else '',
+        autopct=lambda p: fmt.pct(p, decimals=1) if p >= 5 else '',
         startangle=_PIE_START_ANGLE,
         counterclock=False,
         colors=colors,
@@ -339,7 +334,7 @@ def _cached_alloc_type_pie(data_key: tuple) -> str:
     wedges, _texts, autotexts = ax.pie(
         values,
         labels=None,
-        autopct=lambda pct: f'{pct:.1f}%' if pct >= 5 else '',
+        autopct=lambda p: fmt.pct(p, decimals=1) if p >= 5 else '',
         startangle=_PIE_START_ANGLE,
         counterclock=False,
         colors=colors,
