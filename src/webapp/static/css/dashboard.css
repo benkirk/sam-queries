@@ -71,6 +71,24 @@ body {
 }
 
 /* Site name */
+.navbar .site-name {
+    align-self: center;
+    font-size: 0.875rem;
+    font-weight: var(--font-weight-semi-bold);
+    line-height: 1rem;
+    padding-right: 1.875rem;
+}
+
+.navbar .site-name a {
+    color: var(--ncar-blue);
+    text-decoration: none;
+}
+
+.navbar .site-name a:hover,
+.navbar .site-name a:active {
+    color: var(--ncar-sky);
+}
+
 .site-name h1 {
     font-size: var(--font-size-xlg);
     font-weight: var(--font-weight-regular);
@@ -100,7 +118,7 @@ body {
 
 .navbar .nav-link:hover,
 .navbar .nav-link:focus {
-    color: var(--ncar-blue);
+    color: var(--ncar-sky);
 }
 
 .navbar .nav-item {
@@ -174,6 +192,11 @@ body {
         border-bottom: 0.1875rem solid var(--ncar-blue);
         margin-bottom: -0.1875rem;
         color: var(--ncar-space-blue);
+    }
+
+    .navbar .site-name {
+        font-size: 1rem;
+        line-height: 1.2rem;
     }
 
     .site-name h1 {
