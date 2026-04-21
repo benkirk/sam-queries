@@ -18,7 +18,9 @@ from webapp.utils.rbac import (
     has_permission, has_permission_for_facility,
     Permission, user_facility_scope,
 )
-from webapp.api.access_control import require_project_permission
+from webapp.api.access_control import (
+    require_project_permission, require_allocation_permission,
+)
 from webapp.utils.project_permissions import (
     can_edit_project_governance,
     can_edit_allocations,
@@ -450,6 +452,7 @@ def edit_project_page(project):
     form_data = _project_form_data(form=pre_fill or None)
 
     can_edit_governance = can_edit_project_governance(current_user, project)
+    can_edit_allocs = can_edit_allocations(current_user, project)
     from webapp.utils.rbac import has_permission_any_facility
     can_access_admin = has_permission_any_facility(current_user, Permission.ACCESS_ADMIN_DASHBOARD)
 
@@ -460,6 +463,7 @@ def edit_project_page(project):
         current_facility_id=current_facility_id,
         current_panel_id=current_panel_id,
         can_edit_governance=can_edit_governance,
+        can_edit_allocations=can_edit_allocs,
         can_access_admin=can_access_admin,
         **form_data,
     )
@@ -652,6 +656,7 @@ def htmx_project_allocation_tree(project):
         active_at=active_at_str,
         now_str=now_str,
         can_edit_governance=can_edit_project_governance(current_user, project),
+        can_edit_allocations=can_exchange,
         can_exchange=can_exchange,
         exchange_eligible_resources=exchange_eligible_resources,
         resource_id_by_name=resource_id_by_name,
@@ -660,16 +665,11 @@ def htmx_project_allocation_tree(project):
 
 @bp.route('/htmx/add-allocation-form/<projcode>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_add_allocation_form(projcode):
+@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+def htmx_add_allocation_form(project):
     """Return the add-allocation sub-form (loaded into modal on button click)."""
     import calendar
-    from sam.projects.projects import Project
     from sam.resources.resources import Resource
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-warning">Project not found.</div>'
 
     # Resources already linked to this project (via any account, even deleted).
     linked_resource_ids = {
@@ -708,18 +708,13 @@ def htmx_add_allocation_form(projcode):
 
 @bp.route('/htmx/add-allocation/<projcode>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_add_allocation(projcode):
+@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+def htmx_add_allocation(project):
     """Create a new account + allocation for the project."""
-    from sam.projects.projects import Project
     from sam.resources.resources import Resource
     from sam.manage.allocations import create_allocation
     from sam.schemas.forms import AddAllocationForm
     from marshmallow import ValidationError
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger">Project not found.</div>', 404
 
     errors = []
 
@@ -813,7 +808,7 @@ def htmx_add_allocation(projcode):
         )
 
     return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
+        {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
         'Allocation created successfully.',
         detail=detail,
     )
@@ -1147,19 +1142,13 @@ def _build_renew_candidates(project, source_active_at):
 
 @bp.route('/htmx/renew-allocations-form/<projcode>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_renew_allocations_form(projcode):
+@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+def htmx_renew_allocations_form(project):
     """Return the Renew Allocations modal form fragment.
 
     Query params:
         active_at (YYYY-MM-DD): which allocations to renew. Defaults to today.
     """
-    from sam.projects.projects import Project
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-warning">Project not found.</div>'
-
     # Renew always operates from the root of the project tree.
     root = project.get_root() if hasattr(project, 'get_root') else project
 
@@ -1183,18 +1172,13 @@ def htmx_renew_allocations_form(projcode):
 
 @bp.route('/htmx/renew-allocations/<projcode>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_renew_allocations(projcode):
+@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+def htmx_renew_allocations(project):
     """Create renewed allocations for the selected resources."""
-    from sam.projects.projects import Project
     from sam.resources.resources import Resource
     from sam.manage.renew import renew_project_allocations, analyze_renew_preconditions
     from sam.schemas.forms import RenewAllocationsForm
     from marshmallow import ValidationError
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger">Project not found.</div>', 404
 
     root = project.get_root() if hasattr(project, 'get_root') else project
 
@@ -1332,7 +1316,7 @@ def htmx_renew_allocations(projcode):
         names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in no_source_ids))
         detail_parts.append(f'skipped (no source at {source_dt.strftime("%Y-%m-%d")}): {names}')
     return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
+        {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
         'Allocations renewed successfully.',
         detail='; '.join(detail_parts),
     )
@@ -1400,15 +1384,9 @@ def _build_extend_candidates(project, source_active_at):
 
 @bp.route('/htmx/extend-allocations-form/<projcode>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_extend_allocations_form(projcode):
+@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+def htmx_extend_allocations_form(project):
     """Return the Extend Allocations modal form fragment."""
-    from sam.projects.projects import Project
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-warning">Project not found.</div>'
-
     root = project.get_root() if hasattr(project, 'get_root') else project
 
     source_active_at = _parse_active_at_arg(request.args.get('active_at', ''))
@@ -1430,17 +1408,12 @@ def htmx_extend_allocations_form(projcode):
 
 @bp.route('/htmx/extend-allocations/<projcode>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_extend_allocations(projcode):
+@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+def htmx_extend_allocations(project):
     """Push end_date forward on the selected allocations."""
-    from sam.projects.projects import Project
     from sam.manage.extend import extend_project_allocations
     from sam.schemas.forms import ExtendAllocationsForm
     from marshmallow import ValidationError
-
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger">Project not found.</div>', 404
 
     root = project.get_root() if hasattr(project, 'get_root') else project
 
@@ -1524,26 +1497,21 @@ def htmx_extend_allocations(projcode):
         f'{new_end.strftime("%Y-%m-%d")}'
     )
     return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
+        {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
         'Allocations extended successfully.',
         detail=detail,
     )
 
 
-@bp.route('/htmx/edit-allocation-form/<int:alloc_id>')
+@bp.route('/htmx/edit-allocation-form/<int:allocation_id>')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_edit_allocation_form(alloc_id):
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_edit_allocation_form(allocation):
     """Return the edit-allocation form fragment (loaded into modal)."""
-    from sam.accounting.allocations import Allocation
     from sam.manage.allocations import get_partitioned_descendant_sum, date_ranges_overlap
     from sam.accounting.accounts import Account
 
-    allocation = db.session.get(Allocation, alloc_id)
-    if not allocation:
-        return '<div class="alert alert-warning">Allocation not found.</div>'
-
-    projcode = allocation.account.project.projcode if allocation.account else ''
+    projcode = allocation.account.project.projcode
 
     # Flaw 1 fix: sum standalone (non-inherited) descendant allocations only
     partitioned_sum = get_partitioned_descendant_sum(db.session, allocation)
@@ -1615,22 +1583,19 @@ def htmx_edit_allocation_form(alloc_id):
     )
 
 
-@bp.route('/htmx/edit-allocation/<int:alloc_id>', methods=['POST'])
+@bp.route('/htmx/edit-allocation/<int:allocation_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_edit_allocation(alloc_id):
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_edit_allocation(allocation):
     """Validate and apply allocation edits with cascade + audit logging."""
-    from sam.accounting.allocations import Allocation, InheritingAllocationException
+    from sam.accounting.allocations import InheritingAllocationException
     from sam.manage.allocations import update_allocation, detach_allocation
     from sam.manage.allocations import get_partitioned_descendant_sum
     from sam.schemas.forms import EditAllocationForm
     from marshmallow import ValidationError
 
-    allocation = db.session.get(Allocation, alloc_id)
-    if not allocation:
-        return '<div class="alert alert-danger">Allocation not found.</div>', 404
-
-    projcode = allocation.account.project.projcode if allocation.account else ''
+    alloc_id = allocation.allocation_id
+    projcode = allocation.account.project.projcode
 
     break_inheritance = request.form.get('break_inheritance') == 'true'
 
@@ -1719,21 +1684,17 @@ def htmx_edit_allocation(alloc_id):
     )
 
 
-@bp.route('/htmx/detach-allocation/<int:alloc_id>', methods=['POST'])
+@bp.route('/htmx/detach-allocation/<int:allocation_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_detach_allocation(alloc_id):
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_detach_allocation(allocation):
     """Break parent_allocation_id link without editing other fields."""
-    from sam.accounting.allocations import Allocation
     from sam.manage.allocations import detach_allocation
 
-    allocation = db.session.get(Allocation, alloc_id)
-    if not allocation:
-        return '<div class="alert alert-danger">Allocation not found.</div>', 404
-    projcode = allocation.account.project.projcode if allocation.account else ''
+    projcode = allocation.account.project.projcode
     try:
         with management_transaction(db.session):
-            detach_allocation(db.session, alloc_id, current_user.user_id)
+            detach_allocation(db.session, allocation.allocation_id, current_user.user_id)
     except ValueError as e:
         return f'<div class="alert alert-danger">{e}</div>', 400
     return htmx_success_message(
@@ -1742,18 +1703,14 @@ def htmx_detach_allocation(alloc_id):
     )
 
 
-@bp.route('/htmx/link-allocation-to-parent/<int:alloc_id>', methods=['POST'])
+@bp.route('/htmx/link-allocation-to-parent/<int:allocation_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_link_allocation_to_parent(alloc_id):
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_link_allocation_to_parent(allocation):
     """Re-link a standalone child allocation to its parent-project allocation."""
-    from sam.accounting.allocations import Allocation
     from sam.manage.allocations import link_allocation_to_parent
 
-    allocation = db.session.get(Allocation, alloc_id)
-    if not allocation:
-        return '<div class="alert alert-danger">Allocation not found.</div>', 404
-    projcode = allocation.account.project.projcode if allocation.account else ''
+    projcode = allocation.account.project.projcode
 
     try:
         parent_allocation_id = int(request.form.get('parent_allocation_id', '0'))
@@ -1765,7 +1722,7 @@ def htmx_link_allocation_to_parent(alloc_id):
     try:
         with management_transaction(db.session):
             link_allocation_to_parent(
-                db.session, alloc_id, parent_allocation_id, current_user.user_id
+                db.session, allocation.allocation_id, parent_allocation_id, current_user.user_id
             )
     except ValueError as e:
         return f'<div class="alert alert-danger">{e}</div>', 400
@@ -1776,17 +1733,15 @@ def htmx_link_allocation_to_parent(alloc_id):
     )
 
 
-@bp.route('/htmx/propagate-allocation-to-remaining/<int:alloc_id>', methods=['POST'])
+@bp.route('/htmx/propagate-allocation-to-remaining/<int:allocation_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
-def htmx_propagate_to_remaining(alloc_id):
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_propagate_to_remaining(allocation):
     """Create child allocations for active descendants that don't yet have one."""
-    from sam.accounting.allocations import Allocation
     from sam.accounting.accounts import Account
     from sam.manage.allocations import propagate_allocation_to_subprojects
 
-    allocation = db.session.get(Allocation, alloc_id)
-    if not allocation or allocation.is_inheriting:
+    if allocation.is_inheriting:
         return '<div class="alert alert-danger">Invalid allocation.</div>', 400
     project = allocation.account.project
     resource_id = allocation.account.resource_id

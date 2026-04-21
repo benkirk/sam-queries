@@ -99,7 +99,7 @@
 
   <!-- ── Tab 2: Allocations ─────────────────────────────────────────── -->
   <div class="tab-pane fade" id="tab-allocations" role="tabpanel">
-    {% if can_edit_governance %}
+    {% if can_edit_allocations %}
     <div class="d-flex justify-content-end gap-2 mb-3">
       <button class="btn btn-sm btn-warning"
               hx-get="{{ url_for('admin_dashboard.htmx_extend_allocations_form', projcode=project.projcode) }}"
