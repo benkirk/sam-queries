@@ -15,7 +15,9 @@ from webapp.utils.htmx import (
     htmx_success_message,
 )
 from webapp.extensions import db
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import (
+    require_permission, require_permission_any_facility, Permission,
+)
 from sam.manage import management_transaction
 from sam.schemas.forms.facilities import (
     EditFacilityForm, CreateFacilityForm, CreatePanelForm,
@@ -33,7 +35,7 @@ _FACILITY_TRIGGERS = {'closeActiveModal': {}, 'reloadFacilitiesCard': {}}
 
 @bp.route('/htmx/facilities')
 @login_required
-@require_permission(Permission.VIEW_FACILITIES)
+@require_permission_any_facility(Permission.VIEW_FACILITIES)
 def htmx_facilities_card():
     """
     Return the Facility card body fragment with four tabs:

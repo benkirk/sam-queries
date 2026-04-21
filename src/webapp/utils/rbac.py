@@ -222,7 +222,20 @@ USER_FACILITY_PERMISSIONS: Dict[str, Dict[str, Set[Permission]]] = {
             Permission.VIEW_ALLOCATIONS,
             Permission.EDIT_ALLOCATIONS,
             Permission.CREATE_ALLOCATIONS,
+            # Reference-data + directory viewers: the admin dashboard's
+            # Resources, Organizations, Facilities, and Users & Groups
+            # tabs all pull read-only card fragments gated on these
+            # VIEW_* permissions. Granting them here lets a scoped
+            # manager see the cards globally (directory lookup is
+            # inherently cross-facility — project membership spans
+            # users outside WNA). Write buttons remain hidden — they
+            # gate on CREATE_/EDIT_/DELETE_ which this tier does not
+            # confer.
+            Permission.VIEW_RESOURCES,
             Permission.VIEW_ORG_METADATA,
+            Permission.VIEW_FACILITIES,
+            Permission.VIEW_USERS,
+            Permission.VIEW_GROUPS,
         },
     },
 }

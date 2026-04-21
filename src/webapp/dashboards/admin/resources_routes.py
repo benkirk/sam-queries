@@ -15,7 +15,9 @@ from webapp.utils.htmx import (
     htmx_success_message,
 )
 from webapp.extensions import db
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import (
+    require_permission, require_permission_any_facility, Permission,
+)
 from sam.manage import management_transaction
 from sam.schemas.forms.resources import (
     EditResourceForm, CreateResourceForm,
@@ -49,7 +51,7 @@ def _all_resource_types():
 
 @bp.route('/htmx/resources')
 @login_required
-@require_permission(Permission.VIEW_RESOURCES)
+@require_permission_any_facility(Permission.VIEW_RESOURCES)
 def htmx_resources_card():
     """
     Return the Resources card body fragment with four tabs:

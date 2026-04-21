@@ -27,8 +27,9 @@ from webapp.auth.models import AuthUser
 from sam.core.users import User
 from webapp.utils.rbac import (
     apply_facility_scope, can_impersonate, get_user_permissions,
-    has_permission, Permission, require_permission,
-    require_permission_any_facility, user_facility_scope,
+    has_permission, has_permission_any_facility, Permission,
+    require_permission, require_permission_any_facility,
+    user_facility_scope,
 )
 import logging
 logger = logging.getLogger(__name__)
@@ -197,7 +198,7 @@ def project_card(projcode):
 
 @bp.route('/user/<username>')
 @login_required
-@require_permission(Permission.VIEW_USERS)
+@require_permission_any_facility(Permission.VIEW_USERS)
 def user_card(username):
     """
     Get HTML fragment for a single user card (for admin user search).
@@ -245,7 +246,7 @@ def user_card(username):
 
 @bp.route('/group/<group_name>')
 @login_required
-@require_permission(Permission.VIEW_GROUPS)
+@require_permission_any_facility(Permission.VIEW_GROUPS)
 def group_card(group_name):
     """HTML fragment for a single adhoc-group card (admin group search).
 
@@ -594,9 +595,14 @@ def htmx_search_users():
     The ``context`` query parameter selects the response template AND
     the permission gate:
       fk          → FK-picker badge list (create_resource, create_contract,
-                    create_project); requires system VIEW_USERS.
-      impersonate → admin user list with active_only filter (impersonation
-                    panel); requires system IMPERSONATE_USERS.
+                    create_project); requires VIEW_USERS (any-facility —
+                    scoped managers need to pick users for their
+                    in-scope projects).
+      impersonate → admin user list with active_only filter (shown in the
+                    Users & Groups tab). Requires VIEW_USERS (any-facility);
+                    the impersonate button inside each result row is
+                    itself gated on IMPERSONATE_USERS in the template,
+                    so non-impersonators see a plain directory listing.
       member      → project member add list; requires can_manage_project_members
                     on the target project (projcode required), so project
                     leads/admins can search when building the add-member form.
@@ -633,11 +639,12 @@ def htmx_search_users():
         if not can_manage_project_members(current_user, project):
             abort(403)
         exclude_ids = get_project_member_user_ids(db.session, project.project_id)
-    elif context == 'impersonate':
-        if not has_permission(current_user, Permission.IMPERSONATE_USERS):
-            abort(403)
     else:
-        if not has_permission(current_user, Permission.VIEW_USERS):
+        # Both 'fk' and 'impersonate' contexts return a listing of users;
+        # the impersonate button inside the 'impersonate' result row is
+        # template-gated on IMPERSONATE_USERS, so admitting VIEW_USERS
+        # holders (including facility-scoped managers) is safe here.
+        if not has_permission_any_facility(current_user, Permission.VIEW_USERS):
             abort(403)
 
     users = search_users_by_pattern(
@@ -650,7 +657,7 @@ def htmx_search_users():
 
 @bp.route('/htmx/search/groups')
 @login_required
-@require_permission(Permission.VIEW_GROUPS)
+@require_permission_any_facility(Permission.VIEW_GROUPS)
 def htmx_search_groups():
     """Search adhoc groups by name or GID. Returns the result-list fragment."""
     from sam.queries.lookups import search_groups_by_pattern
@@ -967,7 +974,7 @@ def htmx_edit_exemption(exemption_id):
 
 @bp.route('/htmx/queues-for-resource')
 @login_required
-@require_permission(Permission.VIEW_RESOURCES)
+@require_permission_any_facility(Permission.VIEW_RESOURCES)
 def htmx_queues_for_resource():
     """
     Return queue <option> elements for a given resource_id (cascading select).

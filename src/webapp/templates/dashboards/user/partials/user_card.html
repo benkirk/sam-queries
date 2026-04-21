@@ -234,7 +234,7 @@
     <div class="card-body border-top pt-3">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <strong><i class="fas fa-clock"></i> Wallclock Exemptions</strong>
-            {% if is_admin %}
+            {% if is_admin and has_permission(Permission.EDIT_USERS) %}
             <button class="btn btn-sm btn-outline-success"
                     data-bs-toggle="modal" data-bs-target="#addExemptionModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_add_exemption_form', username=sam_user.username) }}"
@@ -255,7 +255,7 @@
                         <th>End</th>
                         <th>Limit (hrs)</th>
                         <th>Comment</th>
-                        {% if is_admin %}<th></th>{% endif %}
+                        {% if is_admin and has_permission(Permission.EDIT_USERS) %}<th></th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -272,7 +272,7 @@
                         </td>
                         <td>{{ ex.time_limit_hours }}</td>
                         <td>{{ ex.comment or '' }}</td>
-                        {% if is_admin %}
+                        {% if is_admin and has_permission(Permission.EDIT_USERS) %}
                         <td>
                             <button class="btn btn-sm btn-outline-warning py-0"
                                     data-bs-toggle="modal" data-bs-target="#editExemptionModal"
