@@ -12,8 +12,12 @@
 
 body {
     background-color: var(--bg-light);
+    background-image: url('../img/UCAR-Waves-Lines-Only-66.png');
+    background-position: 150% 0%;
+    background-repeat: repeat-y;
+    background-size: 53%;
     min-height: 100vh;
-    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-family-default);
     color: var(--text-dark);
 }
 
@@ -42,7 +46,7 @@ body {
 
 .navbar-dark .navbar-nav .nav-link {
     color: rgba(255,255,255,0.9);
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
     padding: 0.5rem 1rem;
     transition: all var(--transition-base);
     border-radius: var(--radius-sm);
@@ -59,7 +63,7 @@ body {
     padding: 8px 16px;
     background: rgba(var(--ncar-teal-rgb), 0.3);
     border-radius: var(--radius-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
     border: 1px solid rgba(255, 255, 255, 0.2);
     transition: all var(--transition-base);
 }
@@ -74,8 +78,14 @@ body {
    ========================================================================= */
 
 .main-content {
-    padding: 30px 0;
+    padding: 0.5rem 0;
     min-height: calc(100vh - 200px);
+}
+
+@media (min-width: 64rem) {
+    .main-content {
+        padding-top: 1.875rem;
+    }
 }
 
 .page-header {
@@ -195,7 +205,7 @@ body {
 
 .footer small {
     color: var(--ncar-gray);
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
 }
 
 /* ============================================================================
@@ -437,7 +447,7 @@ body {
    on navbar, flash messages, footer, and any content block that opts in via
    the content_container_class block override. */
 .sam-fluid-1800 {
-    max-width: 1800px;
+    max-width: 88.25rem;
     margin-left: auto;
     margin-right: auto;
 }
@@ -513,7 +523,7 @@ body {
 
 .stat-label {
     color: var(--ncar-gray);
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
 }
 
 .stat-value {
@@ -568,7 +578,7 @@ body {
 
 .collapse-toggle::after {
     content: '\f078';
-    font-family: 'Font Awesome 5 Free';
+    font-family: 'Font Awesome 6 Free';
     font-weight: 900;
     float: right;
     transition: transform var(--transition-base);
@@ -675,9 +685,6 @@ body {
 }
 
 @media (max-width: 576px) {
-    .main-content {
-        padding: 20px 0;
-    }
 
     .page-header {
         margin-bottom: 20px;

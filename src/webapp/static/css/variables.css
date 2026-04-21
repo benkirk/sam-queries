@@ -5,15 +5,47 @@
  */
 
 :root {
+    /* --- Typography --- */
+    --font-family-default: 'Poppins', sans-serif;
+    --font-family-code:    'Roboto Mono', monospace;
+
+    --font-weight-regular:   400;
+    --font-weight-semi-bold: 600;
+    --font-weight-bold:      700;
+
+    /* Type scale (mirrors Unity _variables.scss) */
+    --font-size-xxsm:   0.875rem;
+    --font-size-xsm:    1rem;
+    --font-size-sm:     1.125rem;
+    --font-size-base:   1.25rem;
+    --font-size-lg:     1.5rem;
+    --font-size-xlg:    1.875rem;
+    --font-size-xxlg:   2.25rem;
+    --font-size-xxxlg:  3rem;
+    --font-size-xxxxlg: 3.75rem;
+
+    --line-height-xxsm:   1.35;
+    --line-height-xsm:    1.5rem;
+    --line-height-sm:     1.875rem;
+    --line-height-base:   1.875rem;
+    --line-height-lg:     2.25rem;
+    --line-height-xlg:    2.625rem;
+    --line-height-xxlg:   3rem;
+    --line-height-xxxlg:  3.75rem;
+    --line-height-xxxxlg: 4.5rem;
+
+
     /* --- NCAR brand colors --- */
-    --ncar-navy:       #002E6C;   /* NSF NCAR brand navy */
-    --ncar-blue:       #0056C2;   /* NSF NCAR brand blue */
+    --ncar-space-blue: #011837;   /* Unity space-blue — darkest nav/heading text */
+    --ncar-gray-light: #bbbcbc;   /* Unity grays.light — nav item dividers */
+    --ncar-navy:       #00357a;   /* NSF NCAR brand navy */
+    --ncar-blue:       #0057c2;   /* NSF NCAR brand blue */
     --ncar-light-blue: #00A2B4;   /* NSF NCAR teal light */
-    --ncar-cyan:       #34E0F4;   /* NSF NCAR sky blue */
+    --ncar-cyan:       #34e1f4;   /* NSF NCAR sky blue */
     --ncar-teal:       #00818F;   /* NSF NCAR teal dark */
     --ncar-sky:        #42C0FF;   /* NSF NCAR sky light */
-    --ncar-vermilion:  #E81D24;   /* NSF NCAR defining accent */
-    --ncar-gray:       #4A5568;
+    --ncar-vermilion:  #ff1f1f;   /* NSF NCAR defining accent */
+    --ncar-gray:       #97999b;
     --ncar-navy-mid:   #003579;   /* gradient midpoint (navy → blue) */
     --ncar-teal-rgb:   0, 153, 204;  /* #0099CC used in rgba() calls */
 
@@ -22,8 +54,8 @@
     --warning-color:   #f59e0b;
     --danger-color:    #E81D24;   /* brand vermilion */
     --info-color:      #0056C2;
-    --bg-light:        #F0EFED;   /* NSF NCAR warm off-white */
-    --text-dark:       #1A202C;
+    --bg-light:        #f6f7f6;   /* NSF NCAR warm off-white */
+    --text-dark:       #323133;
     --border-color:    #E2E8F0;
 
     /* --- Design system tokens --- */
