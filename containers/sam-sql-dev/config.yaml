@@ -35,6 +35,42 @@ settings:
   # --- Optional: logging / debug ---
   verbose: true                    # print detailed progress (default: true)
 
+  # --- Per-table subsetting strategies ---
+  # Applied BEFORE the size-threshold logic. Patterns are tried in document
+  # order; first match wins (fnmatch glob syntax, case-sensitive).
+  #
+  # Modes:
+  #   empty   -> schema only, zero rows (WHERE 1=0)
+  #   recent  -> rows where <column> >= CURDATE() - <days>
+  #
+  # Tables with no matching strategy fall through to size-based sampling.
+  table_strategies:
+    # Individual-event tables: already rolled up into *_charge_summary,
+    # not needed for local dev. Leaving them empty avoids cloning real
+    # usernames/hostnames that would otherwise need anonymization.
+    - pattern: "*_job"               # comp_job
+      mode: empty
+    - pattern: "*_activity"          # comp/hpc/dav/disk/archive_activity
+      mode: empty
+    - pattern: "hpc_charge"
+      mode: empty
+    - pattern: "dav_charge"
+      mode: empty
+    - pattern: "archive_charge"
+      mode: empty
+
+    # Specific overrides first
+    - pattern: "comp_charge_summary"
+      mode: recent
+      column: activity_date
+      days: 730
+
+   # Summary tables: keep ~2 years so balance math and YoY comparisons work.
+    - pattern: "*_charge_summary"
+      mode: recent
+      column: activity_date
+      days: 400
+
 # --- Anonymization settings ---
 anonymization:
   # Usernames to preserve (for testing/development purposes)
