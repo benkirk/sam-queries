@@ -222,6 +222,7 @@ USER_FACILITY_PERMISSIONS: Dict[str, Dict[str, Set[Permission]]] = {
             Permission.VIEW_ALLOCATIONS,
             Permission.EDIT_ALLOCATIONS,
             Permission.CREATE_ALLOCATIONS,
+            Permission.VIEW_ORG_METADATA,
         },
     },
 }
