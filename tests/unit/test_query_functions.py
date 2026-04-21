@@ -224,7 +224,7 @@ class TestDashboardQueries:
         )
         if result:
             assert isinstance(result, dict)
-            for field in ('project', 'resource', 'resource_summary', 'daily_charges'):
+            for field in ('project', 'resource_obj', 'resource_summary', 'daily_charges'):
                 assert field in result
 
     def test_user_dashboard_batched_matches_per_project(

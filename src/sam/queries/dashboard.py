@@ -739,7 +739,13 @@ def get_resource_detail_data(
         Dictionary with structure:
         {
             'project': Project object,
-            'resource': Resource object,
+            'resource_obj': Resource object,
+                # Named ``resource_obj`` (not ``resource``) to avoid
+                # colliding with the row-level ``'resource'`` key used
+                # everywhere else in the query layer, where that key
+                # holds the resource *name string*. Keep this
+                # distinction — a scope filter that keys off
+                # ``row['resource']`` assumes a string.
             'resource_summary': {
                 'resource_name': str,
                 'allocated': float,
@@ -900,7 +906,7 @@ def get_resource_detail_data(
         if not account:
             return {
                 'project': project,
-                'resource': resource,
+                'resource_obj': resource,
                 'resource_summary': resource_summary,
                 'daily_charges': { 'dates': None, 'values': None }
             }
@@ -954,7 +960,7 @@ def get_resource_detail_data(
 
     return {
         'project': project,
-        'resource': resource,
+        'resource_obj': resource,
         'resource_summary': resource_summary,
         'daily_charges': daily_charges,
     }
