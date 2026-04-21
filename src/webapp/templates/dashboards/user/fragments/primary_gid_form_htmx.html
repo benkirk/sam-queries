@@ -1,0 +1,36 @@
+{# Inline primary-GID picker form (inner payload of #primary-gid-row-<username>).
+
+   Inputs:
+     sam_user         — the User being edited
+     available_groups — list[{unix_gid, group_name}] options for the <select>
+     errors           — list[str]; rendered as a flash strip below the form
+#}
+<span class="stat-label">Primary GID:</span>
+<span class="stat-value">
+    <form class="d-inline-flex align-items-center gap-1"
+          hx-post="{{ url_for('user_dashboard.htmx_set_primary_gid', username=sam_user.username) }}"
+          hx-target="#primary-gid-row-{{ sam_user.username }}"
+          hx-swap="innerHTML">
+        <select name="unix_gid" class="form-select form-select-sm py-0" style="width:auto;">
+            {% for g in available_groups %}
+            <option value="{{ g.unix_gid }}" {% if g.unix_gid == sam_user.primary_gid %}selected{% endif %}>
+                {{ g.group_name }} ({{ g.unix_gid }})
+            </option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-xs btn-success py-0" title="Save">
+            <i class="fas fa-check"></i>
+        </button>
+        <button type="button" class="btn btn-xs btn-secondary py-0" title="Cancel"
+                hx-get="{{ url_for('user_dashboard.htmx_primary_gid_display', username=sam_user.username) }}"
+                hx-target="#primary-gid-row-{{ sam_user.username }}"
+                hx-swap="innerHTML">
+            <i class="fas fa-times"></i>
+        </button>
+    </form>
+    {% if errors %}
+    <div class="alert alert-danger py-1 px-2 mt-1 mb-0 small">
+        {% for err in errors %}<div>{{ err }}</div>{% endfor %}
+    </div>
+    {% endif %}
+</span>

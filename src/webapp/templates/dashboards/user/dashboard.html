@@ -68,7 +68,9 @@
     <div class="tab-pane fade" id="user-info" role="tabpanel">
         {{ render_user_card(user, user_groups=user_groups, primary_group_name=primary_group_name,
                             current_shell=current_shell, allowable_shells=allowable_shells,
-                            can_edit_shell=can_edit_shell) }}
+                            can_edit_shell=can_edit_shell,
+                            available_groups=available_groups,
+                            can_edit_primary_gid=can_edit_primary_gid) }}
     </div>
     <!-- End User Information Tab -->
 </div>

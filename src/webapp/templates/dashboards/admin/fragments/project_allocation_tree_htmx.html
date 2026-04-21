@@ -144,10 +144,10 @@
 
           {# Col 5: edit pencil (or shared badge for inherited allocations) #}
           <td style="vertical-align:middle;">
-            {% if root_alloc and root_alloc.allocation_id and not root_alloc.is_inheriting %}
+            {% if can_edit_allocations and root_alloc and root_alloc.allocation_id and not root_alloc.is_inheriting %}
             <button class="btn btn-xs btn-outline-warning py-0 px-1"
                     style="font-size:0.7rem;"
-                    hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', alloc_id=root_alloc.allocation_id) }}"
+                    hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', allocation_id=root_alloc.allocation_id) }}"
                     hx-target="#editAllocationFormContainer"
                     hx-trigger="click"
                     data-bs-toggle="modal"
@@ -222,16 +222,26 @@
         {%- endif -%}
       {%- endfor -%}
 
+      {#- Per-resource Exchange URL: only set for eligible resources; the
+          macro renders the button only on the current (edit-page) row. -#}
+      {%- set _exchange_url = none -%}
+      {%- if can_exchange and resource_name in exchange_eligible_resources -%}
+        {%- set _exchange_url = url_for('admin_dashboard.htmx_exchange_allocation_form',
+                                         projcode=projcode,
+                                         resource_id=resource_id_by_name[resource_name]) -%}
+      {%- endif -%}
+
       <tbody id="{{ body_id }}" class="collapse alloc-tree-body">
         {{ render_project_tree_rows([root],
                                      depth=0,
                                      current_projcode=projcode,
                                      alloc_by_projcode=alloc_by_projcode,
                                      can_view=true,
-                                     can_edit_allocations=true,
+                                     can_edit_allocations=can_edit_governance,
                                      active_only=true,
                                      usage_warning_threshold=75,
-                                     usage_critical_threshold=90) }}
+                                     usage_critical_threshold=90,
+                                     exchange_url=_exchange_url) }}
       </tbody>
       {% endif %}{# /is_standalone #}
 

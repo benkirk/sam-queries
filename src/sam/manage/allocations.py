@@ -21,6 +21,7 @@ __all__ = [
     'log_allocation_transaction',
     'create_allocation',
     'update_allocation',
+    'exchange_allocations',
     'propagate_allocation_to_subprojects',
     'detach_allocation',
     'link_allocation_to_parent',
@@ -338,6 +339,133 @@ def update_allocation(
         session.flush()
 
     return allocation
+
+
+def exchange_allocations(
+    session: Session,
+    from_allocation_id: int,
+    to_allocation_id: int,
+    amount: float,
+    user_id: int,
+    comment: Optional[str] = None,
+) -> tuple:
+    """Move ``amount`` from one dedicated allocation to another.
+
+    Conservative "exchange": preserves the combined amount across the two
+    allocations, never touches dates, operates only on dedicated (non-
+    inheriting) allocations on the same resource. Inheriting children of
+    either side cascade automatically via ``update_allocation``.
+
+    Writes two paired ``AllocationTransaction(TRANSFER)`` audit rows so
+    the operation is greppable as a single logical event, in addition to
+    the ``EDIT`` rows produced by the underlying updates.
+
+    Does NOT commit — caller wraps in ``management_transaction``.
+
+    Args:
+        session:             SQLAlchemy session.
+        from_allocation_id:  Source allocation (debited).
+        to_allocation_id:    Destination allocation (credited).
+        amount:              Positive amount to transfer.
+        user_id:             User performing the exchange (audit trail).
+        comment:             Optional human-readable note appended to both
+                             TRANSFER audit rows.
+
+    Returns:
+        Tuple[Allocation, Allocation]: (from_allocation, to_allocation)
+        after the amount updates have been applied and flushed.
+
+    Raises:
+        ValueError: If allocations missing/deleted, same id, non-positive
+            amount, cross-resource, or amount > from.amount.
+        InheritingAllocationException: If either allocation is inheriting.
+    """
+    if amount <= 0:
+        raise ValueError(f"Exchange amount must be positive, got {amount}")
+    if from_allocation_id == to_allocation_id:
+        raise ValueError("FROM and TO allocations must differ")
+
+    from_alloc = session.get(Allocation, from_allocation_id)
+    to_alloc = session.get(Allocation, to_allocation_id)
+    if from_alloc is None or from_alloc.deleted:
+        raise ValueError(f"FROM allocation {from_allocation_id} not found")
+    if to_alloc is None or to_alloc.deleted:
+        raise ValueError(f"TO allocation {to_allocation_id} not found")
+    if from_alloc.is_inheriting:
+        raise InheritingAllocationException(
+            f"FROM allocation {from_allocation_id} is inheriting; "
+            "exchanges operate only on dedicated allocations."
+        )
+    if to_alloc.is_inheriting:
+        raise InheritingAllocationException(
+            f"TO allocation {to_allocation_id} is inheriting; "
+            "exchanges operate only on dedicated allocations."
+        )
+
+    from_resource_id = from_alloc.account.resource_id if from_alloc.account else None
+    to_resource_id = to_alloc.account.resource_id if to_alloc.account else None
+    if from_resource_id is None or to_resource_id is None:
+        raise ValueError("Exchange endpoints must have valid accounts.")
+    if from_resource_id != to_resource_id:
+        raise ValueError("Exchange endpoints must be on the same resource.")
+
+    if amount > from_alloc.amount:
+        raise ValueError(
+            f"Exchange amount ({amount}) exceeds FROM allocation amount "
+            f"({from_alloc.amount})."
+        )
+
+    from_proj = from_alloc.account.project if from_alloc.account else None
+    to_proj = to_alloc.account.project if to_alloc.account else None
+    from_code = from_proj.projcode if from_proj else f"#{from_allocation_id}"
+    to_code = to_proj.projcode if to_proj else f"#{to_allocation_id}"
+    transfer_comment = f"Exchange: -{amount} {from_code} / +{amount} {to_code}"
+    if comment:
+        transfer_comment = f"{transfer_comment}; {comment}"
+
+    new_from = from_alloc.amount - amount
+    new_to = to_alloc.amount + amount
+
+    update_allocation(session, from_allocation_id, user_id, amount=new_from)
+    update_allocation(session, to_allocation_id, user_id, amount=new_to)
+
+    # Paired TRANSFER audit rows (in addition to the EDIT rows that
+    # update_allocation writes). They cross-reference each other via
+    # related_transaction_id so the exchange is greppable as a single
+    # logical operation.
+    debit = AllocationTransaction(
+        allocation_id=from_alloc.allocation_id,
+        user_id=user_id,
+        transaction_type=AllocationTransactionType.TRANSFER,
+        alloc_start_date=from_alloc.start_date,
+        alloc_end_date=from_alloc.end_date,
+        transaction_amount=-amount,
+        requested_amount=amount,
+        transaction_comment=transfer_comment,
+        propagated=False,
+    )
+    session.add(debit)
+    session.flush()
+
+    credit = AllocationTransaction(
+        allocation_id=to_alloc.allocation_id,
+        user_id=user_id,
+        transaction_type=AllocationTransactionType.TRANSFER,
+        alloc_start_date=to_alloc.start_date,
+        alloc_end_date=to_alloc.end_date,
+        transaction_amount=amount,
+        requested_amount=amount,
+        transaction_comment=transfer_comment,
+        propagated=False,
+        related_transaction_id=debit.allocation_transaction_id,
+    )
+    session.add(credit)
+    session.flush()
+
+    debit.related_transaction_id = credit.allocation_transaction_id
+    session.flush()
+
+    return from_alloc, to_alloc
 
 
 def propagate_allocation_to_subprojects(

@@ -413,6 +413,27 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         return user in self.users
 
     @property
+    def facility_name(self) -> Optional[str]:
+        """The facility this project belongs to, derived via the
+        ``allocation_type → panel → facility`` chain.
+
+        Returns ``None`` for orphan projects — those with no
+        ``allocation_type`` assigned, or whose allocation_type chain
+        is broken. The RBAC facility-scope layer treats ``None`` as
+        "unscoped users cannot act here" (only system-permission
+        holders may)."""
+        at = self.allocation_type
+        if at is None:
+            return None
+        panel = at.panel
+        if panel is None:
+            return None
+        facility = panel.facility
+        if facility is None:
+            return None
+        return facility.facility_name
+
+    @property
     def active_directories(self) -> List[str]:
         """Return a list of active project directories (if any)."""
         dirs=[]

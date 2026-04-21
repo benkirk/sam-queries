@@ -30,9 +30,21 @@ from sam.accounting.accounts import Account, AccountUser
 # Project Search Queries
 # ============================================================================
 
-def search_projects_by_code_or_title(session: Session, search_term: str, active: Optional[bool] = None) -> List[Project]:
-    """Search projects by project code or title, optionally filtered by active status."""
-    # Ensure search_term is case-insensitive for projcode and title
+def search_projects_by_code_or_title(
+    session: Session,
+    search_term: str,
+    active: Optional[bool] = None,
+    facility_names: Optional[List[str]] = None,
+) -> List[Project]:
+    """Search projects by project code or title, optionally filtered by
+    active status and/or a facility allowlist.
+
+    ``facility_names`` — when supplied, results are restricted to
+    projects whose ``allocation_type → panel → facility`` chain resolves
+    to one of the listed facility names. Projects with a broken chain
+    (orphans) are excluded, matching the facility-scoped RBAC rule
+    that only unscoped system holders may reach orphan projects.
+    """
     like_search_term = f"%{search_term}%"
     query = session.query(Project)\
         .filter(
@@ -43,6 +55,12 @@ def search_projects_by_code_or_title(session: Session, search_term: str, active:
         )
     if active is not None:
         query = query.filter(Project.active == active)
+    if facility_names:
+        query = query\
+            .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+            .join(Panel, AllocationType.panel_id == Panel.panel_id)\
+            .join(Facility, Panel.facility_id == Facility.facility_id)\
+            .filter(Facility.facility_name.in_(facility_names))
     return query.all()
 
 

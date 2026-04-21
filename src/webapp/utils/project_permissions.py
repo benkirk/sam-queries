@@ -14,7 +14,7 @@ walking ancestors)" — lives in ``_is_project_steward``. All public
 ``can_*`` helpers delegate to it so the rule set stays consistent.
 """
 
-from webapp.utils.rbac import has_permission, Permission
+from webapp.utils.rbac import has_permission, has_permission_for_facility, Permission
 
 
 def _is_project_steward(
@@ -28,8 +28,12 @@ def _is_project_steward(
     Authorization primitive used by every project-scoped ``can_*`` check.
 
     Returns True if **any** of:
-    - The user has ``system_permission`` (e.g. EDIT_PROJECT_MEMBERS,
-      EDIT_ALLOCATIONS) — system-wide override.
+    - The user has ``system_permission`` for the target project's
+      facility — either unconditionally (system-wide grant) or via a
+      ``USER_FACILITY_PERMISSIONS`` entry covering
+      ``project.facility_name``. Orphan projects (no
+      ``allocation_type`` chain) can only be reached by unscoped
+      system holders.
     - The user is the project lead.
     - The user is the project admin.
     - When ``include_ancestors`` is True: the user is lead or admin of
@@ -48,7 +52,7 @@ def _is_project_steward(
             without consulting project-level roles.
         include_ancestors: If True, lead/admin of any ancestor counts.
     """
-    if has_permission(user, system_permission):
+    if has_permission_for_facility(user, system_permission, project.facility_name):
         return True
 
     user_id = getattr(user, 'user_id', None)
@@ -69,6 +73,31 @@ def _is_project_steward(
             return True
 
     return False
+
+
+def can_access_edit_project_page(user, project) -> bool:
+    """
+    Enter the admin Edit Project page (/admin/project/<projcode>/edit).
+
+    Granted to: system EDIT_PROJECTS holders, project lead, project admin.
+    The page itself opens all three tabs (Details, Allocations, Members);
+    per-field / per-action gates on each tab constrain what a non-admin
+    steward can actually change.
+    """
+    return _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+
+
+def can_edit_project_governance(user, project) -> bool:
+    """
+    Edit the governance fields on the Details tab — facility, panel,
+    allocation type, lead, admin, active, charging_exempt, ext_alias.
+
+    These fields shape the project's financial / organizational
+    identity. System EDIT_PROJECTS holders only — no steward override.
+    Project leads can still reassign the admin role via the Members
+    tab's dedicated change-admin flow (``can_change_admin``).
+    """
+    return has_permission(user, Permission.EDIT_PROJECTS)
 
 
 def can_manage_project_members(user, project) -> bool:

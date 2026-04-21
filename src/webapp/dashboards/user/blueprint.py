@@ -12,7 +12,7 @@ from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
 from marshmallow import ValidationError
 
-from sam.schemas.forms.user import EditAllocationForm, SetShellForm
+from sam.schemas.forms.user import EditAllocationForm, SetShellForm, SetPrimaryGidForm
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
@@ -24,7 +24,7 @@ from sam.core.users import User
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import can_edit_consumption_threshold
 from webapp.utils.rbac import require_permission, Permission, has_permission
-from webapp.api.access_control import require_allocation_permission
+from webapp.api.access_control import require_allocation_permission, require_project_access
 from ..charts import generate_usage_timeseries_matplotlib
 
 
@@ -65,6 +65,8 @@ def index():
     current_shell = get_user_current_shell(db.session, user_to_display)
     allowable_shells = get_allowable_shell_names(db.session)
 
+    available_groups = _available_primary_groups(db.session, user_to_display.username)
+
     return render_template(
         'dashboards/user/dashboard.html',
         user=user_to_display,
@@ -74,6 +76,8 @@ def index():
         current_shell=current_shell,
         allowable_shells=allowable_shells,
         can_edit_shell=True,   # user is editing their own
+        available_groups=available_groups,
+        can_edit_primary_gid=True,   # user is editing their own
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
         impersonator_id=impersonator_id
@@ -184,6 +188,115 @@ def htmx_set_shell(username):
     )
 
 
+# ---------------------------------------------------------------------------
+# Primary-GID HTMX routes
+# ---------------------------------------------------------------------------
+
+def _can_edit_primary_gid_for(username):
+    """Self or admin."""
+    return (current_user.is_authenticated and (
+        current_user.username == username
+        or has_permission(current_user, Permission.EDIT_USERS)
+    ))
+
+
+def _load_user_for_primary_gid(username):
+    user = db.session.query(User).filter_by(username=username).first()
+    if user is None:
+        return None, ('<div class="alert alert-warning m-2">User not found</div>', 404)
+    if not _can_edit_primary_gid_for(username):
+        return None, ('<div class="alert alert-danger m-2">Unauthorized</div>', 403)
+    return user, None
+
+
+def _available_primary_groups(session, username):
+    """De-duplicated list of {unix_gid, group_name} a user may set as their
+    primary GID, sorted by group_name. Wraps ``get_user_group_access`` with
+    ``include_projects=True`` to match legacy union semantics."""
+    memberships = get_user_group_access(
+        session, username=username, include_projects=True,
+    ).get(username, [])
+    seen = {}
+    for m in memberships:
+        gid = m['unix_gid']
+        if gid is not None:
+            seen.setdefault(gid, m['group_name'])
+    return sorted(
+        ({'unix_gid': gid, 'group_name': name} for gid, name in seen.items()),
+        key=lambda g: g['group_name'],
+    )
+
+
+@bp.route('/htmx/primary-gid-display/<username>')
+@login_required
+def htmx_primary_gid_display(username):
+    """Re-render the read-only primary-GID row (post-save and cancel target)."""
+    user, err = _load_user_for_primary_gid(username)
+    if err:
+        return err
+    from sam.core.groups import resolve_group_name
+    return render_template(
+        'dashboards/user/fragments/primary_gid_display_htmx.html',
+        sam_user=user,
+        primary_group_name=resolve_group_name(db.session, user.primary_gid),
+        can_edit_primary_gid=True,
+    )
+
+
+@bp.route('/htmx/primary-gid-form/<username>')
+@login_required
+def htmx_primary_gid_form(username):
+    """Render the inline picker + Save/Cancel."""
+    user, err = _load_user_for_primary_gid(username)
+    if err:
+        return err
+    return render_template(
+        'dashboards/user/fragments/primary_gid_form_htmx.html',
+        sam_user=user,
+        available_groups=_available_primary_groups(db.session, user.username),
+        errors=[],
+    )
+
+
+@bp.route('/htmx/primary-gid/<username>', methods=['POST'])
+@login_required
+def htmx_set_primary_gid(username):
+    """Apply the selected GID to the user's primary_gid; return the display row."""
+    user, err = _load_user_for_primary_gid(username)
+    if err:
+        return err
+
+    available = _available_primary_groups(db.session, user.username)
+
+    try:
+        form_data = SetPrimaryGidForm().load(request.form)
+    except ValidationError as e:
+        return render_template(
+            'dashboards/user/fragments/primary_gid_form_htmx.html',
+            sam_user=user,
+            available_groups=available,
+            errors=SetPrimaryGidForm.flatten_errors(e.messages),
+        )
+
+    from sam.manage import management_transaction
+    try:
+        with management_transaction(db.session):
+            user.set_primary_gid(form_data['unix_gid'])
+    except ValueError as e:
+        return render_template(
+            'dashboards/user/fragments/primary_gid_form_htmx.html',
+            sam_user=user,
+            available_groups=available,
+            errors=[str(e)],
+        )
+
+    from sam.core.groups import resolve_group_name
+    return render_template(
+        'dashboards/user/fragments/primary_gid_display_htmx.html',
+        sam_user=user,
+        primary_group_name=resolve_group_name(db.session, user.primary_gid),
+        can_edit_primary_gid=True,
+    )
 
 
 @bp.route('/htmx/group-members/<group_name>')
@@ -377,29 +490,39 @@ def resource_details():
 
 @bp.route('/tree/<projcode>')
 @login_required
-def tree_fragment(projcode):
+@require_project_access(include_ancestors=True)
+def tree_fragment(project):
     """
     Lazy-loaded HTML fragment showing project hierarchy tree.
 
     Renders the shared render_project_tree macro
     (dashboards/shared/project_tree.html) via a thin wrapper template.
 
+    Clickability (``can_view``) is true when the user has system
+    VIEW_PROJECTS OR has any affiliation with the tree root (direct
+    member / lead / admin, or lead/admin of an ancestor of the root).
+    When true, every node in the displayed tree is clickable. When
+    false, nodes render as plain text — the user can still enter a
+    specific node's modal via other affordances if they're affiliated
+    there, but the tree itself surfaces only the structure.
+
     Returns:
         HTML tree structure (no full page layout)
     """
-    project = find_project_by_code(db.session, projcode)
-
-    if not project:
-        return '<p class="text-danger mb-0">Project not found</p>'
+    from webapp.api.access_control import _user_can_access_project, _get_sam_user
 
     active_only = request.args.get('active_only') == '1'
     root = project.get_root() if hasattr(project, 'get_root') else project
-    can_view = has_permission(current_user, Permission.VIEW_PROJECTS)
+    sam_user = _get_sam_user()
+    can_view = (
+        has_permission(current_user, Permission.VIEW_PROJECTS)
+        or _user_can_access_project(sam_user, root, include_ancestors=True)
+    )
 
     return render_template(
         'dashboards/user/fragments/tree_htmx.html',
         root=root,
-        current_projcode=projcode,
+        current_projcode=project.projcode,
         active_only=active_only,
         can_view=can_view,
     )
@@ -408,21 +531,18 @@ def tree_fragment(projcode):
 
 @bp.route('/project-details-modal/<projcode>')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
-def project_details_modal(projcode):
+@require_project_access(include_ancestors=True)
+def project_details_modal(project):
     """
     Get HTML fragment for project details modal content (reusable across dashboards).
+
+    Access: system VIEW_PROJECTS, direct project affiliation (member /
+    lead / admin), or lead/admin of any ancestor in the project tree.
 
     Returns:
         HTML fragment with project info and resources for modal body
     """
-    # Validate project exists
-    project = find_project_by_code(db.session, projcode)
-    if not project:
-        return '<p class="alert alert-danger">Project not found</p>'
-
-    # Get full project data
-    project_data = get_project_dashboard_data(db.session, projcode)
+    project_data = get_project_dashboard_data(db.session, project.projcode)
 
     import json
     resp = make_response(render_template(
@@ -432,7 +552,7 @@ def project_details_modal(projcode):
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
     ))
-    resp.headers['HX-Trigger'] = json.dumps({'setModalTitle': f'Project Details \u2014 {projcode}'})
+    resp.headers['HX-Trigger'] = json.dumps({'setModalTitle': f'Project Details \u2014 {project.projcode}'})
     return resp
 
 

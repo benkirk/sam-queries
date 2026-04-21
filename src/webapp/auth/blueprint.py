@@ -32,8 +32,8 @@ def _redirect_for_role(auth_user):
     including users granted admin via USER_PERMISSION_OVERRIDES rather
     than a group bundle.
     """
-    from webapp.utils.rbac import has_permission, Permission
-    if has_permission(auth_user, Permission.ACCESS_ADMIN_DASHBOARD):
+    from webapp.utils.rbac import has_permission_any_facility, Permission
+    if has_permission_any_facility(auth_user, Permission.ACCESS_ADMIN_DASHBOARD):
         return redirect(url_for('admin_dashboard.index'))
     return redirect(url_for('user_dashboard.index'))
 
@@ -173,14 +173,3 @@ def logout():
                 logger.exception("Failed to get OIDC end_session_endpoint")
 
     return redirect(url_for('status_dashboard.index'))
-
-
-# ---------------------------------------------------------------------------
-# Profile
-# ---------------------------------------------------------------------------
-
-@bp.route('/profile')
-@login_required
-def profile():
-    """User profile page showing current user's info and roles."""
-    return render_template('auth/profile.html', user=current_user)

@@ -51,13 +51,18 @@
                         <button class="btn btn-outline-success btn-sm"
                                 title="Mark resolved"
                                 hx-post="{{ url_for('status_dashboard.htmx_resolve_outage', outage_id=outage.outage_id) }}"
-                                hx-confirm="Mark this outage as resolved?">
+                                hx-confirm="Mark this outage as resolved?"
+                                data-confirm-title="Resolve outage"
+                                data-confirm-variant="info"
+                                data-confirm-label="Mark resolved">
                             <i class="fas fa-check"></i>
                         </button>
                         <button class="btn btn-outline-danger btn-sm"
                                 title="Delete outage"
                                 hx-delete="{{ url_for('status_dashboard.htmx_delete_outage', outage_id=outage.outage_id) }}"
-                                hx-confirm="Delete outage: {{ outage.title }}?">
+                                hx-confirm="Delete outage: {{ outage.title }}?"
+                                data-confirm-title="Delete outage"
+                                data-confirm-label="Delete">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>

@@ -25,7 +25,7 @@
     <!-- Right: impersonate icon (only for IMPERSONATE_USERS) -->
     {% if has_permission(Permission.IMPERSONATE_USERS) %}
     <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}" class="ms-2"
-          onsubmit="return confirm('Impersonate {{ user.display_name|e }} ({{ user.username }})?');">
+          onsubmit="event.preventDefault(); var f=this; samConfirm({title:'Impersonate user', message:'Impersonate {{ user.display_name|e }} ({{ user.username }})?', variant:'warning', label:'Impersonate', onConfirm:function(){f.submit();}}); return false;">
         <input type="hidden" name="username" value="{{ user.username }}">
         <button type="submit" class="btn btn-sm btn-outline-warning" title="Impersonate {{ user.username }}">
             <i class="fas fa-user-secret"></i>

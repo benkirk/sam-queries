@@ -91,6 +91,8 @@ class DevelopmentConfig(SAMWebappConfig):
         'rory:CSG',
         'andersnb:HSG',
         'tfair:NUSD',
+        'dlawren:PROJ_TREE_LEAD',
+        'sureshm:WNA_SCOPED_ADMIN',
         'bdobbins',
     ]
 

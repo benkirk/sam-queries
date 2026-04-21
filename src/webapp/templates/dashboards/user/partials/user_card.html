@@ -1,11 +1,14 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% macro render_user_card(sam_user, is_admin=False, user_groups=None, primary_group_name=None,
-                          current_shell=None, allowable_shells=None, can_edit_shell=False) %}
+                          current_shell=None, allowable_shells=None, can_edit_shell=False,
+                          available_groups=None, can_edit_primary_gid=False) %}
 {# user_groups: optional dict[branch_name] -> list of {'group_name', 'unix_gid'}
    primary_group_name: optional str — name of the adhoc group matching
                        sam_user.primary_gid, when one exists
    current_shell / allowable_shells / can_edit_shell: see fragments under
-   dashboards/user/fragments/shell_*.html #}
+   dashboards/user/fragments/shell_*.html
+   available_groups / can_edit_primary_gid: see fragments under
+   dashboards/user/fragments/primary_gid_*.html #}
 <div class="card mb-3">
     <div class="card-header">
         <h5 class="mb-0">
@@ -38,14 +41,8 @@
                 <span class="stat-label">UID:</span>
                 <span class="stat-value">{{ sam_user.unix_uid or 'N/A' }}</span>
             </div>
-            <div class="stat-item">
-                <span class="stat-label">Primary GID:</span>
-                <span class="stat-value">
-                    {{ sam_user.primary_gid or 'N/A' }}
-                    {% if primary_group_name %}
-                    <small class="text-muted ms-1">({{ primary_group_name }})</small>
-                    {% endif %}
-                </span>
+            <div class="stat-item" id="primary-gid-row-{{ sam_user.username }}">
+                {% include 'dashboards/user/fragments/primary_gid_display_htmx.html' %}
             </div>
             <div class="stat-item" id="shell-row-{{ sam_user.username }}">
                 {% include 'dashboards/user/fragments/shell_display_htmx.html' %}
@@ -104,14 +101,15 @@
             </div>
             {% endif %}
 
-            {% if sam_user.organizations %}
+            {% set unique_orgs = sam_user.organizations | map(attribute='organization') | unique(attribute='organization_id') | list %}
+            {% if unique_orgs %}
             <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Organization{{ 's' if sam_user.organizations|length != 1 else '' }}:</span>
+                <span class="stat-label d-block mb-1">Organization{{ 's' if unique_orgs|length != 1 else '' }}:</span>
                 <div class="stat-value text-dark text-detail">
-                    {% for uo in sam_user.organizations %}
+                    {% for org in unique_orgs %}
                     <div class="mb-1">
-                        <span class="badge bg-light text-dark border">{{ uo.organization.acronym }}</span>
-                        <span class="text-muted">{{ uo.organization.name }}</span>
+                        <span class="badge bg-light text-dark border">{{ org.acronym }}</span>
+                        <span class="text-muted">{{ org.name }}</span>
                     </div>
                     {% endfor %}
                 </div>
@@ -216,13 +214,27 @@
         </div>
     </div>
 
+    <!-- SAM Permissions (only for the logged-in viewer's own card, when they have any) -->
+    {% if sam_user.username == current_user.username and user_permissions %}
+    <div class="card-body border-top pt-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong><i class="fas fa-key"></i> SAM Permissions</strong>
+        </div>
+        <div class="scrollable-list">
+            {% for perm in user_permissions | sort(attribute='value') %}
+            <span class="badge bg-info me-1 mb-1">{{ perm.value }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Wallclock Exemptions -->
     {% set exemptions = sam_user.wallclock_exemptions %}
     {% if exemptions or is_admin %}
     <div class="card-body border-top pt-3">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <strong><i class="fas fa-clock"></i> Wallclock Exemptions</strong>
-            {% if is_admin %}
+            {% if is_admin and has_permission(Permission.EDIT_USERS) %}
             <button class="btn btn-sm btn-outline-success"
                     data-bs-toggle="modal" data-bs-target="#addExemptionModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_add_exemption_form', username=sam_user.username) }}"
@@ -243,7 +255,7 @@
                         <th>End</th>
                         <th>Limit (hrs)</th>
                         <th>Comment</th>
-                        {% if is_admin %}<th></th>{% endif %}
+                        {% if is_admin and has_permission(Permission.EDIT_USERS) %}<th></th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -260,7 +272,7 @@
                         </td>
                         <td>{{ ex.time_limit_hours }}</td>
                         <td>{{ ex.comment or '' }}</td>
-                        {% if is_admin %}
+                        {% if is_admin and has_permission(Permission.EDIT_USERS) %}
                         <td>
                             <button class="btn btn-sm btn-outline-warning py-0"
                                     data-bs-toggle="modal" data-bs-target="#editExemptionModal"
@@ -285,7 +297,7 @@
     {% if is_admin and has_permission(Permission.IMPERSONATE_USERS) %}
     <div class="card-footer">
         <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}"
-              onsubmit="return confirm('Impersonate {{ sam_user.display_name }} ({{ sam_user.username }})?');">
+              onsubmit="event.preventDefault(); var f=this; samConfirm({title:'Impersonate user', message:'Impersonate {{ sam_user.display_name|e }} ({{ sam_user.username }})?', variant:'warning', label:'Impersonate', onConfirm:function(){f.submit();}}); return false;">
             <input type="hidden" name="username" value="{{ sam_user.username }}">
             <button type="submit" class="btn btn-sm btn-warning">
                 <i class="fas fa-user-secret"></i> Impersonate {{ sam_user.username }}

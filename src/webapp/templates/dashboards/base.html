@@ -38,14 +38,14 @@
                             <i class="fas fa-server"></i> System Status
                         </a>
                     </li>
-                    {% if has_permission(Permission.VIEW_PROJECTS) %}
+                    {% if has_permission_any_facility(Permission.VIEW_PROJECTS) %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('allocations_dashboard.index') }}">
                             <i class="fas fa-chart-pie"></i> Allocations
                         </a>
                     </li>
                     {% endif %}
-                    {% if has_permission(Permission.ACCESS_ADMIN_DASHBOARD) %}
+                    {% if has_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD) %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('admin_dashboard.index') }}">
                             <i class="fas fa-user-shield"></i> Admin
@@ -158,6 +158,9 @@
             </div>
         </div>
     </div>
+
+    {% from 'dashboards/fragments/modals.html' import confirm_modal %}
+    {{ confirm_modal() }}
 
     <!-- Scripts -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>

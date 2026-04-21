@@ -26,6 +26,7 @@ import pymysql
 import yaml
 import time
 import math
+import fnmatch
 import tempfile
 import atexit
 from collections import defaultdict, deque
@@ -91,6 +92,7 @@ def load_config(path=CONFIG_FILE):
     s.setdefault("prefer_column", "created_at")
     s.setdefault("prune_orphans", True)
     s.setdefault("max_refill_multiplier", 8)   # max 8x refill attempts
+    s.setdefault("table_strategies", [])       # per-table overrides (empty / recent)
     a = cfg["remote"]
     a.setdefault("user", os.environ['PROD_SAM_DB_USERNAME'])
     a.setdefault("password",os.environ['PROD_SAM_DB_PASSWORD'])
@@ -226,6 +228,13 @@ def topological_sort(parents_map, children_of, all_tables):
 # ----------------------------
 # Sampling helpers
 # ----------------------------
+def match_strategy(table, strategies):
+    """Return the first strategy dict whose pattern matches `table`, else None."""
+    for s in strategies or []:
+        if fnmatch.fnmatchcase(table, s.get("pattern", "")):
+            return s
+    return None
+
 def detect_order_column(conn, table, prefer):
     cols = show_columns(conn, table)
     if prefer in cols:
@@ -424,6 +433,7 @@ def sample_and_dump_table(cfg, remote_conn, table, size_mb, pk_map, fk_map, samp
     base_row_limit = cfg["settings"]["row_limit"]
     prefer_col = cfg["settings"]["prefer_column"]
     max_multiplier = cfg["settings"].get("max_refill_multiplier", 8)
+    strategies = cfg["settings"].get("table_strategies", [])
 
     print(f"\nProcessing table: {table} ({size_mb} MB)")
 
@@ -459,6 +469,37 @@ def sample_and_dump_table(cfg, remote_conn, table, size_mb, pk_map, fk_map, samp
             else:
                 # parent not sampled yet or empty sample; skip restriction
                 pass
+
+    # Per-table strategy overrides take precedence over size-based sampling.
+    strategy = match_strategy(table, strategies)
+    if strategy is not None:
+        mode = strategy.get("mode")
+        if mode == "empty":
+            print(f"  strategy: empty -> schema only, zero rows")
+            fname = dump_table_where(cfg, table, "1=0")
+            # Leaves sampled_ids_store empty so any child tables fall through
+            # to the "no parent rows" path and are also emptied.
+            sampled_ids_store[table] = []
+            return fname
+        if mode == "recent":
+            column = strategy.get("column")
+            days = strategy.get("days")
+            if not column or not days:
+                print(f"  ⚠️  strategy 'recent' for {table} missing column/days; falling back to default sampling")
+            elif column not in show_columns(remote_conn, table):
+                print(f"  ⚠️  column `{column}` not on {table}; falling back to default sampling")
+            else:
+                base_where = f"`{column}` >= DATE_SUB(CURDATE(), INTERVAL {int(days)} DAY)"
+                conditions = [base_where] + list(fk_restrictions)
+                where_clause = " AND ".join(conditions)
+                print(f"  strategy: recent ({column} within last {int(days)} days)")
+                fname = dump_table_where(cfg, table, where_clause)
+                # Summary tables aren't parents of anything we still need to
+                # sample, so skip the PK fetch (can be millions of rows).
+                sampled_ids_store[table] = []
+                return fname
+        else:
+            print(f"  ⚠️  unknown strategy mode {mode!r} for {table}; falling back to default sampling")
 
     # If small table, full copy
     if size_mb_val < threshold:

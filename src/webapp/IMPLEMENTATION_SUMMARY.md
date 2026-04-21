@@ -67,11 +67,12 @@ class UserAdmin(SAMModelView):
 **Routes:**
 - `GET/POST /auth/login` - Login page and handler
 - `GET /auth/logout` - Logout
-- `GET /auth/profile` - User profile page showing roles and permissions
 
 **Templates:**
 - `templates/auth/login.html` - Modern login page with Bootstrap 4
-- `templates/auth/profile.html` - User profile showing roles/permissions
+
+The user's roles and permissions are surfaced on the user dashboard card
+(see `templates/dashboards/user/partials/user_card.html`).
 
 ### 4. REST API (Example Implementation)
 

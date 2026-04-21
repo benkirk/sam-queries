@@ -100,7 +100,7 @@
         {%- if can_edit_allocations and res.allocation_id -%}
         <button class="btn btn-xs btn-outline-warning py-0 px-1 flex-shrink-0"
                 style="font-size:0.7rem;"
-                hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', alloc_id=res.allocation_id) }}"
+                hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', allocation_id=res.allocation_id) }}"
                 hx-target="#editAllocationFormContainer"
                 hx-trigger="click"
                 data-bs-toggle="modal"
@@ -179,7 +179,8 @@
                                    active_only=false,
                                    can_edit_allocations=false,
                                    usage_warning_threshold=75,
-                                   usage_critical_threshold=90) %}
+                                   usage_critical_threshold=90,
+                                   exchange_url=none) %}
 {%- for node in nodes -%}
 {%- set is_active = node.active if node.active is defined else true -%}
 {%- if not active_only or is_active -%}
@@ -239,7 +240,7 @@
     {%- endif %}
   </td>
 
-  {# ── Col 5: shared badge + edit button ────────────────────────────── #}
+  {# ── Col 5: shared badge + edit button + exchange button ──────────── #}
   <td style="vertical-align:middle; white-space:nowrap;">
     {%- if res and res.is_inheriting -%}
     <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
@@ -247,13 +248,30 @@
     {%- if can_edit_allocations and res and res.allocation_id -%}
     <button class="btn btn-xs btn-outline-warning py-0 px-1 ms-1"
             style="font-size:0.7rem;"
-            hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', alloc_id=res.allocation_id) }}"
+            hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', allocation_id=res.allocation_id) }}"
             hx-target="#editAllocationFormContainer"
             hx-trigger="click"
             data-bs-toggle="modal"
             data-bs-target="#editAllocationModal"
             title="Edit allocation">
       <i class="fas fa-pencil-alt"></i>
+    </button>
+    {%- endif -%}
+    {#- Exchange lives on the edit-page (current) project's row only.
+        Eligibility is decided by the caller — exchange_url is set iff
+        ≥2 descendant projects hold dedicated allocations on this
+        resource. See projects_routes.py:htmx_project_allocation_tree. -#}
+    {%- if is_current and exchange_url -%}
+    <button class="btn btn-xs btn-outline-info py-0 px-1 ms-1"
+            style="font-size:0.7rem;"
+            hx-get="{{ exchange_url }}"
+            hx-target="#exchangeAllocationFormContainer"
+            hx-include="#alloc-active-at"
+            hx-trigger="click"
+            data-bs-toggle="modal"
+            data-bs-target="#exchangeAllocationModal"
+            title="Exchange allocation between sub-projects">
+      <i class="fas fa-exchange-alt"></i>
     </button>
     {%- endif -%}
   </td>
@@ -271,7 +289,8 @@
                              active_only=active_only,
                              can_edit_allocations=can_edit_allocations,
                              usage_warning_threshold=usage_warning_threshold,
-                             usage_critical_threshold=usage_critical_threshold) }}
+                             usage_critical_threshold=usage_critical_threshold,
+                             exchange_url=exchange_url) }}
 {%- endif -%}
 
 {%- endif -%}

@@ -10,7 +10,7 @@ Domain-specific routes are split into sub-modules imported at the bottom:
   orgs_routes.py       — Organizations, Institutions, AOIs, Contracts, NSF Programs
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response, abort
 from webapp.utils.htmx import htmx_success, htmx_success_message
 from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
@@ -25,7 +25,14 @@ from sam.queries.expirations import get_projects_by_allocation_end_date, get_pro
 from sam.queries.lookups import find_project_by_code, get_user_group_access
 from webapp.auth.models import AuthUser
 from sam.core.users import User
-from webapp.utils.rbac import require_permission, Permission, has_permission
+from webapp.utils.rbac import (
+    apply_facility_scope, can_impersonate, get_user_permissions,
+    has_permission, has_permission_any_facility, Permission,
+    require_permission, require_permission_any_facility,
+    user_facility_scope,
+)
+import logging
+logger = logging.getLogger(__name__)
 
 
 bp = Blueprint('admin_dashboard', __name__, url_prefix='/admin')
@@ -45,7 +52,7 @@ UPCOMING_PRESETS = {
 
 @bp.route('/')
 @login_required
-@require_permission(Permission.ACCESS_ADMIN_DASHBOARD)
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
 def index():
     """
     Admin dashboard main page.
@@ -55,9 +62,29 @@ def index():
     - Project search
     - Allocation expirations tracking
     """
+    # Full facility list for unscoped users, the user's allowed set
+    # otherwise. The template iterates this to build the expirations
+    # facility multi-select so scoped users can't see (or pick)
+    # facilities they cannot act on.
+    from sam.resources.facilities import Facility
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is None:
+        allowed_facility_names = [
+            f.facility_name for f in
+            db.session.query(Facility).order_by(Facility.facility_name).all()
+        ]
+    else:
+        allowed_facility_names = sorted(allowed)
+
+    # The two default selections carry over from the hardcoded template
+    # (UNIV and WNA). Keep them only if they survive the allowed set.
+    default_selected = [f for f in ('UNIV', 'WNA') if f in allowed_facility_names]
+
     return render_template(
         'dashboards/admin/dashboard.html',
-        user=current_user
+        user=current_user,
+        allowed_facility_names=allowed_facility_names,
+        default_selected_facilities=default_selected,
     )
 
 
@@ -79,10 +106,21 @@ def impersonate():
 
     user_to_impersonate = AuthUser(sam_user_to_impersonate)
 
-    # Prevent impersonating other admins unless you are a super-admin
-    if user_to_impersonate.has_role('admin') and not current_user.has_role('admin'):
-         flash('You do not have permission to impersonate an administrator.', 'danger')
-         return redirect(url_for('admin_dashboard.index'))
+    # No-escalation guard: caller may only impersonate users whose
+    # permission set is a subset of their own. Peers and "lessor" users
+    # (regular users, project leads with no system permissions, …) are
+    # fine; users with extra permissions are not.
+    if not can_impersonate(current_user, user_to_impersonate):
+        extra = get_user_permissions(user_to_impersonate) - get_user_permissions(current_user)
+        logger.warning(
+            "Impersonation refused: caller=%s target=%s extra_perms=%s",
+            current_user.username, username, sorted(p.value for p in extra),
+        )
+        flash(
+            f'Cannot impersonate {username} — they hold permissions you do not.',
+            'danger',
+        )
+        return redirect(url_for('admin_dashboard.index'))
 
     # Store current user in session to be able to go back
     session['impersonator_id'] = impersonator_id
@@ -126,7 +164,7 @@ def stop_impersonating():
 
 @bp.route('/project/<projcode>')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def project_card(projcode):
     """
     Get HTML fragment for a single project card (for admin project search).
@@ -140,6 +178,14 @@ def project_card(projcode):
     if not project_data:
         return '<div class="alert alert-warning">Project not found</div>'
 
+    # Facility-scoped users must not see cards for projects outside
+    # their granted facilities — even if they somehow land on the URL.
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is not None:
+        project = find_project_by_code(db.session, projcode)
+        if project is None or project.facility_name not in allowed:
+            abort(403)
+
     # Render a wrapper template that calls the macro
     return render_template(
         'dashboards/admin/fragments/project_card_wrapper.html',
@@ -152,7 +198,7 @@ def project_card(projcode):
 
 @bp.route('/user/<username>')
 @login_required
-@require_permission(Permission.VIEW_USERS)
+@require_permission_any_facility(Permission.VIEW_USERS)
 def user_card(username):
     """
     Get HTML fragment for a single user card (for admin user search).
@@ -181,6 +227,10 @@ def user_card(username):
     allowable_shells = get_allowable_shell_names(db.session)
     can_edit_shell = has_permission(current_user, Permission.EDIT_USERS)
 
+    from webapp.dashboards.user.blueprint import _available_primary_groups
+    available_groups = _available_primary_groups(db.session, sam_user.username)
+    can_edit_primary_gid = has_permission(current_user, Permission.EDIT_USERS)
+
     return render_template(
         'dashboards/admin/fragments/user_card_wrapper.html',
         sam_user=sam_user,
@@ -189,12 +239,14 @@ def user_card(username):
         current_shell=current_shell,
         allowable_shells=allowable_shells,
         can_edit_shell=can_edit_shell,
+        available_groups=available_groups,
+        can_edit_primary_gid=can_edit_primary_gid,
     )
 
 
 @bp.route('/group/<group_name>')
 @login_required
-@require_permission(Permission.VIEW_GROUPS)
+@require_permission_any_facility(Permission.VIEW_GROUPS)
 def group_card(group_name):
     """HTML fragment for a single adhoc-group card (admin group search).
 
@@ -300,7 +352,7 @@ def _get_abandoned_users_data(expired_results: List[Tuple]) -> List[Dict]:
 
 @bp.route('/expirations')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def expirations_fragment():
     """
     AJAX endpoint for loading expirations data.
@@ -315,9 +367,11 @@ def expirations_fragment():
         HTML fragment with project cards or user table
     """
     view_type = request.args.get('view', 'upcoming')
-    facilities = request.args.getlist('facilities')
-    if not facilities:
-        facilities = ['UNIV', 'WNA']
+    facilities = apply_facility_scope(
+        request.args.getlist('facilities'),
+        Permission.VIEW_PROJECTS,
+        default=['UNIV', 'WNA'],
+    )
     resource = request.args.get('resource', None)
     if resource == '':
         resource = None
@@ -374,14 +428,18 @@ def expirations_fragment():
 
 @bp.route('/expirations/deactivate-expired', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission_any_facility(Permission.EDIT_PROJECTS)
 def deactivate_expired():
     """
     Bulk-deactivate every project currently shown on the Expired (90+ days)
     tab, respecting the same facility/resource filters. Re-runs the query
     server-side so the action operates on exactly the set the user saw.
     """
-    facilities = request.form.getlist('facilities') or ['UNIV', 'WNA']
+    facilities = apply_facility_scope(
+        request.form.getlist('facilities'),
+        Permission.EDIT_PROJECTS,
+        default=['UNIV', 'WNA'],
+    )
     resource = request.form.get('resource') or None
 
     results = get_projects_with_expired_allocations(
@@ -422,7 +480,7 @@ def deactivate_expired():
 
 @bp.route('/expirations/export')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def expirations_export():
     """
     Export expirations data to CSV.
@@ -437,9 +495,11 @@ def expirations_export():
         CSV file download
     """
     export_type = request.args.get('export_type', 'upcoming')
-    facilities = request.args.getlist('facilities')
-    if not facilities:
-        facilities = ['UNIV', 'WNA']
+    facilities = apply_facility_scope(
+        request.args.getlist('facilities'),
+        Permission.VIEW_PROJECTS,
+        default=['UNIV', 'WNA'],
+    )
     resource = request.args.get('resource', None)
     if resource == '':
         resource = None
@@ -529,19 +589,29 @@ def expirations_export():
 
 @bp.route('/htmx/search/users')
 @login_required
-@require_permission(Permission.VIEW_USERS)
 def htmx_search_users():
     """Unified user search endpoint.
 
-    The ``context`` query parameter selects the response template:
-      fk          → FK-picker badge list (create_resource, create_contract, create_project)
-      impersonate → admin user list with active_only filter (impersonation panel)
-      member      → project member add list, excludes existing members (projcode required)
+    The ``context`` query parameter selects the response template AND
+    the permission gate:
+      fk          → FK-picker badge list (create_resource, create_contract,
+                    create_project); requires VIEW_USERS (any-facility —
+                    scoped managers need to pick users for their
+                    in-scope projects).
+      impersonate → admin user list with active_only filter (shown in the
+                    Users & Groups tab). Requires VIEW_USERS (any-facility);
+                    the impersonate button inside each result row is
+                    itself gated on IMPERSONATE_USERS in the template,
+                    so non-impersonators see a plain directory listing.
+      member      → project member add list; requires can_manage_project_members
+                    on the target project (projcode required), so project
+                    leads/admins can search when building the add-member form.
 
     All other contexts fall back to ``fk``.
     """
     from sam.queries.users import search_users_by_pattern, get_project_member_user_ids
     from sam.projects.projects import Project
+    from webapp.utils.project_permissions import can_manage_project_members
 
     q = request.args.get('q', '').strip()
     context = request.args.get('context', 'fk')
@@ -561,10 +631,21 @@ def htmx_search_users():
 
     if context == 'member':
         projcode = request.args.get('projcode', '')
-        if projcode:
-            project = db.session.query(Project).filter_by(projcode=projcode).first()
-            if project:
-                exclude_ids = get_project_member_user_ids(db.session, project.project_id)
+        if not projcode:
+            abort(400)
+        project = db.session.query(Project).filter_by(projcode=projcode).first()
+        if not project:
+            abort(404)
+        if not can_manage_project_members(current_user, project):
+            abort(403)
+        exclude_ids = get_project_member_user_ids(db.session, project.project_id)
+    else:
+        # Both 'fk' and 'impersonate' contexts return a listing of users;
+        # the impersonate button inside the 'impersonate' result row is
+        # template-gated on IMPERSONATE_USERS, so admitting VIEW_USERS
+        # holders (including facility-scoped managers) is safe here.
+        if not has_permission_any_facility(current_user, Permission.VIEW_USERS):
+            abort(403)
 
     users = search_users_by_pattern(
         db.session, q, limit=20 if context == 'impersonate' else 15,
@@ -576,7 +657,7 @@ def htmx_search_users():
 
 @bp.route('/htmx/search/groups')
 @login_required
-@require_permission(Permission.VIEW_GROUPS)
+@require_permission_any_facility(Permission.VIEW_GROUPS)
 def htmx_search_groups():
     """Search adhoc groups by name or GID. Returns the result-list fragment."""
     from sam.queries.lookups import search_groups_by_pattern
@@ -618,7 +699,7 @@ def htmx_search_users_impersonate():
 
 @bp.route('/htmx/search-projects')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def htmx_search_projects():
     """
     Search projects and return results as HTML fragments.
@@ -634,8 +715,17 @@ def htmx_search_projects():
     if len(query) < 1:
         return ''
 
+    # Facility-scoped users see only their allowed set. None → no filter.
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed == set():
+        # Scoped user with no VIEW_PROJECTS entry anywhere → no results.
+        return ''
+    facility_filter = None if allowed is None else sorted(allowed)
+
     projects = search_projects_by_code_or_title(
-        db.session, query, active=True if active_only else None
+        db.session, query,
+        active=True if active_only else None,
+        facility_names=facility_filter,
     )[:10]  # Limit results
 
     return render_template(
@@ -884,7 +974,7 @@ def htmx_edit_exemption(exemption_id):
 
 @bp.route('/htmx/queues-for-resource')
 @login_required
-@require_permission(Permission.VIEW_RESOURCES)
+@require_permission_any_facility(Permission.VIEW_RESOURCES)
 def htmx_queues_for_resource():
     """
     Return queue <option> elements for a given resource_id (cascading select).

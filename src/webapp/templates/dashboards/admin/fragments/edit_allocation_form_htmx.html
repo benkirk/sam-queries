@@ -27,7 +27,7 @@
     import number_field, date_field, text_field with context %}
 
 {% call htmx_form(
-    url_for('admin_dashboard.htmx_edit_allocation', alloc_id=allocation.allocation_id),
+    url_for('admin_dashboard.htmx_edit_allocation', allocation_id=allocation.allocation_id),
     '#editAllocationFormContainer',
     'Save Changes',
     submit_icon='save',
@@ -94,9 +94,11 @@
         </div>
         <div class="mt-2">
           <button type="button" class="btn btn-sm btn-danger"
-                  hx-post="{{ url_for('admin_dashboard.htmx_detach_allocation', alloc_id=allocation.allocation_id) }}"
+                  hx-post="{{ url_for('admin_dashboard.htmx_detach_allocation', allocation_id=allocation.allocation_id) }}"
                   hx-target="#editAllocationFormContainer"
-                  hx-confirm="Permanently detach allocation #{{ allocation.allocation_id }}?">
+                  hx-confirm="Permanently detach allocation #{{ allocation.allocation_id }}? This breaks inheritance and cannot be undone from this view."
+                  data-confirm-title="Detach allocation"
+                  data-confirm-label="Detach">
             <i class="fas fa-unlink me-1"></i> Detach only (no other changes)
           </button>
         </div>
@@ -151,9 +153,12 @@
     {{ 'do' if unlinked_descendants_count != 1 else 'does' }} not yet have
     an allocation for this resource.
     <button type="button" class="btn btn-sm btn-outline-secondary ms-2"
-            hx-post="{{ url_for('admin_dashboard.htmx_propagate_to_remaining', alloc_id=allocation.allocation_id) }}"
+            hx-post="{{ url_for('admin_dashboard.htmx_propagate_to_remaining', allocation_id=allocation.allocation_id) }}"
             hx-target="#editAllocationFormContainer"
-            hx-confirm="Create linked child allocations for {{ unlinked_descendants_count }} remaining sub-project(s)?">
+            hx-confirm="Create linked child allocations for {{ unlinked_descendants_count }} remaining sub-project(s)?"
+            data-confirm-title="Propagate allocation"
+            data-confirm-variant="warning"
+            data-confirm-label="Propagate to {{ unlinked_descendants_count }}">
       <i class="fas fa-sitemap me-1"></i> Apply to remaining sub-projects
     </button>
   </div>
@@ -179,10 +184,13 @@
     making it functionally identical to an originally-linked child.
     <div class="mt-2">
       <button type="button" class="btn btn-sm btn-primary"
-              hx-post="{{ url_for('admin_dashboard.htmx_link_allocation_to_parent', alloc_id=allocation.allocation_id) }}"
+              hx-post="{{ url_for('admin_dashboard.htmx_link_allocation_to_parent', allocation_id=allocation.allocation_id) }}"
               hx-vals='{"parent_allocation_id": {{ relink_candidate.allocation_id }}}'
               hx-target="#editAllocationFormContainer"
-              hx-confirm="Re-link allocation #{{ allocation.allocation_id }} to parent #{{ relink_candidate.allocation_id }}? Amount will change from {{ allocation.amount | fmt_number }} to {{ relink_candidate.amount | fmt_number }} and dates will match the parent.">
+              hx-confirm="Re-link allocation #{{ allocation.allocation_id }} to parent #{{ relink_candidate.allocation_id }}? Amount will change from {{ allocation.amount | fmt_number }} to {{ relink_candidate.amount | fmt_number }} and dates will match the parent."
+              data-confirm-title="Re-link to parent allocation"
+              data-confirm-variant="warning"
+              data-confirm-label="Re-link">
         <i class="fas fa-link me-1"></i> Relink to parent
       </button>
     </div>

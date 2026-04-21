@@ -172,10 +172,12 @@ from .projects import (
 from .user import (
     AddMemberForm,
     EditAllocationForm,
+    ExchangeAllocationForm,
     AddAllocationForm,
     RenewAllocationsForm,
     ExtendAllocationsForm,
     SetShellForm,
+    SetPrimaryGidForm,
 )
 from .adjustments import (
     CreateChargeAdjustmentForm,
@@ -225,10 +227,12 @@ __all__ = [
     # User
     'AddMemberForm',
     'EditAllocationForm',
+    'ExchangeAllocationForm',
     'AddAllocationForm',
     'RenewAllocationsForm',
     'ExtendAllocationsForm',
     'SetShellForm',
+    'SetPrimaryGidForm',
     # Adjustments
     'CreateChargeAdjustmentForm',
 ]

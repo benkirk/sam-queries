@@ -58,12 +58,8 @@
         "notes": "measured 45 \u2014 full GET /user/ including template render (benkirk)"
     },
     "allocations_index_route": {
-        "queries": 20,
-        "notes": "measured 13 \u2014 full GET /allocations/ (show_usage=false)"
-    },
-    "allocations_usage_route": {
         "queries": 80,
-        "notes": "measured 54 \u2014 full GET /allocations/?show_usage=true; was 52,923 before fix"
+        "notes": "measured 55 \u2014 full GET /allocations/; was 52,923 before Issue 1 fix. show_usage toggle removed 2026-04-19 \u2014 usage pipeline now always runs (previously gated; measured 13 when gated off, 54 when gated on)."
     },
     "admin_orgs_card_route": {
         "queries": 450,

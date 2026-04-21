@@ -14,7 +14,7 @@
        href="#"
        hx-get="{{ fragment_url }}?sort_by={{ col }}&sort_dir={{ next_dir }}&page=1"
        hx-target="#{{ target_id }}"
-       hx-include="#{{ form_id }}"
+       hx-include="#{{ form_id }}, #allocations-facility-filter-form"
        hx-swap="innerHTML">
         {{ label }}
         {% if is_active %}
@@ -40,7 +40,7 @@
                 <th>{{ sort_link('transaction_type', 'Type') }}</th>
                 <th>{{ sort_link('projcode', 'Project') }}</th>
                 <th style="width:140px;">{{ sort_link('resource_name', 'Resource') }}</th>
-                <th>{{ sort_link('facility_name', 'Facility') }}</th>
+                <th>{{ sort_link('facility', 'Facility') }}</th>
                 <th style="width:150px;">{{ sort_link('allocation_type', 'Alloc type') }}</th>
                 <th class="text-end">{{ sort_link('transaction_amount', 'Amount', align='text-end') }}</th>
                 <th>{{ sort_link('username', 'Processed by') }}</th>
@@ -81,7 +81,7 @@
                     title="{{ r.resource_name or '' }}">
                     {{ r.resource_name or '—' }}
                 </td>
-                <td>{{ r.facility_name or '—' }}</td>
+                <td>{{ r.facility or '—' }}</td>
                 <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
                     title="{{ r.allocation_type or '' }}">
                     {{ r.allocation_type or '—' }}
@@ -117,5 +117,6 @@
         </tbody>
     </table>
 
-    {{ pagination(page, total, fragment_url, target_id, form_id, sort) }}
+    {{ pagination(page, total, fragment_url, target_id, form_id, sort,
+                   extra_include='#allocations-facility-filter-form') }}
 </div>

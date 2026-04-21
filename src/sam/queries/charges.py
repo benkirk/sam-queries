@@ -76,7 +76,9 @@ CHARGE_ADJUSTMENT_SORT_COLUMNS = {
     'amount': ChargeAdjustment.amount,
     'projcode': Project.projcode,
     'resource_name': Resource.resource_name,
-    'facility_name': Facility.facility_name,
+    # URL-facing sort key is the row-dict key ('facility'); maps to the
+    # underlying SQL column ``Facility.facility_name``.
+    'facility': Facility.facility_name,
     'username': User.username,
 }
 
@@ -265,7 +267,7 @@ def get_recent_charge_adjustments(
             'project_id': project.project_id,
             'resource_name': resource.resource_name,
             'resource_id': resource.resource_id,
-            'facility_name': fac_name,
+            'facility': fac_name,
             'user_id': user.user_id if user is not None else None,
             'username': user.username if user is not None else None,
             'user_display_name': user.display_name if user is not None else None,

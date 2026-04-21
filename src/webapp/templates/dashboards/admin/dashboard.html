@@ -64,7 +64,7 @@
                 <div class="card mb-3">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="fas fa-search"></i> Search Projects</h5>
-                        {% if has_permission(Permission.CREATE_PROJECTS) %}
+                        {% if has_permission_any_facility(Permission.CREATE_PROJECTS) %}
                         <button type="button" class="btn btn-sm btn-success"
                                 data-bs-toggle="modal"
                                 data-bs-target="#createProjectModal"
@@ -130,13 +130,12 @@
                                     <label for="facilities-filter" class="form-label small mb-1"><strong>Facilities</strong></label>
                                     <select class="form-control form-control-sm" id="facilities-filter"
                                             name="facilities" multiple size="4" style="width: 200px;">
-                                        <option value="ASD">ASD</option>
-                                        <option value="CSL">CSL</option>
-                                        <option value="CISL">CISL</option>
-                                        <option value="NCAR">NCAR</option>
-                                        <option value="UNIV" selected>UNIV</option>
-                                        <option value="WNA" selected>WNA</option>
-                                        <option value="XSEDE">XSEDE</option>
+                                        {% for facility_name in allowed_facility_names %}
+                                        <option value="{{ facility_name }}"
+                                            {% if facility_name in default_selected_facilities %}selected{% endif %}>
+                                            {{ facility_name }}
+                                        </option>
+                                        {% endfor %}
                                     </select>
                                     <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
                                 </div>
@@ -513,10 +512,17 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
 document.addEventListener('click', function(e) {
     var btn = e.target.closest('.impersonate-user-btn');
     if (btn && btn.dataset.username) {
-        if (confirm('Impersonate user ' + btn.dataset.username + '?')) {
-            document.getElementById('selectedUsernameImpersonate').value = btn.dataset.username;
-            document.getElementById('impersonateUserForm').submit();
-        }
+        var username = btn.dataset.username;
+        samConfirm({
+            title: 'Impersonate user',
+            message: 'Impersonate user ' + username + '?',
+            variant: 'warning',
+            label: 'Impersonate',
+            onConfirm: function() {
+                document.getElementById('selectedUsernameImpersonate').value = username;
+                document.getElementById('impersonateUserForm').submit();
+            }
+        });
     }
 
     var link = e.target.closest('.project-code-link');
