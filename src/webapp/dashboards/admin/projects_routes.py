@@ -12,7 +12,12 @@ from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from flask_login import login_required, current_user
 
 from webapp.extensions import db
-from webapp.utils.rbac import require_permission, has_permission, Permission
+from flask import abort
+from webapp.utils.rbac import (
+    require_permission, require_permission_any_facility,
+    has_permission, has_permission_for_facility,
+    Permission, user_facility_scope,
+)
 from webapp.api.access_control import require_project_permission
 from webapp.utils.project_permissions import (
     can_edit_project_governance,
@@ -50,12 +55,17 @@ def _project_form_data(form=None) -> dict:
         .order_by(AreaOfInterestGroup.name)
         .all()
     )
-    facilities = (
+    facilities_q = (
         db.session.query(Facility)
         .filter(Facility.is_active)
         .order_by(Facility.facility_name)
-        .all()
     )
+    # Facility-scoped users only ever see (and can submit) facilities
+    # they have CREATE_PROJECTS on. None → no restriction.
+    allowed = user_facility_scope(current_user, Permission.CREATE_PROJECTS)
+    if allowed is not None:
+        facilities_q = facilities_q.filter(Facility.facility_name.in_(allowed))
+    facilities = facilities_q.all()
     mnemonics = (
         db.session.query(MnemonicCode)
         .filter(MnemonicCode.is_active)
@@ -107,7 +117,7 @@ def _project_form_data(form=None) -> dict:
 
 @bp.route('/htmx/project-create-form')
 @login_required
-@require_permission(Permission.CREATE_PROJECTS)
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
 def htmx_project_create_form():
     """Return the project create form fragment (loaded into modal on button click)."""
     return render_template(
@@ -118,26 +128,39 @@ def htmx_project_create_form():
 
 @bp.route('/htmx/panels-for-facility')
 @login_required
-@require_permission(Permission.CREATE_PROJECTS)
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
 def htmx_panels_for_facility():
     """Return <option> elements for the Panel select, filtered by facility.
 
     Called via hx-get when the Facility select changes.
     """
-    from sam.resources.facilities import Panel
+    from sam.resources.facilities import Facility, Panel
 
     facility_id_str = request.args.get('facility_id', '').strip()
     if not facility_id_str:
         return '<option value="">— Select facility first —</option>'
     try:
-        panels = (
-            db.session.query(Panel)
-            .filter(Panel.facility_id == int(facility_id_str), Panel.is_active)
-            .order_by(Panel.panel_name)
-            .all()
-        )
+        facility_id_int = int(facility_id_str)
     except (ValueError, TypeError):
         return '<option value="">— Select facility first —</option>'
+
+    # Facility-scope gate: a user with CREATE_PROJECTS only on WNA must
+    # not be able to discover NCAR panels by forging facility_id. Deny
+    # at the source rather than filter the returned list silently.
+    facility = db.session.get(Facility, facility_id_int)
+    if facility is None:
+        return '<option value="">— Select facility first —</option>'
+    if not has_permission_for_facility(
+        current_user, Permission.CREATE_PROJECTS, facility.facility_name,
+    ):
+        abort(403)
+
+    panels = (
+        db.session.query(Panel)
+        .filter(Panel.facility_id == facility_id_int, Panel.is_active)
+        .order_by(Panel.panel_name)
+        .all()
+    )
 
     return render_template(
         'dashboards/admin/fragments/panel_options_htmx.html',
@@ -148,26 +171,41 @@ def htmx_panels_for_facility():
 
 @bp.route('/htmx/alloc-types-for-panel')
 @login_required
-@require_permission(Permission.CREATE_PROJECTS)
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
 def htmx_alloc_types_for_panel():
     """Return <option> elements for the AllocationType select, filtered by panel.
 
     Called via hx-get when the Panel select changes.
     """
     from sam.accounting.allocations import AllocationType
+    from sam.resources.facilities import Panel
 
     panel_id_str = request.args.get('panel_id', '').strip()
     if not panel_id_str:
         return '<option value="">— None —</option>'
     try:
-        alloc_types = (
-            db.session.query(AllocationType)
-            .filter(AllocationType.panel_id == int(panel_id_str), AllocationType.is_active)
-            .order_by(AllocationType.allocation_type)
-            .all()
-        )
+        panel_id_int = int(panel_id_str)
     except (ValueError, TypeError):
         return '<option value="">— None —</option>'
+
+    # Resolve the panel's facility for the scope check — a scoped user
+    # must not be able to harvest allocation-type options from facilities
+    # outside their grant by probing panel_ids directly.
+    panel = db.session.get(Panel, panel_id_int)
+    if panel is None:
+        return '<option value="">— None —</option>'
+    if not has_permission_for_facility(
+        current_user, Permission.CREATE_PROJECTS,
+        panel.facility.facility_name if panel.facility else None,
+    ):
+        abort(403)
+
+    alloc_types = (
+        db.session.query(AllocationType)
+        .filter(AllocationType.panel_id == panel_id_int, AllocationType.is_active)
+        .order_by(AllocationType.allocation_type)
+        .all()
+    )
 
     return render_template(
         'dashboards/admin/fragments/alloc_type_options_htmx.html',
@@ -178,7 +216,7 @@ def htmx_alloc_types_for_panel():
 
 @bp.route('/htmx/org-search-for-project')
 @login_required
-@require_permission(Permission.CREATE_PROJECTS)
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
 def htmx_org_search_for_project():
     """Search organizations for the project create form FK picker.
 
@@ -210,7 +248,7 @@ def htmx_org_search_for_project():
 
 @bp.route('/htmx/contract-search-for-project')
 @login_required
-@require_permission(Permission.CREATE_PROJECTS)
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
 def htmx_contract_search_for_project():
     """Search contracts for the project create form FK picker.
 
@@ -241,7 +279,7 @@ def htmx_contract_search_for_project():
 
 @bp.route('/htmx/project-search-for-parent')
 @login_required
-@require_permission(Permission.CREATE_PROJECTS)
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
 def htmx_project_search_for_parent():
     """Search projects for use as parent FK in the create form.
 
@@ -266,7 +304,7 @@ def htmx_project_search_for_parent():
 
 @bp.route('/htmx/project-next-projcode')
 @login_required
-@require_permission(Permission.CREATE_PROJECTS)
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
 def htmx_project_next_projcode():
     """Compute and return a preview of the next available projcode.
 
@@ -295,7 +333,7 @@ def htmx_project_next_projcode():
 
 @bp.route('/htmx/project-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_PROJECTS)
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
 def htmx_project_create():
     """Validate form and create a new project."""
     from sam.projects.projects import Project
@@ -320,6 +358,16 @@ def htmx_project_create():
             (Contract, data.get('contract_id'), 'contract'),
             (Organization, data.get('organization_id'), 'organization'),
         )
+        # Facility-scope gate: the decorator-level CREATE_PROJECTS check
+        # only knows whether the user holds the permission anywhere.
+        # Scoped users must additionally be creating inside a facility
+        # they have been granted. FK existence is already validated
+        # above, so the lookup is guaranteed to resolve.
+        chosen_facility = db.session.get(Facility, data['facility_id'])
+        if not has_permission_for_facility(
+            current_user, Permission.CREATE_PROJECTS, chosen_facility.facility_name,
+        ):
+            abort(403)
         if Project.get_by_projcode(db.session, data['projcode']):
             raise FKValidationError(
                 [f'Project code "{data["projcode"]}" is already in use.']
@@ -402,7 +450,8 @@ def edit_project_page(project):
     form_data = _project_form_data(form=pre_fill or None)
 
     can_edit_governance = can_edit_project_governance(current_user, project)
-    can_access_admin = has_permission(current_user, Permission.ACCESS_ADMIN_DASHBOARD)
+    from webapp.utils.rbac import has_permission_any_facility
+    can_access_admin = has_permission_any_facility(current_user, Permission.ACCESS_ADMIN_DASHBOARD)
 
     return render_template(
         'dashboards/admin/edit_project.html',

@@ -1,7 +1,7 @@
 {% from 'dashboards/user/partials/project_card.html' import render_project_card with context %}
 
 {% if projects_data %}
-    {% if view_type == 'expired' and has_permission(Permission.EDIT_PROJECTS) %}
+    {% if view_type == 'expired' and has_permission_any_facility(Permission.EDIT_PROJECTS) %}
     <div class="mb-3 text-end">
         <button type="button" class="btn btn-sm btn-outline-danger"
                 hx-post="{{ url_for('admin_dashboard.deactivate_expired') }}"

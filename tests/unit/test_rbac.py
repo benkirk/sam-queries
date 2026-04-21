@@ -17,15 +17,18 @@ from webapp.utils.rbac import (
     has_all_permissions,
     has_any_permission,
     has_permission,
+    has_permission_for_facility,
+    user_facility_scope,
 )
 
 
 class _StubUser:
     """Minimal AuthUser-like stub: just `roles` (a set) and `username`."""
 
-    def __init__(self, *, roles=(), username='stubuser'):
+    def __init__(self, *, roles=(), username='stubuser', is_authenticated=True):
         self.roles = set(roles)
         self.username = username
+        self.is_authenticated = is_authenticated
 
     def has_role(self, name):
         return name in self.roles
@@ -248,3 +251,114 @@ class TestRbacContextProcessor:
     def test_returns_false_when_project_is_none(self, app):
         ctx = self._ctx(app)
         assert ctx['can_act_on_project'](Permission.EDIT_ALLOCATIONS, None) is False
+
+
+# ---------------------------------------------------------------------------
+# Facility-scoped permissions (third RBAC tier)
+# ---------------------------------------------------------------------------
+
+class TestFacilityScopedPermissions:
+    """``has_permission_for_facility`` and ``user_facility_scope`` add a
+    per-user, per-facility grant layer on top of system permissions.
+
+    Coverage matrix:
+    - System-permission holder → passes for any facility, including
+      orphan projects (``facility_name=None``).
+    - Scoped entry → passes only for named facilities, denies others.
+    - Scoped entry + orphan project → denies (system-only domain).
+    - Unauthenticated user → always denies.
+    - ``user_facility_scope`` returns ``None`` for system holders,
+      the configured set for scoped users, empty set otherwise.
+    """
+
+    def test_has_permission_for_facility_grants_via_system_perm(self, monkeypatch):
+        monkeypatch.setattr(
+            rbac, 'USER_PERMISSION_OVERRIDES',
+            {'alice': set(Permission)},
+        )
+        user = _StubUser(roles=[], username='alice')
+        # System grant applies regardless of facility.
+        assert has_permission_for_facility(user, Permission.EDIT_PROJECTS, 'NCAR')
+        assert has_permission_for_facility(user, Permission.EDIT_PROJECTS, 'WNA')
+        # Even orphan projects are reachable by system holders.
+        assert has_permission_for_facility(user, Permission.EDIT_PROJECTS, None)
+
+    def test_has_permission_for_facility_grants_via_scoped_entry(self, monkeypatch):
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {'mgr': {'WNA': {Permission.EDIT_PROJECTS, Permission.CREATE_PROJECTS}}},
+        )
+        user = _StubUser(roles=[], username='mgr')
+        assert has_permission_for_facility(user, Permission.EDIT_PROJECTS, 'WNA')
+        assert has_permission_for_facility(user, Permission.CREATE_PROJECTS, 'WNA')
+
+    def test_has_permission_for_facility_denies_other_facility(self, monkeypatch):
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {'mgr': {'WNA': {Permission.EDIT_PROJECTS}}},
+        )
+        user = _StubUser(roles=[], username='mgr')
+        # Scoped to WNA → must deny NCAR and UNIV.
+        assert not has_permission_for_facility(user, Permission.EDIT_PROJECTS, 'NCAR')
+        assert not has_permission_for_facility(user, Permission.EDIT_PROJECTS, 'UNIV')
+
+    def test_has_permission_for_facility_denies_permission_not_in_scope(self, monkeypatch):
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {'mgr': {'WNA': {Permission.VIEW_PROJECTS}}},
+        )
+        user = _StubUser(roles=[], username='mgr')
+        # WNA is in scope, but only for VIEW; EDIT must fail.
+        assert has_permission_for_facility(user, Permission.VIEW_PROJECTS, 'WNA')
+        assert not has_permission_for_facility(user, Permission.EDIT_PROJECTS, 'WNA')
+
+    def test_has_permission_for_facility_denies_orphan_project_for_scoped_user(self, monkeypatch):
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {'mgr': {'WNA': {Permission.EDIT_PROJECTS}}},
+        )
+        user = _StubUser(roles=[], username='mgr')
+        # facility_name=None means the target project has no
+        # allocation_type → panel → facility chain. Only unscoped
+        # system admins may act there.
+        assert not has_permission_for_facility(user, Permission.EDIT_PROJECTS, None)
+
+    def test_has_permission_for_facility_unauthenticated_returns_false(self):
+        user = _StubUser(roles=[], username='nobody', is_authenticated=False)
+        assert not has_permission_for_facility(user, Permission.EDIT_PROJECTS, 'WNA')
+        assert not has_permission_for_facility(user, Permission.EDIT_PROJECTS, None)
+
+    def test_user_facility_scope_returns_none_for_system_admin(self, monkeypatch):
+        monkeypatch.setattr(
+            rbac, 'USER_PERMISSION_OVERRIDES',
+            {'alice': set(Permission)},
+        )
+        user = _StubUser(roles=[], username='alice')
+        # None signals "no facility filter needed" — unscoped.
+        assert user_facility_scope(user, Permission.VIEW_PROJECTS) is None
+        assert user_facility_scope(user, Permission.EDIT_PROJECTS) is None
+
+    def test_user_facility_scope_returns_set_for_scoped_user(self, monkeypatch):
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {
+                'mgr': {
+                    'WNA': {Permission.VIEW_PROJECTS, Permission.EDIT_PROJECTS},
+                    'CISL': {Permission.VIEW_PROJECTS},
+                },
+            },
+        )
+        user = _StubUser(roles=[], username='mgr')
+        assert user_facility_scope(user, Permission.VIEW_PROJECTS) == {'WNA', 'CISL'}
+        assert user_facility_scope(user, Permission.EDIT_PROJECTS) == {'WNA'}
+        # A permission the user does not hold anywhere → empty set.
+        assert user_facility_scope(user, Permission.DELETE_PROJECTS) == set()
+
+    def test_user_facility_scope_empty_for_unauthenticated(self):
+        user = _StubUser(roles=[], username='nobody', is_authenticated=False)
+        assert user_facility_scope(user, Permission.VIEW_PROJECTS) == set()
+
+    def test_user_facility_scope_empty_for_user_without_entry(self, monkeypatch):
+        monkeypatch.setattr(rbac, 'USER_FACILITY_PERMISSIONS', {})
+        user = _StubUser(roles=[], username='no_entry')
+        assert user_facility_scope(user, Permission.VIEW_PROJECTS) == set()

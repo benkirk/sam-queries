@@ -27,13 +27,43 @@ from webapp.auth.models import AuthUser
 from sam.core.users import User
 from webapp.utils.rbac import (
     can_impersonate, get_user_permissions, has_permission,
-    Permission, require_permission,
+    Permission, require_permission, require_permission_any_facility,
+    user_facility_scope,
 )
 import logging
 logger = logging.getLogger(__name__)
 
 
 bp = Blueprint('admin_dashboard', __name__, url_prefix='/admin')
+
+
+def _apply_facility_scope(requested, permission, default=None):
+    """
+    Combine a user-submitted ``facilities`` list with the caller's
+    facility-scoped RBAC grants for ``permission``.
+
+    Returns the effective facility-name list to pass to downstream
+    queries. ``None`` (or an empty returned list where the caller
+    coerces falsy) means "no restriction".
+
+    Semantics:
+    - Unscoped users (system-permission holders): their ``requested``
+      selection wins; if empty, ``default`` applies.
+    - Scoped users: the returned list is the intersection of their
+      allowed set with the request, or their full allowed set when
+      the request is empty / the intersection is empty.
+    - Users with an empty scope (no entry at all) get an empty list —
+      the caller should treat that as "no rows".
+    """
+    allowed = user_facility_scope(current_user, permission)
+    if allowed is None:
+        return list(requested) if requested else (list(default) if default else None)
+    if not allowed:
+        return []
+    if not requested:
+        return sorted(allowed)
+    intersected = [f for f in requested if f in allowed]
+    return intersected or sorted(allowed)
 
 
 # Usage threshold configuration (percentage)
@@ -50,7 +80,7 @@ UPCOMING_PRESETS = {
 
 @bp.route('/')
 @login_required
-@require_permission(Permission.ACCESS_ADMIN_DASHBOARD)
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
 def index():
     """
     Admin dashboard main page.
@@ -60,9 +90,29 @@ def index():
     - Project search
     - Allocation expirations tracking
     """
+    # Full facility list for unscoped users, the user's allowed set
+    # otherwise. The template iterates this to build the expirations
+    # facility multi-select so scoped users can't see (or pick)
+    # facilities they cannot act on.
+    from sam.resources.facilities import Facility
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is None:
+        allowed_facility_names = [
+            f.facility_name for f in
+            db.session.query(Facility).order_by(Facility.facility_name).all()
+        ]
+    else:
+        allowed_facility_names = sorted(allowed)
+
+    # The two default selections carry over from the hardcoded template
+    # (UNIV and WNA). Keep them only if they survive the allowed set.
+    default_selected = [f for f in ('UNIV', 'WNA') if f in allowed_facility_names]
+
     return render_template(
         'dashboards/admin/dashboard.html',
-        user=current_user
+        user=current_user,
+        allowed_facility_names=allowed_facility_names,
+        default_selected_facilities=default_selected,
     )
 
 
@@ -142,7 +192,7 @@ def stop_impersonating():
 
 @bp.route('/project/<projcode>')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def project_card(projcode):
     """
     Get HTML fragment for a single project card (for admin project search).
@@ -155,6 +205,14 @@ def project_card(projcode):
 
     if not project_data:
         return '<div class="alert alert-warning">Project not found</div>'
+
+    # Facility-scoped users must not see cards for projects outside
+    # their granted facilities — even if they somehow land on the URL.
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is not None:
+        project = find_project_by_code(db.session, projcode)
+        if project is None or project.facility_name not in allowed:
+            abort(403)
 
     # Render a wrapper template that calls the macro
     return render_template(
@@ -322,7 +380,7 @@ def _get_abandoned_users_data(expired_results: List[Tuple]) -> List[Dict]:
 
 @bp.route('/expirations')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def expirations_fragment():
     """
     AJAX endpoint for loading expirations data.
@@ -337,9 +395,11 @@ def expirations_fragment():
         HTML fragment with project cards or user table
     """
     view_type = request.args.get('view', 'upcoming')
-    facilities = request.args.getlist('facilities')
-    if not facilities:
-        facilities = ['UNIV', 'WNA']
+    facilities = _apply_facility_scope(
+        request.args.getlist('facilities'),
+        Permission.VIEW_PROJECTS,
+        default=['UNIV', 'WNA'],
+    )
     resource = request.args.get('resource', None)
     if resource == '':
         resource = None
@@ -396,14 +456,18 @@ def expirations_fragment():
 
 @bp.route('/expirations/deactivate-expired', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission_any_facility(Permission.EDIT_PROJECTS)
 def deactivate_expired():
     """
     Bulk-deactivate every project currently shown on the Expired (90+ days)
     tab, respecting the same facility/resource filters. Re-runs the query
     server-side so the action operates on exactly the set the user saw.
     """
-    facilities = request.form.getlist('facilities') or ['UNIV', 'WNA']
+    facilities = _apply_facility_scope(
+        request.form.getlist('facilities'),
+        Permission.EDIT_PROJECTS,
+        default=['UNIV', 'WNA'],
+    )
     resource = request.form.get('resource') or None
 
     results = get_projects_with_expired_allocations(
@@ -444,7 +508,7 @@ def deactivate_expired():
 
 @bp.route('/expirations/export')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def expirations_export():
     """
     Export expirations data to CSV.
@@ -459,9 +523,11 @@ def expirations_export():
         CSV file download
     """
     export_type = request.args.get('export_type', 'upcoming')
-    facilities = request.args.getlist('facilities')
-    if not facilities:
-        facilities = ['UNIV', 'WNA']
+    facilities = _apply_facility_scope(
+        request.args.getlist('facilities'),
+        Permission.VIEW_PROJECTS,
+        default=['UNIV', 'WNA'],
+    )
     resource = request.args.get('resource', None)
     if resource == '':
         resource = None
@@ -655,7 +721,7 @@ def htmx_search_users_impersonate():
 
 @bp.route('/htmx/search-projects')
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def htmx_search_projects():
     """
     Search projects and return results as HTML fragments.
@@ -671,8 +737,17 @@ def htmx_search_projects():
     if len(query) < 1:
         return ''
 
+    # Facility-scoped users see only their allowed set. None → no filter.
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed == set():
+        # Scoped user with no VIEW_PROJECTS entry anywhere → no results.
+        return ''
+    facility_filter = None if allowed is None else sorted(allowed)
+
     projects = search_projects_by_code_or_title(
-        db.session, query, active=True if active_only else None
+        db.session, query,
+        active=True if active_only else None,
+        facility_names=facility_filter,
     )[:10]  # Limit results
 
     return render_template(
