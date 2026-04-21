@@ -22,7 +22,7 @@ from flask_login import current_user
 from typing import Callable, Any
 
 from webapp.extensions import db
-from webapp.utils.rbac import has_permission, Permission
+from webapp.utils.rbac import has_permission, has_permission_for_facility, Permission
 from webapp.utils.project_permissions import _is_project_steward
 from webapp.api.helpers import get_project_or_404
 
@@ -137,7 +137,9 @@ def require_project_access(f: Callable = None, *, include_ancestors: bool = Fals
         if error:
             return error
 
-        if has_permission(current_user, Permission.VIEW_PROJECTS):
+        if has_permission_for_facility(
+            current_user, Permission.VIEW_PROJECTS, project.facility_name
+        ):
             return f(project, *args, **kwargs)
 
         sam_user = _get_sam_user()
@@ -175,8 +177,11 @@ def require_project_member_access(
             if error:
                 return error
 
-            # Check access: specific permission OR user is project member
-            if has_permission(current_user, permission):
+            # Check access: specific permission (incl. facility scope) OR
+            # user is project member.
+            if has_permission_for_facility(
+                current_user, permission, project.facility_name
+            ):
                 return f(project, *args, **kwargs)
 
             sam_user = _get_sam_user()

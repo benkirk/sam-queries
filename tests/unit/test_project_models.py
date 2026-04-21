@@ -14,10 +14,12 @@ from sam import (
     Facility,
     FosAoi,
     MnemonicCode,
+    Project,
     ProjectCode,
     ResponsibleParty,
     User,
 )
+from factories import make_project
 
 
 pytestmark = pytest.mark.unit
@@ -221,3 +223,37 @@ class TestResponsiblePartyModel:
         assert rp.creation_time is not None
         assert hasattr(rp, 'modified_time')
         session.rollback()
+
+
+# ============================================================================
+# Project.facility_name — derives via allocation_type → panel → facility
+# ============================================================================
+
+
+class TestProjectFacilityName:
+    """The facility-scoped RBAC layer keys off ``Project.facility_name``.
+    Verify the chain resolution and the ``None`` fallback for orphan
+    projects (no ``allocation_type``)."""
+
+    def test_full_chain_returns_facility_name(self, session):
+        # Pick any snapshot project that has the full chain.
+        project = (
+            session.query(Project)
+            .filter(Project.allocation_type_id.isnot(None))
+            .first()
+        )
+        if project is None:
+            pytest.skip("No projects with allocation_type in snapshot")
+        if project.allocation_type is None or project.allocation_type.panel is None:
+            pytest.skip("Snapshot project has a truncated chain")
+
+        expected = project.allocation_type.panel.facility.facility_name
+        assert project.facility_name == expected
+        assert isinstance(project.facility_name, str)
+
+    def test_orphan_project_returns_none(self, session):
+        # make_project leaves allocation_type_id=None by default — that
+        # is the exact orphan shape the RBAC layer needs to cover.
+        project = make_project(session)
+        assert project.allocation_type_id is None
+        assert project.facility_name is None

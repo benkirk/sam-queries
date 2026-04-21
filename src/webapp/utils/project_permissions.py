@@ -14,7 +14,7 @@ walking ancestors)" — lives in ``_is_project_steward``. All public
 ``can_*`` helpers delegate to it so the rule set stays consistent.
 """
 
-from webapp.utils.rbac import has_permission, Permission
+from webapp.utils.rbac import has_permission, has_permission_for_facility, Permission
 
 
 def _is_project_steward(
@@ -28,8 +28,12 @@ def _is_project_steward(
     Authorization primitive used by every project-scoped ``can_*`` check.
 
     Returns True if **any** of:
-    - The user has ``system_permission`` (e.g. EDIT_PROJECT_MEMBERS,
-      EDIT_ALLOCATIONS) — system-wide override.
+    - The user has ``system_permission`` for the target project's
+      facility — either unconditionally (system-wide grant) or via a
+      ``USER_FACILITY_PERMISSIONS`` entry covering
+      ``project.facility_name``. Orphan projects (no
+      ``allocation_type`` chain) can only be reached by unscoped
+      system holders.
     - The user is the project lead.
     - The user is the project admin.
     - When ``include_ancestors`` is True: the user is lead or admin of
@@ -48,7 +52,7 @@ def _is_project_steward(
             without consulting project-level roles.
         include_ancestors: If True, lead/admin of any ancestor counts.
     """
-    if has_permission(user, system_permission):
+    if has_permission_for_facility(user, system_permission, project.facility_name):
         return True
 
     user_id = getattr(user, 'user_id', None)

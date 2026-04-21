@@ -139,6 +139,12 @@
     {%- else -%}{{ selected_resources|join(', ') }}
     {%- endif %}
 {%- endset %}
+{% set _facility_summary -%}
+    {%- if selected_facilities|length == allowed_facility_names|length -%}All facilities
+    {%- elif selected_facilities|length > 3 -%}{{ selected_facilities|length }} facilities
+    {%- else -%}{{ selected_facilities|join(', ') }}
+    {%- endif %}
+{%- endset %}
 <div class="card mb-3">
     <div class="card-header py-2 collapse-toggle collapsed"
          data-bs-toggle="collapse" data-bs-target="#allocationsFilterPanel"
@@ -147,6 +153,8 @@
         <span class="text-muted small">
             <i class="fas fa-filter me-1"></i>
             <strong class="text-dark me-2">Filters</strong>
+            Facilities: <strong class="text-dark">{{ _facility_summary }}</strong>
+            <span class="mx-2">·</span>
             Resources: <strong class="text-dark">{{ _resource_summary }}</strong>
             <span class="mx-2">·</span>
             Active at: <strong class="text-dark">{{ active_at }}</strong>
@@ -154,7 +162,22 @@
     </div>
     <div class="collapse" id="allocationsFilterPanel">
         <div class="card-body py-3">
-            <form method="GET" class="d-flex flex-wrap align-items-start gap-4 mb-0" id="dateFilterForm">
+            <form method="GET" class="d-flex flex-wrap align-items-start gap-4 mb-0"
+                  id="allocations-facility-filter-form">
+                <div>
+                    <label for="facilities" class="form-label small mb-1"><strong>Facilities</strong></label>
+                    <select class="form-control form-control-sm" id="facilities" name="facilities"
+                            multiple size="{{ [allowed_facility_names|length, 4]|min if allowed_facility_names|length else 4 }}"
+                            style="width: 200px;">
+                        {% for facility_name in allowed_facility_names %}
+                        <option value="{{ facility_name }}"
+                            {% if facility_name in selected_facilities %}selected{% endif %}>
+                            {{ facility_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
+                </div>
                 <div>
                     <label for="resources" class="form-label small mb-1"><strong>Resources</strong></label>
                     <select class="form-control form-control-sm" id="resources" name="resources"
@@ -422,7 +445,7 @@
     <div id="alloc-transactions-fragment"
          hx-get="{{ url_for('allocations_dashboard.transactions_fragment') }}"
          hx-trigger="shown.bs.tab from:#alloc-transactions-tab once"
-         hx-include="#tx-filters"
+         hx-include="#tx-filters, #allocations-facility-filter-form"
          hx-swap="innerHTML">
         <div class="text-center text-muted py-4">
             <div class="spinner-border text-primary" role="status">
@@ -456,7 +479,7 @@
     <div id="alloc-adjustments-fragment"
          hx-get="{{ url_for('allocations_dashboard.adjustments_fragment') }}"
          hx-trigger="shown.bs.tab from:#alloc-adjustments-tab once"
-         hx-include="#adj-filters"
+         hx-include="#adj-filters, #allocations-facility-filter-form"
          hx-swap="innerHTML">
         <div class="text-center text-muted py-4">
             <div class="spinner-border text-primary" role="status">

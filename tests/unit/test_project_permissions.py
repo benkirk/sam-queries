@@ -25,12 +25,13 @@ from webapp.utils.rbac import Permission
 pytestmark = pytest.mark.unit
 
 
-def create_mock_user(user_id: int, roles: list = None):
+def create_mock_user(user_id: int, roles: list = None, username: str = 'stubuser'):
     """Create a mock user object for testing."""
     roles = roles or ['user']
     user = Mock()
     user.user_id = user_id
     user.roles = roles
+    user.username = username
     user.has_role = lambda r: r in roles
     user.has_any_role = lambda *rs: any(r in roles for r in rs)
     user.is_authenticated = True
@@ -38,16 +39,19 @@ def create_mock_user(user_id: int, roles: list = None):
 
 
 def create_mock_project(project_lead_user_id: int, project_admin_user_id: int = None,
-                        parent: Mock = None):
+                        parent: Mock = None, facility_name: str = None):
     """Create a mock project object for testing.
 
     ``parent`` is the Project ORM ``parent`` relationship — used by the
     Phase-2 ancestor-walk tests. Default None means root.
+    ``facility_name`` stubs the Phase-3 property that feeds
+    facility-scoped RBAC; default ``None`` = orphan project.
     """
     project = Mock()
     project.project_lead_user_id = project_lead_user_id
     project.project_admin_user_id = project_admin_user_id
     project.parent = parent
+    project.facility_name = facility_name
     return project
 
 
@@ -221,6 +225,78 @@ class TestIsProjectSteward:
         user.has_role = lambda r: False
         project = create_mock_project(project_lead_user_id=42)
         assert not _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+
+    def test_facility_scoped_user_passes_for_matching_facility(self, monkeypatch):
+        # A user with no system perms and no project role, but a scoped
+        # EDIT_PROJECTS grant for this project's facility, should pass.
+        from webapp.utils import rbac
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {'mgr': {'WNA': {Permission.EDIT_PROJECTS}}},
+        )
+        user = create_mock_user(user_id=77, roles=[], username='mgr')
+        project = create_mock_project(
+            project_lead_user_id=1, project_admin_user_id=2,
+            facility_name='WNA',
+        )
+        assert _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+
+    def test_facility_scoped_user_blocked_for_other_facility(self, monkeypatch):
+        # Scoped to WNA but project is NCAR → no system perm, no role,
+        # no scope match → denied.
+        from webapp.utils import rbac
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {'mgr': {'WNA': {Permission.EDIT_PROJECTS}}},
+        )
+        user = create_mock_user(user_id=77, roles=[], username='mgr')
+        project = create_mock_project(
+            project_lead_user_id=1, project_admin_user_id=2,
+            facility_name='NCAR',
+        )
+        assert not _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+
+    def test_facility_scoped_user_still_wins_via_lead_role(self, monkeypatch):
+        # Scope doesn't cover the facility, but user is the project lead
+        # → lead short-circuit still applies. Important: facility scope
+        # is additive, not replacement.
+        from webapp.utils import rbac
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {'mgr': {'WNA': {Permission.EDIT_PROJECTS}}},
+        )
+        user = create_mock_user(user_id=77, roles=[], username='mgr')
+        project = create_mock_project(
+            project_lead_user_id=77, project_admin_user_id=None,
+            facility_name='NCAR',
+        )
+        assert _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+
+    def test_orphan_project_denies_scoped_user(self, monkeypatch):
+        # facility_name=None means no allocation_type chain exists;
+        # the facility-scoped user cannot act — only unscoped system
+        # holders may.
+        from webapp.utils import rbac
+        monkeypatch.setattr(
+            rbac, 'USER_FACILITY_PERMISSIONS',
+            {'mgr': {'WNA': {Permission.EDIT_PROJECTS}}},
+        )
+        user = create_mock_user(user_id=77, roles=[], username='mgr')
+        project = create_mock_project(
+            project_lead_user_id=1, project_admin_user_id=2,
+            facility_name=None,
+        )
+        assert not _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+
+    def test_orphan_project_still_reachable_by_system_admin(self):
+        # Regression guard: orphan projects must remain manageable by
+        # users with the system-wide grant.
+        user = create_mock_user(user_id=100, roles=['admin-testing-only'])
+        project = create_mock_project(
+            project_lead_user_id=1, project_admin_user_id=2,
+            facility_name=None,
+        )
+        assert _is_project_steward(user, project, Permission.EDIT_PROJECTS)
 
 
 # ---------------------------------------------------------------------------

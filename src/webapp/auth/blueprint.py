@@ -32,8 +32,8 @@ def _redirect_for_role(auth_user):
     including users granted admin via USER_PERMISSION_OVERRIDES rather
     than a group bundle.
     """
-    from webapp.utils.rbac import has_permission, Permission
-    if has_permission(auth_user, Permission.ACCESS_ADMIN_DASHBOARD):
+    from webapp.utils.rbac import has_permission_any_facility, Permission
+    if has_permission_any_facility(auth_user, Permission.ACCESS_ADMIN_DASHBOARD):
         return redirect(url_for('admin_dashboard.index'))
     return redirect(url_for('user_dashboard.index'))
 

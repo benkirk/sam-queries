@@ -4,7 +4,7 @@
   Create modal: form loaded lazily via HTMX when button is clicked.
 #}
 
-{% if has_permission(Permission.CREATE_PROJECTS) %}
+{% if has_permission_any_facility(Permission.CREATE_PROJECTS) %}
 {{ modal_scaffold('createProjectModal', 'New Project',
                   icon='folder-plus', container_id='createProjectFormContainer', size='xl') }}
 {% endif %}

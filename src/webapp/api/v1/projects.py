@@ -12,7 +12,11 @@ Example usage:
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
-from webapp.utils.rbac import require_permission, Permission
+from flask import abort
+from webapp.utils.rbac import (
+    require_permission, require_permission_any_facility,
+    Permission, user_facility_scope,
+)
 from webapp.extensions import db
 from sam.schemas import (
     ProjectSchema, ProjectListSchema, ProjectSummarySchema,
@@ -102,7 +106,7 @@ def _format_project_allocation_tuple(project, alloc, res_name, days_value, days_
 
 @bp.route('/', methods=['GET'])
 @login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def list_projects():
     """
     GET /api/v1/projects - List projects with pagination and filtering.
@@ -125,26 +129,47 @@ def list_projects():
 
     from sam.queries.projects import search_projects_by_code_or_title, get_active_projects
     from sam.projects.projects import Project
+    from sam.accounting.allocations import AllocationType
+    from sam.resources.facilities import Facility, Panel
+
+    # Facility-scope the caller. None → no restriction (system holder).
+    # Empty set → scoped user with no VIEW_PROJECTS anywhere → 0 rows.
+    # Populated set → restrict to those facilities; reject an explicit
+    # ?facility=<other> request outright so the caller sees a 403
+    # instead of a silent empty result.
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed == set():
+        return jsonify({'projects': [], 'page': page, 'per_page': per_page, 'total': 0})
+    if allowed is not None and facility and facility not in allowed:
+        abort(403)
+    facility_filter = None if allowed is None else sorted(allowed)
 
     total = 0
     projects = []
 
     # Build query based on filters
     if search:
-        projects_list = search_projects_by_code_or_title(db.session, search, active=active)
+        projects_list = search_projects_by_code_or_title(
+            db.session, search, active=active, facility_names=facility_filter,
+        )
         total = len(projects_list)
         start = (page - 1) * per_page
         end = start + per_page
         projects = projects_list[start:end]
     elif facility:
-        # This branch remains unpaginated as in the original implementation
-        # and its active status depends on how get_active_projects internally filters.
+        # Explicit single-facility filter already intersected with scope above.
         projects = get_active_projects(db.session, facility_name=facility)
         total = len(projects)
     else:
         query = db.session.query(Project)
         if active is not None:
             query = query.filter(Project.active == active)
+        if facility_filter is not None:
+            query = query\
+                .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+                .join(Panel, AllocationType.panel_id == Panel.panel_id)\
+                .join(Facility, Panel.facility_id == Facility.facility_id)\
+                .filter(Facility.facility_name.in_(facility_filter))
         total = query.count()
         projects = query.limit(per_page).offset((page - 1) * per_page).all()
 

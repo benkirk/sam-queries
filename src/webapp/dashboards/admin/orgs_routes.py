@@ -15,8 +15,10 @@ from webapp.utils.htmx import (
     htmx_not_found,
     htmx_success_message,
 )
-from webapp.extensions import db, cache
-from webapp.utils.rbac import require_permission, Permission
+from webapp.extensions import db, cache, user_aware_cache_key
+from webapp.utils.rbac import (
+    require_permission, require_permission_any_facility, Permission,
+)
 from sam.manage import management_transaction
 from sam.core.users import User
 from sam.queries.admin import (
@@ -95,8 +97,8 @@ def _active_contract_sources():
 
 @bp.route('/htmx/organizations-card')
 @login_required
-@require_permission(Permission.VIEW_ORG_METADATA)
-@cache.cached(query_string=True)
+@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+@cache.cached(make_cache_key=user_aware_cache_key)
 def htmx_organizations_card():
     """
     Return the Organization card body fragment with seven tabs:
@@ -165,8 +167,8 @@ def htmx_organizations_card():
 
 @bp.route('/htmx/institutions-fragment')
 @login_required
-@require_permission(Permission.VIEW_ORG_METADATA)
-@cache.cached(query_string=True)
+@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+@cache.cached(make_cache_key=user_aware_cache_key)
 def htmx_institutions_fragment():
     """HTMX fragment: filterable, nested table of institutions by institution type.
 

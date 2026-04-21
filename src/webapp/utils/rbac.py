@@ -186,6 +186,61 @@ USER_PERMISSION_OVERRIDES: Dict[str, Set[Permission]] = {
 }
 
 
+# Per-user, per-facility permission grants — the third RBAC tier.
+#
+# A user is granted ``permission`` here only when the target project's
+# facility is in the configured set. Permissions held here are ADDITIVE
+# to whatever ``USER_PERMISSION_OVERRIDES`` / ``GROUP_PERMISSIONS``
+# confer (which apply unconditionally).
+#
+# Example — a WNA-scoped manager who may CRUD WNA projects/allocations
+# but has no authority anywhere else:
+#
+#     'sureshm': {
+#         'WNA': {
+#             Permission.CREATE_PROJECTS, Permission.EDIT_PROJECTS,
+#             Permission.CREATE_ALLOCATIONS, Permission.EDIT_ALLOCATIONS,
+#             ...
+#         },
+#     }
+#
+# Multi-facility entries are supported — the outer dict's value may
+# name any number of facilities, each mapping to its own permission set.
+#
+# Format: {username: {facility_name: {Permission, ...}}}
+USER_FACILITY_PERMISSIONS: Dict[str, Dict[str, Set[Permission]]] = {
+    # WNA-scoped admin — provisions and manages WNA projects and
+    # allocations. Holds no authority over NCAR/UNIV/CISL/CSL/XSEDE/ASD.
+    'sureshm': {
+        'WNA': {
+            Permission.ACCESS_ADMIN_DASHBOARD,
+            Permission.VIEW_PROJECTS,
+            Permission.EDIT_PROJECTS,
+            Permission.CREATE_PROJECTS,
+            Permission.VIEW_PROJECT_MEMBERS,
+            Permission.EDIT_PROJECT_MEMBERS,
+            Permission.VIEW_ALLOCATIONS,
+            Permission.EDIT_ALLOCATIONS,
+            Permission.CREATE_ALLOCATIONS,
+            # Reference-data + directory viewers: the admin dashboard's
+            # Resources, Organizations, Facilities, and Users & Groups
+            # tabs all pull read-only card fragments gated on these
+            # VIEW_* permissions. Granting them here lets a scoped
+            # manager see the cards globally (directory lookup is
+            # inherently cross-facility — project membership spans
+            # users outside WNA). Write buttons remain hidden — they
+            # gate on CREATE_/EDIT_/DELETE_ which this tier does not
+            # confer.
+            Permission.VIEW_RESOURCES,
+            Permission.VIEW_ORG_METADATA,
+            Permission.VIEW_FACILITIES,
+            Permission.VIEW_USERS,
+            Permission.VIEW_GROUPS,
+        },
+    },
+}
+
+
 def get_user_permissions(user) -> Set[Permission]:
     """
     Get all permissions for a user.
@@ -227,6 +282,141 @@ def has_permission(user, permission: Permission) -> bool:
         True if user has the permission, False otherwise
     """
     return permission in get_user_permissions(user)
+
+
+def has_permission_for_facility(user, permission: Permission,
+                                facility_name) -> bool:
+    """
+    Check if ``user`` holds ``permission`` for the given facility.
+
+    True iff either:
+    - The user has ``permission`` unconditionally (system grant via
+      groups or ``USER_PERMISSION_OVERRIDES``) — applies to any facility.
+    - ``USER_FACILITY_PERMISSIONS[user.username][facility_name]``
+      contains ``permission``.
+
+    Args:
+        user: AuthUser object (Flask-Login current_user). Unauthenticated
+            users always fail.
+        permission: Permission enum member to check.
+        facility_name: ``Facility.facility_name`` string, or ``None``
+            for orphan projects (no allocation_type chain). Orphans can
+            only be acted on by unscoped system-permission holders.
+
+    Returns:
+        True if the permission applies to this facility, else False.
+    """
+    # System grant — applies to every facility, including unknown ones.
+    if has_permission(user, permission):
+        return True
+    if facility_name is None:
+        # Orphan projects: only unscoped system-permission holders can act.
+        return False
+    if not getattr(user, 'is_authenticated', False):
+        return False
+    username = getattr(user, 'username', None)
+    if username is None:
+        return False
+    scoped = USER_FACILITY_PERMISSIONS.get(username, {})
+    return permission in scoped.get(facility_name, set())
+
+
+def has_permission_any_facility(user, permission: Permission) -> bool:
+    """True if ``user`` can exercise ``permission`` **somewhere** —
+    either unconditionally (system grant) or in at least one facility
+    via ``USER_FACILITY_PERMISSIONS``.
+
+    Use this for route-level gates that admit scoped users: they reach
+    the route, and the body intersects their scope against whatever
+    the request targeted (listing filter, create-target facility, …).
+
+    Contrast with ``has_permission``: that one answers "does the user
+    hold this unconditionally?" — the right question for routes that
+    must remain pure system-admin domain (impersonation, system
+    status, etc.)."""
+    if has_permission(user, permission):
+        return True
+    if not getattr(user, 'is_authenticated', False):
+        return False
+    username = getattr(user, 'username', None)
+    if username is None:
+        return False
+    scoped = USER_FACILITY_PERMISSIONS.get(username, {})
+    return any(permission in perms for perms in scoped.values())
+
+
+def user_facility_scope(user, permission: Permission):
+    """
+    Return the set of facility names where ``user`` may exercise
+    ``permission``, or ``None`` for "unscoped" (any facility, including
+    orphan projects).
+
+    Use at listing-filter call sites:
+      - ``None`` → skip the facility filter entirely (system-permission
+        holder; sees everything).
+      - ``set`` → constrain results to those facilities.
+      - empty ``set`` → user has no way to exercise this permission.
+
+    Args:
+        user: AuthUser object.
+        permission: Permission enum member.
+    """
+    if has_permission(user, permission):
+        return None
+    if not getattr(user, 'is_authenticated', False):
+        return set()
+    username = getattr(user, 'username', None)
+    if username is None:
+        return set()
+    scoped = USER_FACILITY_PERMISSIONS.get(username, {})
+    return {f for f, perms in scoped.items() if permission in perms}
+
+
+def apply_facility_scope(requested, permission: Permission, default=None):
+    """
+    Combine a user-submitted ``facilities`` list with the caller's
+    facility-scoped RBAC grants for ``permission``, returning the
+    effective facility-name list to pass to downstream queries.
+
+    Semantics:
+    - **Unscoped users** (system-permission holders): ``requested``
+      wins; if empty, ``default`` applies; ``None`` means
+      "no restriction".
+    - **Scoped users**: returns the intersection of ``requested`` with
+      their allowed set. Falls back to the full allowed set when the
+      request is empty or the intersection is empty (clamp, don't
+      error — the user just asked for nothing they can see).
+    - **Users with an empty scope** (no entry at all): returns ``[]``.
+      Caller should treat as "no rows".
+
+    Used as the single source of truth for "what facility names do I
+    actually filter on, given this user + this request?" at both the
+    admin expirations/search routes and the allocations dashboard.
+    """
+    allowed = user_facility_scope(current_user, permission)
+    if allowed is None:
+        return list(requested) if requested else (list(default) if default else None)
+    if not allowed:
+        return []
+    if not requested:
+        return sorted(allowed)
+    intersected = [f for f in requested if f in allowed]
+    return intersected or sorted(allowed)
+
+
+def filter_rows_by_facility(rows, allowed):
+    """Drop rows whose ``'facility'`` key isn't in ``allowed``.
+
+    Pass ``None`` for ``allowed`` to skip filtering (unscoped / global
+    view). Used by the allocations dashboard's post-fetch scope filter
+    — every row returned by the summary / usage / transactions
+    queries carries a ``'facility'`` field."""
+    if allowed is None:
+        return rows
+    if not allowed:
+        return []
+    allowed_set = allowed if isinstance(allowed, (set, frozenset)) else set(allowed)
+    return [r for r in rows if r.get('facility') in allowed_set]
 
 
 def has_any_permission(user, *permissions: Permission) -> bool:
@@ -328,6 +518,34 @@ def require_permission(permission: Permission):
     return decorator
 
 
+def require_permission_any_facility(permission: Permission):
+    """
+    Decorator that admits callers who hold ``permission`` either
+    unconditionally (system grant) **or** in at least one facility via
+    ``USER_FACILITY_PERMISSIONS``.
+
+    The route body is then responsible for intersecting the user's
+    facility scope against whatever the request targets. Use for admin
+    routes that a facility-scoped manager must be able to reach (e.g.
+    the admin dashboard, project search, expirations fragment,
+    project-create form) even though they don't hold the permission
+    globally.
+
+    For routes that must remain pure system-admin domain (impersonation,
+    global system administration), use ``require_permission`` instead.
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                abort(401)
+            if not has_permission_any_facility(current_user, permission):
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
 def require_any_permission(*permissions: Permission):
     """
     Decorator to require any of the specified permissions.
@@ -410,6 +628,10 @@ def rbac_context_processor():
     return {
         'Permission': Permission,
         'has_permission': lambda p: has_permission(current_user, p) if current_user.is_authenticated else False,
+        'has_permission_any_facility': lambda p: (
+            has_permission_any_facility(current_user, p)
+            if current_user.is_authenticated else False
+        ),
         'has_role': lambda r: has_role(current_user, r) if current_user.is_authenticated else False,
         'user_permissions': get_user_permissions(current_user) if current_user.is_authenticated else set(),
         'can_act_on_project': _can_act_on_project,
