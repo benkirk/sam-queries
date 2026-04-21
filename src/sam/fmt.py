@@ -324,3 +324,16 @@ def mpl_number_formatter(sig_figs: Optional[int] = None):
     from matplotlib.ticker import FuncFormatter
     sf = sig_figs or _sig_figs
     return FuncFormatter(lambda x, _: number(x, sig_figs=sf))
+
+
+def mpl_pct_formatter(decimals: int = 0):
+    """Return a matplotlib FuncFormatter backed by fmt.pct().
+
+    Input values are in the 0–100 range (not 0–1). Default decimals=0 suits
+    tick labels ("25%", "50%"); raise it for tighter axes.
+
+    Usage:
+        ax.yaxis.set_major_formatter(fmt.mpl_pct_formatter())
+    """
+    from matplotlib.ticker import FuncFormatter
+    return FuncFormatter(lambda x, _: pct(x, decimals=decimals))
