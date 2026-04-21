@@ -26,51 +26,160 @@ body {
    ========================================================================= */
 
 .navbar {
-    background: linear-gradient(135deg, var(--ncar-navy) 0%, #003579 100%);
-    box-shadow: var(--shadow-md);
-    padding: 0.75rem 0;
+    background-color: #fff;
+    padding-top: 0;
+    padding-bottom: 0;
 }
 
-.navbar-dark .navbar-brand {
-    color: white;
-    font-weight: 700;
-    font-size: 1.75rem;
-    letter-spacing: 0.5px;
-    transition: all var(--transition-base);
+.navbar-light {
+    background-color: #fff;
 }
 
-.navbar-dark .navbar-brand:hover {
-    color: var(--ncar-cyan);
-    transform: translateX(2px);
+.navbar button {
+    border: 0;
+    padding: 0 0.5rem;
 }
 
-.navbar-dark .navbar-nav .nav-link {
-    color: rgba(255,255,255,0.9);
+/* Override Bootstrap's stepped container-lg inside the navbar.
+   Unity's container-lg is fluid until 86.25rem, then caps at 88.25rem.
+   Bootstrap 5's default caps at 960px at 992px — far too narrow. */
+.navbar .container-lg {
+    max-width: 100%;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+}
+
+@media (min-width: 86.25rem) {
+    .navbar .container-lg {
+        max-width: 88.25rem;
+    }
+}
+
+/* Logo */
+.logo-ncar {
+    width: 13rem;
+}
+
+.logo-ncar img {
+    width: 100%;
+}
+
+@media (min-width: 768px) {
+    .logo-ncar {
+        width: 18.5rem;
+    }
+}
+
+/* Site name */
+.site-name h1 {
+    font-size: var(--font-size-xlg);
+    font-weight: var(--font-weight-regular);
+    line-height: 3rem;
+    text-transform: uppercase;
+    margin: 0;
+}
+
+.site-name h1 a {
+    color: var(--ncar-space-blue);
+    text-decoration: none;
+}
+
+.site-name h1 a:hover {
+    color: var(--ncar-blue);
+}
+
+/* Nav links — mobile: full-width with 1.875rem vertical padding */
+.navbar .nav-link {
+    color: var(--ncar-space-blue);
+    font-size: 1rem;
+    line-height: 1.5rem;
+    padding-top: 1.875rem;
+    padding-bottom: 1.875rem;
+    padding-left: 1.875rem;
+}
+
+.navbar .nav-link:hover,
+.navbar .nav-link:focus {
+    color: var(--ncar-blue);
+}
+
+.navbar .nav-item {
+    border-bottom: 1px solid var(--ncar-gray-light);
+    list-style: none;
+    justify-content: space-between;
+    width: 100%;
+}
+
+/* Mobile toggler */
+.mobile-toggler {
+    max-width: 4rem;
+}
+
+.mobile-toggler button {
+    padding: 1.6rem;
+}
+
+/* Utility menu (desktop) */
+.utility-menu {
+    font-size: 0.875rem;
+    line-height: 1.35;
+}
+
+.utility-menu .nav-link {
+    color: var(--ncar-space-blue);
     font-weight: var(--font-weight-semi-bold);
-    padding: 0.5rem 1rem;
-    transition: all var(--transition-base);
-    border-radius: var(--radius-sm);
-    margin: 0 2px;
+    padding: 0;
 }
 
-.navbar-dark .navbar-nav .nav-link:hover {
-    color: white;
-    background-color: rgba(255,255,255,0.1);
+.utility-menu .nav-link:hover {
+    color: var(--ncar-blue);
 }
 
-.user-info {
-    color: white;
-    padding: 8px 16px;
-    background: rgba(var(--ncar-teal-rgb), 0.3);
-    border-radius: var(--radius-md);
-    font-weight: var(--font-weight-semi-bold);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    transition: all var(--transition-base);
+/* Nav row border */
+.navbar-wrapper.border-top {
+    border-top-color: var(--ncar-gray-light) !important;
 }
 
-.user-info:hover {
-    background: rgba(var(--ncar-teal-rgb), 0.4);
-    border-color: rgba(255, 255, 255, 0.3);
+.navbar .navbar-collapse {
+    padding: 0.375rem 0;
+}
+
+/* Desktop — md breakpoint matches navbar-expand-md */
+@media (min-width: 768px) {
+    .navbar {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.175);
+    }
+
+    .navbar .nav-item {
+        border-bottom: 0;
+        justify-content: center;
+        width: auto;
+        padding-right: 1.875rem;
+    }
+
+    .navbar .nav-item.dropdown {
+        padding-right: 1.125rem;
+    }
+
+    .navbar .navbar-collapse {
+        padding-left: calc(var(--bs-gutter-x) / 2);
+        padding-right: calc(var(--bs-gutter-x) / 2);
+    }
+
+    .navbar .nav-link {
+        padding: 0;
+    }
+
+    .navbar .nav-link.active {
+        border-bottom: 0.1875rem solid var(--ncar-blue);
+        margin-bottom: -0.1875rem;
+        color: var(--ncar-space-blue);
+    }
+
+    .site-name h1 {
+        font-size: var(--font-size-xsm);
+        line-height: 1.2rem;
+    }
 }
 
 /* ============================================================================

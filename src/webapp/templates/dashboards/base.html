@@ -16,77 +16,109 @@
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="{% block navbar_container_class %}container-fluid sam-fluid-1800{% endblock %}">
-            <a class="navbar-brand" href="{{ url_for('user_dashboard.index') }}">
-                <i class="fas fa-tasks"></i> SAM
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    {% if current_user.is_authenticated %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('user_dashboard.index') }}">
-                            <i class="fas fa-home"></i> User Dashboard
-                        </a>
-                    </li>
-                    {% endif %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('status_dashboard.index') }}">
-                            <i class="fas fa-server"></i> System Status
-                        </a>
-                    </li>
-                    {% if has_permission('view_projects') %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('allocations_dashboard.index') }}">
-                            <i class="fas fa-chart-pie"></i> Allocations
-                        </a>
-                    </li>
-                    {% endif %}
-                    {% if has_permission('impersonate_users') %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('admin_dashboard.index') }}">
-                            <i class="fas fa-user-shield"></i> Admin
-                        </a>
-                    </li>
-                    {% endif %}
-                </ul>
-                <ul class="navbar-nav ms-auto">
-                    {% if current_user.is_authenticated %}
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                            <i class="fas fa-user-circle"></i> {{ current_user.display_name }}
-                        </a>
-                        <div class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                            <div class="dropdown-header">
-                                <strong>{{ current_user.username }}</strong>
-                                {% if current_user.primary_email %}
-                                <br><small class="text-muted">{{ current_user.primary_email }}</small>
+    <header>
+    <nav class="navbar navbar-expand-md navbar-light align-items-start py-0">
+        <div class="container-fluid px-0">
+            <div class="row gx-0 flex-grow-1">
+
+                <!-- Row 1: Brand + toggler | utility menu -->
+                <div class="col-12">
+                    <div class="container-lg">
+                        <div class="row gx-0 py-md-1">
+                            <div class="col col-md-7 py-md-1">
+                                <div class="d-flex align-items-center">
+                                    <div class="my-1 py-md-0 align-self-center logo-ncar">
+                                        <div class="mb-0">
+                                            <a href="{{ url_for('user_dashboard.index') }}">
+                                                <img src="{{ url_for('static', filename='img/logo-ncar.png') }}" alt="NSF NCAR" class="img-fluid">
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="ms-auto px-0 d-md-none mobile-toggler">
+                                        <button aria-controls="navbarNav" aria-expanded="false"
+                                                aria-label="Mobile Menu"
+                                                class="navbar-toggler collapsed btn"
+                                                data-bs-target="#navbarNav,#navbarNavMobile"
+                                                data-bs-toggle="collapse"
+                                                id="menuIcon" type="button">
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Utility menu: user account (desktop only) -->
+                            <div class="utility-menu col d-none d-md-flex justify-content-end align-items-center pe-0">
+                                {% if current_user.is_authenticated %}
+                                <div class="nav-item dropdown">
+                                    <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
+                                       data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="fas fa-user-circle"></i> {{ current_user.display_name }}
+                                    </a>
+                                    <div class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                                        <div class="dropdown-header">
+                                            <strong>{{ current_user.username }}</strong>
+                                            {% if current_user.primary_email %}
+                                            <br><small>{{ current_user.primary_email }}</small>
+                                            {% endif %}
+                                        </div>
+                                        <div class="dropdown-divider"></div>
+                                        <a class="dropdown-item" href="{{ url_for('user_dashboard.index') }}">My Dashboard</a>
+                                        <div class="dropdown-divider"></div>
+                                        <a class="dropdown-item" href="{{ url_for('auth.logout') }}">Logout</a>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <a class="nav-link" href="{{ url_for('auth.login') }}">Login</a>
                                 {% endif %}
                             </div>
-                            <div class="dropdown-divider"></div>
-                            <a class="dropdown-item" href="{{ url_for('user_dashboard.index') }}">
-                                <i class="fas fa-home"></i> My Dashboard
-                            </a>
-                            <div class="dropdown-divider"></div>
-                            <a class="dropdown-item" href="{{ url_for('auth.logout') }}">
-                                <i class="fas fa-sign-out-alt"></i> Logout
-                            </a>
                         </div>
-                    </li>
-                    {% else %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('auth.login') }}">
-                            <i class="fas fa-sign-in-alt"></i> Login
-                        </a>
-                    </li>
-                    {% endif %}
-                </ul>
+                    </div>
+                </div>
+
+                <!-- Row 2: Nav links -->
+                <div class="col-12 navbar-wrapper border-top">
+                    <div class="container-lg collapse navbar-collapse" id="navbarNav">
+                        <ul class="menu navbar-nav me-auto mb-2 mb-md-0 align-items-center">
+                            {% if current_user.is_authenticated %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('user_dashboard.index') }}">User Dashboard</a>
+                            </li>
+                            {% endif %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('status_dashboard.index') }}">System Status</a>
+                            </li>
+                            {% if has_permission('view_projects') %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('allocations_dashboard.index') }}">Allocations</a>
+                            </li>
+                            {% endif %}
+                            {% if has_permission('impersonate_users') %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('admin_dashboard.index') }}">Admin</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Row 3: Mobile utility -->
+                <div class="col-12 mobile-utility-menu px-2 d-md-none">
+                    <div class="collapse navbar-collapse" id="navbarNavMobile">
+                        {% if current_user.is_authenticated %}
+                        <div class="py-2 fw-bold">
+                            <a href="{{ url_for('auth.logout') }}">Logout {{ current_user.display_name }}</a>
+                        </div>
+                        {% else %}
+                        <div class="py-2 fw-bold">
+                            <a href="{{ url_for('auth.login') }}">Login</a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
             </div>
         </div>
     </nav>
+    </header>
 
     <!-- Impersonation Banner -->
     {% if session.impersonator_id %}
