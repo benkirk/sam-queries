@@ -1,7 +1,7 @@
 ---
-title: "SAM: System for Allocation Management"
+title: "SAM: Systems Accounting Manager"
 subtitle: "Architecture, Capabilities, and Deployment"
-author: "CISL — University Services Section"
+author: "CISL"
 date: last-modified
 ---
 
@@ -11,6 +11,7 @@ date: last-modified
 
 **SAM** is CISL's resource allocation and accounting system for NCAR HPC infrastructure.
 
+## SAM
 :::: {.columns}
 ::: {.column width="55%"}
 **Manages:**
@@ -18,7 +19,7 @@ date: last-modified
 - User accounts and project memberships
 - Allocation awards and balances
 - Job charging and usage tracking
-- Integration with XRAS (allocation request system)
+- Integration with XRAS (NSF allocation request system)
 :::
 ::: {.column width="45%"}
 **Serves:**
