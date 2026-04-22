@@ -7,5 +7,9 @@ dependencies:
   - mysql-connector-python
   - coreutils
   - pip
+  # docs/presentation deps:
+  - quarto
+  - eralchemy2
+  - pydeps
   - pip:
       - pipdeptree

@@ -23,7 +23,7 @@ import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-FONTS_DIR = HERE / "assets" / "fonts"
+FONTS_DIR = HERE.parent / "assets" / "fonts"  # common/utils/ → common/assets/fonts/
 
 VARIANTS = [
     # (xml tag, blob filename, arcname inside pptx)
@@ -46,7 +46,6 @@ def check_fonts() -> dict[str, bytes]:
             "embed_poppins: missing font blob(s): "
             + ", ".join(missing)
             + f"\n  expected under {FONTS_DIR}/"
-            + "\n  run `python3 prepare_template.py` to extract them from the template"
         )
     return {b: (FONTS_DIR / b).read_bytes() for _, b, _ in VARIANTS}
 

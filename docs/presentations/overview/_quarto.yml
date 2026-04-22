@@ -3,7 +3,7 @@ project:
 
 format:
   pptx:
-    reference-doc: assets/ncar-template.pptx   # replace with actual NCAR/CISL template
+    reference-doc: ../common/branding/ncar/template.pptx
     slide-level: 2
     toc: false
 

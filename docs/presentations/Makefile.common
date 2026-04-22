@@ -1,0 +1,29 @@
+# Shared recipes for Quarto→pptx presentations under docs/presentations/.
+# Per-presentation Makefiles set OUT (and optionally QFILE), then
+# `include ../Makefile.common`.
+
+.PHONY: pptx html pdf all clean
+
+PRESENTATIONS_ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
+EMBED_POPPINS      := $(PRESENTATIONS_ROOT)common/utils/embed_poppins.py
+
+QFILE ?= $(OUT).qmd
+
+pptx: $(OUT).pptx
+html: $(OUT).html
+pdf:  $(OUT).pdf
+all:  pptx html pdf
+
+$(OUT).pptx: $(QFILE)
+	quarto render $(QFILE) --to pptx -o $@
+	python3 $(EMBED_POPPINS) $@
+
+$(OUT).html: $(QFILE)
+	quarto render $(QFILE) --to revealjs -o $@
+
+$(OUT).pdf: $(QFILE)
+	quarto render $(QFILE) --to beamer -o $@
+
+clean:
+	rm -f $(OUT).pptx $(OUT).html $(OUT).pdf
+	rm -rf $(OUT)_files

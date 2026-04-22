@@ -3,10 +3,6 @@ title: "SAM: System for Allocation Management"
 subtitle: "Architecture, Capabilities, and Deployment"
 author: "CISL — University Services Section"
 date: last-modified
-format:
-  pptx:
-    reference-doc: assets/ncar-template.pptx   # TODO: replace with actual template
-    slide-level: 2
 ---
 
 # Overview
