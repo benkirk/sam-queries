@@ -6,6 +6,7 @@
 
 PRESENTATIONS_ROOT := $(dir $(lastword $(MAKEFILE_LIST)))
 EMBED_POPPINS      := $(PRESENTATIONS_ROOT)common/utils/embed_poppins.py
+SHARED_QUARTO_YML  := $(PRESENTATIONS_ROOT)common/_quarto.yml
 
 QFILE ?= $(OUT).qmd
 
@@ -14,14 +15,20 @@ html: $(OUT).html
 pdf:  $(OUT).pdf
 all:  pptx html pdf
 
-$(OUT).pptx: $(QFILE)
+# Auto-symlink the shared _quarto.yml into the deck dir. A deck that
+# needs custom config can commit a real _quarto.yml; make will see the
+# file exists and skip this rule.
+_quarto.yml:
+	ln -s $(SHARED_QUARTO_YML) $@
+
+$(OUT).pptx: $(QFILE) _quarto.yml
 	quarto render $(QFILE) --to pptx -o $@
 	python3 $(EMBED_POPPINS) $@
 
-$(OUT).html: $(QFILE)
+$(OUT).html: $(QFILE) _quarto.yml
 	quarto render $(QFILE) --to revealjs -o $@
 
-$(OUT).pdf: $(QFILE)
+$(OUT).pdf: $(QFILE) _quarto.yml
 	quarto render $(QFILE) --to beamer -o $@
 
 clean:

@@ -43,8 +43,11 @@ unzip -p common/branding/ncar/template.pptx ppt/slideLayouts/slideLayout1.xml \
 
 ## Path gotchas
 
-- **`reference-doc` is resolved relative to `_quarto.yml`**, not CWD. From
-  a deck subdir, that's `../common/branding/ncar/template.pptx`.
+- **`reference-doc` is resolved relative to `_quarto.yml`**, not CWD.
+  In the shared `common/_quarto.yml` (symlinked into each deck), pandoc
+  resolves paths relative to the symlink location (the deck dir), so the
+  value stays `../common/branding/ncar/template.pptx` — works from every
+  deck at the current depth.
 - **A `.qmd` frontmatter `format:` block overrides `_quarto.yml`.** If
   pandoc's debug output shows a wrong `reference-doc`, check the `.qmd`
   first — don't assume the yaml is authoritative.
@@ -72,25 +75,20 @@ a colleague's machine or a fresh VM.
 
 ## Adding a new deck
 
-Three files, no template copying:
+Two files, no template copying, no config duplication:
 
 ```bash
 mkdir docs/presentations/<name> && cd docs/presentations/<name>
 printf 'OUT := $(notdir $(CURDIR))\n\ninclude ../Makefile.common\n' > Makefile
-cat > _quarto.yml <<'EOF'
-project:
-  type: default
-format:
-  pptx:
-    reference-doc: ../common/branding/ncar/template.pptx
-    slide-level: 2
-    toc: false
-EOF
-# author <name>.qmd with NO format: block — inherits from _quarto.yml
+# Author <name>.qmd with NO format: block.
+# First `make` auto-symlinks _quarto.yml from ../common/_quarto.yml.
 ```
 
-If the user asks for a new deck, use this pattern — don't invent a new
-Makefile shape or re-declare the render recipe.
+If a deck needs unique quarto config, commit a real `_quarto.yml` in the
+deck dir — the symlink rule only fires when the file is missing, so a
+real file shadows the shared one. If the user asks for a new deck, use
+this pattern — don't invent a new Makefile shape or re-declare the
+render recipe.
 
 ## Minor behaviors worth knowing
 

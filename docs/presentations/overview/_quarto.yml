@@ -1,13 +1,1 @@
-project:
-  type: default
-
-format:
-  pptx:
-    reference-doc: ../common/branding/ncar/template.pptx
-    slide-level: 2
-    toc: false
-
-# Mermaid diagrams render to PNG automatically during quarto render
-diagram:
-  mermaid:
-    theme: default
+../common/_quarto.yml
