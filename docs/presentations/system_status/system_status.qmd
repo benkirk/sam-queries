@@ -1,0 +1,13 @@
+-*- mode: markdown -*-
+
+---
+title: "SAM: System Status Database"
+author: "CISL"
+date: last-modified
+---
+
+# Overview
+
+## What is SAM?
+
+**SAM** is CISL's resource allocation and accounting system for NCAR HPC infrastructure.
