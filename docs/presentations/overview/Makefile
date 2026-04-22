@@ -1,3 +1,3 @@
-OUT := overview
+OUT := $(notdir $(CURDIR))
 
 include ../Makefile.common

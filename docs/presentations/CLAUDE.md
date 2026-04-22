@@ -76,7 +76,7 @@ Three files, no template copying:
 
 ```bash
 mkdir docs/presentations/<name> && cd docs/presentations/<name>
-printf 'OUT := <name>\n\ninclude ../Makefile.common\n' > Makefile
+printf 'OUT := $(notdir $(CURDIR))\n\ninclude ../Makefile.common\n' > Makefile
 cat > _quarto.yml <<'EOF'
 project:
   type: default
