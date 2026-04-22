@@ -1,4 +1,4 @@
--*- mode: markdown -*-
+<!-- -*- mode: markdown -*- -->
 
 ---
 title: "SAM: System Status Database"
@@ -11,3 +11,9 @@ date: last-modified
 ## What is SAM?
 
 **SAM** is CISL's resource allocation and accounting system for NCAR HPC infrastructure.
+
+# `system_status` Database
+
+## FIXME
+
+# `collectors`
