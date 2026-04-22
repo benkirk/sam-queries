@@ -1,0 +1,352 @@
+---
+title: "SAM: System for Allocation Management"
+subtitle: "Architecture, Capabilities, and Deployment"
+author: "CISL — University Services Section"
+date: last-modified
+---
+
+# Overview
+
+## What is SAM?
+
+**SAM** is CISL's resource allocation and accounting system for NCAR HPC infrastructure.
+
+:::: {.columns}
+::: {.column width="55%"}
+**Manages:**
+
+- User accounts and project memberships
+- Allocation awards and balances
+- Job charging and usage tracking
+- Integration with XRAS (allocation request system)
+:::
+::: {.column width="45%"}
+**Serves:**
+
+- Derecho (HPC)
+- Casper (analysis cluster)
+- Gust
+- Campaign Store, Stratus (disk)
+- HPSS (archive)
+:::
+::::
+
+::: {.notes}
+Brief intro — SAM is the system of record for who can run jobs, how many core-hours
+they have, and what they've consumed.
+:::
+
+## Resources Managed
+
+| Resource | Type | Facility |
+|---|---|---|
+| Derecho | HPC | NCAR / UNIV / WNA |
+| Casper | DAV | NCAR / UNIV / WNA |
+| Gust | HPC | NCAR |
+| Campaign Store | DISK | NCAR |
+| Stratus | DISK | UNIV / WNA |
+| HPSS | ARCHIVE | NCAR |
+
+---
+
+# Architecture
+
+## High-Level Architecture
+
+```{mermaid}
+graph TD
+    XRAS([XRAS Allocation Portal]) -->|allocation awards| SAM[(SAM Database\n97 tables)]
+    LDAP([LDAP / Active Directory]) -->|user sync| SAM
+    HPC([HPC Schedulers\nPBS/Slurm]) -->|job records| SAM
+    SAM --> API[REST API\nFlask]
+    SAM --> CLI[CLI Tools\nsam-search / sam-admin]
+    SAM --> WEB[Web Dashboard\nFlask + HTMX]
+    API --> EXT([External Consumers])
+    WEB --> STAFF([CISL Staff])
+    CLI --> STAFF
+```
+
+## Technology Stack
+
+:::: {.columns}
+::: {.column width="50%"}
+**Backend**
+
+- Python 3.13
+- SQLAlchemy 2.0 ORM
+- MySQL / MariaDB
+- Flask + HTMX
+- Marshmallow schemas
+:::
+::: {.column width="50%"}
+**Infrastructure**
+
+- Docker Compose (dev)
+- Kubernetes + Helm (production)
+- pytest (~1,400 tests)
+- pytest-xdist (parallel, ~65s)
+:::
+::::
+
+---
+
+# Database Schema
+
+## Schema Overview
+
+- **97 tables**, **91+ ORM models** (94% coverage)
+- Organized into domain modules
+
+```{mermaid}
+graph LR
+    subgraph Core
+        U[users] --- UE[user_email]
+        U --- O[organization]
+        U --- I[institution]
+    end
+    subgraph Projects
+        P[project] --- A[account]
+        P --- AL[allocation]
+    end
+    subgraph Resources
+        R[resources] --- RT[resource_type]
+        R --- M[machine]
+        R --- Q[queue]
+    end
+    A --- R
+    A --- AL
+    AL --- AL2[allocation\nparent/child]
+```
+
+## Key ORM Models
+
+| Domain | Models |
+|---|---|
+| **Core** | `User`, `Organization`, `Institution` |
+| **Projects** | `Project`, `Contract` |
+| **Accounting** | `Account`, `Allocation`, `AllocationType` |
+| **Resources** | `Resource`, `Machine`, `Queue`, `Facility` |
+| **Activity** | `HPCActivity`, `DavActivity`, `DiskActivity`, `ArchiveActivity` |
+| **Summaries** | `CompChargeSummary`, `DavChargeSummary`, `DiskChargeSummary` |
+| **Security** | `Role`, `ApiCredentials` |
+| **Integration** | `XrasAllocationView`, `XrasUserView` |
+
+## Allocation Balance Calculation
+
+```{mermaid}
+sequenceDiagram
+    participant C as Caller
+    participant P as Project
+    participant S as Summary Tables
+    participant A as Adjustments
+
+    C->>P: get_detailed_allocation_usage()
+    P->>S: SUM(comp_charge_summary) by account_id + date range
+    P->>S: SUM(dav_charge_summary)  by account_id + date range
+    P->>A: SUM(charge_adjustment)   by account_id + date range
+    S-->>P: comp_charges, dav_charges
+    A-->>P: adjustments
+    P-->>C: {allocated, used, remaining, percent_used}
+```
+
+---
+
+# Key Capabilities
+
+## ORM Patterns — `is_active`
+
+Every model exposes a unified `is_active` hybrid property:
+
+```python
+# Works identically in Python and SQL
+if allocation.is_active:
+    print("active")
+
+session.query(Allocation).filter(Allocation.is_active).all()
+session.query(User).filter(~User.is_active).all()   # invert with ~
+```
+
+| Model type | `is_active` meaning |
+|---|---|
+| `ActiveFlagMixin` (Project, Facility) | `active == True` |
+| `SoftDeleteMixin` (Account) | `deleted == False` |
+| `DateRangeMixin` (AccountUser) | within start/end date |
+| Custom (Machine, Queue) | commissioned / in date window |
+
+## CLI: sam-search
+
+```bash
+# User lookup
+sam-search user benkirk
+sam-search user benkirk --list-projects --verbose
+
+# Pattern search
+sam-search user --search "ben%"
+sam-search project --search "SCSG%"
+
+# Project details
+sam-search project SCSG0001 --list-users --verbose
+
+# Allocation queries
+sam-search allocations --resource Derecho --total-facilities --total-types
+sam-search allocations --resource Derecho,Casper --allocation-type Small
+
+# Upcoming / recent expirations
+sam-search project --upcoming-expirations --list-users
+sam-search project --recent-expirations
+```
+
+## CLI: sam-admin
+
+Administrative commands extending `sam-search`:
+
+```bash
+# Validation
+sam-admin user benkirk --validate
+sam-admin project SCSG0001 --validate
+
+# Reconciliation
+sam-admin project SCSG0001 --reconcile
+
+# All sam-search commands also available
+sam-admin user benkirk --list-projects
+```
+
+## CLI Architecture
+
+```{mermaid}
+graph TD
+    SS[sam-search] --> Core[CLI Core\nContext + Base Classes]
+    SA[sam-admin]  --> Core
+    Core --> UC[User Commands\n+ Display]
+    Core --> PC[Project Commands\n+ Display]
+    Core --> AC[Allocation Commands\n+ Display]
+    UC & PC & AC --> ORM[SQLAlchemy ORM]
+```
+
+## REST API
+
+```
+GET /api/v1/users/                      → user list
+GET /api/v1/users/<username>            → user detail + emails + projects
+GET /api/v1/users/<username>/projects
+
+GET /api/v1/projects/                   → project list
+GET /api/v1/projects/<projcode>         → project detail
+GET /api/v1/projects/<projcode>/members
+GET /api/v1/projects/<projcode>/allocations   ← balance calculations
+GET /api/v1/projects/<projcode>/charges
+GET /api/v1/projects/expiring
+GET /api/v1/projects/recently_expired
+
+GET /api/v1/accounts/<id>/balance       ← real-time balance
+```
+
+## Web Dashboard
+
+- **Flask + HTMX** — partial-page updates without a JS framework
+- **Auth**: OIDC (production) / auto-login (dev)
+- **Route protection**: `@require_project_access` / `@require_project_member_access`
+
+```bash
+# Run locally
+docker compose up
+# → http://localhost:5050
+# DEV_AUTO_LOGIN_USER=benkirk (auth disabled in dev)
+```
+
+---
+
+# Deployment
+
+## Development Environment
+
+```bash
+# 1. Activate environment
+source etc/config_env.sh
+
+# 2. Start services
+docker compose up                  # web app  → http://localhost:5050
+docker compose --profile test up   # + test DB (port 3307)
+
+# 3. Connect to DB directly
+mysql -u root -h 127.0.0.1 -proot sam
+```
+
+## Production Deployment
+
+```{mermaid}
+graph LR
+    subgraph Kubernetes
+        I[Ingress] --> W[sam-webapp\nPod]
+        W --> DB[(MariaDB\nPersistentVolume)]
+        W --> OI[OIDC Provider]
+        H[Helm Chart] -.->|manages| W
+        H -.->|manages| DB
+    end
+    CISL([CISL Staff]) --> I
+    EXT([External APIs]) --> I
+```
+
+```bash
+# Deploy / upgrade
+helm upgrade --install sam ./helm -f values-prod.yaml
+```
+
+## Testing
+
+```bash
+# Full test suite (~1,400 tests, ~65 seconds)
+source etc/config_env.sh && pytest
+
+# With coverage
+pytest --cov=src --cov-report=html
+
+# Specific areas
+pytest tests/unit/test_query_functions.py -v
+pytest tests/integration/test_schema_validation.py
+pytest tests/api/ -v
+```
+
+**Test strategy:**
+- Layer 1: Representative fixtures from live snapshot data
+- Layer 2: Factories for write-path tests (exact counts/values)
+- Schema drift detection — catches ORM↔DB mismatches automatically
+
+---
+
+# Summary
+
+## What SAM Provides
+
+:::: {.columns}
+::: {.column width="50%"}
+**For CISL Staff**
+
+- CLI search and admin tools
+- Web dashboard
+- Real-time allocation balances
+- Expiration tracking
+:::
+::: {.column width="50%"}
+**For Systems / Automation**
+
+- REST API (Flask)
+- XRAS integration views
+- Marshmallow schemas for safe serialization
+- Kubernetes/Helm deployment
+:::
+::::
+
+## Next Steps / Open Questions
+
+- [ ] NCAR PPTX template — drop into `assets/ncar-template.pptx`
+- [ ] Confirm audience (CISL-internal vs. broader NCAR)
+- [ ] Add slides: XRAS integration detail
+- [ ] Add slides: charging pipeline (collector → summary tables)
+- [ ] Add slides: security / RBAC model
+- [ ] ER diagram from live DB (`eralchemy2`)
+
+::: {.notes}
+Use this slide to drive the discussion about what depth is needed per section.
+:::
