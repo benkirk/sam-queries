@@ -231,6 +231,12 @@ class WallclockExemption(Base, TimestampMixin, SessionMixin):
         self.session.flush()
         return self
 
+    def deactivate(self) -> 'WallclockExemption':
+        """Soft-deactivate by setting end_date to now. is_active flips to False."""
+        self.end_date = datetime.now()
+        self.session.flush()
+        return self
+
     def __str__(self):
         username = self.user.username if self.user else f"user_id={self.user_id}"
         queue_name = self.queue.queue_name if self.queue else f"queue_id={self.queue_id}"

@@ -135,3 +135,23 @@ class TestWallclockExemption:
 
         with pytest.raises(ValueError, match="end_date must be after start_date"):
             ex.update(end_date=datetime(2025, 1, 1))   # before start
+
+    # ------------------------------------------------------------------
+    # WallclockExemption.deactivate()
+    # ------------------------------------------------------------------
+
+    def test_deactivate_flips_is_active(self, session):
+        """deactivate() sets end_date to now and flips is_active to False."""
+        start = datetime(2025, 1, 1)
+        end = datetime(2099, 1, 1)   # far-future so it starts active
+        ex = make_wallclock_exemption(
+            session, start_date=start, end_date=end, time_limit_hours=48.0
+        )
+        assert ex.is_active is True
+
+        before = datetime.now()
+        ex.deactivate()
+        after = datetime.now()
+
+        assert before <= ex.end_date <= after
+        assert ex.is_active is False
