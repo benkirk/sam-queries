@@ -6,14 +6,23 @@ author: "CISL"
 date: last-modified
 ---
 
-# Overview
+## System Status Dashboard & Database
 
-## What is SAM?
+ - **SAM** is CISL's resource allocation and accounting system for NCAR HPC infrastructure.
 
-**SAM** is CISL's resource allocation and accounting system for NCAR HPC infrastructure.
+    - The SAM WebApp **Status Dashboard** displays curent and historical usage information
+
+    - This ...
+
+# `collectors`
+
+## `collectors` - update scripts
+
+
+## `collectors` - `python` object
+
+
 
 # `system_status` Database
 
 ## FIXME
-
-# `collectors`

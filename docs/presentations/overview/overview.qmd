@@ -1,4 +1,5 @@
 <!-- -*- mode: markdown -*- -->
+
 ---
 title: "SAM: Systems Accounting Manager"
 subtitle: "Architecture, Capabilities, and Deployment"
