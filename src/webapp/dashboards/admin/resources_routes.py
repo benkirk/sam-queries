@@ -81,12 +81,30 @@ def htmx_resources_card():
         queue_q = queue_q.filter(Queue.is_active)
     queues = queue_q.all()
 
+    from sam.operational import WallclockExemption
+    from sam.core.users import User
+    from sqlalchemy.orm import joinedload
+    exemption_q = (
+        db.session.query(WallclockExemption)
+        .join(WallclockExemption.queue)
+        .join(WallclockExemption.user)
+        .options(
+            joinedload(WallclockExemption.queue).joinedload(Queue.resource),
+            joinedload(WallclockExemption.user),
+        )
+        .order_by(Queue.resource_id, Queue.queue_name, User.username)
+    )
+    if active_only:
+        exemption_q = exemption_q.filter(WallclockExemption.is_active)
+    exemptions = exemption_q.all()
+
     return render_template(
         'dashboards/admin/fragments/resources_card.html',
         resources=resources,
         resource_types=resource_types,
         machines=machines,
         queues=queues,
+        exemptions=exemptions,
         is_admin=True,
         now=now,
         active_only=active_only,

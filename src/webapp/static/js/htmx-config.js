@@ -28,6 +28,38 @@ document.body.addEventListener('htmx:sendError', function() {
     }
 });
 
+// ── Stacked modal z-index ───────────────────────────────────────────────────
+// Bootstrap 5 doesn't stack z-indexes across separate Modal instances: a second
+// modal opens at the same z-index as the first, and its backdrop (appended last
+// to <body>) paints over it. Bump the newly-shown modal and its backdrop above
+// anything already showing.
+document.body.addEventListener('shown.bs.modal', function(evt) {
+    var opened = evt.target;
+    var shown = document.querySelectorAll('.modal.show');
+    if (shown.length < 2) return;
+
+    var highest = 1055;
+    document.querySelectorAll('.modal.show, .modal-backdrop.show').forEach(function(el) {
+        if (el === opened) return;
+        var z = parseInt(getComputedStyle(el).zIndex, 10);
+        if (!isNaN(z)) highest = Math.max(highest, z);
+    });
+
+    opened.style.zIndex = (highest + 10).toString();
+    var backdrops = document.querySelectorAll('.modal-backdrop.show');
+    var topBackdrop = backdrops[backdrops.length - 1];
+    if (topBackdrop) topBackdrop.style.zIndex = (highest + 5).toString();
+});
+
+// When a stacked modal hides, Bootstrap removes `modal-open` from <body> because
+// it only tracks the one it just closed. Re-add it if any modal is still shown
+// so the underlying modal keeps scroll locking and pointer events.
+document.body.addEventListener('hidden.bs.modal', function() {
+    if (document.querySelectorAll('.modal.show').length > 0) {
+        document.body.classList.add('modal-open');
+    }
+});
+
 // ── Modal management via HX-Trigger ──────────────────────────────────────────
 
 // Close any currently visible Bootstrap modal

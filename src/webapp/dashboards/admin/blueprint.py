@@ -11,7 +11,7 @@ Domain-specific routes are split into sub-modules imported at the bottom:
 """
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response, abort
-from webapp.utils.htmx import htmx_success, htmx_success_message
+from webapp.utils.htmx import htmx_success, htmx_success_message, htmx_not_found
 from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
 from webapp.api.helpers import parse_input_end_date
@@ -871,9 +871,9 @@ def htmx_add_exemption(username):
             form=request.form
         )
 
-    # Success: close modal + refresh user card
+    # Success: close modal + refresh user card + resources card (if present)
     return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadUserCard': username},
+        {'closeActiveModal': {}, 'reloadUserCard': username, 'reloadResourcesCard': {}},
         'Exemption saved successfully.',
     )
 
@@ -965,10 +965,35 @@ def htmx_edit_exemption(exemption_id):
             form=request.form
         )
 
-    # Success: close modal + refresh user card
+    # Success: close modal + refresh user card + resources card (if present)
     return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadUserCard': username},
+        {'closeActiveModal': {}, 'reloadUserCard': username, 'reloadResourcesCard': {}},
         'Exemption saved successfully.',
+    )
+
+
+@bp.route('/htmx/exemption-deactivate/<int:exemption_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_USERS)
+def htmx_deactivate_exemption(exemption_id):
+    """
+    Soft-deactivate a wallclock exemption by setting its end_date to now.
+    Fires reloadUserCard + reloadResourcesCard so both views refresh.
+    """
+    from sam.operational import WallclockExemption
+    from sam.manage import management_transaction
+
+    exemption = db.session.get(WallclockExemption, exemption_id)
+    if not exemption:
+        return htmx_not_found('Exemption')
+
+    username = exemption.user.username
+    with management_transaction(db.session):
+        exemption.deactivate()
+
+    return htmx_success_message(
+        {'reloadUserCard': username, 'reloadResourcesCard': {}},
+        'Exemption deactivated.',
     )
 
 
