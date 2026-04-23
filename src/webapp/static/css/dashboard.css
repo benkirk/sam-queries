@@ -239,6 +239,28 @@ body {
 }
 
 /* ============================================================================
+   ACCORDION — Bootstrap CSS variable overrides to match Unity NCAR tokens
+   ========================================================================= */
+
+.accordion {
+    --bs-accordion-color: var(--ncar-space-blue);
+    --bs-accordion-btn-color: var(--ncar-space-blue);
+    --bs-accordion-active-color: #fff;
+    --bs-accordion-active-bg: rgba(0, 87, 194, 0.1);
+    --bs-accordion-btn-focus-border-color: var(--ncar-blue);
+    --bs-accordion-btn-focus-box-shadow: 0 0 0 0.25rem rgba(0, 87, 194, 0.25);
+    /* Chevron icon filled with space-blue for collapsed state */
+    --bs-accordion-btn-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23011837'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+    /* Chevron icon filled with white for expanded state */
+    --bs-accordion-btn-active-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: var(--ncar-blue);
+    color: #fff;
+}
+
+/* ============================================================================
    CARDS
    ========================================================================= */
 
@@ -257,17 +279,17 @@ body {
 }
 
 .card > .card-header {
-    background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
+    background-color: #fff;
     border-bottom: 2px solid var(--ncar-blue);
-    font-weight: 700;
+    font-weight: var(--font-weight-semi-bold);
     padding: 16px 24px;
-    color: var(--ncar-navy);
+    color: var(--ncar-space-blue);
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 }
 
 .card-header h5 {
-    color: var(--ncar-navy);
-    font-weight: 700;
+    color: var(--ncar-space-blue);
+    font-weight: var(--font-weight-semi-bold);
     margin: 0;
 }
 
@@ -526,32 +548,39 @@ body {
 }
 
 /* ============================================================================
-   TABS
+   TABS — Unity NCAR style: inactive = solid blue, active = white with blue text
+   Mirrors Unity's cascade: base color set first, :not(.active) overrides inactive.
    ========================================================================= */
 
 .nav-tabs {
-    border-bottom: 2px solid var(--border-color);
+    border-bottom: 2px solid var(--ncar-blue);
+    gap: 0.25rem;
 }
 
 .nav-tabs .nav-link {
-    color: var(--ncar-gray);
-    font-weight: 600;
+    color: var(--ncar-blue);
+    font-weight: var(--font-weight-semi-bold);
+    background-color: #fff;
     border: none;
-    border-bottom: 3px solid transparent;
-    transition: all var(--transition-base);
+    border-radius: 0;
+    transition: background-color var(--transition-base), color var(--transition-base);
 }
 
-.nav-tabs .nav-link:hover {
+.nav-tabs .nav-link:not(.active) {
+    background-color: var(--ncar-blue);
+    color: #fff;
+}
+
+.nav-tabs .nav-link:not(.active):hover {
+    background-color: var(--ncar-navy);
+    color: #fff;
     border-color: transparent;
-    border-bottom-color: var(--ncar-cyan);
-    color: var(--ncar-navy);
 }
 
 .nav-tabs .nav-link.active {
-    color: var(--ncar-navy);
-    background-color: transparent;
-    border-color: transparent;
-    border-bottom-color: var(--ncar-blue);
+    color: var(--ncar-blue);
+    background-color: #fff;
+    border: none;
 }
 
 /* ============================================================================
@@ -565,13 +594,23 @@ body {
 .project-card .card-header {
     cursor: pointer;
     user-select: none;
-    /* Tighter than the global .card-header 16px/24px — each collapsed card
-       is a single-line summary, so the extra padding only fluffed the list. */
     padding: 8px 16px;
+    transition: background-color var(--transition-base), color var(--transition-base);
 }
 
 .project-card .card-header:hover {
-    background: linear-gradient(135deg, var(--bg-gray-medium) 0%, #dee2e6 100%);
+    background-color: rgba(0, 87, 194, 0.06);
+}
+
+/* Expanded state: NCAR blue bg + white text, matching Unity's active accordion */
+.project-card .card-header[aria-expanded="true"] {
+    background-color: var(--ncar-blue);
+    color: #fff;
+    border-bottom-color: var(--ncar-blue);
+}
+
+.project-card .card-header[aria-expanded="true"] * {
+    color: #fff;
 }
 
 /* Fluid 1800px cap: smoother than Bootstrap's stepped .container breakpoints
@@ -721,7 +760,7 @@ body {
 }
 
 .collapse-toggle:hover {
-    color: var(--ncar-blue);
+    color: var(--ncar-sky);
 }
 
 /* ============================================================================
