@@ -18,6 +18,7 @@ TIMEFORMAT='(%3R seconds elapsed)'
 
 source ${TOP_DIR}/etc/config_env.sh
 export PYTHONWARNINGS="${PYTHONWARNINGS},ignore::RuntimeWarning:importlib._bootstrap"
+export COLUMNS=1024 # <-- set large so python/click does not compress tables
 
 #which python3
 #which jobhist-sync
@@ -53,28 +54,35 @@ case "${NCAR_HOST}" in
         ;;
 esac
 
+# CLI passthrough: use "--last 2d" default when no args given, otherwise pass args directly
+if [ $# -eq 0 ]; then
+    accounting_args="--last 2d"
+else
+    accounting_args="$*"
+fi
+
 # time \
 #     1>${machine}-dryrun.log \
 #     2>${machine}-dryrun.err \
-#     sam-admin accounting --machine ${machine} --last 2d --comp --verbose --dry-run
+#     sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose --dry-run
 
 # first try - clean, no args
 time \
     1>${machine}-accounting.log \
     2>${machine}-accounting.err \
-    sam-admin accounting --machine ${machine} --last 2d --comp --verbose && exit 0
+    sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose && exit 0
 
 # if we get here, something above failed.  Try again creating queues
 time \
     1>${machine}-accounting-create-queues.log \
     2>${machine}-accounting-create-queues.err \
-    sam-admin accounting --machine ${machine} --last 2d --comp --verbose --create-queues && exit 0
+    sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose --create-queues && exit 0
 
 # if we get here, something above still failed.  Try again skipping errors
 time \
     1>${machine}-accounting-skip-errors.log \
     2>${machine}-accounting-skip-errors.err \
-    sam-admin accounting --machine ${machine} --last 2d --comp --verbose --create-queues --skip-errors && exit 0
+    sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose --create-queues --skip-errors && exit 0
 
 echo "All fallbacks failed"
 exit 1
