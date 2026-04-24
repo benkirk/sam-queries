@@ -152,15 +152,21 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
 @click.option('--comp', is_flag=True, help='Post computational charge summaries')
 @click.option('--disk', is_flag=True, help='Post disk charge summaries (not yet implemented)')
 @click.option('--archive', is_flag=True, help='Post archive charge summaries (not yet implemented)')
-@click.option('--machine', '-m', type=click.Choice(['derecho', 'casper']), required=True,
-              help='HPC machine to pull charges from')
+@click.option('--reconcile-quotas', 'reconcile_quotas', type=click.Path(exists=True, dir_okay=False),
+              default=None, metavar='PATH',
+              help='Reconcile SAM allocations against a storage quota file (requires --resource)')
+@click.option('--resource', type=str, default=None,
+              help='Resource name (required with --reconcile-quotas, e.g. Campaign_Store)')
+@click.option('--machine', '-m', type=click.Choice(['derecho', 'casper']), default=None,
+              help='HPC machine (required with --comp/--disk/--archive)')
 @click.option('--start', type=str, default=None, help='Start date (YYYY-MM-DD, inclusive; default: 2024-01-01)')
 @click.option('--end', type=str, default=None, help='End date (YYYY-MM-DD, inclusive; default: yesterday)')
 @click.option('-d', '--date', 'date_str', type=str, default=None, help='Specific date (YYYY-MM-DD)')
 @click.option('--today', 'today_flag', is_flag=True, help='Use today as the date')
 @click.option('--last', type=str, default=None, metavar='N[d]',
               help='Last N days including today (e.g. --last 3d)')
-@click.option('--dry-run', is_flag=True, help='Show what would be posted, without writing')
+@click.option('--dry-run', is_flag=True, help='Preview without writing')
+@click.option('--force', is_flag=True, help='Skip confirmation prompt (applies to --reconcile-quotas)')
 @click.option('--skip-errors', is_flag=True, help='Skip rows that fail entity resolution')
 @click.option('--create-queues', is_flag=True, help='Auto-create unknown queues in SAM')
 @click.option('--chunk-size', type=int, default=500, show_default=True,
@@ -169,22 +175,67 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
               help='Allow posting to accounts marked deleted (for backfill)')
 @click.option('--verbose', '-v', is_flag=True, help='Show per-row warnings and details')
 @pass_context
-def accounting(ctx: Context, comp, disk, archive, machine, start, end, date_str, today_flag, last,
-               dry_run, skip_errors, create_queues, chunk_size,
+def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
+               machine, start, end, date_str, today_flag, last,
+               dry_run, force, skip_errors, create_queues, chunk_size,
                include_deleted_accounts, verbose):
-    """Post daily charge summaries from HPC job history into SAM.
+    """Post charge summaries into SAM, or reconcile allocations against quota truth.
 
     \b
-    Date Selection (one required):
-      --date YYYY-MM-DD   Single specific date
-      --today             Today's date
-      --last N[d]         Last N days including today (e.g. --last 3d)
-      --start / --end     Date range (defaults: 2024-01-01 to yesterday)
+    Two modes:
+      1. Post charge summaries  (--comp / --disk / --archive)
+         Required: --machine and a date selection.
+         Date Selection:
+           --date YYYY-MM-DD   Single specific date
+           --today             Today's date
+           --last N[d]         Last N days including today
+           --start / --end     Date range (defaults: 2024-01-01 to yesterday)
+
+      2. Reconcile storage quotas  (--reconcile-quotas PATH)
+         Required: --resource <name>
+         Compares SAM allocations with quota truth, updates mismatches,
+         and deactivates orphans.  Supports --dry-run and --force.
     """
-    _validate_accounting_dates(date_str, start, end, today_flag, last)
-    start_date, end_date = _resolve_accounting_dates(date_str, start, end, today_flag, last)
     if verbose:
         ctx.verbose = True
+
+    # --- Mode validation ----------------------------------------------------
+    charge_mode = bool(comp or disk or archive)
+    reconcile_mode = reconcile_quotas is not None
+
+    if reconcile_mode and charge_mode:
+        ctx.console.print(
+            "Error: --reconcile-quotas is mutually exclusive with --comp/--disk/--archive",
+            style="bold red",
+        )
+        sys.exit(1)
+
+    if reconcile_mode:
+        if not resource:
+            ctx.console.print(
+                "Error: --reconcile-quotas requires --resource",
+                style="bold red",
+            )
+            sys.exit(1)
+        command = AccountingAdminCommand(ctx)
+        exit_code = command.execute(
+            reconcile_quotas=reconcile_quotas,
+            resource=resource,
+            dry_run=dry_run,
+            force=force,
+        )
+        sys.exit(exit_code)
+
+    # Charge-posting mode: machine + dates required
+    if not machine:
+        ctx.console.print(
+            "Error: --machine is required with --comp/--disk/--archive",
+            style="bold red",
+        )
+        sys.exit(1)
+
+    _validate_accounting_dates(date_str, start, end, today_flag, last)
+    start_date, end_date = _resolve_accounting_dates(date_str, start, end, today_flag, last)
     command = AccountingAdminCommand(ctx)
     exit_code = command.execute(
         comp=comp,

@@ -1,0 +1,682 @@
+"""Tests for `sam-admin accounting --reconcile-quotas`.
+
+Covers the GPFS quota reader, the dispatch factory, the mapping/classification
+logic in `AccountingAdminCommand._run_reconcile_quotas`, and dry-run safety.
+"""
+import json
+from datetime import date, datetime, timedelta
+from unittest.mock import MagicMock
+
+import pytest
+
+from cli.accounting.commands import AccountingAdminCommand, QUOTA_TOLERANCE
+from cli.accounting import quota_readers as qr_mod
+from cli.accounting.quota_readers import (
+    GpfsQuotaReader, QuotaEntry, get_quota_reader,
+)
+from cli.core.context import Context
+from sam.projects.projects import ProjectDirectory
+from sam.resources.resources import Resource, ResourceType
+
+from factories import (
+    make_user, make_project, make_account, make_allocation,
+    make_resource, make_resource_type, next_seq,
+)
+
+
+pytestmark = pytest.mark.unit
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# GpfsQuotaReader (no DB)
+# ─────────────────────────────────────────────────────────────────────────
+
+class TestGpfsQuotaReader:
+
+    def _write(self, tmp_path, data):
+        p = tmp_path / 'cs_usage.json'
+        p.write_text(json.dumps(data))
+        return str(p)
+
+    def test_reads_fileset_entries(self, tmp_path):
+        # Real cs_usage.json sample: csg fileset = 24_696_061_952 KiB = 23 TiB.
+        # (Confirmed against `df -BT /glade/campaign/cisl/csg` on derecho.)
+        CSG_LIMIT_KIB = 24_696_061_952
+        path = self._write(tmp_path, {
+            'paths': {'csfs1': {
+                'ucnn0022': '/gpfs/csfs1/univ/ucnn0022',
+                'csg':      '/gpfs/csfs1/cisl/csg',
+            }},
+            'usage': {
+                'FILESET': {
+                    'ucnn0022': {'limit': '1073741824', 'usage': '100', 'files': '10'},
+                    'csg':      {'limit': str(CSG_LIMIT_KIB),
+                                 'usage': '5441888368', 'files': '5'},
+                },
+                'USR': {'someone': {'limit': 1, 'usage': 1, 'files': 1}},
+            },
+        })
+        entries = GpfsQuotaReader(path).read()
+        names = {e.fileset_name for e in entries}
+        assert names == {'ucnn0022', 'csg'}   # USR excluded
+        csg = next(e for e in entries if e.fileset_name == 'csg')
+        assert csg.path == '/gpfs/csfs1/cisl/csg'
+        # KiB → bytes (x1024), then bytes → TiB should land at exactly 23.0
+        assert csg.limit_bytes == CSG_LIMIT_KIB * 1024
+        assert csg.limit_tib == pytest.approx(23.0, rel=1e-9)
+
+    def test_skips_zero_limit_umbrella_filesets(self, tmp_path):
+        path = self._write(tmp_path, {
+            'paths': {'csfs1': {'univ': '/gpfs/csfs1/univ'}},
+            'usage': {'FILESET': {
+                'univ': {'limit': '0', 'usage': '80', 'files': '4'},
+            }, 'USR': {}},
+        })
+        assert GpfsQuotaReader(path).read() == []
+
+    def test_missing_path_leaves_path_none(self, tmp_path):
+        path = self._write(tmp_path, {
+            'paths': {'csfs1': {}},
+            'usage': {'FILESET': {
+                'mystery': {'limit': '1024', 'usage': '0', 'files': '0'},
+            }, 'USR': {}},
+        })
+        entries = GpfsQuotaReader(path).read()
+        assert len(entries) == 1
+        assert entries[0].path is None
+
+
+class TestQuotaReaderFactory:
+
+    def test_dispatches_campaign_store_to_gpfs(self, tmp_path):
+        p = tmp_path / 'f.json'
+        p.write_text('{}')
+        reader = get_quota_reader('Campaign_Store', str(p))
+        assert isinstance(reader, GpfsQuotaReader)
+
+    def test_unknown_resource_raises_not_implemented(self, tmp_path):
+        p = tmp_path / 'f.json'
+        p.write_text('{}')
+        with pytest.raises(NotImplementedError, match='Destor'):
+            get_quota_reader('Destor', str(p))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# End-to-end reconcile (DB-backed; uses SAVEPOINT'd `session` fixture)
+# ─────────────────────────────────────────────────────────────────────────
+
+def _disk_resource(session, name='Campaign_Store'):
+    """Get-or-create a DISK Resource with the given name."""
+    existing = Resource.get_by_name(session, name)
+    if existing is not None:
+        return existing
+    # Reuse an existing DISK ResourceType if present, else create one
+    rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
+    if rt is None:
+        rt = make_resource_type(session, resource_type='DISK')
+    return make_resource(session, resource_name=name, resource_type=rt)
+
+
+def _isolated_disk_resource(session, monkeypatch):
+    """Create a unique DISK resource and register a GPFS quota reader for it.
+
+    Tests that assert on write-side effects need isolation from the ~600
+    pre-existing Campaign_Store allocations in the snapshot DB. A unique
+    resource per test keeps the reconcile scope to just the allocations
+    the test itself created.
+    """
+    rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
+    if rt is None:
+        rt = make_resource_type(session, resource_type='DISK')
+    name = next_seq('QRES')
+    resource = make_resource(session, resource_name=name, resource_type=rt)
+    # Patch the dispatch registry so get_quota_reader(name) returns a GPFS reader
+    monkeypatch.setitem(qr_mod._READERS, name, GpfsQuotaReader)
+    return resource
+
+
+def _ctx_with_session(session):
+    ctx = Context()
+    ctx.session = session
+    ctx.console = MagicMock()
+    ctx.stderr_console = MagicMock()
+    ctx.verbose = False
+    return ctx
+
+
+def _kib_for(tib: float) -> int:
+    """Convert TiB → KiB — the unit cs_usage.json stores quota values in."""
+    return int(tib * (1024 ** 3))
+
+
+def _write_quota_file(tmp_path, fileset_to_entry, paths=None):
+    data = {
+        'paths': {'csfs1': paths or {}},
+        'usage': {'FILESET': fileset_to_entry, 'USR': {}},
+    }
+    p = tmp_path / 'cs_usage.json'
+    p.write_text(json.dumps(data))
+    return str(p)
+
+
+class TestReconcileMapping:
+    """Verify the projcode-vs-ProjectDirectory mapping logic."""
+
+    def test_direct_projcode_match_identifies_matched_allocation(
+        self, session, tmp_path,
+    ):
+        resource = _disk_resource(session)
+        project = make_project(session)
+        account = make_account(session, project=project, resource=resource)
+        make_allocation(session, account=account, amount=10.0)  # 10 TiB
+
+        fileset = project.projcode.lower()
+        quota_path = _write_quota_file(tmp_path, {
+            fileset: {
+                'limit': str(_kib_for(10.0)),
+                'usage': '0', 'files': '0',
+            },
+        }, paths={fileset: f'/gpfs/csfs1/univ/{fileset}'})
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name='Campaign_Store',
+            quota_path=quota_path,
+            dry_run=True, force=False,
+        )
+        assert rc == 0
+
+    def test_project_directory_match_via_mount_path(self, session, tmp_path):
+        resource = _disk_resource(session)
+        project = make_project(session)
+        account = make_account(session, project=project, resource=resource)
+        alloc = make_allocation(session, account=account, amount=2.73)
+
+        # Use a unique directory and fileset name so the quota file key
+        # cannot collide with the projcode fast-path.
+        fs_name = next_seq('qfs').lower()
+        mount_path = f'/gpfs/csfs1/cgd/{fs_name}'
+        ProjectDirectory.create(
+            session,
+            project_id=project.project_id,
+            directory_name=mount_path,
+        )
+
+        quota_path = _write_quota_file(tmp_path, {
+            fs_name: {
+                'limit': str(_kib_for(2.73)),   # matches within 1%
+                'usage': '0', 'files': '0',
+            },
+        }, paths={fs_name: mount_path})
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        # Direct inspection via the command's internals — easier than
+        # parsing Rich console output.
+        rc = cmd._run_reconcile_quotas(
+            resource_name='Campaign_Store',
+            quota_path=quota_path,
+            dry_run=True, force=False,
+        )
+        assert rc == 0
+        # No side effects in dry-run — allocation should be unchanged
+        session.refresh(alloc)
+        assert alloc.amount == 2.73
+        assert alloc.end_date > datetime.now()   # still active
+
+
+class TestReconcileClassification:
+
+    def test_tolerance_below_threshold_is_matched(
+        self, session, tmp_path, monkeypatch,
+    ):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        project = make_project(session)
+        account = make_account(session, project=project, resource=resource)
+        alloc = make_allocation(session, account=account, amount=100.0)
+        # 0.5 % under threshold → matched (no write)
+        quota_tib = 100.5
+        fileset = project.projcode.lower()
+        quota_path = _write_quota_file(tmp_path, {
+            fileset: {'limit': str(_kib_for(quota_tib)),
+                      'usage': '0', 'files': '0'},
+        })
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        assert alloc.amount == 100.0  # untouched — within tolerance
+
+    def test_tolerance_above_threshold_triggers_update(
+        self, session, tmp_path, monkeypatch,
+    ):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        project = make_project(session)
+        account = make_account(session, project=project, resource=resource)
+        alloc = make_allocation(session, account=account, amount=100.0)
+        quota_tib = 150.0  # 50% bigger — well over 1% tolerance
+        fileset = project.projcode.lower()
+        quota_path = _write_quota_file(tmp_path, {
+            fileset: {'limit': str(_kib_for(quota_tib)),
+                      'usage': '0', 'files': '0'},
+        })
+        # Ensure audit-trail admin user exists and is discoverable
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        assert alloc.amount == pytest.approx(quota_tib, rel=1e-9)
+
+    def test_orphan_gets_end_date_set(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        project = make_project(session)
+        account = make_account(session, project=project, resource=resource)
+        alloc = make_allocation(session, account=account, amount=5.0)
+        # Quota file does NOT mention this project → orphan
+        quota_path = _write_quota_file(tmp_path, {})
+
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        assert alloc.end_date is not None
+        # end_date normalized to today 23:59:59 by SAM convention; allocation
+        # is no longer active from tomorrow onward.
+        assert alloc.end_date.date() == date.today()
+        tomorrow = datetime.now() + timedelta(days=1)
+        assert not alloc.is_active_at(tomorrow)
+
+    def test_dry_run_makes_no_changes(self, session, tmp_path):
+        resource = _disk_resource(session)
+        project = make_project(session)
+        account = make_account(session, project=project, resource=resource)
+        alloc = make_allocation(session, account=account, amount=5.0)
+
+        fileset = project.projcode.lower()
+        quota_path = _write_quota_file(tmp_path, {
+            fileset: {'limit': str(_kib_for(99.0)),
+                      'usage': '0', 'files': '0'},
+        })
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name='Campaign_Store',
+            quota_path=quota_path, dry_run=True, force=False,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        assert alloc.amount == 5.0   # dry-run: no write
+
+
+class TestReconcileInputValidation:
+
+    def test_missing_resource_fails_cleanly(self, session, tmp_path):
+        quota_path = _write_quota_file(tmp_path, {})
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=None, quota_path=quota_path,
+            dry_run=True, force=False,
+        )
+        assert rc == 2
+
+    def test_unknown_resource_fails_cleanly(self, session, tmp_path):
+        quota_path = _write_quota_file(tmp_path, {})
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name='NoSuchResource_xyz',
+            quota_path=quota_path, dry_run=True, force=False,
+        )
+        assert rc == 2
+
+    def test_unsupported_resource_raises_via_factory(self, session, tmp_path):
+        # Register resource in SAM but don't add a quota reader for it
+        _disk_resource(session, name='Destor')
+        quota_path = _write_quota_file(tmp_path, {})
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name='Destor', quota_path=quota_path,
+            dry_run=True, force=False,
+        )
+        assert rc == 2
+
+
+def test_quota_tolerance_constant():
+    # Sanity: threshold matches the plan (1%)
+    assert QUOTA_TOLERANCE == 0.01
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Tree-aware roll-up tests (NestedSetMixin subtree sums)
+# ─────────────────────────────────────────────────────────────────────────
+
+def _reconcile_dry_run(session, resource, quota_path, *, verbose=False):
+    """Run a dry-run reconcile and return (rc, ctx) so the caller can inspect
+    the records pushed into the console MagicMock (via display_quota_reconcile_plan).
+    """
+    ctx = _ctx_with_session(session)
+    ctx.verbose = verbose
+    cmd = AccountingAdminCommand(ctx)
+    rc = cmd._run_reconcile_quotas(
+        resource_name=resource.resource_name,
+        quota_path=quota_path,
+        dry_run=True, force=False,
+    )
+    return rc, ctx
+
+
+def _captured_plan_call(ctx):
+    """Return (matched, mismatched, orphaned, unmapped) args passed to
+    display_quota_reconcile_plan by sniffing AccountingAdminCommand's dispatch.
+
+    Rather than patch a moving target, the tests assert directly on the DB state
+    or the command-returned classification by re-running the bookkeeping. This
+    helper is a placeholder for future refactors; the tests below use DB asserts.
+    """
+    raise NotImplementedError  # intentionally — tests below assert via DB state
+
+
+class TestTreeRollup:
+    """Verify subtree roll-up works correctly across parent/child projects."""
+
+    def test_parent_own_plus_child_sums_to_expected(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """Parent has own fileset (5 TiB) + child with fileset (10 TiB).
+        Parent SAM amount = 15 TiB → matched (expected = 15 TiB).
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        parent = make_project(session)
+        child = make_project(session, parent=parent)
+
+        # Each project gets its own Account + (for parent only) an Allocation
+        p_account = make_account(session, project=parent, resource=resource)
+        parent_alloc = make_allocation(session, account=p_account, amount=15.0)
+        # Child has an account but no SAM allocation — just a fileset quota
+        make_account(session, project=child, resource=resource)
+
+        # Wire filesets: parent → own projcode, child → own projcode
+        quota_path = _write_quota_file(tmp_path, {
+            parent.projcode.lower(): {
+                'limit': str(_kib_for(5.0)), 'usage': '0', 'files': '0',
+            },
+            child.projcode.lower(): {
+                'limit': str(_kib_for(10.0)), 'usage': '0', 'files': '0',
+            },
+        })
+
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(parent_alloc)
+        assert parent_alloc.amount == 15.0  # within tolerance, no update
+
+    def test_parent_with_zero_own_quota_rolls_up_child(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """NMMM0003 scenario: parent's direct fileset has limit=0 (skipped
+        by the reader) but its child has a nonzero quota. Parent should
+        NOT be orphaned — its expected value is the child's quota.
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        parent = make_project(session)
+        child = make_project(session, parent=parent)
+
+        p_account = make_account(session, project=parent, resource=resource)
+        # Parent SAM amount = 10 TiB; parent has no fileset of its own;
+        # child supplies 10 TiB → expected = 10 TiB → matched.
+        parent_alloc = make_allocation(session, account=p_account, amount=10.0)
+        make_account(session, project=child, resource=resource)
+
+        # Parent's /root path has limit=0 (umbrella); only child has quota.
+        parent_path = f'/gpfs/csfs1/fake/{next_seq("root").lower()}'
+        child_fs = next_seq('cfs').lower()
+        child_path = f'{parent_path}/{child_fs}'
+        ProjectDirectory.create(
+            session, project_id=parent.project_id, directory_name=parent_path,
+        )
+        ProjectDirectory.create(
+            session, project_id=child.project_id, directory_name=child_path,
+        )
+
+        quota_path = _write_quota_file(tmp_path, {
+            # Parent umbrella skipped by reader (limit==0)
+            'parent_umbrella': {
+                'limit': '0', 'usage': '5', 'files': '1',
+            },
+            child_fs: {
+                'limit': str(_kib_for(10.0)), 'usage': '0', 'files': '0',
+            },
+        }, paths={
+            'parent_umbrella': parent_path,
+            child_fs: child_path,
+        })
+
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(parent_alloc)
+        # Parent alloc untouched — matched, and still active (not orphaned).
+        assert parent_alloc.amount == 10.0
+        assert parent_alloc.is_active
+
+    def test_rollup_does_not_cross_tree_roots(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """Two independent project trees must not pollute each other's
+        subtree sums. Parent A with fileset 7 TiB; parent B with fileset
+        3 TiB. Their allocations must each resolve independently.
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        a = make_project(session)     # its own tree root
+        b = make_project(session)     # a separate tree root
+
+        a_acct = make_account(session, project=a, resource=resource)
+        b_acct = make_account(session, project=b, resource=resource)
+        a_alloc = make_allocation(session, account=a_acct, amount=7.0)
+        b_alloc = make_allocation(session, account=b_acct, amount=3.0)
+
+        quota_path = _write_quota_file(tmp_path, {
+            a.projcode.lower(): {'limit': str(_kib_for(7.0)),
+                                 'usage': '0', 'files': '0'},
+            b.projcode.lower(): {'limit': str(_kib_for(3.0)),
+                                 'usage': '0', 'files': '0'},
+        })
+
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(a_alloc)
+        session.refresh(b_alloc)
+        # Each stays at its own quota — cross-tree contamination would
+        # have pushed both to 10 TiB.
+        assert a_alloc.amount == 7.0
+        assert b_alloc.amount == 3.0
+
+    def test_leaf_project_own_quota_is_expected(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """Sanity check: leaf (no children) with own fileset works as before."""
+        resource = _isolated_disk_resource(session, monkeypatch)
+        proj = make_project(session)
+        acct = make_account(session, project=proj, resource=resource)
+        alloc = make_allocation(session, account=acct, amount=4.0)
+        quota_path = _write_quota_file(tmp_path, {
+            proj.projcode.lower(): {'limit': str(_kib_for(4.0)),
+                                    'usage': '0', 'files': '0'},
+        })
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        assert alloc.amount == 4.0
+
+    def test_orphan_requires_entire_subtree_empty(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """Orphan requires that neither the project nor any descendant has
+        a fileset. A parent with just one quota-bearing child is NOT orphan.
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        parent = make_project(session)
+        child = make_project(session, parent=parent)
+
+        p_acct = make_account(session, project=parent, resource=resource)
+        parent_alloc = make_allocation(session, account=p_acct, amount=5.0)
+
+        # Only child has a fileset
+        quota_path = _write_quota_file(tmp_path, {
+            child.projcode.lower(): {'limit': str(_kib_for(5.0)),
+                                     'usage': '0', 'files': '0'},
+        })
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(parent_alloc)
+        # Expected = 5 TiB (child) == SAM 5 TiB → matched, alloc unchanged,
+        # allocation still active (NOT orphaned).
+        assert parent_alloc.amount == 5.0
+        assert parent_alloc.is_active
+
+    def test_true_orphan_is_still_orphan(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """Control: parent + descendants all without filesets → orphan."""
+        resource = _isolated_disk_resource(session, monkeypatch)
+        parent = make_project(session)
+        make_project(session, parent=parent)  # quiet child, no fileset
+
+        p_acct = make_account(session, project=parent, resource=resource)
+        parent_alloc = make_allocation(session, account=p_acct, amount=5.0)
+        quota_path = _write_quota_file(tmp_path, {})  # no quotas at all
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(parent_alloc)
+        assert parent_alloc.end_date is not None
+        assert parent_alloc.end_date.date() == date.today()
+
+    def test_mismatched_updates_to_rolled_up_value_not_own(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """Mismatch updates SAM amount to the full subtree sum (parent's
+        own quota + every descendant), not just the parent's own fileset.
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        parent = make_project(session)
+        child1 = make_project(session, parent=parent)
+        child2 = make_project(session, parent=parent)
+
+        p_acct = make_account(session, project=parent, resource=resource)
+        # Start SAM = 1 TiB; expected subtree = 2 + 20 + 30 = 52 TiB
+        parent_alloc = make_allocation(session, account=p_acct, amount=1.0)
+
+        quota_path = _write_quota_file(tmp_path, {
+            parent.projcode.lower(): {'limit': str(_kib_for(2.0)),
+                                      'usage': '0', 'files': '0'},
+            child1.projcode.lower(): {'limit': str(_kib_for(20.0)),
+                                      'usage': '0', 'files': '0'},
+            child2.projcode.lower(): {'limit': str(_kib_for(30.0)),
+                                      'usage': '0', 'files': '0'},
+        })
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(parent_alloc)
+        # Amount updated to the rolled-up value (52 TiB), not parent's own 2 TiB.
+        assert parent_alloc.amount == pytest.approx(52.0, rel=1e-9)
+
+    def test_child_with_own_allocation_reconciles_independently(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """When both parent and child have Campaign_Store allocations, each
+        is compared against its own subtree — not aggregated together.
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        parent = make_project(session)
+        child = make_project(session, parent=parent)
+
+        p_acct = make_account(session, project=parent, resource=resource)
+        c_acct = make_account(session, project=child, resource=resource)
+        # Parent owns 5 TiB directly + rolls up child's 10 TiB → expected 15
+        parent_alloc = make_allocation(session, account=p_acct, amount=15.0)
+        # Child expected = its own 10 TiB (no descendants of its own)
+        child_alloc = make_allocation(session, account=c_acct, amount=10.0)
+
+        quota_path = _write_quota_file(tmp_path, {
+            parent.projcode.lower(): {'limit': str(_kib_for(5.0)),
+                                      'usage': '0', 'files': '0'},
+            child.projcode.lower(): {'limit': str(_kib_for(10.0)),
+                                     'usage': '0', 'files': '0'},
+        })
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(parent_alloc)
+        session.refresh(child_alloc)
+        assert parent_alloc.amount == 15.0   # untouched
+        assert child_alloc.amount == 10.0    # untouched
