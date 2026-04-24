@@ -379,6 +379,13 @@ class AccountingAdminCommand(BaseCommand):
         for pd, proj in dir_rows:
             dir_to_projcode.setdefault(pd.directory_name, proj.projcode)
 
+        # Also build a per-project list of active directory names — handy
+        # context for the Orphaned display (explains what a deactivated
+        # allocation used to map to on disk).
+        dirs_by_projcode: dict[str, list[str]] = {}
+        for pd, proj in dir_rows:
+            dirs_by_projcode.setdefault(proj.projcode, []).append(pd.directory_name)
+
         own_quota: dict[str, QuotaEntry] = {}
         unmapped: list[QuotaEntry] = []
         for qe in quota_entries:
@@ -424,17 +431,20 @@ class AccountingAdminCommand(BaseCommand):
             return total, [(q.projcode, own_quota[q.projcode]) for q in contribs]
 
         # ---- 6. Classify each SAM allocation -----------------------------------
-        # Record shape: (projcode, sam_tib, expected_bytes, contributors)
-        Contributor = tuple  # (child_projcode, QuotaEntry)
+        # Record shapes:
+        #   matched, mismatched: (projcode, sam_tib, expected_bytes, contributors)
+        #   orphaned:            (projcode, sam_tib, directories: list[str])
         matched: list[tuple[str, float, int, list]] = []
         mismatched: list[tuple[str, float, int, list]] = []
-        orphaned: list[tuple[str, float]] = []
+        orphaned: list[tuple[str, float, list[str]]] = []
 
         for projcode, (proj, alloc) in by_projcode.items():
             sam_tib = float(alloc.amount)
             expected_bytes, contributors = _rollup(proj)
             if expected_bytes == 0:
-                orphaned.append((projcode, sam_tib))
+                orphaned.append(
+                    (projcode, sam_tib, dirs_by_projcode.get(projcode, []))
+                )
                 continue
             sam_bytes = sam_tib * (1024 ** 4)
             delta_frac = abs(sam_bytes - expected_bytes) / expected_bytes
@@ -520,7 +530,7 @@ class AccountingAdminCommand(BaseCommand):
                             f"[red]Failed to update {projcode}: {exc}[/red]"
                         )
 
-                for projcode, sam_tib in orphaned:
+                for projcode, sam_tib, _dirs in orphaned:
                     _, alloc = by_projcode[projcode]
                     try:
                         update_allocation(

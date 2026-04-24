@@ -644,6 +644,54 @@ class TestTreeRollup:
         # Amount updated to the rolled-up value (52 TiB), not parent's own 2 TiB.
         assert parent_alloc.amount == pytest.approx(52.0, rel=1e-9)
 
+    def test_orphan_record_carries_project_directories(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """Orphaned projects should surface their active ProjectDirectory paths
+        so the admin can see what the deactivated allocation used to map to.
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        project = make_project(session)
+        account = make_account(session, project=project, resource=resource)
+        make_allocation(session, account=account, amount=5.0)
+
+        ProjectDirectory.create(
+            session, project_id=project.project_id,
+            directory_name='/gpfs/csfs1/defunct/xyz',
+        )
+        ProjectDirectory.create(
+            session, project_id=project.project_id,
+            directory_name='/gpfs/csfs1/archived/old',
+        )
+
+        quota_path = _write_quota_file(tmp_path, {})  # no quota → orphan
+
+        captured = {}
+        import cli.accounting.commands as cmd_mod
+
+        def _spy(ctx, resource_name, matched, mismatched, orphaned,
+                 unmapped, *, dry_run):
+            captured['orphaned'] = orphaned
+
+        monkeypatch.setattr(cmd_mod, 'display_quota_reconcile_plan', _spy)
+        # Stub summary so it doesn't fail on missing args either
+        monkeypatch.setattr(cmd_mod, 'display_quota_reconcile_summary',
+                            lambda *a, **kw: None)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=True, force=False,
+        )
+        assert rc == 0
+        # One orphan — tuple shape is (projcode, sam_tib, directories)
+        assert len(captured['orphaned']) == 1
+        projcode, sam_tib, directories = captured['orphaned'][0]
+        assert projcode == project.projcode
+        assert set(directories) == {
+            '/gpfs/csfs1/defunct/xyz', '/gpfs/csfs1/archived/old',
+        }
+
     def test_child_with_own_allocation_reconciles_independently(
         self, session, tmp_path, monkeypatch,
     ):

@@ -2,6 +2,8 @@
 
 from cli.core.context import Context
 from rich.table import Table
+from rich.tree import Tree
+from rich.panel import Panel
 from rich import box
 
 from sam import fmt
@@ -177,30 +179,51 @@ def _expected_delta_pct(sam_tib: float, expected_bytes: int) -> float:
     return (sam_tib - expected_tib) / expected_tib * 100.0
 
 
-def _render_contributor_table(ctx: Context, projcode: str, contributors: list) -> None:
-    """Indented per-project table showing each fileset rolled into the expected value.
+def _leaf_cells(contributors: list) -> tuple[str, str, str]:
+    """(fileset, path, limit) for single-contributor rows; marker pair otherwise.
 
-    contributors: list of (child_projcode, QuotaEntry) tuples, "self" first.
+    Returns strings ready for a Rich Table cell.
     """
-    t = Table(
-        title=f"  subtree for {projcode}",
-        box=box.SIMPLE,
-        show_header=True,
-        padding=(0, 1),
+    if len(contributors) == 1:
+        _, qe = contributors[0]
+        return qe.fileset_name, (qe.path or "—"), fmt.size(qe.limit_bytes)
+    return (f"[dim]{len(contributors)} filesets[/dim]",
+            "[dim]↓ see subtree[/dim]", "")
+
+
+def _render_subtree_panel(ctx: Context, projcode: str, sam_tib: float,
+                          expected_bytes: int, contributors: list) -> None:
+    """Render a Rich Tree inside a Panel titled ``subtree for <projcode>``.
+
+    Mirrors the "Project Hierarchy" style used by `sam-search project` so
+    the visual language is consistent across the CLI. Contributors arrive
+    in depth-first order (self first if present); we list them flat under
+    the root — the actual project-tree nesting isn't preserved beyond
+    that in the current roll-up.
+    """
+    # Column widths for aligned labels inside the tree.
+    w_pc   = max(len(pc) for pc, _ in contributors)
+    w_fs   = max(len(qe.fileset_name) for _, qe in contributors)
+    w_path = max(len(qe.path or "—") for _, qe in contributors)
+
+    header = (
+        f"[bold]{projcode}[/bold] — SAM {fmt.size(sam_tib * (1024 ** 4))}, "
+        f"expected {fmt.size(expected_bytes)} "
+        f"([dim]{len(contributors)} fileset"
+        f"{'s' if len(contributors) != 1 else ''}[/dim])"
     )
-    t.add_column("Project", style="dim green")
-    t.add_column("Fileset", style="dim")
-    t.add_column("Path", style="dim")
-    t.add_column("Limit", justify="right")
+    tree = Tree(header)
     for child_pc, qe in contributors:
-        marker = "[bold]★[/bold] " if child_pc == projcode else "  "
-        t.add_row(
-            f"{marker}{child_pc}",
-            qe.fileset_name,
-            qe.path or "—",
-            fmt.size(qe.limit_bytes),
+        marker = "[bold yellow]★[/bold yellow]" if child_pc == projcode else " "
+        label = (
+            f"{marker} [green]{child_pc:<{w_pc}}[/green]  "
+            f"[dim]{qe.fileset_name:<{w_fs}}[/dim]  "
+            f"[dim]{(qe.path or '—'):<{w_path}}[/dim]  "
+            f"{fmt.size(qe.limit_bytes):>10}"
         )
-    ctx.console.print(t)
+        tree.add(label)
+    ctx.console.print(Panel(tree, title=f"subtree for {projcode}",
+                            border_style="blue", expand=False))
 
 
 def display_quota_reconcile_plan(
@@ -232,35 +255,54 @@ def display_quota_reconcile_plan(
         t.add_column("SAM", justify="right")
         t.add_column("Expected", justify="right")
         t.add_column("Δ", justify="right", style="yellow")
-        t.add_column("Filesets", justify="right", style="dim")
+        t.add_column("Fileset", style="dim")
+        t.add_column("Path", style="dim")
         t.add_column("Action", style="bold cyan")
         for projcode, sam_tib, expected_bytes, contributors in mismatched:
+            fileset, path, _ = _leaf_cells(contributors)
             t.add_row(
                 projcode,
                 fmt.size(sam_tib * (1024 ** 4)),
                 fmt.size(expected_bytes),
                 fmt.pct(_expected_delta_pct(sam_tib, expected_bytes), decimals=1),
-                str(len(contributors)),
+                fileset, path,
                 f"set amount → {fmt.size(expected_bytes)}",
             )
         ctx.console.print(t)
         if show_breakdown:
-            for projcode, _, _, contributors in mismatched:
-                _render_contributor_table(ctx, projcode, contributors)
+            for projcode, sam_tib, expected_bytes, contributors in mismatched:
+                if len(contributors) > 1:
+                    _render_subtree_panel(ctx, projcode, sam_tib,
+                                          expected_bytes, contributors)
 
     if orphaned:
         t = Table(title=f"Orphaned ({resource_name}){suffix}",
                   box=box.SIMPLE_HEAD)
         t.add_column("Project", style="green")
         t.add_column("SAM", justify="right")
+        t.add_column("ProjectDirectory", style="dim")
         t.add_column("Action", style="bold cyan")
-        for projcode, sam_tib in orphaned:
+        for projcode, sam_tib, directories in orphaned:
+            if directories:
+                dir_cell = "\n".join(directories)
+            else:
+                dir_cell = "—"
             t.add_row(
                 projcode,
                 fmt.size(sam_tib * (1024 ** 4)),
+                dir_cell,
                 "set end_date → today",
             )
         ctx.console.print(t)
+        if ctx.verbose:
+            ctx.console.print(
+                "[dim italic]Orphaned: project has an active "
+                f"{resource_name} allocation in SAM, but no matching "
+                "fileset quota exists anywhere in its project subtree. "
+                "Typically means the fileset was retired from the "
+                "storage system; the allocation is deactivated by "
+                "setting end_date = today.[/dim italic]\n"
+            )
 
     if unmapped:
         t = Table(title=f"Unmapped quota entries ({resource_name})",
@@ -277,6 +319,15 @@ def display_quota_reconcile_plan(
                 fmt.size(qe.usage_bytes),
             )
         ctx.console.print(t)
+        if ctx.verbose:
+            ctx.console.print(
+                "[dim italic]Unmapped: storage has a fileset quota, but "
+                f"SAM has no {resource_name} allocation that matches — "
+                "neither by projcode nor by active ProjectDirectory "
+                "path. Typically means a fileset was provisioned "
+                "outside SAM, or the project mapping drifted. "
+                "Reported only; no action taken.[/dim italic]\n"
+            )
 
     if ctx.verbose and matched:
         t = Table(title=f"Matched ({resource_name})", box=box.SIMPLE_HEAD)
@@ -284,16 +335,23 @@ def display_quota_reconcile_plan(
         t.add_column("SAM", justify="right")
         t.add_column("Expected", justify="right")
         t.add_column("Δ", justify="right", style="dim")
-        t.add_column("Filesets", justify="right", style="dim")
+        t.add_column("Fileset", style="dim")
+        t.add_column("Path", style="dim")
         for projcode, sam_tib, expected_bytes, contributors in matched:
+            fileset, path, _ = _leaf_cells(contributors)
             t.add_row(
                 projcode,
                 fmt.size(sam_tib * (1024 ** 4)),
                 fmt.size(expected_bytes),
                 fmt.pct(_expected_delta_pct(sam_tib, expected_bytes), decimals=2),
-                str(len(contributors)),
+                fileset, path,
             )
         ctx.console.print(t)
+        # Subtree panels only for matched projects that actually have a subtree.
+        for projcode, sam_tib, expected_bytes, contributors in matched:
+            if len(contributors) > 1:
+                _render_subtree_panel(ctx, projcode, sam_tib,
+                                      expected_bytes, contributors)
 
 
 def display_quota_reconcile_summary(
