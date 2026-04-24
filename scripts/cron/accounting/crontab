@@ -1,0 +1,9 @@
+#--------------------------------
+# accounting
+# hourly
+17 * * * * flock -xn /tmp/benkirk-casper-accounting.lock  ssh -tt casper.hpc.ucar.edu  "cd /glade/u/home/benkirk/repos/sam-queries/scripts/cron/accounting && ./rapid.sh >casper-rapid.out 2>&1"
+22 * * * * flock -xn /tmp/benkirk-derecho-accounting.lock ssh -tt derecho.hpc.ucar.edu "cd /glade/u/home/benkirk/repos/sam-queries/scripts/cron/accounting && ./rapid.sh >derecho-rapid.out 2>&1"
+
+# daily
+33 01 * * * flock -xn /tmp/benkirk-casper-accounting.lock  ssh -tt casper.hpc.ucar.edu  "cd /glade/u/home/benkirk/repos/sam-queries/scripts/cron/accounting && ./daily.sh >casper-daily.out 2>&1"
+38 01 * * * flock -xn /tmp/benkirk-derecho-accounting.lock ssh -tt derecho.hpc.ucar.edu "cd /glade/u/home/benkirk/repos/sam-queries/scripts/cron/accounting && ./daily.sh >derecho-daily.out 2>&1"
