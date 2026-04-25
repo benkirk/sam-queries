@@ -1,19 +1,25 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, fk_search_field, readonly_display with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field, fk_search_field, readonly_display with context %}
 {#
   htmx: Edit Project Directory form (loaded into #editProjectDirectoryFormContainer).
 
   Fields:
-    - directory_name : free-text, required (1-255).
-    - project_id     : FK picker (search by projcode/title), required.
+    - root_directory_id  : registered disk root (excludes '/'), required.
+    - directory_suffix   : path under the chosen root, optional.
+    - project_id         : FK picker (search by projcode/title), required.
 
   Read-only:
-    - start_date (creation timestamp; not editable here — use deactivate to end-date).
+    - Current full directory_name (assembled).
+    - start_date (creation timestamp).
 
   Context:
-    pd     : ProjectDirectory
-    errors : optional list[str]
-    form   : optional ImmutableMultiDict (re-render after validation error)
+    pd             : ProjectDirectory
+    disk_roots     : list[DiskResourceRootDirectory] (excludes '/')
+    default_root   : DiskResourceRootDirectory or None (longest-prefix match for pd.directory_name)
+    default_suffix : str (path remainder after the matching root, or full path when orphaned)
+    is_orphaned    : bool (default_root is None)
+    errors         : optional list[str]
+    form           : optional ImmutableMultiDict (re-render after validation error)
 #}
 
 {% call htmx_form(
@@ -23,14 +29,36 @@
     is_edit=True,
     errors=errors
 ) %}
+        {% if is_orphaned %}
+        <div class="alert alert-warning mb-3">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>This directory doesn't match any registered disk root.</strong>
+            The current path <code>{{ pd.directory_name }}</code> was created
+            before validation was added, or its root has since been deleted.
+            To save any change you must first select a valid root and adjust
+            the sub-path. To remove this entry instead, close this modal and
+            click Delete on the row.
+        </div>
+        {% endif %}
+
+        {{ readonly_display('Current path', pd.directory_name, muted=False, strong=True) }}
         {{ readonly_display('Start Date', pd.start_date | fmt_date, muted=True) }}
 
-        {{ text_field('directory_name', 'Directory Name',
-                      required=True,
+        {{ select_field('root_directory_id', 'Disk Root',
+                        items=disk_roots,
+                        value_attr='root_directory_id',
+                        label_attr='root_directory',
+                        required=True,
+                        default=(default_root.root_directory_id if default_root else ''),
+                        placeholder='-- Select a disk root --',
+                        id='editProjectDirectoryRoot') }}
+
+        {{ text_field('directory_suffix', 'Sub-path',
                       maxlength=255,
-                      default=pd.directory_name,
-                      placeholder='/glade/...',
-                      id='editProjectDirectoryName') }}
+                      default=default_suffix or '',
+                      placeholder='subpath/under/the/root  (or leave blank for the root itself)',
+                      help='Path under the chosen root. ".." segments are not allowed.',
+                      id='editProjectDirectorySuffix') }}
 
         {{ fk_search_field('project_id', 'Linked Project',
                            search_url=url_for('admin_dashboard.htmx_project_search_for_parent'),

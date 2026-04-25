@@ -213,14 +213,23 @@
 
       {# ── Add form (hidden by default) ── #}
       <div id="addDirForm" style="display:none;" class="p-3 border-bottom bg-light">
+        {% if disk_roots %}
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_directory', projcode=project.projcode) }}"
               hx-target="#linkedElementsContainer"
               hx-swap="innerHTML">
           <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select name="root_directory_id" required
+                    class="form-select form-select-sm"
+                    style="max-width:14em;">
+              <option value="">-- Select a disk root --</option>
+              {% for r in disk_roots %}
+              <option value="{{ r.root_directory_id }}">{{ r.root_directory }}</option>
+              {% endfor %}
+            </select>
             <input type="text"
-                   name="directory_name"
+                   name="directory_suffix"
                    class="form-control form-control-sm flex-grow-1"
-                   placeholder="/glade/path/to/directory"
+                   placeholder="sub/path  (or leave blank for the root itself)"
                    autocomplete="off"
                    style="min-width:200px;">
             <button type="submit" class="btn btn-sm btn-success">
@@ -231,7 +240,19 @@
               Cancel
             </button>
           </div>
+          <small class="text-muted d-block mt-1">
+            Final path is assembled as
+            <code>&lt;root&gt;/&lt;sub-path&gt;</code>; <code>".."</code>
+            segments are not allowed.
+          </small>
         </form>
+        {% else %}
+        <div class="text-muted small">
+          <i class="fas fa-exclamation-triangle text-warning"></i>
+          No registered disk root directories.
+          Configure them under <strong>Admin &rarr; Resources</strong> first.
+        </div>
+        {% endif %}
       </div>
 
       {# ── Table of active directories ── #}
