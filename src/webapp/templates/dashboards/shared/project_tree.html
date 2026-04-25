@@ -35,6 +35,7 @@
 #}
 
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 
 {% macro render_project_tree(nodes,
                               current_projcode='',
@@ -82,15 +83,12 @@
       {%- set res = alloc_by_projcode.get(node.projcode) -%}
       {%- if res -%}
       <div class="d-flex align-items-center gap-2 small flex-shrink-0">
-        {%- set pct = [res.percent_used, 100] | min -%}
         <div style="width:100px;flex-shrink:0;">
-          <div class="progress" style="height:8px;">
-            <div class="progress-bar
-                 {%- if res.percent_used >= usage_critical_threshold %} bg-danger
-                 {%- elif res.percent_used >= usage_warning_threshold %} bg-warning
-                 {%- else %} bg-success{% endif %}"
-                 role="progressbar" style="width:{{ pct }}%;"></div>
-          </div>
+          {{ render_usage_bar(res.percent_used,
+                              res.self_percent_used if res.is_inheriting else none,
+                              height='8px',
+                              warning_threshold=usage_warning_threshold,
+                              critical_threshold=usage_critical_threshold) }}
         </div>
         <span class="text-muted" style="width:40px;flex-shrink:0;text-align:right;">{{ res.percent_used | fmt_pct }}</span>
         <span class="text-muted" style="width:80px;flex-shrink:0;text-align:right;">{{ res.allocated | fmt_number }}</span>
@@ -186,7 +184,6 @@
 {%- if not active_only or is_active -%}
 {%- set is_current = (node.projcode == current_projcode) -%}
 {%- set res = alloc_by_projcode.get(node.projcode) if alloc_by_projcode is not none else none -%}
-{%- set pct = [res.percent_used, 100] | min if res else 0 -%}
 
 <tr style="
   {%- if is_current %}background:#fff3cd;font-weight:bold;{% endif %}
@@ -218,13 +215,11 @@
   {# ── Col 2: progress bar — anchored by table column, always aligned ── #}
   <td style="padding: 0.25rem 0.4rem; vertical-align:middle;">
     {%- if res %}
-    <div class="progress" style="height:8px;">
-      <div class="progress-bar
-           {%- if res.percent_used >= usage_critical_threshold %} bg-danger
-           {%- elif res.percent_used >= usage_warning_threshold %} bg-warning
-           {%- else %} bg-success{% endif %}"
-           role="progressbar" style="width:{{ pct }}%;"></div>
-    </div>
+    {{ render_usage_bar(res.percent_used,
+                        res.self_percent_used if res.is_inheriting else none,
+                        height='8px',
+                        warning_threshold=usage_warning_threshold,
+                        critical_threshold=usage_critical_threshold) }}
     {%- endif %}
   </td>
 

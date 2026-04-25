@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 <!-- Project Details Table -->
 <table class="table table-sm table-striped">
     <thead class="align-top">
@@ -98,13 +99,10 @@
                     </div>
                     {% endif %}
                     <div class="position-relative">
-                        <div class="progress progress-large">
-                            <div class="progress-bar {% if pct >= 90 %}bg-danger{% elif pct >= 75 %}bg-warning{% else %}bg-success{% endif %}"
-                                 role="progressbar"
-                                 style="width: {{ [pct, 100]|min }}%">
-                                {{ pct | fmt_pct(decimals=0) }}
-                            </div>
-                        </div>
+                        {{ render_usage_bar(pct,
+                                            project.get('self_percent_used'),
+                                            size_class='progress-large',
+                                            show_label=True) }}
                         {% if bar_state == 'active' %}
                         <div class="position-absolute"
                              style="left: {{ elapsed_pct }}%; top: -2px; bottom: -2px; width: 2px; background: rgba(33,37,41,0.55); z-index: 2; pointer-events: none;"
@@ -112,7 +110,11 @@
                         {% endif %}
                     </div>
                     <div class="d-flex justify-content-between small mt-1">
-                        <span class="text-warning">{{ project['total_used'] | fmt_number }} used</span>
+                        <span class="text-warning">
+                            {{ project['total_used'] | fmt_number }} used{% if project.get('is_inheriting') and project.get('self_used') is not none %}
+                            <span class="text-muted" title="This project's contribution to the shared pool">({{ project['self_used'] | fmt_number }} yours)</span>
+                            {% endif %}
+                        </span>
                         <span class="text-success">{{ (project['total_amount'] - project['total_used']) | fmt_number }} remaining</span>
                     </div>
                 {% else %}

@@ -90,6 +90,17 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
         """True if this allocation is a child node in the shared-allocation tree."""
         return self.parent_allocation_id is not None
 
+    @property
+    def root(self) -> 'Allocation':
+        """Walk parent links to the root allocation of the shared tree.
+
+        Returns self when this allocation is non-inheriting (already a root).
+        """
+        node = self
+        while node.parent is not None:
+            node = node.parent
+        return node
+
     def _walk_tree(self, action_func, *args, **kwargs) -> None:
         """
         Applies action_func to this node and recursively to all descendants.

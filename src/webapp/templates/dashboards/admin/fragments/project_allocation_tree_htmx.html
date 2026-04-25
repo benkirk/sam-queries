@@ -15,6 +15,7 @@
       - All rows share the same <colgroup> → progress bars align perfectly
 #}
 {% from 'dashboards/shared/project_tree.html' import render_project_tree, render_project_tree_rows with context %}
+{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 
 {# ── Active at date picker ───────────────────────────────────────────── #}
 <div class="d-flex align-items-center gap-2 mb-3">
@@ -122,16 +123,10 @@
           {# Cols 2+3: progress bar with % overlaid on the bar #}
           <td colspan="2" style="padding:0.25rem 0.6rem; vertical-align:middle;">
             {% if root_alloc %}
-            <div class="progress" style="height:18px;">
-              <div class="progress-bar
-                   {%- if root_alloc.percent_used >= 90 %} bg-danger
-                   {%- elif root_alloc.percent_used >= 75 %} bg-warning
-                   {%- else %} bg-success{% endif %}"
-                   role="progressbar"
-                   style="width:{{ pct }}%;">
-                {{ root_alloc.percent_used | fmt_pct(decimals=0) }}
-              </div>
-            </div>
+            {{ render_usage_bar(root_alloc.percent_used,
+                                root_alloc.self_percent_used if root_alloc.is_inheriting else none,
+                                height='18px',
+                                show_label=True) }}
             {% else %}
             <span class="text-muted small"><em>— no allocation —</em></span>
             {% endif %}
@@ -182,13 +177,9 @@
           {# Col 2: progress bar — same column as tree rows #}
           <td style="padding:0.25rem 0.4rem; vertical-align:middle;">
             {% if root_alloc %}
-            <div class="progress" style="height:8px;">
-              <div class="progress-bar
-                   {%- if root_alloc.percent_used >= 90 %} bg-danger
-                   {%- elif root_alloc.percent_used >= 75 %} bg-warning
-                   {%- else %} bg-success{% endif %}"
-                   role="progressbar" style="width:{{ pct }}%;"></div>
-            </div>
+            {{ render_usage_bar(root_alloc.percent_used,
+                                root_alloc.self_percent_used if root_alloc.is_inheriting else none,
+                                height='8px') }}
             {% endif %}
           </td>
 
