@@ -142,6 +142,8 @@ from .resources import (
     EditMachineForm,
     CreateMachineForm,
     EditQueueForm,
+    CreateDiskResourceRootDirectoryForm,
+    EditDiskResourceRootDirectoryForm,
 )
 from .orgs import (
     EditOrganizationForm,
@@ -201,6 +203,8 @@ __all__ = [
     'EditMachineForm',
     'CreateMachineForm',
     'EditQueueForm',
+    'CreateDiskResourceRootDirectoryForm',
+    'EditDiskResourceRootDirectoryForm',
     # Organizations
     'EditOrganizationForm',
     'CreateOrganizationForm',
