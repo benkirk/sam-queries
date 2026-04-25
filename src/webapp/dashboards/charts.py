@@ -130,6 +130,7 @@ def _chart_cache(maxsize: int, key_fn=None):
 # 1. Usage timeseries (user dashboard)
 # ---------------------------------------------------------------------------
 
+# One entry per (user, time-range) combination active in the current snapshot window.
 @_chart_cache(maxsize=128)
 def generate_usage_timeseries_matplotlib(daily_charges) -> str:
     """
@@ -172,6 +173,7 @@ def generate_usage_timeseries_matplotlib(daily_charges) -> str:
 # 2. Node type history (status dashboard)
 # ---------------------------------------------------------------------------
 
+# One entry per node type; can be O(10s) across all machines.
 @_chart_cache(maxsize=64)
 def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
     """
@@ -234,6 +236,7 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
 # 3. Queue history (status dashboard)
 # ---------------------------------------------------------------------------
 
+# One entry per queue; queue counts can be O(10s) across all resources.
 @_chart_cache(maxsize=64)
 def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
     """
@@ -316,6 +319,7 @@ def _pie_trim(names: list, values: list) -> tuple[list, list]:
     return names_s, values_s
 
 
+# One entry per resource filter combination; small number of distinct views.
 @_chart_cache(maxsize=32)
 def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
     """
@@ -365,6 +369,7 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
 # 5. Allocation type pie chart (allocations dashboard)
 # ---------------------------------------------------------------------------
 
+# One entry per (resource, facility) filter combination.
 @_chart_cache(maxsize=64)
 def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
     """
@@ -496,6 +501,7 @@ def _pace_cache_key(allocations, active_at, window_days=180, top_n=10, resource_
                           int(window_days), int(top_n), resource_name])
 
 
+# One entry per (resource, window_days, top_n) combination across concurrent viewers.
 @_chart_cache(maxsize=64, key_fn=_pace_cache_key)
 def generate_pace_chart_matplotlib(
     allocations: List[Dict],
