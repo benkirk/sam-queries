@@ -1,8 +1,8 @@
 """
 Chart generation utilities for server-side rendering.
 
-All chart functions cache rendered SVGs by content hash to avoid regenerating
-identical output. The public API is unchanged -- callers pass normal Python
+All chart functions are decorated with @_chart_cache, which caches rendered
+SVGs by content hash. The public API is unchanged -- callers pass normal Python
 objects; hashing and caching are handled internally.
 
 Cache keys are stable MD5 hex digests of the input data, so key computation is
@@ -14,6 +14,7 @@ NOTE: _ChartCache is per-process and thread-safe. It is safe with both gunicorn
 sync workers (each worker is a forked process) and gthread workers.
 """
 
+import functools
 import hashlib
 import json
 import threading
@@ -41,8 +42,8 @@ _CacheInfo = namedtuple('CacheInfo', ['hits', 'misses', 'maxsize', 'currsize'])
 def _content_hash(data) -> str:
     """Stable MD5 hex digest of arbitrary JSON-serialisable data.
 
-    O(n) compute, O(1) memory — suitable as an lru-style cache key for large
-    inputs where materialising a hashable tuple would be prohibitive.
+    O(n) compute, O(1) memory — suitable as a cache key for large inputs
+    where materialising a hashable tuple would be prohibitive.
     """
     return hashlib.md5(
         json.dumps(data, default=str, sort_keys=True).encode(),
@@ -92,20 +93,57 @@ class _ChartCache:
             self._hits = self._misses = 0
 
 
-def _attach_cache_methods(public_fn, cache: _ChartCache) -> None:
-    """Attach cache_info/cache_clear from a _ChartCache to the public function."""
-    public_fn.cache_info = cache.cache_info
-    public_fn.cache_clear = cache.cache_clear
+def _chart_cache(maxsize: int, key_fn=None):
+    """Decorator factory that caches chart SVG output by content hash.
+
+    Args:
+        maxsize:  Maximum number of SVGs to keep (LRU eviction).
+        key_fn:   Optional callable(*args, **kwargs) -> str that computes the
+                  cache key.  Defaults to _content_hash of the first argument,
+                  which covers every single-argument chart function.  Pass an
+                  explicit key_fn for functions with multiple meaningful args
+                  (e.g. the pace chart).
+
+    The decorated function gains cache_info() and cache_clear() attributes
+    matching the functools.lru_cache interface.
+    """
+    def decorator(fn):
+        cache = _ChartCache(maxsize=maxsize)
+        _key = key_fn or (lambda *args, **kwargs: _content_hash(args[0]))
+
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            key = _key(*args, **kwargs)
+            result = cache.get(key)
+            if result is None:
+                result = fn(*args, **kwargs)
+                cache.put(key, result)
+            return result
+
+        wrapper.cache_info = cache.cache_info
+        wrapper.cache_clear = cache.cache_clear
+        return wrapper
+    return decorator
 
 
 # ---------------------------------------------------------------------------
 # 1. Usage timeseries (user dashboard)
 # ---------------------------------------------------------------------------
 
-_usage_timeseries_cache = _ChartCache(maxsize=128)
+@_chart_cache(maxsize=128)
+def generate_usage_timeseries_matplotlib(daily_charges) -> str:
+    """
+    Generate time-series bar chart using Matplotlib.
 
+    Args:
+        daily_charges: Dict with 'dates' and 'values' keys
 
-def _render_usage_timeseries(daily_charges) -> str:
+    Returns:
+        SVG string ready for template rendering
+    """
+    if not daily_charges:
+        return '<div class="text-center text-muted">No usage data recorded for this period</div>'
+
     dates = list(daily_charges.get('dates', []))
     comp = list(daily_charges.get('values', []))
 
@@ -130,37 +168,25 @@ def _render_usage_timeseries(daily_charges) -> str:
     return svg_io.getvalue()
 
 
-def generate_usage_timeseries_matplotlib(daily_charges) -> str:
-    """
-    Generate time-series bar chart using Matplotlib.
-
-    Args:
-        daily_charges: Dict with 'dates' and 'values' keys
-
-    Returns:
-        SVG string ready for template rendering
-    """
-    if not daily_charges:
-        return '<div class="text-center text-muted">No usage data recorded for this period</div>'
-    key = _content_hash(daily_charges)
-    result = _usage_timeseries_cache.get(key)
-    if result is None:
-        result = _render_usage_timeseries(daily_charges)
-        _usage_timeseries_cache.put(key, result)
-    return result
-
-
-_attach_cache_methods(generate_usage_timeseries_matplotlib, _usage_timeseries_cache)
-
-
 # ---------------------------------------------------------------------------
 # 2. Node type history (status dashboard)
 # ---------------------------------------------------------------------------
 
-_nodetype_history_cache = _ChartCache(maxsize=64)
+@_chart_cache(maxsize=64)
+def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
+    """
+    Generate node type history chart showing availability and utilization.
+    Title is rendered in the surrounding HTML (see status dashboard template).
 
+    Args:
+        history_data: List of dicts with timestamp, nodes_*, utilization_percent
 
-def _render_nodetype_history(history_data: List[Dict]) -> str:
+    Returns:
+        SVG string ready for template rendering
+    """
+    if not history_data:
+        return '<div class="text-center text-muted">No history data available for this node type</div>'
+
     timestamps = [d['timestamp'] for d in history_data]
     nodes_available = [d.get('nodes_available', 0) for d in history_data]
     nodes_down = [d.get('nodes_down', 0) for d in history_data]
@@ -204,38 +230,25 @@ def _render_nodetype_history(history_data: List[Dict]) -> str:
     return svg_io.getvalue()
 
 
-def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
+# ---------------------------------------------------------------------------
+# 3. Queue history (status dashboard)
+# ---------------------------------------------------------------------------
+
+@_chart_cache(maxsize=64)
+def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
     """
-    Generate node type history chart showing availability and utilization.
+    Generate queue history chart showing job flow and resource demand.
     Title is rendered in the surrounding HTML (see status dashboard template).
 
     Args:
-        history_data: List of dicts with timestamp, nodes_*, utilization_percent
+        history_data: List of dicts with timestamp, job counts, resources
 
     Returns:
         SVG string ready for template rendering
     """
     if not history_data:
-        return '<div class="text-center text-muted">No history data available for this node type</div>'
-    key = _content_hash(history_data)
-    result = _nodetype_history_cache.get(key)
-    if result is None:
-        result = _render_nodetype_history(history_data)
-        _nodetype_history_cache.put(key, result)
-    return result
+        return '<div class="text-center text-muted">No history data available for this queue</div>'
 
-
-_attach_cache_methods(generate_nodetype_history_matplotlib, _nodetype_history_cache)
-
-
-# ---------------------------------------------------------------------------
-# 3. Queue history (status dashboard)
-# ---------------------------------------------------------------------------
-
-_queue_history_cache = _ChartCache(maxsize=64)
-
-
-def _render_queue_history(history_data: List[Dict]) -> str:
     timestamps = [d['timestamp'] for d in history_data]
     running_jobs = [d.get('running_jobs', 0) for d in history_data]
     pending_jobs = [d.get('pending_jobs', 0) for d in history_data]
@@ -282,30 +295,6 @@ def _render_queue_history(history_data: List[Dict]) -> str:
     return svg_io.getvalue()
 
 
-def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
-    """
-    Generate queue history chart showing job flow and resource demand.
-    Title is rendered in the surrounding HTML (see status dashboard template).
-
-    Args:
-        history_data: List of dicts with timestamp, job counts, resources
-
-    Returns:
-        SVG string ready for template rendering
-    """
-    if not history_data:
-        return '<div class="text-center text-muted">No history data available for this queue</div>'
-    key = _content_hash(history_data)
-    result = _queue_history_cache.get(key)
-    if result is None:
-        result = _render_queue_history(history_data)
-        _queue_history_cache.put(key, result)
-    return result
-
-
-_attach_cache_methods(generate_queue_history_matplotlib, _queue_history_cache)
-
-
 # ---------------------------------------------------------------------------
 # 4. Facility pie chart (allocations dashboard)
 # ---------------------------------------------------------------------------
@@ -327,10 +316,21 @@ def _pie_trim(names: list, values: list) -> tuple[list, list]:
     return names_s, values_s
 
 
-_facility_pie_cache = _ChartCache(maxsize=32)
+@_chart_cache(maxsize=32)
+def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
+    """
+    Generate pie chart showing distribution by facility. Title is rendered
+    in the surrounding HTML (see allocations dashboard template).
 
+    Args:
+        facility_data: List of dicts with facility, annualized_rate, count, percent
 
-def _render_facility_pie(facility_data: List[Dict]) -> str:
+    Returns:
+        SVG string ready for template rendering
+    """
+    if not facility_data:
+        return '<div class="text-center text-muted">No facility data available</div>'
+
     raw_names = [d['facility'] for d in facility_data]
     raw_values = [d['annualized_rate'] for d in facility_data]
     names, values = _pie_trim(raw_names, raw_values)
@@ -361,38 +361,25 @@ def _render_facility_pie(facility_data: List[Dict]) -> str:
     return svg_io.getvalue()
 
 
-def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
-    """
-    Generate pie chart showing distribution by facility. Title is rendered
-    in the surrounding HTML (see allocations dashboard template).
-
-    Args:
-        facility_data: List of dicts with facility, annualized_rate, count, percent
-
-    Returns:
-        SVG string ready for template rendering
-    """
-    if not facility_data:
-        return '<div class="text-center text-muted">No facility data available</div>'
-    key = _content_hash(facility_data)
-    result = _facility_pie_cache.get(key)
-    if result is None:
-        result = _render_facility_pie(facility_data)
-        _facility_pie_cache.put(key, result)
-    return result
-
-
-_attach_cache_methods(generate_facility_pie_chart_matplotlib, _facility_pie_cache)
-
-
 # ---------------------------------------------------------------------------
 # 5. Allocation type pie chart (allocations dashboard)
 # ---------------------------------------------------------------------------
 
-_alloc_type_pie_cache = _ChartCache(maxsize=64)
+@_chart_cache(maxsize=64)
+def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
+    """
+    Generate pie chart showing allocation distribution by type within a facility.
+    Title is rendered in the surrounding HTML (see allocations dashboard template).
 
+    Args:
+        type_data: List of dicts with allocation_type, total_amount, count, avg_amount
 
-def _render_alloc_type_pie(type_data: List[Dict]) -> str:
+    Returns:
+        SVG string ready for template rendering
+    """
+    if not type_data:
+        return '<div class="text-center text-muted">No allocation type data available</div>'
+
     raw_names = [d['allocation_type'] for d in type_data]
     raw_values = [d['total_amount'] for d in type_data]
     names, values = _pie_trim(raw_names, raw_values)
@@ -421,30 +408,6 @@ def _render_alloc_type_pie(type_data: List[Dict]) -> str:
     fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
     plt.close(fig)
     return svg_io.getvalue()
-
-
-def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
-    """
-    Generate pie chart showing allocation distribution by type within a facility.
-    Title is rendered in the surrounding HTML (see allocations dashboard template).
-
-    Args:
-        type_data: List of dicts with allocation_type, total_amount, count, avg_amount
-
-    Returns:
-        SVG string ready for template rendering
-    """
-    if not type_data:
-        return '<div class="text-center text-muted">No allocation type data available</div>'
-    key = _content_hash(type_data)
-    result = _alloc_type_pie_cache.get(key)
-    if result is None:
-        result = _render_alloc_type_pie(type_data)
-        _alloc_type_pie_cache.put(key, result)
-    return result
-
-
-_attach_cache_methods(generate_allocation_type_pie_chart_matplotlib, _alloc_type_pie_cache)
 
 
 # ---------------------------------------------------------------------------
@@ -528,11 +491,38 @@ def _pace_key_fields(allocations: List[Dict]) -> list:
     ]
 
 
-_pace_chart_cache = _ChartCache(maxsize=64)
+def _pace_cache_key(allocations, active_at, window_days=180, top_n=10, resource_name=''):
+    return _content_hash([_pace_key_fields(allocations), active_at.isoformat(),
+                          int(window_days), int(top_n), resource_name])
 
 
-def _render_pace_chart(allocations: List[Dict], active_at: datetime,
-                       window_days: int, top_n: int, resource_name: str) -> str:
+@_chart_cache(maxsize=64, key_fn=_pace_cache_key)
+def generate_pace_chart_matplotlib(
+    allocations: List[Dict],
+    active_at: datetime,
+    window_days: int = 180,
+    top_n: int = 10,
+    resource_name: str = '',
+) -> str:
+    """Stacked-area pace chart: one band per allocation, past-rate | future-rate
+    step at ``active_at``. Top-N projcodes by total allocated get distinct
+    colors; the rest share an "Other" color.
+
+    Args:
+        allocations: per-allocation rows (from ``cached_allocation_usage``)
+            with at least ``projcode``, ``start_date``, ``end_date``,
+            ``total_amount``, ``total_used``.
+        active_at: chart centerline ("today").
+        window_days: half-window on each side of ``active_at`` (default 180).
+        top_n: projects with their own color + legend entry (default 5).
+        resource_name: used only for cache key disambiguation.
+
+    Returns:
+        SVG string ready for template rendering.
+    """
+    if not allocations:
+        return '<div class="text-center text-muted">No allocations available</div>'
+
     window_start = active_at - timedelta(days=window_days)
     window_end = active_at + timedelta(days=window_days)
 
@@ -615,40 +605,3 @@ def _render_pace_chart(allocations: List[Dict], active_at: datetime,
     fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
     plt.close(fig)
     return svg_io.getvalue()
-
-
-def generate_pace_chart_matplotlib(
-    allocations: List[Dict],
-    active_at: datetime,
-    window_days: int = 180,
-    top_n: int = 10,
-    resource_name: str = '',
-) -> str:
-    """Stacked-area pace chart: one band per allocation, past-rate | future-rate
-    step at ``active_at``. Top-N projcodes by total allocated get distinct
-    colors; the rest share an "Other" color.
-
-    Args:
-        allocations: per-allocation rows (from ``cached_allocation_usage``)
-            with at least ``projcode``, ``start_date``, ``end_date``,
-            ``total_amount``, ``total_used``.
-        active_at: chart centerline ("today").
-        window_days: half-window on each side of ``active_at`` (default 180).
-        top_n: projects with their own color + legend entry (default 5).
-        resource_name: used only for cache key disambiguation.
-
-    Returns:
-        SVG string ready for template rendering.
-    """
-    if not allocations:
-        return '<div class="text-center text-muted">No allocations available</div>'
-    key = _content_hash([_pace_key_fields(allocations), active_at.isoformat(),
-                         int(window_days), int(top_n), resource_name])
-    result = _pace_chart_cache.get(key)
-    if result is None:
-        result = _render_pace_chart(allocations, active_at, int(window_days), int(top_n), resource_name)
-        _pace_chart_cache.put(key, result)
-    return result
-
-
-_attach_cache_methods(generate_pace_chart_matplotlib, _pace_chart_cache)
