@@ -733,6 +733,99 @@ class TestTreeRollup:
         assert parent_alloc.amount == 15.0   # untouched
         assert child_alloc.amount == 10.0    # untouched
 
+    def test_project_with_multiple_filesets_sums_all(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """A standalone (non-tree) project that owns several
+        ProjectDirectory rows pointing at distinct filesets should have
+        its expected quota = sum of every matching fileset's limit, not
+        just one. Regression for P43713000 (rda_data + collections/gdex
+        siblings) where single-valued mapping silently dropped all but
+        one fileset.
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        proj = make_project(session)
+        acct = make_account(session, project=proj, resource=resource)
+        # SAM = 30 TiB ; truth = 10 + 20 = 30 TiB across two filesets
+        alloc = make_allocation(session, account=acct, amount=30.0)
+
+        # Both filesets map to the same project via different paths;
+        # neither projcode-named, so both must hit pass 2.
+        ProjectDirectory.create(
+            session, project_id=proj.project_id,
+            directory_name='/gpfs/csfs1/collections/gdex/data',
+        )
+        ProjectDirectory.create(
+            session, project_id=proj.project_id,
+            directory_name='/gpfs/csfs1/collections/gdex/work',
+        )
+        quota_path = _write_quota_file(
+            tmp_path,
+            {
+                'rda_data': {'limit': str(_kib_for(10.0)),
+                             'usage': '0', 'files': '0'},
+                'rda_work': {'limit': str(_kib_for(20.0)),
+                             'usage': '0', 'files': '0'},
+            },
+            paths={
+                'rda_data': '/gpfs/csfs1/collections/gdex/data',
+                'rda_work': '/gpfs/csfs1/collections/gdex/work',
+            },
+        )
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        # Pre-fix: only one fileset (10 or 20 TiB) won → SAM 30 forced
+        # down to that single value. Post-fix: 30 TiB matches the
+        # 10+20 sum → no update.
+        assert alloc.amount == 30.0
+        assert alloc.is_active
+
+    def test_projcode_match_and_path_match_for_same_fileset_not_double_counted(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """A fileset that matches BOTH by projcode (pass 1) and by
+        ProjectDirectory path (pass 2) must contribute exactly once.
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        proj = make_project(session)
+        acct = make_account(session, project=proj, resource=resource)
+        alloc = make_allocation(session, account=acct, amount=7.0)
+
+        ProjectDirectory.create(
+            session, project_id=proj.project_id,
+            directory_name='/gpfs/csfs1/double',
+        )
+        quota_path = _write_quota_file(
+            tmp_path,
+            {
+                proj.projcode.lower(): {  # matches pass 1
+                    'limit': str(_kib_for(7.0)),
+                    'usage': '0', 'files': '0',
+                },
+            },
+            paths={proj.projcode.lower(): '/gpfs/csfs1/double'},
+        )
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path, dry_run=False, force=True,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        # 7 TiB SAM vs 7 TiB truth (NOT 14) → matched, untouched.
+        assert alloc.amount == 7.0
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # Next-slice: snapshot metadata + high-util + --verify-paths

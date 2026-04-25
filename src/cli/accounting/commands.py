@@ -415,15 +415,29 @@ class AccountingAdminCommand(BaseCommand):
         for pd, proj in dir_rows:
             dirs_by_projcode.setdefault(proj.projcode, []).append(pd.directory_name)
 
-        own_quota: dict[str, QuotaEntry] = {}
+        # A project can own multiple filesets (e.g. P43713000 / rda has
+        # several ProjectDirectory rows mapping to distinct GPFS filesets);
+        # store quotas as a list per projcode and sum at roll-up time.
+        # Dedupe by fileset_name so a quota that matches via both projcode
+        # AND ProjectDirectory path isn't counted twice.
+        own_quota: dict[str, list[QuotaEntry]] = {}
+        seen_filesets: dict[str, set[str]] = {}
         unmapped: list[QuotaEntry] = []
+
+        def _attach(projcode: str, qe: QuotaEntry) -> None:
+            seen = seen_filesets.setdefault(projcode, set())
+            if qe.fileset_name in seen:
+                return
+            seen.add(qe.fileset_name)
+            own_quota.setdefault(projcode, []).append(qe)
+
         for qe in quota_entries:
             projcode = qe.fileset_name.upper()
             if projcode in projects_by_code:
-                own_quota[projcode] = qe
+                _attach(projcode, qe)
                 continue
             if qe.path and qe.path in dir_to_projcode:
-                own_quota[dir_to_projcode[qe.path]] = qe
+                _attach(dir_to_projcode[qe.path], qe)
                 continue
             unmapped.append(qe)
 
@@ -449,15 +463,22 @@ class AccountingAdminCommand(BaseCommand):
             """Return (expected_bytes, contributors) for `proj`'s subtree.
 
             Uses NestedSetMixin.is_ancestor_of (src/sam/base.py:305-311)
-            which encodes the MPPT containment check.
+            which encodes the MPPT containment check. Each tree node
+            may carry multiple filesets (multiple ProjectDirectory rows
+            → multiple QuotaEntry contributions), so we flatten the
+            per-node fileset lists into a single contributor sequence.
             """
             candidates = by_root.get(proj.tree_root, ()) if proj.tree_root else ()
-            own = own_quota.get(proj.projcode)
             descendants = [qp for qp in candidates if proj.is_ancestor_of(qp)]
             descendants.sort(key=lambda q: q.tree_left)  # depth-first for display
-            contribs = ([proj] if own is not None else []) + descendants
-            total = sum(own_quota[q.projcode].limit_bytes for q in contribs)
-            return total, [(q.projcode, own_quota[q.projcode]) for q in contribs]
+            self_node = [proj] if own_quota.get(proj.projcode) else []
+            contrib_nodes = self_node + descendants
+            contributors: list[tuple[str, QuotaEntry]] = []
+            for q in contrib_nodes:
+                for qe in own_quota.get(q.projcode, ()):
+                    contributors.append((q.projcode, qe))
+            total = sum(qe.limit_bytes for _, qe in contributors)
+            return total, contributors
 
         # ---- 6. Classify each SAM allocation -----------------------------------
         # Record shapes:
