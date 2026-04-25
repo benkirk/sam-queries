@@ -356,7 +356,7 @@ def display_quota_reconcile_plan(
                 all_live = False
             action_cell = (
                 "[bold yellow]paths still live — requires --force[/bold yellow]"
-                if all_live else "set end_date → today"
+                if all_live else "deactivate (set end_date)"
             )
             row = [projcode, fmt.size(sam_tib * (1024 ** 4)), dir_cell]
             if show_fs:

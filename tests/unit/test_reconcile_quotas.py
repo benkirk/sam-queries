@@ -302,11 +302,11 @@ class TestReconcileClassification:
         assert rc == 0
         session.refresh(alloc)
         assert alloc.end_date is not None
-        # end_date normalized to today 23:59:59 by SAM convention; allocation
-        # is no longer active from tomorrow onward.
-        assert alloc.end_date.date() == date.today()
-        tomorrow = datetime.now() + timedelta(days=1)
-        assert not alloc.is_active_at(tomorrow)
+        # Backdated to yesterday 23:59:59 so the allocation drops out of
+        # is_active immediately — same-day re-runs of the tool no longer
+        # show the just-deactivated row as still-orphaned.
+        assert alloc.end_date.date() == date.today() - timedelta(days=1)
+        assert not alloc.is_active
 
     def test_default_is_report_only_no_writes(self, session, tmp_path):
         """Without --update-accounting-system, even a clear mismatch
@@ -462,9 +462,11 @@ class TestReconcileClassification:
         session.refresh(alloc_orph)
         # Mismatch left alone
         assert alloc_mm.amount == 1.0
-        # Orphan deactivated
+        # Orphan deactivated (end_date backdated to yesterday so the
+        # row drops out of is_active immediately).
         assert alloc_orph.end_date is not None
-        assert alloc_orph.end_date.date() == date.today()
+        assert alloc_orph.end_date.date() == date.today() - timedelta(days=1)
+        assert not alloc_orph.is_active
 
 
 class TestReconcileInputValidation:
@@ -748,7 +750,7 @@ class TestTreeRollup:
         assert rc == 0
         session.refresh(parent_alloc)
         assert parent_alloc.end_date is not None
-        assert parent_alloc.end_date.date() == date.today()
+        assert parent_alloc.end_date.date() == date.today() - timedelta(days=1)
 
     def test_mismatched_updates_to_rolled_up_value_not_own(
         self, session, tmp_path, monkeypatch,
@@ -1286,7 +1288,7 @@ class TestVerifyPathsIntegration:
         assert rc == 0
         session.refresh(alloc)
         assert alloc.end_date is not None
-        assert alloc.end_date.date() == date.today()
+        assert alloc.end_date.date() == date.today() - timedelta(days=1)
 
     def test_orphan_with_missing_path_deactivates_normally(
         self, session, tmp_path, monkeypatch,

@@ -7,7 +7,7 @@ AccountingSearchCommand — queries comp_charge_summary for user inspection.
 import getpass
 import os
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from cli.core.base import BaseCommand
@@ -614,7 +614,30 @@ class AccountingAdminCommand(BaseCommand):
         n_updated = 0
         n_deactivated = 0
         n_errors = 0
-        today = datetime.combine(date.today(), datetime.min.time())
+        # Set end_date to YESTERDAY-23:59:59 so the deactivated
+        # allocation drops out of `is_active` immediately. Two things
+        # going on here:
+        #
+        # 1. SAM's normalize_end_date validator promotes a midnight
+        #    end_date to 23:59:59 of the SAME day. Passing `today` at
+        #    midnight would normalize to today 23:59:59 — leaving the
+        #    allocation active until end-of-day. A same-day re-run of
+        #    the tool would then still show those rows as orphans.
+        #
+        # 2. update_allocation's validate_allocation_dates runs on the
+        #    INPUT value before normalize_end_date kicks in (the
+        #    validator normalizes only when the column is assigned).
+        #    So we must pre-supply yesterday at 23:59:59 directly,
+        #    not yesterday at midnight (which would fail validation
+        #    against any start_date later in yesterday).
+        #
+        # Audit-trail transaction timestamps capture the precise moment
+        # of the change, so a 1-day backdate of end_date doesn't lose
+        # information.
+        effective_end = (
+            datetime.combine(date.today(), datetime.min.time())
+            - timedelta(seconds=1)
+        )
 
         try:
             with management_transaction(self.session):
@@ -667,7 +690,7 @@ class AccountingAdminCommand(BaseCommand):
                                 self.session,
                                 alloc.allocation_id,
                                 admin_user_id,
-                                end_date=today,
+                                end_date=effective_end,
                                 comment=(
                                     f"Deactivated: no fileset quota in "
                                     f"project subtree (source {quota_path})"
