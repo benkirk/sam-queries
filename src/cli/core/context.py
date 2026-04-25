@@ -16,6 +16,7 @@ class Context:
         self.very_verbose: bool = False
         self.inactive_projects: bool = False
         self.inactive_users: bool = False
+        self.output_format: str = 'rich'
         self.console = Console()
         self.stderr_console = Console(file=sys.stderr)
 
