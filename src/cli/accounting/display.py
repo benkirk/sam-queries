@@ -368,8 +368,8 @@ def display_quota_reconcile_plan(
             "[dim italic]Orphaned: project has an active "
             f"{resource_name} allocation in SAM, but no matching "
             "fileset quota exists anywhere in its project subtree. "
-            "This could mean fileset has not yet been created or was
-            retired from the storage system; deactivation requires "
+            "This could mean the fileset has not yet been created or was "
+            "retired from the storage system; deactivation requires "
             "--deactivate-orphaned."
             "[/dim italic]\n"
         )
