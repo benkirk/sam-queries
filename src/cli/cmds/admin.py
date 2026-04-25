@@ -167,6 +167,10 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
               help='Last N days including today (e.g. --last 3d)')
 @click.option('--dry-run', is_flag=True, help='Preview without writing')
 @click.option('--force', is_flag=True, help='Skip confirmation prompt (applies to --reconcile-quotas)')
+@click.option('--verify-paths', 'verify_paths', is_flag=True,
+              help='Check fileset/ProjectDirectory paths on disk (requires --reconcile-quotas)')
+@click.option('--verify-host', 'verify_host', type=str, default=None, metavar='HOST',
+              help='SSH host to use for --verify-paths (default: auto-detect from the reader)')
 @click.option('--skip-errors', is_flag=True, help='Skip rows that fail entity resolution')
 @click.option('--create-queues', is_flag=True, help='Auto-create unknown queues in SAM')
 @click.option('--chunk-size', type=int, default=500, show_default=True,
@@ -177,7 +181,8 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
 @pass_context
 def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
                machine, start, end, date_str, today_flag, last,
-               dry_run, force, skip_errors, create_queues, chunk_size,
+               dry_run, force, verify_paths, verify_host,
+               skip_errors, create_queues, chunk_size,
                include_deleted_accounts, verbose):
     """Post charge summaries into SAM, or reconcile allocations against quota truth.
 
@@ -210,6 +215,19 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         )
         sys.exit(1)
 
+    if (verify_paths or verify_host) and not reconcile_mode:
+        ctx.console.print(
+            "Error: --verify-paths/--verify-host require --reconcile-quotas",
+            style="bold red",
+        )
+        sys.exit(1)
+    if verify_host and not verify_paths:
+        ctx.console.print(
+            "Error: --verify-host requires --verify-paths",
+            style="bold red",
+        )
+        sys.exit(1)
+
     if reconcile_mode:
         if not resource:
             ctx.console.print(
@@ -223,6 +241,8 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
             resource=resource,
             dry_run=dry_run,
             force=force,
+            verify_paths=verify_paths,
+            verify_host=verify_host,
         )
         sys.exit(exit_code)
 

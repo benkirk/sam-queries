@@ -4,8 +4,9 @@ Covers the GPFS quota reader, the dispatch factory, the mapping/classification
 logic in `AccountingAdminCommand._run_reconcile_quotas`, and dry-run safety.
 """
 import json
+import subprocess
 from datetime import date, datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -13,6 +14,9 @@ from cli.accounting.commands import AccountingAdminCommand, QUOTA_TOLERANCE
 from cli.accounting import quota_readers as qr_mod
 from cli.accounting.quota_readers import (
     GpfsQuotaReader, QuotaEntry, get_quota_reader,
+)
+from cli.accounting.path_verifier import (
+    PathVerifier, PathVerificationError, auto_detect_verifier,
 )
 from cli.core.context import Context
 from sam.projects.projects import ProjectDirectory
@@ -670,7 +674,7 @@ class TestTreeRollup:
         import cli.accounting.commands as cmd_mod
 
         def _spy(ctx, resource_name, matched, mismatched, orphaned,
-                 unmapped, *, dry_run):
+                 unmapped, *, dry_run, path_exists=None):
             captured['orphaned'] = orphaned
 
         monkeypatch.setattr(cmd_mod, 'display_quota_reconcile_plan', _spy)
@@ -728,3 +732,320 @@ class TestTreeRollup:
         session.refresh(child_alloc)
         assert parent_alloc.amount == 15.0   # untouched
         assert child_alloc.amount == 10.0    # untouched
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Next-slice: snapshot metadata + high-util + --verify-paths
+# ─────────────────────────────────────────────────────────────────────────
+
+class TestGpfsSnapshotDate:
+
+    def _write(self, tmp_path, data):
+        p = tmp_path / 'cs_usage.json'
+        p.write_text(json.dumps(data))
+        return str(p)
+
+    def test_parses_mdt_timestamp(self, tmp_path):
+        path = self._write(tmp_path, {
+            'date': 'Fri Apr 24 07:05:10 MDT 2026',
+            'paths': {'csfs1': {}},
+            'usage': {'FILESET': {}, 'USR': {}},
+        })
+        r = GpfsQuotaReader(path)
+        r.read()
+        assert r.snapshot_date == datetime(2026, 4, 24, 7, 5, 10)
+
+    def test_garbage_date_yields_none(self, tmp_path):
+        path = self._write(tmp_path, {
+            'date': 'banana',
+            'paths': {'csfs1': {}},
+            'usage': {'FILESET': {}, 'USR': {}},
+        })
+        r = GpfsQuotaReader(path)
+        r.read()
+        assert r.snapshot_date is None
+
+    def test_mount_metadata_defaults(self):
+        r = GpfsQuotaReader('/does/not/matter')
+        assert r.mount_root == '/gpfs/csfs1'
+        assert r.mount_hosts == ['derecho', 'casper']
+
+
+class TestQuotaEntryUtilization:
+
+    def test_ratio(self):
+        qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=970, file_count=1)
+        assert 0.96 < qe.utilization < 0.98
+
+    def test_zero_limit_returns_zero(self):
+        qe = QuotaEntry('fs', None, limit_bytes=0, usage_bytes=100, file_count=1)
+        assert qe.utilization == 0.0
+
+
+class TestPathVerifierLocal:
+
+    def test_mix_of_present_and_missing(self, tmp_path):
+        real = tmp_path / 'real'
+        real.mkdir()
+        missing = tmp_path / 'nope'
+        v = PathVerifier('local')
+        out = v.check([str(real), str(missing)])
+        assert out == {str(real): True, str(missing): False}
+
+    def test_rejects_newline_in_path(self):
+        v = PathVerifier('local')
+        with pytest.raises(PathVerificationError):
+            v.check(['/tmp/with\nnewline'])
+
+    def test_ssh_requires_host(self):
+        with pytest.raises(ValueError):
+            PathVerifier('ssh')
+
+
+@pytest.mark.timeout(15)
+class TestPathVerifierSSH:
+    """SSH mode with `subprocess.run` mocked — no real network calls.
+
+    The class-level timeout is defense in depth: all tests mock
+    `subprocess.run` so no SSH actually runs, but a regression that
+    accidentally bypasses the mock would otherwise hang on a real DNS
+    lookup.
+    """
+
+    def _run_ok(self, paths_present: set[str]):
+        def _run(cmd, *, input, capture_output, text, timeout, check):
+            # The real code sends '\n'.join(paths) + '\n'; split handles both.
+            paths = [p for p in input.splitlines() if p]
+            lines = [
+                f"{'EXISTS' if p in paths_present else 'MISSING'} {p}"
+                for p in paths
+            ]
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout='\n'.join(lines), stderr='',
+            )
+        return _run
+
+    def test_happy_path(self):
+        v = PathVerifier('ssh', host='derecho')
+        with patch('subprocess.run', side_effect=self._run_ok({'/a', '/c'})):
+            out = v.check(['/a', '/b', '/c'])
+        assert out == {'/a': True, '/b': False, '/c': True}
+
+    def test_ssh_nonzero_raises(self):
+        v = PathVerifier('ssh', host='derecho')
+        def _run(*a, **kw):
+            raise subprocess.CalledProcessError(
+                255, a[0], output='', stderr='Permission denied'
+            )
+        with patch('subprocess.run', side_effect=_run):
+            with pytest.raises(PathVerificationError,
+                               match='SSH path verification failed'):
+                v.check(['/a'])
+
+    def test_ssh_timeout_raises(self):
+        v = PathVerifier('ssh', host='derecho')
+        def _run(*a, **kw):
+            raise subprocess.TimeoutExpired(a[0], 60)
+        with patch('subprocess.run', side_effect=_run):
+            with pytest.raises(PathVerificationError,
+                               match='timed out'):
+                v.check(['/a'])
+
+    def test_incomplete_output_raises(self):
+        v = PathVerifier('ssh', host='derecho')
+        def _run(*a, **kw):
+            return subprocess.CompletedProcess(
+                a[0], 0, stdout='EXISTS /a\n', stderr='',
+            )
+        with patch('subprocess.run', side_effect=_run):
+            with pytest.raises(PathVerificationError,
+                               match='incomplete'):
+                v.check(['/a', '/b'])
+
+    def test_stdin_has_trailing_newline_for_last_path(self):
+        """Regression: the final path was being dropped because
+        `read` returned non-zero on EOF-mid-line. We now append a
+        trailing newline AND use `|| [ -n "$p" ]` in the loop.
+        """
+        captured = {}
+        def _run(cmd, *, input, **kw):
+            captured['input'] = input
+            # Respond for every path so the parser doesn't raise
+            paths = [p for p in input.splitlines() if p]
+            return subprocess.CompletedProcess(
+                cmd, 0,
+                stdout='\n'.join(f'MISSING {p}' for p in paths),
+                stderr='',
+            )
+        v = PathVerifier('ssh', host='derecho')
+        with patch('subprocess.run', side_effect=_run):
+            v.check(['/a', '/b', '/c'])
+        assert captured['input'].endswith('\n'), (
+            "stdin must end with newline so remote read sees the last path"
+        )
+
+
+class TestAutoDetectVerifier:
+
+    def test_local_when_mounted(self, tmp_path, monkeypatch):
+        monkeypatch.setattr('os.path.ismount', lambda p: p == str(tmp_path))
+        v, banner = auto_detect_verifier(
+            mount_root=str(tmp_path),
+            mount_hosts=['derecho'],
+            explicit_host=None,
+        )
+        assert v.mode == 'local'
+        assert banner == 'local'
+
+    def test_explicit_host_wins_when_unmounted(self, monkeypatch):
+        monkeypatch.setattr('os.path.ismount', lambda p: False)
+        v, banner = auto_detect_verifier(
+            mount_root='/gpfs/csfs1',
+            mount_hosts=['derecho', 'casper'],
+            explicit_host='casper',
+        )
+        assert v.mode == 'ssh'
+        assert v.host == 'casper'
+        assert 'casper' in banner
+
+    def test_probes_default_hosts_in_order(self, monkeypatch):
+        monkeypatch.setattr('os.path.ismount', lambda p: False)
+        tried = []
+        def probe(host, mount_root, *, timeout=5):
+            tried.append(host)
+            return host == 'casper'      # only casper responds
+        monkeypatch.setattr(PathVerifier, 'probe_host', staticmethod(probe))
+        v, banner = auto_detect_verifier(
+            mount_root='/gpfs/csfs1',
+            mount_hosts=['derecho', 'casper'],
+            explicit_host=None,
+        )
+        assert tried == ['derecho', 'casper']
+        assert v.host == 'casper'
+        assert 'ssh casper' in banner
+
+    def test_all_probes_fail_raises(self, monkeypatch):
+        monkeypatch.setattr('os.path.ismount', lambda p: False)
+        monkeypatch.setattr(
+            PathVerifier, 'probe_host',
+            staticmethod(lambda h, m, timeout=5: False),
+        )
+        with pytest.raises(PathVerificationError,
+                           match='not mounted locally'):
+            auto_detect_verifier(
+                mount_root='/gpfs/csfs1',
+                mount_hosts=['derecho', 'casper'],
+                explicit_host=None,
+            )
+
+
+@pytest.mark.timeout(30)
+class TestVerifyPathsIntegration:
+    """End-to-end classification with --verify-paths.
+
+    Class-level timeout guards against accidental real-subprocess calls
+    if the local-mount monkeypatches ever regress.
+    """
+
+    def test_orphan_with_live_path_is_suppressed_without_force(
+        self, session, tmp_path, monkeypatch,
+    ):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        project = make_project(session)
+        account = make_account(session, project=project, resource=resource)
+        alloc = make_allocation(session, account=account, amount=5.0)
+
+        live_dir = tmp_path / 'live'
+        live_dir.mkdir()
+        ProjectDirectory.create(
+            session, project_id=project.project_id,
+            directory_name=str(live_dir),
+        )
+
+        quota_path = _write_quota_file(tmp_path, {})  # orphan
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        # Force local verifier with a mount_root the project dir is under
+        monkeypatch.setattr(qr_mod.GpfsQuotaReader, 'mount_root', str(tmp_path))
+        monkeypatch.setattr('os.path.ismount', lambda p: p == str(tmp_path))
+        # Auto-confirm any interactive prompt — the live-path gate, not the
+        # prompt, is what should suppress deactivation here.
+        monkeypatch.setattr('rich.prompt.Confirm.ask', lambda *a, **kw: True)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path,
+            dry_run=False, force=False,
+            verify_paths=True, verify_host=None,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        # Live path + no --force → NOT deactivated
+        assert alloc.end_date is None or alloc.is_active
+
+    def test_orphan_with_live_path_deactivates_with_force(
+        self, session, tmp_path, monkeypatch,
+    ):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        project = make_project(session)
+        account = make_account(session, project=project, resource=resource)
+        alloc = make_allocation(session, account=account, amount=5.0)
+
+        live_dir = tmp_path / 'live2'
+        live_dir.mkdir()
+        ProjectDirectory.create(
+            session, project_id=project.project_id,
+            directory_name=str(live_dir),
+        )
+
+        quota_path = _write_quota_file(tmp_path, {})
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+        monkeypatch.setattr(qr_mod.GpfsQuotaReader, 'mount_root', str(tmp_path))
+        monkeypatch.setattr('os.path.ismount', lambda p: p == str(tmp_path))
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path,
+            dry_run=False, force=True,
+            verify_paths=True, verify_host=None,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        assert alloc.end_date is not None
+        assert alloc.end_date.date() == date.today()
+
+    def test_orphan_with_missing_path_deactivates_normally(
+        self, session, tmp_path, monkeypatch,
+    ):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        project = make_project(session)
+        account = make_account(session, project=project, resource=resource)
+        alloc = make_allocation(session, account=account, amount=5.0)
+        # Register a ProjectDirectory that does NOT exist on disk
+        ProjectDirectory.create(
+            session, project_id=project.project_id,
+            directory_name=str(tmp_path / 'ghost'),
+        )
+
+        quota_path = _write_quota_file(tmp_path, {})
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+        monkeypatch.setattr(qr_mod.GpfsQuotaReader, 'mount_root', str(tmp_path))
+        monkeypatch.setattr('os.path.ismount', lambda p: p == str(tmp_path))
+        monkeypatch.setattr('rich.prompt.Confirm.ask', lambda *a, **kw: True)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path,
+            dry_run=False, force=False,
+            verify_paths=True, verify_host=None,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        # Path missing → safe to deactivate even without --force
+        assert alloc.end_date is not None

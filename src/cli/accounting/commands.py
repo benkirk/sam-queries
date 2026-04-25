@@ -20,6 +20,9 @@ from cli.accounting.display import (
     display_quota_reconcile_summary,
 )
 from cli.accounting.quota_readers import get_quota_reader, QuotaEntry
+from cli.accounting.path_verifier import (
+    PathVerificationError, auto_detect_verifier,
+)
 from sam.manage.summaries import upsert_comp_charge_summary
 from sam.manage.transaction import management_transaction
 from sam.manage.allocations import update_allocation
@@ -130,6 +133,8 @@ class AccountingAdminCommand(BaseCommand):
         end_date: Optional[date] = None,
         dry_run: bool = False,
         force: bool = False,
+        verify_paths: bool = False,
+        verify_host: Optional[str] = None,
         skip_errors: bool = False,
         create_queues: bool = False,
         chunk_size: int = 500,
@@ -141,6 +146,8 @@ class AccountingAdminCommand(BaseCommand):
                 quota_path=reconcile_quotas,
                 dry_run=dry_run,
                 force=force,
+                verify_paths=verify_paths,
+                verify_host=verify_host,
             )
         if comp:
             return self._run_comp(
@@ -302,6 +309,8 @@ class AccountingAdminCommand(BaseCommand):
         quota_path: str,
         dry_run: bool,
         force: bool,
+        verify_paths: bool = False,
+        verify_host: Optional[str] = None,
     ) -> int:
         """Reconcile SAM allocations for ``resource_name`` against a
         storage-system-specific quota file.
@@ -346,6 +355,26 @@ class AccountingAdminCommand(BaseCommand):
                 style="bold red",
             )
             return 2
+
+        # ---- 1b. Snapshot-age banner ------------------------------------------
+        self._display_snapshot_banner(reader)
+
+        # ---- 1c. Path verification setup (optional) ---------------------------
+        verifier = None
+        verify_mode_banner = None
+        if verify_paths:
+            try:
+                verifier, verify_mode_banner = auto_detect_verifier(
+                    mount_root=reader.mount_root,
+                    mount_hosts=reader.mount_hosts,
+                    explicit_host=verify_host,
+                )
+            except PathVerificationError as exc:
+                self.console.print(f"[bold red]{exc}[/bold red]")
+                return 2
+            self.console.print(
+                f"[dim]Path verification: {verify_mode_banner}[/dim]"
+            )
 
         # ---- 2. Load active allocations to reconcile ---------------------------
         alloc_rows = (
@@ -454,11 +483,27 @@ class AccountingAdminCommand(BaseCommand):
             else:
                 matched.append(record)
 
-        # ---- 5. Report ---------------------------------------------------------
+        # ---- 6b. Path verification (optional) ---------------------------------
+        path_exists: dict[str, bool] = {}
+        if verifier is not None:
+            paths_to_check: set[str] = set()
+            for _, _, dirs in orphaned:
+                paths_to_check.update(dirs)
+            for qe in unmapped:
+                if qe.path:
+                    paths_to_check.add(qe.path)
+            try:
+                path_exists = verifier.check(sorted(paths_to_check))
+            except PathVerificationError as exc:
+                self.console.print(f"[bold red]{exc}[/bold red]")
+                return 2
+
+        # ---- 7. Report ---------------------------------------------------------
         display_quota_reconcile_plan(
             self.ctx, resource_name,
             matched, mismatched, orphaned, unmapped,
             dry_run=dry_run,
+            path_exists=path_exists if verifier is not None else None,
         )
 
         if dry_run:
@@ -530,8 +575,25 @@ class AccountingAdminCommand(BaseCommand):
                             f"[red]Failed to update {projcode}: {exc}[/red]"
                         )
 
-                for projcode, sam_tib, _dirs in orphaned:
+                for projcode, sam_tib, dirs in orphaned:
                     _, alloc = by_projcode[projcode]
+                    # Safety gate: if path verification says every
+                    # ProjectDirectory is still live on disk, don't
+                    # silently deactivate — require --force.
+                    live = bool(dirs) and all(
+                        path_exists.get(d, False) for d in dirs
+                    ) if verifier is not None else False
+                    if live and not force:
+                        self.console.print(
+                            f"[yellow]Skipping {projcode}: all "
+                            f"ProjectDirectory paths are live on disk. "
+                            "Re-run with --force to deactivate anyway.[/yellow]"
+                        )
+                        continue
+                    note = (
+                        " (warning: paths still present on disk)"
+                        if live else ""
+                    )
                     try:
                         update_allocation(
                             self.session,
@@ -539,7 +601,8 @@ class AccountingAdminCommand(BaseCommand):
                             admin_user_id,
                             end_date=today,
                             description=(
-                                f"Deactivated: no quota in subtree (source {quota_path})"
+                                f"Deactivated: no quota in subtree "
+                                f"(source {quota_path}){note}"
                             ),
                         )
                         n_deactivated += 1
@@ -562,6 +625,23 @@ class AccountingAdminCommand(BaseCommand):
             errors=n_errors, dry_run=False,
         )
         return 0 if n_errors == 0 else 2
+
+    def _display_snapshot_banner(self, reader) -> None:
+        """Print a one-line banner describing the quota snapshot's age."""
+        snap = getattr(reader, 'snapshot_date', None)
+        if snap is None:
+            self.console.print(
+                "[dim]Quota snapshot: date unknown[/dim]"
+            )
+            return
+        age = (datetime.now() - snap).days
+        if age > 7:
+            style, tag = "bold yellow", f"⚠ {age} days old — may be stale"
+        else:
+            style, tag = "dim", f"{age} days old"
+        self.console.print(
+            f"[{style}]Quota snapshot: {snap:%Y-%m-%d %H:%M} ({tag})[/{style}]"
+        )
 
     def _resolve_admin_user_id(self) -> Optional[int]:
         """Look up the shell user in SAM for audit-trail attribution."""

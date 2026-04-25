@@ -1,8 +1,34 @@
 """GPFS quota reader — parses cs_usage.json produced for Campaign Store."""
 
 import json
+from datetime import datetime
 
 from .base import QuotaReader, QuotaEntry
+
+
+def _parse_snapshot_date(s: str) -> "datetime | None":
+    """Best-effort parse for cs_usage.json's `date` field.
+
+    Observed format: ``"Fri Apr 24 07:05:10 MDT 2026"`` — not a standard
+    ISO/RFC shape. Tries a couple of likely patterns and returns ``None``
+    on failure rather than raising.
+    """
+    if not s:
+        return None
+    # Strip the timezone abbreviation before strptime (%Z is unreliable).
+    parts = s.split()
+    if len(parts) == 6:
+        stripped = " ".join(parts[:4] + parts[5:])   # drop the TZ token
+        try:
+            return datetime.strptime(stripped, "%a %b %d %H:%M:%S %Y")
+        except ValueError:
+            pass
+    # Fallback: try email.utils (handles RFC 2822 variants).
+    try:
+        from email.utils import parsedate_to_datetime
+        return parsedate_to_datetime(s).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        return None
 
 
 class GpfsQuotaReader(QuotaReader):
@@ -28,10 +54,14 @@ class GpfsQuotaReader(QuotaReader):
     """
 
     _KIB = 1024
+    mount_root = '/gpfs/csfs1'
+    mount_hosts = ['derecho', 'casper']
 
     def read(self) -> list[QuotaEntry]:
         with open(self.path) as fh:
             data = json.load(fh)
+
+        self.snapshot_date = _parse_snapshot_date(data.get('date', ''))
 
         fs_usage = data.get('usage', {}).get('FILESET', {})
         paths = {}

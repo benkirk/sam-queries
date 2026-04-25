@@ -179,6 +179,32 @@ def _expected_delta_pct(sam_tib: float, expected_bytes: int) -> float:
     return (sam_tib - expected_tib) / expected_tib * 100.0
 
 
+HIGH_UTIL_THRESHOLD = 0.95   # annotate matched filesets >95% full
+
+
+def _util_suffix(qe) -> str:
+    """Return a ` ⚠ 97%` suffix when a fileset is >95% full, else ``""``."""
+    u = getattr(qe, 'utilization', 0.0)
+    if u > HIGH_UTIL_THRESHOLD:
+        return f" [yellow]⚠ {int(round(u * 100))}%[/yellow]"
+    return ""
+
+
+def _fs_marker(path: str | None, path_exists: dict | None) -> str:
+    """Return a ✓/✗/— marker for a path.
+
+    - ``—`` when verification wasn't requested (path_exists is None) or
+      the path is None.
+    - ``✓`` when verified present.
+    - ``✗`` when verified missing.
+    """
+    if path_exists is None or not path:
+        return "—"
+    if path_exists.get(path, False):
+        return "[green]✓[/green]"
+    return "[red]✗[/red]"
+
+
 def _leaf_cells(contributors: list) -> tuple[str, str, str]:
     """(fileset, path, limit) for single-contributor rows; marker pair otherwise.
 
@@ -186,7 +212,9 @@ def _leaf_cells(contributors: list) -> tuple[str, str, str]:
     """
     if len(contributors) == 1:
         _, qe = contributors[0]
-        return qe.fileset_name, (qe.path or "—"), fmt.size(qe.limit_bytes)
+        return (qe.fileset_name + _util_suffix(qe),
+                (qe.path or "—"),
+                fmt.size(qe.limit_bytes))
     return (f"[dim]{len(contributors)} filesets[/dim]",
             "[dim]↓ see subtree[/dim]", "")
 
@@ -220,6 +248,7 @@ def _render_subtree_panel(ctx: Context, projcode: str, sam_tib: float,
             f"[dim]{qe.fileset_name:<{w_fs}}[/dim]  "
             f"[dim]{(qe.path or '—'):<{w_path}}[/dim]  "
             f"{fmt.size(qe.limit_bytes):>10}"
+            f"{_util_suffix(qe)}"
         )
         tree.add(label)
     ctx.console.print(Panel(tree, title=f"subtree for {projcode}",
@@ -235,6 +264,7 @@ def display_quota_reconcile_plan(
     unmapped: list,
     *,
     dry_run: bool,
+    path_exists: dict | None = None,
 ) -> None:
     """Render the four reconcile buckets as Rich tables.
 
@@ -242,11 +272,16 @@ def display_quota_reconcile_plan(
       matched, mismatched: (projcode, sam_tib, expected_bytes, contributors)
                            where contributors = [(child_projcode, QuotaEntry), ...]
                            with "self" (if present) sorted first, then depth-first.
-      orphaned:            (projcode, sam_tib)
+      orphaned:            (projcode, sam_tib, directories: list[str])
       unmapped:            QuotaEntry
+
+    ``path_exists`` is provided when ``--verify-paths`` was requested —
+    a mapping of absolute path → presence bool. When None, the FS column
+    is omitted entirely from the Orphaned / Unmapped tables.
     """
     suffix = " — dry run" if dry_run else ""
     show_breakdown = bool(ctx.verbose)
+    show_fs = path_exists is not None
 
     if mismatched:
         t = Table(title=f"Mismatched ({resource_name}){suffix}",
@@ -281,18 +316,36 @@ def display_quota_reconcile_plan(
         t.add_column("Project", style="green")
         t.add_column("SAM", justify="right")
         t.add_column("ProjectDirectory", style="dim")
+        if show_fs:
+            t.add_column("FS", justify="center")
         t.add_column("Action", style="bold cyan")
         for projcode, sam_tib, directories in orphaned:
             if directories:
                 dir_cell = "\n".join(directories)
+                if show_fs:
+                    markers = "\n".join(
+                        _fs_marker(d, path_exists) for d in directories
+                    )
+                else:
+                    markers = ""
+                all_live = (
+                    show_fs
+                    and directories
+                    and all(path_exists.get(d, False) for d in directories)
+                )
             else:
                 dir_cell = "—"
-            t.add_row(
-                projcode,
-                fmt.size(sam_tib * (1024 ** 4)),
-                dir_cell,
-                "set end_date → today",
+                markers = "—"
+                all_live = False
+            action_cell = (
+                "[bold yellow]paths still live — requires --force[/bold yellow]"
+                if all_live else "set end_date → today"
             )
+            row = [projcode, fmt.size(sam_tib * (1024 ** 4)), dir_cell]
+            if show_fs:
+                row.append(markers)
+            row.append(action_cell)
+            t.add_row(*row)
         ctx.console.print(t)
         if ctx.verbose:
             ctx.console.print(
@@ -309,24 +362,33 @@ def display_quota_reconcile_plan(
                   box=box.SIMPLE_HEAD)
         t.add_column("Fileset", style="yellow")
         t.add_column("Path", style="dim")
+        if show_fs:
+            t.add_column("FS", justify="center")
         t.add_column("Limit", justify="right")
         t.add_column("Usage", justify="right")
         for qe in unmapped:
-            t.add_row(
-                qe.fileset_name,
-                qe.path or "—",
-                fmt.size(qe.limit_bytes),
-                fmt.size(qe.usage_bytes),
-            )
+            row = [qe.fileset_name, qe.path or "—"]
+            if show_fs:
+                row.append(_fs_marker(qe.path, path_exists))
+            row += [fmt.size(qe.limit_bytes), fmt.size(qe.usage_bytes)]
+            t.add_row(*row)
         ctx.console.print(t)
         if ctx.verbose:
+            if show_fs:
+                extra = (
+                    " FS ✓ indicates a real mapping gap (admin should "
+                    "add a ProjectDirectory); FS ✗ indicates the quota "
+                    "snapshot is likely stale."
+                )
+            else:
+                extra = ""
             ctx.console.print(
                 "[dim italic]Unmapped: storage has a fileset quota, but "
                 f"SAM has no {resource_name} allocation that matches — "
                 "neither by projcode nor by active ProjectDirectory "
                 "path. Typically means a fileset was provisioned "
                 "outside SAM, or the project mapping drifted. "
-                "Reported only; no action taken.[/dim italic]\n"
+                f"Reported only; no action taken.{extra}[/dim italic]\n"
             )
 
     if ctx.verbose and matched:
