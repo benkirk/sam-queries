@@ -1,0 +1,31 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, fk_search_field with context %}
+{#
+  htmx: New Project Directory form (loaded into #addProjectDirectoryFormContainer).
+
+  Shares EditLinkedDirectoryForm validation: directory_name + project_id.
+
+  Context:
+    errors : optional list[str]
+    form   : optional ImmutableMultiDict (re-render after validation error)
+#}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_admin_project_directory_create'),
+    '#addProjectDirectoryFormContainer',
+    'Create',
+    submit_icon='plus',
+    errors=errors
+) %}
+        {{ text_field('directory_name', 'Directory Name',
+                      required=True,
+                      maxlength=255,
+                      placeholder='/glade/...',
+                      id='addProjectDirectoryName') }}
+
+        {{ fk_search_field('project_id', 'Linked Project',
+                           search_url=url_for('admin_dashboard.htmx_project_search_for_parent'),
+                           required=True,
+                           placeholder='Search by project code or title…',
+                           id_prefix='addProjectDirectoryProject') }}
+{% endcall %}

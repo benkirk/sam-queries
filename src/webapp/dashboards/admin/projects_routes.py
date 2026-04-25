@@ -2115,6 +2115,74 @@ def htmx_admin_project_directories():
     return _render_project_directories_card(show_inactive=show_inactive)
 
 
+@bp.route('/htmx/admin/project-directories/new-form')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directory_new_form():
+    """Return the create-form fragment loaded into the add modal."""
+    return render_template(
+        'dashboards/admin/fragments/project_directory_new_form_htmx.html',
+    )
+
+
+@bp.route('/htmx/admin/project-directories/create', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directory_create():
+    """Create a new project_directory row from the admin add modal."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import EditLinkedDirectoryForm
+    from sam.projects.projects import Project, ProjectDirectory
+
+    try:
+        form_data = EditLinkedDirectoryForm().load(request.form)
+    except ValidationError as e:
+        return render_template(
+            'dashboards/admin/fragments/project_directory_new_form_htmx.html',
+            errors=EditLinkedDirectoryForm.flatten_errors(e.messages),
+            form=request.form,
+        )
+
+    target_project = db.session.get(Project, form_data['project_id'])
+    if not target_project:
+        return render_template(
+            'dashboards/admin/fragments/project_directory_new_form_htmx.html',
+            errors=['Selected project does not exist.'],
+            form=request.form,
+        )
+
+    # Prevent duplicate active entries on the target project
+    duplicates = [
+        pd for pd in target_project.directories
+        if pd.directory_name == form_data['directory_name'] and pd.is_active
+    ]
+    if duplicates:
+        return render_template(
+            'dashboards/admin/fragments/project_directory_new_form_htmx.html',
+            errors=[f'Directory "{form_data["directory_name"]}" is already linked to {target_project.projcode}.'],
+            form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            ProjectDirectory.create(
+                db.session,
+                project_id=form_data['project_id'],
+                directory_name=form_data['directory_name'],
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/project_directory_new_form_htmx.html',
+            errors=[f'Error creating directory: {e}'],
+            form=request.form,
+        )
+
+    return htmx_success_message(
+        _PROJECT_DIRECTORIES_RELOAD_TRIGGERS,
+        'Project directory created.',
+    )
+
+
 @bp.route('/htmx/admin/project-directories/<int:pd_id>/edit-form')
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)

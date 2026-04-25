@@ -304,12 +304,24 @@
             </div>
 
             {# ── Wallclock Exemptions ────────────────────────────────────── #}
-            <div class="border-top mt-2 pt-2 px-3 pb-1 d-flex align-items-center">
-                <i class="fas fa-clock me-2 text-muted"></i>
-                <span class="fw-semibold">Wallclock Exemptions</span>
-                <span class="text-muted small ms-2">
-                    per-user overrides of queue wallclock limits
-                </span>
+            <div class="border-top mt-2 pt-2 px-3 pb-1 d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-clock me-2 text-muted"></i>
+                    <span class="fw-semibold">Wallclock Exemptions</span>
+                    <span class="text-muted small ms-2">
+                        per-user overrides of queue wallclock limits
+                    </span>
+                </div>
+                {% if has_permission(Permission.EDIT_USERS) %}
+                <button type="button" class="btn btn-sm btn-success"
+                        data-bs-toggle="modal"
+                        data-bs-target="#addExemptionModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_admin_exemption_form') }}"
+                        hx-target="#addExemptionFormContainer"
+                        hx-trigger="click">
+                    <i class="fas fa-plus"></i> New
+                </button>
+                {% endif %}
             </div>
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
