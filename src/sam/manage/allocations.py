@@ -227,6 +227,8 @@ def update_allocation(
     session: Session,
     allocation_id: int,
     user_id: int,
+    *,
+    comment: Optional[str] = None,
     **updates
 ) -> Allocation:
     """
@@ -242,6 +244,11 @@ def update_allocation(
         session: SQLAlchemy session
         allocation_id: ID of allocation to update
         user_id: User making the change (for audit trail)
+        comment: Optional context for the audit trail (appended after
+                 the auto-generated "Amount: X → Y" diff). Use this for
+                 the *reason* for the edit; do NOT smuggle it into
+                 ``description=`` — that field describes what the
+                 allocation is for, not why it was last edited.
         **updates: Fields to update (amount, start_date, end_date, description)
 
     Returns:
@@ -314,6 +321,7 @@ def update_allocation(
         allocation,
         user_id,
         AllocationTransactionType.EDIT,
+        comment=comment,
         old_values=old_values,
     )
 
@@ -330,6 +338,7 @@ def update_allocation(
             log_allocation_transaction(
                 session, child, user_id,
                 AllocationTransactionType.EDIT,
+                comment=comment,
                 old_values=child_old,
                 propagated=True,
             )
