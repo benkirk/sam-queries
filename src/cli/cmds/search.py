@@ -36,8 +36,12 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @click.option('--inactive-projects', is_flag=True, help='Consider inactive projects')
 @click.option('--inactive-users', is_flag=True, help='Consider inactive users')
+@click.option('--format', 'output_format',
+              type=click.Choice(['rich', 'json']), default='rich',
+              help='Output format (default: rich)')
 @pass_context
-def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bool):
+def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bool,
+        output_format: str):
     """Search and query the SAM database"""
     try:
         SAMConfig.validate()
@@ -48,6 +52,7 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
     ctx.verbose = verbose
     ctx.inactive_projects = inactive_projects
     ctx.inactive_users = inactive_users
+    ctx.output_format = output_format
 
     # Initialize database connection
     try:

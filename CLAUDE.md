@@ -1012,10 +1012,16 @@ sam-search user benkirk --list-projects           # User lookup
 sam-search project SCSG0001 --list-users          # Project lookup
 sam-search allocations --resource Derecho         # Allocation queries
 
-# CLI - Admin (NEW)
+# CLI - Admin
 sam-admin user benkirk --validate                 # Validate user data
 sam-admin project SCSG0001 --validate             # Validate project
 sam-admin project SCSG0001 --reconcile            # Reconcile allocations
+
+# CLI - JSON output (machine-readable)
+sam-search --format json user benkirk | jq        # User envelope (kind=user)
+sam-search --format json project SCSG0001 | jq    # Project envelope w/ allocations, tree, users
+sam-search --format json allocations --total-resources --total-facilities --total-types
+sam-search --format json accounting --last 7d
 ```
 
 ---

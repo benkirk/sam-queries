@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 from cli.core.base import BaseCommand
+from cli.core.output import output_json
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
 from cli.accounting.display import (
     display_dry_run_table,
@@ -825,8 +826,28 @@ class AccountingSearchCommand(BaseCommand):
         )
 
         if not rows:
+            if self.ctx.output_format == 'json':
+                output_json({
+                    'kind': 'comp_charge_summary',
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'count': 0,
+                    'rows': [],
+                })
+                return 1
             self.console.print("[yellow]No charge records found for the given filters.[/yellow]")
             return 1
+
+        if self.ctx.output_format == 'json':
+            output_json({
+                'kind': 'comp_charge_summary',
+                'start_date': start_date,
+                'end_date': end_date,
+                'per_day': self.ctx.verbose,
+                'count': len(rows),
+                'rows': rows,
+            })
+            return 0
 
         display_charge_summary_table(self.ctx, rows, start_date, end_date)
         return 0

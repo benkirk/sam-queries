@@ -24,8 +24,11 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
 @click.group(context_settings=CONTEXT_SETTINGS)
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@click.option('--format', 'output_format',
+              type=click.Choice(['rich', 'json']), default='rich',
+              help='Output format (default: rich)')
 @pass_context
-def cli(ctx: Context, verbose: bool):
+def cli(ctx: Context, verbose: bool, output_format: str):
     """Administrative commands for SAM database"""
     try:
         SAMConfig.validate()
@@ -34,6 +37,7 @@ def cli(ctx: Context, verbose: bool):
         sys.exit(2)
 
     ctx.verbose = verbose
+    ctx.output_format = output_format
 
     # Initialize database connection
     try:

@@ -1,13 +1,21 @@
 """User command classes."""
 
 from cli.core.base import BaseUserCommand
+from cli.core.output import output_json
 from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
+from cli.user.builders import (
+    build_user_core,
+    build_user_detail,
+    build_user_projects,
+    build_user_search_results,
+    build_abandoned_users,
+    build_users_with_projects,
+)
 from cli.user.display import (
     display_user,
-    display_user_projects,
     display_user_search_results,
     display_abandoned_users,
-    display_users_with_projects
+    display_users_with_projects,
 )
 from sam import User
 from rich.progress import track
@@ -20,10 +28,28 @@ class UserSearchCommand(BaseUserCommand):
         try:
             user = self.get_user(username)
             if not user:
-                self.console.print(f"❌ User not found: {username}", style="bold red")
+                if self.ctx.output_format == 'json':
+                    output_json({'kind': 'user', 'error': 'not_found',
+                                 'username': username})
+                else:
+                    self.console.print(f"❌ User not found: {username}", style="bold red")
                 return EXIT_NOT_FOUND
 
-            display_user(self.ctx, user, list_projects)
+            json_mode = self.ctx.output_format == 'json'
+
+            data = build_user_core(user)
+
+            if json_mode or self.ctx.verbose:
+                data['detail'] = build_user_detail(user)
+            if json_mode or list_projects:
+                data['projects'] = build_user_projects(
+                    user, inactive=self.ctx.inactive_projects
+                )
+
+            if json_mode:
+                output_json(data)
+            else:
+                display_user(self.ctx, data, list_projects)
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)
@@ -43,10 +69,18 @@ class UserPatternSearchCommand(BaseUserCommand):
             )
 
             if not users:
+                if self.ctx.output_format == 'json':
+                    output_json({'kind': 'user_search_results', 'pattern': pattern,
+                                 'count': 0, 'users': []})
+                    return EXIT_NOT_FOUND
                 self.console.print(f"❌ No users found matching: {pattern}", style="red")
                 return EXIT_NOT_FOUND
 
-            display_user_search_results(self.ctx, users, pattern)
+            data = build_user_search_results(users, pattern)
+            if self.ctx.output_format == 'json':
+                output_json(data)
+            else:
+                display_user_search_results(self.ctx, data)
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)
@@ -57,14 +91,23 @@ class UserAbandonedCommand(BaseUserCommand):
 
     def execute(self) -> int:
         try:
+            json_mode = self.ctx.output_format == 'json'
             active_users = User.get_active_users(self.session)
             abandoned_users = set()
 
-            for user in track(active_users, description=" --> determining abandoned users..."):
+            for user in track(
+                active_users,
+                description=" --> determining abandoned users...",
+                disable=json_mode,
+            ):
                 if len(user.active_projects()) == 0:
                     abandoned_users.add(user)
 
-            display_abandoned_users(self.ctx, abandoned_users, len(active_users))
+            data = build_abandoned_users(abandoned_users, len(active_users))
+            if json_mode:
+                output_json(data)
+            else:
+                display_abandoned_users(self.ctx, data)
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)
@@ -75,15 +118,26 @@ class UserWithProjectsCommand(BaseUserCommand):
 
     def execute(self, list_projects: bool = False) -> int:
         try:
+            json_mode = self.ctx.output_format == 'json'
             active_users = User.get_active_users(self.session)
             users_with_projects = set()
 
-            for user in track(active_users, description="Determining users with at least one active project..."):
+            for user in track(
+                active_users,
+                description="Determining users with at least one active project...",
+                disable=json_mode,
+            ):
                 if len(user.active_projects()) > 0:
                     users_with_projects.add(user)
 
-            if users_with_projects:
-                display_users_with_projects(self.ctx, users_with_projects, list_projects)
+            # JSON always emits projects sub-builder; Rich gates on flag.
+            include_projects = json_mode or list_projects
+            data = build_users_with_projects(users_with_projects, include_projects)
+
+            if json_mode:
+                output_json(data)
+            elif users_with_projects:
+                display_users_with_projects(self.ctx, data, list_projects)
 
             return EXIT_SUCCESS
         except Exception as e:
