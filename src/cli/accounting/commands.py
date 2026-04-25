@@ -389,6 +389,14 @@ class AccountingAdminCommand(BaseCommand):
             )
 
         # ---- 2. Load active allocations to reconcile ---------------------------
+        # Inheriting (child) allocations — those with a non-NULL
+        # parent_allocation_id — are shadows of their master. Direct
+        # mutation is forbidden by update_allocation; any reconcile
+        # cascade flows from the master automatically. So skip them at
+        # the SQL level, and surface the count for admin awareness.
+        # On Campaign_Store this currently affects exactly one pair
+        # (NCGD0009 ↔ P03010039 sharing /gpfs/csfs1/cgd/amp); the
+        # pattern is more common on HPC resources.
         alloc_rows = (
             self.session.query(Project, Allocation)
             .join(Account, Account.project_id == Project.project_id)
@@ -396,8 +404,24 @@ class AccountingAdminCommand(BaseCommand):
             .filter(Account.resource_id == resource.resource_id)
             .filter(Account.deleted == False)  # noqa: E712
             .filter(Allocation.is_active)
+            .filter(Allocation.parent_allocation_id.is_(None))
             .all()
         )
+        n_inheriting_skipped = (
+            self.session.query(Allocation)
+            .join(Account, Account.account_id == Allocation.account_id)
+            .filter(Account.resource_id == resource.resource_id)
+            .filter(Account.deleted == False)  # noqa: E712
+            .filter(Allocation.is_active)
+            .filter(Allocation.parent_allocation_id.isnot(None))
+            .count()
+        )
+        if n_inheriting_skipped:
+            self.console.print(
+                f"[dim]Skipping {n_inheriting_skipped} inheriting "
+                f"(shared) allocation{'s' if n_inheriting_skipped != 1 else ''} "
+                f"— reconciled via the master allocation.[/dim]"
+            )
         by_projcode = {proj.projcode: (proj, alloc) for proj, alloc in alloc_rows}
 
         # ---- 3. Load ALL projects for tree traversal ---------------------------

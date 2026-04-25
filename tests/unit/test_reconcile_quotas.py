@@ -372,6 +372,61 @@ class TestReconcileClassification:
         assert alloc_orph.is_active
         assert alloc_orph.end_date.date() != date.today()
 
+    def test_inheriting_child_allocation_is_skipped(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """An allocation with parent_allocation_id IS NOT NULL is a
+        shadow of its master. Direct mutation is forbidden, and the
+        master's reconcile cascades to children automatically. The
+        classifier must skip such allocations entirely so they're
+        never flagged as orphan or mismatched on their own.
+
+        Real-world example: NCGD0009 owns /gpfs/csfs1/cgd/amp and the
+        master Campaign_Store allocation; P03010039 has an inheriting
+        child mirroring it but no fileset of its own.
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        master_proj = make_project(session)
+        master_acct = make_account(session, project=master_proj, resource=resource)
+        # Master matches its own fileset → no action expected.
+        master_alloc = make_allocation(session, account=master_acct, amount=100.0)
+
+        # Inheriting child on a sibling project. No fileset of its own.
+        child_proj = make_project(session)
+        child_acct = make_account(session, project=child_proj, resource=resource)
+        child_alloc = make_allocation(
+            session, account=child_acct, amount=100.0, parent=master_alloc,
+        )
+
+        quota_path = _write_quota_file(tmp_path, {
+            master_proj.projcode.lower(): {
+                'limit': str(_kib_for(100.0)),
+                'usage': '0', 'files': '0',
+            },
+        })
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        # Run with --deactivate-orphaned: pre-fix, the inheriting child
+        # would be flagged as orphan and update_allocation would raise
+        # InheritingAllocationException (caught + counted as an error).
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path,
+            update_accounting_system=False,
+            deactivate_orphaned=True,
+        )
+        assert rc == 0
+        session.refresh(master_alloc)
+        session.refresh(child_alloc)
+        # Master: untouched (matches truth, never appears as orphan)
+        assert master_alloc.is_active
+        # Child: also untouched — skipped before classification, so no
+        # spurious deactivation, no error.
+        assert child_alloc.is_active
+        assert child_alloc.parent_allocation_id == master_alloc.allocation_id
+
     def test_deactivate_only_handles_orphan_but_not_mismatch(
         self, session, tmp_path, monkeypatch,
     ):
