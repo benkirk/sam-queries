@@ -165,8 +165,13 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
 @click.option('--today', 'today_flag', is_flag=True, help='Use today as the date')
 @click.option('--last', type=str, default=None, metavar='N[d]',
               help='Last N days including today (e.g. --last 3d)')
-@click.option('--dry-run', is_flag=True, help='Preview without writing')
-@click.option('--force', is_flag=True, help='Skip confirmation prompt (applies to --reconcile-quotas)')
+@click.option('--dry-run', is_flag=True, help='Preview without writing (charge-posting modes only; --reconcile-quotas is report-only by default)')
+@click.option('--update-accounting-system', 'update_accounting_system', is_flag=True,
+              help='Apply mismatched amount updates (requires --reconcile-quotas; default is report-only)')
+@click.option('--deactivate-orphaned', 'deactivate_orphaned', is_flag=True,
+              help='Deactivate orphaned allocations (independent of --update-accounting-system)')
+@click.option('--force', is_flag=True,
+              help='Override the live-path safety gate when deactivating orphans whose ProjectDirectory paths still exist on disk (requires --deactivate-orphaned)')
 @click.option('--verify-paths', 'verify_paths', is_flag=True,
               help='Check fileset/ProjectDirectory paths on disk (requires --reconcile-quotas)')
 @click.option('--verify-host', 'verify_host', type=str, default=None, metavar='HOST',
@@ -177,11 +182,12 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
               help='Rows per database transaction')
 @click.option('--include-deleted-accounts', is_flag=True,
               help='Allow posting to accounts marked deleted (for backfill)')
-@click.option('--verbose', '-v', is_flag=True, help='Show per-row warnings and details')
+@click.option('--verbose', '-v', is_flag=True, help='Show per-row warnings and details (charge-posting modes only)')
 @pass_context
 def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
                machine, start, end, date_str, today_flag, last,
-               dry_run, force, verify_paths, verify_host,
+               dry_run, update_accounting_system, deactivate_orphaned,
+               force, verify_paths, verify_host,
                skip_errors, create_queues, chunk_size,
                include_deleted_accounts, verbose):
     """Post charge summaries into SAM, or reconcile allocations against quota truth.
@@ -198,8 +204,12 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
 
       2. Reconcile storage quotas  (--reconcile-quotas PATH)
          Required: --resource <name>
-         Compares SAM allocations with quota truth, updates mismatches,
-         and deactivates orphans.  Supports --dry-run and --force.
+         Report-only by default — full tables, no writes.  Each write
+         flag is independent; combine them as needed:
+           --update-accounting-system   Apply mismatched amount updates
+           --deactivate-orphaned        Deactivate orphaned allocations
+           --force                      Override the live-path safety gate
+                                        (requires --deactivate-orphaned)
     """
     if verbose:
         ctx.verbose = True
@@ -228,6 +238,27 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         )
         sys.exit(1)
 
+    # Reconcile-mode write flags. The two write flags are independent so
+    # admins can act on either bucket alone (e.g. deactivate orphans
+    # without touching mismatch updates, or vice versa). --force is
+    # specifically the live-path safety override, so it only makes
+    # sense alongside --deactivate-orphaned. Charge-posting modes
+    # (--comp/--disk/--archive) ignore these flags.
+    if (update_accounting_system or deactivate_orphaned) and not reconcile_mode:
+        ctx.console.print(
+            "Error: --update-accounting-system / --deactivate-orphaned "
+            "require --reconcile-quotas",
+            style="bold red",
+        )
+        sys.exit(1)
+    if force and reconcile_mode and not deactivate_orphaned:
+        ctx.console.print(
+            "Error: --force requires --deactivate-orphaned (overrides the "
+            "live-path safety gate when deactivating orphans)",
+            style="bold red",
+        )
+        sys.exit(1)
+
     if reconcile_mode:
         if not resource:
             ctx.console.print(
@@ -239,7 +270,8 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         exit_code = command.execute(
             reconcile_quotas=reconcile_quotas,
             resource=resource,
-            dry_run=dry_run,
+            update_accounting_system=update_accounting_system,
+            deactivate_orphaned=deactivate_orphaned,
             force=force,
             verify_paths=verify_paths,
             verify_host=verify_host,

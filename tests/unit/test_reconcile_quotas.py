@@ -1,7 +1,8 @@
 """Tests for `sam-admin accounting --reconcile-quotas`.
 
 Covers the GPFS quota reader, the dispatch factory, the mapping/classification
-logic in `AccountingAdminCommand._run_reconcile_quotas`, and dry-run safety.
+logic in `AccountingAdminCommand._run_reconcile_quotas`, and the report-only
+default (no flags = no writes).
 """
 import json
 import subprocess
@@ -186,7 +187,7 @@ class TestReconcileMapping:
         rc = cmd._run_reconcile_quotas(
             resource_name='Campaign_Store',
             quota_path=quota_path,
-            dry_run=True, force=False,
+            update_accounting_system=False, deactivate_orphaned=False,
         )
         assert rc == 0
 
@@ -219,7 +220,7 @@ class TestReconcileMapping:
         rc = cmd._run_reconcile_quotas(
             resource_name='Campaign_Store',
             quota_path=quota_path,
-            dry_run=True, force=False,
+            update_accounting_system=False, deactivate_orphaned=False,
         )
         assert rc == 0
         # No side effects in dry-run — allocation should be unchanged
@@ -250,7 +251,7 @@ class TestReconcileClassification:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(alloc)
@@ -276,7 +277,7 @@ class TestReconcileClassification:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(alloc)
@@ -296,7 +297,7 @@ class TestReconcileClassification:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(alloc)
@@ -307,7 +308,9 @@ class TestReconcileClassification:
         tomorrow = datetime.now() + timedelta(days=1)
         assert not alloc.is_active_at(tomorrow)
 
-    def test_dry_run_makes_no_changes(self, session, tmp_path):
+    def test_default_is_report_only_no_writes(self, session, tmp_path):
+        """Without --update-accounting-system, even a clear mismatch
+        should leave the database untouched."""
         resource = _disk_resource(session)
         project = make_project(session)
         account = make_account(session, project=project, resource=resource)
@@ -322,11 +325,91 @@ class TestReconcileClassification:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name='Campaign_Store',
-            quota_path=quota_path, dry_run=True, force=False,
+            quota_path=quota_path,
+            # No flags — report-only is the default.
         )
         assert rc == 0
         session.refresh(alloc)
-        assert alloc.amount == 5.0   # dry-run: no write
+        assert alloc.amount == 5.0   # report-only: no write
+
+    def test_update_only_applies_mismatch_but_not_orphan(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """--update-accounting-system without --deactivate-orphaned
+        should update mismatched amounts but leave orphan allocations
+        active (orphans are the more destructive operation).
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        # A mismatched project (will get updated)
+        proj_mm = make_project(session)
+        acct_mm = make_account(session, project=proj_mm, resource=resource)
+        alloc_mm = make_allocation(session, account=acct_mm, amount=1.0)
+        # An orphaned project (no fileset — should NOT be deactivated)
+        proj_orph = make_project(session)
+        acct_orph = make_account(session, project=proj_orph, resource=resource)
+        alloc_orph = make_allocation(session, account=acct_orph, amount=3.0)
+
+        quota_path = _write_quota_file(tmp_path, {
+            proj_mm.projcode.lower(): {'limit': str(_kib_for(10.0)),
+                                       'usage': '0', 'files': '0'},
+        })
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path,
+            update_accounting_system=True,
+            deactivate_orphaned=False,
+        )
+        assert rc == 0
+        session.refresh(alloc_mm)
+        session.refresh(alloc_orph)
+        # Mismatch fixed
+        assert alloc_mm.amount == 10.0
+        # Orphan untouched: still active, end_date NOT pulled forward to today.
+        assert alloc_orph.is_active
+        assert alloc_orph.end_date.date() != date.today()
+
+    def test_deactivate_only_handles_orphan_but_not_mismatch(
+        self, session, tmp_path, monkeypatch,
+    ):
+        """--deactivate-orphaned without --update-accounting-system
+        should deactivate orphans but leave mismatched amounts untouched.
+        Symmetric counterpart to test_update_only_*; the two flags are
+        independent.
+        """
+        resource = _isolated_disk_resource(session, monkeypatch)
+        proj_mm = make_project(session)
+        acct_mm = make_account(session, project=proj_mm, resource=resource)
+        alloc_mm = make_allocation(session, account=acct_mm, amount=1.0)
+        proj_orph = make_project(session)
+        acct_orph = make_account(session, project=proj_orph, resource=resource)
+        alloc_orph = make_allocation(session, account=acct_orph, amount=3.0)
+
+        quota_path = _write_quota_file(tmp_path, {
+            proj_mm.projcode.lower(): {'limit': str(_kib_for(10.0)),
+                                       'usage': '0', 'files': '0'},
+        })
+        admin = make_user(session)
+        monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
+
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name,
+            quota_path=quota_path,
+            update_accounting_system=False,
+            deactivate_orphaned=True,
+        )
+        assert rc == 0
+        session.refresh(alloc_mm)
+        session.refresh(alloc_orph)
+        # Mismatch left alone
+        assert alloc_mm.amount == 1.0
+        # Orphan deactivated
+        assert alloc_orph.end_date is not None
+        assert alloc_orph.end_date.date() == date.today()
 
 
 class TestReconcileInputValidation:
@@ -336,7 +419,7 @@ class TestReconcileInputValidation:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=None, quota_path=quota_path,
-            dry_run=True, force=False,
+            update_accounting_system=False, deactivate_orphaned=False,
         )
         assert rc == 2
 
@@ -345,7 +428,7 @@ class TestReconcileInputValidation:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name='NoSuchResource_xyz',
-            quota_path=quota_path, dry_run=True, force=False,
+            quota_path=quota_path, update_accounting_system=False, deactivate_orphaned=False,
         )
         assert rc == 2
 
@@ -356,7 +439,7 @@ class TestReconcileInputValidation:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name='Destor', quota_path=quota_path,
-            dry_run=True, force=False,
+            update_accounting_system=False, deactivate_orphaned=False,
         )
         assert rc == 2
 
@@ -380,7 +463,7 @@ def _reconcile_dry_run(session, resource, quota_path, *, verbose=False):
     rc = cmd._run_reconcile_quotas(
         resource_name=resource.resource_name,
         quota_path=quota_path,
-        dry_run=True, force=False,
+        update_accounting_system=False, deactivate_orphaned=False,
     )
     return rc, ctx
 
@@ -431,7 +514,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(parent_alloc)
@@ -484,7 +567,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(parent_alloc)
@@ -521,7 +604,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(a_alloc)
@@ -549,7 +632,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(alloc)
@@ -579,7 +662,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(parent_alloc)
@@ -605,7 +688,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(parent_alloc)
@@ -641,7 +724,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(parent_alloc)
@@ -674,7 +757,7 @@ class TestTreeRollup:
         import cli.accounting.commands as cmd_mod
 
         def _spy(ctx, resource_name, matched, mismatched, orphaned,
-                 unmapped, *, dry_run, path_exists=None):
+                 unmapped, *, path_exists=None):
             captured['orphaned'] = orphaned
 
         monkeypatch.setattr(cmd_mod, 'display_quota_reconcile_plan', _spy)
@@ -685,7 +768,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=True, force=False,
+            quota_path=quota_path, update_accounting_system=False, deactivate_orphaned=False,
         )
         assert rc == 0
         # One orphan — tuple shape is (projcode, sam_tib, directories)
@@ -725,7 +808,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(parent_alloc)
@@ -778,7 +861,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(alloc)
@@ -819,7 +902,7 @@ class TestTreeRollup:
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
-            quota_path=quota_path, dry_run=False, force=True,
+            quota_path=quota_path, update_accounting_system=True, deactivate_orphaned=True,
         )
         assert rc == 0
         session.refresh(alloc)
@@ -1102,15 +1185,14 @@ class TestVerifyPathsIntegration:
         # Force local verifier with a mount_root the project dir is under
         monkeypatch.setattr(qr_mod.GpfsQuotaReader, 'mount_root', str(tmp_path))
         monkeypatch.setattr('os.path.ismount', lambda p: p == str(tmp_path))
-        # Auto-confirm any interactive prompt — the live-path gate, not the
-        # prompt, is what should suppress deactivation here.
-        monkeypatch.setattr('rich.prompt.Confirm.ask', lambda *a, **kw: True)
 
         cmd = AccountingAdminCommand(_ctx_with_session(session))
+        # Caller opted into orphan deactivation but did NOT pass --force,
+        # so the live-path safety gate should suppress this orphan.
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
             quota_path=quota_path,
-            dry_run=False, force=False,
+            update_accounting_system=True, deactivate_orphaned=True, force=False,
             verify_paths=True, verify_host=None,
         )
         assert rc == 0
@@ -1143,7 +1225,7 @@ class TestVerifyPathsIntegration:
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
             quota_path=quota_path,
-            dry_run=False, force=True,
+            update_accounting_system=True, deactivate_orphaned=True, force=True,
             verify_paths=True, verify_host=None,
         )
         assert rc == 0
@@ -1169,13 +1251,12 @@ class TestVerifyPathsIntegration:
         monkeypatch.setenv('SAM_ADMIN_USER', admin.username)
         monkeypatch.setattr(qr_mod.GpfsQuotaReader, 'mount_root', str(tmp_path))
         monkeypatch.setattr('os.path.ismount', lambda p: p == str(tmp_path))
-        monkeypatch.setattr('rich.prompt.Confirm.ask', lambda *a, **kw: True)
 
         cmd = AccountingAdminCommand(_ctx_with_session(session))
         rc = cmd._run_reconcile_quotas(
             resource_name=resource.resource_name,
             quota_path=quota_path,
-            dry_run=False, force=False,
+            update_accounting_system=True, deactivate_orphaned=True, force=False,
             verify_paths=True, verify_host=None,
         )
         assert rc == 0

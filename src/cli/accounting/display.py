@@ -278,10 +278,15 @@ def display_quota_reconcile_plan(
     orphaned: list,
     unmapped: list,
     *,
-    dry_run: bool,
     path_exists: dict | None = None,
 ) -> None:
     """Render the four reconcile buckets as Rich tables.
+
+    Always shows the full plan — matched, mismatched, orphaned, and
+    unmapped — with multi-contributor subtree panels and narrative
+    captions inline. The reconcile tool is informative-by-default;
+    writes are gated by flags evaluated by the caller, not by this
+    display function.
 
     Bucket item shapes:
       matched, mismatched: (projcode, sam_tib, expected_bytes, contributors)
@@ -294,12 +299,10 @@ def display_quota_reconcile_plan(
     a mapping of absolute path → presence bool. When None, the FS column
     is omitted entirely from the Orphaned / Unmapped tables.
     """
-    suffix = " — dry run" if dry_run else ""
-    show_breakdown = bool(ctx.verbose)
     show_fs = path_exists is not None
 
     if mismatched:
-        t = Table(title=f"Mismatched ({resource_name}){suffix}",
+        t = Table(title=f"Mismatched ({resource_name})",
                   box=box.SIMPLE_HEAD)
         t.add_column("Project", style="green")
         t.add_column("SAM", justify="right")
@@ -319,14 +322,13 @@ def display_quota_reconcile_plan(
                 f"set amount → {fmt.size(expected_bytes)}",
             )
         ctx.console.print(t)
-        if show_breakdown:
-            for projcode, sam_tib, expected_bytes, contributors in mismatched:
-                if len(contributors) > 1:
-                    _render_subtree_panel(ctx, projcode, sam_tib,
-                                          expected_bytes, contributors)
+        for projcode, sam_tib, expected_bytes, contributors in mismatched:
+            if len(contributors) > 1:
+                _render_subtree_panel(ctx, projcode, sam_tib,
+                                      expected_bytes, contributors)
 
     if orphaned:
-        t = Table(title=f"Orphaned ({resource_name}){suffix}",
+        t = Table(title=f"Orphaned ({resource_name})",
                   box=box.SIMPLE_HEAD)
         t.add_column("Project", style="green")
         t.add_column("SAM", justify="right")
@@ -362,15 +364,15 @@ def display_quota_reconcile_plan(
             row.append(action_cell)
             t.add_row(*row)
         ctx.console.print(t)
-        if ctx.verbose:
-            ctx.console.print(
-                "[dim italic]Orphaned: project has an active "
-                f"{resource_name} allocation in SAM, but no matching "
-                "fileset quota exists anywhere in its project subtree. "
-                "Typically means the fileset was retired from the "
-                "storage system; the allocation is deactivated by "
-                "setting end_date = today.[/dim italic]\n"
-            )
+        ctx.console.print(
+            "[dim italic]Orphaned: project has an active "
+            f"{resource_name} allocation in SAM, but no matching "
+            "fileset quota exists anywhere in its project subtree. "
+            "This could mean fileset has not yet been created or was
+            retired from the storage system; deactivation requires "
+            "--deactivate-orphaned."
+            "[/dim italic]\n"
+        )
 
     if unmapped:
         t = Table(title=f"Unmapped quota entries ({resource_name})",
@@ -388,25 +390,24 @@ def display_quota_reconcile_plan(
             row += [fmt.size(qe.limit_bytes), fmt.size(qe.usage_bytes)]
             t.add_row(*row)
         ctx.console.print(t)
-        if ctx.verbose:
-            if show_fs:
-                extra = (
-                    " FS ✓ indicates a real mapping gap (admin should "
-                    "add a ProjectDirectory); FS ✗ indicates the quota "
-                    "snapshot is likely stale."
-                )
-            else:
-                extra = ""
-            ctx.console.print(
-                "[dim italic]Unmapped: storage has a fileset quota, but "
-                f"SAM has no {resource_name} allocation that matches — "
-                "neither by projcode nor by active ProjectDirectory "
-                "path. Typically means a fileset was provisioned "
-                "outside SAM, or the project mapping drifted. "
-                f"Reported only; no action taken.{extra}[/dim italic]\n"
+        if show_fs:
+            extra = (
+                " FS ✓ indicates a real mapping gap (admin should "
+                "add a ProjectDirectory); FS ✗ indicates the quota "
+                "snapshot is likely stale."
             )
+        else:
+            extra = ""
+        ctx.console.print(
+            "[dim italic]Unmapped: storage has a fileset quota, but "
+            f"SAM has no {resource_name} allocation that matches — "
+            "neither by projcode nor by active ProjectDirectory "
+            "path. Typically means a fileset was provisioned "
+            "outside SAM, or the project mapping drifted. "
+            f"Reported only; no action taken.{extra}[/dim italic]\n"
+        )
 
-    if ctx.verbose and matched:
+    if matched:
         t = Table(title=f"Matched ({resource_name})", box=box.SIMPLE_HEAD)
         t.add_column("Project", style="green")
         t.add_column("SAM", justify="right")
@@ -441,10 +442,25 @@ def display_quota_reconcile_summary(
     updated: int = 0,
     deactivated: int = 0,
     errors: int = 0,
-    dry_run: bool,
+    report_only: bool = False,
+    will_apply_updates: bool = False,
+    will_deactivate_orphans: bool = False,
 ) -> None:
-    """One-shot summary after a reconcile run."""
-    t = Table(title="Reconcile Summary", show_header=False, box=None)
+    """One-shot summary after a reconcile run.
+
+    Three modes the title reflects:
+      * report-only       — no flags passed; nothing was written.
+      * partial action    — --update-accounting-system without --deactivate-orphaned.
+      * full action       — both flags passed.
+    """
+    if report_only:
+        title = "Reconcile Summary (report-only)"
+    elif will_deactivate_orphans:
+        title = "Reconcile Summary (applied)"
+    else:
+        title = "Reconcile Summary (updates applied; orphans untouched)"
+
+    t = Table(title=title, show_header=False, box=None)
     t.add_column("Label", style="dim")
     t.add_column("Count", justify="right", style="bold")
 
@@ -452,10 +468,11 @@ def display_quota_reconcile_summary(
     t.add_row("Mismatched", f"[yellow]{mismatched}[/yellow]")
     t.add_row("Orphaned", f"[yellow]{orphaned}[/yellow]")
     t.add_row("Unmapped quota entries", str(unmapped))
-    if not dry_run:
+    if will_apply_updates:
         t.add_row("Allocations updated", f"[cyan]{updated}[/cyan]")
+    if will_deactivate_orphans:
         t.add_row("Allocations deactivated", f"[cyan]{deactivated}[/cyan]")
-        if errors:
-            t.add_row("Errors", f"[red]{errors}[/red]")
+    if errors:
+        t.add_row("Errors", f"[red]{errors}[/red]")
 
     ctx.console.print(t)

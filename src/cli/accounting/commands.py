@@ -132,6 +132,8 @@ class AccountingAdminCommand(BaseCommand):
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         dry_run: bool = False,
+        update_accounting_system: bool = False,
+        deactivate_orphaned: bool = False,
         force: bool = False,
         verify_paths: bool = False,
         verify_host: Optional[str] = None,
@@ -144,7 +146,8 @@ class AccountingAdminCommand(BaseCommand):
             return self._run_reconcile_quotas(
                 resource_name=resource,
                 quota_path=reconcile_quotas,
-                dry_run=dry_run,
+                update_accounting_system=update_accounting_system,
+                deactivate_orphaned=deactivate_orphaned,
                 force=force,
                 verify_paths=verify_paths,
                 verify_host=verify_host,
@@ -307,18 +310,27 @@ class AccountingAdminCommand(BaseCommand):
         *,
         resource_name: Optional[str],
         quota_path: str,
-        dry_run: bool,
-        force: bool,
+        update_accounting_system: bool = False,
+        deactivate_orphaned: bool = False,
+        force: bool = False,
         verify_paths: bool = False,
         verify_host: Optional[str] = None,
     ) -> int:
         """Reconcile SAM allocations for ``resource_name`` against a
         storage-system-specific quota file.
 
-        Reports and optionally applies three kinds of corrections:
-          * mismatched amount → update to quota truth
-          * orphaned active allocation → set ``end_date = today``
-          * unmapped quota entries → report only
+        Always reports the full plan (matched / mismatched / orphaned /
+        unmapped tables, snapshot banner, narrative captions). Writes
+        are gated behind explicit opt-in flags:
+
+          * ``update_accounting_system``  → apply mismatched-amount updates
+          * ``deactivate_orphaned``       → also deactivate orphan allocations
+            (requires ``update_accounting_system``)
+          * ``force``                     → override the live-path safety
+            gate (requires ``deactivate_orphaned``)
+
+        Without any of these the tool is read-only — same code path,
+        no DB mutations.
         """
         from sam.resources.resources import Resource
         from sam.accounting.accounts import Account
@@ -519,52 +531,62 @@ class AccountingAdminCommand(BaseCommand):
                 self.console.print(f"[bold red]{exc}[/bold red]")
                 return 2
 
-        # ---- 7. Report ---------------------------------------------------------
+        # ---- 7. Report (always) -----------------------------------------------
         display_quota_reconcile_plan(
             self.ctx, resource_name,
             matched, mismatched, orphaned, unmapped,
-            dry_run=dry_run,
             path_exists=path_exists if verifier is not None else None,
         )
 
-        if dry_run:
+        # ---- 8. Apply (only when explicitly opted in) -------------------------
+        # The two write flags are independent — use either, both, or
+        # neither:
+        #   - no flags                       → report-only (here we return).
+        #   - --update-accounting-system     → apply mismatched amount updates.
+        #   - --deactivate-orphaned          → deactivate orphan allocations.
+        #   - both                           → both.
+        #   - +--force (with --deactivate-orphaned) → override live-path gate.
+        if not update_accounting_system and not deactivate_orphaned:
             display_quota_reconcile_summary(
                 self.ctx,
                 matched=len(matched), mismatched=len(mismatched),
                 orphaned=len(orphaned), unmapped=len(unmapped),
-                dry_run=True,
+                report_only=True,
+                will_apply_updates=False,
+                will_deactivate_orphans=False,
             )
+            self._print_action_hints(mismatched, orphaned, applied_updates=False,
+                                     applied_deactivations=False)
             return 0
 
-        if not mismatched and not orphaned:
+        # If the admin's flags don't intersect with anything actionable
+        # (e.g. --deactivate-orphaned but no orphans), short-circuit
+        # before opening a transaction.
+        will_update = update_accounting_system and bool(mismatched)
+        will_deactivate = deactivate_orphaned and bool(orphaned)
+        if not will_update and not will_deactivate:
             self.console.print(
-                "[green]Nothing to reconcile — all SAM allocations agree with quota truth.[/green]"
+                "[green]Nothing to reconcile — no actionable changes for the "
+                "selected flags.[/green]"
             )
             display_quota_reconcile_summary(
                 self.ctx,
-                matched=len(matched), mismatched=0, orphaned=0,
-                unmapped=len(unmapped), dry_run=False,
+                matched=len(matched), mismatched=len(mismatched),
+                orphaned=len(orphaned), unmapped=len(unmapped),
+                report_only=False,
+                will_apply_updates=update_accounting_system,
+                will_deactivate_orphans=deactivate_orphaned,
             )
+            self._print_action_hints(mismatched, orphaned,
+                                     applied_updates=update_accounting_system,
+                                     applied_deactivations=deactivate_orphaned)
             return 0
 
-        # ---- 6. Confirm --------------------------------------------------------
-        if not force:
-            from rich.prompt import Confirm
-            confirmed = Confirm.ask(
-                f"\nApply {len(mismatched)} amount update(s) and deactivate "
-                f"{len(orphaned)} orphan(s)?",
-                console=self.console,
-            )
-            if not confirmed:
-                self.console.print("[yellow]Reconcile cancelled.[/yellow]")
-                return 0
-
-        # ---- 7. Resolve the admin user for the audit trail --------------------
+        # Resolve the admin user for the audit trail
         admin_user_id = self._resolve_admin_user_id()
         if admin_user_id is None:
             return 2
 
-        # ---- 8. Apply --------------------------------------------------------
         n_updated = 0
         n_deactivated = 0
         n_errors = 0
@@ -572,66 +594,68 @@ class AccountingAdminCommand(BaseCommand):
 
         try:
             with management_transaction(self.session):
-                for projcode, sam_tib, expected_bytes, contributors in mismatched:
-                    _, alloc = by_projcode[projcode]
-                    new_tib = expected_bytes / (1024 ** 4)
-                    n_contrib = len(contributors)
-                    try:
-                        update_allocation(
-                            self.session,
-                            alloc.allocation_id,
-                            admin_user_id,
-                            amount=new_tib,
-                            description=(
-                                f"Reconciled from quota truth ({quota_path}); "
-                                f"was {sam_tib:.2f} TiB, now {new_tib:.2f} TiB "
-                                f"(subtree of {n_contrib} fileset"
-                                f"{'s' if n_contrib != 1 else ''})"
-                            ),
-                        )
-                        n_updated += 1
-                    except Exception as exc:  # noqa: BLE001
-                        n_errors += 1
-                        self.console.print(
-                            f"[red]Failed to update {projcode}: {exc}[/red]"
-                        )
+                if update_accounting_system:
+                    for projcode, sam_tib, expected_bytes, contributors in mismatched:
+                        _, alloc = by_projcode[projcode]
+                        new_tib = expected_bytes / (1024 ** 4)
+                        n_contrib = len(contributors)
+                        try:
+                            update_allocation(
+                                self.session,
+                                alloc.allocation_id,
+                                admin_user_id,
+                                amount=new_tib,
+                                description=(
+                                    f"Reconciled from quota truth ({quota_path}); "
+                                    f"was {sam_tib:.2f} TiB, now {new_tib:.2f} TiB "
+                                    f"(subtree of {n_contrib} fileset"
+                                    f"{'s' if n_contrib != 1 else ''})"
+                                ),
+                            )
+                            n_updated += 1
+                        except Exception as exc:  # noqa: BLE001
+                            n_errors += 1
+                            self.console.print(
+                                f"[red]Failed to update {projcode}: {exc}[/red]"
+                            )
 
-                for projcode, sam_tib, dirs in orphaned:
-                    _, alloc = by_projcode[projcode]
-                    # Safety gate: if path verification says every
-                    # ProjectDirectory is still live on disk, don't
-                    # silently deactivate — require --force.
-                    live = bool(dirs) and all(
-                        path_exists.get(d, False) for d in dirs
-                    ) if verifier is not None else False
-                    if live and not force:
-                        self.console.print(
-                            f"[yellow]Skipping {projcode}: all "
-                            f"ProjectDirectory paths are live on disk. "
-                            "Re-run with --force to deactivate anyway.[/yellow]"
+                if deactivate_orphaned:
+                    for projcode, sam_tib, dirs in orphaned:
+                        _, alloc = by_projcode[projcode]
+                        # Safety gate: if path verification says every
+                        # ProjectDirectory is still live on disk, don't
+                        # silently deactivate — require --force.
+                        live = bool(dirs) and all(
+                            path_exists.get(d, False) for d in dirs
+                        ) if verifier is not None else False
+                        if live and not force:
+                            self.console.print(
+                                f"[yellow]Skipping {projcode}: all "
+                                f"ProjectDirectory paths are live on disk. "
+                                "Re-run with --force to deactivate anyway.[/yellow]"
+                            )
+                            continue
+                        note = (
+                            " (warning: paths still present on disk)"
+                            if live else ""
                         )
-                        continue
-                    note = (
-                        " (warning: paths still present on disk)"
-                        if live else ""
-                    )
-                    try:
-                        update_allocation(
-                            self.session,
-                            alloc.allocation_id,
-                            admin_user_id,
-                            end_date=today,
-                            description=(
-                                f"Deactivated: no quota in subtree "
-                                f"(source {quota_path}){note}"
-                            ),
-                        )
-                        n_deactivated += 1
-                    except Exception as exc:  # noqa: BLE001
-                        n_errors += 1
-                        self.console.print(
-                            f"[red]Failed to deactivate {projcode}: {exc}[/red]"
-                        )
+                        try:
+                            update_allocation(
+                                self.session,
+                                alloc.allocation_id,
+                                admin_user_id,
+                                end_date=today,
+                                description=(
+                                    f"Deactivated: no quota in subtree "
+                                    f"(source {quota_path}){note}"
+                                ),
+                            )
+                            n_deactivated += 1
+                        except Exception as exc:  # noqa: BLE001
+                            n_errors += 1
+                            self.console.print(
+                                f"[red]Failed to deactivate {projcode}: {exc}[/red]"
+                            )
         except Exception as exc:  # noqa: BLE001
             self.console.print(
                 f"[bold red]Transaction aborted: {exc}[/bold red]"
@@ -643,9 +667,45 @@ class AccountingAdminCommand(BaseCommand):
             matched=len(matched), mismatched=len(mismatched),
             orphaned=len(orphaned), unmapped=len(unmapped),
             updated=n_updated, deactivated=n_deactivated,
-            errors=n_errors, dry_run=False,
+            errors=n_errors,
+            report_only=False,
+            will_apply_updates=update_accounting_system,
+            will_deactivate_orphans=deactivate_orphaned,
         )
+        self._print_action_hints(mismatched, orphaned,
+                                 applied_updates=update_accounting_system,
+                                 applied_deactivations=deactivate_orphaned)
         return 0 if n_errors == 0 else 2
+
+    def _print_action_hints(
+        self,
+        mismatched: list,
+        orphaned: list,
+        *,
+        applied_updates: bool,
+        applied_deactivations: bool,
+    ) -> None:
+        """Footer hints that nudge the admin to the next opt-in flag.
+
+        The reconcile tool is intentionally informative-by-default; this
+        line tells the admin exactly what flag would turn each pending
+        section into a write.
+        """
+        hints: list[str] = []
+        if mismatched and not applied_updates:
+            hints.append(
+                f"[dim]→ pass [bold]--update-accounting-system[/bold] "
+                f"to apply {len(mismatched)} amount update"
+                f"{'s' if len(mismatched) != 1 else ''}.[/dim]"
+            )
+        if orphaned and not applied_deactivations:
+            hints.append(
+                f"[dim]→ pass [bold]--deactivate-orphaned[/bold] "
+                f"to deactivate {len(orphaned)} orphan"
+                f"{'s' if len(orphaned) != 1 else ''}.[/dim]"
+            )
+        for line in hints:
+            self.console.print(line)
 
     def _display_snapshot_banner(self, reader) -> None:
         """Print a one-line banner describing the quota snapshot's age."""
