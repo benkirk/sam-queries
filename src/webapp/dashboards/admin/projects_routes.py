@@ -2039,3 +2039,169 @@ def htmx_remove_project_directory(projcode, pd_id):
 
     db.session.refresh(project)
     return _render_linked_elements(project)
+
+
+# ---------------------------------------------------------------------------
+# Admin: cross-project Project Directories view
+# ---------------------------------------------------------------------------
+
+_PROJECT_DIRECTORIES_RELOAD_TRIGGERS = {
+    'closeActiveModal': {},
+    'reloadProjectDirectoriesCard': {},
+}
+
+
+def _render_project_directories_card(*, show_inactive: bool):
+    """Render the cross-project Project Directories card fragment.
+
+    Groups rows by Resource via longest-prefix match of ``directory_name``
+    against ``DiskResourceRootDirectory.root_directory``. Unmatched rows
+    fall into a final "No Resource Identified" group.
+    """
+    from collections import defaultdict
+    from sam.projects.projects import ProjectDirectory, Project
+    from sam.resources.resources import DiskResourceRootDirectory
+
+    roots = (
+        db.session.query(DiskResourceRootDirectory)
+        .order_by(DiskResourceRootDirectory.root_directory)
+        .all()
+    )
+    # Longest prefix wins so /glade/campaign beats /glade
+    roots_by_len = sorted(roots, key=lambda r: len(r.root_directory), reverse=True)
+
+    def _resolve_resource(directory_name: str):
+        for r in roots_by_len:
+            if directory_name.startswith(r.root_directory):
+                return r.resource
+        return None
+
+    q = db.session.query(ProjectDirectory).join(Project)
+    if not show_inactive:
+        q = q.filter(ProjectDirectory.is_active)
+    rows = q.order_by(ProjectDirectory.directory_name).all()
+
+    groups = defaultdict(list)  # resource_id (or None) -> list[ProjectDirectory]
+    resources_by_id = {}        # resource_id -> Resource
+    for pd in rows:
+        res = _resolve_resource(pd.directory_name)
+        rid = res.resource_id if res is not None else None
+        groups[rid].append(pd)
+        if res is not None and rid not in resources_by_id:
+            resources_by_id[rid] = res
+
+    # Ordered list: real resources alphabetically, then Unmatched (None) last
+    ordered_groups = sorted(
+        ((rid, resources_by_id[rid], groups[rid]) for rid in resources_by_id),
+        key=lambda t: t[1].resource_name.lower(),
+    )
+    if None in groups:
+        ordered_groups.append((None, None, groups[None]))
+
+    return render_template(
+        'dashboards/admin/fragments/project_directories_card.html',
+        ordered_groups=ordered_groups,
+        total_rows=len(rows),
+        show_inactive=show_inactive,
+    )
+
+
+@bp.route('/htmx/admin/project-directories')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directories():
+    """Render the cross-project Project Directories table."""
+    show_inactive = request.args.get('show_inactive', '0') in ('1', 'true', 'on')
+    return _render_project_directories_card(show_inactive=show_inactive)
+
+
+@bp.route('/htmx/admin/project-directories/<int:pd_id>/edit-form')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directory_edit_form(pd_id):
+    """Return the edit-form fragment loaded into the edit modal."""
+    from sam.projects.projects import ProjectDirectory
+
+    pd = db.session.get(ProjectDirectory, pd_id)
+    if not pd:
+        return '<div class="alert alert-danger">Directory not found.</div>', 404
+
+    return render_template(
+        'dashboards/admin/fragments/project_directory_edit_form_htmx.html',
+        pd=pd,
+    )
+
+
+@bp.route('/htmx/admin/project-directories/<int:pd_id>/edit', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directory_edit(pd_id):
+    """Update a project_directory row's directory_name and/or linked project."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import EditLinkedDirectoryForm
+    from sam.projects.projects import Project, ProjectDirectory
+
+    pd = db.session.get(ProjectDirectory, pd_id)
+    if not pd:
+        return '<div class="alert alert-danger">Directory not found.</div>', 404
+
+    try:
+        form_data = EditLinkedDirectoryForm().load(request.form)
+    except ValidationError as e:
+        return render_template(
+            'dashboards/admin/fragments/project_directory_edit_form_htmx.html',
+            pd=pd,
+            errors=EditLinkedDirectoryForm.flatten_errors(e.messages),
+            form=request.form,
+        )
+
+    target_project = db.session.get(Project, form_data['project_id'])
+    if not target_project:
+        return render_template(
+            'dashboards/admin/fragments/project_directory_edit_form_htmx.html',
+            pd=pd,
+            errors=['Selected project does not exist.'],
+            form=request.form,
+        )
+
+    try:
+        with management_transaction(db.session):
+            pd.update(
+                directory_name=form_data['directory_name'],
+                project_id=form_data['project_id'],
+            )
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/project_directory_edit_form_htmx.html',
+            pd=pd,
+            errors=[f'Error updating directory: {e}'],
+            form=request.form,
+        )
+
+    return htmx_success_message(
+        _PROJECT_DIRECTORIES_RELOAD_TRIGGERS,
+        'Project directory updated.',
+    )
+
+
+@bp.route('/htmx/admin/project-directories/<int:pd_id>/deactivate', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directory_deactivate(pd_id):
+    """Deactivate (soft-delete) a project_directory row."""
+    from sam.projects.projects import ProjectDirectory
+
+    pd = db.session.get(ProjectDirectory, pd_id)
+    if not pd:
+        return '<div class="alert alert-danger">Directory not found.</div>', 404
+
+    try:
+        with management_transaction(db.session):
+            pd.deactivate()
+    except Exception as e:
+        return f'<div class="alert alert-danger">Error: {e}</div>', 500
+
+    return htmx_success_message(
+        {'reloadProjectDirectoriesCard': {}},
+        'Project directory deactivated.',
+    )

@@ -58,6 +58,30 @@
     <!-- Tab 1: Projects -->
     <div class="tab-pane fade show active" id="tab-projects" role="tabpanel" aria-labelledby="projects-tab">
 
+        <!-- Projects sub-tab navigation -->
+        <ul class="nav nav-pills mb-3" id="projectsSubTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="projects-manage-tab"
+                        data-bs-toggle="pill" data-bs-target="#tab-projects-manage"
+                        type="button" role="tab" aria-controls="tab-projects-manage" aria-selected="true">
+                    <i class="fas fa-folder-open me-1"></i> Manage
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="projects-directories-tab"
+                        data-bs-toggle="pill" data-bs-target="#tab-projects-directories"
+                        type="button" role="tab" aria-controls="tab-projects-directories" aria-selected="false">
+                    <i class="fas fa-folder-tree me-1"></i> Project Directories
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="projectsSubTabsContent">
+
+        <!-- Sub-tab: Manage (existing content) -->
+        <div class="tab-pane fade show active" id="tab-projects-manage"
+             role="tabpanel" aria-labelledby="projects-manage-tab">
+
         <div class="row">
             <!-- Search Projects Section -->
             <div class="col-md-6">
@@ -230,6 +254,26 @@
                 </div>
             </div>
         </div>
+
+        </div><!-- /#tab-projects-manage -->
+
+        <!-- Sub-tab: Project Directories -->
+        <div class="tab-pane fade" id="tab-projects-directories"
+             role="tabpanel" aria-labelledby="projects-directories-tab">
+            <div id="projectDirectoriesSection"
+                 hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directories') }}"
+                 hx-trigger="load once"
+                 hx-target="this"
+                 hx-swap="innerHTML">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /#tab-projects-directories -->
+
+        </div><!-- /#projectsSubTabsContent -->
 
     </div><!-- /#tab-projects -->
 
@@ -443,6 +487,8 @@
 </div>
 
 {% include 'dashboards/admin/fragments/exemption_modals.html' %}
+
+{% include 'dashboards/admin/fragments/project_directory_modals.html' %}
 
 {% include 'dashboards/admin/fragments/resources_modals.html' %}
 

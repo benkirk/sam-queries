@@ -100,6 +100,21 @@ document.body.addEventListener('reloadResourcesCard', function() {
     _reloadAdminCard('resourcesSection', 'resourcesCardActiveOnly');
 });
 
+// Reload the cross-project Project Directories table after an edit/deactivate.
+// Uses the show_inactive checkbox state if present (note: opposite of active_only).
+document.body.addEventListener('reloadProjectDirectoriesCard', function() {
+    var section = document.getElementById('projectDirectoriesSection');
+    if (!section) return;
+    var url = (section.getAttribute('hx-get') || '').split('?')[0];
+    if (!url) return;
+    var cb = document.getElementById('projectDirectoriesShowInactive');
+    var qs = (cb && cb.checked) ? '?show_inactive=1' : '';
+    setTimeout(function() {
+        htmx.ajax('GET', url + qs,
+                  {target: '#projectDirectoriesSection', swap: 'innerHTML'});
+    }, 300);
+});
+
 // Load the newly-created project card into #projectCardContainer so the admin
 // can immediately see the result without re-searching.
 document.body.addEventListener('loadNewProject', function(evt) {

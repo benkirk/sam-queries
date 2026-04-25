@@ -1344,6 +1344,21 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         session.flush()
         return obj
 
+    def update(self, *, directory_name=None, project_id=None) -> 'ProjectDirectory':
+        """Update this directory's name and/or linked project.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        if directory_name is not None:
+            cleaned = directory_name.strip()
+            if not cleaned:
+                raise ValueError("directory_name cannot be blank")
+            self.directory_name = cleaned
+        if project_id is not None:
+            self.project_id = project_id
+        self.session.flush()
+        return self
+
     def deactivate(self) -> 'ProjectDirectory':
         """End this directory association by setting end_date to now.
 

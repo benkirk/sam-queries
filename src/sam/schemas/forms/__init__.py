@@ -168,6 +168,7 @@ from .projects import (
     AddLinkedOrganizationForm,
     AddLinkedContractForm,
     AddLinkedDirectoryForm,
+    EditLinkedDirectoryForm,
 )
 from .user import (
     AddMemberForm,
@@ -224,6 +225,7 @@ __all__ = [
     'AddLinkedOrganizationForm',
     'AddLinkedContractForm',
     'AddLinkedDirectoryForm',
+    'EditLinkedDirectoryForm',
     # User
     'AddMemberForm',
     'EditAllocationForm',

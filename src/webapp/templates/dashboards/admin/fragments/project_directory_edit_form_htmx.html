@@ -1,0 +1,42 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, fk_search_field, readonly_display with context %}
+{#
+  htmx: Edit Project Directory form (loaded into #editProjectDirectoryFormContainer).
+
+  Fields:
+    - directory_name : free-text, required (1-255).
+    - project_id     : FK picker (search by projcode/title), required.
+
+  Read-only:
+    - start_date (creation timestamp; not editable here — use deactivate to end-date).
+
+  Context:
+    pd     : ProjectDirectory
+    errors : optional list[str]
+    form   : optional ImmutableMultiDict (re-render after validation error)
+#}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_admin_project_directory_edit', pd_id=pd.project_directory_id),
+    '#editProjectDirectoryFormContainer',
+    'Save Changes',
+    is_edit=True,
+    errors=errors
+) %}
+        {{ readonly_display('Start Date', pd.start_date | fmt_date, muted=True) }}
+
+        {{ text_field('directory_name', 'Directory Name',
+                      required=True,
+                      maxlength=255,
+                      default=pd.directory_name,
+                      placeholder='/glade/...',
+                      id='editProjectDirectoryName') }}
+
+        {{ fk_search_field('project_id', 'Linked Project',
+                           search_url=url_for('admin_dashboard.htmx_project_search_for_parent'),
+                           required=True,
+                           placeholder='Search by project code or title…',
+                           selected_id=pd.project.project_id,
+                           selected_label=pd.project.projcode ~ ' — ' ~ (pd.project.title | truncate(60)),
+                           id_prefix='editProjectDirectoryProject') }}
+{% endcall %}

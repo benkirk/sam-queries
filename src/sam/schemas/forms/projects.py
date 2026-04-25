@@ -93,3 +93,21 @@ class AddLinkedDirectoryForm(HtmxFormSchema):
             from marshmallow import ValidationError as _VE
             raise _VE({'directory_name': ['Directory name cannot be blank.']})
         return data
+
+
+class EditLinkedDirectoryForm(HtmxFormSchema):
+    """Edit a project_directory row: rename and/or re-link to a project.
+
+    FK existence check (project_id -> Project) stays in the route since
+    schemas don't touch the DB.
+    """
+    directory_name = f.Str(required=True, validate=v.Length(min=1, max=255))
+    project_id = f.Int(required=True)
+
+    @post_load
+    def normalize(self, data, **kwargs):
+        data['directory_name'] = data['directory_name'].strip()
+        if not data['directory_name']:
+            from marshmallow import ValidationError as _VE
+            raise _VE({'directory_name': ['Directory name cannot be blank.']})
+        return data

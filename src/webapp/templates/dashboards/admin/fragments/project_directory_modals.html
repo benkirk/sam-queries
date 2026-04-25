@@ -1,0 +1,12 @@
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
+{#
+  Admin: Project Directory edit modal scaffold.
+
+  The form fragment is loaded into #editProjectDirectoryFormContainer
+  by the edit_modal_button macro on each row.
+#}
+
+{{ modal_scaffold('editProjectDirectoryModal', 'Edit Project Directory',
+                  icon='edit',
+                  container_id='editProjectDirectoryFormContainer',
+                  variant='edit') }}
