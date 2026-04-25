@@ -1,8 +1,16 @@
-"""Display functions for project commands."""
+"""Display functions for project commands. Operate on plain dicts produced
+by `cli.project.builders`; never touch ORM objects directly."""
 
 from cli.core.context import Context
-from sam import Project, fmt
-from sam.queries.rolling_usage import get_project_rolling_usage
+from cli.project.builders import (
+    build_project_core,
+    build_project_detail,
+    build_project_allocations,
+    build_project_rolling,
+    build_project_tree,
+    build_project_users,
+)
+from sam import fmt
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
@@ -10,293 +18,248 @@ from rich import box
 from rich.tree import Tree
 
 
-def display_project(ctx: Context, project: Project, extra_title_info: str = "", list_users: bool = False):
-    """Display project information."""
+def display_project(ctx: Context, data: dict, extra_title_info: str = "",
+                    list_users: bool = False):
+    """Display project information from `build_project_core` output.
 
-    # Header Grid
+    Sub-builders may have already populated:
+      data['detail']      — from build_project_detail   (verbose)
+      data['allocations'] — from build_project_allocations
+      data['rolling']     — from build_project_rolling  (verbose)
+      data['tree']        — from build_project_tree     (verbose)
+      data['users']       — from build_project_users    (list_users)
+    """
     grid = Table(show_header=False, box=None, padding=(0, 2))
     grid.add_column("Field", style="cyan bold")
     grid.add_column("Value")
 
-    grid.add_row("Title", project.title)
-    grid.add_row("Code", project.projcode)
-    grid.add_row("GID", str(project.unix_gid))
-    grid.add_row("Status", f"[green]Active[/]" if project.active else f"[red]Inactive[/]")
+    grid.add_row("Title", data['title'])
+    grid.add_row("Code", data['projcode'])
+    grid.add_row("GID", str(data['unix_gid']))
+    grid.add_row("Status",
+                 "[green]Active[/]" if data['active'] else "[red]Inactive[/]")
 
-    if project.lead:
-        grid.add_row("Lead", f"{project.lead.display_name} ({project.lead.username}) <{project.lead.primary_email or 'N/A'}>")
-        # Show PI institution in very verbose mode
-        if ctx.very_verbose and project.lead.institutions:
-            pi_insts = []
-            for ui in project.lead.institutions:
-                if ui.is_currently_active:
-                    inst = ui.institution
-                    pi_insts.append(f"{inst.name} ({inst.acronym})")
-            if pi_insts:
-                grid.add_row("PI Institution", "\n".join(pi_insts))
-    if project.admin and project.admin != project.lead:
-        grid.add_row("Admin", f"{project.admin.display_name} ({project.admin.username}) <{project.admin.primary_email or 'N/A'}>")
+    if data['lead']:
+        lead = data['lead']
+        grid.add_row(
+            "Lead",
+            f"{lead['display_name']} ({lead['username']}) <{lead['primary_email'] or 'N/A'}>"
+        )
+        if ctx.very_verbose and 'detail' in data and data['detail']['pi_institutions']:
+            grid.add_row(
+                "PI Institution",
+                "\n".join(f"{i['name']} ({i['acronym']})"
+                          for i in data['detail']['pi_institutions'])
+            )
 
-    if project.area_of_interest:
-        grid.add_row("Area", project.area_of_interest.area_of_interest)
+    if data['admin'] and (not data['lead']
+                          or data['admin']['username'] != data['lead']['username']):
+        adm = data['admin']
+        grid.add_row(
+            "Admin",
+            f"{adm['display_name']} ({adm['username']}) <{adm['primary_email'] or 'N/A'}>"
+        )
 
-    grid.add_row("Type", project.allocation_type.allocation_type)
+    if data['area_of_interest']:
+        grid.add_row("Area", data['area_of_interest'])
 
-    if project.allocation_type.panel:
-        grid.add_row("Panel", project.allocation_type.panel.panel_name)
-        if project.allocation_type.panel.facility:
-            grid.add_row("Facility", project.allocation_type.panel.facility.facility_name)
+    if data['allocation_type']:
+        grid.add_row("Type", data['allocation_type'])
+    if data['panel']:
+        grid.add_row("Panel", data['panel'])
+    if data['facility']:
+        grid.add_row("Facility", data['facility'])
 
-    if project.organizations:
-        orgs = []
-        for po in project.organizations:
-            if True:
-                org = po.organization
-                orgs.append(f"- {org.name} ({org.acronym})")
-        if orgs:
-            grid.add_row(f"Organizations", "\n".join(orgs))
+    if data['organizations']:
+        grid.add_row(
+            "Organizations",
+            "\n".join(f"- {o['name']} ({o['acronym']})" for o in data['organizations'])
+        )
 
-    if project.contracts:
-        contracts = []
-        for pc in project.contracts:
-            contracts.append(f"- {pc.contract.contract_source.contract_source} {str(pc.contract.contract_number)} {pc.contract.title}")
-        grid.add_row("Contracts", "\n".join(contracts))
+    if data['contracts']:
+        grid.add_row(
+            "Contracts",
+            "\n".join(
+                f"- {c['source']} {c['number']} {c['title']}"
+                for c in data['contracts']
+            )
+        )
 
-    if project.charging_exempt:
+    if data['charging_exempt']:
         grid.add_row("Exempt", "[bold magenta]** Charging Exempt **[/]")
 
-    # Very verbose: show additional IDs and timestamps
-    if ctx.very_verbose:
-        grid.add_row("Project ID", str(project.project_id))
-        if project.ext_alias:
-            grid.add_row("External Alias", project.ext_alias)
-        if project.creation_time:
-            grid.add_row("Created", fmt.date_str(project.creation_time, fmt="%Y-%m-%d %H:%M:%S"))
-        if project.modified_time:
-            grid.add_row("Modified", fmt.date_str(project.modified_time, fmt="%Y-%m-%d %H:%M:%S"))
-        if project.membership_change_time:
-            grid.add_row("Membership Changed", fmt.date_str(project.membership_change_time, fmt="%Y-%m-%d %H:%M:%S"))
-        if project.inactivate_time:
-            grid.add_row("Inactivated", fmt.date_str(project.inactivate_time, fmt="%Y-%m-%d %H:%M:%S"))
+    if ctx.very_verbose and 'detail' in data:
+        detail = data['detail']
+        grid.add_row("Project ID", str(detail['project_id']))
+        if detail['ext_alias']:
+            grid.add_row("External Alias", detail['ext_alias'])
+        if detail['creation_time']:
+            grid.add_row("Created",
+                         fmt.date_str(detail['creation_time'], fmt="%Y-%m-%d %H:%M:%S"))
+        if detail['modified_time']:
+            grid.add_row("Modified",
+                         fmt.date_str(detail['modified_time'], fmt="%Y-%m-%d %H:%M:%S"))
+        if detail['membership_change_time']:
+            grid.add_row("Membership Changed",
+                         fmt.date_str(detail['membership_change_time'],
+                                      fmt="%Y-%m-%d %H:%M:%S"))
+        if detail['inactivate_time']:
+            grid.add_row("Inactivated",
+                         fmt.date_str(detail['inactivate_time'], fmt="%Y-%m-%d %H:%M:%S"))
+        if detail['latest_allocation_end']:
+            grid.add_row("Allocation End", fmt.date_str(detail['latest_allocation_end']))
 
-        # Show latest allocation end date
-        latest_end = None
-        for account in project.accounts:
-            for alloc in account.allocations:
-                if alloc.end_date and (latest_end is None or alloc.end_date > latest_end):
-                    latest_end = alloc.end_date
-        if latest_end:
-            grid.add_row("Allocation End", fmt.date_str(latest_end))
-
-    # Main Panel
-    panel = Panel(grid, title=f"Project Information: [bold]{project.projcode}[/]{extra_title_info}", expand=False, border_style="green")
+    panel = Panel(grid,
+                  title=f"Project Information: [bold]{data['projcode']}[/]{extra_title_info}",
+                  expand=False, border_style="green")
     ctx.console.print(panel)
 
-    # Allocations Table
-    try:
-        usage = project.get_detailed_allocation_usage()
+    # Allocations table
+    usage = data.get('allocations') or {}
+    if usage:
+        alloc_table = Table(title="Allocations & Usage", box=box.SIMPLE, show_header=True)
+        alloc_table.add_column("Resource")
+        alloc_table.add_column("Type")
+        alloc_table.add_column("Dates")
+        alloc_table.add_column("Allocation", justify="right")
+        alloc_table.add_column("Remaining", justify="right")
+        alloc_table.add_column("Used", justify="right")
+        alloc_table.add_column("% Used", justify="right")
 
-        if usage:
-            alloc_table = Table(title="Allocations & Usage", box=box.SIMPLE, show_header=True)
-            alloc_table.add_column("Resource")
-            alloc_table.add_column("Type")
-            alloc_table.add_column("Dates")
-            alloc_table.add_column("Allocation", justify="right")
-            alloc_table.add_column("Remaining", justify="right")
-            alloc_table.add_column("Used", justify="right")
-            alloc_table.add_column("% Used", justify="right")
+        show_rolling = ctx.verbose or ctx.very_verbose
+        rolling_data = data.get('rolling') or {}
+        if show_rolling:
+            alloc_table.add_column("30d Used", justify="right", style="dim")
+            alloc_table.add_column("90d Used", justify="right", style="dim")
 
-            # Verbose: add rolling window usage columns
-            show_rolling = ctx.verbose or ctx.very_verbose
-            rolling_data = {}
+        if ctx.very_verbose:
+            alloc_table.add_column("Jobs", justify="right", style="dim")
+            alloc_table.add_column("Days Left", justify="right", style="dim")
+
+        for resource_name, resource_usage in usage.items():
+            days_remaining = resource_usage.get('days_remaining')
+            is_expired = days_remaining is not None and days_remaining < 0
+
+            if is_expired:
+                resource_style = "dim"
+                date_style = "dim red"
+                expired_indicator = " (Expired)"
+            else:
+                resource_style = "cyan"
+                date_style = "dim"
+                expired_indicator = ""
+
+            start_str = fmt.date_str(resource_usage.get('start_date'), null='N/A')
+            end_str = fmt.date_str(resource_usage.get('end_date'), null='N/A')
+            date_range = f"[{date_style}]{start_str}\n{end_str}[/]"
+
+            pct = resource_usage['percent_used']
+            pct_style = "green"
+            if pct > 80: pct_style = "yellow"
+            if pct > 100: pct_style = "red bold"
+            if is_expired:
+                pct_style = "dim"
+
+            allocated = resource_usage.get('allocated', 0)
+            alloc_str = fmt.number(allocated)
+            remaining_str = fmt.number(resource_usage['remaining'])
+            used_str = fmt.number(resource_usage['used'])
+            row = [
+                f"[{resource_style}]{resource_name}{expired_indicator}[/]",
+                (f"[{resource_style}]{resource_usage['resource_type']}[/]"
+                 if is_expired else resource_usage['resource_type']),
+                date_range,
+                f"[{resource_style}]{alloc_str}[/]" if is_expired else alloc_str,
+                f"[{resource_style}]{remaining_str}[/]" if is_expired else remaining_str,
+                f"[{resource_style}]{used_str}[/]" if is_expired else used_str,
+                f"[{pct_style}]{fmt.pct(pct)}[/]"
+            ]
+
             if show_rolling:
-                alloc_table.add_column("30d Used", justify="right", style="dim")
-                alloc_table.add_column("90d Used", justify="right", style="dim")
-                try:
-                    rolling_data = get_project_rolling_usage(project.session, project.projcode)
-                except Exception:
-                    pass
-
-            # Very verbose: add extra columns for jobs and time metrics
-            if ctx.very_verbose:
-                alloc_table.add_column("Jobs", justify="right", style="dim")
-                alloc_table.add_column("Days Left", justify="right", style="dim")
-
-            # Iterate directly over usage dict (includes both active and recent expired allocations)
-            for resource_name, resource_usage in usage.items():
-                # Determine if allocation is expired based on days_remaining
-                days_remaining = resource_usage.get('days_remaining')
-                is_expired = days_remaining is not None and days_remaining < 0
-
-                # Apply styling based on expiration status
-                if is_expired:
-                    resource_style = "dim"
-                    date_style = "dim red"
-                    expired_indicator = " (Expired)"
-                else:
-                    resource_style = "cyan"
-                    date_style = "dim"
-                    expired_indicator = ""
-
-                # Format dates
-                start_date = resource_usage.get('start_date')
-                end_date = resource_usage.get('end_date')
-                start_str = fmt.date_str(start_date, null='N/A')
-                end_str   = fmt.date_str(end_date, null='N/A')
-                date_range = f"[{date_style}]{start_str}\n{end_str}[/]"
-
-                # Calculate percentage used styling
-                pct = resource_usage['percent_used']
-                pct_style = "green"
-                if pct > 80: pct_style = "yellow"
-                if pct > 100: pct_style = "red bold"
-
-                # Dim percentage style for expired allocations
-                if is_expired:
-                    pct_style = "dim"
-
-                # Format allocation amount
-                allocated = resource_usage.get('allocated', 0)
-
-                alloc_str     = fmt.number(allocated)
-                remaining_str = fmt.number(resource_usage['remaining'])
-                used_str      = fmt.number(resource_usage['used'])
-                row = [
-                    f"[{resource_style}]{resource_name}{expired_indicator}[/]",
-                    f"[{resource_style}]{resource_usage['resource_type']}[/]" if is_expired else resource_usage['resource_type'],
-                    date_range,
-                    f"[{resource_style}]{alloc_str}[/]" if is_expired else alloc_str,
-                    f"[{resource_style}]{remaining_str}[/]" if is_expired else remaining_str,
-                    f"[{resource_style}]{used_str}[/]" if is_expired else used_str,
-                    f"[{pct_style}]{fmt.pct(pct)}[/]"
-                ]
-
-                # Verbose: rolling window usage
-                if show_rolling:
-                    rdata = rolling_data.get(resource_name, {})
-                    for wdays in (30, 90):
-                        winfo = rdata.get('windows', {}).get(wdays)
-                        if winfo:
-                            charges_str = fmt.number(winfo['charges'])
-                            pct_str     = fmt.pct(winfo['pct_of_prorated'])
-                            if winfo.get('threshold_pct') is not None:
-                                cell = f"{charges_str}\n({pct_str} vs. {winfo['threshold_pct']}% lim)"
-                            else:
-                                cell = f"{charges_str}\n({pct_str})"
+                rdata = rolling_data.get(resource_name, {})
+                for wdays in (30, 90):
+                    winfo = rdata.get('windows', {}).get(wdays)
+                    if winfo:
+                        charges_str = fmt.number(winfo['charges'])
+                        pct_str = fmt.pct(winfo['pct_of_prorated'])
+                        if winfo.get('threshold_pct') is not None:
+                            cell = f"{charges_str}\n({pct_str} vs. {winfo['threshold_pct']}% lim)"
                         else:
-                            cell = "—"
-                        row.append(cell)
+                            cell = f"{charges_str}\n({pct_str})"
+                    else:
+                        cell = "—"
+                    row.append(cell)
 
-                # Very verbose: add jobs and days remaining
-                if ctx.very_verbose:
-                    jobs = resource_usage.get('total_jobs')
-                    jobs_str = fmt.number(jobs) if jobs is not None else 'N/A'
-                    row.append(f"[{resource_style}]{jobs_str}[/]" if jobs is not None and is_expired else jobs_str)
-                    row.append(f"[{resource_style}]{days_remaining}[/]" if days_remaining is not None and is_expired else (str(days_remaining) if days_remaining is not None else "N/A"))
+            if ctx.very_verbose:
+                jobs = resource_usage.get('total_jobs')
+                jobs_str = fmt.number(jobs) if jobs is not None else 'N/A'
+                row.append(
+                    f"[{resource_style}]{jobs_str}[/]"
+                    if jobs is not None and is_expired else jobs_str
+                )
+                row.append(
+                    f"[{resource_style}]{days_remaining}[/]"
+                    if days_remaining is not None and is_expired
+                    else (str(days_remaining) if days_remaining is not None else "N/A")
+                )
 
-                alloc_table.add_row(*row)
-            ctx.console.print(alloc_table)
+            alloc_table.add_row(*row)
+        ctx.console.print(alloc_table)
 
-
-    except Exception as e:
-         ctx.console.print(f"Warning: Could not fetch allocations: {e}", style="yellow")
-
-    # Directories
-    if project.active_directories:
+    if data['active_directories']:
         dir_text = Text("Active Directories:\n", style="bold")
-        for d in project.active_directories:
+        for d in data['active_directories']:
             dir_text.append(f"  - {d}\n", style="reset")
         ctx.console.print(dir_text)
 
-    # User count / listing
-    if list_users:
-        display_project_users(ctx, project)
+    if list_users and 'users' in data:
+        display_project_users(ctx, data['users'], data['projcode'])
     else:
-        ctx.console.print(f"\nActive Users: [bold]{project.get_user_count()}[/]")
+        ctx.console.print(f"\nActive Users: [bold]{data['active_user_count']}[/]")
         if not ctx.verbose and not ctx.very_verbose:
-            ctx.console.print(" (Use --list-users to see user details, --verbose/-vv for more project information.)", style="dim italic")
+            ctx.console.print(
+                " (Use --list-users to see user details, --verbose/-vv for more project information.)",
+                style="dim italic"
+            )
 
-    if ctx.verbose or ctx.very_verbose:
-        # Abstract - truncated for verbose, full for very verbose
-        if project.abstract:
-            abstract = project.abstract
+    if (ctx.verbose or ctx.very_verbose) and 'detail' in data:
+        abstract = data['detail']['abstract']
+        if abstract:
             if ctx.verbose and not ctx.very_verbose and len(abstract) > 500:
                 abstract = abstract[:500] + "..."
+            ctx.console.print(Panel(abstract, title="Abstract",
+                                    border_style="dim", expand=False))
 
-            ctx.console.print(Panel(abstract, title="Abstract", border_style="dim", expand=False))
+    tree_data = data.get('tree')
+    if (ctx.verbose or ctx.very_verbose) and tree_data and tree_data.get('children'):
+        # Render hierarchy from dict tree
+        show_inactive = ctx.very_verbose
 
-        # Tree info - show active tree in verbose, full tree in very verbose
-        if project.parent or project.get_children():
-            # Get the root of the project tree
-            root = project.get_root() if hasattr(project, 'get_root') else project
-            current_projcode = project.projcode
+        def label_for(node: dict) -> str:
+            if node['is_current']:
+                if not node['active']:
+                    return f"[bold yellow]→ {node['projcode']} - {node['title']}[/bold yellow] [dim italic](Inactive)[/dim italic]"
+                return f"[bold yellow]→ {node['projcode']} - {node['title']}[/bold yellow]"
+            if not node['active']:
+                return f"[dim]{node['projcode']} - {node['title']} [italic](Inactive)[/italic][/dim]"
+            return f"{node['projcode']} - {node['title']}"
 
-            def build_tree_node(node, parent_tree, current_projcode, show_inactive):
-                """Recursively build tree with sorted children, inactive status, and current highlight.
+        def add_children(node: dict, parent_tree: Tree):
+            for child in node['children']:
+                if not child['active'] and not show_inactive and not child['is_current']:
+                    continue
+                child_tree = parent_tree.add(label_for(child))
+                if child['children']:
+                    add_children(child, child_tree)
 
-                Args:
-                    node: Current project node
-                    parent_tree: Parent tree to add children to
-                    current_projcode: Project code of the currently viewed project
-                    show_inactive: If True, show all projects; if False, only show active projects
-                """
-                # Sort children alphabetically by projcode
-                sorted_children = sorted(node.get_children(), key=lambda c: c.projcode)
-
-                for child in sorted_children:
-                    is_current = child.projcode == current_projcode
-                    is_inactive = hasattr(child, 'active') and not child.active
-
-                    # Skip inactive projects unless showing all OR it's the current project
-                    if is_inactive and not show_inactive and not is_current:
-                        continue
-
-                    # Format child node with inactive status and current highlight
-                    if is_current:
-                        # Current project - highlighted in yellow
-                        if is_inactive:
-                            label = f"[bold yellow]→ {child.projcode} - {child.title}[/bold yellow] [dim italic](Inactive)[/dim italic]"
-                        else:
-                            label = f"[bold yellow]→ {child.projcode} - {child.title}[/bold yellow]"
-                    elif is_inactive:
-                        # Inactive project - muted gray (only shown in very verbose mode)
-                        label = f"[dim]{child.projcode} - {child.title} [italic](Inactive)[/italic][/dim]"
-                    else:
-                        # Active project - normal display
-                        label = f"{child.projcode} - {child.title}"
-
-                    child_node = parent_tree.add(label)
-
-                    # Recursively add grandchildren
-                    if child.get_children():
-                        build_tree_node(child, child_node, current_projcode, show_inactive)
-
-            # Build tree starting from root
-            # Very verbose: show all projects including inactive
-            # Verbose: show only active projects (but always include current project)
-            show_inactive = ctx.very_verbose
-
-            is_current_root = root.projcode == current_projcode
-            if is_current_root:
-                if hasattr(root, 'active') and not root.active:
-                    root_label = f"[bold yellow]→ {root.projcode} - {root.title}[/bold yellow] [dim italic](Inactive)[/dim italic]"
-                else:
-                    root_label = f"[bold yellow]→ {root.projcode} - {root.title}[/bold yellow]"
-            else:
-                if hasattr(root, 'active') and not root.active:
-                    root_label = f"[dim]{root.projcode} - {root.title} [italic](Inactive)[/italic][/dim]"
-                else:
-                    root_label = f"{root.projcode} - {root.title}"
-
-            tree = Tree(root_label)
-            build_tree_node(root, tree, current_projcode, show_inactive)
-            ctx.console.print(Panel(tree, title="Project Hierarchy", border_style="blue", expand=False))
+        tree = Tree(label_for(tree_data))
+        add_children(tree_data, tree)
+        ctx.console.print(Panel(tree, title="Project Hierarchy",
+                                border_style="blue", expand=False))
 
 
-def display_project_users(ctx: Context, project: Project):
-    """Display users for a project with resource access information."""
-    users = project.users
-
+def display_project_users(ctx: Context, users: list, projcode: str):
+    """Display users for a project from `build_project_users`."""
     if not users:
         ctx.console.print("No active users found.", style="yellow")
         return
@@ -304,7 +267,7 @@ def display_project_users(ctx: Context, project: Project):
     count = len(users)
     plural = "s" if count > 1 else ""
 
-    ctx.console.print(f"\n[bold]{count} Active user{plural} for {project.projcode}:[/]")
+    ctx.console.print(f"\n[bold]{count} Active user{plural} for {projcode}:[/]")
 
     table = Table(box=box.SIMPLE)
     table.add_column("#", style="dim", width=4)
@@ -316,75 +279,104 @@ def display_project_users(ctx: Context, project: Project):
         table.add_column("Email")
         table.add_column("UID")
 
-    for i, user in enumerate(sorted(users, key=lambda u: u.username), 1):
-        # Check for restricted resource access
-        inaccessible = project.get_user_inaccessible_resources(user)
+    for i, u in enumerate(users, 1):
         access_notes = ""
-        if inaccessible:
-            sorted_resources = sorted(inaccessible)
-            access_notes = f"no access to {', '.join(sorted_resources)}"
+        if u['inaccessible_resources']:
+            access_notes = f"no access to {', '.join(u['inaccessible_resources'])}"
 
-        row = [str(i), user.username, user.display_name, access_notes]
+        row = [str(i), u['username'], u['display_name'], access_notes]
         if ctx.verbose:
-            row.append(user.primary_email or 'N/A')
-            row.append(str(user.unix_uid))
+            row.append(u['primary_email'] or 'N/A')
+            row.append(str(u['unix_uid']))
         table.add_row(*row)
 
     ctx.console.print(table)
 
 
-def display_project_search_results(ctx: Context, projects: list, pattern: str):
-    """Display project pattern search results."""
-    ctx.console.print(f"✅ Found {len(projects)} project(s):\n", style="green bold")
+def display_project_search_results(ctx: Context, data: dict):
+    """Display project pattern search results from `build_project_search_results`."""
+    ctx.console.print(f"✅ Found {data['count']} project(s):\n", style="green bold")
 
-    for i, project in enumerate(projects, 1):
-        ctx.console.print(f"{i}. {project.projcode}", style="cyan bold")
-        ctx.console.print(f"   {project.title}")
+    for i, p in enumerate(data['projects'], 1):
+        ctx.console.print(f"{i}. {p['projcode']}", style="cyan bold")
+        ctx.console.print(f"   {p['title']}")
 
-        if ctx.verbose:
-            lead_name = project.lead.display_name if project.lead else 'N/A'
-            ctx.console.print(f"   ID: {project.project_id}")
+        if ctx.verbose and 'project_id' in p:
+            lead_name = p['lead']['display_name'] if p.get('lead') else 'N/A'
+            ctx.console.print(f"   ID: {p['project_id']}")
             ctx.console.print(f"   Lead: {lead_name}")
-            ctx.console.print(f"   Users: {project.get_user_count()}")
+            ctx.console.print(f"   Users: {p['active_user_count']}")
 
         ctx.console.print("")
 
 
-def display_expiring_projects(ctx: Context, expiring_data: list, list_users: bool = False, upcoming: bool = True):
+def display_expiring_projects(ctx: Context, expiring_data: list,
+                              list_users: bool = False, upcoming: bool = True):
     """Display upcoming or recently expired projects.
 
-    Args:
-        ctx: Context object
-        expiring_data: List of tuples (project, allocation, resource_name, days)
-        list_users: Whether to list users
-        upcoming: True for upcoming expirations, False for recent expirations
+    `expiring_data` is the raw list of (project, allocation, resource_name,
+    days) tuples returned by the queries module.  We keep ORM access
+    confined to this function (and only the verbose path) so we can build
+    a full per-project payload only when actually rendering verbose detail.
     """
     if upcoming:
-        ctx.console.print(f"Found {len(expiring_data)} allocations expiring", style="yellow")
+        ctx.console.print(f"Found {len(expiring_data)} allocations expiring",
+                          style="yellow")
         for proj, alloc, res_name, days in expiring_data:
             if ctx.verbose:
-                display_project(ctx, proj, f" - {days} days remaining", list_users=list_users)
+                _display_project_verbose(ctx, proj, f" - {days} days remaining",
+                                         list_users=list_users)
             else:
                 ctx.console.print(f"  {proj.projcode} - {days} days remaining")
     else:
-        ctx.console.print(f"Found {len(expiring_data)} recently expired projects:", style="yellow")
+        ctx.console.print(
+            f"Found {len(expiring_data)} recently expired projects:", style="yellow"
+        )
         for proj, alloc, res_name, days_expired in expiring_data:
             if ctx.verbose:
-                display_project(ctx, proj, f" - {days_expired} days since expiration", list_users=list_users)
+                _display_project_verbose(ctx, proj,
+                                         f" - {days_expired} days since expiration",
+                                         list_users=list_users)
             else:
                 ctx.console.print(f"  {proj.projcode} - {days_expired} days since expiration")
 
     if not ctx.verbose:
-        ctx.console.print("\n (Use --verbose for more project information.)", style="dim italic")
+        ctx.console.print("\n (Use --verbose for more project information.)",
+                          style="dim italic")
 
 
-def display_abandoned_users_from_expired_projects(ctx: Context, abandoned_users: set):
-    """Display users whose only active projects have expired."""
-    ctx.console.print(f"Found {len(abandoned_users)} expiring users:", style="bold red")
+def _display_project_verbose(ctx: Context, project, extra_title: str, list_users: bool):
+    """Build full payload for one project and render it.  Used by the
+    verbose path of `display_expiring_projects`."""
+    data = build_project_core(project)
+    data['allocations'] = build_project_allocations(project)
+    data['detail'] = build_project_detail(project)
+    data['rolling'] = build_project_rolling(project.session, project.projcode)
+    data['tree'] = build_project_tree(project)
+    if list_users:
+        data['users'] = build_project_users(project)
+    display_project(ctx, data, extra_title_info=extra_title, list_users=list_users)
+
+
+def display_abandoned_users_from_expired_projects(ctx: Context, abandoned_users):
+    """Display users whose only active projects have expired.
+
+    Accepts either a set of ORM users (from the existing command path)
+    or a list of dicts with username/display_name/primary_email keys.
+    """
+    rows = []
+    for u in abandoned_users:
+        if isinstance(u, dict):
+            rows.append((u['username'], u['display_name'], u['primary_email']))
+        else:
+            rows.append((u.username, u.display_name, u.primary_email))
+    rows.sort(key=lambda r: r[0])
+
+    ctx.console.print(f"Found {len(rows)} expiring users:", style="bold red")
     table = Table(show_header=False, box=None)
     table.add_column("User")
-    for user in sorted(abandoned_users, key=lambda u: u.username):
-        table.add_row(f"{user.username:12} {user.display_name:30} <{user.primary_email}>")
+    for username, display_name, email in rows:
+        table.add_row(f"{username:12} {display_name:30} <{email}>")
     ctx.console.print(table)
 
 
@@ -398,31 +390,35 @@ def display_notification_results(ctx: Context, results: dict, total_projects: in
     """
     success_count = len(results['success'])
     failed_count = len(results['failed'])
-    total_sent = success_count + failed_count
 
-    # Summary panel
     grid = Table(show_header=False, box=None, padding=(0, 2))
     grid.add_column("Field", style="cyan bold")
     grid.add_column("Value")
 
     grid.add_row("Expiring Projects", str(total_projects))
-    grid.add_row("Emails Sent", f"[green]{success_count}[/]" if success_count > 0 else "0")
-    grid.add_row("Failed", f"[red]{failed_count}[/]" if failed_count > 0 else "0")
+    grid.add_row("Emails Sent",
+                 f"[green]{success_count}[/]" if success_count > 0 else "0")
+    grid.add_row("Failed",
+                 f"[red]{failed_count}[/]" if failed_count > 0 else "0")
 
     panel = Panel(grid, title="Notification Results", expand=False, border_style="blue")
     ctx.console.print(panel)
 
-    # Show failures if any
     if failed_count > 0:
         ctx.console.print("\n[red bold]Failed Notifications:[/]")
         for notification in results['failed']:
-            ctx.console.print(f"  {notification['recipient']}: {notification.get('error', 'Unknown error')}", style="red")
+            ctx.console.print(
+                f"  {notification['recipient']}: {notification.get('error', 'Unknown error')}",
+                style="red"
+            )
 
-    # Show success details in verbose mode
     if ctx.verbose and success_count > 0:
         ctx.console.print("\n[green]Successful Notifications:[/]")
         for notification in results['success']:
-            ctx.console.print(f"  {notification['recipient']} ({notification['project_code']})", style="green")
+            ctx.console.print(
+                f"  {notification['recipient']} ({notification['project_code']})",
+                style="green"
+            )
 
 
 def display_notification_preview(ctx: Context, results: dict, total_projects: int):
@@ -440,7 +436,6 @@ def display_notification_preview(ctx: Context, results: dict, total_projects: in
 
     ctx.console.print(f"\n[bold yellow]DRY-RUN MODE: Preview only, no emails will be sent[/]\n")
 
-    # Summary panel
     grid = Table(show_header=False, box=None, padding=(0, 2))
     grid.add_column("Field", style="cyan bold")
     grid.add_column("Value")
@@ -448,7 +443,6 @@ def display_notification_preview(ctx: Context, results: dict, total_projects: in
     grid.add_row("Projects with Expiring Allocations", str(total_projects))
     grid.add_row("Emails That Would Be Sent", str(success_count))
 
-    # Count unique recipients
     unique_recipients = set(n['recipient'] for n in results['success'])
     grid.add_row("Unique Recipients", str(len(unique_recipients)))
 
@@ -458,53 +452,55 @@ def display_notification_preview(ctx: Context, results: dict, total_projects: in
     panel = Panel(grid, title="Dry-Run Summary", expand=False, border_style="yellow")
     ctx.console.print(panel)
 
-    # Show preview errors if any
     if failed_count > 0:
         ctx.console.print("\n[red bold]Preview Errors:[/]")
         for notification in results['failed']:
-            ctx.console.print(f"  {notification['recipient']}: {notification.get('error', 'Unknown error')}", style="red")
+            ctx.console.print(
+                f"  {notification['recipient']}: {notification.get('error', 'Unknown error')}",
+                style="red"
+            )
 
-    # Group by project for display
     by_project = defaultdict(list)
     for notification in results['success']:
         by_project[notification['project_code']].append(notification)
 
-    # Show email distribution by project
     ctx.console.print("\n[bold]Email Preview by Project:[/]\n")
 
     for projcode, project_notifications in sorted(by_project.items()):
-        # Use first notification to get project details
         first = project_notifications[0]
         recipients = [n['recipient'] for n in project_notifications]
 
         ctx.console.print(f"[cyan bold]{projcode}[/] - {first['project_title']}")
         ctx.console.print(f"  Recipients ({len(recipients)}): {', '.join(sorted(recipients))}")
 
-        # Show resources that would be included
-        resources = first['resources']
-        for resource in resources:
-            urgency = "🔴 URGENT" if resource['days_remaining'] <= 7 else "🟠 WARNING" if resource['days_remaining'] <= 14 else "🔵 NOTICE"
-            ctx.console.print(f"    {urgency} {resource['resource_name']}: {resource['days_remaining']} days remaining (expires {resource['expiration_date']})")
+        for resource in first['resources']:
+            urgency = ("🔴 URGENT" if resource['days_remaining'] <= 7
+                       else "🟠 WARNING" if resource['days_remaining'] <= 14
+                       else "🔵 NOTICE")
+            ctx.console.print(
+                f"    {urgency} {resource['resource_name']}: "
+                f"{resource['days_remaining']} days remaining "
+                f"(expires {resource['expiration_date']})"
+            )
 
         ctx.console.print()
 
-    # Show sample rendered emails in verbose mode
     if ctx.verbose and 'preview_samples' in results and results['preview_samples']:
         ctx.console.print("\n[bold]Sample Rendered Emails:[/]\n")
 
         for i, sample in enumerate(results['preview_samples'], 1):
-            # Show email metadata
-            meta_info = f"To: {sample['recipient']} ({sample['recipient_role']}) | Project: {sample['project_code']}"
+            meta_info = (f"To: {sample['recipient']} ({sample['recipient_role']})"
+                         f" | Project: {sample['project_code']}")
             if sample['facility']:
                 meta_info += f" | Facility: {sample['facility']}"
             if sample['html_content']:
-                meta_info += f" | Templates: {sample['text_template']}, {sample['html_template']}"
+                meta_info += (f" | Templates: {sample['text_template']},"
+                              f" {sample['html_template']}")
             else:
                 meta_info += f" | Template: {sample['text_template']} (text-only)"
 
             ctx.console.print(f"[dim]{meta_info}[/dim]")
 
-            # Show rendered text content
             ctx.console.print(Panel(
                 sample['text_content'],
                 title=f"Sample Email #{i} to {sample['recipient_name']}",

@@ -3,7 +3,18 @@
 from datetime import datetime, timedelta
 from collections import defaultdict
 from cli.core.base import BaseProjectCommand
+from cli.core.output import output_json
 from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
+from cli.project.builders import (
+    build_project_core,
+    build_project_detail,
+    build_project_allocations,
+    build_project_rolling,
+    build_project_tree,
+    build_project_users,
+    build_project_search_results,
+    build_expiring_projects,
+)
 from cli.project.display import (
     display_project,
     display_project_search_results,
@@ -30,10 +41,31 @@ class ProjectSearchCommand(BaseProjectCommand):
             project = self.get_project(projcode)
 
             if not project:
-                self.console.print(f"❌ Project not found: {projcode}", style="bold red")
+                if self.ctx.output_format == 'json':
+                    output_json({'kind': 'project', 'error': 'not_found',
+                                 'projcode': projcode})
+                else:
+                    self.console.print(f"❌ Project not found: {projcode}", style="bold red")
                 return EXIT_NOT_FOUND
 
-            display_project(self.ctx, project, list_users=list_users)
+            json_mode = self.ctx.output_format == 'json'
+            verbose = self.ctx.verbose
+            vv = self.ctx.very_verbose
+
+            data = build_project_core(project)
+            data['allocations'] = build_project_allocations(project)
+
+            if json_mode or verbose or vv:
+                data['detail'] = build_project_detail(project)
+                data['rolling'] = build_project_rolling(self.session, project.projcode)
+                data['tree'] = build_project_tree(project)
+            if json_mode or list_users:
+                data['users'] = build_project_users(project)
+
+            if json_mode:
+                output_json(data)
+            else:
+                display_project(self.ctx, data, list_users=list_users)
             return EXIT_SUCCESS
 
         except Exception as e:
@@ -54,10 +86,21 @@ class ProjectPatternSearchCommand(BaseProjectCommand):
             )
 
             if not projects:
+                if self.ctx.output_format == 'json':
+                    output_json({'kind': 'project_search_results', 'pattern': pattern,
+                                 'count': 0, 'projects': []})
+                    return EXIT_NOT_FOUND
                 self.console.print(f"❌ No projects found matching: {pattern}", style="bold red")
                 return EXIT_NOT_FOUND
 
-            display_project_search_results(self.ctx, projects, pattern)
+            json_mode = self.ctx.output_format == 'json'
+            data = build_project_search_results(
+                projects, pattern, verbose=(json_mode or self.ctx.verbose)
+            )
+            if json_mode:
+                output_json(data)
+            else:
+                display_project_search_results(self.ctx, data)
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)
@@ -71,6 +114,18 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 notify: bool = False, dry_run: bool = False, email_list: str = None,
                 deactivate: bool = False, force: bool = False) -> int:
         try:
+            json_mode = self.ctx.output_format == 'json'
+
+            # JSON output is read-only; reject combinations with side effects.
+            if json_mode and (notify or deactivate):
+                output_json({
+                    'kind': ('expiring_projects' if upcoming
+                             else 'recently_expired_projects'),
+                    'error': 'json_unsupported_for_writes',
+                    'message': '--format json cannot be combined with --notify or --deactivate',
+                })
+                return EXIT_ERROR
+
             if self.ctx.verbose:
                 self.console.print(f"[dim]Facilities: {'ALL' if facility_filter is None else ', '.join(facility_filter)}[/]")
 
@@ -82,6 +137,10 @@ class ProjectExpirationCommand(BaseProjectCommand):
                     end_date=datetime.now() + timedelta(days=32),
                     facility_names=facility_filter
                 )
+
+                if json_mode:
+                    output_json(build_expiring_projects(expiring, upcoming=True))
+                    return EXIT_SUCCESS
 
                 display_expiring_projects(self.ctx, expiring, list_users=list_users, upcoming=True)
 
@@ -119,6 +178,10 @@ class ProjectExpirationCommand(BaseProjectCommand):
                     facility_names=facility_filter,
                     include_inactive_projects=include_inactive
                 )
+
+                if json_mode:
+                    output_json(build_expiring_projects(expiring, upcoming=False))
+                    return EXIT_SUCCESS
 
                 # Extract users if needed (business logic)
                 if list_users:
