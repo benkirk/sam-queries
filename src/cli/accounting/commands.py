@@ -605,11 +605,10 @@ class AccountingAdminCommand(BaseCommand):
                                 alloc.allocation_id,
                                 admin_user_id,
                                 amount=new_tib,
-                                description=(
-                                    f"Reconciled from quota truth ({quota_path}); "
-                                    f"was {sam_tib:.2f} TiB, now {new_tib:.2f} TiB "
-                                    f"(subtree of {n_contrib} fileset"
-                                    f"{'s' if n_contrib != 1 else ''})"
+                                comment=(
+                                    f"Reconciled with current fileset quota "
+                                    f"from {quota_path} (subtree of {n_contrib} "
+                                    f"fileset{'s' if n_contrib != 1 else ''})"
                                 ),
                             )
                             n_updated += 1
@@ -645,9 +644,10 @@ class AccountingAdminCommand(BaseCommand):
                                 alloc.allocation_id,
                                 admin_user_id,
                                 end_date=today,
-                                description=(
-                                    f"Deactivated: no quota in subtree "
-                                    f"(source {quota_path}){note}"
+                                comment=(
+                                    f"Deactivated: no fileset quota in "
+                                    f"project subtree (source {quota_path})"
+                                    f"{note}"
                                 ),
                             )
                             n_deactivated += 1
