@@ -1,10 +1,10 @@
 # CLI JSON Output Migration Plan
 
 **Modules**: `src/cli/` (`sam-search` and `sam-admin` entry points)
-**Status**: Not started. Two of four domains (`allocations`, `accounting`)
-already pass plain dicts to their display functions and need only a routing
-branch; `user` and `project` domains still pass ORM objects directly into Rich
-display code and need a builder layer extracted.
+**Status**: **Complete.** All five phases shipped; `--format json` is wired
+end-to-end across `user`, `project`, `allocations`, and `accounting` for both
+`sam-search` and `sam-admin`. Read-only commands emit a JSON envelope; write
+commands (`--notify`, `--deactivate`) are rejected with a clear error.
 
 ---
 
@@ -930,40 +930,37 @@ Each phase must end with the suite green (`pytest -n auto`) and a working
 end-to-end smoke for that domain.
 
 ### Phase 1 — Infrastructure
-- [ ] `src/cli/core/context.py`: add `output_format` field
-- [ ] `src/cli/core/output.py`: new file with `_SAMEncoder` + `output_json`
-- [ ] `src/cli/cmds/search.py`: add `--format` option, set on context
-- [ ] `src/cli/cmds/admin.py`: add `--format` option, set on context
-- [ ] Smoke: `sam-search --format rich user benkirk` unchanged
+- [x] `src/cli/core/context.py`: add `output_format` field
+- [x] `src/cli/core/output.py`: new file with `_SAMEncoder` + `output_json`
+- [x] `src/cli/cmds/search.py`: add `--format` option, set on context
+- [x] `src/cli/cmds/admin.py`: add `--format` option, set on context
+- [x] Smoke: `sam-search --format rich user benkirk` unchanged
 
 ### Phase 2 — Allocations & Accounting (routing only)
-- [ ] `src/cli/allocations/commands.py`: JSON branch in `execute()`
-- [ ] `src/cli/accounting/commands.py`: JSON branch in `AccountingSearchCommand.execute()`
-- [ ] Tests: 2 `CliRunner` tests asserting valid JSON
-- [ ] Smoke: `sam-search --format json allocations --resource Derecho | jq '.count'`
+- [x] `src/cli/allocations/commands.py`: JSON branch in `execute()`
+- [x] `src/cli/accounting/commands.py`: JSON branch in `AccountingSearchCommand.execute()`
+- [x] Smoke: `sam-search --format json allocations ... | jq` parses cleanly
 
 ### Phase 3 — User Domain
-- [ ] `src/cli/user/builders.py`: 6 builder functions
-- [ ] `src/cli/user/display.py`: refactor all 5 display functions to dict input
-- [ ] `src/cli/user/commands.py`: wire builders + JSON routing in 4 commands
-- [ ] `progress.track(disable=...)` on `UserAbandonedCommand`, `UserWithProjectsCommand`
-- [ ] Tests: builder unit tests for each function
-- [ ] Tests: `CliRunner` JSON tests (exact, pattern, abandoned, with-projects)
-- [ ] Smoke: `sam-search --format json user benkirk --list-projects | jq .projects`
+- [x] `src/cli/user/builders.py`: 6 builder functions
+- [x] `src/cli/user/display.py`: refactored to dict input
+- [x] `src/cli/user/commands.py`: builders + JSON routing in 4 commands
+- [x] `progress.track(disable=json_mode)` on UserAbandonedCommand, UserWithProjectsCommand
+- [x] Smoke: `sam-search --format json user benkirk` returns full envelope
 
 ### Phase 4 — Project Domain
-- [ ] `src/cli/project/builders.py`: 7 builder functions
-- [ ] `src/cli/project/display.py`: refactor all display functions to dict input
-- [ ] `src/cli/project/commands.py`: wire builders + JSON routing in 3 commands
-- [ ] Reject `--format json` combined with `--notify` or `--deactivate`
-- [ ] Tests: builder unit tests
-- [ ] Tests: `CliRunner` JSON tests for project search and expirations
-- [ ] Smoke: `sam-search --format json project SCSG0001 | jq .allocations`
+- [x] `src/cli/project/builders.py`: 8 builder functions
+- [x] `src/cli/project/display.py`: refactored to dict input
+- [x] `src/cli/project/commands.py`: builders + JSON routing in 3 commands
+- [x] `--format json` + `--notify`/`--deactivate` rejected with clear error
+- [x] Smoke: `sam-search --format json project SCSG0001 | jq .allocations`
+- [x] Smoke: `sam-search --format json project --upcoming-expirations | jq .count`
 
-### Phase 5 — Documentation
-- [ ] `src/cli/README.md`: document `--format json` + envelope shapes
-- [ ] `CLAUDE.md`: add `--format json` to the Quick Reference section
-- [ ] Mark this plan's status as **Complete** at the top
+### Phase 5 — Tests + Documentation
+- [x] `tests/unit/test_cli_json_builders.py`: 30+ unit tests for builders + encoder
+- [x] `tests/integration/test_cli_json_output.py`: CliRunner end-to-end tests
+- [x] `src/cli/README.md`: documents `--format json` + envelope shapes
+- [x] `CLAUDE.md` Quick Reference: lists JSON-mode example commands
 
 ---
 
