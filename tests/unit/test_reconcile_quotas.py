@@ -875,6 +875,46 @@ class TestQuotaEntryUtilization:
         assert qe.utilization == 0.0
 
 
+class TestUtilSuffix:
+    """Bookend annotations: ⚠ for high util, ↓ for low util."""
+
+    def test_high_util_above_threshold(self):
+        from cli.accounting.display import _util_suffix
+        qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=970, file_count=1)
+        out = _util_suffix(qe)
+        assert '⚠' in out and '97%' in out
+
+    def test_high_util_just_below_threshold_no_marker(self):
+        from cli.accounting.display import _util_suffix
+        qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=940, file_count=1)
+        assert _util_suffix(qe) == ''
+
+    def test_low_util_below_threshold(self):
+        from cli.accounting.display import _util_suffix
+        qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=30, file_count=1)
+        out = _util_suffix(qe)
+        assert '↓' in out and '3%' in out
+
+    def test_low_util_just_above_threshold_no_marker(self):
+        from cli.accounting.display import _util_suffix
+        qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=60, file_count=1)
+        assert _util_suffix(qe) == ''
+
+    def test_empty_fileset_with_limit_is_flagged_low(self):
+        # 0% usage with a non-zero limit → under-used; flag it.
+        from cli.accounting.display import _util_suffix
+        qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=0, file_count=0)
+        out = _util_suffix(qe)
+        assert '↓' in out and '0%' in out
+
+    def test_zero_limit_skips_low_util(self):
+        # limit==0 → utilization clamps to 0.0, but we MUST NOT treat that
+        # as "under-used" (an umbrella with no quota carries no meaning).
+        from cli.accounting.display import _util_suffix
+        qe = QuotaEntry('fs', None, limit_bytes=0, usage_bytes=0, file_count=0)
+        assert _util_suffix(qe) == ''
+
+
 class TestPathVerifierLocal:
 
     def test_mix_of_present_and_missing(self, tmp_path):

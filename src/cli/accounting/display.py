@@ -180,13 +180,28 @@ def _expected_delta_pct(sam_tib: float, expected_bytes: int) -> float:
 
 
 HIGH_UTIL_THRESHOLD = 0.95   # annotate matched filesets >95% full
+LOW_UTIL_THRESHOLD = 0.05    # annotate matched filesets <5% full
 
 
 def _util_suffix(qe) -> str:
-    """Return a ` ⚠ 97%` suffix when a fileset is >95% full, else ``""``."""
+    """Return a util-annotation suffix.
+
+    - High-side warning (`⚠ 97%`, yellow) when usage > 95% of limit.
+    - Low-side note    (`↓ 3%`,  cyan)   when usage < 5%  of limit.
+    - Empty string in the comfortable middle band.
+
+    The low-side flag surfaces over-allocated filesets that might be
+    candidates for downsizing — the bookend to the high-util warning.
+    Filesets with limit==0 (impossible to be "under-used" meaningfully)
+    are skipped via the QuotaEntry.utilization property which clamps
+    to 0.0 when limit is zero, BUT we also require usage_bytes > 0 so
+    a brand-new empty fileset doesn't get flagged as under-used.
+    """
     u = getattr(qe, 'utilization', 0.0)
     if u > HIGH_UTIL_THRESHOLD:
         return f" [yellow]⚠ {int(round(u * 100))}%[/yellow]"
+    if u < LOW_UTIL_THRESHOLD and getattr(qe, 'limit_bytes', 0) > 0:
+        return f" [cyan]↓ {int(round(u * 100))}%[/cyan]"
     return ""
 
 
