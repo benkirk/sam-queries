@@ -16,7 +16,7 @@ import pytest
 from sam import Allocation
 
 
-pytestmark = pytest.mark.api
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ class TestGetAllocation:
         # AllocationWithUsageSchema fields — lock the contract that the
         # CLI/balance UI depends on.
         assert data['allocation_id'] == snapshot_allocation_id
-        for field in ('allocated', 'used', 'remaining', 'percent_used',
+        for field in ('amount', 'used', 'remaining', 'percent_used',
                       'charges_by_type'):
             assert field in data, f"missing {field!r} in serialized allocation"
 

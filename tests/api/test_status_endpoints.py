@@ -503,11 +503,14 @@ class TestReservationsUpsert:
 class TestIngestErrorHandling:
     """Cover the generic exception arm in _ingest_system_status."""
 
-    def test_post_no_json_body_returns_400(self, api_key_client, status_session):
-        """No JSON body at all → 400 with explanatory message."""
-        # Send empty body without content-type=application/json so Flask
-        # returns get_json() == None.
-        response = api_key_client.post('/api/v1/status/derecho', data='')
+    def test_post_empty_json_body_returns_400(self, api_key_client, status_session):
+        """An explicit JSON null body → request.get_json() returns None →
+        route returns 400 ('JSON body required')."""
+        response = api_key_client.post(
+            '/api/v1/status/derecho',
+            data='null',
+            content_type='application/json',
+        )
         assert response.status_code == 400
         assert 'JSON' in response.get_json()['error']
 

@@ -390,8 +390,13 @@ class TestLinkAllocationToParent:
             session, account=accounts[root.project_id],
             amount=ROOT_AMOUNT, start_date=FAR_START, end_date=FAR_END,
         )
-        # Find the grandchild — depth_two=True puts it last
-        grandchild = root.get_descendants()[-1]
+        # Identify the grandchild by parent_id, not list position — the
+        # NestedSet pre-order traversal is root → c1 → gc → c2, so the
+        # last element is NOT the grandchild.
+        grandchild = next(
+            d for d in root.get_descendants()
+            if d.parent_id is not None and d.parent_id != root.project_id
+        )
         gc_alloc = make_allocation(
             session, account=accounts[grandchild.project_id],
             amount=42.0, start_date=FAR_START, end_date=FAR_END,
