@@ -85,6 +85,34 @@ omit = [
     "*/__init__.py",
     "*/migrations/*",
     "*/scripts/*",
+
+    # Deferred workstream: admin HTMX dashboard routes. Tracked separately;
+    # exercised via manual QA + smoke tests in tests/integration/.
+    "src/webapp/dashboards/admin/blueprint.py",
+    "src/webapp/dashboards/admin/projects_routes.py",
+    "src/webapp/dashboards/admin/orgs_routes.py",
+    "src/webapp/dashboards/admin/resources_routes.py",
+    "src/webapp/dashboards/admin/facilities_routes.py",
+
+    # User/status dashboards — same HTMX-route workstream, untested by design.
+    "src/webapp/dashboards/user/blueprint.py",
+    "src/webapp/dashboards/status/blueprint.py",
+    "src/webapp/dashboards/project_members.py",
+
+    # CLI presentation layer — Rich console rendering. The sibling
+    # builders.py modules contain the actual logic and are tested at 100%.
+    "src/cli/project/display.py",
+    "src/cli/accounting/display.py",
+    "src/cli/allocations/display.py",
+    "src/cli/user/display.py",
+    "src/system_status/cli.py",
+
+    # Admin-page query builders — eager-loading scaffolding consumed only by
+    # the deferred admin HTMX routes. Coverage follows the route policy.
+    "src/sam/queries/admin.py",
+
+    # Trivial entry-point shim
+    "src/sam_search_cli.py",
 ]
 
 [tool.coverage.report]
@@ -95,13 +123,17 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "\\.\\.\\.",
+    "return NotImplemented",
 ]
 show_missing = true
 precision = 2
-# 60.0 gives us a ~8-point safety margin below the current 67.82% baseline
-# without requiring new tests for the admin HTMX routes (which are a
-# separate workstream). Bump this as we add coverage, don't drop it.
-fail_under = 60.0
+# 75.0 gives a ~7-point safety margin below the current 81.90% baseline
+# (after the deferred admin/user HTMX dashboard routes were moved to
+# `omit` and Bucket-3 targeted tests landed). Bump this as we add
+# coverage, don't drop it.
+fail_under = 75.0
 
 [tool.coverage.html]
 directory = "htmlcov"
