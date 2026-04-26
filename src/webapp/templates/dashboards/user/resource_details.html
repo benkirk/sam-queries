@@ -310,9 +310,15 @@
         <span class="{% if is_clickable %}text-muted{% endif %} fw-normal text-truncate" style="max-width: 35ch;">- {{ node.title }}</span>
         {% endif %}
         {% if node.subtree_charges > 0 %}
-        <span class="badge {{ 'bg-warning text-dark' if is_selected else 'bg-secondary' }} ms-auto flex-shrink-0">
+        {% if is_selected %}
+        <span class="badge bg-warning text-dark ms-auto flex-shrink-0">
             {{ node.subtree_charges | fmt_number }}
         </span>
+        {% else %}
+        <span class="text-muted small ms-auto flex-shrink-0 font-monospace">
+            {{ node.subtree_charges | fmt_number }}
+        </span>
+        {% endif %}
         {% endif %}
     {% if is_clickable %}
     </a>
