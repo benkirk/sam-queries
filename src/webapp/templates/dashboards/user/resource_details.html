@@ -184,10 +184,21 @@
 {# ── Page content ──────────────────────────────────────────────────────────── #}
 
 {% block content %}
+{# When the visit was launched from an admin project card, the URL carries
+   ?from=admin so we can return the user to the admin index with this
+   projcode pre-loaded into the card slot, instead of dumping them on the
+   blank user dashboard. #}
+{% set _from_admin = request.args.get('from') == 'admin' %}
 <div class="back-link mb-3">
+    {% if _from_admin %}
+    <a href="{{ url_for('admin_dashboard.index', projcode=projcode) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Admin</span>
+    </a>
+    {% else %}
     <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-sm btn-outline-secondary">
         <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Dashboard</span>
     </a>
+    {% endif %}
 </div>
 
 <div class="page-header">

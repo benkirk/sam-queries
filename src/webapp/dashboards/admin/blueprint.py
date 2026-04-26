@@ -80,11 +80,17 @@ def index():
     # (UNIV and WNA). Keep them only if they survive the allowed set.
     default_selected = [f for f in ('UNIV', 'WNA') if f in allowed_facility_names]
 
+    # Optional re-hydration: when arriving from a back-link like
+    # /admin/?projcode=SCSG0001, auto-render the project card via HTMX
+    # on page load so the user lands where they left off.
+    auto_load_projcode = (request.args.get('projcode') or '').strip() or None
+
     return render_template(
         'dashboards/admin/dashboard.html',
         user=current_user,
         allowed_facility_names=allowed_facility_names,
         default_selected_facilities=default_selected,
+        auto_load_projcode=auto_load_projcode,
     )
 
 
