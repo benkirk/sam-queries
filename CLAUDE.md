@@ -178,37 +178,6 @@ Schemas follow a consistent pattern for optimal performance:
 - Fetching 10-100 objects → Use List Schema (e.g., user listing, search results)
 - Showing related object → Use Summary Schema (e.g., project's lead within project detail)
 
-**Concrete Example - User Schemas:**
-```python
-# UserSchema (Full) - Returns everything
-{
-    "user_id": 12345,
-    "username": "benkirk",
-    "first_name": "Benjamin",
-    "last_name": "Kirk",
-    "email_addresses": [{"email_address": "benkirk@ucar.edu", "is_primary": true}],
-    "active_projects": [{"projcode": "SCSG0001", "title": "..."}],
-    "institutions": [...],
-    "organizations": [...]
-}
-
-# UserListSchema - Just core fields
-{
-    "user_id": 12345,
-    "username": "benkirk",
-    "first_name": "Benjamin",
-    "last_name": "Kirk",
-    "primary_email": "benkirk@ucar.edu"
-}
-
-# UserSummarySchema - Minimal identifier
-{
-    "user_id": 12345,
-    "username": "benkirk",
-    "full_name": "Benjamin Shelton Kirk"
-}
-```
-
 ### Usage Examples
 ```python
 from sam.schemas import UserSchema, ProjectListSchema, AllocationWithUsageSchema
@@ -876,19 +845,6 @@ for project, allocation, resource_name, days_since in expired:
 
 ## Git Workflow
 
-### Recent Commits
-1. **cfbf846**: Refactor SAM CLI into modular, class-based architecture ⭐ NEW
-   - Split 1043-line monolith into 17 modular files
-   - Added sam-admin CLI with validation and reconciliation
-   - 100% backward compatibility, all 437 tests pass
-2. **aa83b9b**: Enable parallel test execution with pytest-xdist (3x faster)
-3. **c92972b**: Add targeted tests for query functions (+41 tests, +5% coverage)
-4. **df4d317**: Admin functionality (#13)
-
-### Branches
-- **Current**: `admin-cli`
-- **Main branch**: `main`
-
 ### Commit Guidelines
 - Use detailed commit messages with markdown formatting
 - Include "## Summary" section
@@ -1055,7 +1011,3 @@ sam-search --format json accounting --last 7d
 ✅ **DO** use `@require_project_access` or `@require_project_member_access(Permission.X)` on all project-scoped GET routes — function receives `project`, not `projcode`
 ✅ **DO** use `FormSchema().load(data)` for POST mutations, `FormSchema().load(data, partial=True)` for PUT — gate the `updates` dict on keys present in the original `data` dict, not the form output
 
----
-
-*Last Updated: 2026-04-15*
-*Current Branch: tests_refactor*
