@@ -2101,11 +2101,16 @@ def htmx_remove_project_directory(projcode, pd_id):
 
 _PROJECT_DIRECTORIES_RELOAD_TRIGGERS = {
     'closeActiveModal': {},
+    # Both events are fired so the same admin route can refresh either
+    # context: the cross-project view (#projectDirectoriesSection) or
+    # the per-project linked-elements panel (#linkedElementsContainer).
+    # Each handler is a no-op when its target element isn't present.
     'reloadProjectDirectoriesCard': {},
+    'reloadProjectLinkedElements': {},
 }
 
 
-def _render_project_directories_card(*, show_inactive: bool):
+def _render_project_directories_card(*, active_only: bool):
     """Render the cross-project Project Directories card fragment.
 
     Groups rows by Resource via longest-prefix match of ``directory_name``
@@ -2131,7 +2136,7 @@ def _render_project_directories_card(*, show_inactive: bool):
         return None
 
     q = db.session.query(ProjectDirectory).join(Project)
-    if not show_inactive:
+    if active_only:
         q = q.filter(ProjectDirectory.is_active)
     rows = q.order_by(ProjectDirectory.directory_name).all()
 
@@ -2156,7 +2161,7 @@ def _render_project_directories_card(*, show_inactive: bool):
         'dashboards/admin/fragments/project_directories_card.html',
         ordered_groups=ordered_groups,
         total_rows=len(rows),
-        show_inactive=show_inactive,
+        active_only=active_only,
     )
 
 
@@ -2165,8 +2170,12 @@ def _render_project_directories_card(*, show_inactive: bool):
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_admin_project_directories():
     """Render the cross-project Project Directories table."""
-    show_inactive = request.args.get('show_inactive', '0') in ('1', 'true', 'on')
-    return _render_project_directories_card(show_inactive=show_inactive)
+    # Match the canonical "Active only" toggle pattern used by the
+    # Resources / Organizations / Facilities cards: when the checkbox is
+    # checked, hx-include sends active_only=1; when unchecked, no param,
+    # so we treat absence as False ("show all").
+    active_only = request.args.get('active_only') == '1'
+    return _render_project_directories_card(active_only=active_only)
 
 
 @bp.route('/htmx/admin/project-directories/new-form')

@@ -269,7 +269,7 @@
             <th>Directory</th>
             <th style="width:9em;">Since</th>
             <th style="width:9em;">Until</th>
-            <th style="width:3em;"></th>
+            <th style="width:5em;"></th>
           </tr>
         </thead>
         <tbody>
@@ -280,9 +280,18 @@
             <td class="text-muted small">
               {% if pd.end_date %}{{ pd.end_date | fmt_date }}{% else %}—{% endif %}
             </td>
-            <td class="text-end">
+            <td class="text-end text-nowrap">
               {% if can_edit_governance %}
-              <button class="btn btn-xs btn-outline-danger"
+              <button class="btn btn-xs btn-outline-secondary"
+                      title="Edit directory"
+                      data-bs-toggle="modal"
+                      data-bs-target="#editProjectDirectoryModal"
+                      hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directory_edit_form', pd_id=pd.project_directory_id) }}"
+                      hx-target="#editProjectDirectoryFormContainer"
+                      hx-trigger="click">
+                <i class="fas fa-edit"></i>
+              </button>
+              <button class="btn btn-xs btn-outline-danger ms-1"
                       title="Remove directory"
                       hx-post="{{ url_for('admin_dashboard.htmx_remove_project_directory', projcode=project.projcode, pd_id=pd.project_directory_id) }}"
                       hx-target="#linkedElementsContainer"
