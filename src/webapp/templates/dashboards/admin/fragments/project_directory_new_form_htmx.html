@@ -60,10 +60,12 @@
                        data-path-preview-suffix
                        value="{{ form.get('directory_suffix') if form else '' }}">
             </div>
+            <div class="form-text text-muted">
+                <code>".."</code> segments are not allowed.
+            </div>
             <div class="form-text">
                 Final path:
                 <code class="path-preview text-primary fw-semibold">—</code>
-                <span class="text-muted">— <code>".."</code> segments are not allowed.</span>
             </div>
         </div>
 
