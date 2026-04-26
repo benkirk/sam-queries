@@ -246,12 +246,14 @@ class TestDashboardQueries:
             'resource_name', 'allocation_id', 'parent_allocation_id',
             'is_inheriting', 'account_id', 'status', 'start_date', 'end_date',
             'days_until_expiration', 'date_group_key', 'bar_state',
-            'resource_type',
+            'resource_type', 'root_projcode',
         )
         FLOAT_FIELDS = (
             'allocated', 'used', 'remaining', 'percent_used',
             'adjustments', 'elapsed_pct',
         )
+        # Optional float fields: present-and-equal, or None on both sides.
+        OPTIONAL_FLOAT_FIELDS = ('self_used', 'self_percent_used')
         FLOAT_TOL = 1e-6
 
         for project in projects:
@@ -273,6 +275,15 @@ class TestDashboardQueries:
                     assert abs(float(pp[f]) - float(bb[f])) < FLOAT_TOL, (
                         f"{ctx}: {f} differs ({pp[f]} vs {bb[f]})"
                     )
+                for f in OPTIONAL_FLOAT_FIELDS:
+                    if pp[f] is None or bb[f] is None:
+                        assert pp[f] == bb[f], (
+                            f"{ctx}: {f} differs ({pp[f]!r} vs {bb[f]!r})"
+                        )
+                    else:
+                        assert abs(float(pp[f]) - float(bb[f])) < FLOAT_TOL, (
+                            f"{ctx}: {f} differs ({pp[f]} vs {bb[f]})"
+                        )
                 assert set(pp['charges_by_type'].keys()) == set(bb['charges_by_type'].keys())
                 for k in pp['charges_by_type']:
                     assert abs(pp['charges_by_type'][k] - bb['charges_by_type'][k]) < FLOAT_TOL

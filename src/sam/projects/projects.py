@@ -649,8 +649,33 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             allocated = float(query_alloc.amount)
             total_charges = sum(charges_by_type.values())
             effective_used = total_charges + adjustments
+            # `effective_used` here represents this project's subtree
+            # contribution to a (possibly shared) allocation pool. When the
+            # allocation is inheriting, the authoritative pool consumption
+            # lives at the root allocation's project subtree — compute it
+            # so the UI shows truth instead of just self-share.
+            self_used = effective_used
+            tree_used = effective_used
+            root_projcode = None
+            if query_alloc.is_inheriting:
+                root_alloc = query_alloc.root
+                root_account = root_alloc.account
+                root_project = root_account.project if root_account else None
+                if root_project is not None and root_project.tree_root \
+                        and root_project.tree_left and root_project.tree_right:
+                    root_charges = root_project.get_subtree_charges(
+                        account.resource_id, resource_type, start_date, end_date)
+                    root_total = sum(root_charges.values())
+                    if include_adjustments:
+                        root_total += root_project.get_subtree_adjustments(
+                            account.resource_id, start_date, end_date)
+                    tree_used = root_total
+                    root_projcode = root_project.projcode
+
+            effective_used = tree_used
             remaining = allocated - effective_used
             percent_used = (effective_used / allocated * 100) if allocated > 0 else 0
+            self_percent_used = (self_used / allocated * 100) if allocated > 0 else 0
 
             # Calculate time metrics
             days_elapsed = (now - query_alloc.start_date).days
@@ -690,6 +715,15 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                 'days_total': days_total,
                 'hierarchical': use_hierarchy
             }
+
+            # When the allocation is shared (inheriting), surface this
+            # project's own contribution and the root projcode so the UI
+            # can render a two-tone bar / inline annotation. Non-inheriting
+            # allocations keep the original shape.
+            if query_alloc.is_inheriting:
+                result['self_used'] = self_used
+                result['self_percent_used'] = self_percent_used
+                result['root_projcode'] = root_projcode
 
             if include_adjustments:
                 result['adjustments'] = adjustments
@@ -1309,6 +1343,21 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         session.add(obj)
         session.flush()
         return obj
+
+    def update(self, *, directory_name=None, project_id=None) -> 'ProjectDirectory':
+        """Update this directory's name and/or linked project.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        if directory_name is not None:
+            cleaned = directory_name.strip()
+            if not cleaned:
+                raise ValueError("directory_name cannot be blank")
+            self.directory_name = cleaned
+        if project_id is not None:
+            self.project_id = project_id
+        self.session.flush()
+        return self
 
     def deactivate(self) -> 'ProjectDirectory':
         """End this directory association by setting end_date to now.

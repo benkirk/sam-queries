@@ -1,0 +1,67 @@
+{#
+  Shared macro: render_usage_bar
+  ==============================
+  Renders an allocation-usage progress bar. When `self_percent_used` is
+  given (i.e. the allocation is shared/inheriting), the consumed portion
+  is split into two tones: an outer "rest of tree" segment (other
+  projects in the shared tree) and an inner "self" segment (this
+  project's contribution). Empty portion is the bar's neutral track.
+
+  Color uses thresholds against `percent_used` (the authoritative full
+  pool consumption). The "self" segment is rendered with a striped
+  modifier so it reads as part of the same colored fill.
+
+  Usage:
+    {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+    {{ render_usage_bar(percent_used, self_percent_used,
+                        height='8px', show_label=False,
+                        warning_threshold=75, critical_threshold=90) }}
+
+  Parameters
+  ----------
+  percent_used        Total % consumed against allocated (drives bar width and color).
+  self_percent_used   This project's % contribution; None or 0 → single-tone bar.
+  height              CSS height for .progress (default 8px).
+  show_label          If True, show the percent value as text inside the bar.
+  warning_threshold   Color turns yellow above this % (default 75).
+  critical_threshold  Color turns red above this %    (default 90).
+#}
+{% macro render_usage_bar(percent_used,
+                           self_percent_used=none,
+                           height=none,
+                           size_class=none,
+                           show_label=False,
+                           warning_threshold=75,
+                           critical_threshold=90) %}
+{%- set total_pct = [percent_used or 0, 100] | min -%}
+{%- set self_pct = [self_percent_used or 0, total_pct] | min -%}
+{%- set rest_pct = total_pct - self_pct -%}
+{%- if percent_used and percent_used >= critical_threshold -%}
+  {%- set color_class = 'bg-danger' -%}
+{%- elif percent_used and percent_used >= warning_threshold -%}
+  {%- set color_class = 'bg-warning' -%}
+{%- else -%}
+  {%- set color_class = 'bg-success' -%}
+{%- endif -%}
+<div class="progress{% if size_class %} {{ size_class }}{% endif %}"
+     {%- if height %} style="height:{{ height }};"{% endif %}>
+  {%- if self_percent_used is not none and self_pct > 0 and rest_pct > 0 -%}
+  <div class="progress-bar {{ color_class }} progress-bar-rest"
+       role="progressbar"
+       style="width:{{ rest_pct }}%;opacity:0.55;"
+       title="Rest of tree: {{ rest_pct | round(1) }}%"></div>
+  <div class="progress-bar {{ color_class }} progress-bar-striped progress-bar-self"
+       role="progressbar"
+       style="width:{{ self_pct }}%;"
+       title="This project: {{ self_pct | round(1) }}%">
+    {%- if show_label %}{{ self_pct | fmt_pct(decimals=0) }}{% endif -%}
+  </div>
+  {%- else -%}
+  <div class="progress-bar {{ color_class }}"
+       role="progressbar"
+       style="width:{{ total_pct }}%;">
+    {%- if show_label %}{{ percent_used | fmt_pct(decimals=0) }}{% endif -%}
+  </div>
+  {%- endif -%}
+</div>
+{% endmacro %}

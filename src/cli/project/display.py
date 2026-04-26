@@ -164,8 +164,16 @@ def display_project(ctx: Context, data: dict, extra_title_info: str = "",
             alloc_str = fmt.number(allocated)
             remaining_str = fmt.number(resource_usage['remaining'])
             used_str = fmt.number(resource_usage['used'])
+            # Shared (inheriting) allocation: annotate this project's
+            # contribution inline, e.g. "700 (200 yours)", and tag the
+            # resource cell so the user knows the pool is shared.
+            is_shared = resource_usage.get('is_inheriting', False)
+            self_used = resource_usage.get('self_used')
+            if is_shared and self_used is not None:
+                used_str = f"{used_str} [dim]({fmt.number(self_used)} yours)[/]"
+            shared_indicator = " [dim](shared)[/]" if is_shared else ""
             row = [
-                f"[{resource_style}]{resource_name}{expired_indicator}[/]",
+                f"[{resource_style}]{resource_name}{expired_indicator}[/]{shared_indicator}",
                 (f"[{resource_style}]{resource_usage['resource_type']}[/]"
                  if is_expired else resource_usage['resource_type']),
                 date_range,

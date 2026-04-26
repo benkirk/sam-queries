@@ -82,14 +82,45 @@ class AddLinkedContractForm(HtmxFormSchema):
     contract_id = f.Int(required=True)
 
 
+def _normalize_directory_suffix(data):
+    """Strip + reject any '..' path segment in the directory_suffix field.
+
+    The full directory_name is assembled in the route from the chosen
+    DiskResourceRootDirectory + this suffix; the schema doesn't touch the DB.
+    """
+    suffix = (data.get('directory_suffix') or '').strip()
+    if suffix and any(seg == '..' for seg in suffix.split('/')):
+        from marshmallow import ValidationError as _VE
+        raise _VE({'directory_suffix': ['Suffix cannot contain ".." segments.']})
+    data['directory_suffix'] = suffix
+    return data
+
+
 class AddLinkedDirectoryForm(HtmxFormSchema):
-    """Validate the directory name field when adding a project directory."""
-    directory_name = f.Str(required=True, validate=v.Length(min=1, max=255))
+    """Add a project_directory: pick a registered disk root + a suffix.
+
+    The route looks up `root_directory_id` (must exist and not equal '/')
+    and assembles `directory_name = root.rstrip('/') + ('/' + suffix.lstrip('/') if suffix else '')`.
+    """
+    root_directory_id = f.Int(required=True)
+    directory_suffix = f.Str(load_default='', validate=v.Length(max=255))
 
     @post_load
     def normalize(self, data, **kwargs):
-        data['directory_name'] = data['directory_name'].strip()
-        if not data['directory_name']:
-            from marshmallow import ValidationError as _VE
-            raise _VE({'directory_name': ['Directory name cannot be blank.']})
-        return data
+        return _normalize_directory_suffix(data)
+
+
+class EditLinkedDirectoryForm(HtmxFormSchema):
+    """Edit a project_directory row: rename via root+suffix and/or re-link
+    to a project.
+
+    FK existence checks (`root_directory_id` -> DiskResourceRootDirectory,
+    `project_id` -> Project) stay in the route since schemas don't touch the DB.
+    """
+    root_directory_id = f.Int(required=True)
+    directory_suffix = f.Str(load_default='', validate=v.Length(max=255))
+    project_id = f.Int(required=True)
+
+    @post_load
+    def normalize(self, data, **kwargs):
+        return _normalize_directory_suffix(data)

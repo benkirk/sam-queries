@@ -878,6 +878,133 @@ def htmx_add_exemption(username):
     )
 
 
+@bp.route('/htmx/admin/exemption-form')
+@login_required
+@require_permission(Permission.EDIT_USERS)
+def htmx_admin_exemption_form():
+    """Return the add-exemption form fragment for the admin "New" button on
+    the Wallclock Exemptions card row (no preselected user)."""
+    from sam.resources.resources import Resource
+
+    resources = (
+        db.session.query(Resource)
+        .filter(Resource.is_active)
+        .order_by(Resource.resource_name)
+        .all()
+    )
+    resources = [r for r in resources if r.queues]
+
+    return render_template(
+        'dashboards/admin/fragments/add_exemption_form_htmx.html',
+        sam_user=None,
+        resources=resources,
+        today=datetime.now().strftime('%Y-%m-%d')
+    )
+
+
+@bp.route('/htmx/admin/exemption/create', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_USERS)
+def htmx_admin_exemption_create():
+    """Create a wallclock exemption from the admin "New" button.
+
+    Reads user_id from the FK picker; otherwise mirrors htmx_add_exemption.
+    """
+    from sam.resources.resources import Resource
+    from sam.operational import WallclockExemption
+    from sam.manage import management_transaction
+
+    def _reload_form(errors):
+        resources = (
+            db.session.query(Resource)
+            .filter(Resource.is_active)
+            .order_by(Resource.resource_name)
+            .all()
+        )
+        resources = [r for r in resources if r.queues]
+        return render_template(
+            'dashboards/admin/fragments/add_exemption_form_htmx.html',
+            sam_user=None,
+            resources=resources,
+            today=datetime.now().strftime('%Y-%m-%d'),
+            errors=errors,
+            form=request.form,
+        )
+
+    errors = []
+    user_id_str = request.form.get('user_id', '').strip()
+    queue_id = request.form.get('queue_id', '').strip()
+    start_date_str = request.form.get('start_date', '').strip()
+    end_date_str = request.form.get('end_date', '').strip()
+    limit_str = request.form.get('time_limit_hours', '').strip()
+    comment = request.form.get('comment', '').strip()
+
+    if not user_id_str:
+        errors.append('User is required.')
+    if not queue_id:
+        errors.append('Queue is required.')
+    if not start_date_str:
+        errors.append('Start date is required.')
+    if not end_date_str:
+        errors.append('End date is required.')
+
+    time_limit_hours = None
+    if not limit_str:
+        errors.append('Time limit (hours) is required.')
+    else:
+        try:
+            time_limit_hours = float(limit_str)
+            if time_limit_hours <= 0:
+                errors.append('Time limit must be a positive number.')
+        except ValueError:
+            errors.append('Time limit must be a number.')
+
+    start_date = end_date = None
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Invalid start date format.')
+    if end_date_str:
+        try:
+            end_date = parse_input_end_date(end_date_str)
+        except ValueError:
+            errors.append('Invalid end date format.')
+    if start_date and end_date and end_date <= start_date:
+        errors.append('End date must be after start date.')
+
+    sam_user = None
+    if user_id_str:
+        try:
+            sam_user = db.session.get(User, int(user_id_str))
+        except ValueError:
+            sam_user = None
+        if not sam_user:
+            errors.append('Selected user does not exist.')
+
+    if errors:
+        return _reload_form(errors)
+
+    try:
+        with management_transaction(db.session):
+            WallclockExemption.create(
+                db.session,
+                user_id=sam_user.user_id,
+                queue_id=int(queue_id),
+                start_date=start_date,
+                end_date=end_date,
+                time_limit_hours=time_limit_hours,
+                comment=comment or None,
+            )
+    except Exception as e:
+        return _reload_form([f'Error creating exemption: {e}'])
+
+    return htmx_success_message(
+        {'closeActiveModal': {}, 'reloadResourcesCard': {}},
+        'Exemption saved successfully.',
+    )
+
+
 @bp.route('/htmx/exemption-edit-form/<int:exemption_id>')
 @login_required
 @require_permission(Permission.EDIT_USERS)

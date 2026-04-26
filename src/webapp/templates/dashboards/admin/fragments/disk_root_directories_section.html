@@ -1,0 +1,119 @@
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
+{#
+  Admin: Disk Resource Root Directories section.
+
+  Mirrors the Wallclock Exemptions structure (resources_card.html:306-401).
+  Sits at the bottom of the Resources sub-tab pane.
+
+  Context:
+    disk_resources_with_roots : list[Resource] with .root_directories collection
+#}
+
+<div class="border-top mt-2 pt-2 px-3 pb-1 d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center">
+        <i class="fas fa-folder-tree me-2 text-muted"></i>
+        <span class="fw-semibold">Disk Resource Root Directories</span>
+        <span class="text-muted small ms-2">
+            prefix mappings used to associate project directories with disk resources
+        </span>
+    </div>
+    {% if has_permission(Permission.EDIT_RESOURCES) %}
+    <button type="button" class="btn btn-sm btn-success"
+            data-bs-toggle="modal"
+            data-bs-target="#addDiskRootModal"
+            hx-get="{{ url_for('admin_dashboard.htmx_admin_disk_root_new_form') }}"
+            hx-target="#addDiskRootFormContainer"
+            hx-trigger="click">
+        <i class="fas fa-plus"></i> New
+    </button>
+    {% endif %}
+</div>
+
+<div class="table-responsive">
+    <table class="table table-sm mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Root Directory</th>
+                <th>Charging Exempt</th>
+                <th class="text-end">Actions</th>
+            </tr>
+        </thead>
+        {% set _total_roots = namespace(n=0) %}
+        {% if disk_resources_with_roots %}
+        {% for r in disk_resources_with_roots %}
+        {% set _total_roots.n = _total_roots.n + r.root_directories|length %}
+        {# ── Resource row (clickable trigger) ── #}
+        <tbody>
+            <tr class="cursor-pointer table-light fw-semibold"
+                data-bs-toggle="collapse"
+                data-bs-target="#disk-root-res-{{ r.resource_id }}"
+                aria-expanded="false">
+                <td>
+                    <i class="fas fa-chevron-right small text-muted me-1 disk-root-collapse-icon"
+                       style="transition: transform 0.2s;"></i>
+                    {{ r.resource_name }}
+                </td>
+                <td class="text-muted small" colspan="2">
+                    {{ r.root_directories|length }} root director{{ 'ies' if r.root_directories|length != 1 else 'y' }}
+                </td>
+            </tr>
+        </tbody>
+        {# ── Root-directory child rows (collapsed by default) ── #}
+        <tbody class="collapse" id="disk-root-res-{{ r.resource_id }}">
+            {% if r.root_directories %}
+            {% for dr in r.root_directories|sort(attribute='root_directory') %}
+            <tr class="table-secondary">
+                <td class="ps-4 font-monospace small">{{ dr.root_directory }}</td>
+                <td>
+                    {% if dr.charging_exempt %}
+                    <span class="badge bg-warning text-dark">
+                        <i class="fas fa-shield-alt"></i> exempt
+                    </span>
+                    {% else %}
+                    <span class="text-muted small">—</span>
+                    {% endif %}
+                </td>
+                <td class="text-end">
+                    {{ edit_modal_button(
+                        url_for('admin_dashboard.htmx_admin_disk_root_edit_form', dr_id=dr.root_directory_id),
+                        modal_id='editDiskRootModal',
+                        target_id='editDiskRootFormContainer',
+                        title='Edit root directory',
+                        stop_propagation=True,
+                        permission=Permission.EDIT_RESOURCES) }}
+                    {% if has_permission(Permission.DELETE_RESOURCES) %}
+                    <button class="btn btn-sm btn-outline-danger ms-1"
+                            title="Delete root directory"
+                            hx-post="{{ url_for('admin_dashboard.htmx_admin_disk_root_delete', dr_id=dr.root_directory_id) }}"
+                            hx-swap="none"
+                            hx-confirm="Permanently delete root directory &quot;{{ dr.root_directory }}&quot;? This cannot be undone."
+                            data-confirm-title="Delete root directory"
+                            data-confirm-variant="danger"
+                            data-confirm-label="Delete"
+                            onclick="event.stopPropagation()">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr class="table-secondary">
+                <td colspan="3" class="ps-4 text-muted fst-italic small">
+                    No root directories configured for this resource.
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+        {% endfor %}
+        {% else %}
+        <tbody>
+            <tr><td colspan="3" class="text-center text-muted py-3">No disk resources found.</td></tr>
+        </tbody>
+        {% endif %}
+    </table>
+</div>
+<div class="text-muted small px-3 py-2">
+    Showing {{ _total_roots.n }} root director{{ 'ies' if _total_roots.n != 1 else 'y' }}
+    across {{ disk_resources_with_roots|length }} disk resource{{ 's' if disk_resources_with_roots|length != 1 else '' }}.
+</div>

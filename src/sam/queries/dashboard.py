@@ -55,7 +55,7 @@ case or complicate the N=many case — both are net losses for readers.
 """
 
 from datetime import datetime
-from typing import List, Dict, Optional, TypedDict
+from typing import Any, List, Dict, Optional, TypedDict
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -110,11 +110,19 @@ class DashboardResource(TypedDict):
     is_inheriting: bool
     account_id: Optional[int]
 
-    # Numeric usage
+    # Numeric usage. When `is_inheriting` (this is a shared/child
+    # allocation), `used`/`remaining`/`percent_used` reflect the FULL
+    # tree's consumption against the shared pool, and `self_used` /
+    # `self_percent_used` carry this project's own contribution so a
+    # two-tone bar can be rendered. For non-inheriting allocations,
+    # self_* are None.
     allocated: float
     used: float
     remaining: float
     percent_used: float
+    self_used: Optional[float]
+    self_percent_used: Optional[float]
+    root_projcode: Optional[str]
     charges_by_type: Dict[str, float]
     adjustments: float
 
@@ -231,6 +239,13 @@ def _build_project_resources_data(project: Project,
             'used': usage.get('used', 0.0),
             'remaining': usage.get('remaining', 0.0),
             'percent_used': usage.get('percent_used', 0.0),
+            # When `is_inheriting`, `used`/`percent_used` reflect the shared
+            # pool's full-tree consumption; `self_used`/`self_percent_used`
+            # carry this project's contribution so the UI can render a
+            # two-tone bar.
+            'self_used': usage.get('self_used'),
+            'self_percent_used': usage.get('self_percent_used'),
+            'root_projcode': usage.get('root_projcode'),
             'charges_by_type': usage.get('charges_by_type', {}),
             'adjustments': usage.get('adjustments', 0.0),
             'status': usage.get('status', 'Unknown'),
@@ -445,13 +460,44 @@ def _build_user_projects_resources_batched(
                 })
 
     # ------------------------------------------------------------------
+    # Phase 3.5: for each inheriting (shared) allocation, also compute the
+    # root allocation's project subtree usage. That total is the
+    # authoritative pool consumption — `used`/`percent_used` should
+    # reflect it, and the original per-project subtree number becomes
+    # `self_used`. We piggy-back on the same batch_get_subtree_charges
+    # primitive by adding parallel entries keyed with a ('root',) suffix.
+    # ------------------------------------------------------------------
+    root_project_by_key: Dict[tuple, 'Project'] = {}
+    for key, (project, account, query_alloc, resource_type, end_date) in chosen.items():
+        if not query_alloc.is_inheriting:
+            continue
+        root_alloc = query_alloc.root
+        root_account = root_alloc.account
+        root_project = root_account.project if root_account else None
+        if root_project is None:
+            continue
+        if not (root_project.tree_root and root_project.tree_left and root_project.tree_right):
+            continue
+        root_project_by_key[key] = root_project
+        subtree_infos.append({
+            'key':           ('root', key),
+            'resource_id':   account.resource_id,
+            'resource_type': resource_type,
+            'tree_root':     root_project.tree_root,
+            'tree_left':     root_project.tree_left,
+            'tree_right':    root_project.tree_right,
+            'start_date':    query_alloc.start_date,
+            'end_date':      end_date,
+        })
+
+    # ------------------------------------------------------------------
     # Phase 4: ONE batched fetch per partition (subtree / leaf). The
     # primitives live on Project and are already used by fstree — we are
     # the second, independent consumer. Each call issues
     # N_resource_types × N_charge_models queries (typically 5-20 total
     # for the whole user, regardless of project count).
     # ------------------------------------------------------------------
-    raw_charges: Dict[tuple, Dict] = {}
+    raw_charges: Dict[Any, Dict] = {}
     if subtree_infos:
         raw_charges.update(
             Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments=True)
@@ -504,7 +550,25 @@ def _build_user_projects_resources_batched(
 
         allocated = float(query_alloc.amount)
         total_charges = sum(charges_by_type.values())
-        effective_used = total_charges + adjustments
+        self_used = total_charges + adjustments
+
+        # When this allocation is inheriting (shared), the authoritative
+        # pool consumption lives at the root allocation's project subtree
+        # — we batched it with a ('root', key) entry above. Use it as
+        # `used` so the UI shows the truth; expose self contribution as
+        # `self_used`.
+        tree_used = self_used
+        self_percent_used = None
+        root_projcode = None
+        if query_alloc.is_inheriting:
+            root_data = raw_charges.get(('root', key), {'charges_by_type': {}, 'adjustment': 0.0})
+            tree_used = sum(root_data['charges_by_type'].values()) + root_data['adjustment']
+            self_percent_used = (self_used / allocated * 100) if allocated > 0 else 0.0
+            root_proj = root_project_by_key.get(key)
+            if root_proj is not None:
+                root_projcode = root_proj.projcode
+
+        effective_used = tree_used
         remaining = allocated - effective_used
         percent_used = (effective_used / allocated * 100) if allocated > 0 else 0.0
 
@@ -546,6 +610,9 @@ def _build_user_projects_resources_batched(
             'used':                 effective_used,
             'remaining':            remaining,
             'percent_used':         percent_used,
+            'self_used':            self_used if query_alloc.is_inheriting else None,
+            'self_percent_used':    self_percent_used,
+            'root_projcode':        root_projcode,
             'charges_by_type':      charges_by_type,
             'adjustments':          adjustments,
             'status':               'Unknown',

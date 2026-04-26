@@ -102,6 +102,13 @@ class AllocationWithUsageSchema(AllocationSchema):
             'percent_used',
             'charges_by_type',
             'adjustments',
+            # Shared-allocation tree fields. When `is_inheriting` is True,
+            # `used`/`percent_used` reflect the root subtree (the actual
+            # shared pool); these expose this project's contribution so
+            # consumers can render a two-tone bar.
+            'self_used',
+            'self_percent_used',
+            'root_projcode',
         )
 
     # Add resource details
@@ -113,6 +120,9 @@ class AllocationWithUsageSchema(AllocationSchema):
     percent_used = fields.Method('get_percent_used')
     charges_by_type = fields.Method('get_charges_by_type')
     adjustments = fields.Method('get_adjustments')
+    self_used = fields.Method('get_self_used')
+    self_percent_used = fields.Method('get_self_percent_used')
+    root_projcode = fields.Method('get_root_projcode')
 
     def get_resource(self, obj):
         """Get resource from account context."""
@@ -231,24 +241,96 @@ class AllocationWithUsageSchema(AllocationSchema):
         _, adjustments, _ = self._calculate_usage(obj)
         return adjustments
 
+    def _calculate_tree_usage(self, obj):
+        """For inheriting allocations, sum charges across the root project's
+        full subtree — that's the authoritative shared-pool consumption.
+
+        Returns (tree_used, root_project) or (None, None) for non-inheriting.
+        """
+        if not obj.is_inheriting:
+            return None, None
+        session = self.context.get('session')
+        include_adjustments = self.context.get('include_adjustments', True)
+        if not session:
+            return None, None
+        root_alloc = obj.root
+        root_account = root_alloc.account
+        root_project = root_account.project if root_account else None
+        if root_project is None or not (
+            root_project.tree_root and root_project.tree_left and root_project.tree_right
+        ):
+            return None, None
+        now = datetime.now()
+        start_date = obj.start_date
+        end_date = obj.end_date or now
+        resource_type = (
+            root_account.resource.resource_type.resource_type
+            if root_account.resource and root_account.resource.resource_type
+            else None
+        )
+        charges = root_project.get_subtree_charges(
+            root_account.resource_id, resource_type, start_date, end_date)
+        tree_used = sum(charges.values())
+        if include_adjustments:
+            tree_used += root_project.get_subtree_adjustments(
+                root_account.resource_id, start_date, end_date)
+        return tree_used, root_project
+
     def get_used(self, obj):
-        """Get total used amount (charges + adjustments)."""
+        """Total used amount. For inheriting allocations, this is the
+        root project's full subtree consumption (the actual shared pool
+        usage). For standalone allocations, this is the single-account
+        charges + adjustments.
+        """
+        tree_used, _ = self._calculate_tree_usage(obj)
+        if tree_used is not None:
+            return tree_used
         _, _, used = self._calculate_usage(obj)
         return used
 
     def get_remaining(self, obj):
-        """Get remaining allocation (amount - used)."""
-        _, _, used = self._calculate_usage(obj)
+        """Remaining = allocated - used (tree-aware when inheriting)."""
+        used = self.get_used(obj)
         allocated = float(obj.amount) if obj.amount else 0.0
         return allocated - used
 
     def get_percent_used(self, obj):
-        """Get percent of allocation used."""
+        """Percent used (tree-aware when inheriting)."""
+        used = self.get_used(obj)
+        allocated = float(obj.amount) if obj.amount else 0.0
+        if allocated > 0:
+            return (used / allocated) * 100.0
+        return 0.0
+
+    def get_self_used(self, obj):
+        """This project's contribution to the shared allocation pool.
+        None for non-inheriting allocations.
+        """
+        if not obj.is_inheriting:
+            return None
+        _, _, used = self._calculate_usage(obj)
+        return used
+
+    def get_self_percent_used(self, obj):
+        """This project's contribution as a percentage of the shared pool.
+        None for non-inheriting allocations.
+        """
+        if not obj.is_inheriting:
+            return None
         _, _, used = self._calculate_usage(obj)
         allocated = float(obj.amount) if obj.amount else 0.0
         if allocated > 0:
             return (used / allocated) * 100.0
         return 0.0
+
+    def get_root_projcode(self, obj):
+        """Projcode of the project owning the root allocation. None for
+        non-inheriting allocations.
+        """
+        if not obj.is_inheriting:
+            return None
+        _, root_project = self._calculate_tree_usage(obj)
+        return root_project.projcode if root_project else None
 
 
 class AccountSchema(BaseSchema):

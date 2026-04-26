@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 <!-- Usage Details Modal Content -->
 {% if allocation %}
 <div class="usage-details">
@@ -79,14 +80,10 @@
             </div>
 
             <!-- Progress Bar -->
-            <div class="progress progress-xxlarge">
-                {% set percent = allocation.percent_used %}
-                <div class="progress-bar {% if percent >= 90 %}bg-danger{% elif percent >= 75 %}bg-warning{% else %}bg-success{% endif %}"
-                     role="progressbar"
-                     style="width: {{ percent }}%">
-                    {{ "%.1f"|format(percent) }}%
-                </div>
-            </div>
+            {{ render_usage_bar(allocation.percent_used,
+                                allocation.get('self_percent_used'),
+                                size_class='progress-xxlarge',
+                                show_label=True) }}
         </div>
     </div>
 

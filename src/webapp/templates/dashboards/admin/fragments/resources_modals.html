@@ -18,6 +18,11 @@
                   icon='plus', container_id='createMachineFormContainer') }}
 {% endif %}
 
+{% if has_permission(Permission.EDIT_RESOURCES) %}
+{{ modal_scaffold('addDiskRootModal', 'New Disk Root Directory',
+                  icon='folder-plus', container_id='addDiskRootFormContainer') }}
+{% endif %}
+
 {# ══════════════════════════════════════════════════════════ EDIT MODALS #}
 
 {{ modal_scaffold('editResourceModal', 'Edit Resource',
@@ -31,3 +36,6 @@
 
 {{ modal_scaffold('editQueueModal', 'Edit Queue',
                   icon='list-ol', container_id='editQueueFormContainer', variant='edit') }}
+
+{{ modal_scaffold('editDiskRootModal', 'Edit Disk Root Directory',
+                  icon='folder-tree', container_id='editDiskRootFormContainer', variant='edit') }}
