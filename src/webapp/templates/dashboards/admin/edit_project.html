@@ -266,6 +266,10 @@
 <!-- Include member management modals (reused from user dashboard) -->
 {% include 'project_members/fragments/member_modals_htmx.html' %}
 
+<!-- Edit ProjectDirectory modal scaffold (loaded by the pencil button on
+     each row of the Directories panel inside #linkedElementsContainer). -->
+{% include 'dashboards/admin/fragments/project_directory_modals.html' %}
+
 <!-- ═══════════════════════════════════════════════ HTMX event handlers -->
 <script>
   // After a successful project details save, the success fragment is shown

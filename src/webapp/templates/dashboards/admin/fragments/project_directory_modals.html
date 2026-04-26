@@ -14,3 +14,12 @@
                   icon='edit',
                   container_id='editProjectDirectoryFormContainer',
                   variant='edit') }}
+
+{% if has_permission(Permission.DELETE_PROJECTS) %}
+{{ modal_scaffold('bulkDeactivateProjectDirectoriesModal',
+                  'Bulk-deactivate Project Directories',
+                  icon='broom',
+                  container_id='bulkDeactivateProjectDirectoriesFormContainer',
+                  variant='edit',
+                  size='lg') }}
+{% endif %}

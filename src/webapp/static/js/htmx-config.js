@@ -101,17 +101,22 @@ document.body.addEventListener('reloadResourcesCard', function() {
 });
 
 // Reload the cross-project Project Directories table after an edit/deactivate.
-// Uses the show_inactive checkbox state if present (note: opposite of active_only).
+// Honors the canonical "Active only" toggle (active_only=1 when checked).
 document.body.addEventListener('reloadProjectDirectoriesCard', function() {
-    var section = document.getElementById('projectDirectoriesSection');
-    if (!section) return;
-    var url = (section.getAttribute('hx-get') || '').split('?')[0];
+    _reloadAdminCard('projectDirectoriesSection', 'projectDirectoriesActiveOnly');
+});
+
+// Reload the per-project Linked Elements panel (#linkedElementsContainer
+// on the admin edit-project page) after a directory edit. The container
+// carries its own hx-get URL; we just re-fire it. No-op when the page
+// doesn't host the container.
+document.body.addEventListener('reloadProjectLinkedElements', function() {
+    var c = document.getElementById('linkedElementsContainer');
+    if (!c) return;
+    var url = c.getAttribute('hx-get');
     if (!url) return;
-    var cb = document.getElementById('projectDirectoriesShowInactive');
-    var qs = (cb && cb.checked) ? '?show_inactive=1' : '';
     setTimeout(function() {
-        htmx.ajax('GET', url + qs,
-                  {target: '#projectDirectoriesSection', swap: 'innerHTML'});
+        htmx.ajax('GET', url, {target: '#linkedElementsContainer', swap: 'innerHTML'});
     }, 300);
 });
 

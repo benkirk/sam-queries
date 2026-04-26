@@ -261,7 +261,7 @@
         <div class="tab-pane fade" id="tab-projects-directories"
              role="tabpanel" aria-labelledby="projects-directories-tab">
             <div id="projectDirectoriesSection"
-                 hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directories') }}"
+                 hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directories') }}?active_only=1"
                  hx-trigger="load once"
                  hx-target="this"
                  hx-swap="innerHTML">
