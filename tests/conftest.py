@@ -606,6 +606,52 @@ def subtree_project(session, _subtree_project_id):
     return session.get(Project, _subtree_project_id)
 
 
+@pytest.fixture(scope="session")
+def _inheriting_project_lookup(engine):
+    """(project_id, resource_name) for any project whose active HPC/DAV allocation
+    on an active resource is inheriting (parent_allocation_id IS NOT NULL).
+
+    Used by tests that need to verify pool-aware rolling charges. Returns
+    None if the snapshot has no inheriting allocations.
+    """
+    from sqlalchemy import text as _text
+    with _session_for_setup(engine) as s:
+        row = s.execute(_text("""
+            SELECT p.project_id, r.resource_name
+            FROM project p
+            JOIN account a ON a.project_id = p.project_id
+            JOIN allocation al ON al.account_id = a.account_id
+            JOIN resources r ON r.resource_id = a.resource_id
+            JOIN resource_type rt ON rt.resource_type_id = r.resource_type_id
+            WHERE p.active = 1
+              AND a.deleted = 0
+              AND al.parent_allocation_id IS NOT NULL
+              AND al.start_date <= NOW()
+              AND (al.end_date IS NULL OR al.end_date >= NOW())
+              AND rt.resource_type IN ('HPC', 'DAV')
+              AND (r.commission_date IS NULL OR r.commission_date <= NOW())
+              AND (r.decommission_date IS NULL OR r.decommission_date >= NOW())
+            ORDER BY p.project_id
+            LIMIT 1
+        """)).first()
+    if row is None:
+        return None
+    return (row[0], row[1])
+
+
+@pytest.fixture
+def inheriting_project(session, _inheriting_project_lookup):
+    """A (Project, resource_name) pair where the project has an inheriting
+    allocation on the named resource. Skips the test if the snapshot has
+    no inheriting allocations.
+    """
+    if _inheriting_project_lookup is None:
+        pytest.skip("snapshot has no inheriting allocations")
+    project_id, resource_name = _inheriting_project_lookup
+    from sam import Project
+    return session.get(Project, project_id), resource_name
+
+
 # ---- "any row of X" fixtures ----------------------------------------------
 #
 # Simple function-scoped lookups used by the `.update()` contract tests in

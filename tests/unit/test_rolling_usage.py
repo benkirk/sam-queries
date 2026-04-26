@@ -51,7 +51,8 @@ class TestRollingUsageStructure:
 
     def test_each_entry_has_required_fields(self, session, active_project):
         result = get_project_rolling_usage(session, active_project.projcode)
-        required = {'allocated', 'start_date', 'end_date', 'windows'}
+        required = {'allocated', 'start_date', 'end_date', 'windows',
+                    'is_inheriting', 'root_projcode'}
         for rname, data in result.items():
             assert not (required - data.keys()), f'{rname}: missing {required - data.keys()}'
 
@@ -63,7 +64,7 @@ class TestRollingUsageStructure:
 
     def test_window_entry_has_required_fields(self, session, active_project):
         result = get_project_rolling_usage(session, active_project.projcode)
-        required = {'charges', 'prorated_alloc', 'pct_of_prorated',
+        required = {'charges', 'self_charges', 'prorated_alloc', 'pct_of_prorated',
                     'threshold_pct', 'use_limit', 'pct_of_limit'}
         for rname, data in result.items():
             for wdays, winfo in data['windows'].items():
@@ -296,6 +297,102 @@ class TestEdgeCases:
         result = get_project_rolling_usage(session, active_project.projcode, windows=[])
         for _rname, data in result.items():
             assert data['windows'] == {}
+
+
+# ============================================================================
+# Inherited (shared-pool) allocations
+#
+# When a project's allocation on a resource is inheriting (parent_allocation_id
+# IS NOT NULL), `charges` and the derived percentages must reflect *pool burn*
+# across the whole shared-allocation tree — that's the rate that depletes the
+# allocation. Each window also carries `self_charges` so the UI can surface
+# the per-project slice as "(N yours)".
+# ============================================================================
+
+
+class TestInheritedAllocation:
+
+    def test_resource_dict_flags_inheriting(self, session, inheriting_project):
+        project, resource_name = inheriting_project
+        result = get_project_rolling_usage(
+            session, project.projcode, resource_name=resource_name
+        )
+        if not result or resource_name not in result:
+            pytest.skip(
+                f'{project.projcode}/{resource_name}: no rolling data '
+                f'(allocation may be excluded by HPC/DAV/active filter)'
+            )
+        data = result[resource_name]
+        assert data['is_inheriting'] is True
+        assert isinstance(data.get('root_projcode'), str)
+        assert data['root_projcode'], 'root_projcode must be a non-empty projcode'
+
+    def test_windows_carry_self_charges(self, session, inheriting_project):
+        project, resource_name = inheriting_project
+        result = get_project_rolling_usage(
+            session, project.projcode, resource_name=resource_name
+        )
+        if not result or resource_name not in result:
+            pytest.skip(f'{project.projcode}/{resource_name}: no rolling data')
+        for wdays, winfo in result[resource_name]['windows'].items():
+            assert 'self_charges' in winfo, f'window {wdays}: missing self_charges'
+            assert winfo['self_charges'] is not None, (
+                f'window {wdays}: self_charges must be set when inheriting'
+            )
+            assert isinstance(winfo['self_charges'], float)
+
+    def test_pool_charges_gte_self(self, session, inheriting_project):
+        """Pool burn must include self-burn — invariant `charges >= self_charges`."""
+        project, resource_name = inheriting_project
+        result = get_project_rolling_usage(
+            session, project.projcode, resource_name=resource_name
+        )
+        if not result or resource_name not in result:
+            pytest.skip(f'{project.projcode}/{resource_name}: no rolling data')
+        for wdays, winfo in result[resource_name]['windows'].items():
+            assert winfo['charges'] >= winfo['self_charges'], (
+                f'window {wdays}: pool charges ({winfo["charges"]}) '
+                f'must be >= self_charges ({winfo["self_charges"]})'
+            )
+
+    def test_threshold_math_holds_on_pool(self, session, inheriting_project):
+        """`pct_of_limit == charges / use_limit * 100` — same formula as the
+        non-inheriting path, applied to pool numbers. Skips if no threshold
+        configured on the inheriting project's account.
+        """
+        project, resource_name = inheriting_project
+        result = get_project_rolling_usage(
+            session, project.projcode, resource_name=resource_name
+        )
+        if not result or resource_name not in result:
+            pytest.skip(f'{project.projcode}/{resource_name}: no rolling data')
+        any_threshold = False
+        for wdays, winfo in result[resource_name]['windows'].items():
+            if winfo['threshold_pct'] is None or not winfo['use_limit']:
+                continue
+            any_threshold = True
+            expected = round(winfo['charges'] / winfo['use_limit'] * 100.0, 1)
+            assert abs(winfo['pct_of_limit'] - expected) < 1.0
+        if not any_threshold:
+            pytest.skip(
+                f'{project.projcode}/{resource_name}: no threshold configured'
+            )
+
+    def test_non_inheriting_has_null_self_charges(self, session, active_project):
+        """Regression guard: non-inheriting allocations don't leak the new
+        `self_charges` value (must be None to keep the UI annotation gated).
+        """
+        result = get_project_rolling_usage(session, active_project.projcode)
+        for rname, data in result.items():
+            if data.get('is_inheriting'):
+                continue  # inheriting case is covered by tests above
+            assert data.get('is_inheriting') is False
+            assert data.get('root_projcode') is None
+            for wdays, winfo in data['windows'].items():
+                assert winfo.get('self_charges') is None, (
+                    f'{rname}/window {wdays}: non-inheriting must have '
+                    f'self_charges=None, got {winfo.get("self_charges")}'
+                )
 
 
 # ============================================================================
