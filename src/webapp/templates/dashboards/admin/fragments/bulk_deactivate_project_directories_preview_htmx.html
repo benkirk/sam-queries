@@ -1,0 +1,82 @@
+{#
+  Step-2: preview + commit fragment for bulk-deactivation.
+
+  Replaces step 1 inside #bulkDeactivateProjectDirectoriesFormContainer.
+  Shows the count + sample of matched paths and a red "Deactivate N"
+  button that POSTs to the commit endpoint.
+
+  Context:
+    prefix  : str (the prefix entered in step 1)
+    matches : list[ProjectDirectory] (active rows that match)
+    errors  : optional list[str]
+#}
+
+<form hx-post="{{ url_for('admin_dashboard.htmx_admin_project_directory_bulk_deactivate') }}"
+      hx-target="#bulkDeactivateProjectDirectoriesFormContainer"
+      hx-swap="innerHTML">
+    <input type="hidden" name="prefix" value="{{ prefix }}">
+
+    <div class="modal-body">
+        {% if not prefix.endswith('/') %}
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            Prefix <code>{{ prefix }}</code> doesn't end with a trailing slash.
+            Match semantics still respect path segments
+            (so <code>{{ prefix }}/...</code> patterns are matched, but
+            <code>{{ prefix }}foo</code>-style siblings are not), but a
+            trailing slash is the safer convention.
+        </div>
+        {% endif %}
+
+        {% if matches %}
+        <p class="mb-2">
+            <strong>{{ matches|length }} active director{{ 'ies' if matches|length != 1 else 'y' }}</strong>
+            match prefix <code>{{ prefix }}</code>:
+        </p>
+        <ul class="font-monospace small mb-3" style="max-height: 18em; overflow-y: auto;">
+            {% for pd in matches[:25] %}
+            <li>
+                {{ pd.directory_name }}
+                <span class="text-muted ms-1">— {{ pd.project.projcode }}</span>
+            </li>
+            {% endfor %}
+            {% if matches|length > 25 %}
+            <li class="text-muted">… and {{ matches|length - 25 }} more.</li>
+            {% endif %}
+        </ul>
+        <div class="alert alert-danger mb-0">
+            <i class="fas fa-exclamation-triangle"></i>
+            Are you sure you want to deactivate
+            <strong>{{ matches|length }}</strong>
+            director{{ 'ies' if matches|length != 1 else 'y' }}
+            under <code>{{ prefix }}</code>?
+            This action cannot be undone.
+        </div>
+        {% else %}
+        <div class="alert alert-info mb-0">
+            No active directories match prefix <code>{{ prefix }}</code>.
+        </div>
+        {% endif %}
+
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for e in errors %}<p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ e }}</p>{% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary"
+                hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directory_bulk_deactivate_form') }}"
+                hx-target="#bulkDeactivateProjectDirectoriesFormContainer"
+                hx-swap="innerHTML">
+            <i class="fas fa-arrow-left"></i> Back
+        </button>
+        {% if matches %}
+        <button type="submit" class="btn btn-danger">
+            <i class="fas fa-trash-alt"></i>
+            Deactivate {{ matches|length }} director{{ 'ies' if matches|length != 1 else 'y' }}
+        </button>
+        {% endif %}
+    </div>
+</form>

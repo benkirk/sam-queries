@@ -2362,3 +2362,110 @@ def htmx_admin_project_directory_deactivate(pd_id):
         {'reloadProjectDirectoriesCard': {}},
         'Project directory deactivated.',
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin: bulk-deactivate Project Directories under a path prefix
+# ---------------------------------------------------------------------------
+
+def _project_dirs_matching_prefix(prefix: str, *, active_only: bool = True):
+    """Return ProjectDirectory rows whose directory_name is `prefix`
+    (with an optional trailing slash) or any descendant of it.
+
+    The match must consume a full path segment, so `/glade/p` does NOT
+    match `/glade/pp/foo`. Caller is responsible for any 'minimum length'
+    sanity checks (the schema enforces >= 4 chars and != '/').
+    """
+    from sam.projects.projects import ProjectDirectory
+    base = prefix.rstrip('/')
+    q = db.session.query(ProjectDirectory).filter(
+        (ProjectDirectory.directory_name == base) |
+        (ProjectDirectory.directory_name.like(base + '/%'))
+    )
+    if active_only:
+        q = q.filter(ProjectDirectory.is_active)
+    return q.order_by(ProjectDirectory.directory_name).all()
+
+
+@bp.route('/htmx/admin/project-directories/bulk-deactivate-form')
+@login_required
+@require_permission(Permission.DELETE_PROJECTS)
+def htmx_admin_project_directory_bulk_deactivate_form():
+    """Step 1: render the prefix-input form fragment in the bulk modal."""
+    return render_template(
+        'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html',
+    )
+
+
+@bp.route('/htmx/admin/project-directories/bulk-deactivate-preview', methods=['POST'])
+@login_required
+@require_permission(Permission.DELETE_PROJECTS)
+def htmx_admin_project_directory_bulk_deactivate_preview():
+    """Step 2: show count + sample of paths that would be deactivated."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import BulkDeactivateProjectDirectoriesForm
+
+    try:
+        form_data = BulkDeactivateProjectDirectoriesForm().load(request.form)
+    except ValidationError as e:
+        return render_template(
+            'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html',
+            errors=BulkDeactivateProjectDirectoriesForm.flatten_errors(e.messages),
+            form=request.form,
+        )
+
+    matches = _project_dirs_matching_prefix(form_data['prefix'], active_only=True)
+    return render_template(
+        'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html',
+        prefix=form_data['prefix'],
+        matches=matches,
+    )
+
+
+@bp.route('/htmx/admin/project-directories/bulk-deactivate', methods=['POST'])
+@login_required
+@require_permission(Permission.DELETE_PROJECTS)
+def htmx_admin_project_directory_bulk_deactivate():
+    """Step 3: commit. Re-runs the query (in case data changed since
+    preview) and deactivates all active matches inside one transaction."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import BulkDeactivateProjectDirectoriesForm
+
+    try:
+        form_data = BulkDeactivateProjectDirectoriesForm().load(request.form)
+    except ValidationError as e:
+        # Bounce back to the step-1 form with the error.
+        return render_template(
+            'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html',
+            errors=BulkDeactivateProjectDirectoriesForm.flatten_errors(e.messages),
+            form=request.form,
+        )
+
+    prefix = form_data['prefix']
+    matches = _project_dirs_matching_prefix(prefix, active_only=True)
+
+    if not matches:
+        return render_template(
+            'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html',
+            prefix=prefix,
+            matches=[],
+            errors=['No active directories match — nothing to do.'],
+        )
+
+    try:
+        with management_transaction(db.session):
+            for pd in matches:
+                pd.deactivate()
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html',
+            prefix=prefix,
+            matches=matches,
+            errors=[f'Error during bulk deactivation: {e}'],
+        )
+
+    n = len(matches)
+    return htmx_success_message(
+        _PROJECT_DIRECTORIES_RELOAD_TRIGGERS,
+        f'Deactivated {n} project director{"ies" if n != 1 else "y"} under "{prefix}".',
+    )
