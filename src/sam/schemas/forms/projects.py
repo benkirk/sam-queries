@@ -103,7 +103,7 @@ class AddLinkedDirectoryForm(HtmxFormSchema):
     and assembles `directory_name = root.rstrip('/') + ('/' + suffix.lstrip('/') if suffix else '')`.
     """
     root_directory_id = f.Int(required=True)
-    directory_suffix = f.Str(load_default='', validate=v.Length(max=255))
+    directory_suffix = f.Str(required=True, validate=v.Length(min=1, max=255))
 
     @post_load
     def normalize(self, data, **kwargs):
@@ -118,7 +118,7 @@ class EditLinkedDirectoryForm(HtmxFormSchema):
     `project_id` -> Project) stay in the route since schemas don't touch the DB.
     """
     root_directory_id = f.Int(required=True)
-    directory_suffix = f.Str(load_default='', validate=v.Length(max=255))
+    directory_suffix = f.Str(required=True, validate=v.Length(min=1, max=255))
     project_id = f.Int(required=True)
 
     @post_load

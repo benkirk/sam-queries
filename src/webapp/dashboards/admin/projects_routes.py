@@ -1779,14 +1779,25 @@ _ORG_LINK_FACILITIES = {'NCAR', 'CISL', 'CSL', 'ASD'}
 
 
 def _disk_roots_for_picker():
-    """Return all DiskResourceRootDirectory rows except the catch-all '/'."""
+    """Return all DiskResourceRootDirectory rows except the catch-all '/',
+    sorted deepest-first (more path segments first, then alphabetically).
+
+    Deepest-first matches the longest-prefix matching used during
+    decomposition and avoids surprising users who expect a more specific
+    root like /glade/campaign to appear above the bare /glade in the
+    dropdown.
+    """
     from sam.resources.resources import DiskResourceRootDirectory
-    return (
+    rows = (
         db.session.query(DiskResourceRootDirectory)
         .filter(DiskResourceRootDirectory.root_directory != '/')
-        .order_by(DiskResourceRootDirectory.root_directory)
         .all()
     )
+    rows.sort(key=lambda r: (
+        -len([seg for seg in r.root_directory.strip('/').split('/') if seg]),
+        r.root_directory,
+    ))
+    return rows
 
 
 def _decompose_directory_name(directory_name, roots):

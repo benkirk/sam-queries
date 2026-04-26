@@ -1,10 +1,14 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, select_field, fk_search_field with context %}
+{% from 'dashboards/fragments/form_fields.html' import fk_search_field with context %}
 {#
   htmx: New Project Directory form (loaded into #addProjectDirectoryFormContainer).
 
   Shares EditLinkedDirectoryForm validation: root_directory_id + directory_suffix + project_id.
   Final directory_name is assembled server-side from the chosen root + suffix.
+
+  The root dropdown + suffix input render as a single Bootstrap input-group
+  so the user sees them as one path; static/js/path-preview.js renders the
+  assembled (slash-deduplicated) result live below.
 
   Context:
     disk_roots : list[DiskResourceRootDirectory] (excludes the catch-all '/')
@@ -27,19 +31,41 @@
         </div>
         {% endif %}
 
-        {{ select_field('root_directory_id', 'Disk Root',
-                        items=disk_roots,
-                        value_attr='root_directory_id',
-                        label_attr='root_directory',
-                        required=True,
-                        placeholder='-- Select a disk root --',
-                        id='addProjectDirectoryRoot') }}
-
-        {{ text_field('directory_suffix', 'Sub-path',
-                      maxlength=255,
-                      placeholder='subpath/under/the/root  (or leave blank for the root itself)',
-                      help='Path under the chosen root. ".." segments are not allowed.',
-                      id='addProjectDirectorySuffix') }}
+        <div class="mb-3">
+            <label for="addProjectDirectoryRoot" class="form-label">
+                Directory <span class="text-danger">*</span>
+            </label>
+            <div class="input-group" data-path-preview-group>
+                <select class="form-select" id="addProjectDirectoryRoot"
+                        name="root_directory_id" required
+                        data-path-preview-root
+                        style="max-width: 18em;">
+                    <option value="">-- Select a disk root --</option>
+                    {% for r in disk_roots %}
+                    <option value="{{ r.root_directory_id }}"
+                            data-root-path="{{ r.root_directory }}"
+                            {% if form and form.get('root_directory_id') == r.root_directory_id|string %}selected{% endif %}>
+                        {{ r.root_directory }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <span class="input-group-text">/</span>
+                <input type="text" class="form-control"
+                       id="addProjectDirectorySuffix"
+                       name="directory_suffix"
+                       maxlength="255"
+                       required
+                       placeholder="sub-path"
+                       autocomplete="off"
+                       data-path-preview-suffix
+                       value="{{ form.get('directory_suffix') if form else '' }}">
+            </div>
+            <div class="form-text">
+                Final path:
+                <code class="path-preview text-primary fw-semibold">—</code>
+                <span class="text-muted">— <code>".."</code> segments are not allowed.</span>
+            </div>
+        </div>
 
         {{ fk_search_field('project_id', 'Linked Project',
                            search_url=url_for('admin_dashboard.htmx_project_search_for_parent'),

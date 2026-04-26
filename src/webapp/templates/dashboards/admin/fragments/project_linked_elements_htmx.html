@@ -217,33 +217,37 @@
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_directory', projcode=project.projcode) }}"
               hx-target="#linkedElementsContainer"
               hx-swap="innerHTML">
-          <div class="d-flex gap-2 align-items-center flex-wrap">
+          <div class="input-group input-group-sm" data-path-preview-group>
             <select name="root_directory_id" required
-                    class="form-select form-select-sm"
+                    class="form-select"
+                    data-path-preview-root
                     style="max-width:14em;">
               <option value="">-- Select a disk root --</option>
               {% for r in disk_roots %}
-              <option value="{{ r.root_directory_id }}">{{ r.root_directory }}</option>
+              <option value="{{ r.root_directory_id }}"
+                      data-root-path="{{ r.root_directory }}">{{ r.root_directory }}</option>
               {% endfor %}
             </select>
+            <span class="input-group-text">/</span>
             <input type="text"
                    name="directory_suffix"
-                   class="form-control form-control-sm flex-grow-1"
-                   placeholder="sub/path  (or leave blank for the root itself)"
+                   class="form-control"
+                   required
+                   placeholder="sub-path"
                    autocomplete="off"
-                   style="min-width:200px;">
-            <button type="submit" class="btn btn-sm btn-success">
+                   data-path-preview-suffix>
+            <button type="submit" class="btn btn-success">
               <i class="fas fa-check"></i> Add
             </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary"
+            <button type="button" class="btn btn-outline-secondary"
                     onclick="leToggleAddForm('addDirForm')">
               Cancel
             </button>
           </div>
           <small class="text-muted d-block mt-1">
-            Final path is assembled as
-            <code>&lt;root&gt;/&lt;sub-path&gt;</code>; <code>".."</code>
-            segments are not allowed.
+            Final path:
+            <code class="path-preview text-primary fw-semibold">—</code>
+            — <code>".."</code> segments are not allowed.
           </small>
         </form>
         {% else %}
