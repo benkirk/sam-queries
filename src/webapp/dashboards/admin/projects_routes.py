@@ -1778,6 +1778,39 @@ def htmx_propagate_to_remaining(allocation):
 _ORG_LINK_FACILITIES = {'NCAR', 'CISL', 'CSL', 'ASD'}
 
 
+def _disk_roots_for_picker():
+    """Return all DiskResourceRootDirectory rows except the catch-all '/'."""
+    from sam.resources.resources import DiskResourceRootDirectory
+    return (
+        db.session.query(DiskResourceRootDirectory)
+        .filter(DiskResourceRootDirectory.root_directory != '/')
+        .order_by(DiskResourceRootDirectory.root_directory)
+        .all()
+    )
+
+
+def _decompose_directory_name(directory_name, roots):
+    """Split a stored ProjectDirectory.directory_name back into (root, suffix).
+
+    Longest-prefix match wins. Returns (None, original_path) when no
+    root in the supplied list is a prefix of the path.
+    """
+    for r in sorted(roots, key=lambda r: len(r.root_directory), reverse=True):
+        base = r.root_directory.rstrip('/')
+        if directory_name == r.root_directory or directory_name == base:
+            return r, ''
+        if directory_name.startswith(base + '/'):
+            return r, directory_name[len(base) + 1:]
+    return None, directory_name
+
+
+def _assemble_directory_name(root, suffix):
+    """Combine a root + suffix into a stored directory_name string."""
+    suffix = (suffix or '').strip()
+    base = root.root_directory.rstrip('/')
+    return base + ('/' + suffix.lstrip('/') if suffix else '')
+
+
 def _linked_elements_context(project):
     """Build the template context dict for the linked-elements fragment."""
     facility_name = None
@@ -1792,6 +1825,7 @@ def _linked_elements_context(project):
         active_organizations=[po for po in project.organizations if po.is_active],
         contracts=project.contracts,
         active_directories=[pd for pd in project.directories if pd.is_active],
+        disk_roots=_disk_roots_for_picker(),
         can_edit_governance=can_edit_project_governance(current_user, project),
         errors=[],
     )
@@ -1981,10 +2015,15 @@ def htmx_remove_project_contract(projcode, pc_id):
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_add_project_directory(projcode):
-    """Associate a filesystem directory with a project."""
+    """Associate a filesystem directory with a project.
+
+    Input is now (root_directory_id, directory_suffix); the route looks up
+    the chosen root, rejects '/', and assembles the final directory_name.
+    """
     from marshmallow import ValidationError
     from sam.schemas.forms.projects import AddLinkedDirectoryForm
     from sam.projects.projects import Project, ProjectDirectory
+    from sam.resources.resources import DiskResourceRootDirectory
 
     project = Project.get_by_projcode(db.session, projcode)
     if not project:
@@ -1995,7 +2034,11 @@ def htmx_add_project_directory(projcode):
     except ValidationError as e:
         return _render_linked_elements(project, errors=AddLinkedDirectoryForm.flatten_errors(e.messages))
 
-    directory_name = form_data['directory_name']
+    root = db.session.get(DiskResourceRootDirectory, form_data['root_directory_id'])
+    if not root or root.root_directory == '/':
+        return _render_linked_elements(project, errors=['Selected disk root is invalid.'])
+
+    directory_name = _assemble_directory_name(root, form_data['directory_suffix'])
 
     # Prevent duplicate active entries
     existing = [pd for pd in project.directories if pd.directory_name == directory_name and pd.is_active]
@@ -2039,3 +2082,263 @@ def htmx_remove_project_directory(projcode, pd_id):
 
     db.session.refresh(project)
     return _render_linked_elements(project)
+
+
+# ---------------------------------------------------------------------------
+# Admin: cross-project Project Directories view
+# ---------------------------------------------------------------------------
+
+_PROJECT_DIRECTORIES_RELOAD_TRIGGERS = {
+    'closeActiveModal': {},
+    'reloadProjectDirectoriesCard': {},
+}
+
+
+def _render_project_directories_card(*, show_inactive: bool):
+    """Render the cross-project Project Directories card fragment.
+
+    Groups rows by Resource via longest-prefix match of ``directory_name``
+    against ``DiskResourceRootDirectory.root_directory``. Unmatched rows
+    fall into a final "No Resource Identified" group.
+    """
+    from collections import defaultdict
+    from sam.projects.projects import ProjectDirectory, Project
+    from sam.resources.resources import DiskResourceRootDirectory
+
+    roots = (
+        db.session.query(DiskResourceRootDirectory)
+        .order_by(DiskResourceRootDirectory.root_directory)
+        .all()
+    )
+    # Longest prefix wins so /glade/campaign beats /glade
+    roots_by_len = sorted(roots, key=lambda r: len(r.root_directory), reverse=True)
+
+    def _resolve_resource(directory_name: str):
+        for r in roots_by_len:
+            if directory_name.startswith(r.root_directory):
+                return r.resource
+        return None
+
+    q = db.session.query(ProjectDirectory).join(Project)
+    if not show_inactive:
+        q = q.filter(ProjectDirectory.is_active)
+    rows = q.order_by(ProjectDirectory.directory_name).all()
+
+    groups = defaultdict(list)  # resource_id (or None) -> list[ProjectDirectory]
+    resources_by_id = {}        # resource_id -> Resource
+    for pd in rows:
+        res = _resolve_resource(pd.directory_name)
+        rid = res.resource_id if res is not None else None
+        groups[rid].append(pd)
+        if res is not None and rid not in resources_by_id:
+            resources_by_id[rid] = res
+
+    # Ordered list: real resources alphabetically, then Unmatched (None) last
+    ordered_groups = sorted(
+        ((rid, resources_by_id[rid], groups[rid]) for rid in resources_by_id),
+        key=lambda t: t[1].resource_name.lower(),
+    )
+    if None in groups:
+        ordered_groups.append((None, None, groups[None]))
+
+    return render_template(
+        'dashboards/admin/fragments/project_directories_card.html',
+        ordered_groups=ordered_groups,
+        total_rows=len(rows),
+        show_inactive=show_inactive,
+    )
+
+
+@bp.route('/htmx/admin/project-directories')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directories():
+    """Render the cross-project Project Directories table."""
+    show_inactive = request.args.get('show_inactive', '0') in ('1', 'true', 'on')
+    return _render_project_directories_card(show_inactive=show_inactive)
+
+
+@bp.route('/htmx/admin/project-directories/new-form')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directory_new_form():
+    """Return the create-form fragment loaded into the add modal."""
+    return render_template(
+        'dashboards/admin/fragments/project_directory_new_form_htmx.html',
+        disk_roots=_disk_roots_for_picker(),
+    )
+
+
+@bp.route('/htmx/admin/project-directories/create', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directory_create():
+    """Create a new project_directory row from the admin add modal.
+
+    Input shape: (root_directory_id, directory_suffix, project_id).
+    The route validates the chosen root (must exist and not equal '/'),
+    assembles the final directory_name, and creates the row.
+    """
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import EditLinkedDirectoryForm
+    from sam.projects.projects import Project, ProjectDirectory
+    from sam.resources.resources import DiskResourceRootDirectory
+
+    disk_roots = _disk_roots_for_picker()
+
+    def _reload(errors):
+        return render_template(
+            'dashboards/admin/fragments/project_directory_new_form_htmx.html',
+            disk_roots=disk_roots,
+            errors=errors,
+            form=request.form,
+        )
+
+    try:
+        form_data = EditLinkedDirectoryForm().load(request.form)
+    except ValidationError as e:
+        return _reload(EditLinkedDirectoryForm.flatten_errors(e.messages))
+
+    root = db.session.get(DiskResourceRootDirectory, form_data['root_directory_id'])
+    if not root or root.root_directory == '/':
+        return _reload(['Selected disk root is invalid.'])
+
+    target_project = db.session.get(Project, form_data['project_id'])
+    if not target_project:
+        return _reload(['Selected project does not exist.'])
+
+    directory_name = _assemble_directory_name(root, form_data['directory_suffix'])
+
+    duplicates = [
+        pd for pd in target_project.directories
+        if pd.directory_name == directory_name and pd.is_active
+    ]
+    if duplicates:
+        return _reload([f'Directory "{directory_name}" is already linked to {target_project.projcode}.'])
+
+    try:
+        with management_transaction(db.session):
+            ProjectDirectory.create(
+                db.session,
+                project_id=form_data['project_id'],
+                directory_name=directory_name,
+            )
+    except Exception as e:
+        return _reload([f'Error creating directory: {e}'])
+
+    return htmx_success_message(
+        _PROJECT_DIRECTORIES_RELOAD_TRIGGERS,
+        'Project directory created.',
+    )
+
+
+@bp.route('/htmx/admin/project-directories/<int:pd_id>/edit-form')
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directory_edit_form(pd_id):
+    """Return the edit-form fragment loaded into the edit modal.
+
+    Pre-populates root_directory_id + directory_suffix by decomposing the
+    existing directory_name; renders an orphaned banner if no registered
+    non-'/' root matches.
+    """
+    from sam.projects.projects import ProjectDirectory
+
+    pd = db.session.get(ProjectDirectory, pd_id)
+    if not pd:
+        return '<div class="alert alert-danger">Directory not found.</div>', 404
+
+    disk_roots = _disk_roots_for_picker()
+    default_root, default_suffix = _decompose_directory_name(pd.directory_name, disk_roots)
+
+    return render_template(
+        'dashboards/admin/fragments/project_directory_edit_form_htmx.html',
+        pd=pd,
+        disk_roots=disk_roots,
+        default_root=default_root,
+        default_suffix=default_suffix,
+        is_orphaned=(default_root is None),
+    )
+
+
+@bp.route('/htmx/admin/project-directories/<int:pd_id>/edit', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directory_edit(pd_id):
+    """Update a project_directory row's directory_name and/or linked project."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import EditLinkedDirectoryForm
+    from sam.projects.projects import Project, ProjectDirectory
+    from sam.resources.resources import DiskResourceRootDirectory
+
+    pd = db.session.get(ProjectDirectory, pd_id)
+    if not pd:
+        return '<div class="alert alert-danger">Directory not found.</div>', 404
+
+    disk_roots = _disk_roots_for_picker()
+
+    def _reload(errors):
+        # Decompose afresh so banner state stays consistent on re-render.
+        default_root, default_suffix = _decompose_directory_name(pd.directory_name, disk_roots)
+        return render_template(
+            'dashboards/admin/fragments/project_directory_edit_form_htmx.html',
+            pd=pd,
+            disk_roots=disk_roots,
+            default_root=default_root,
+            default_suffix=default_suffix,
+            is_orphaned=(default_root is None),
+            errors=errors,
+            form=request.form,
+        )
+
+    try:
+        form_data = EditLinkedDirectoryForm().load(request.form)
+    except ValidationError as e:
+        return _reload(EditLinkedDirectoryForm.flatten_errors(e.messages))
+
+    root = db.session.get(DiskResourceRootDirectory, form_data['root_directory_id'])
+    if not root or root.root_directory == '/':
+        return _reload(['Selected disk root is invalid.'])
+
+    target_project = db.session.get(Project, form_data['project_id'])
+    if not target_project:
+        return _reload(['Selected project does not exist.'])
+
+    directory_name = _assemble_directory_name(root, form_data['directory_suffix'])
+
+    try:
+        with management_transaction(db.session):
+            pd.update(
+                directory_name=directory_name,
+                project_id=form_data['project_id'],
+            )
+    except Exception as e:
+        return _reload([f'Error updating directory: {e}'])
+
+    return htmx_success_message(
+        _PROJECT_DIRECTORIES_RELOAD_TRIGGERS,
+        'Project directory updated.',
+    )
+
+
+@bp.route('/htmx/admin/project-directories/<int:pd_id>/deactivate', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_PROJECTS)
+def htmx_admin_project_directory_deactivate(pd_id):
+    """Deactivate (soft-delete) a project_directory row."""
+    from sam.projects.projects import ProjectDirectory
+
+    pd = db.session.get(ProjectDirectory, pd_id)
+    if not pd:
+        return '<div class="alert alert-danger">Directory not found.</div>', 404
+
+    try:
+        with management_transaction(db.session):
+            pd.deactivate()
+    except Exception as e:
+        return f'<div class="alert alert-danger">Error: {e}</div>', 500
+
+    return htmx_success_message(
+        {'reloadProjectDirectoriesCard': {}},
+        'Project directory deactivated.',
+    )

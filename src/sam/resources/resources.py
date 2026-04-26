@@ -356,7 +356,7 @@ class ResourceShell(Base, TimestampMixin):
 
 
 #----------------------------------------------------------------------------
-class DiskResourceRootDirectory(Base):
+class DiskResourceRootDirectory(Base, SessionMixin):
     """Root directories for disk resources with charging exemption flags."""
     __tablename__ = 'disk_resource_root_directory'
 
@@ -375,6 +375,44 @@ class DiskResourceRootDirectory(Base):
     modified_time = Column(TIMESTAMP)  # DB: NULL default, no auto-update
 
     resource = relationship('Resource', back_populates='root_directories')
+
+    @classmethod
+    def create(cls, session, *, resource_id: int, root_directory: str,
+               charging_exempt: bool = False) -> 'DiskResourceRootDirectory':
+        """Create a new root directory entry for a disk resource.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        Raises sqlalchemy IntegrityError on root_directory uniqueness collision.
+        """
+        cleaned = (root_directory or '').strip()
+        if not cleaned:
+            raise ValueError('root_directory is required')
+        obj = cls(resource_id=resource_id,
+                  root_directory=cleaned,
+                  charging_exempt=bool(charging_exempt))
+        session.add(obj)
+        session.flush()
+        return obj
+
+    def update(self, *, resource_id=None, root_directory=None,
+               charging_exempt=None) -> 'DiskResourceRootDirectory':
+        """Update one or more fields. Does NOT commit."""
+        if root_directory is not None:
+            cleaned = root_directory.strip()
+            if not cleaned:
+                raise ValueError('root_directory cannot be blank')
+            self.root_directory = cleaned
+        if resource_id is not None:
+            self.resource_id = resource_id
+        if charging_exempt is not None:
+            self.charging_exempt = bool(charging_exempt)
+        self.session.flush()
+        return self
+
+    def delete(self) -> None:
+        """Hard-delete this row. Does NOT commit."""
+        self.session.delete(self)
+        self.session.flush()
 
     def __str__(self):
         return f"{self.root_directory}"

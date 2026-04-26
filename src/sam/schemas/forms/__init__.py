@@ -142,6 +142,8 @@ from .resources import (
     EditMachineForm,
     CreateMachineForm,
     EditQueueForm,
+    CreateDiskResourceRootDirectoryForm,
+    EditDiskResourceRootDirectoryForm,
 )
 from .orgs import (
     EditOrganizationForm,
@@ -168,6 +170,7 @@ from .projects import (
     AddLinkedOrganizationForm,
     AddLinkedContractForm,
     AddLinkedDirectoryForm,
+    EditLinkedDirectoryForm,
 )
 from .user import (
     AddMemberForm,
@@ -200,6 +203,8 @@ __all__ = [
     'EditMachineForm',
     'CreateMachineForm',
     'EditQueueForm',
+    'CreateDiskResourceRootDirectoryForm',
+    'EditDiskResourceRootDirectoryForm',
     # Organizations
     'EditOrganizationForm',
     'CreateOrganizationForm',
@@ -224,6 +229,7 @@ __all__ = [
     'AddLinkedOrganizationForm',
     'AddLinkedContractForm',
     'AddLinkedDirectoryForm',
+    'EditLinkedDirectoryForm',
     # User
     'AddMemberForm',
     'EditAllocationForm',

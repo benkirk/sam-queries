@@ -10,21 +10,28 @@ The SAM CLI has been refactored into a modular, class-based architecture that su
 cli/
 ├── core/                     # Shared infrastructure
 │   ├── __init__.py
-│   ├── context.py            # Context class (session, console, flags)
+│   ├── context.py            # Context class (session, console, flags, output_format)
 │   ├── base.py               # Base command classes
+│   ├── output.py             # output_json() + _SAMEncoder
 │   └── utils.py              # Exit codes, utilities
 ├── user/                     # User commands
 │   ├── __init__.py
+│   ├── builders.py           # ORM → dict extractors (no Rich)
 │   ├── commands.py           # UserSearchCommand, UserAdminCommand
-│   └── display.py            # display_user(), display_user_projects()
+│   └── display.py            # display_user(), display_user_projects() — dict input only
 ├── project/                  # Project commands
 │   ├── __init__.py
+│   ├── builders.py           # ORM → dict extractors
 │   ├── commands.py           # ProjectSearchCommand, ProjectAdminCommand
-│   └── display.py            # display_project(), display_project_users()
+│   └── display.py            # display_project(), display_project_users() — dict input only
 ├── allocations/              # Allocation commands
 │   ├── __init__.py
 │   ├── commands.py           # AllocationSearchCommand
-│   └── display.py            # display_allocation_summary()
+│   └── display.py            # display_allocation_summary() — dict input
+├── accounting/               # Accounting commands
+│   ├── __init__.py
+│   ├── commands.py           # AccountingSearchCommand, AccountingAdminCommand
+│   └── display.py            # dict input
 └── cmds/                     # Entry points
     ├── __init__.py
     ├── search.py             # sam-search entry point
@@ -34,10 +41,38 @@ cli/
 ## Design Principles
 
 1. **Command Classes**: Encapsulate business logic, reusable via inheritance
-2. **Display Functions**: Module-level functions (no state needed)
-3. **Entry Points**: Minimal CLI wiring, delegate to command classes
-4. **Single Context**: Shared Context class for session and configuration
-5. **Zero Breaking Changes**: `sam-search` behavior identical to original
+2. **Display Functions**: Module-level, take **plain dicts only** — never ORM objects
+3. **Builder Functions**: Per-domain `builders.py` extracts ORM data into dicts;
+   the same dict feeds both Rich `display_*()` and JSON `output_json()`
+4. **Entry Points**: Minimal CLI wiring, delegate to command classes
+5. **Single Context**: Shared Context class for session, configuration, and `output_format`
+6. **Zero Breaking Changes**: `sam-search` Rich behaviour identical to original
+
+## Output Formats
+
+Both `sam-search` and `sam-admin` accept `--format [rich|json]` (default
+`rich`) at the group level:
+
+```bash
+sam-search user benkirk                       # Rich panels + tables
+sam-search --format json user benkirk | jq    # Parseable JSON envelope
+```
+
+JSON payloads:
+- Indented, written to `sys.stdout` only (errors stay on stderr)
+- Always "complete" — sub-builders fire regardless of `-v`/`-vv` so a
+  consumer doesn't need to ask for verbosity
+- Top-level `kind` field names the envelope (e.g. `"user"`,
+  `"project"`, `"allocation_summary"`, `"expiring_projects"`)
+- `datetime`/`date` → ISO 8601 string, `Decimal` → float, `set` → sorted list
+- Not-found path emits `{"kind": "...", "error": "not_found", "<id>": "..."}`,
+  exit 1
+- Combining `--format json` with side-effecting flags (`--notify`,
+  `--deactivate`) is rejected with `{"error": "json_unsupported_for_writes"}`,
+  exit 2
+
+Progress bars (`rich.progress.track`) are auto-disabled in JSON mode so
+stdout stays parseable.
 
 ## Class Hierarchy
 

@@ -2,7 +2,11 @@
 
 from cli.core.context import Context
 from rich.table import Table
+from rich.tree import Tree
+from rich.panel import Panel
 from rich import box
+
+from sam import fmt
 
 
 def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn,
@@ -166,3 +170,309 @@ def display_charge_summary_table(ctx: Context, rows: list, start_date, end_date)
     table.add_row(*footer_cols)
 
     ctx.console.print(table)
+
+
+def _expected_delta_pct(sam_tib: float, expected_bytes: int) -> float:
+    expected_tib = expected_bytes / (1024 ** 4)
+    if expected_tib == 0:
+        return 0.0
+    return (sam_tib - expected_tib) / expected_tib * 100.0
+
+
+HIGH_UTIL_THRESHOLD = 0.95   # annotate matched filesets >95% full
+LOW_UTIL_THRESHOLD = 0.05    # annotate matched filesets <5% full
+
+
+def _util_suffix(qe) -> str:
+    """Return a util-annotation suffix.
+
+    - High-side warning (`⚠ 97%`, yellow) when usage > 95% of limit.
+    - Low-side note    (`↓ 3%`,  cyan)   when usage < 5%  of limit.
+    - Empty string in the comfortable middle band.
+
+    The low-side flag surfaces over-allocated filesets that might be
+    candidates for downsizing — the bookend to the high-util warning.
+    Filesets with limit==0 (impossible to be "under-used" meaningfully)
+    are skipped via the QuotaEntry.utilization property which clamps
+    to 0.0 when limit is zero, BUT we also require usage_bytes > 0 so
+    a brand-new empty fileset doesn't get flagged as under-used.
+    """
+    u = getattr(qe, 'utilization', 0.0)
+    if u > HIGH_UTIL_THRESHOLD:
+        return f" [yellow]⚠ {int(round(u * 100))}%[/yellow]"
+    if u < LOW_UTIL_THRESHOLD and getattr(qe, 'limit_bytes', 0) > 0:
+        return f" [cyan]↓ {int(round(u * 100))}%[/cyan]"
+    return ""
+
+
+def _fs_marker(path: str | None, path_exists: dict | None) -> str:
+    """Return a ✓/✗/— marker for a path.
+
+    - ``—`` when verification wasn't requested (path_exists is None) or
+      the path is None.
+    - ``✓`` when verified present.
+    - ``✗`` when verified missing.
+    """
+    if path_exists is None or not path:
+        return "—"
+    if path_exists.get(path, False):
+        return "[green]✓[/green]"
+    return "[red]✗[/red]"
+
+
+def _leaf_cells(contributors: list) -> tuple[str, str, str]:
+    """(fileset, path, limit) for single-contributor rows; marker pair otherwise.
+
+    Returns strings ready for a Rich Table cell.
+    """
+    if len(contributors) == 1:
+        _, qe = contributors[0]
+        return (qe.fileset_name + _util_suffix(qe),
+                (qe.path or "—"),
+                fmt.size(qe.limit_bytes))
+    return (f"[dim]{len(contributors)} filesets[/dim]",
+            "[dim]↓ see subtree[/dim]", "")
+
+
+def _render_subtree_panel(ctx: Context, projcode: str, sam_tib: float,
+                          expected_bytes: int, contributors: list) -> None:
+    """Render a Rich Tree inside a Panel titled ``subtree for <projcode>``.
+
+    Mirrors the "Project Hierarchy" style used by `sam-search project` so
+    the visual language is consistent across the CLI. Contributors arrive
+    in depth-first order (self first if present); we list them flat under
+    the root — the actual project-tree nesting isn't preserved beyond
+    that in the current roll-up.
+    """
+    # Column widths for aligned labels inside the tree.
+    w_pc   = max(len(pc) for pc, _ in contributors)
+    w_fs   = max(len(qe.fileset_name) for _, qe in contributors)
+    w_path = max(len(qe.path or "—") for _, qe in contributors)
+
+    header = (
+        f"[bold]{projcode}[/bold] — SAM {fmt.size(sam_tib * (1024 ** 4))}, "
+        f"expected {fmt.size(expected_bytes)} "
+        f"([dim]{len(contributors)} fileset"
+        f"{'s' if len(contributors) != 1 else ''}[/dim])"
+    )
+    tree = Tree(header)
+    for child_pc, qe in contributors:
+        marker = "[bold yellow]★[/bold yellow]" if child_pc == projcode else " "
+        label = (
+            f"{marker} [green]{child_pc:<{w_pc}}[/green]  "
+            f"[dim]{qe.fileset_name:<{w_fs}}[/dim]  "
+            f"[dim]{(qe.path or '—'):<{w_path}}[/dim]  "
+            f"{fmt.size(qe.limit_bytes):>10}"
+            f"{_util_suffix(qe)}"
+        )
+        tree.add(label)
+    ctx.console.print(Panel(tree, title=f"subtree for {projcode}",
+                            border_style="blue", expand=False))
+
+
+def display_quota_reconcile_plan(
+    ctx: Context,
+    resource_name: str,
+    matched: list,
+    mismatched: list,
+    orphaned: list,
+    unmapped: list,
+    *,
+    path_exists: dict | None = None,
+) -> None:
+    """Render the four reconcile buckets as Rich tables.
+
+    Always shows the full plan — matched, mismatched, orphaned, and
+    unmapped — with multi-contributor subtree panels and narrative
+    captions inline. The reconcile tool is informative-by-default;
+    writes are gated by flags evaluated by the caller, not by this
+    display function.
+
+    Bucket item shapes:
+      matched, mismatched: (projcode, sam_tib, expected_bytes, contributors)
+                           where contributors = [(child_projcode, QuotaEntry), ...]
+                           with "self" (if present) sorted first, then depth-first.
+      orphaned:            (projcode, sam_tib, directories: list[str])
+      unmapped:            QuotaEntry
+
+    ``path_exists`` is provided when ``--verify-paths`` was requested —
+    a mapping of absolute path → presence bool. When None, the FS column
+    is omitted entirely from the Orphaned / Unmapped tables.
+    """
+    show_fs = path_exists is not None
+
+    if mismatched:
+        t = Table(title=f"Mismatched ({resource_name})",
+                  box=box.SIMPLE_HEAD)
+        t.add_column("Project", style="green")
+        t.add_column("SAM", justify="right")
+        t.add_column("Expected", justify="right")
+        t.add_column("Δ", justify="right", style="yellow")
+        t.add_column("Fileset", style="dim")
+        t.add_column("Path", style="dim")
+        t.add_column("Action", style="bold cyan")
+        for projcode, sam_tib, expected_bytes, contributors in mismatched:
+            fileset, path, _ = _leaf_cells(contributors)
+            t.add_row(
+                projcode,
+                fmt.size(sam_tib * (1024 ** 4)),
+                fmt.size(expected_bytes),
+                fmt.pct(_expected_delta_pct(sam_tib, expected_bytes), decimals=1),
+                fileset, path,
+                f"set amount → {fmt.size(expected_bytes)}",
+            )
+        ctx.console.print(t)
+        for projcode, sam_tib, expected_bytes, contributors in mismatched:
+            if len(contributors) > 1:
+                _render_subtree_panel(ctx, projcode, sam_tib,
+                                      expected_bytes, contributors)
+
+    if orphaned:
+        t = Table(title=f"Orphaned ({resource_name})",
+                  box=box.SIMPLE_HEAD)
+        t.add_column("Project", style="green")
+        t.add_column("SAM", justify="right")
+        t.add_column("ProjectDirectory", style="dim")
+        if show_fs:
+            t.add_column("FS", justify="center")
+        t.add_column("Action", style="bold cyan")
+        for projcode, sam_tib, directories in orphaned:
+            if directories:
+                dir_cell = "\n".join(directories)
+                if show_fs:
+                    markers = "\n".join(
+                        _fs_marker(d, path_exists) for d in directories
+                    )
+                else:
+                    markers = ""
+                all_live = (
+                    show_fs
+                    and directories
+                    and all(path_exists.get(d, False) for d in directories)
+                )
+            else:
+                dir_cell = "—"
+                markers = "—"
+                all_live = False
+            action_cell = (
+                "[bold yellow]paths still live — requires --force[/bold yellow]"
+                if all_live else "deactivate (set end_date)"
+            )
+            row = [projcode, fmt.size(sam_tib * (1024 ** 4)), dir_cell]
+            if show_fs:
+                row.append(markers)
+            row.append(action_cell)
+            t.add_row(*row)
+        ctx.console.print(t)
+        ctx.console.print(
+            "[dim italic]Orphaned: project has an active "
+            f"{resource_name} allocation in SAM, but no matching "
+            "fileset quota exists anywhere in its project subtree. "
+            "This could mean the fileset has not yet been created or was "
+            "retired from the storage system; deactivation requires "
+            "--deactivate-orphaned."
+            "[/dim italic]\n"
+        )
+
+    if unmapped:
+        t = Table(title=f"Unmapped quota entries ({resource_name})",
+                  box=box.SIMPLE_HEAD)
+        t.add_column("Fileset", style="yellow")
+        t.add_column("Path", style="dim")
+        if show_fs:
+            t.add_column("FS", justify="center")
+        t.add_column("Limit", justify="right")
+        t.add_column("Usage", justify="right")
+        for qe in unmapped:
+            row = [qe.fileset_name, qe.path or "—"]
+            if show_fs:
+                row.append(_fs_marker(qe.path, path_exists))
+            row += [fmt.size(qe.limit_bytes), fmt.size(qe.usage_bytes)]
+            t.add_row(*row)
+        ctx.console.print(t)
+        if show_fs:
+            extra = (
+                " FS ✓ indicates a real mapping gap (admin should "
+                "add a ProjectDirectory); FS ✗ indicates the quota "
+                "snapshot is likely stale."
+            )
+        else:
+            extra = ""
+        ctx.console.print(
+            "[dim italic]Unmapped: storage has a fileset quota, but "
+            f"SAM has no {resource_name} allocation that matches — "
+            "neither by projcode nor by active ProjectDirectory "
+            "path. Typically means a fileset was provisioned "
+            "outside SAM, or the project mapping drifted. "
+            f"Reported only; no action taken.{extra}[/dim italic]\n"
+        )
+
+    if matched:
+        t = Table(title=f"Matched ({resource_name})", box=box.SIMPLE_HEAD)
+        t.add_column("Project", style="green")
+        t.add_column("SAM", justify="right")
+        t.add_column("Expected", justify="right")
+        t.add_column("Δ", justify="right", style="dim")
+        t.add_column("Fileset", style="dim")
+        t.add_column("Path", style="dim")
+        for projcode, sam_tib, expected_bytes, contributors in matched:
+            fileset, path, _ = _leaf_cells(contributors)
+            t.add_row(
+                projcode,
+                fmt.size(sam_tib * (1024 ** 4)),
+                fmt.size(expected_bytes),
+                fmt.pct(_expected_delta_pct(sam_tib, expected_bytes), decimals=2),
+                fileset, path,
+            )
+        ctx.console.print(t)
+        # Subtree panels only for matched projects that actually have a subtree.
+        for projcode, sam_tib, expected_bytes, contributors in matched:
+            if len(contributors) > 1:
+                _render_subtree_panel(ctx, projcode, sam_tib,
+                                      expected_bytes, contributors)
+
+
+def display_quota_reconcile_summary(
+    ctx: Context,
+    *,
+    matched: int,
+    mismatched: int,
+    orphaned: int,
+    unmapped: int,
+    updated: int = 0,
+    deactivated: int = 0,
+    errors: int = 0,
+    report_only: bool = False,
+    will_apply_updates: bool = False,
+    will_deactivate_orphans: bool = False,
+) -> None:
+    """One-shot summary after a reconcile run.
+
+    Three modes the title reflects:
+      * report-only       — no flags passed; nothing was written.
+      * partial action    — --update-accounting-system without --deactivate-orphaned.
+      * full action       — both flags passed.
+    """
+    if report_only:
+        title = "Reconcile Summary (report-only)"
+    elif will_deactivate_orphans:
+        title = "Reconcile Summary (applied)"
+    else:
+        title = "Reconcile Summary (updates applied; orphans untouched)"
+
+    t = Table(title=title, show_header=False, box=None)
+    t.add_column("Label", style="dim")
+    t.add_column("Count", justify="right", style="bold")
+
+    t.add_row("Matched", f"[green]{matched}[/green]")
+    t.add_row("Mismatched", f"[yellow]{mismatched}[/yellow]")
+    t.add_row("Orphaned", f"[yellow]{orphaned}[/yellow]")
+    t.add_row("Unmapped quota entries", str(unmapped))
+    if will_apply_updates:
+        t.add_row("Allocations updated", f"[cyan]{updated}[/cyan]")
+    if will_deactivate_orphans:
+        t.add_row("Allocations deactivated", f"[cyan]{deactivated}[/cyan]")
+    if errors:
+        t.add_row("Errors", f"[red]{errors}[/red]")
+
+    ctx.console.print(t)

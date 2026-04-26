@@ -1,0 +1,49 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field, fk_search_field with context %}
+{#
+  htmx: New Project Directory form (loaded into #addProjectDirectoryFormContainer).
+
+  Shares EditLinkedDirectoryForm validation: root_directory_id + directory_suffix + project_id.
+  Final directory_name is assembled server-side from the chosen root + suffix.
+
+  Context:
+    disk_roots : list[DiskResourceRootDirectory] (excludes the catch-all '/')
+    errors : optional list[str]
+    form   : optional ImmutableMultiDict (re-render after validation error)
+#}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_admin_project_directory_create'),
+    '#addProjectDirectoryFormContainer',
+    'Create',
+    submit_icon='plus',
+    errors=errors
+) %}
+        {% if not disk_roots %}
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            No registered disk root directories available.
+            Configure them under <strong>Admin &rarr; Resources</strong> first.
+        </div>
+        {% endif %}
+
+        {{ select_field('root_directory_id', 'Disk Root',
+                        items=disk_roots,
+                        value_attr='root_directory_id',
+                        label_attr='root_directory',
+                        required=True,
+                        placeholder='-- Select a disk root --',
+                        id='addProjectDirectoryRoot') }}
+
+        {{ text_field('directory_suffix', 'Sub-path',
+                      maxlength=255,
+                      placeholder='subpath/under/the/root  (or leave blank for the root itself)',
+                      help='Path under the chosen root. ".." segments are not allowed.',
+                      id='addProjectDirectorySuffix') }}
+
+        {{ fk_search_field('project_id', 'Linked Project',
+                           search_url=url_for('admin_dashboard.htmx_project_search_for_parent'),
+                           required=True,
+                           placeholder='Search by project code or title…',
+                           id_prefix='addProjectDirectoryProject') }}
+{% endcall %}

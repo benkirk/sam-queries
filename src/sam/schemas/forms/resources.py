@@ -6,7 +6,7 @@ Covers: Resources, Resource Types, Machines, Queues.
 
 import marshmallow.fields as f
 import marshmallow.validate as v
-from marshmallow import post_load
+from marshmallow import post_load, ValidationError
 
 from . import HtmxFormSchema
 
@@ -82,3 +82,28 @@ class EditQueueForm(HtmxFormSchema):
     # Note: queue start_date is on the ORM object, not in the form. The route
     # checks end_date > queue.start_date inline after schema.load() since it
     # requires the existing DB value.
+
+
+class CreateDiskResourceRootDirectoryForm(HtmxFormSchema):
+    """Validate creation of a DiskResourceRootDirectory.
+
+    FK existence check (resource_id -> Resource of DISK type) stays in the
+    route since schemas do not touch the DB. Uniqueness on root_directory is
+    enforced by the DB and surfaced as a route-level error.
+    """
+    resource_id = f.Int(required=True)
+    root_directory = f.Str(required=True, validate=v.Length(min=1, max=64))
+    charging_exempt = f.Bool(load_default=False)
+
+    @post_load
+    def normalize(self, data, **kwargs):
+        data["root_directory"] = data["root_directory"].strip()
+        if not data["root_directory"]:
+            raise ValidationError({"root_directory": ["Root directory cannot be blank."]})
+        return data
+
+
+class EditDiskResourceRootDirectoryForm(CreateDiskResourceRootDirectoryForm):
+    """Same shape as create. root_directory is editable; uniqueness collisions
+    surface as a route-level error."""
+

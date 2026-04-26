@@ -23,6 +23,7 @@ from sam.schemas.forms.resources import (
     EditResourceForm, CreateResourceForm,
     EditResourceTypeForm, CreateResourceTypeForm,
     EditMachineForm, CreateMachineForm, EditQueueForm,
+    CreateDiskResourceRootDirectoryForm, EditDiskResourceRootDirectoryForm,
 )
 
 from .blueprint import bp
@@ -81,12 +82,41 @@ def htmx_resources_card():
         queue_q = queue_q.filter(Queue.is_active)
     queues = queue_q.all()
 
+    from sam.operational import WallclockExemption
+    from sam.core.users import User
+    from sqlalchemy.orm import joinedload
+    exemption_q = (
+        db.session.query(WallclockExemption)
+        .join(WallclockExemption.queue)
+        .join(WallclockExemption.user)
+        .options(
+            joinedload(WallclockExemption.queue).joinedload(Queue.resource),
+            joinedload(WallclockExemption.user),
+        )
+        .order_by(Queue.resource_id, Queue.queue_name, User.username)
+    )
+    if active_only:
+        exemption_q = exemption_q.filter(WallclockExemption.is_active)
+    exemptions = exemption_q.all()
+
+    # Disk resources (with their root_directories collection) for the
+    # "Disk Resource Root Directories" section in the Resources sub-tab.
+    disk_resources_with_roots = (
+        db.session.query(Resource)
+        .join(ResourceType)
+        .filter(ResourceType.resource_type == 'DISK')
+        .order_by(Resource.resource_name)
+        .all()
+    )
+
     return render_template(
         'dashboards/admin/fragments/resources_card.html',
         resources=resources,
         resource_types=resource_types,
         machines=machines,
         queues=queues,
+        exemptions=exemptions,
+        disk_resources_with_roots=disk_resources_with_roots,
         is_admin=True,
         now=now,
         active_only=active_only,
@@ -525,3 +555,159 @@ def htmx_search_organizations():
         'dashboards/admin/fragments/org_search_results_fk_htmx.html',
         orgs=orgs,
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin: Disk Resource Root Directories CRUD
+# ---------------------------------------------------------------------------
+
+def _disk_resources():
+    """Return all DISK-type resources, ordered by name (used for the
+    resource_id select on add/edit forms)."""
+    from sam.resources.resources import Resource, ResourceType
+    return (
+        db.session.query(Resource)
+        .join(ResourceType)
+        .filter(ResourceType.resource_type == 'DISK')
+        .order_by(Resource.resource_name)
+        .all()
+    )
+
+
+@bp.route('/htmx/admin/disk-roots/new-form')
+@login_required
+@require_permission(Permission.EDIT_RESOURCES)
+def htmx_admin_disk_root_new_form():
+    """Return the create-disk-root form fragment for the modal."""
+    return render_template(
+        'dashboards/admin/fragments/disk_root_new_form_htmx.html',
+        disk_resources=_disk_resources(),
+    )
+
+
+@bp.route('/htmx/admin/disk-roots/create', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_RESOURCES)
+def htmx_admin_disk_root_create():
+    """Create a new DiskResourceRootDirectory row."""
+    from marshmallow import ValidationError
+    from sqlalchemy.exc import IntegrityError
+    from sam.resources.resources import Resource, ResourceType, DiskResourceRootDirectory
+
+    def _reload(errors, form=None):
+        return render_template(
+            'dashboards/admin/fragments/disk_root_new_form_htmx.html',
+            disk_resources=_disk_resources(),
+            errors=errors,
+            form=form if form is not None else request.form,
+        )
+
+    try:
+        data = CreateDiskResourceRootDirectoryForm().load(request.form)
+    except ValidationError as e:
+        return _reload(CreateDiskResourceRootDirectoryForm.flatten_errors(e.messages))
+
+    target = db.session.get(Resource, data['resource_id'])
+    if not target or not target.resource_type or target.resource_type.resource_type != 'DISK':
+        return _reload(['Selected resource does not exist or is not a disk resource.'])
+
+    try:
+        with management_transaction(db.session):
+            DiskResourceRootDirectory.create(
+                db.session,
+                resource_id=data['resource_id'],
+                root_directory=data['root_directory'],
+                charging_exempt=data['charging_exempt'],
+            )
+    except IntegrityError:
+        db.session.rollback()
+        return _reload([f'Root directory "{data["root_directory"]}" already exists.'])
+    except Exception as e:
+        return _reload([f'Error creating root directory: {e}'])
+
+    return htmx_success_message(_RESOURCES_TRIGGERS, 'Root directory created.')
+
+
+@bp.route('/htmx/admin/disk-roots/<int:dr_id>/edit-form')
+@login_required
+@require_permission(Permission.EDIT_RESOURCES)
+def htmx_admin_disk_root_edit_form(dr_id):
+    """Return the edit-disk-root form fragment for the modal."""
+    from sam.resources.resources import DiskResourceRootDirectory
+
+    dr = db.session.get(DiskResourceRootDirectory, dr_id)
+    if not dr:
+        return '<div class="alert alert-danger">Root directory not found.</div>', 404
+
+    return render_template(
+        'dashboards/admin/fragments/disk_root_edit_form_htmx.html',
+        dr=dr,
+        disk_resources=_disk_resources(),
+    )
+
+
+@bp.route('/htmx/admin/disk-roots/<int:dr_id>/edit', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_RESOURCES)
+def htmx_admin_disk_root_edit(dr_id):
+    """Update a DiskResourceRootDirectory row."""
+    from marshmallow import ValidationError
+    from sqlalchemy.exc import IntegrityError
+    from sam.resources.resources import Resource, DiskResourceRootDirectory
+
+    dr = db.session.get(DiskResourceRootDirectory, dr_id)
+    if not dr:
+        return '<div class="alert alert-danger">Root directory not found.</div>', 404
+
+    def _reload(errors, form=None):
+        return render_template(
+            'dashboards/admin/fragments/disk_root_edit_form_htmx.html',
+            dr=dr,
+            disk_resources=_disk_resources(),
+            errors=errors,
+            form=form if form is not None else request.form,
+        )
+
+    try:
+        data = EditDiskResourceRootDirectoryForm().load(request.form)
+    except ValidationError as e:
+        return _reload(EditDiskResourceRootDirectoryForm.flatten_errors(e.messages))
+
+    target = db.session.get(Resource, data['resource_id'])
+    if not target or not target.resource_type or target.resource_type.resource_type != 'DISK':
+        return _reload(['Selected resource does not exist or is not a disk resource.'])
+
+    try:
+        with management_transaction(db.session):
+            dr.update(
+                resource_id=data['resource_id'],
+                root_directory=data['root_directory'],
+                charging_exempt=data['charging_exempt'],
+            )
+    except IntegrityError:
+        db.session.rollback()
+        return _reload([f'Root directory "{data["root_directory"]}" already exists.'])
+    except Exception as e:
+        return _reload([f'Error updating root directory: {e}'])
+
+    return htmx_success_message(_RESOURCES_TRIGGERS, 'Root directory updated.')
+
+
+@bp.route('/htmx/admin/disk-roots/<int:dr_id>/delete', methods=['POST'])
+@login_required
+@require_permission(Permission.DELETE_RESOURCES)
+def htmx_admin_disk_root_delete(dr_id):
+    """Hard-delete a DiskResourceRootDirectory row."""
+    from sam.resources.resources import DiskResourceRootDirectory
+
+    dr = db.session.get(DiskResourceRootDirectory, dr_id)
+    if not dr:
+        return '<div class="alert alert-danger">Root directory not found.</div>', 404
+
+    try:
+        with management_transaction(db.session):
+            dr.delete()
+    except Exception as e:
+        return f'<div class="alert alert-danger">Error: {e}</div>', 500
+
+    return htmx_success_message({'reloadResourcesCard': {}}, 'Root directory deleted.')

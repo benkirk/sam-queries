@@ -145,6 +145,8 @@
                 </div>
                 {% endif %}
             </div>
+
+            {% include 'dashboards/admin/fragments/disk_root_directories_section.html' %}
         </div>
 
         <!-- ── Machines tab ────────────────────────────────────────────── -->
@@ -302,6 +304,115 @@
             <div class="text-muted small px-3 py-2">
                 Showing {{ queues|length }} queue{{ 's' if queues|length != 1 else '' }}
             </div>
+
+            {# ── Wallclock Exemptions ────────────────────────────────────── #}
+            <div class="border-top mt-2 pt-2 px-3 pb-1 d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-clock me-2 text-muted"></i>
+                    <span class="fw-semibold">Wallclock Exemptions</span>
+                    <span class="text-muted small ms-2">
+                        per-user overrides of queue wallclock limits
+                    </span>
+                </div>
+                {% if has_permission(Permission.EDIT_USERS) %}
+                <button type="button" class="btn btn-sm btn-success"
+                        data-bs-toggle="modal"
+                        data-bs-target="#addExemptionModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_admin_exemption_form') }}"
+                        hx-target="#addExemptionFormContainer"
+                        hx-trigger="click">
+                    <i class="fas fa-plus"></i> New
+                </button>
+                {% endif %}
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Queue</th>
+                            <th>User</th>
+                            <th>Limit (hrs)</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>Comment</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    {% if exemptions %}
+                    {% set ex_by_resource = {} %}
+                    {% for e in exemptions %}
+                      {% set res = e.queue.resource %}
+                      {% if res %}
+                        {% set _ = ex_by_resource.setdefault(res.resource_id, {'resource': res, 'rows': []}) %}
+                        {% set _ = ex_by_resource[res.resource_id]['rows'].append(e) %}
+                      {% endif %}
+                    {% endfor %}
+                    {% for rid, group in ex_by_resource.items() %}
+                    {# ── Resource row (clickable trigger) ── #}
+                    <tbody>
+                        <tr class="cursor-pointer table-light fw-semibold"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#exemption-res-{{ rid }}"
+                            aria-expanded="false">
+                            <td>
+                                <i class="fas fa-chevron-right small text-muted me-1 exemption-res-collapse-icon"
+                                   style="transition: transform 0.2s;"></i>
+                                {{ group['resource'].resource_name }}
+                            </td>
+                            <td class="text-muted small" colspan="6">
+                                {{ group['rows']|length }} exemption{{ 's' if group['rows']|length != 1 else '' }}
+                            </td>
+                        </tr>
+                    </tbody>
+                    {# ── Exemption child rows (collapsed by default) ── #}
+                    <tbody class="collapse" id="exemption-res-{{ rid }}">
+                        {% for e in group['rows'] %}
+                        <tr class="table-secondary{% if not e.is_active %} opacity-50{% endif %}">
+                            <td class="ps-4">{{ e.queue.queue_name }}</td>
+                            <td>
+                                {{ e.user.display_name }}
+                                <div class="text-muted small">{{ e.user.username }}</div>
+                            </td>
+                            <td>{{ e.time_limit_hours | fmt_number }}</td>
+                            <td class="text-nowrap small">{{ e.start_date | fmt_date }}</td>
+                            <td class="text-nowrap small">{{ e.end_date | fmt_date }}</td>
+                            <td class="small text-muted">{{ e.comment or '—' }}</td>
+                            <td class="text-end">
+                                {{ edit_modal_button(
+                                    url_for('admin_dashboard.htmx_edit_exemption_form', exemption_id=e.wallclock_exemption_id),
+                                    modal_id='editExemptionModal',
+                                    target_id='editExemptionFormContainer',
+                                    title='Edit exemption',
+                                    stop_propagation=True,
+                                    permission=Permission.EDIT_USERS) }}
+                                {% if has_permission(Permission.EDIT_USERS) and e.is_active %}
+                                <button class="btn btn-sm btn-outline-warning ms-1"
+                                        title="Deactivate exemption"
+                                        hx-post="{{ url_for('admin_dashboard.htmx_deactivate_exemption', exemption_id=e.wallclock_exemption_id) }}"
+                                        hx-swap="none"
+                                        hx-confirm="Deactivate wallclock exemption for {{ e.user.display_name }} on queue {{ e.queue.queue_name }}? This sets the end date to today."
+                                        data-confirm-title="Deactivate exemption"
+                                        data-confirm-variant="warning"
+                                        data-confirm-label="Deactivate"
+                                        onclick="event.stopPropagation()">
+                                    <i class="fas fa-ban"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endfor %}
+                    {% else %}
+                    <tbody>
+                        <tr><td colspan="7" class="text-center text-muted py-3">No wallclock exemptions found.</td></tr>
+                    </tbody>
+                    {% endif %}
+                </table>
+            </div>
+            <div class="text-muted small px-3 py-2">
+                Showing {{ exemptions|length }} exemption{{ 's' if exemptions|length != 1 else '' }}
+            </div>
         </div>
 
     </div>{# tab-content #}
@@ -341,6 +452,8 @@
     document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
 
     SamCollapseChevron.attach('#resources-pane', '.res-type-collapse-icon');
+    SamCollapseChevron.attach('#resources-pane', '.disk-root-collapse-icon');
     SamCollapseChevron.attach('#queues-pane',    '.queue-res-collapse-icon');
+    SamCollapseChevron.attach('#queues-pane',    '.exemption-res-collapse-icon');
 })();
 </script>

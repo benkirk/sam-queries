@@ -1,0 +1,37 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field, checkbox_field with context %}
+{#
+  htmx: New Disk Root Directory form (loaded into #addDiskRootFormContainer).
+
+  Context:
+    disk_resources : list[Resource] of DISK type (drives the resource_id select)
+    errors : optional list[str]
+    form   : optional ImmutableMultiDict (re-render after validation error)
+#}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_admin_disk_root_create'),
+    '#addDiskRootFormContainer',
+    'Create',
+    submit_icon='plus',
+    errors=errors
+) %}
+        {{ select_field('resource_id', 'Disk Resource',
+                        items=disk_resources,
+                        value_attr='resource_id',
+                        label_attr='resource_name',
+                        required=True,
+                        placeholder='-- Select a disk resource --',
+                        id='addDiskRootResource') }}
+
+        {{ text_field('root_directory', 'Root Directory',
+                      required=True,
+                      maxlength=64,
+                      placeholder='/glade/...',
+                      help='Filesystem prefix used to map project directories to this disk resource. Must be unique.',
+                      id='addDiskRootPath') }}
+
+        {{ checkbox_field('charging_exempt', 'Charging exempt',
+                          help='If checked, directories under this root do not incur disk charges.',
+                          id='addDiskRootExempt') }}
+{% endcall %}

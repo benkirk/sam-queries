@@ -1,0 +1,40 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field, checkbox_field with context %}
+{#
+  htmx: Edit Disk Root Directory form (loaded into #editDiskRootFormContainer).
+
+  Context:
+    dr             : DiskResourceRootDirectory instance
+    disk_resources : list[Resource] of DISK type (drives the resource_id select)
+    errors : optional list[str]
+    form   : optional ImmutableMultiDict (re-render after validation error)
+#}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_admin_disk_root_edit', dr_id=dr.root_directory_id),
+    '#editDiskRootFormContainer',
+    'Save Changes',
+    is_edit=True,
+    errors=errors
+) %}
+        {{ select_field('resource_id', 'Disk Resource',
+                        items=disk_resources,
+                        value_attr='resource_id',
+                        label_attr='resource_name',
+                        required=True,
+                        default=dr.resource_id,
+                        id='editDiskRootResource') }}
+
+        {{ text_field('root_directory', 'Root Directory',
+                      required=True,
+                      maxlength=64,
+                      default=dr.root_directory,
+                      placeholder='/glade/...',
+                      help='Must be unique across all disk resources.',
+                      id='editDiskRootPath') }}
+
+        {{ checkbox_field('charging_exempt', 'Charging exempt',
+                          default=dr.charging_exempt,
+                          help='If checked, directories under this root do not incur disk charges.',
+                          id='editDiskRootExempt') }}
+{% endcall %}

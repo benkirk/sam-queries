@@ -28,6 +28,38 @@ document.body.addEventListener('htmx:sendError', function() {
     }
 });
 
+// ── Stacked modal z-index ───────────────────────────────────────────────────
+// Bootstrap 5 doesn't stack z-indexes across separate Modal instances: a second
+// modal opens at the same z-index as the first, and its backdrop (appended last
+// to <body>) paints over it. Bump the newly-shown modal and its backdrop above
+// anything already showing.
+document.body.addEventListener('shown.bs.modal', function(evt) {
+    var opened = evt.target;
+    var shown = document.querySelectorAll('.modal.show');
+    if (shown.length < 2) return;
+
+    var highest = 1055;
+    document.querySelectorAll('.modal.show, .modal-backdrop.show').forEach(function(el) {
+        if (el === opened) return;
+        var z = parseInt(getComputedStyle(el).zIndex, 10);
+        if (!isNaN(z)) highest = Math.max(highest, z);
+    });
+
+    opened.style.zIndex = (highest + 10).toString();
+    var backdrops = document.querySelectorAll('.modal-backdrop.show');
+    var topBackdrop = backdrops[backdrops.length - 1];
+    if (topBackdrop) topBackdrop.style.zIndex = (highest + 5).toString();
+});
+
+// When a stacked modal hides, Bootstrap removes `modal-open` from <body> because
+// it only tracks the one it just closed. Re-add it if any modal is still shown
+// so the underlying modal keeps scroll locking and pointer events.
+document.body.addEventListener('hidden.bs.modal', function() {
+    if (document.querySelectorAll('.modal.show').length > 0) {
+        document.body.classList.add('modal-open');
+    }
+});
+
 // ── Modal management via HX-Trigger ──────────────────────────────────────────
 
 // Close any currently visible Bootstrap modal
@@ -66,6 +98,21 @@ document.body.addEventListener('reloadOrganizationsCard', function() {
 });
 document.body.addEventListener('reloadResourcesCard', function() {
     _reloadAdminCard('resourcesSection', 'resourcesCardActiveOnly');
+});
+
+// Reload the cross-project Project Directories table after an edit/deactivate.
+// Uses the show_inactive checkbox state if present (note: opposite of active_only).
+document.body.addEventListener('reloadProjectDirectoriesCard', function() {
+    var section = document.getElementById('projectDirectoriesSection');
+    if (!section) return;
+    var url = (section.getAttribute('hx-get') || '').split('?')[0];
+    if (!url) return;
+    var cb = document.getElementById('projectDirectoriesShowInactive');
+    var qs = (cb && cb.checked) ? '?show_inactive=1' : '';
+    setTimeout(function() {
+        htmx.ajax('GET', url + qs,
+                  {target: '#projectDirectoriesSection', swap: 'innerHTML'});
+    }, 300);
 });
 
 // Load the newly-created project card into #projectCardContainer so the admin

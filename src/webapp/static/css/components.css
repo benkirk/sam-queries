@@ -169,15 +169,7 @@
     font-weight: normal;
 }
 
-/* ===================================================================
-   Stacked Modal z-index
-   ===================================================================
-   When a second modal opens on top of an existing one (e.g. edit
-   allocation on top of project details), ensure proper layering.
-   Replaces the JS z-index management from allocation-management.js. */
-.modal.show ~ .modal.show {
-    z-index: 1060;
-}
-.modal.show ~ .modal-backdrop.show + .modal-backdrop.show {
-    z-index: 1055;
-}
+/* Stacked modal z-index is handled in js/htmx-config.js via a
+   shown.bs.modal listener — a CSS-only approach can't cover cases
+   where the stacked modals aren't DOM siblings (e.g. the singleton
+   samConfirmModal at body level on top of a page-scoped modal). */

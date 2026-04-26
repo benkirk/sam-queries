@@ -1,17 +1,27 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import number_field, date_field, textarea_field with context %}
+{% from 'dashboards/fragments/form_fields.html' import number_field, date_field, textarea_field, fk_search_field with context %}
 {#
   htmx: Add Wallclock Exemption Form (loaded into #addExemptionFormContainer)
   Resource → Queue cascading via HTMX (kept inline).
+
+  When ``sam_user`` is provided (per-user add from a user card), the user is
+  shown as static text and posted with the username embedded in the URL.
+  When ``sam_user`` is None (admin "New" button on the Wallclock Exemptions
+  row of the resources card), the form renders an FK picker for user_id and
+  posts to the admin-wide create endpoint.
 #}
 
+{% set _post_url = url_for('admin_dashboard.htmx_add_exemption', username=sam_user.username) if sam_user
+                   else url_for('admin_dashboard.htmx_admin_exemption_create') %}
+
 {% call htmx_form(
-    url_for('admin_dashboard.htmx_add_exemption', username=sam_user.username),
+    _post_url,
     '#addExemptionFormContainer',
     'Add Exemption',
     submit_icon='plus',
     errors=errors
 ) %}
+        {% if sam_user %}
         <div class="mb-3">
             <label class="form-label">User</label>
             <div class="form-control-plaintext">
@@ -19,6 +29,13 @@
                 <span class="text-muted">({{ sam_user.username }})</span>
             </div>
         </div>
+        {% else %}
+        {{ fk_search_field('user_id', 'User',
+                           search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                           required=True,
+                           placeholder='Search by username, first, or last name…',
+                           id_prefix='addExemptionUser') }}
+        {% endif %}
 
         {# Resource → Queue cascading select kept inline — dependent options
            are populated via HTMX; the dependent select is dynamic. #}

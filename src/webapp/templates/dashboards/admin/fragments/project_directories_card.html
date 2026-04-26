@@ -1,0 +1,179 @@
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
+{#
+  Admin: Cross-project Project Directories card.
+
+  Groups ProjectDirectory rows by Resource via longest-prefix match of
+  directory_name against DiskResourceRootDirectory.root_directory.
+  Unmatched rows fall into a "No Resource Identified" group at the bottom.
+
+  Context:
+    ordered_groups : list[(resource_id|None, Resource|None, list[ProjectDirectory])]
+    total_rows     : int
+    show_inactive  : bool
+#}
+
+<div class="card mb-3">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
+        <div>
+            <h5 class="mb-0 d-inline-block">
+                <i class="fas fa-folder-tree"></i> Project Directories
+            </h5>
+            <span class="text-muted small ms-2">
+                Filesystem directories linked to projects, grouped by resource.
+            </span>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <div class="form-check mb-0">
+                <input type="checkbox" class="form-check-input"
+                       id="projectDirectoriesShowInactive"
+                       name="show_inactive" value="1"
+                       {% if show_inactive %}checked{% endif %}
+                       hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directories') }}"
+                       hx-trigger="change"
+                       hx-target="#projectDirectoriesSection"
+                       hx-swap="innerHTML"
+                       hx-include="this">
+                <label class="form-check-label" for="projectDirectoriesShowInactive">
+                    Show inactive
+                </label>
+            </div>
+            {% if has_permission(Permission.EDIT_PROJECTS) %}
+            <button type="button" class="btn btn-sm btn-success"
+                    data-bs-toggle="modal"
+                    data-bs-target="#addProjectDirectoryModal"
+                    hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directory_new_form') }}"
+                    hx-target="#addProjectDirectoryFormContainer"
+                    hx-trigger="click">
+                <i class="fas fa-plus"></i> New
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Directory</th>
+                    <th>Project</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            {% if ordered_groups %}
+            {% for rid, resource, rows in ordered_groups %}
+            {% set group_id = 'pd-res-' ~ (rid if rid is not none else 'none') %}
+            {# ── Resource row (clickable trigger) ── #}
+            <tbody>
+                <tr class="cursor-pointer table-light fw-semibold"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#{{ group_id }}"
+                    aria-expanded="false">
+                    <td>
+                        <i class="fas fa-chevron-right small text-muted me-1 pd-res-collapse-icon"
+                           style="transition: transform 0.2s;"></i>
+                        {% if resource %}
+                            {{ resource.resource_name }}
+                            {% if resource.resource_type %}
+                            <small class="text-muted ms-1">({{ resource.resource_type.resource_type }})</small>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-warning">
+                                <i class="fas fa-exclamation-triangle"></i> No Resource Identified
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted small" colspan="4">
+                        {{ rows|length }} director{{ 'ies' if rows|length != 1 else 'y' }}
+                        {%- set _orphans = rows|selectattr('is_active')|rejectattr('project.is_active')|list|length %}
+                        {% if _orphans %}
+                        <span class="badge bg-warning text-dark ms-2"
+                              title="Active directories whose project is inactive">
+                            <i class="fas fa-unlink"></i> {{ _orphans }} orphaned
+                        </span>
+                        {% endif %}
+                    </td>
+                </tr>
+            </tbody>
+            {# ── Directory child rows (collapsed by default) ── #}
+            <tbody class="collapse" id="{{ group_id }}">
+                {% for pd in rows %}
+                {% set _orphan = pd.is_active and not pd.project.is_active %}
+                <tr class="table-secondary{% if not pd.is_active %} opacity-50{% endif %}{% if _orphan %} table-warning{% endif %}"
+                    {% if _orphan %}title="Active directory linked to an inactive project"{% endif %}>
+                    <td class="ps-4 font-monospace small">
+                        {% if _orphan %}
+                        <i class="fas fa-unlink text-warning me-1"
+                           title="Orphaned: project is inactive"></i>
+                        {% endif %}
+                        {{ pd.directory_name }}
+                    </td>
+                    <td>
+                        <button type="button"
+                                class="btn btn-link p-0 align-baseline"
+                                title="View project details"
+                                hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=pd.project.projcode) }}"
+                                hx-target="#projectDetailsModalBody"
+                                hx-swap="innerHTML"
+                                data-bs-toggle="modal"
+                                data-bs-target="#projectDetailsModal"
+                                onclick="event.stopPropagation()">
+                            <strong>{{ pd.project.projcode }}</strong>
+                        </button>
+                        {% if _orphan %}
+                        <span class="badge bg-warning text-dark ms-1" title="Project is inactive">inactive project</span>
+                        {% endif %}
+                        <div class="text-muted small">{{ pd.project.title | truncate(60) }}</div>
+                    </td>
+                    <td class="text-nowrap small">{{ pd.start_date | fmt_date }}</td>
+                    <td class="text-nowrap small">{{ pd.end_date | fmt_date }}</td>
+                    <td class="text-end">
+                        {{ edit_modal_button(
+                            url_for('admin_dashboard.htmx_admin_project_directory_edit_form', pd_id=pd.project_directory_id),
+                            modal_id='editProjectDirectoryModal',
+                            target_id='editProjectDirectoryFormContainer',
+                            title='Edit directory',
+                            stop_propagation=True,
+                            permission=Permission.EDIT_PROJECTS) }}
+                        {% if has_permission(Permission.EDIT_PROJECTS) and pd.is_active %}
+                        <button class="btn btn-sm btn-outline-warning ms-1"
+                                title="Deactivate directory"
+                                hx-post="{{ url_for('admin_dashboard.htmx_admin_project_directory_deactivate', pd_id=pd.project_directory_id) }}"
+                                hx-swap="none"
+                                hx-confirm="Deactivate directory &quot;{{ pd.directory_name }}&quot; on project {{ pd.project.projcode }}? This sets the end date to today."
+                                data-confirm-title="Deactivate directory"
+                                data-confirm-variant="warning"
+                                data-confirm-label="Deactivate"
+                                onclick="event.stopPropagation()">
+                            <i class="fas fa-ban"></i>
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            {% endfor %}
+            {% else %}
+            <tbody>
+                <tr><td colspan="5" class="text-center text-muted py-3">
+                    No project directories
+                    {% if not show_inactive %}(active){% endif %} found.
+                </td></tr>
+            </tbody>
+            {% endif %}
+        </table>
+    </div>
+    <div class="text-muted small px-3 py-2">
+        Showing {{ total_rows }} director{{ 'ies' if total_rows != 1 else 'y' }}
+        across {{ ordered_groups|length }} group{{ 's' if ordered_groups|length != 1 else '' }}.
+    </div>
+</div>
+
+<script>
+(function() {
+    if (window.SamCollapseChevron) {
+        SamCollapseChevron.attach('#projectDirectoriesSection', '.pd-res-collapse-icon');
+    }
+})();
+</script>

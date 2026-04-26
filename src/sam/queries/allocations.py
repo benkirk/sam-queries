@@ -1038,6 +1038,38 @@ def get_allocation_summary_with_usage(
             else:
                 account_infos.append(info)
 
+    # Tree-aware augmentation: for inheriting allocations, the per-allocation
+    # subtree charge does NOT match what users see in the project card —
+    # there `used` reflects the ROOT allocation's full subtree (the actual
+    # shared pool consumption). Collect anchors for the root projects so
+    # we can batch a parallel set of subtree queries keyed by ('root',
+    # allocation_id). Cheap when the row set is fully non-inheriting (no
+    # extra entries appended).
+    root_anchor_by_alloc_id: Dict[int, 'Project'] = {}
+    for alloc_list in alloc_by_key.values():
+        for alloc, res_name, res_type, project, account in alloc_list:
+            if not alloc.is_inheriting:
+                continue
+            root_alloc = alloc.root
+            root_account = root_alloc.account
+            root_project = root_account.project if root_account else None
+            if root_project is None:
+                continue
+            if not (root_project.tree_root and root_project.tree_left and root_project.tree_right):
+                continue
+            root_anchor_by_alloc_id[alloc.allocation_id] = root_project
+            subtree_infos.append({
+                'key':           ('root', alloc.allocation_id),
+                'resource_type': res_type,
+                'resource_id':   account.resource_id,
+                'account_id':    alloc.account_id,
+                'tree_root':     root_project.tree_root,
+                'tree_left':     root_project.tree_left,
+                'tree_right':    root_project.tree_right,
+                'start_date':    alloc.start_date,
+                'end_date':      alloc.end_date if alloc.end_date else check_date,
+            })
+
     # Batch compute all charges in O(charge_models × date_groups) SQL queries
     all_charges: Dict[Any, Dict] = {}
     if subtree_infos:
@@ -1050,27 +1082,64 @@ def get_allocation_summary_with_usage(
         key = _summary_item_key(item, resource_name, facility_name, allocation_type, projcode)
         item_allocations = alloc_by_key.get(key, [])
 
-        total_used = 0.0
+        self_used = 0.0
+        tree_used = 0.0
         charges_by_type_total: Dict[str, float] = {}
+
+        # Track inheriting state across the group: only surface tree-aware
+        # fields if EVERY allocation in this row is inheriting AND all
+        # share the same root project (e.g. one row per child project on
+        # one shared resource — the common case in the projects-tab).
+        all_inheriting = bool(item_allocations)
+        root_projcodes: set = set()
 
         for alloc, res_name, res_type, project, account in item_allocations:
             charge_result = all_charges.get(alloc.allocation_id, {'charges_by_type': {}, 'adjustment': 0.0})
 
             for charge_type, amount in charge_result['charges_by_type'].items():
                 charges_by_type_total[charge_type] = charges_by_type_total.get(charge_type, 0.0) + amount
-                total_used += amount
+                self_used += amount
 
             if include_adjustments:
                 adjustment_amount = charge_result['adjustment']
-                total_used += adjustment_amount
+                self_used += adjustment_amount
                 if adjustment_amount != 0:
                     charges_by_type_total['adjustments'] = (
                         charges_by_type_total.get('adjustments', 0.0) + adjustment_amount
                     )
 
-        item['total_used'] = total_used
+            if alloc.is_inheriting:
+                root_data = all_charges.get(('root', alloc.allocation_id),
+                                            {'charges_by_type': {}, 'adjustment': 0.0})
+                tree_used += sum(root_data['charges_by_type'].values())
+                if include_adjustments:
+                    tree_used += root_data['adjustment']
+                root_proj = root_anchor_by_alloc_id.get(alloc.allocation_id)
+                if root_proj is not None:
+                    root_projcodes.add(root_proj.projcode)
+            else:
+                all_inheriting = False
+                # Non-inheriting allocation contributes equally to self/tree.
+                tree_used += sum(charge_result['charges_by_type'].values())
+                if include_adjustments:
+                    tree_used += charge_result['adjustment']
+
+        # If this row represents a single shared pool (all inheriting,
+        # one common root), use the tree total as `total_used` so the
+        # bar reflects pool consumption, and expose `self_used`/
+        # `self_percent_used` for the two-tone overlay. Otherwise fall
+        # back to the legacy per-allocation sum.
         item['total_allocated'] = item['total_amount']  # Alias for clarity
-        item['percent_used'] = (total_used / item['total_allocated'] * 100) if item['total_allocated'] > 0 else 0
+        if all_inheriting and len(root_projcodes) == 1:
+            item['total_used'] = tree_used
+            item['percent_used'] = (tree_used / item['total_allocated'] * 100) if item['total_allocated'] > 0 else 0
+            item['self_used'] = self_used
+            item['self_percent_used'] = (self_used / item['total_allocated'] * 100) if item['total_allocated'] > 0 else 0
+            item['is_inheriting'] = True
+            item['root_projcode'] = next(iter(root_projcodes))
+        else:
+            item['total_used'] = self_used
+            item['percent_used'] = (self_used / item['total_allocated'] * 100) if item['total_allocated'] > 0 else 0
         item['charges_by_type'] = charges_by_type_total
 
     return summary
