@@ -12,10 +12,10 @@ import pytest
 from webapp.utils.project_permissions import (
     _is_project_steward,
     can_change_admin,
-    can_edit_allocations,
     can_edit_consumption_threshold,
+    can_exchange_allocations,
     can_manage_project_members,
-    can_redistribute_allocations,
+    can_modify_allocations,
     can_view_project_members,
     get_user_role_in_project,
 )
@@ -300,46 +300,94 @@ class TestIsProjectSteward:
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: can_edit_allocations BEHAVIOR CHANGE
+# can_exchange_allocations — steward-aware (lead/admin can redistribute
+# within a subtree they own; ancestor walk supports parent-of-subtree)
 # ---------------------------------------------------------------------------
 
-class TestCanEditAllocations:
-    """``can_edit_allocations`` previously short-circuited to
-    ``has_permission(EDIT_ALLOCATIONS)`` only — i.e. system admins only.
-    Phase 2 grants project lead/admin (and ancestor lead/admin) too,
-    enabling allocation redistribution within a project subtree."""
+class TestCanExchangeAllocations:
+    """Exchange (redistribution) keeps quota fixed and rebalances within
+    a subtree. Project lead/admin — including any ancestor lead/admin —
+    can perform it without holding system EDIT_ALLOCATIONS."""
 
-    def test_lead_can_edit_their_allocation(self):
-        # Regression target — used to return False for non-system users.
+    def test_lead_can_exchange_their_allocation(self):
         user = create_mock_user(user_id=42, roles=[])
         project = create_mock_project(project_lead_user_id=42)
-        assert can_edit_allocations(user, project)
+        assert can_exchange_allocations(user, project)
 
-    def test_admin_can_edit_their_allocation(self):
+    def test_admin_can_exchange_their_allocation(self):
         user = create_mock_user(user_id=42, roles=[])
         project = create_mock_project(project_lead_user_id=999, project_admin_user_id=42)
-        assert can_edit_allocations(user, project)
+        assert can_exchange_allocations(user, project)
 
-    def test_ancestor_lead_can_edit_descendant_allocation(self):
-        # The redistribution-within-tree use case.
+    def test_ancestor_lead_can_exchange_descendant_allocation(self):
         parent = create_mock_project(project_lead_user_id=42)
         child = create_mock_project(project_lead_user_id=998, parent=parent)
         user = create_mock_user(user_id=42, roles=[])
-        assert can_edit_allocations(user, child)
+        assert can_exchange_allocations(user, child)
 
-    def test_outsider_still_blocked(self):
+    def test_outsider_blocked(self):
         user = create_mock_user(user_id=42, roles=[])
         project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
-        assert not can_edit_allocations(user, project)
+        assert not can_exchange_allocations(user, project)
 
     def test_facility_manager_grants_via_system_permission(self):
         user = create_mock_user(user_id=99, roles=['nusd'])
         project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
-        assert can_edit_allocations(user, project)
+        assert can_exchange_allocations(user, project)
 
-    def test_redistribute_is_alias(self):
-        # Same authorization, different name at the call site.
-        assert can_redistribute_allocations is can_edit_allocations
+
+# ---------------------------------------------------------------------------
+# can_modify_allocations — base RBAC only (no steward override)
+# ---------------------------------------------------------------------------
+
+class TestCanModifyAllocations:
+    """Add / Extend / Renew / per-allocation Edit are reserved for base
+    RBAC holders of ``EDIT_ALLOCATIONS``. Project lead / admin / ancestor
+    lead are explicitly NOT granted — they create or extend quota."""
+
+    def test_lead_cannot_modify(self):
+        user = create_mock_user(user_id=42, roles=[])
+        project = create_mock_project(project_lead_user_id=42)
+        assert not can_modify_allocations(user, project)
+
+    def test_admin_cannot_modify(self):
+        user = create_mock_user(user_id=42, roles=[])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=42)
+        assert not can_modify_allocations(user, project)
+
+    def test_ancestor_lead_cannot_modify(self):
+        parent = create_mock_project(project_lead_user_id=42)
+        child = create_mock_project(project_lead_user_id=998, parent=parent)
+        user = create_mock_user(user_id=42, roles=[])
+        assert not can_modify_allocations(user, child)
+
+    def test_outsider_cannot_modify(self):
+        user = create_mock_user(user_id=42, roles=[])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
+        assert not can_modify_allocations(user, project)
+
+    def test_system_permission_grants_modify(self):
+        # 'nusd' carries Permission.EDIT_ALLOCATIONS unconditionally.
+        user = create_mock_user(user_id=99, roles=['nusd'])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
+        assert can_modify_allocations(user, project)
+
+    def test_facility_scoped_grants_for_matching_facility(self, monkeypatch):
+        from webapp.utils import rbac
+        user = create_mock_user(user_id=77, roles=[], username='wna_admin')
+        monkeypatch.setitem(
+            rbac.USER_FACILITY_PERMISSIONS,
+            'wna_admin',
+            {'WNA': {Permission.EDIT_ALLOCATIONS}},
+        )
+        wna_project = create_mock_project(
+            project_lead_user_id=999, facility_name='WNA',
+        )
+        univ_project = create_mock_project(
+            project_lead_user_id=999, facility_name='UNIV',
+        )
+        assert can_modify_allocations(user, wna_project)
+        assert not can_modify_allocations(user, univ_project)
 
 
 # ---------------------------------------------------------------------------

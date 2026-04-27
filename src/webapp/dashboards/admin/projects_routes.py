@@ -20,10 +20,13 @@ from webapp.utils.rbac import (
 )
 from webapp.api.access_control import (
     require_project_permission, require_allocation_permission,
+    require_project_facility_permission,
+    require_allocation_facility_permission,
 )
 from webapp.utils.project_permissions import (
     can_edit_project_governance,
-    can_edit_allocations,
+    can_modify_allocations,
+    can_exchange_allocations,
 )
 from sam.manage import management_transaction
 
@@ -452,7 +455,7 @@ def edit_project_page(project):
     form_data = _project_form_data(form=pre_fill or None)
 
     can_edit_governance = can_edit_project_governance(current_user, project)
-    can_edit_allocs = can_edit_allocations(current_user, project)
+    can_modify_allocs = can_modify_allocations(current_user, project)
     from webapp.utils.rbac import has_permission_any_facility
     can_access_admin = has_permission_any_facility(current_user, Permission.ACCESS_ADMIN_DASHBOARD)
 
@@ -463,7 +466,7 @@ def edit_project_page(project):
         current_facility_id=current_facility_id,
         current_panel_id=current_panel_id,
         can_edit_governance=can_edit_governance,
-        can_edit_allocations=can_edit_allocs,
+        can_modify_allocations=can_modify_allocs,
         can_access_admin=can_access_admin,
         **form_data,
     )
@@ -618,7 +621,8 @@ def htmx_project_allocation_tree(project):
     # hold a dedicated (non-inheriting) allocation for it. The root is
     # never a valid exchange endpoint — see ``_exchange_candidates``.
     # Computed from the data already loaded above; no extra DB trips.
-    can_exchange = can_edit_allocations(current_user, project)
+    can_exchange = can_exchange_allocations(current_user, project)
+    can_modify_allocs = can_modify_allocations(current_user, project)
     descendant_projcodes = {
         p.projcode for p in project.get_descendants(include_self=False)
         if p.active
@@ -656,7 +660,7 @@ def htmx_project_allocation_tree(project):
         active_at=active_at_str,
         now_str=now_str,
         can_edit_governance=can_edit_project_governance(current_user, project),
-        can_edit_allocations=can_exchange,
+        can_modify_allocations=can_modify_allocs,
         can_exchange=can_exchange,
         exchange_eligible_resources=exchange_eligible_resources,
         resource_id_by_name=resource_id_by_name,
@@ -665,7 +669,7 @@ def htmx_project_allocation_tree(project):
 
 @bp.route('/htmx/add-allocation-form/<projcode>')
 @login_required
-@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_add_allocation_form(project):
     """Return the add-allocation sub-form (loaded into modal on button click)."""
     import calendar
@@ -708,7 +712,7 @@ def htmx_add_allocation_form(project):
 
 @bp.route('/htmx/add-allocation/<projcode>', methods=['POST'])
 @login_required
-@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_add_allocation(project):
     """Create a new account + allocation for the project."""
     from sam.resources.resources import Resource
@@ -1142,7 +1146,7 @@ def _build_renew_candidates(project, source_active_at):
 
 @bp.route('/htmx/renew-allocations-form/<projcode>')
 @login_required
-@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_renew_allocations_form(project):
     """Return the Renew Allocations modal form fragment.
 
@@ -1172,7 +1176,7 @@ def htmx_renew_allocations_form(project):
 
 @bp.route('/htmx/renew-allocations/<projcode>', methods=['POST'])
 @login_required
-@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_renew_allocations(project):
     """Create renewed allocations for the selected resources."""
     from sam.resources.resources import Resource
@@ -1384,7 +1388,7 @@ def _build_extend_candidates(project, source_active_at):
 
 @bp.route('/htmx/extend-allocations-form/<projcode>')
 @login_required
-@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_extend_allocations_form(project):
     """Return the Extend Allocations modal form fragment."""
     root = project.get_root() if hasattr(project, 'get_root') else project
@@ -1408,7 +1412,7 @@ def htmx_extend_allocations_form(project):
 
 @bp.route('/htmx/extend-allocations/<projcode>', methods=['POST'])
 @login_required
-@require_project_permission(Permission.EDIT_ALLOCATIONS, include_ancestors=True)
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_extend_allocations(project):
     """Push end_date forward on the selected allocations."""
     from sam.manage.extend import extend_project_allocations
@@ -1505,7 +1509,7 @@ def htmx_extend_allocations(project):
 
 @bp.route('/htmx/edit-allocation-form/<int:allocation_id>')
 @login_required
-@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+@require_allocation_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_edit_allocation_form(allocation):
     """Return the edit-allocation form fragment (loaded into modal)."""
     from sam.manage.allocations import get_partitioned_descendant_sum, date_ranges_overlap
@@ -1585,7 +1589,7 @@ def htmx_edit_allocation_form(allocation):
 
 @bp.route('/htmx/edit-allocation/<int:allocation_id>', methods=['POST'])
 @login_required
-@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+@require_allocation_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_edit_allocation(allocation):
     """Validate and apply allocation edits with cascade + audit logging."""
     from sam.accounting.allocations import InheritingAllocationException

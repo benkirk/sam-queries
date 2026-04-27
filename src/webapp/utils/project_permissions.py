@@ -150,25 +150,37 @@ def can_view_project_members(user, project) -> bool:
     return True
 
 
-def can_edit_allocations(user, project) -> bool:
+def can_modify_allocations(user, project) -> bool:
     """
-    Edit allocation values (amount, dates, description).
+    Mutate allocation quotas — Add / Extend / Renew / per-allocation
+    Edit (amount, start, end).
+
+    Granted to: system EDIT_ALLOCATIONS holders only (facility-scoped
+    via ``USER_FACILITY_PERMISSIONS`` counts as a system grant for
+    that project's facility). **No steward override** — project lead
+    / admin do NOT inherit this. These operations create or alter
+    quota and are reserved for base RBAC.
+
+    For within-tree redistribution use ``can_exchange_allocations``.
+    """
+    return has_permission_for_facility(
+        user, Permission.EDIT_ALLOCATIONS, project.facility_name
+    )
+
+
+def can_exchange_allocations(user, project) -> bool:
+    """
+    Exchange (redistribute) allocations across a project subtree.
 
     Granted to: system EDIT_ALLOCATIONS holders, OR project lead/admin
     of this project OR any ancestor in the project tree. The
     ancestor walk supports redistribution within a subtree the user
-    leads — e.g. a lead of project A can edit allocations on its
-    children A1, A2.
+    leads — a lead of project A can exchange allocations among its
+    children A1, A2 without acquiring new quota.
     """
     return _is_project_steward(
         user, project, Permission.EDIT_ALLOCATIONS, include_ancestors=True
     )
-
-
-# Allocation redistribution is a specialization of allocation editing
-# (same authorization, distinct UI/API surface). The alias exists so
-# callers can use the name that reads best at the call site.
-can_redistribute_allocations = can_edit_allocations
 
 
 def can_edit_consumption_threshold(user, project) -> bool:

@@ -288,3 +288,90 @@ def require_allocation_permission(permission: Permission) -> Callable:
 
         return decorated_function
     return decorator
+
+
+def require_project_facility_permission(permission: Permission) -> Callable:
+    """
+    Decorator factory for project-mutating routes that require **base
+    RBAC only** — no steward override.
+
+    Identical URL contract to ``require_project_permission`` (resolves
+    ``<projcode>`` and passes the ``project`` object), but grants
+    access only when the user holds ``permission`` system-wide or
+    facility-scoped for the project's facility. Project lead/admin
+    status does NOT grant access.
+
+    Use for allocation mutations that should not be available to
+    project leads (Add / Extend / Renew). For within-tree redistribution
+    that leads should be able to perform, use
+    ``require_project_permission`` instead.
+
+    Usage:
+        @bp.route('/<projcode>/extend', methods=['POST'])
+        @login_required
+        @require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+        def extend(project):
+            ...
+    """
+    def decorator(f: Callable) -> Callable:
+        @wraps(f)
+        def decorated_function(projcode: str, *args, **kwargs):
+            project, error = get_project_or_404(db.session, projcode)
+            if error:
+                return error
+
+            if not has_permission_for_facility(
+                current_user, permission, project.facility_name
+            ):
+                abort(403)
+
+            return f(project, *args, **kwargs)
+
+        return decorated_function
+    return decorator
+
+
+def require_allocation_facility_permission(permission: Permission) -> Callable:
+    """
+    Decorator factory for allocation-mutating routes that require
+    **base RBAC only** — no steward override.
+
+    Resolves ``<allocation_id>`` (or ``<int:allocation_id>``), walks
+    to ``allocation.account.project``, and grants access only when
+    the user holds ``permission`` system-wide or facility-scoped for
+    that project's facility. Project lead/admin status does NOT
+    grant access.
+
+    Passes the ``allocation`` object to the decorated function in
+    place of ``allocation_id``.
+
+    Usage:
+        @bp.route('/<int:allocation_id>', methods=['PUT'])
+        @login_required
+        @require_allocation_facility_permission(Permission.EDIT_ALLOCATIONS)
+        def update_allocation(allocation):
+            ...
+    """
+    from sam.accounting.allocations import Allocation
+
+    def decorator(f: Callable) -> Callable:
+        @wraps(f)
+        def decorated_function(allocation_id: int, *args, **kwargs):
+            allocation = db.session.get(Allocation, int(allocation_id))
+            if allocation is None:
+                abort(404)
+
+            account = allocation.account
+            project = account.project if account is not None else None
+            if project is None:
+                abort(403)
+
+            if not has_permission_for_facility(
+                current_user, permission, project.facility_name
+            ):
+                abort(403)
+
+            return f(allocation, *args, **kwargs)
+
+        return decorated_function
+    return decorator
