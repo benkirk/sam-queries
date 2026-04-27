@@ -24,8 +24,26 @@ def index():
     Queries latest status from all systems and renders server-side.
     Status models are routed to the `system_status` bind via
     `__bind_key__`, so `db.session` handles both reads and writes.
+
+    The optional ``hours`` (or legacy ``days``) query param doesn't change
+    what the dashboard queries — it's a stateless passthrough so drill-down
+    row clicks inherit the user's last-set time range, and the back link
+    on detail pages can carry it through. ``selected_hours`` is None when
+    the param is absent (matches today's row-click URLs bit-for-bit).
     """
     session = db.session
+
+    selected_hours = None
+    if request.args.get('hours'):
+        try:
+            selected_hours = int(request.args['hours'])
+        except ValueError:
+            selected_hours = None
+    elif request.args.get('days'):
+        try:
+            selected_hours = int(request.args['days']) * 24
+        except ValueError:
+            selected_hours = None
 
     # Get latest Derecho status
     derecho_status = status_queries.get_latest_derecho_status(session)
@@ -77,6 +95,7 @@ def index():
         reservations=reservations,
         google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
         now=datetime.now(),
+        selected_hours=selected_hours,
     )
 
 
