@@ -407,6 +407,67 @@ class TestDiskCapacityInDashboardData:
         assert disk['remaining'] == 100.0
         assert disk['activity_date'] is None
 
+    def test_parent_project_capacity_includes_child_subtree(self, session):
+        """For NMMM0003-shaped parents (own account holds 0 bytes, child
+        sub-projects hold the actual occupancy), the dashboard dict's
+        `used` must reflect the subtree total — not the parent account's
+        own snapshot."""
+        from datetime import date as _date
+        from sam import ResourceType
+        from sam.summaries.disk_summaries import (
+            DiskChargeSummary,
+            mark_disk_snapshot_current,
+        )
+        BYTES_PER_TIB = 1024 ** 4
+
+        rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
+        if rt is None:
+            rt = make_resource_type(session, resource_type='DISK')
+        resource = make_resource(
+            session, resource_type=rt,
+            resource_name=f"Campaign_Store_{next_seq('cs')}",
+        )
+        parent_lead = make_user(session)
+        parent = make_project(session, lead=parent_lead)
+        child_a = make_project(session, parent=parent, lead=make_user(session))
+        child_b = make_project(session, parent=parent, lead=make_user(session))
+        # Allocation lives on the parent (capacity cap for the pool).
+        parent_account = make_account(session, project=parent, resource=resource)
+        make_allocation(
+            session, account=parent_account, amount=100.0,
+            start_date=datetime.now() - timedelta(days=30),
+            end_date=datetime.now() + timedelta(days=335),
+        )
+        # Children carry the actual snapshot bytes.
+        account_a = make_account(session, project=child_a, resource=resource)
+        account_b = make_account(session, project=child_b, resource=resource)
+        snap = _date(2026, 4, 18)
+        for acct, lead, tib in [
+            (account_a, child_a.lead, 30.0),
+            (account_b, child_b.lead, 20.0),
+        ]:
+            session.add(DiskChargeSummary(
+                activity_date=snap,
+                account_id=acct.account_id,
+                user_id=lead.user_id,
+                username=lead.username,
+                projcode=acct.project.projcode,
+                number_of_files=100,
+                bytes=int(tib * BYTES_PER_TIB),
+                terabyte_years=0.0,
+                charges=0.0,
+            ))
+        session.flush()
+        mark_disk_snapshot_current(session, snap)
+
+        rows = _build_project_resources_data(parent)
+        disk = next(r for r in rows if r['resource_type'] == 'DISK')
+        # Parent's bar must read 50 TiB used, not 0 — the parent's own
+        # account holds nothing; the children hold 30+20 = 50 TiB.
+        assert disk['used'] == pytest.approx(50.0, abs=1e-6)
+        assert disk['percent_used'] == pytest.approx(50.0, abs=1e-4)
+        assert disk['activity_date'] == snap
+
 
 class TestDiskCapacityInAllocationSummary:
     """`get_allocation_summary_with_usage` returns capacity-based

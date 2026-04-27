@@ -21,6 +21,7 @@ from sam.queries.rolling_usage import get_project_rolling_usage
 from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project, get_charges_by_projcode
 from sam.queries.lookups import find_project_by_code, get_user_group_access, get_group_members
 from sam.queries.shells import get_allowable_shell_names, get_user_current_shell
+from sam.accounting.accounts import Account
 from sam.core.users import User
 from sam.projects.projects import Project
 from sam.resources.resources import Resource
@@ -576,11 +577,13 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
     scope_node = _find_disk_node(full_tree, scope) or full_tree
     scope_account_ids = _collect_disk_account_ids(scope_node)
 
-    # Active disk allocation on the scope's first account drives the
-    # capacity bar's "allocated" denominator. For multi-account scopes
-    # (rare for disk) sum allocations across the scope.
-    allocated_tib = _sum_active_disk_allocations(
-        db.session, scope_account_ids,
+    # Pool capacity (TiB) for the scope: the master allocation's
+    # amount, NOT the sum across child accounts. Inheriting children
+    # share the parent's cap; summing them double-counts. See
+    # `sam-admin accounting --reconcile-quotas` — NMMM0003 reads 16.4
+    # PiB total, not 6 × parent.
+    allocated_tib = _scope_disk_allocation_tib(
+        db.session, scope_node['projcode'], resource,
     )
 
     used_bytes = _disk_subtree_total_bytes(scope_node)
@@ -639,19 +642,42 @@ def _collect_disk_account_ids(node) -> list:
     return out
 
 
-def _sum_active_disk_allocations(session, account_ids) -> float:
-    """Sum the active disk allocation amounts (TiB) for a set of accounts."""
-    if not account_ids:
-        return 0.0
+def _scope_disk_allocation_tib(session, scope_projcode, resource) -> float:
+    """Pool capacity (TiB) for the scoped project on a disk resource.
+
+    The disk pool cap is the *master* allocation's amount — children
+    that inherit from it share the cap, they do not add to it. So
+    summing across all subtree allocations would double-count. We
+    instead locate the scope project's account on this resource (or
+    walk up the project tree if the scope itself doesn't hold an
+    account), pick the active allocation, and return
+    ``allocation.root.amount`` — which is the pool cap regardless of
+    whether the scope is the root or an inheriting child. Returns 0.0
+    if no active allocation can be located.
+    """
     from sam.accounting.allocations import Allocation
+    scope_project = Project.get_by_projcode(session, scope_projcode)
+    if scope_project is None:
+        return 0.0
+    candidates = [scope_project] + scope_project.get_ancestors(include_self=False)
     now = datetime.now()
-    rows = session.query(Allocation).filter(
-        Allocation.account_id.in_(account_ids),
-        Allocation.deleted == False,  # noqa: E712
-        Allocation.start_date <= now,
-        ((Allocation.end_date.is_(None)) | (Allocation.end_date >= now)),
-    ).all()
-    return float(sum(a.amount for a in rows))
+    for proj in candidates:
+        account = session.query(Account).filter(
+            Account.project_id == proj.project_id,
+            Account.resource_id == resource.resource_id,
+            Account.deleted == False,  # noqa: E712
+        ).first()
+        if account is None:
+            continue
+        for a in account.allocations:
+            if a.deleted:
+                continue
+            if a.start_date and a.start_date > now:
+                continue
+            if a.end_date and a.end_date < now:
+                continue
+            return float(a.root.amount)
+    return 0.0
 
 
 def _build_disk_user_table(session, account_ids, activity_date, scope_bytes):

@@ -1144,24 +1144,40 @@ def get_allocation_summary_with_usage(
 
         # Disk capacity override: when every allocation in this row is on
         # a disk resource, replace the cumulative TiB-year total_used
-        # with the point-in-time TiB occupancy sum from
-        # Account.current_disk_usage(). The progress bar in the UI then
-        # reads "TiB used / TiB allocated", which is what users mean by
-        # "% used" for storage. Mixed-resource rows (rare) keep the
-        # cumulative number.
+        # with the point-in-time TiB occupancy of the project subtree
+        # (so parents like NMMM0003, whose children hold the bytes,
+        # don't read 0%). For single-project rows (the common case
+        # under projcode-grouping), `get_subtree_disk_capacity` walks
+        # `project.get_descendants()` on the row's resource and sums
+        # snapshot bytes. Multi-project rows fall back to summing
+        # per-account snapshots (legacy behaviour) — capacity-aware
+        # de-duplication across overlapping subtrees in TOTAL-style
+        # aggregates is a known limitation.
         all_disk = bool(item_allocations) and all(
             rt == 'DISK' for _, _, rt, _, _ in item_allocations
         )
         if all_disk:
-            capacity_used = 0.0
-            activity_date = None
-            for _, _, _, _, account in item_allocations:
-                snap = account.current_disk_usage()
-                if snap is None:
-                    continue
-                capacity_used += snap.used_tib
-                if activity_date is None or snap.activity_date > activity_date:
-                    activity_date = snap.activity_date
+            from sam.queries.disk_usage import get_subtree_disk_capacity
+            unique_projects = {p.project_id: p for _, _, _, p, _ in item_allocations}
+            unique_resources = {res for _, res, _, _, _ in item_allocations}
+            if len(unique_projects) == 1 and len(unique_resources) == 1:
+                only_project = next(iter(unique_projects.values()))
+                only_resource = next(iter(unique_resources))
+                cap = get_subtree_disk_capacity(
+                    session, only_project, only_resource,
+                )
+                capacity_used = cap['used_tib']
+                activity_date = cap['activity_date']
+            else:
+                capacity_used = 0.0
+                activity_date = None
+                for _, _, _, _, account in item_allocations:
+                    snap = account.current_disk_usage()
+                    if snap is None:
+                        continue
+                    capacity_used += snap.used_tib
+                    if activity_date is None or snap.activity_date > activity_date:
+                        activity_date = snap.activity_date
             item['total_used'] = capacity_used
             item['percent_used'] = (
                 (capacity_used / item['total_allocated'] * 100)

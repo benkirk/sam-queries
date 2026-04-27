@@ -186,10 +186,6 @@ def _build_project_resources_data(project: Project,
 
     now = active_at or datetime.now()
 
-    # Map account_id → Account for disk capacity lookup. The dict is empty
-    # for projects with no disk accounts; cheap to build either way.
-    accounts_by_id = {a.account_id: a for a in project.accounts if not a.deleted}
-
     # Fetch rolling window usage (30d/90d) only when at least one account on
     # this project has a non-null threshold set. The dashboard template only
     # displays the rolling-usage block when threshold_pct is not None
@@ -274,11 +270,12 @@ def _build_project_resources_data(project: Project,
         }
 
         if resource_type == 'DISK':
-            account = accounts_by_id.get(usage.get('account_id'))
-            if account is not None:
-                overrides = _disk_capacity_overrides(account, resource_dict['allocated'], resource_type)
-                if overrides is not None:
-                    resource_dict.update(overrides)
+            overrides = _disk_capacity_overrides(
+                project.session, project, resource_name,
+                resource_dict['allocated'], resource_type,
+            )
+            if overrides is not None:
+                resource_dict.update(overrides)
 
         resources.append(resource_dict)
 
@@ -286,7 +283,9 @@ def _build_project_resources_data(project: Project,
 
 
 def _disk_capacity_overrides(
-    account: Account,
+    session,
+    project: Project,
+    resource_name: str,
     allocated: float,
     resource_type: str,
 ) -> Optional[Dict[str, Any]]:
@@ -295,8 +294,13 @@ def _disk_capacity_overrides(
 
     Storage's user-facing "% used" is *capacity* (point-in-time TiB
     used vs TiB allocated), not the cumulative TiB-year burn used for
-    billing. Returns a dict the caller merges into the resource dict,
-    or None for non-disk resources (caller leaves the dict unchanged).
+    billing. The capacity is summed across the project's *subtree* on
+    this resource — parent projects (e.g. NMMM0003) hold no bytes
+    themselves; the occupancy lives on their child sub-projects. See
+    ``get_subtree_disk_capacity`` for the walk.
+
+    Returns a dict the caller merges into the resource dict, or None
+    for non-disk resources (caller leaves the dict unchanged).
 
     The fields written are: ``used``, ``remaining``, ``percent_used``,
     ``activity_date``. Cumulative TiB-yr (``charges_by_type``,
@@ -306,21 +310,15 @@ def _disk_capacity_overrides(
     """
     if resource_type != 'DISK':
         return None
-    snapshot = account.current_disk_usage()
-    if snapshot is None:
-        return {
-            'used': 0.0,
-            'remaining': allocated,
-            'percent_used': 0.0,
-            'activity_date': None,
-        }
-    used_tib = snapshot.used_tib
+    from sam.queries.disk_usage import get_subtree_disk_capacity
+    cap = get_subtree_disk_capacity(session, project, resource_name)
+    used_tib = cap['used_tib']
     pct = (used_tib / allocated * 100) if allocated > 0 else 0.0
     return {
         'used': used_tib,
         'remaining': allocated - used_tib,
         'percent_used': pct,
-        'activity_date': snapshot.activity_date,
+        'activity_date': cap['activity_date'],
     }
 
 
@@ -689,7 +687,9 @@ def _build_user_projects_resources_batched(
             'rolling_90':           rwin.get(90),
         }
 
-        overrides = _disk_capacity_overrides(account, allocated, resource_type)
+        overrides = _disk_capacity_overrides(
+            session, project, resource_name, allocated, resource_type,
+        )
         if overrides is not None:
             resource_dict.update(overrides)
 

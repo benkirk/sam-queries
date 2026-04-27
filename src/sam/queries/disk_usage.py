@@ -32,6 +32,78 @@ from sam.resources.resources import Resource
 from sam.summaries.disk_summaries import DiskChargeSummary
 
 
+def get_subtree_disk_capacity(
+    session: Session,
+    project: Project,
+    resource_name: str,
+) -> Dict[str, Any]:
+    """Point-in-time disk occupancy summed across a project's subtree.
+
+    For NMMM0003-shaped parents, the parent's own account holds 0 bytes
+    while the actual occupancy lives on the children — `Account
+    .current_disk_usage()` against just the parent reads 0%. This helper
+    walks ``project`` + descendants (NestedSet coords), finds each
+    descendant's account on ``resource_name``, sums the snapshot bytes
+    / file count, and reports the latest activity_date across them.
+
+    Returns ``{used_bytes, used_tib, file_count, activity_date,
+    account_ids}``. ``activity_date`` is None and totals are zero if no
+    descendant has a snapshot yet.
+    """
+    resource = session.query(Resource).filter(
+        Resource.resource_name == resource_name,
+    ).first()
+    empty = {
+        'used_bytes':    0,
+        'used_tib':      0.0,
+        'file_count':    0,
+        'activity_date': None,
+        'account_ids':   [],
+    }
+    if resource is None:
+        return empty
+
+    is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
+    if is_tree_valid:
+        accounts = session.query(Account).join(
+            Project, Account.project_id == Project.project_id,
+        ).filter(
+            Project.tree_root == project.tree_root,
+            Project.tree_left >= project.tree_left,
+            Project.tree_right <= project.tree_right,
+            Account.resource_id == resource.resource_id,
+            Account.deleted == False,  # noqa: E712
+        ).all()
+    else:
+        accounts = session.query(Account).filter(
+            Account.project_id == project.project_id,
+            Account.resource_id == resource.resource_id,
+            Account.deleted == False,  # noqa: E712
+        ).all()
+
+    used_bytes = 0
+    files = 0
+    latest = None
+    account_ids = []
+    for acct in accounts:
+        snap = acct.current_disk_usage(session)
+        if snap is None:
+            continue
+        used_bytes += snap.bytes
+        files += snap.number_of_files
+        if latest is None or snap.activity_date > latest:
+            latest = snap.activity_date
+        account_ids.append(acct.account_id)
+
+    return {
+        'used_bytes':    used_bytes,
+        'used_tib':      used_bytes / (1024 ** 4),
+        'file_count':    files,
+        'activity_date': latest,
+        'account_ids':   account_ids,
+    }
+
+
 def get_disk_usage_timeseries_by_user(
     session: Session,
     *,
