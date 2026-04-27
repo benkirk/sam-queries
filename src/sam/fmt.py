@@ -348,6 +348,9 @@ def register_jinja_filters(app) -> None:
     app.jinja_env.filters['fmt_date']     = date_str
     app.jinja_env.filters['fmt_size']     = size
     app.jinja_env.filters['to_local_dt']  = to_local_dt
+    # Global (not a filter) so templates can render "{{ local_tz_label() }}"
+    # alongside naive-local timestamps that don't go through to_local_dt.
+    app.jinja_env.globals['local_tz_label'] = local_tz_label
 
 
 def mpl_number_formatter(sig_figs: Optional[int] = None):

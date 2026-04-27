@@ -87,8 +87,9 @@
                 <div class="text-end">
                     {# PBS-sourced reservations are stored as naive cluster-local
                        time (`pbs_rstat -f` output, parsed via strptime in
-                       collectors/lib/parsers/reservations.py) — render as-is. #}
-                    <div class="fw-bold">{{ res.start_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} - {{ res.end_time | fmt_date(fmt='%Y-%m-%d %H:%M') }}</div>
+                       collectors/lib/parsers/reservations.py) — render as-is
+                       and tag with the display TZ for clarity. #}
+                    <div class="fw-bold">{{ res.start_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} - {{ res.end_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} {{ local_tz_label() }}</div>
                 </div>
             </div>
         </div>

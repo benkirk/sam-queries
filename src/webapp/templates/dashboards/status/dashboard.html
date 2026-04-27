@@ -42,8 +42,10 @@
                 <div class="d-flex align-items-center gap-2">
                     {# Outages are entered via <input type="datetime-local"> →
                        fromisoformat → stored as naive browser-local time
-                       (see status/blueprint.py:304).  Render as-is. #}
-                    <span class="text-muted small">{{ outage.start_time | fmt_date(fmt='%Y-%m-%d %H:%M') }}</span>
+                       (see status/blueprint.py:304).  Render as-is, but tag
+                       with the configured display TZ so viewers don't have
+                       to guess the zone. #}
+                    <span class="text-muted small">{{ outage.start_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} {{ local_tz_label() }}</span>
                     {% if has_permission(Permission.EDIT_SYSTEM_STATUS) %}
                     <div class="btn-group btn-group-sm ms-2">
                         <button class="btn btn-outline-secondary btn-sm"
@@ -81,7 +83,7 @@
             {% if outage.estimated_resolution %}
             <div class="text-muted small mt-1">
                 {# Same naive browser-local convention as outage.start_time above. #}
-                <i class="fas fa-clock"></i> Estimated resolution: {{ outage.estimated_resolution | fmt_date(fmt='%Y-%m-%d %H:%M') }}
+                <i class="fas fa-clock"></i> Estimated resolution: {{ outage.estimated_resolution | fmt_date(fmt='%Y-%m-%d %H:%M') }} {{ local_tz_label() }}
             </div>
             {% endif %}
         </div>
