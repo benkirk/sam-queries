@@ -1,156 +1,218 @@
-# Disk Billing Refactor — Future Work
+# Disk Billing Refactor — Execution Plan
 
-This is the deferred follow-up to the disk-charging cutover landed
-in `docs/plans/DISK_CHARGING.md`. That plan delivered **Option 2**
-(current-snapshot read path + epoch cutover to TiB-years for new
-rows) and noted a deeper redesign of cumulative billing as Option 3.
+## Context
 
-After re-evaluation, **Option 3 collapses to a single targeted
-change**: infer the reporting interval per row from the prior
-successful snapshot for the same account, instead of using the
-hard-coded `--reporting-interval=7` constant. The originally-proposed
-`LAG()`-based read-time integration is dropped.
+`docs/plans/DISK_BILLING_REFACTOR.md` already lays out the *what* and the
+*why* for the deferred Option-3 follow-up to the disk-charging cutover.
+Today every row of a `sam-admin accounting --disk` import is multiplied
+by the same hard-coded `--reporting-interval=7`. That is the entire
+defense against under- or over-billing on cadence changes, missed
+snapshots, and out-of-order backfills.
 
----
+This plan turns that doc into an execution-ready PR: replace the
+per-import constant with a per-row interval inferred at write time
+from the prior `disk_charge_summary.activity_date` for the same
+account, falling back to `--reporting-interval` only when no prior
+row exists (bootstrap).
 
-## Why we are not doing the read-time integration anymore
-
-The original Option 3 draft proposed:
-
-1. Stop pre-multiplying `terabyte_years` at ingest.
-2. Replace every `SUM(charges)` call site with a `LAG(activity_date)`
-   integration query.
-3. Bump the DB minimum version.
-4. Rename the `terabyte_years` column.
-
-That design was motivated by three real edge cases — cadence
-changes, missing snapshots, backfills — none of which the current
-hard-coded-`7`-at-ingest path handles correctly.
-
-But every one of those edge cases can be fixed at *write* time by
-inferring the interval from the prior snapshot. If we do that:
-
-- The six existing SUM call sites are correct without any change.
-- No DB version bump is required.
-- No column rename is required.
-- No second epoch is required.
-- No consumer-side defensive code is required.
-
-The read-time integration's only remaining value-add is
-**partial-period interrogation between snapshots** (today vs the
-last snapshot, before the next one lands). That question is already
-answered by Option 2's `Account.current_disk_usage()` and the
-schema's `current_used_*` fields — in TiB rather than TiB-years,
-which is what dashboards actually want.
-
-**Decision**: drop the `LAG()` rewrite as a workstream. Keep the
-integration logic in mind as an optional debug helper in
-`sam.queries.charges` if a real use case shows up.
+The goal of this document is to specify the implementation precisely
+enough to execute (file:line landings, function shapes, test cases)
+without further design discussion. On approval, port the plan back
+to `docs/plans/DISK_BILLING_REFACTOR.md`, replace the implementation
+outline in §"What this plan does" with the concrete steps below, and
+proceed to coding.
 
 ---
 
-## What this plan does
+## Design
 
-### Where the magic constant lives today
+### Where the math moves
 
-```
-src/cli/cmds/admin.py          --reporting-interval default 7
-src/cli/accounting/commands.py reporting_interval: int = 7
-                               tib_years(bytes, reporting_interval)  ← uniform across rows
-```
-
-Every row of a single import gets the same interval. The legacy
-SAM doc itself flagged the fragility:
-
-> *"If the snapshot frequency changes (e.g., to daily), this value
-> must be updated to `1` to prevent 7× over-billing."*
-
-A single hard-coded constant is the entire defense against under- or
-over-billing.
-
-### Write-time inferred interval
-
-Replace the per-import constant with a per-row lookup at write time.
-For each row in `_run_disk`:
+Today, charging math runs **once before the chunk loop** at
+`src/cli/accounting/commands.py:482–485`:
 
 ```python
-# Pre-load once per import (one query per chunk, populated lazily by account_id).
+# ---- 6. Charging math ------------------------------------------
+for e in entries:
+    e.terabyte_years = tib_years(e.bytes, reporting_interval)
+    e.charges = e.terabyte_years
+```
+
+For normal rows, `account_id` is **not** known at that point — it is
+resolved lazily inside the chunk loop via `_resolve_for_row()` at
+line 620. The interval depends on `account_id` (each account has its
+own prior snapshot), so the math has to move.
+
+**Move the per-row math into the chunk loop, immediately after
+account resolution.** The pre-loop block becomes a no-op and is
+deleted; the chunk loop computes `terabyte_years` per row using a
+lazy `prior_date_by_account` cache.
+
+### Lookup query
+
+```python
 prior_date = (
-    session.query(func.max(DiskChargeSummary.activity_date))
+    self.session.query(func.max(DiskChargeSummary.activity_date))
     .filter(
         DiskChargeSummary.account_id == acct_id,
-        DiskChargeSummary.activity_date < snap_date,
+        DiskChargeSummary.activity_date < snap_date,   # critical: <, not <=
     )
     .scalar()
 )
 interval_days = (snap_date - prior_date).days if prior_date else fallback_interval
-terabyte_years = tib_years(bytes, interval_days)
-charges        = terabyte_years
 ```
 
-The `< snap_date` filter is critical: the existing `_run_disk`
-deletes all `(resource, snap_date)` rows before the chunked insert,
-so the lookup needs to find the snapshot *before* the one being
-imported, not the row about to be overwritten.
+The `< snap_date` filter is the safety bar against the idempotency
+delete: `_run_disk` block 7b at lines 538–572 removes all
+`(resource, snap_date)` rows **before** the chunk loop runs, so a
+re-import sees the actually-prior snapshot, not the row about to be
+overwritten. `<` (strict) instead of `<=` is also what protects
+backfill out of order — importing Apr 11 *after* Apr 18 has been
+imported finds Apr 11's prior as Apr 04, not Apr 18.
 
-### Properties under each cadence case
+### Cache shape
 
-| case                                     | behavior                                                                                         |
-|---                                       |---                                                                                               |
-| Steady weekly cadence                    | Every interval = 7 → identical to today's hard-coded path.                                       |
-| Steady daily cadence (operator forgot to flip flag) | Every interval = 1 → correct without operator action.                                  |
-| Cadence change (weekly → daily)           | First daily snapshot's interval = 7 (covers the prior week); subsequent rows = 1.                |
-| Missed snapshot day                      | Next snapshot's interval = (gap-with-missed-day) → bytes count for the missed window.            |
-| Backfill out of order (Apr 11 imported after Apr 18) | The `< :snap_date` filter makes Apr 11's prior = Apr 04 (or earlier), not Apr 18.       |
-| Bootstrap (first ever row for account)   | Falls back to `--reporting-interval` default (7). One-shot operator concern only.                |
-| New account joining mid-stream           | First row uses bootstrap interval. Bytes-for-the-prior-period are genuinely unknown — bootstrap is honest. |
-| Idempotent re-import (same date)         | `_run_disk` deletes existing rows for `(resource, snap_date)` before insert; the lookup then sees the actually-prior snapshot. |
+```python
+prior_date_by_account: dict[int, Optional[date]] = {}
+# Sentinel: presence in the dict means "we asked"; value None means
+# "no prior" (use fallback).
+
+def _interval_for(account_id: int) -> int:
+    if account_id not in prior_date_by_account:
+        prior_date_by_account[account_id] = (
+            self.session.query(func.max(DiskChargeSummary.activity_date))
+            .filter(
+                DiskChargeSummary.account_id == account_id,
+                DiskChargeSummary.activity_date < snap_date,
+            )
+            .scalar()
+        )
+    prior = prior_date_by_account[account_id]
+    return (snap_date - prior).days if prior else reporting_interval
+```
+
+Lazy because account_ids for normal rows are not known up-front.
+Multiple users on the same project share an account, so the cache
+deduplicates queries within an import — typical Campaign_Store
+imports (~2000 rows, ~150 distinct accounts) will issue ~150 lookups
+instead of 2000.
+
+### Gap rows
+
+`_build_unidentified_disk_rows` at `commands.py:678–823` constructs
+`DiskUsageEntry` instances with `account_override=account` already
+set (line 812). It currently passes `reporting_interval` through to
+the entry (line 808) but the value is overwritten by the now-deleted
+block 6 anyway — so the field is effectively dead.
+
+Gap rows flow through the same chunk loop as normal rows. They take
+the `account_override` path at `commands.py:609–613` which sets
+`account_for_upsert = row.account_override` before the upsert. The
+new per-row math runs after that branch, using
+`account_for_upsert.account_id` to populate the same cache. No
+special-case logic.
+
+**Cleanup**: drop the unused `reporting_interval` argument from
+`_build_unidentified_disk_rows` (the kwarg at line 686, the call site
+at line 469, and the constructor field on `DiskUsageEntry`). One
+fewer dead parameter to confuse future readers.
+
+### Flag semantics
+
+`--reporting-interval` (admin.py:204–206) goes from "uniform per-row
+interval" to "bootstrap fallback used only on the first-ever row for
+an account." Keep the flag and default of `7`; rewrite the help text:
+
+```
+'[disk] Bootstrap interval in days, used only when no prior '
+'snapshot exists for an account. Steady-state imports infer the '
+'per-row interval from the gap to the previous snapshot.'
+```
 
 ---
 
-## Implementation outline
+## Files to change
 
-### Files to touch
+### `src/cli/accounting/commands.py`
 
-- `src/cli/accounting/commands.py` — modify `_run_disk` to pre-load
-  `prior_date_by_account: dict[int, date]` from
-  `disk_charge_summary` for the accounts the import will touch,
-  then compute `interval_days` per row inside the chunk loop.
-- `src/cli/cmds/admin.py` — update `--reporting-interval` help text
-  to clarify it is a bootstrap-only fallback (not a per-row constant
-  anymore).
-- `src/sam/summaries/disk_summaries.py` — no signature change;
-  `tib_years(bytes_, reporting_interval_days)` is unchanged. The
-  caller selects the interval per row.
+1. **Delete** block 6 at lines 482–485 (the pre-loop `for e in entries`).
+2. **Inside `_run_disk`**, before the chunk loop (around line 574),
+   declare `prior_date_by_account: dict[int, Optional[date]] = {}` and
+   define a small `_interval_for(account_id)` closure that reads /
+   populates the cache. `from sqlalchemy import func` if not already.
+3. **Inside the chunk loop**, after `_resolve_for_row()` succeeds (or
+   `account_override` is taken — i.e., right after the
+   `account_for_upsert` assignment at lines 613 and 620), compute:
+   ```python
+   interval_days = _interval_for(account_for_upsert.account_id)
+   row.terabyte_years = tib_years(row.bytes, interval_days)
+   row.charges = row.terabyte_years
+   ```
+   Then call `upsert_disk_charge_summary(...)` as today.
+4. **Drop the `reporting_interval` argument** to
+   `_build_unidentified_disk_rows` (parameter at line 686, call site at
+   line 469, field on `DiskUsageEntry`).
 
-### Tests to add
+### `src/cli/cmds/admin.py`
 
-- `tests/unit/test_disk_inferred_interval.py` — new:
-  - Steady weekly cadence: imports across 4 weeks, all intervals = 7.
-  - Steady daily cadence: imports across 4 days, all intervals = 1.
-  - Cadence change: weekly snapshots followed by daily; first daily
-    interval = 7, subsequent = 1.
-  - Missed day: weekly snapshot, then a 14-day gap; the second
-    snapshot's interval = 14.
-  - Backfill out of order: import Apr 18, then Apr 11; Apr 11's
-    interval is the gap to its actual predecessor (Apr 04 or
-    bootstrap), NOT a negative number from Apr 18.
-  - Bootstrap: first-ever row for a fresh account uses
-    `--reporting-interval` default.
-  - Re-import idempotency: re-running Apr 18 finds Apr 11 (not the
-    deleted Apr 18 row) as prior, interval stays 7.
-- `tests/unit/test_accounting_disk_admin.py` — extend with a
-  multi-import scenario that verifies the second snapshot's rows
-  use `(date2 - date1).days` as the interval.
+Update the help text on the `--reporting-interval` Click option at
+lines 204–206 to the bootstrap-fallback wording above.
 
-### What is NOT changing
+### `src/sam/summaries/disk_summaries.py`
 
-- The cumulative-billing query path (six SUM call sites surveyed
-  in `DISK_CHARGING.md`) — no consumer touches required.
-- The `disk_charge_summary.terabyte_years` column name — column
-  rename to `tebibyte_years` is a separate, smaller, future PR.
-- The `DISK_CHARGING_TIB_EPOCH = 2026-04-18` cutover — unchanged.
-- The `Allocation.amount` ↔ `terabyte_years` unit alignment — unchanged.
+No change. `tib_years(bytes_, reporting_interval_days)` keeps its
+signature; the caller selects the interval per row.
+
+### `src/cli/accounting/disk_usage/base.py`
+
+Remove the `reporting_interval` field from `DiskUsageEntry` (the
+field is set at `commands.py:808` when constructing gap rows; once
+the math moves into the chunk loop, the field is dead).
+
+---
+
+## Tests
+
+### New: `tests/unit/test_disk_inferred_interval.py`
+
+End-to-end tests against `_run_disk` via `CliRunner`. Reuse
+`_build_campaign_store_graph`, `_write_acct`, `_write_quotas`,
+`runner`, and `mock_db_session` from
+`tests/unit/test_accounting_disk_admin.py:36–103`. Each case seeds
+prior `DiskChargeSummary` rows directly via `session.add()` (not via
+the CLI) so the test pins one variable at a time, then runs one CLI
+invocation and asserts the resulting `terabyte_years`.
+
+| case | seed | import | expected `terabyte_years` |
+|---|---|---|---|
+| Steady weekly | row at `snap-7` | snap | `bytes × 7 / 365 / 1024⁴` |
+| Steady daily | row at `snap-1` | snap | `bytes × 1 / 365 / 1024⁴` |
+| Cadence change weekly→daily | row at `snap-7` | snap | `bytes × 7 / 365 / 1024⁴` (first daily after weekly covers prior week) |
+| Missed week | row at `snap-14` | snap | `bytes × 14 / 365 / 1024⁴` |
+| Backfill out of order | row at `snap+7` (later snapshot already imported), row at `snap-7` | snap | `bytes × 7 / 365 / 1024⁴` (must NOT pick up `snap+7`) |
+| Bootstrap (no prior) | none | snap | `bytes × 7 / 365 / 1024⁴` (fallback to flag default) |
+| Bootstrap with non-default flag | none | snap, `--reporting-interval=3` | `bytes × 3 / 365 / 1024⁴` |
+| Re-import idempotency | row at `snap-7`, row at `snap` | snap (re-import) | `bytes × 7 / 365 / 1024⁴` (the `snap` row is deleted before the lookup runs) |
+
+The "backfill out of order" case is the load-bearing one — it proves
+the strict `<` filter. The "re-import idempotency" case proves the
+delete-then-lookup ordering at lines 538–572 is preserved.
+
+Use `pytest.approx(expected, abs=1e-7)` for the `terabyte_years`
+comparison (DB column is FLOAT, ~7 decimal digits) — match the
+existing tolerance at `test_accounting_disk_admin.py:148`.
+
+### Extend: `tests/unit/test_accounting_disk_admin.py`
+
+Add one multi-import test that runs the CLI twice with different
+snapshot dates 8 days apart and asserts the second import's row uses
+interval = 8, not 7. Exercises the full CLI path twice rather than
+mixing seeded rows with one CLI run.
+
+### `tests/unit/test_disk_charging_math.py`
+
+No change. Pure formula tests for `tib_years()` are already pinned;
+this refactor does not touch `tib_years`.
 
 ---
 
@@ -158,45 +220,85 @@ imported, not the row about to be overwritten.
 
 ### Unit-level
 
-```python
-# Worked example: weekly cadence with one missed week
-seed(account=A, date=2026-04-11, bytes=B)
-seed(account=A, date=2026-04-25, bytes=B)   # 14 days later, missed Apr 18
-import the second snapshot via _run_disk
-assert row.terabyte_years == B * 14 / 365 / 1024**4
 ```
+pytest tests/unit/test_disk_inferred_interval.py \
+       tests/unit/test_accounting_disk_admin.py \
+       tests/unit/test_disk_charging_math.py -v
+```
+
+All eight new cases plus the extended multi-import case pass.
 
 ### Live cross-check
 
-After landing this change, on the next `--disk` import:
+After landing, on the next two consecutive `--disk` imports:
 
 ```sql
 SELECT activity_date,
+       account_id,
        terabyte_years,
-       ROUND(terabyte_years * 365 * POW(1024,4) / bytes) AS inferred_interval_days
+       bytes,
+       ROUND(terabyte_years * 365 * POW(1024,4) / bytes) AS inferred_days
 FROM disk_charge_summary
 WHERE activity_date >= '<post-feature-date>'
-ORDER BY activity_date DESC, account_id LIMIT 20;
+ORDER BY activity_date DESC, account_id
+LIMIT 40;
 ```
 
-`inferred_interval_days` should equal the actual gap between
-snapshot dates (typically 7; whatever the snapshot cadence is in
-practice).
+`inferred_days` must equal the actual gap between consecutive
+snapshot dates for that account (typically 7).
 
 ### Idempotency
 
-Re-running the same date twice must produce identical
-`terabyte_years` values across both runs (no off-by-one from
-seeing the deleted-and-replaced row as "prior").
+Re-run the same `--disk` import twice in a row. Diff the
+`terabyte_years` column across both runs — must be byte-identical.
+This is the regression test that the strict `<` filter and the
+delete-before-lookup ordering survive.
+
+### Bootstrap honesty
+
+After landing, run `--disk` against a freshly-created account that
+has no prior `disk_charge_summary` rows. The first-ever row uses the
+flag default (7). This is the only operator-tunable case and is
+preserved.
 
 ---
 
-## Out of scope
+## What is NOT in this PR
 
-- The pure `LAG()` read-time integration query. Demoted from
-  primary recommendation to optional debug helper if a future use
-  case demands it.
-- The `terabyte_years` → `tebibyte_years` column rename. Separate
-  PR, untouched here.
-- Backfilling pre-epoch (decimal-TB-yr) rows. Per
-  `DISK_CHARGING.md`, those stay in legacy units forever.
+- `LAG()` read-time integration helper. Demoted to optional debug
+  helper in `sam.queries.charges` if a use case ever shows up;
+  currently no consumer needs it.
+- `terabyte_years` → `tebibyte_years` column rename. Separate, smaller
+  PR; mechanical sed across the six SUM call sites.
+- Backfilling pre-`DISK_CHARGING_TIB_EPOCH` rows. Per
+  `DISK_CHARGING.md`, those stay in legacy decimal-TB-yr forever.
+- Touching the six cumulative-billing SUM call sites
+  (`sam.queries.charges:349`, `sam.queries.dashboard:909`/`:996`,
+  `sam.accounting.calculator:54`, `sam.schemas.allocation:213`,
+  `sam.projects.projects:766`). They remain correct because the
+  per-row `terabyte_years` is now correct under all cadence cases.
+
+---
+
+## Rollout
+
+One PR off `disk_charging`. Commits, in order:
+
+1. **refactor**: move `_run_disk` charging math into the chunk loop
+   (no behavior change yet — `_interval_for` always returns the
+   flag value). Existing tests still pass.
+2. **feat**: implement the `prior_date_by_account` lookup inside
+   `_interval_for`. Tests in `test_disk_inferred_interval.py` go from
+   skipped to passing.
+3. **chore**: drop the dead `reporting_interval` field from
+   `DiskUsageEntry` and the kwarg from `_build_unidentified_disk_rows`.
+4. **docs**: update help text on `--reporting-interval`; rewrite the
+   "Implementation outline" section of
+   `docs/plans/DISK_BILLING_REFACTOR.md` to reflect the landed
+   design (drop the "future work" framing).
+
+Each commit independently passes `pytest`. Operator action on next
+deploy is zero — the flag still exists, the default is unchanged,
+the column is unchanged. The only operator-visible diff is the help
+text and the fact that operator-forgot-to-flip-the-flag bugs are no
+longer possible.
