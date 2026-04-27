@@ -112,14 +112,17 @@ class TestDiskUsageTimeseries:
             session, account_ids=[account.account_id], top_n=10,
         )
         assert out['dates'] == [snap]
-        # 10 named users + Others
+        # Stack-friendly order: Others first (bottom of stack, grey),
+        # then named users smallest → largest.
         names = [s['username'] for s in out['series']]
-        assert names[-1] == 'Others'
+        assert names[0] == 'Others'
         assert len(names) == 11
-        # Top user (12 TiB) is the first series.
-        assert out['series'][0]['values'] == [12 * BYTES_PER_TIB]
-        # Others = users ranked 11 + 12 = 2 + 1 = 3 TiB
-        assert out['series'][-1]['values'] == [3 * BYTES_PER_TIB]
+        # Others = users ranked 11 + 12 = 2 + 1 = 3 TiB (bottom of stack).
+        assert out['series'][0]['values'] == [3 * BYTES_PER_TIB]
+        # Largest named user (12 TiB) sits on top of the stack.
+        assert out['series'][-1]['values'] == [12 * BYTES_PER_TIB]
+        # Smallest named user (3 TiB total: rank 10 → 3) sits just above Others.
+        assert out['series'][1]['values'] == [3 * BYTES_PER_TIB]
 
     def test_dense_fill_zero_for_missing_user_dates(self, session):
         resource = _disk_resource(session)

@@ -224,10 +224,26 @@ def generate_disk_usage_stacked_area(timeseries) -> str:
         for s in series
     ]
     labels = [s['username'] for s in series]
-    ax.stackplot(dates, *scaled_series, labels=labels, alpha=0.85)
+    # Others (always first per get_disk_usage_timeseries_by_user) gets a
+    # neutral grey so it doesn't compete with the named-user palette.
+    # Named users use matplotlib's default tab10 cycle.
+    cmap = matplotlib.colormaps.get_cmap('tab10')
+    colors = []
+    cycle_idx = 0
+    for s in series:
+        if s['username'] == 'Others':
+            colors.append('#9ca3af')   # tailwind-style neutral grey
+        else:
+            colors.append(cmap(cycle_idx % 10))
+            cycle_idx += 1
+    ax.stackplot(dates, *scaled_series, labels=labels, colors=colors, alpha=0.85)
     ax.set_ylabel(f'Disk usage ({unit_label})')
     ax.grid(True, alpha=0.3)
+    # Reverse the legend so it reads top-to-bottom in the same order as
+    # the visual stack (largest user on top).
+    handles, lbls = ax.get_legend_handles_labels()
     ax.legend(
+        handles[::-1], lbls[::-1],
         loc='center left',
         bbox_to_anchor=(1.01, 0.5),
         frameon=False,

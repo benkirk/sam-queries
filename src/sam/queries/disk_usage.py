@@ -121,14 +121,22 @@ def get_disk_usage_timeseries_by_user(
     are dense-filled with 0 so every series has the same length as
     ``dates``.
 
+    Series order is **stack-friendly**: ``Others`` first (so it renders
+    at the bottom of the stacked area in a neutral colour), then named
+    users smallest-to-largest by latest-snapshot bytes (so the largest
+    user sits on top of the stack — easiest to scan against the
+    capacity bar). The chart layer reverses the legend so the visual
+    order from top to bottom matches the legend top to bottom.
+
     Returns::
 
         {
           'dates':  [date, ...],                   # sorted ascending
           'series': [
-            {'username': 'alice',  'values': [bytes, ...]},
-            ...,                                    # up to top_n users
             {'username': 'Others', 'values': [bytes, ...]},  # iff > top_n
+            {'username': 'alice',  'values': [bytes, ...]},  # smallest named
+            ...,                                              # ascending
+            {'username': 'zach',   'values': [bytes, ...]},  # largest named
           ],
         }
 
@@ -186,18 +194,22 @@ def get_disk_usage_timeseries_by_user(
     rest_users = ranked[top_n:]
 
     series: List[Dict[str, Any]] = []
-    for _uid, info in top_users:
-        series.append({
-            'username': info['username'],
-            'values':   [info['by_date'].get(d, 0) for d in dates],
-        })
-
+    # `Others` first → bottom of the stack, neutral colour at the chart
+    # layer.
     if rest_users:
         others_values = [0] * len(dates)
         for _uid, info in rest_users:
             for i, d in enumerate(dates):
                 others_values[i] += info['by_date'].get(d, 0)
         series.append({'username': 'Others', 'values': others_values})
+    # Named users smallest → largest. `top_users` is sorted descending
+    # by latest-snapshot bytes; reverse to put the largest on top of
+    # the stack.
+    for _uid, info in reversed(top_users):
+        series.append({
+            'username': info['username'],
+            'values':   [info['by_date'].get(d, 0) for d in dates],
+        })
 
     return {'dates': dates, 'series': series}
 
@@ -240,7 +252,12 @@ def build_disk_subtree(
             'account_ids': [],
         }
 
-    descendants = root_project.get_descendants(include_self=True)
+    # Filter inactive descendants — the tree gets noisy fast otherwise
+    # (decommissioned sub-projects, expired allocations leaving empty
+    # nodes). Use the universal `is_active` hybrid (ActiveFlagMixin on
+    # Project: ``active == True``).
+    descendants = [p for p in root_project.get_descendants(include_self=True)
+                   if p.is_active]
     project_ids = [p.project_id for p in descendants]
     if not project_ids:
         return {
