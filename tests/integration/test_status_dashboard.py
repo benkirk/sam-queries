@@ -164,3 +164,85 @@ class TestStatusDashboard:
         response = auth_client.get('/status/queue-history/derecho/main')
         assert response.status_code == 200
         assert b'main Queue History' in response.data
+
+    # ------------------------------------------------------------------
+    # `hours` filter passthrough — sideways navigation between detail
+    # pages should inherit the user's chosen time range via the dashboard.
+    # ------------------------------------------------------------------
+
+    def test_dashboard_accepts_hours_param(self, auth_client, status_session):
+        """`/status/?hours=720` renders without crashing."""
+        seed_data(status_session)
+        response = auth_client.get('/status/?hours=720')
+        assert response.status_code == 200
+        assert b'System Status' in response.data
+
+    def test_dashboard_forwards_hours_to_drill_down_links(self, auth_client, status_session):
+        """When `hours` is set, queue/nodetype row-click URLs must carry it."""
+        seed_data(status_session)
+        response = auth_client.get('/status/?hours=720')
+        assert response.status_code == 200
+        # Drill-down URLs are emitted as window.location='...' onclick handlers.
+        assert b'hours=720' in response.data, (
+            'Expected hours=720 to appear in row-click URLs on the dashboard'
+        )
+
+    def test_dashboard_forwards_legacy_days_as_hours(self, auth_client, status_session):
+        """`?days=30` (legacy) is normalized to hours=720 in row-click URLs."""
+        seed_data(status_session)
+        response = auth_client.get('/status/?days=30')
+        assert response.status_code == 200
+        assert b'hours=720' in response.data
+
+    def test_dashboard_no_hours_means_no_hours_in_links(self, auth_client, status_session):
+        """No `hours` param → drill-down URLs are clean (no `hours=` query string).
+
+        Regression guard: ensures the param-absent path matches today's URLs
+        bit-for-bit so users without the param see the original behavior.
+        """
+        seed_data(status_session)
+        response = auth_client.get('/status/')
+        assert response.status_code == 200
+        # The dashboard renders many things; we only care that drill-down URLs
+        # in queue/nodetype tables don't have hours= appended. Look at the
+        # specific onclick URLs.
+        assert b'queue-history/derecho' in response.data
+        # The URL preceding the queue_name shouldn't carry an `hours=` param
+        # in any of the row-click handlers when none was requested.
+        # (A bare `hours=` somewhere else like a script comment would be a
+        # false positive; restrict to the drill-down URL prefix.)
+        assert b'queue-history/derecho/' in response.data
+        # Permissive substring check — no row-click should contain hours=:
+        for url_prefix in (b'queue-history/derecho/', b'queue-history/casper/',
+                           b'nodetype-history/casper/'):
+            # Find every occurrence of the prefix and verify the surrounding
+            # 200 bytes don't include hours=
+            idx = 0
+            while True:
+                pos = response.data.find(url_prefix, idx)
+                if pos == -1:
+                    break
+                snippet = response.data[pos:pos + 200]
+                assert b'hours=' not in snippet, (
+                    f'Unexpected hours= near {url_prefix!r} in dashboard '
+                    f'rendered with no params: {snippet!r}'
+                )
+                idx = pos + len(url_prefix)
+
+    def test_queue_history_back_link_carries_hours(self, auth_client, status_session):
+        """Detail-page back links forward `hours` to the dashboard so the
+        user's range survives a back-then-forward cycle.
+        """
+        seed_data(status_session)
+        response = auth_client.get('/status/queue-history/derecho/main?hours=720')
+        assert response.status_code == 200
+        assert b'/status/?hours=720' in response.data, (
+            'Expected back-link to forward hours=720 to status_dashboard.index'
+        )
+
+    def test_nodetype_history_back_link_carries_hours(self, auth_client, status_session):
+        """Same forwarding for nodetype detail page."""
+        seed_data(status_session)
+        response = auth_client.get('/status/nodetype-history/casper/cpu?hours=720')
+        assert response.status_code == 200
+        assert b'/status/?hours=720' in response.data

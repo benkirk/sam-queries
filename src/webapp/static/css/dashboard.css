@@ -683,3 +683,19 @@ body {
         margin-bottom: 20px;
     }
 }
+
+/* ===================================================================
+   Chart container — global centering for SVG charts.
+   Allocations dashboard further constrains pies to 720px in
+   allocations.css, which is loaded after this file on those pages.
+   =================================================================== */
+.chart-container {
+    text-align: center;
+}
+
+.chart-container svg {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+}

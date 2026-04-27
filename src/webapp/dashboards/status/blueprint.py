@@ -24,8 +24,26 @@ def index():
     Queries latest status from all systems and renders server-side.
     Status models are routed to the `system_status` bind via
     `__bind_key__`, so `db.session` handles both reads and writes.
+
+    The optional ``hours`` (or legacy ``days``) query param doesn't change
+    what the dashboard queries — it's a stateless passthrough so drill-down
+    row clicks inherit the user's last-set time range, and the back link
+    on detail pages can carry it through. ``selected_hours`` is None when
+    the param is absent (matches today's row-click URLs bit-for-bit).
     """
     session = db.session
+
+    selected_hours = None
+    if request.args.get('hours'):
+        try:
+            selected_hours = int(request.args['hours'])
+        except ValueError:
+            selected_hours = None
+    elif request.args.get('days'):
+        try:
+            selected_hours = int(request.args['days']) * 24
+        except ValueError:
+            selected_hours = None
 
     # Get latest Derecho status
     derecho_status = status_queries.get_latest_derecho_status(session)
@@ -77,6 +95,7 @@ def index():
         reservations=reservations,
         google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
         now=datetime.now(),
+        selected_hours=selected_hours,
     )
 
 
@@ -258,8 +277,15 @@ def queue_history(system, queue_name):
 @login_required
 @require_permission(Permission.EDIT_SYSTEM_STATUS)
 def htmx_create_outage():
-    """Create an outage and redirect back to the status page."""
+    """Create an outage and redirect back to the status page.
+
+    Form datetime-local values are TZ-blind on the wire. The companion
+    `tz` hidden field carries the operator's browser TZ (IANA name) so
+    we can normalize the entered wall-clock time to naive-UTC for
+    storage. `tz` falls back to the configured display TZ if missing
+    (older clients, scripted POSTs)."""
     from system_status.models import SystemOutage
+    from sam.fmt import naive_local_to_utc
 
     system_name = request.form.get('system_name', '').strip()
     title = request.form.get('title', '').strip()
@@ -269,6 +295,8 @@ def htmx_create_outage():
         flash('System, title, and severity are required.', 'error')
         return redirect(url_for('status_dashboard.index'))
 
+    operator_tz = request.form.get('tz', '').strip() or None
+
     outage = SystemOutage(
         system_name=system_name,
         title=title,
@@ -276,20 +304,22 @@ def htmx_create_outage():
         component=request.form.get('component', '').strip() or None,
         description=request.form.get('description', '').strip() or None,
         status='investigating',
-        start_time=datetime.now(),
+        start_time=datetime.now(),  # already UTC under TZ=UTC
     )
 
     start_time_str = request.form.get('start_time', '').strip()
     if start_time_str:
         try:
-            outage.start_time = datetime.fromisoformat(start_time_str)
+            outage.start_time = naive_local_to_utc(
+                datetime.fromisoformat(start_time_str), operator_tz)
         except ValueError:
             pass
 
     est_res_str = request.form.get('estimated_resolution', '').strip()
     if est_res_str:
         try:
-            outage.estimated_resolution = datetime.fromisoformat(est_res_str)
+            outage.estimated_resolution = naive_local_to_utc(
+                datetime.fromisoformat(est_res_str), operator_tz)
         except ValueError:
             pass
 
@@ -331,10 +361,14 @@ def htmx_update_outage(outage_id):
 
     outage.description = request.form.get('description', '').strip() or None
 
+    # Naive-UTC conversion mirrors htmx_create_outage; see its docstring.
+    from sam.fmt import naive_local_to_utc
+    operator_tz = request.form.get('tz', '').strip() or None
     est_res_str = request.form.get('estimated_resolution', '').strip()
     if est_res_str:
         try:
-            outage.estimated_resolution = datetime.fromisoformat(est_res_str)
+            outage.estimated_resolution = naive_local_to_utc(
+                datetime.fromisoformat(est_res_str), operator_tz)
         except ValueError:
             pass
     else:

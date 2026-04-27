@@ -13,10 +13,12 @@ from sam.fmt import (
     COMPACT_THRESHOLD,
     configure,
     date_str,
+    naive_local_to_utc,
     number,
     pct,
     round_to_sig_figs,
     size,
+    to_local_dt,
 )
 
 
@@ -297,3 +299,72 @@ class TestConfigure:
         configure(raw=False, sig_figs=3)
         assert number(68_567_808) == '68.6M'
         assert pct(0.4) == '0.4%'
+
+
+# ============================================================================
+# Timezone helpers — to_local_dt / naive_local_to_utc
+#
+# Form values arrive naive in the operator's browser TZ; storage is naive-UTC;
+# display shifts back to the configured display TZ.  These tests pin the
+# round-trip math against real IANA zones so DST-window changes don't bit-rot
+# silently.
+# ============================================================================
+
+
+class TestNaiveLocalToUTC:
+    """Operator-entered naive datetimes → naive-UTC for storage."""
+
+    def test_none_passes_through(self):
+        assert naive_local_to_utc(None) is None
+
+    def test_browser_eastern_summer_to_utc(self):
+        # 2026-07-15 14:30 EDT (UTC-4) → 18:30 UTC
+        dt = datetime(2026, 7, 15, 14, 30)
+        utc = naive_local_to_utc(dt, 'America/New_York')
+        assert utc == datetime(2026, 7, 15, 18, 30)
+        assert utc.tzinfo is None
+
+    def test_browser_mountain_summer_to_utc(self):
+        # 2026-07-15 14:30 MDT (UTC-6) → 20:30 UTC
+        dt = datetime(2026, 7, 15, 14, 30)
+        utc = naive_local_to_utc(dt, 'America/Denver')
+        assert utc == datetime(2026, 7, 15, 20, 30)
+
+    def test_browser_mountain_winter_to_utc(self):
+        # 2026-01-15 14:30 MST (UTC-7) → 21:30 UTC — DST off
+        dt = datetime(2026, 1, 15, 14, 30)
+        utc = naive_local_to_utc(dt, 'America/Denver')
+        assert utc == datetime(2026, 1, 15, 21, 30)
+
+    def test_missing_tz_falls_back_to_display(self):
+        # No tz_name → uses STATUS_DISPLAY_TZ default (America/Denver).
+        dt = datetime(2026, 7, 15, 14, 30)
+        assert naive_local_to_utc(dt) == naive_local_to_utc(dt, 'America/Denver')
+
+    def test_invalid_tz_falls_back_to_display(self):
+        dt = datetime(2026, 7, 15, 14, 30)
+        assert naive_local_to_utc(dt, 'Not/A_Zone') == naive_local_to_utc(dt, 'America/Denver')
+
+
+class TestRoundTrip:
+    """An operator-entered datetime stored and re-displayed must come back
+    looking like what they typed (in their TZ)."""
+
+    def test_eastern_round_trip(self):
+        operator_typed = datetime(2026, 7, 15, 14, 30)  # 2:30 PM EDT
+        stored_utc = naive_local_to_utc(operator_typed, 'America/New_York')
+        # …and to_local_dt converts back to the *display* TZ (Mountain).
+        # Different operator viewing in Mountain sees 12:30 PM MDT.
+        viewed = to_local_dt(stored_utc)
+        assert viewed.hour == 12
+        assert viewed.minute == 30
+        # 14:30 EDT == 18:30 UTC == 12:30 MDT — sanity.
+
+    def test_mountain_round_trip_idempotent(self):
+        # When operator and viewer are both in Mountain (the default),
+        # stored value displays back exactly as typed.
+        operator_typed = datetime(2026, 7, 15, 14, 30)
+        stored_utc = naive_local_to_utc(operator_typed, 'America/Denver')
+        viewed = to_local_dt(stored_utc)
+        assert viewed.hour == 14
+        assert viewed.minute == 30

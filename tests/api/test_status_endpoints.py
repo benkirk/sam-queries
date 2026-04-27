@@ -404,3 +404,151 @@ class TestCasperGet:
         assert 'node_types' in data
         assert len(data['node_types']) == 1
         assert data['node_types'][0]['node_type'] == 'gpu-v100'
+
+
+# ============================================================================
+# Error-path coverage — timestamp parsing, reservation upsert, ingest exceptions
+# ============================================================================
+
+# Minimal valid Derecho payload reused by error-path tests below.
+_DERECHO_MINIMAL = {
+    'cpu_nodes_total': 100,
+    'cpu_nodes_available': 80,
+    'cpu_nodes_down': 5,
+    'cpu_nodes_reserved': 15,
+    'gpu_nodes_total': 10,
+    'gpu_nodes_available': 8,
+    'gpu_nodes_down': 0,
+    'gpu_nodes_reserved': 2,
+    'cpu_cores_total': 12800,
+    'cpu_cores_allocated': 10000,
+    'cpu_cores_idle': 2800,
+    'gpu_count_total': 80,
+    'gpu_count_allocated': 60,
+    'gpu_count_idle': 20,
+    'memory_total_gb': 25600.0,
+    'memory_allocated_gb': 20000.0,
+    'running_jobs': 150,
+    'pending_jobs': 30,
+    'active_users': 50,
+}
+
+
+class TestTimestampParsing:
+    """Cover the _validate_timestamp branches that were previously untested."""
+
+    def test_post_invalid_timestamp_format_returns_400(self, api_key_client, status_session):
+        """Garbage timestamp → ValueError raised by _validate_timestamp → 400."""
+        data = dict(_DERECHO_MINIMAL, timestamp='not-a-real-timestamp')
+        response = api_key_client.post('/api/v1/status/derecho', json=data)
+        assert response.status_code == 400
+        body = response.get_json()
+        assert 'error' in body
+        assert 'timestamp' in body['error'].lower()
+
+    def test_post_iso_timestamp_with_z_suffix_accepted(self, api_key_client, status_session):
+        """ISO format with trailing 'Z' → normalized to '+00:00' and accepted."""
+        data = dict(_DERECHO_MINIMAL, timestamp='2099-01-15T10:30:00Z')
+        response = api_key_client.post('/api/v1/status/derecho', json=data)
+        assert response.status_code == 201
+
+    def test_post_legacy_format_timestamp_accepted(self, api_key_client, status_session):
+        """The 'YYYY-MM-DD HH:MM:SS' fallback path in _validate_timestamp."""
+        data = dict(_DERECHO_MINIMAL, timestamp='2099-01-15 10:30:00')
+        response = api_key_client.post('/api/v1/status/derecho', json=data)
+        assert response.status_code == 201
+
+
+class TestReservationsUpsert:
+    """_handle_reservations: insert path on first POST, update path on second."""
+
+    _RESV = {
+        'reservation_name': 'test_resv_alpha',
+        'description': 'Allocated to test team',
+        'start_time': '2099-02-01T00:00:00',
+        'end_time': '2099-02-02T00:00:00',
+        'node_count': 4,
+        'partition': 'main',
+    }
+
+    def test_reservations_insert_then_update(self, api_key_client, status_session):
+        """First POST creates the reservation; second POST with the same
+        (system_name, reservation_name) updates it in place."""
+        # Insert
+        data = dict(_DERECHO_MINIMAL, reservations=[self._RESV])
+        response = api_key_client.post('/api/v1/status/derecho', json=data)
+        assert response.status_code == 201
+        first = response.get_json()
+        assert 'reservation_ids' in first
+        assert len(first['reservation_ids']) == 1
+        original_id = first['reservation_ids'][0]
+
+        # Update — same name, different description/end_time
+        updated = dict(self._RESV, description='Updated description', node_count=8)
+        data = dict(_DERECHO_MINIMAL, reservations=[updated])
+        response = api_key_client.post('/api/v1/status/derecho', json=data)
+        assert response.status_code == 201
+        second = response.get_json()
+        # Same reservation_id is reused — that's the upsert contract
+        assert second['reservation_ids'] == [original_id]
+
+        # Confirm the row reflects the updated values via the GET endpoint
+        from system_status import ResourceReservation
+        from webapp.extensions import db
+        resv = db.session.get(ResourceReservation, original_id)
+        assert resv.description == 'Updated description'
+        assert resv.node_count == 8
+
+
+class TestIngestErrorHandling:
+    """Cover the generic exception arm in _ingest_system_status."""
+
+    def test_post_empty_json_body_returns_400(self, api_key_client, status_session):
+        """An explicit JSON null body → request.get_json() returns None →
+        route returns 400 ('JSON body required')."""
+        response = api_key_client.post(
+            '/api/v1/status/derecho',
+            data='null',
+            content_type='application/json',
+        )
+        assert response.status_code == 400
+        assert 'JSON' in response.get_json()['error']
+
+    def test_post_schema_load_failure_rolls_back(self, api_key_client, status_session):
+        """A type-incompatible field (e.g. string where int is required) hits
+        the generic except arm, rolls back, and returns 500."""
+        bad = dict(_DERECHO_MINIMAL, cpu_nodes_total='this is not an int')
+        response = api_key_client.post('/api/v1/status/derecho', json=bad)
+        # The except arm catches all errors and returns 500 with 'Database error: ...'
+        assert response.status_code == 500
+        assert 'error' in response.get_json()
+
+
+class TestOutageEndpointValidation:
+    """Cover the field-validation arms of POST /api/v1/status/outage."""
+
+    _MIN_OUTAGE = {
+        'system_name': 'derecho',
+        'title': 'Test outage',
+        'severity': 'minor',
+    }
+
+    def test_outage_missing_required_field(self, api_key_client, status_session):
+        response = api_key_client.post(
+            '/api/v1/status/outage',
+            json={'system_name': 'derecho'},  # missing title + severity
+        )
+        assert response.status_code == 400
+        assert 'Missing required fields' in response.get_json()['error']
+
+    def test_outage_invalid_severity(self, api_key_client, status_session):
+        bad = dict(self._MIN_OUTAGE, severity='catastrophic')
+        response = api_key_client.post('/api/v1/status/outage', json=bad)
+        assert response.status_code == 400
+        assert 'severity' in response.get_json()['error'].lower()
+
+    def test_outage_invalid_start_time_format(self, api_key_client, status_session):
+        bad = dict(self._MIN_OUTAGE, start_time='not-a-date')
+        response = api_key_client.post('/api/v1/status/outage', json=bad)
+        assert response.status_code == 400
+        assert 'start_time' in response.get_json()['error']

@@ -1779,14 +1779,25 @@ _ORG_LINK_FACILITIES = {'NCAR', 'CISL', 'CSL', 'ASD'}
 
 
 def _disk_roots_for_picker():
-    """Return all DiskResourceRootDirectory rows except the catch-all '/'."""
+    """Return all DiskResourceRootDirectory rows except the catch-all '/',
+    sorted deepest-first (more path segments first, then alphabetically).
+
+    Deepest-first matches the longest-prefix matching used during
+    decomposition and avoids surprising users who expect a more specific
+    root like /glade/campaign to appear above the bare /glade in the
+    dropdown.
+    """
     from sam.resources.resources import DiskResourceRootDirectory
-    return (
+    rows = (
         db.session.query(DiskResourceRootDirectory)
         .filter(DiskResourceRootDirectory.root_directory != '/')
-        .order_by(DiskResourceRootDirectory.root_directory)
         .all()
     )
+    rows.sort(key=lambda r: (
+        -len([seg for seg in r.root_directory.strip('/').split('/') if seg]),
+        r.root_directory,
+    ))
+    return rows
 
 
 def _decompose_directory_name(directory_name, roots):
@@ -2090,11 +2101,16 @@ def htmx_remove_project_directory(projcode, pd_id):
 
 _PROJECT_DIRECTORIES_RELOAD_TRIGGERS = {
     'closeActiveModal': {},
+    # Both events are fired so the same admin route can refresh either
+    # context: the cross-project view (#projectDirectoriesSection) or
+    # the per-project linked-elements panel (#linkedElementsContainer).
+    # Each handler is a no-op when its target element isn't present.
     'reloadProjectDirectoriesCard': {},
+    'reloadProjectLinkedElements': {},
 }
 
 
-def _render_project_directories_card(*, show_inactive: bool):
+def _render_project_directories_card(*, active_only: bool):
     """Render the cross-project Project Directories card fragment.
 
     Groups rows by Resource via longest-prefix match of ``directory_name``
@@ -2120,7 +2136,7 @@ def _render_project_directories_card(*, show_inactive: bool):
         return None
 
     q = db.session.query(ProjectDirectory).join(Project)
-    if not show_inactive:
+    if active_only:
         q = q.filter(ProjectDirectory.is_active)
     rows = q.order_by(ProjectDirectory.directory_name).all()
 
@@ -2145,7 +2161,7 @@ def _render_project_directories_card(*, show_inactive: bool):
         'dashboards/admin/fragments/project_directories_card.html',
         ordered_groups=ordered_groups,
         total_rows=len(rows),
-        show_inactive=show_inactive,
+        active_only=active_only,
     )
 
 
@@ -2154,8 +2170,12 @@ def _render_project_directories_card(*, show_inactive: bool):
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_admin_project_directories():
     """Render the cross-project Project Directories table."""
-    show_inactive = request.args.get('show_inactive', '0') in ('1', 'true', 'on')
-    return _render_project_directories_card(show_inactive=show_inactive)
+    # Match the canonical "Active only" toggle pattern used by the
+    # Resources / Organizations / Facilities cards: when the checkbox is
+    # checked, hx-include sends active_only=1; when unchecked, no param,
+    # so we treat absence as False ("show all").
+    active_only = request.args.get('active_only') == '1'
+    return _render_project_directories_card(active_only=active_only)
 
 
 @bp.route('/htmx/admin/project-directories/new-form')
@@ -2341,4 +2361,111 @@ def htmx_admin_project_directory_deactivate(pd_id):
     return htmx_success_message(
         {'reloadProjectDirectoriesCard': {}},
         'Project directory deactivated.',
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin: bulk-deactivate Project Directories under a path prefix
+# ---------------------------------------------------------------------------
+
+def _project_dirs_matching_prefix(prefix: str, *, active_only: bool = True):
+    """Return ProjectDirectory rows whose directory_name is `prefix`
+    (with an optional trailing slash) or any descendant of it.
+
+    The match must consume a full path segment, so `/glade/p` does NOT
+    match `/glade/pp/foo`. Caller is responsible for any 'minimum length'
+    sanity checks (the schema enforces >= 4 chars and != '/').
+    """
+    from sam.projects.projects import ProjectDirectory
+    base = prefix.rstrip('/')
+    q = db.session.query(ProjectDirectory).filter(
+        (ProjectDirectory.directory_name == base) |
+        (ProjectDirectory.directory_name.like(base + '/%'))
+    )
+    if active_only:
+        q = q.filter(ProjectDirectory.is_active)
+    return q.order_by(ProjectDirectory.directory_name).all()
+
+
+@bp.route('/htmx/admin/project-directories/bulk-deactivate-form')
+@login_required
+@require_permission(Permission.DELETE_PROJECTS)
+def htmx_admin_project_directory_bulk_deactivate_form():
+    """Step 1: render the prefix-input form fragment in the bulk modal."""
+    return render_template(
+        'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html',
+    )
+
+
+@bp.route('/htmx/admin/project-directories/bulk-deactivate-preview', methods=['POST'])
+@login_required
+@require_permission(Permission.DELETE_PROJECTS)
+def htmx_admin_project_directory_bulk_deactivate_preview():
+    """Step 2: show count + sample of paths that would be deactivated."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import BulkDeactivateProjectDirectoriesForm
+
+    try:
+        form_data = BulkDeactivateProjectDirectoriesForm().load(request.form)
+    except ValidationError as e:
+        return render_template(
+            'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html',
+            errors=BulkDeactivateProjectDirectoriesForm.flatten_errors(e.messages),
+            form=request.form,
+        )
+
+    matches = _project_dirs_matching_prefix(form_data['prefix'], active_only=True)
+    return render_template(
+        'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html',
+        prefix=form_data['prefix'],
+        matches=matches,
+    )
+
+
+@bp.route('/htmx/admin/project-directories/bulk-deactivate', methods=['POST'])
+@login_required
+@require_permission(Permission.DELETE_PROJECTS)
+def htmx_admin_project_directory_bulk_deactivate():
+    """Step 3: commit. Re-runs the query (in case data changed since
+    preview) and deactivates all active matches inside one transaction."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms.projects import BulkDeactivateProjectDirectoriesForm
+
+    try:
+        form_data = BulkDeactivateProjectDirectoriesForm().load(request.form)
+    except ValidationError as e:
+        # Bounce back to the step-1 form with the error.
+        return render_template(
+            'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html',
+            errors=BulkDeactivateProjectDirectoriesForm.flatten_errors(e.messages),
+            form=request.form,
+        )
+
+    prefix = form_data['prefix']
+    matches = _project_dirs_matching_prefix(prefix, active_only=True)
+
+    if not matches:
+        return render_template(
+            'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html',
+            prefix=prefix,
+            matches=[],
+            errors=['No active directories match — nothing to do.'],
+        )
+
+    try:
+        with management_transaction(db.session):
+            for pd in matches:
+                pd.deactivate()
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html',
+            prefix=prefix,
+            matches=matches,
+            errors=[f'Error during bulk deactivation: {e}'],
+        )
+
+    n = len(matches)
+    return htmx_success_message(
+        _PROJECT_DIRECTORIES_RELOAD_TRIGGERS,
+        f'Deactivated {n} project director{"ies" if n != 1 else "y"} under "{prefix}".',
     )

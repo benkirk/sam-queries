@@ -3,8 +3,11 @@
 {% block title %}Node Type History - {{ node_type }} - SAM{% endblock %}
 
 {% block content %}
+{# Forward `hours` to the dashboard so sideways navigation between node
+   types inherits the user's chosen time range. #}
+{% set _idx_kwargs = {'hours': hours} if hours else {} %}
 <div class="back-link mb-3">
-    <a href="{{ url_for('status_dashboard.index') }}" class="btn btn-sm btn-outline-secondary">
+    <a href="{{ url_for('status_dashboard.index', **_idx_kwargs) }}" class="btn btn-sm btn-outline-secondary">
         <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Status Dashboard</span>
     </a>
 </div>

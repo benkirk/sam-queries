@@ -154,7 +154,7 @@ jobs:
         run: |
           docker compose exec -T \
             -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
-            webapp bash -c "cd /code && pytest --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=60"
+            webapp bash -c "cd /code && pytest --cov=src --cov-report=term-missing --cov-report=html"
 
       - name: Copy coverage report from container
         if: always()

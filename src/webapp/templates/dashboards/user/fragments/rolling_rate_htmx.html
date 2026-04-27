@@ -2,11 +2,18 @@
   Rolling Consumption Rate section fragment.
 
   Context variables:
-    rolling_30         — 30-day window dict (or None)
-    rolling_90         — 90-day window dict (or None)
-    projcode           — project code string
-    resource_name      — resource name string
-    can_edit_threshold — bool: show Add/Edit Limit buttons
+    rolling_30             — 30-day window dict (or None)
+    rolling_90             — 90-day window dict (or None)
+    rolling_is_inheriting  — bool: this project's allocation inherits from a
+                             shared-allocation root.  When True, win.charges
+                             reflects pool burn (across all peers); each
+                             window's win.self_charges holds the per-project
+                             slice for the "(N yours)" annotation.
+    rolling_root_projcode  — projcode of the master allocation's project
+                             when inheriting; None otherwise.
+    projcode               — project code string
+    resource_name          — resource name string
+    can_edit_threshold     — bool: show Add/Edit Limit buttons
 #}
 
 <div class="mt-3 pt-3 border-top">
@@ -14,6 +21,10 @@
     <p class="text-muted small mb-2">
         Charges over the last 30 and 90 days vs. the prorated steady-state rate.
         <strong>100% = steady state</strong>; left of center is cold, right is hot.
+        {% if rolling_is_inheriting and rolling_root_projcode %}
+        <br><i class="fas fa-share-alt me-1"></i>Pool shared with master project
+        <strong>{{ rolling_root_projcode }}</strong> — rate covers the whole shared allocation.
+        {% endif %}
     </p>
 
     {% set scale_max = 200 %}
@@ -106,8 +117,18 @@
             <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>over {{ win.threshold_pct }}% lim</span>
             {% endif %}
             <span class="badge {{ badge_class }}">{{ pct | fmt_pct }}</span>
-            <span class="text-muted" style="font-size:0.78rem;">{{ win.charges | fmt_number }} AU &middot; {{ state_label }}</span>
-            {% if can_edit_threshold %}
+            <span class="text-muted" style="font-size:0.78rem;">
+                {{ win.charges | fmt_number }} AU
+                {% if rolling_is_inheriting and win.self_charges is not none %}
+                <span title="This project's own contribution to the shared pool">({{ win.self_charges | fmt_number }} yours)</span>
+                {% endif %}
+                &middot; {{ state_label }}
+            </span>
+            {# Threshold edit lives on the master allocation's account, not the
+               child's — the displayed pct is pool burn, so a child-side
+               threshold is never compared against. Hide the edit button on
+               inheriting projects; users edit via the master parent project. #}
+            {% if can_edit_threshold and not rolling_is_inheriting %}
             <span id="threshold-btn-{{ win_days }}d-{{ projcode }}">
                 {% if win.threshold_pct is none %}
                 <button class="btn btn-outline-secondary py-0 px-1"

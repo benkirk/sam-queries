@@ -24,7 +24,9 @@
     </ol>
   </nav>
   {% if can_access_admin %}
-  <a href="{{ url_for('admin_dashboard.index') }}" class="btn btn-outline-secondary btn-sm ms-auto">
+  {# Pass projcode so the admin index re-renders this project's card on
+     return — otherwise the user lands on a blank search page. #}
+  <a href="{{ url_for('admin_dashboard.index', projcode=project.projcode) }}" class="btn btn-outline-secondary btn-sm ms-auto">
     <i class="fas fa-arrow-left"></i> Back to Admin
   </a>
   {% else %}
@@ -265,6 +267,10 @@
 
 <!-- Include member management modals (reused from user dashboard) -->
 {% include 'project_members/fragments/member_modals_htmx.html' %}
+
+<!-- Edit ProjectDirectory modal scaffold (loaded by the pencil button on
+     each row of the Directories panel inside #linkedElementsContainer). -->
+{% include 'dashboards/admin/fragments/project_directory_modals.html' %}
 
 <!-- ═══════════════════════════════════════════════ HTMX event handlers -->
 <script>

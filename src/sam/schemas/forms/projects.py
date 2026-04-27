@@ -103,11 +103,30 @@ class AddLinkedDirectoryForm(HtmxFormSchema):
     and assembles `directory_name = root.rstrip('/') + ('/' + suffix.lstrip('/') if suffix else '')`.
     """
     root_directory_id = f.Int(required=True)
-    directory_suffix = f.Str(load_default='', validate=v.Length(max=255))
+    directory_suffix = f.Str(required=True, validate=v.Length(min=1, max=255))
 
     @post_load
     def normalize(self, data, **kwargs):
         return _normalize_directory_suffix(data)
+
+
+class BulkDeactivateProjectDirectoriesForm(HtmxFormSchema):
+    """Validate the prefix used for bulk-deactivation of project directories.
+
+    Match semantics live in the route, not here (schemas don't touch the DB).
+    The minimum length and not-equal-to-'/' guards prevent accidentally
+    matching every row in the table.
+    """
+    prefix = f.Str(required=True, validate=v.Length(min=4, max=255))
+
+    @post_load
+    def reject_root(self, data, **kwargs):
+        p = (data.get('prefix') or '').strip()
+        if not p or p == '/':
+            from marshmallow import ValidationError as _VE
+            raise _VE({'prefix': ['Prefix is required and cannot be just "/".']})
+        data['prefix'] = p
+        return data
 
 
 class EditLinkedDirectoryForm(HtmxFormSchema):
@@ -118,7 +137,7 @@ class EditLinkedDirectoryForm(HtmxFormSchema):
     `project_id` -> Project) stay in the route since schemas don't touch the DB.
     """
     root_directory_id = f.Int(required=True)
-    directory_suffix = f.Str(load_default='', validate=v.Length(max=255))
+    directory_suffix = f.Str(required=True, validate=v.Length(min=1, max=255))
     project_id = f.Int(required=True)
 
     @post_load

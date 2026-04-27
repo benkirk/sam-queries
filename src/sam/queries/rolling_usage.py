@@ -221,10 +221,22 @@ def get_project_rolling_usage(
             allocated        – allocation amount (float, AU)
             start_date       – allocation start (datetime)
             end_date         – allocation end (datetime | None)
+            is_inheriting    – True if this project's allocation is a child node
+                               in a shared-allocation tree (charges roll up
+                               across peers)
+            root_projcode    – projcode of the master allocation's project when
+                               inheriting; None otherwise
             windows          – dict keyed by window_days (int), each with:
-                charges          – total charges in window (float, AU)
+                charges          – total charges in window (float, AU).  When
+                                   ``is_inheriting`` is True this is the
+                                   *pool* burn (root allocation's project
+                                   subtree); otherwise this project's own.
+                self_charges     – this project's own contribution to the
+                                   pool when inheriting; None otherwise.
                 prorated_alloc   – prorated allocation for this period (float, AU)
                 pct_of_prorated  – charges / prorated_alloc × 100 (float, %)
+                                   — pool burn vs prorated when inheriting,
+                                   so this is the runway-meaningful number.
                 threshold_pct    – configured threshold % from account (int | None)
                                    30d window → account.first_threshold
                                    90d window → account.second_threshold
@@ -270,10 +282,15 @@ def get_project_rolling_usage(
     account_meta: Dict[int, Dict] = {}
     # account_id → (alloc_start, alloc_end) for window clamping
     alloc_windows: Dict[int, tuple] = {}
-    # leaf account_ids (direct charge lookup)
+    # leaf account_ids (direct charge lookup) — yields *self* charges
     leaf_ids: List[int] = []
-    # non-leaf account_id → MPTT info (subtree rollup)
+    # non-leaf account_id → MPTT info (subtree rollup) — yields *self* charges
     subtree_map: Dict[int, Dict] = {}
+    # Inheriting accounts: account_id → MPTT info for the *root* allocation's
+    # project subtree.  Used to compute pool charges in parallel with the
+    # self-charge query above.  The pool MPTT info uses a different anchor
+    # (the master parent's tree coordinates) and the same window clamp.
+    pool_subtree_map: Dict[int, Dict] = {}
 
     for acct in project.accounts:
         if acct.deleted:
@@ -297,11 +314,38 @@ def get_project_rolling_usage(
 
         aid = acct.account_id
         alloc_windows[aid] = (active_alloc.start_date, active_alloc.end_date)
+
+        # Pool detection — when the active allocation is inheriting, walk to
+        # the root allocation and prepare a parallel subtree query against
+        # the *root project's* tree, so this window's `charges` reflects
+        # pool burn (the rate that actually depletes the shared allocation).
+        # Mirrors Project.get_detailed_allocation_usage (projects.py:660-673).
+        is_inheriting = False
+        root_projcode = None
+        if active_alloc.is_inheriting:
+            root_alloc = active_alloc.root
+            root_account = root_alloc.account if root_alloc is not None else None
+            root_project = root_account.project if root_account is not None else None
+            if (root_project is not None
+                    and root_project.tree_root is not None
+                    and root_project.tree_left is not None
+                    and root_project.tree_right is not None):
+                is_inheriting = True
+                root_projcode = root_project.projcode
+                pool_subtree_map[aid] = {
+                    'tree_root':   root_project.tree_root,
+                    'tree_left':   root_project.tree_left,
+                    'tree_right':  root_project.tree_right,
+                    'resource_id': acct.resource_id,
+                }
+
         account_meta[aid] = {
             'resource_name':    res.resource_name,
             'allocated':        float(active_alloc.amount) if active_alloc.amount is not None else 0.0,
             'start_date':       active_alloc.start_date,
             'end_date':         active_alloc.end_date,
+            'is_inheriting':    is_inheriting,
+            'root_projcode':    root_projcode,
             # Threshold percentages from account — may be None for most accounts.
             # first_threshold → 30d window, second_threshold → 90d window
             # (matching DefaultAccountStatusCalculator.java convention)
@@ -309,7 +353,7 @@ def get_project_rolling_usage(
             'threshold_90': acct.second_threshold,
         }
 
-        # Leaf vs. non-leaf determines charge rollup strategy.
+        # Leaf vs. non-leaf determines self-charge rollup strategy.
         # project.is_leaf() uses NestedSetMixin (base.py:303): tree_right == tree_left + 1
         if project.is_leaf():
             leaf_ids.append(aid)
@@ -330,23 +374,45 @@ def get_project_rolling_usage(
     result: Dict[str, Dict] = {}
 
     for w in windows:
-        window_charges: Dict[int, float] = {}
+        # Self-charges: this project's own contribution (existing logic).
+        self_charges_by_aid: Dict[int, float] = {}
         if leaf_ids:
-            window_charges.update(_query_window_charges(session, leaf_ids, w, now, alloc_windows))
+            self_charges_by_aid.update(_query_window_charges(session, leaf_ids, w, now, alloc_windows))
         if subtree_map:
-            window_charges.update(_query_window_subtree_charges(session, subtree_map, w, now, alloc_windows))
+            self_charges_by_aid.update(_query_window_subtree_charges(session, subtree_map, w, now, alloc_windows))
 
-        for aid, charges in window_charges.items():
+        # Pool charges: root allocation's project subtree, only for inheriting
+        # accounts.  Empty dict when no inheriting accounts in this resource set.
+        pool_charges_by_aid: Dict[int, float] = {}
+        if pool_subtree_map:
+            pool_charges_by_aid.update(
+                _query_window_subtree_charges(session, pool_subtree_map, w, now, alloc_windows)
+            )
+
+        for aid, self_charges in self_charges_by_aid.items():
             meta = account_meta[aid]
             rname = meta['resource_name']
+            inheriting = meta['is_inheriting']
 
             if rname not in result:
                 result[rname] = {
-                    'allocated':  meta['allocated'],
-                    'start_date': meta['start_date'],
-                    'end_date':   meta['end_date'],
-                    'windows':    {},
+                    'allocated':     meta['allocated'],
+                    'start_date':    meta['start_date'],
+                    'end_date':      meta['end_date'],
+                    'is_inheriting': inheriting,
+                    'root_projcode': meta['root_projcode'],
+                    'windows':       {},
                 }
+
+            # `charges` is pool burn for inheriting allocations, this project's
+            # own otherwise.  `self_charges_value` is the project-only number,
+            # surfaced separately for "(N yours)" annotation in the UI.
+            if inheriting:
+                charges = pool_charges_by_aid.get(aid, 0.0)
+                self_charges_value: Optional[float] = self_charges
+            else:
+                charges = self_charges
+                self_charges_value = None
 
             alloc_start = meta['start_date']
             alloc_end   = meta['end_date']
@@ -373,6 +439,7 @@ def get_project_rolling_usage(
 
             result[rname]['windows'][w] = {
                 'charges':         charges,
+                'self_charges':    self_charges_value,  # None when not inheriting
                 'prorated_alloc':  prorated,
                 'pct_of_prorated': pct,
                 'threshold_pct':   threshold_pct,   # None when not configured
