@@ -72,6 +72,62 @@ def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn,
         ctx.console.print(f"[dim]({n_skipped} zero-charge rows omitted)[/dim]")
 
 
+def display_disk_dry_run_table(ctx: Context, entries: list, resource_name: str,
+                               *, dry_run: bool = True) -> None:
+    """Print a Rich table showing what would be (or was) posted to disk_charge_summary.
+
+    Args:
+        ctx: CLI context (for console output)
+        entries: List of DiskUsageEntry objects (from a DiskUsageReader plus
+                 the import-side terabyte_years/charges already populated)
+        resource_name: Resource name (e.g. 'Campaign_Store')
+        dry_run: When True, title notes rows were not written
+    """
+    title = (
+        f"Dry Run — {resource_name} disk_charge_summary rows (not written)"
+        if dry_run
+        else f"{resource_name} disk_charge_summary rows"
+    )
+    table = Table(
+        title=title,
+        box=box.SIMPLE_HEAD,
+        show_lines=False,
+    )
+    table.add_column("Date", style="cyan", no_wrap=True)
+    table.add_column("Project", style="green")
+    table.add_column("User", style="white")
+    table.add_column("act_user", style="yellow")
+    table.add_column("Files", justify="right", style="dim")
+    table.add_column("Bytes", justify="right")
+    table.add_column("TiB-yr", justify="right", style="bold")
+    table.add_column("Charges", justify="right", style="bold")
+    table.add_column("Path", style="dim")
+
+    n_synthetic = 0
+    for e in entries:
+        is_gap = bool(e.act_username)
+        if is_gap:
+            n_synthetic += 1
+        table.add_row(
+            str(e.activity_date),
+            e.projcode,
+            e.username,
+            e.act_username or "",
+            fmt.number(e.number_of_files),
+            fmt.size(e.bytes),
+            f"{e.terabyte_years:.4f}",
+            f"{e.charges:.4f}",
+            (e.directory_path or "")[:60],
+        )
+
+    ctx.console.print(table)
+    if n_synthetic:
+        ctx.console.print(
+            f"[dim]({n_synthetic} synthetic gap rows attributed to project lead "
+            "with audit label in act_username)[/dim]"
+        )
+
+
 def display_import_summary(ctx: Context, n_created: int, n_updated: int,
                            n_errors: int, n_skipped: int) -> None:
     """

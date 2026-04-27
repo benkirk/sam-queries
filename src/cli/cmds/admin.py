@@ -7,7 +7,7 @@ Administrative commands for SAM database management and validation.
 
 import sys
 import click
-from datetime import date as _date
+from datetime import date as _date, datetime
 from sqlalchemy.orm import Session
 
 from config import SAMConfig
@@ -153,43 +153,88 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
 
 
 @cli.command()
-@click.option('--comp', is_flag=True, help='Post computational charge summaries')
-@click.option('--disk', is_flag=True, help='Post disk charge summaries (not yet implemented)')
-@click.option('--archive', is_flag=True, help='Post archive charge summaries (not yet implemented)')
+# --- Mode selectors (mutually exclusive — pick exactly one) ----------------
+@click.option('--comp', is_flag=True,
+              help='Mode: post computational charge summaries')
+@click.option('--disk', is_flag=True,
+              help='Mode: post disk charge summaries')
+@click.option('--archive', is_flag=True,
+              help='Mode: post archive charge summaries (not yet implemented)')
 @click.option('--reconcile-quotas', 'reconcile_quotas', type=click.Path(exists=True, dir_okay=False),
               default=None, metavar='PATH',
-              help='Reconcile SAM allocations against a storage quota file (requires --resource)')
+              help='Mode: reconcile SAM allocations against a storage quota file (requires --resource)')
+# --- Common ----------------------------------------------------------------
 @click.option('--resource', type=str, default=None,
-              help='Resource name (required with --reconcile-quotas, e.g. Campaign_Store)')
-@click.option('--machine', '-m', type=click.Choice(['derecho', 'casper']), default=None,
-              help='HPC machine (required with --comp/--disk/--archive)')
-@click.option('--start', type=str, default=None, help='Start date (YYYY-MM-DD, inclusive; default: 2024-01-01)')
-@click.option('--end', type=str, default=None, help='End date (YYYY-MM-DD, inclusive; default: yesterday)')
-@click.option('-d', '--date', 'date_str', type=str, default=None, help='Specific date (YYYY-MM-DD)')
-@click.option('--today', 'today_flag', is_flag=True, help='Use today as the date')
-@click.option('--last', type=str, default=None, metavar='N[d]',
-              help='Last N days including today (e.g. --last 3d)')
-@click.option('--dry-run', is_flag=True, help='Preview without writing (charge-posting modes only; --reconcile-quotas is report-only by default)')
-@click.option('--update-accounting-system', 'update_accounting_system', is_flag=True,
-              help='Apply mismatched amount updates (requires --reconcile-quotas; default is report-only)')
-@click.option('--deactivate-orphaned', 'deactivate_orphaned', is_flag=True,
-              help='Deactivate orphaned allocations (independent of --update-accounting-system)')
-@click.option('--force', is_flag=True,
-              help='Override the live-path safety gate when deactivating orphans whose ProjectDirectory paths still exist on disk (requires --deactivate-orphaned)')
-@click.option('--verify-paths', 'verify_paths', is_flag=True,
-              help='Check fileset/ProjectDirectory paths on disk (requires --reconcile-quotas)')
-@click.option('--verify-host', 'verify_host', type=str, default=None, metavar='HOST',
-              help='SSH host to use for --verify-paths (default: auto-detect from the reader)')
-@click.option('--skip-errors', is_flag=True, help='Skip rows that fail entity resolution')
-@click.option('--create-queues', is_flag=True, help='Auto-create unknown queues in SAM')
+              help='[disk/reconcile] Resource name (e.g. Campaign_Store)')
+@click.option('--dry-run', is_flag=True,
+              help='[comp/disk] Preview without writing (--reconcile-quotas is report-only by default)')
+@click.option('--skip-errors', is_flag=True,
+              help='[comp/disk] Skip rows that fail entity resolution')
 @click.option('--chunk-size', type=int, default=500, show_default=True,
-              help='Rows per database transaction')
+              help='[comp/disk] Rows per database transaction')
 @click.option('--include-deleted-accounts', is_flag=True,
-              help='Allow posting to accounts marked deleted (for backfill)')
-@click.option('--verbose', '-v', is_flag=True, help='Show per-row warnings and details (charge-posting modes only)')
+              help='[comp/disk] Allow posting to accounts marked deleted (for backfill)')
+@click.option('--verbose', '-v', is_flag=True,
+              help='Show per-row warnings and details')
+# --- HPC (--comp) ----------------------------------------------------------
+@click.option('--machine', '-m', type=click.Choice(['derecho', 'casper']), default=None,
+              help='[comp] HPC machine (required)')
+@click.option('--create-queues', is_flag=True,
+              help='[comp] Auto-create unknown queues in SAM')
+@click.option('--start', type=str, default=None,
+              help='[comp] Start date (YYYY-MM-DD, inclusive; default: 2024-01-01)')
+@click.option('--end', type=str, default=None,
+              help='[comp] End date (YYYY-MM-DD, inclusive; default: yesterday)')
+@click.option('--today', 'today_flag', is_flag=True,
+              help='[comp] Use today as the date')
+@click.option('--last', type=str, default=None, metavar='N[d]',
+              help='[comp] Last N days including today (e.g. --last 3d)')
+# --date is shared between --comp and --disk (different semantics — see below).
+@click.option('-d', '--date', 'date_str', type=str, default=None,
+              help='[comp] Specific date to import.  '
+                   '[disk] Optional safety check: file snapshot must equal this date.')
+# --- Disk (--disk) ---------------------------------------------------------
+@click.option('--user-usage', 'user_usage_path',
+              type=click.Path(exists=True, dir_okay=False),
+              default=None, metavar='PATH',
+              help='[disk] Per-user-per-project disk usage file (required; e.g. acct.glade.YYYY-MM-DD)')
+@click.option('--quotas', 'quotas_path',
+              type=click.Path(exists=True, dir_okay=False),
+              default=None, metavar='PATH',
+              help='[disk] GPFS cs_usage.json (required with --reconcile-quota-gap)')
+@click.option('--reporting-interval', 'reporting_interval', type=int, default=7, show_default=True,
+              help='[disk] Snapshot interval in days (used in TiB-year math)')
+@click.option('--unidentified-label', 'unidentified_label', type=str, default='<unidentified>',
+              show_default=True,
+              help='[disk] Audit label for synthetic gap rows '
+                   '(written to act_username only; never added to users table)')
+@click.option('--reconcile-quota-gap', 'reconcile_quota_gap', is_flag=True,
+              help='[disk] Attribute (FILESET total − Σuser_rows) to project lead '
+                   'with --unidentified-label (requires --quotas)')
+@click.option('--gap-tolerance-bytes', 'gap_tolerance_bytes', type=int, default=1024 ** 3, show_default=True,
+              help='[disk] Minimum absolute gap in bytes before emitting a synthetic row (default 1 GiB)')
+@click.option('--gap-tolerance-frac', 'gap_tolerance_frac', type=float, default=0.01, show_default=True,
+              help='[disk] Minimum gap as a fraction of FILESET usage (default 1%)')
+# --- Reconcile (--reconcile-quotas) ----------------------------------------
+@click.option('--update-accounting-system', 'update_accounting_system', is_flag=True,
+              help='[reconcile] Apply mismatched amount updates (default: report-only)')
+@click.option('--deactivate-orphaned', 'deactivate_orphaned', is_flag=True,
+              help='[reconcile] Deactivate orphaned allocations '
+                   '(independent of --update-accounting-system)')
+@click.option('--force', is_flag=True,
+              help='[reconcile] Override the live-path safety gate when deactivating orphans '
+                   'whose ProjectDirectory paths still exist on disk (requires --deactivate-orphaned)')
+@click.option('--verify-paths', 'verify_paths', is_flag=True,
+              help='[reconcile] Check fileset/ProjectDirectory paths on disk')
+@click.option('--verify-host', 'verify_host', type=str, default=None, metavar='HOST',
+              help='[reconcile] SSH host to use for --verify-paths (default: auto-detect)')
 @pass_context
 def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
-               machine, start, end, date_str, today_flag, last,
+               machine,
+               user_usage_path, quotas_path, reporting_interval,
+               unidentified_label, reconcile_quota_gap,
+               gap_tolerance_bytes, gap_tolerance_frac,
+               start, end, date_str, today_flag, last,
                dry_run, update_accounting_system, deactivate_orphaned,
                force, verify_paths, verify_host,
                skip_errors, create_queues, chunk_size,
@@ -197,8 +242,8 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     """Post charge summaries into SAM, or reconcile allocations against quota truth.
 
     \b
-    Two modes:
-      1. Post charge summaries  (--comp / --disk / --archive)
+    Three modes:
+      1. Post HPC charge summaries  (--comp / --archive)
          Required: --machine and a date selection.
          Date Selection:
            --date YYYY-MM-DD   Single specific date
@@ -206,7 +251,16 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
            --last N[d]         Last N days including today
            --start / --end     Date range (defaults: 2024-01-01 to yesterday)
 
-      2. Reconcile storage quotas  (--reconcile-quotas PATH)
+      2. Post disk charge summaries  (--disk)
+         Required: --resource <name> and --user-usage <path>
+         Optional: --quotas <path> --reconcile-quota-gap
+         The snapshot date is read from the user-usage file (rows or
+         filename). --date YYYY-MM-DD is accepted as an optional
+         safety check: if supplied, the file's snapshot date MUST
+         match it exactly. --today / --last / --start / --end and
+         --create-queues are HPC-only and rejected here.
+
+      3. Reconcile storage quotas  (--reconcile-quotas PATH)
          Required: --resource <name>
          Report-only by default — full tables, no writes.  Each write
          flag is independent; combine them as needed:
@@ -282,10 +336,97 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         )
         sys.exit(exit_code)
 
-    # Charge-posting mode: machine + dates required
+    # --- Disk charge import (separate validation path) ---------------------
+    if disk:
+        if not resource:
+            ctx.console.print(
+                "Error: --disk requires --resource",
+                style="bold red",
+            )
+            sys.exit(1)
+        if machine:
+            ctx.console.print(
+                "Error: --machine is HPC-only; do not pass it with --disk",
+                style="bold red",
+            )
+            sys.exit(1)
+        if not user_usage_path:
+            ctx.console.print(
+                "Error: --disk requires --user-usage <path>",
+                style="bold red",
+            )
+            sys.exit(1)
+        if reconcile_quota_gap and not quotas_path:
+            ctx.console.print(
+                "Error: --reconcile-quota-gap requires --quotas <path>",
+                style="bold red",
+            )
+            sys.exit(1)
+        # Reject HPC-mode-only flags. The snapshot date comes from the
+        # input file, not from a date range — there is no meaningful
+        # interpretation of `--today` / `--last 7d` / `--start..--end`
+        # for a single-snapshot disk import. `--date` is the only date
+        # flag accepted (as a safety check: the file's snapshot date
+        # must equal the supplied date, else we abort).
+        rejected = []
+        if today_flag: rejected.append('--today')
+        if last:       rejected.append('--last')
+        if start:      rejected.append('--start')
+        if end:        rejected.append('--end')
+        if rejected:
+            ctx.console.print(
+                f"Error: {', '.join(rejected)} not valid with --disk; "
+                "the snapshot date is read from the user-usage file. "
+                "Use --date YYYY-MM-DD if you want to assert the "
+                "expected snapshot date as a safety check.",
+                style="bold red",
+            )
+            sys.exit(1)
+        if create_queues:
+            ctx.console.print(
+                "Error: --create-queues is HPC-only; do not pass it with --disk",
+                style="bold red",
+            )
+            sys.exit(1)
+
+        # --date is optional: when supplied, the snapshot in the file
+        # must match this date exactly (otherwise abort). When omitted,
+        # whatever date the file reports is used.
+        expected_date = None
+        if date_str:
+            try:
+                expected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                ctx.console.print(
+                    "Error: --date must be in YYYY-MM-DD format",
+                    style="bold red",
+                )
+                sys.exit(1)
+
+        command = AccountingAdminCommand(ctx)
+        exit_code = command.execute(
+            disk=True,
+            resource=resource,
+            user_usage_path=user_usage_path,
+            quotas_path=quotas_path,
+            reporting_interval=reporting_interval,
+            unidentified_label=unidentified_label,
+            reconcile_quota_gap=reconcile_quota_gap,
+            gap_tolerance_bytes=gap_tolerance_bytes,
+            gap_tolerance_frac=gap_tolerance_frac,
+            start_date=expected_date,
+            end_date=expected_date,
+            dry_run=dry_run,
+            skip_errors=skip_errors,
+            chunk_size=chunk_size,
+            include_deleted_accounts=include_deleted_accounts,
+        )
+        sys.exit(exit_code)
+
+    # Charge-posting mode (--comp / --archive): machine + dates required
     if not machine:
         ctx.console.print(
-            "Error: --machine is required with --comp/--disk/--archive",
+            "Error: --machine is required with --comp",
             style="bold red",
         )
         sys.exit(1)
@@ -295,7 +436,6 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     command = AccountingAdminCommand(ctx)
     exit_code = command.execute(
         comp=comp,
-        disk=disk,
         archive=archive,
         machine=machine,
         start_date=start_date,

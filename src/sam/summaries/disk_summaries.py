@@ -1,7 +1,32 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
+from datetime import date as _stdlib_date
 #-------------------------------------------------------------------------eh-
+
+
+# ============================================================================
+# Disk-charging unit / cutover constants
+# ============================================================================
+
+# Bytes per tebibyte (binary, 1024**4). The new disk-charging convention
+# stores `disk_charge_summary.terabyte_years` in TiB-years so the column
+# composes cleanly with `Allocation.amount` (TiB).
+BYTES_PER_TIB = 1024 ** 4
+
+# Days per year used in the storage-charging formula. Matches the legacy
+# Java constant `DAYS_IN_YEAR = 365` (NOT 365.25 — the legacy
+# `disk_charge_summary.md` doc was wrong about that).
+DAYS_IN_YEAR = 365
+
+# Cutover epoch: the first activity_date whose disk_charge_summary row is
+# written under the new TiB-year convention. Rows with activity_date < EPOCH
+# stay in the legacy decimal-TB-year convention and are not rewritten.
+#
+# This date is set to the first --disk run we ship and treated as immutable
+# thereafter. Allocations whose window straddles this date will read mixed
+# units (~9.95% drift on the pre-epoch portion); see docs/plans/DISK_CHARGING.md.
+DISK_CHARGING_TIB_EPOCH = _stdlib_date(2026, 4, 18)
 
 
 #-------------------------------------------------------------------------bm-
@@ -46,7 +71,15 @@ class DiskChargeSummary(Base):
 
 #----------------------------------------------------------------------------
 class DiskChargeSummaryStatus(Base):
-    """Tracks which disk charge summaries are current."""
+    """Tracks which disk charge summary date is the current snapshot.
+
+    The row whose ``current = True`` marks the latest fully-imported
+    snapshot. Used by ``Account.current_disk_usage()`` /
+    ``Project.current_disk_usage()`` to answer "how full is this project
+    *right now*?" without summing across snapshots.
+
+    Maintained by ``mark_disk_snapshot_current()``.
+    """
     __tablename__ = 'disk_charge_summary_status'
 
     activity_date = Column(Date, primary_key=True)
@@ -57,6 +90,42 @@ class DiskChargeSummaryStatus(Base):
 
     def __repr__(self):
         return f"<DiskChargeSummaryStatus(date={self.activity_date}, current={self.current})>"
+
+
+# ============================================================================
+# Snapshot status helpers
+# ============================================================================
+
+def mark_disk_snapshot_current(session, activity_date) -> None:
+    """Mark ``activity_date`` as the current disk snapshot.
+
+    Clears ``current=True`` from any prior row, then upserts
+    ``(activity_date, current=True)`` for the given date. Does NOT
+    commit — caller wraps in ``management_transaction``.
+    """
+    session.query(DiskChargeSummaryStatus).filter(
+        DiskChargeSummaryStatus.current == True  # noqa: E712 — SQL boolean
+    ).update({DiskChargeSummaryStatus.current: False}, synchronize_session=False)
+
+    existing = session.get(DiskChargeSummaryStatus, activity_date)
+    if existing is None:
+        session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=True))
+    else:
+        existing.current = True
+    session.flush()
+
+
+def tib_years(bytes_: int, reporting_interval_days: int) -> float:
+    """Compute storage charge in TiB-years (binary, post-epoch convention).
+
+    Single source of truth for the disk charging formula. Used by both
+    the per-user import path and the ``<unidentified>`` gap-row path.
+
+    Formula (deviates from legacy decimal-TB convention):
+
+        TiB-years = (bytes * reporting_interval_days) / 365 / 1024**4
+    """
+    return (bytes_ * reporting_interval_days) / DAYS_IN_YEAR / BYTES_PER_TIB
 
 
 # ============================================================================

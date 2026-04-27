@@ -737,6 +737,51 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         return results
 
 
+    def current_disk_usage(self, resource_name: Optional[str] = None) -> Dict[str, Any]:
+        """Return the latest disk-snapshot occupancy for each disk account on this project.
+
+        Result is keyed by resource name and shaped as::
+
+            {
+              "Campaign_Store": {
+                "activity_date": date(2026, 4, 18),
+                "bytes": 241_601_257_783_296,
+                "current_used_tib": 219.71...,
+                "terabyte_years": 4.215...,
+                "number_of_files": 10_455_444,
+              },
+              ...
+            }
+
+        Distinct from ``get_detailed_allocation_usage()`` (which sums
+        cumulative TiB-years over an allocation window). Use this for
+        "how full is this project right now?" UI questions; use the
+        cumulative method for billing.
+
+        ``resource_name`` filters to a single disk resource if given.
+        """
+        results: Dict[str, Any] = {}
+        for account in self.accounts:
+            if account.deleted:
+                continue
+            if not account.resource:
+                continue
+            res_name = account.resource.resource_name
+            if resource_name and res_name != resource_name:
+                continue
+            usage = account.current_disk_usage(self.session)
+            if usage is None:
+                continue
+            results[res_name] = {
+                'activity_date': usage.activity_date,
+                'bytes': usage.bytes,
+                'current_used_tib': usage.used_tib,
+                'terabyte_years': usage.terabyte_years,
+                'number_of_files': usage.number_of_files,
+            }
+        return results
+
+
     def get_charges_by_resource_type(self,
                                      account_id: int,
                                      resource_type: str,

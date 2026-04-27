@@ -15,19 +15,26 @@ from cli.core.output import output_json
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
 from cli.accounting.display import (
     display_dry_run_table,
+    display_disk_dry_run_table,
     display_import_summary,
     display_charge_summary_table,
     display_quota_reconcile_plan,
     display_quota_reconcile_summary,
 )
 from cli.accounting.quota_readers import get_quota_reader, QuotaEntry
+from cli.accounting.disk_usage import get_disk_usage_reader, DiskUsageEntry
 from cli.accounting.path_verifier import (
     PathVerificationError, auto_detect_verifier,
 )
-from sam.manage.summaries import upsert_comp_charge_summary
+from sam.manage.summaries import (
+    upsert_comp_charge_summary, upsert_disk_charge_summary,
+)
 from sam.manage.transaction import management_transaction
 from sam.manage.allocations import update_allocation
 from sam.plugins import HPC_USAGE_QUERIES
+from sam.summaries.disk_summaries import (
+    DISK_CHARGING_TIB_EPOCH, mark_disk_snapshot_current, tib_years,
+)
 
 
 # Reconcile tolerance: allocations within this fraction of quota truth are
@@ -142,6 +149,14 @@ class AccountingAdminCommand(BaseCommand):
         create_queues: bool = False,
         chunk_size: int = 500,
         include_deleted_accounts: bool = False,
+        # --disk specific
+        user_usage_path: Optional[str] = None,
+        quotas_path: Optional[str] = None,
+        reporting_interval: int = 7,
+        unidentified_label: str = '<unidentified>',
+        reconcile_quota_gap: bool = False,
+        gap_tolerance_bytes: int = 1024 ** 3,    # 1 GiB
+        gap_tolerance_frac: float = 0.01,        # 1%
     ) -> int:
         if reconcile_quotas is not None:
             return self._run_reconcile_quotas(
@@ -163,8 +178,22 @@ class AccountingAdminCommand(BaseCommand):
                 include_deleted_accounts=include_deleted_accounts,
             )
         if disk:
-            self.console.print("[yellow]--disk: not yet implemented[/yellow]")
-            return 0
+            return self._run_disk(
+                resource_name=resource,
+                user_usage_path=user_usage_path,
+                quotas_path=quotas_path,
+                reporting_interval=reporting_interval,
+                unidentified_label=unidentified_label,
+                reconcile_gap=reconcile_quota_gap,
+                gap_tolerance_bytes=gap_tolerance_bytes,
+                gap_tolerance_frac=gap_tolerance_frac,
+                start_date=start_date,
+                end_date=end_date,
+                dry_run=dry_run,
+                skip_errors=skip_errors,
+                chunk_size=chunk_size,
+                include_deleted_accounts=include_deleted_accounts,
+            )
         if archive:
             self.console.print("[yellow]--archive: not yet implemented[/yellow]")
             return 0
@@ -300,6 +329,498 @@ class AccountingAdminCommand(BaseCommand):
 
         # --- 9. Exit code ---
         return 0 if n_errors == 0 else 2
+
+
+    # ------------------------------------------------------------------
+    # Disk charge summary import
+    # ------------------------------------------------------------------
+
+    def _run_disk(
+        self,
+        *,
+        resource_name: Optional[str],
+        user_usage_path: Optional[str],
+        quotas_path: Optional[str],
+        reporting_interval: int,
+        unidentified_label: str,
+        reconcile_gap: bool,
+        gap_tolerance_bytes: int,
+        gap_tolerance_frac: float,
+        start_date: Optional[date],
+        end_date: Optional[date],
+        dry_run: bool,
+        skip_errors: bool,
+        chunk_size: int,
+        include_deleted_accounts: bool,
+    ) -> int:
+        """Import a per-user-per-project disk usage snapshot into ``disk_charge_summary``.
+
+        See ``docs/plans/DISK_CHARGING.md`` for the design. High-level flow:
+
+          1. Parse the per-user file via a registered DiskUsageReader.
+          2. Validate snapshot date against the requested window AND the
+             cutover epoch (post-epoch only — pre-epoch rows stay legacy).
+          3. Optionally reconcile per-project FILESET totals against the
+             user-row sum and emit ``<unidentified>`` gap rows attributed
+             to each project's lead.
+          4. Compute terabyte_years/charges in TiB-years.
+          5. Chunked upsert via ``upsert_disk_charge_summary``.
+          6. Mark this date as the current snapshot in
+             ``disk_charge_summary_status``.
+        """
+        from sam.resources.resources import Resource
+        from sam.accounting.accounts import Account
+
+        # ---- 1. Validate inputs ----------------------------------------
+        if not resource_name:
+            self.console.print(
+                "Error: --disk requires --resource", style="bold red"
+            )
+            return 2
+        if not user_usage_path:
+            self.console.print(
+                "Error: --disk requires --user-usage <path>", style="bold red"
+            )
+            return 2
+        if reconcile_gap and not quotas_path:
+            self.console.print(
+                "Error: --reconcile-quota-gap requires --quotas <path>",
+                style="bold red",
+            )
+            return 2
+
+        resource = Resource.get_by_name(self.session, resource_name)
+        if resource is None:
+            self.console.print(
+                f"Error: resource {resource_name!r} not found in SAM",
+                style="bold red",
+            )
+            return 2
+
+        # ---- 2. Parse the per-user file -------------------------------
+        try:
+            reader = get_disk_usage_reader(resource_name, user_usage_path)
+        except NotImplementedError as exc:
+            self.console.print(f"Error: {exc}", style="bold red")
+            return 2
+        try:
+            entries = reader.read()
+        except (OSError, ValueError) as exc:
+            self.console.print(
+                f"Error reading {user_usage_path!r}: {exc}", style="bold red"
+            )
+            return 2
+
+        if not entries:
+            self.console.print(
+                f"[yellow]No usage rows in {user_usage_path}[/yellow]"
+            )
+            return 0
+
+        snap_date = reader.snapshot_date
+        if snap_date is None:
+            self.console.print(
+                "Error: cannot determine snapshot date from "
+                f"{user_usage_path!r}", style="bold red",
+            )
+            return 2
+
+        # ---- 3. Date assertion (--date safety check) -------------------
+        # The CLI collapses --date to start_date == end_date == expected.
+        # If the operator supplied --date, the file's snapshot date must
+        # equal it exactly. This catches "wrong file fed to wrong date"
+        # mistakes early, before any DB writes.
+        if start_date is not None and end_date is not None:
+            if not (start_date <= snap_date <= end_date):
+                if start_date == end_date:
+                    self.console.print(
+                        f"Error: snapshot date {snap_date} does not match "
+                        f"--date {start_date}",
+                        style="bold red",
+                    )
+                else:
+                    self.console.print(
+                        f"Error: snapshot date {snap_date} falls outside the "
+                        f"requested window {start_date}..{end_date}",
+                        style="bold red",
+                    )
+                return 2
+
+        # ---- 4. Cutover-epoch enforcement ------------------------------
+        if snap_date < DISK_CHARGING_TIB_EPOCH:
+            self.console.print(
+                f"Error: snapshot date {snap_date} is before the "
+                f"DISK_CHARGING_TIB_EPOCH ({DISK_CHARGING_TIB_EPOCH}). "
+                "This command only writes post-epoch TiB-year rows; "
+                "pre-epoch legacy rows are not rewritten.",
+                style="bold red",
+            )
+            return 2
+
+        # ---- 5. Optional gap reconciliation ----------------------------
+        if reconcile_gap and quotas_path:
+            try:
+                gap_rows = self._build_unidentified_disk_rows(
+                    resource=resource,
+                    user_entries=entries,
+                    quotas_path=quotas_path,
+                    snapshot_date=snap_date,
+                    unidentified_label=unidentified_label,
+                    reporting_interval=reporting_interval,
+                    gap_tolerance_bytes=gap_tolerance_bytes,
+                    gap_tolerance_frac=gap_tolerance_frac,
+                    include_deleted_accounts=include_deleted_accounts,
+                )
+            except (OSError, ValueError) as exc:
+                self.console.print(
+                    f"Error reading quotas {quotas_path!r}: {exc}",
+                    style="bold red",
+                )
+                return 2
+            entries.extend(gap_rows)
+
+        # ---- 6. Charging math ------------------------------------------
+        for e in entries:
+            e.terabyte_years = tib_years(e.bytes, reporting_interval)
+            e.charges = e.terabyte_years
+
+        # ---- 6b. Resolve projcode for normal rows ----------------------
+        # The acct.glade column 3 is a fileset label (e.g. 'cesm', 'cgd')
+        # not a SAM projcode (e.g. 'CESM0001', 'NCGD0009'). The legacy
+        # Java ingest resolved this via directory_path → ProjectDirectory
+        # → Project. Mirror that here: prefer the path-based lookup, fall
+        # back to projcode-as-label, give up if neither works (the row is
+        # then skipped if --skip-errors, else aborts the chunk).
+        from sam.projects.projects import ProjectDirectory, Project
+        from sam.accounting.accounts import Account
+        pd_path_to_project: dict[str, "Project"] = {
+            pd.directory_name: proj
+            for pd, proj in (
+                self.session.query(ProjectDirectory, Project)
+                .join(Project, Project.project_id == ProjectDirectory.project_id)
+                .filter(ProjectDirectory.is_currently_active)
+                .all()
+            )
+        }
+        # Cache resolved Account per project_id for this resource.
+        account_cache: dict[int, "Account"] = {}
+
+        def _resolve_for_row(row) -> tuple[bool, Optional["Project"], Optional["Account"]]:
+            """Return (resolved_ok, project, account). For normal rows only —
+            gap rows already carry user/account overrides."""
+            project = None
+            if row.directory_path and row.directory_path in pd_path_to_project:
+                project = pd_path_to_project[row.directory_path]
+            if project is None:
+                project = Project.get_by_projcode(self.session, row.projcode)
+            if project is None:
+                return False, None, None
+            acct = account_cache.get(project.project_id)
+            if acct is None:
+                acct = Account.get_by_project_and_resource(
+                    self.session, project.project_id, resource.resource_id,
+                    exclude_deleted=not include_deleted_accounts,
+                )
+                if acct is None:
+                    return False, project, None
+                account_cache[project.project_id] = acct
+            return True, project, acct
+
+        # ---- 7. Verbose dry-run table ----------------------------------
+        if self.ctx.verbose:
+            display_disk_dry_run_table(
+                self.ctx, entries, resource_name, dry_run=dry_run,
+            )
+
+        if dry_run:
+            return 0
+
+        # ---- 7b. Idempotency: delete pre-existing rows for this
+        # (resource, snapshot_date) so a re-run replaces rather than
+        # duplicates. Necessary because the legacy ingest left
+        # `act_username` / `act_projcode` as NULL, which means our
+        # natural-key UPDATE wouldn't match those rows — they'd accumulate
+        # alongside the new ones, double-counting on roll-up. Same delete
+        # also cleans up the prior post-epoch run on this date.
+        from sam.summaries.disk_summaries import DiskChargeSummary
+        n_deleted_legacy = 0
+        try:
+            with management_transaction(self.session):
+                deleted = (
+                    self.session.query(DiskChargeSummary)
+                    .filter(DiskChargeSummary.activity_date == snap_date)
+                    .filter(
+                        DiskChargeSummary.account_id.in_(
+                            self.session.query(Account.account_id).filter(
+                                Account.resource_id == resource.resource_id,
+                            )
+                        )
+                    )
+                    .delete(synchronize_session=False)
+                )
+                n_deleted_legacy = int(deleted)
+        except Exception as exc:  # noqa: BLE001
+            self.console.print(
+                f"[bold red]Failed to clear existing rows for {snap_date}: {exc}[/bold red]"
+            )
+            return 2
+        if n_deleted_legacy:
+            self.console.print(
+                f"[dim]Cleared {n_deleted_legacy} pre-existing "
+                f"disk_charge_summary row(s) for "
+                f"{resource_name} on {snap_date} before re-import.[/dim]"
+            )
+
+        # ---- 8. Chunked upsert -----------------------------------------
+        n_created = 0
+        n_updated = 0
+        n_errors = 0
+        n_skipped = 0
+
+        chunks = [entries[i:i + chunk_size] for i in range(0, len(entries), chunk_size)]
+
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=self.console,
+        ) as progress:
+            task = progress.add_task(
+                f"Posting {resource_name} disk charges...", total=len(entries)
+            )
+            for chunk_idx, chunk in enumerate(chunks, start=1):
+                try:
+                    with management_transaction(self.session):
+                        for row in chunk:
+                            progress.advance(task)
+                            try:
+                                # For normal rows: act_username = parsed
+                                # username, act_projcode = parsed projcode
+                                # (the resolver needs these). The legacy
+                                # Java pipeline stored these as NULL, but
+                                # the current upsert tests already write
+                                # them — we follow the test convention.
+                                #
+                                # For gap rows (`<unidentified>`):
+                                # row.act_username carries the audit
+                                # label and row.user_override is set, so
+                                # the resolver is skipped entirely.
+                                if row.user_override is not None:
+                                    act_uname = row.act_username
+                                    act_pcode = None
+                                    project_for_upsert = None
+                                    account_for_upsert = row.account_override
+                                else:
+                                    act_uname = row.username
+                                    # Resolve project from directory_path
+                                    # (umbrella filesets like 'cgd' map to
+                                    # specific SAM projects via
+                                    # ProjectDirectory).
+                                    ok, project_for_upsert, account_for_upsert = _resolve_for_row(row)
+                                    if not ok:
+                                        raise ValueError(
+                                            f"Could not resolve project/account for "
+                                            f"row projcode={row.projcode!r} "
+                                            f"path={row.directory_path!r} on "
+                                            f"resource {resource_name!r}"
+                                        )
+                                    # Stash the resolved projcode in the
+                                    # audit column so the row carries the
+                                    # SAM-canonical name, not the umbrella
+                                    # label from the input file.
+                                    act_pcode = project_for_upsert.projcode
+                                _, action = upsert_disk_charge_summary(
+                                    self.session,
+                                    activity_date=row.activity_date,
+                                    act_username=act_uname,
+                                    act_projcode=act_pcode,
+                                    act_unix_uid=None,
+                                    resource_name=resource_name,
+                                    charges=row.charges,
+                                    number_of_files=row.number_of_files,
+                                    bytes=row.bytes,
+                                    terabyte_years=row.terabyte_years,
+                                    user=row.user_override,
+                                    project=project_for_upsert,
+                                    account=account_for_upsert,
+                                    include_deleted_accounts=include_deleted_accounts,
+                                )
+                                if action == 'created':
+                                    n_created += 1
+                                else:
+                                    n_updated += 1
+                            except ValueError as exc:
+                                n_errors += 1
+                                if not skip_errors:
+                                    raise
+                                if self.ctx.verbose:
+                                    self.console.print(f"[yellow]Skip: {exc}[/yellow]")
+                except ValueError as exc:
+                    self.console.print(
+                        f"[bold red]Chunk {chunk_idx} aborted: {exc}[/bold red]"
+                    )
+                    return 2
+
+            # ---- 9. Mark this snapshot as current --------------------
+            try:
+                with management_transaction(self.session):
+                    mark_disk_snapshot_current(self.session, snap_date)
+            except Exception as exc:  # noqa: BLE001
+                self.console.print(
+                    f"[bold red]Failed to mark snapshot current: {exc}[/bold red]"
+                )
+                # Don't fail the whole import for this — data is in.
+
+        display_import_summary(self.ctx, n_created, n_updated, n_errors, n_skipped)
+        return 0 if n_errors == 0 else 2
+
+    def _build_unidentified_disk_rows(
+        self,
+        *,
+        resource,
+        user_entries: list,
+        quotas_path: str,
+        snapshot_date: date,
+        unidentified_label: str,
+        reporting_interval: int,
+        gap_tolerance_bytes: int,
+        gap_tolerance_frac: float,
+        include_deleted_accounts: bool,
+    ) -> list:
+        """Build synthetic ``<unidentified>`` gap rows from FILESET vs Σuser_bytes.
+
+        For every projcode where the FILESET total exceeds the sum of
+        per-user acct rows by more than ``gap_tolerance_bytes`` AND
+        ``gap_tolerance_frac`` of the FILESET total, emit one DiskUsageEntry
+        with:
+          - ``act_username = unidentified_label``
+          - ``user_override = project.lead``
+          - ``account_override`` resolved from (project, resource)
+        Skips projects where lead or account cannot be resolved (with a
+        per-project warning).
+
+        FILESET key resolution precedence:
+          a. fileset name uppercased matches a SAM projcode directly
+          b. fileset path matches a path observed in user_entries → that
+             row's projcode
+          c. fileset path matches a ProjectDirectory.path → that project's projcode
+          d. otherwise unmappable; logged & skipped (does NOT create gap)
+        """
+        from sam.projects.projects import Project, ProjectDirectory
+        from sam.accounting.accounts import Account
+        from cli.accounting.quota_readers import get_quota_reader
+
+        reader = get_quota_reader(resource.resource_name, quotas_path)
+        quota_entries = reader.read()  # already in bytes (KiB×1024)
+
+        # Snapshot-date sanity: cs_usage.json `date` field is a free-form
+        # string so the reader sets snapshot_date best-effort. Just warn
+        # if the quotas date drifts more than 24h from the user-usage one.
+        quota_snap = getattr(reader, 'snapshot_date', None)
+        if quota_snap is not None:
+            quota_d = quota_snap.date() if hasattr(quota_snap, 'date') else quota_snap
+            if abs((quota_d - snapshot_date).days) > 1:
+                self.console.print(
+                    f"[yellow]Warning: quotas snapshot {quota_d} differs from "
+                    f"user-usage snapshot {snapshot_date} by more than 1 day.[/yellow]"
+                )
+
+        # Sum per-user bytes per projcode (from already-parsed acct entries).
+        user_bytes: dict[str, int] = {}
+        path_to_projcode: dict[str, str] = {}
+        for e in user_entries:
+            user_bytes[e.projcode] = user_bytes.get(e.projcode, 0) + e.bytes
+            if e.directory_path:
+                path_to_projcode.setdefault(e.directory_path, e.projcode)
+
+        # Build path → projcode fallback from ProjectDirectory.
+        dir_rows = (
+            self.session.query(ProjectDirectory, Project)
+            .join(Project, Project.project_id == ProjectDirectory.project_id)
+            .filter(ProjectDirectory.is_currently_active)
+            .all()
+        )
+        pd_path_to_projcode = {
+            pd.directory_name: proj.projcode for pd, proj in dir_rows
+        }
+
+        # Map each FILESET entry to a projcode + accumulate bytes.
+        fileset_bytes: dict[str, int] = {}
+        unmapped: list = []
+        for qe in quota_entries:
+            projcode = qe.fileset_name.upper()
+            project = Project.get_by_projcode(self.session, projcode)
+            if project is None:
+                if qe.path and qe.path in path_to_projcode:
+                    projcode = path_to_projcode[qe.path]
+                elif qe.path and qe.path in pd_path_to_projcode:
+                    projcode = pd_path_to_projcode[qe.path]
+                else:
+                    unmapped.append(qe)
+                    continue
+            fileset_bytes[projcode] = fileset_bytes.get(projcode, 0) + qe.usage_bytes
+
+        if unmapped and self.ctx.verbose:
+            self.console.print(
+                f"[dim]Gap-reconcile: {len(unmapped)} fileset(s) had no SAM "
+                "project mapping (skipped).[/dim]"
+            )
+
+        # Build gap rows.
+        gap_rows: list = []
+        for projcode, q_bytes in fileset_bytes.items():
+            sum_user = user_bytes.get(projcode, 0)
+            gap = q_bytes - sum_user
+            if gap <= 0:
+                continue
+            min_tol = max(gap_tolerance_bytes, int(q_bytes * gap_tolerance_frac))
+            if gap < min_tol:
+                continue
+
+            project = Project.get_by_projcode(self.session, projcode)
+            if project is None:
+                continue
+            lead = project.lead
+            if lead is None:
+                self.console.print(
+                    f"[yellow]Skipping gap for {projcode}: project has no lead.[/yellow]"
+                )
+                continue
+            account = Account.get_by_project_and_resource(
+                self.session, project.project_id, resource.resource_id,
+                exclude_deleted=not include_deleted_accounts,
+            )
+            if account is None:
+                self.console.print(
+                    f"[yellow]Skipping gap for {projcode}: no account on "
+                    f"{resource.resource_name}.[/yellow]"
+                )
+                continue
+
+            gap_rows.append(DiskUsageEntry(
+                activity_date=snapshot_date,
+                projcode=projcode,
+                username=lead.username,
+                number_of_files=0,
+                bytes=gap,
+                directory_path=None,
+                reporting_interval=reporting_interval,
+                cos=0,
+                act_username=unidentified_label,
+                user_override=lead,
+                account_override=account,
+            ))
+
+        if gap_rows:
+            total_gap_bytes = sum(r.bytes for r in gap_rows)
+            self.console.print(
+                f"[cyan]Gap reconciliation: {len(gap_rows)} project(s) "
+                f"with unattributed bytes; total {total_gap_bytes / (1024**4):.2f} TiB "
+                "attributed to project leads with audit label "
+                f"{unidentified_label!r}.[/cyan]"
+            )
+        return gap_rows
 
 
     # ------------------------------------------------------------------

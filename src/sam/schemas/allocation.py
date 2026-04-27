@@ -109,6 +109,14 @@ class AllocationWithUsageSchema(AllocationSchema):
             'self_used',
             'self_percent_used',
             'root_projcode',
+            # Current-snapshot fields (disk resources only — null for
+            # other types). Distinct from the cumulative `used` above:
+            # answers "how full are you right now?" using the latest
+            # disk_charge_summary snapshot, not summed over time.
+            'current_used_bytes',
+            'current_used_tib',
+            'current_snapshot_date',
+            'current_pct_used',
         )
 
     # Add resource details
@@ -123,6 +131,10 @@ class AllocationWithUsageSchema(AllocationSchema):
     self_used = fields.Method('get_self_used')
     self_percent_used = fields.Method('get_self_percent_used')
     root_projcode = fields.Method('get_root_projcode')
+    current_used_bytes = fields.Method('get_current_used_bytes')
+    current_used_tib = fields.Method('get_current_used_tib')
+    current_snapshot_date = fields.Method('get_current_snapshot_date')
+    current_pct_used = fields.Method('get_current_pct_used')
 
     def get_resource(self, obj):
         """Get resource from account context."""
@@ -331,6 +343,43 @@ class AllocationWithUsageSchema(AllocationSchema):
             return None
         _, root_project = self._calculate_tree_usage(obj)
         return root_project.projcode if root_project else None
+
+    def _current_disk_usage(self, obj):
+        """Latest disk snapshot occupancy for this allocation's account.
+
+        Returns the CurrentDiskUsage dataclass, or None for non-disk
+        resources / accounts with no disk_charge_summary rows.
+        """
+        account = self.context.get('account')
+        session = self.context.get('session')
+        if not account or not session:
+            return None
+        if not account.resource or not account.resource.resource_type:
+            return None
+        if account.resource.resource_type.resource_type != 'DISK':
+            return None
+        return account.current_disk_usage(session)
+
+    def get_current_used_bytes(self, obj):
+        u = self._current_disk_usage(obj)
+        return u.bytes if u is not None else None
+
+    def get_current_used_tib(self, obj):
+        u = self._current_disk_usage(obj)
+        return u.used_tib if u is not None else None
+
+    def get_current_snapshot_date(self, obj):
+        u = self._current_disk_usage(obj)
+        return u.activity_date if u is not None else None
+
+    def get_current_pct_used(self, obj):
+        u = self._current_disk_usage(obj)
+        if u is None:
+            return None
+        allocated = float(obj.amount) if obj.amount else 0.0
+        if allocated <= 0:
+            return 0.0
+        return (u.used_tib / allocated) * 100.0
 
 
 class AccountSchema(BaseSchema):
