@@ -1,4 +1,6 @@
-{% macro nodetype_table(node_types, system='casper') %}
+{% macro nodetype_table(node_types, system='casper', hours=None) %}
+{# `hours`, when set, flows through into the row-click drill-down URL so the
+   user's chosen time range survives sideways navigation between node types. #}
 <div class="table-responsive">
     <table class="table table-sm table-bordered nodetype-table">
         <thead class="thead-light">
@@ -14,7 +16,9 @@
         </thead>
         <tbody>
             {% for nt in node_types %}
-            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.nodetype_history', system=system, node_type=nt.node_type) }}';" title="Click to view history for {{ nt.node_type }}">
+            {% set _nh_kwargs = {'system': system, 'node_type': nt.node_type} %}
+            {% if hours %}{% set _ = _nh_kwargs.update({'hours': hours}) %}{% endif %}
+            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.nodetype_history', **_nh_kwargs) }}';" title="Click to view history for {{ nt.node_type }}">
                 <td><strong>{{ nt.node_type }}</strong></td>
                 <td>
                     <small>

@@ -369,11 +369,17 @@ def resource_details():
         flash('Invalid date format. Please use YYYY-MM-DD.', 'error')
         return redirect(url_for('user_dashboard.index'))
 
-    # Fetch 30d/90d rolling window usage (HPC/DAV only; None for DISK/ARCHIVE)
+    # Fetch 30d/90d rolling window usage (HPC/DAV only; None for DISK/ARCHIVE).
+    # When the allocation is inheriting, `charges` reported here is *pool burn*
+    # across the whole shared-allocation tree (the runway-meaningful number);
+    # `self_charges` on each window surfaces the per-project slice.
     rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
-    rolling_windows = rolling_usage.get(resource_name, {}).get('windows', {})
+    rolling_resource = rolling_usage.get(resource_name, {})
+    rolling_windows = rolling_resource.get('windows', {})
     rolling_30 = rolling_windows.get(30)
     rolling_90 = rolling_windows.get(90)
+    rolling_is_inheriting = rolling_resource.get('is_inheriting', False)
+    rolling_root_projcode = rolling_resource.get('root_projcode')
 
     # Load root project
     project = Project.get_by_projcode(db.session, projcode)
@@ -480,6 +486,8 @@ def resource_details():
         usage_chart=usage_chart,
         rolling_30=rolling_30,
         rolling_90=rolling_90,
+        rolling_is_inheriting=rolling_is_inheriting,
+        rolling_root_projcode=rolling_root_projcode,
         can_edit_threshold=can_edit_threshold,
         has_children=has_children,
         scope=scope,
@@ -713,7 +721,8 @@ def htmx_rolling_section(projcode, resource_name):
         return '<div class="alert alert-danger">Project not found</div>', 404
 
     rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
-    windows = rolling_usage.get(resource_name, {}).get('windows', {})
+    rolling_resource = rolling_usage.get(resource_name, {})
+    windows = rolling_resource.get('windows', {})
 
     return render_template(
         'dashboards/user/fragments/rolling_rate_htmx.html',
@@ -721,6 +730,8 @@ def htmx_rolling_section(projcode, resource_name):
         resource_name=resource_name,
         rolling_30=windows.get(30),
         rolling_90=windows.get(90),
+        rolling_is_inheriting=rolling_resource.get('is_inheriting', False),
+        rolling_root_projcode=rolling_resource.get('root_projcode'),
         can_edit_threshold=can_edit_consumption_threshold(current_user, project),
     )
 
@@ -793,7 +804,8 @@ def htmx_save_threshold(projcode, resource_name, window):
             account.update_thresholds(second_threshold=new_val)
 
     rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
-    windows = rolling_usage.get(resource_name, {}).get('windows', {})
+    rolling_resource = rolling_usage.get(resource_name, {})
+    windows = rolling_resource.get('windows', {})
 
     return render_template(
         'dashboards/user/fragments/rolling_rate_htmx.html',
@@ -801,5 +813,7 @@ def htmx_save_threshold(projcode, resource_name, window):
         resource_name=resource_name,
         rolling_30=windows.get(30),
         rolling_90=windows.get(90),
+        rolling_is_inheriting=rolling_resource.get('is_inheriting', False),
+        rolling_root_projcode=rolling_resource.get('root_projcode'),
         can_edit_threshold=True,
     )

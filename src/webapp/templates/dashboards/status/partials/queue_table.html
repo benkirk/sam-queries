@@ -1,4 +1,6 @@
-{% macro queue_table(queues, show_gpus=false, system='derecho') %}
+{% macro queue_table(queues, show_gpus=false, system='derecho', hours=None) %}
+{# `hours`, when set, flows through into the row-click drill-down URL so the
+   user's chosen time range survives sideways navigation between queues. #}
 <div class="table-responsive">
     <table class="table table-sm table-bordered queue-table">
         <thead class="thead-dark">
@@ -29,7 +31,9 @@
         </thead>
         <tbody>
             {% for queue in queues %}
-            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.queue_history', system=system, queue_name=queue.queue_name) }}';" title="Click to view history for {{ queue.queue_name }}">
+            {% set _qh_kwargs = {'system': system, 'queue_name': queue.queue_name} %}
+            {% if hours %}{% set _ = _qh_kwargs.update({'hours': hours}) %}{% endif %}
+            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.queue_history', **_qh_kwargs) }}';" title="Click to view history for {{ queue.queue_name }}">
                 <td><strong>{{ queue.queue_name }}</strong></td>
                 <td>{{ queue.active_users | fmt_number }}</td>
                 <td>{{ queue.running_jobs | fmt_number }}</td>

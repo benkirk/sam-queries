@@ -15,6 +15,9 @@
             </div>
             <form hx-post="{{ url_for('status_dashboard.htmx_create_outage') }}"
                   hx-disabled-elt="find button[type='submit']">
+                {# Captured at submit-time by JS so the server can convert the
+                   naive datetime-local values into naive-UTC for storage. #}
+                <input type="hidden" name="tz" id="createTz">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="createSystem" class="form-label">System <span class="text-danger">*</span></label>
@@ -54,7 +57,10 @@
                     <div class="mb-3">
                         <label for="createStartTime" class="form-label">Start Time</label>
                         <input type="datetime-local" class="form-control" id="createStartTime" name="start_time">
-                        <small class="form-text text-muted">Adjust if the outage started earlier</small>
+                        <small class="form-text text-muted">
+                            Enter in your local time. Stored as UTC; displayed back in {{ local_tz_label() }}.
+                            Adjust if the outage started earlier.
+                        </small>
                     </div>
                     <div class="mb-3">
                         <label for="createEstimatedResolution" class="form-label">Estimated Resolution <span class="text-muted">(optional)</span></label>
@@ -89,6 +95,8 @@
             <form id="editOutageForm"
                   hx-disabled-elt="find button[type='submit']">
                 <input type="hidden" id="editOutageId" name="outage_id">
+                {# Browser TZ — same purpose as on the create form. #}
+                <input type="hidden" name="tz" id="editTz">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="editTitle" class="form-label">Title</label>
@@ -119,7 +127,9 @@
                     <div class="mb-3">
                         <label for="editEstimatedResolution" class="form-label">Estimated Resolution <span class="text-muted">(optional)</span></label>
                         <input type="datetime-local" class="form-control" id="editEstimatedResolution" name="estimated_resolution">
-                        <small class="form-text text-muted">Clear to remove estimated resolution time</small>
+                        <small class="form-text text-muted">
+                            Times shown in your local TZ. Clear to remove estimated resolution time.
+                        </small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -135,33 +145,63 @@
 
 {#
   Inline JS for:
-  1. Pre-filling start time on create modal open
-  2. Populating edit form fields from button data attributes
+  1. Pre-filling start time on create modal open + capturing browser TZ
+  2. Converting UTC ISO from server → operator-local datetime-local input
+     when populating the edit form
   3. Setting the edit form's hx-post URL dynamically
-  The delete confirmation is handled by hx-confirm on the delete buttons.
+
+  Time-zone strategy: datetime-local inputs are TZ-blind. The browser TZ
+  is captured into a hidden `tz` field at modal-show time so the server
+  can convert the submitted naive datetime into naive-UTC for storage.
+  When pre-filling the edit form, the server emits UTC ISO with a 'Z'
+  suffix; JS converts to the operator's local naive ISO (the format
+  datetime-local inputs require).
 #}
 <script>
-/* Pre-fill create start time */
-document.getElementById('createOutageModal').addEventListener('show.bs.modal', function() {
-    var now = new Date();
-    var pad = function(n) { return String(n).padStart(2, '0'); };
-    document.getElementById('createStartTime').value =
-        now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) +
-        'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
-});
+(function () {
+    function pad(n) { return String(n).padStart(2, '0'); }
 
-/* Populate edit form from button click */
-function openEditOutageModal(id, status, severity, description, estimatedResolution, title) {
-    document.getElementById('editOutageId').value = id;
-    document.getElementById('editTitle').value = title || '';
-    document.getElementById('editStatus').value = status || 'investigating';
-    document.getElementById('editSeverity').value = severity || 'minor';
-    document.getElementById('editDescription').value = description || '';
-    document.getElementById('editEstimatedResolution').value = estimatedResolution ? estimatedResolution.substring(0, 16) : '';
-    /* Set the form's hx-post URL dynamically based on the outage ID */
-    document.getElementById('editOutageForm').setAttribute('hx-post',
-        '/status/htmx/outage/' + id + '/edit');
-    htmx.process(document.getElementById('editOutageForm'));
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('editOutageModal')).show();
-}
+    /* Format a Date as a naive local ISO suitable for <input type="datetime-local">. */
+    function toLocalNaiveISO(d) {
+        return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
+               'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    function browserTzName() {
+        try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }
+        catch (e) { return ''; }
+    }
+
+    /* Pre-fill create start time + capture browser TZ. */
+    document.getElementById('createOutageModal').addEventListener('show.bs.modal', function() {
+        document.getElementById('createStartTime').value = toLocalNaiveISO(new Date());
+        document.getElementById('createTz').value = browserTzName();
+    });
+
+    /* Populate edit form from button click. */
+    window.openEditOutageModal = function (id, status, severity, description, estimatedResolutionUtcIso, title) {
+        document.getElementById('editOutageId').value = id;
+        document.getElementById('editTitle').value = title || '';
+        document.getElementById('editStatus').value = status || 'investigating';
+        document.getElementById('editSeverity').value = severity || 'minor';
+        document.getElementById('editDescription').value = description || '';
+        document.getElementById('editTz').value = browserTzName();
+
+        /* Server emits estimated_resolution as a UTC ISO with 'Z' suffix.
+           Parse that as a real instant, then format as operator-local naive. */
+        var resInput = document.getElementById('editEstimatedResolution');
+        if (estimatedResolutionUtcIso) {
+            var d = new Date(estimatedResolutionUtcIso);
+            resInput.value = isNaN(d.getTime()) ? '' : toLocalNaiveISO(d);
+        } else {
+            resInput.value = '';
+        }
+
+        /* Set the form's hx-post URL dynamically based on the outage ID. */
+        document.getElementById('editOutageForm').setAttribute('hx-post',
+            '/status/htmx/outage/' + id + '/edit');
+        htmx.process(document.getElementById('editOutageForm'));
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('editOutageModal')).show();
+    };
+})();
 </script>

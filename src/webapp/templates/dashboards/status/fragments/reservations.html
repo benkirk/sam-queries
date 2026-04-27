@@ -9,7 +9,10 @@
                 </h6>
             </div>
             <div class="text-muted">
-                {{ res.start_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} - {{ res.end_time | fmt_date(fmt='%Y-%m-%d %H:%M') }}
+                {# PBS reservations are stored naive-UTC (parser anchors
+                   cluster-local PBS output to America/Denver and converts
+                   to UTC).  Convert back to display TZ for human reading. #}
+                {{ res.start_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }} - {{ res.end_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
             </div>
         </div>
         {% if res.description %}

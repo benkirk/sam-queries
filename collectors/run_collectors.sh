@@ -5,6 +5,14 @@
 
 set -e
 
+# Force collectors to write naive-UTC timestamps regardless of host TZ.
+# The webapp (in a container) reads with datetime.now() in UTC, so a
+# host running MDT/MST would write timestamps 6–7 hours behind, causing
+# the most recent records to fall just outside short read windows
+# (e.g. 6h on the status dashboard).  TZ=UTC keeps writers and readers
+# on the same naive-UTC clock per the project-wide convention.
+export TZ=UTC
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 

@@ -32,6 +32,13 @@ import numpy as np
 from sam import fmt
 
 
+def _to_display_tz(naive_utc_ts: datetime) -> datetime:
+    """Naive-UTC → naive-local for matplotlib axis rendering.  Strips tzinfo
+    after conversion so the existing naive-datetime plotting path is
+    unchanged (matplotlib renders the local-clock values directly)."""
+    return fmt.to_local_dt(naive_utc_ts).replace(tzinfo=None)
+
+
 # ---------------------------------------------------------------------------
 # Cache infrastructure
 # ---------------------------------------------------------------------------
@@ -189,7 +196,7 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
     if not history_data:
         return '<div class="text-center text-muted">No history data available for this node type</div>'
 
-    timestamps = [d['timestamp'] for d in history_data]
+    timestamps = [_to_display_tz(d['timestamp']) for d in history_data]
     nodes_available = [d.get('nodes_available', 0) for d in history_data]
     nodes_down = [d.get('nodes_down', 0) for d in history_data]
     nodes_allocated = [d.get('nodes_allocated', 0) for d in history_data]
@@ -218,7 +225,7 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
         ax2.plot(mem_times, mem_vals, 'c', linewidth=3, label='Memory Utilization')
 
     ax2.set_ylabel('Utilization', fontsize=11)
-    ax2.set_xlabel('Time', fontsize=11)
+    ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=11)
     ax2.set_ylim(0, 100)
     ax2.yaxis.set_major_formatter(fmt.mpl_pct_formatter())
     ax2.legend(loc='best', fontsize=10)
@@ -252,7 +259,7 @@ def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
     if not history_data:
         return '<div class="text-center text-muted">No history data available for this queue</div>'
 
-    timestamps = [d['timestamp'] for d in history_data]
+    timestamps = [_to_display_tz(d['timestamp']) for d in history_data]
     running_jobs = [d.get('running_jobs', 0) for d in history_data]
     pending_jobs = [d.get('pending_jobs', 0) for d in history_data]
     held_jobs = [d.get('held_jobs', 0) for d in history_data]
@@ -285,7 +292,7 @@ def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
 
     ax2.set_ylim([0, None])
     ax2.set_ylabel('Resources', fontsize=11)
-    ax2.set_xlabel('Time', fontsize=11)
+    ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=11)
     ax2.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax2.legend(loc=2, fontsize=10)
     ax2.grid(True, alpha=0.3)

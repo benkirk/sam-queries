@@ -2,11 +2,23 @@
 PBS reservation parser.
 
 Parses output from 'pbs_rstat -f' to extract reservation information.
+
+Time zones: PBS reports `reserve_start` / `reserve_end` in the cluster's
+local time (e.g. 'Wed Nov 12 12:00:00 2025'), with no zone marker.  The
+parser anchors that to the supplied ``cluster_tz`` (default
+'America/Denver' since both Derecho and Casper sit at NCAR-Wyoming) and
+converts to naive-UTC before stringifying, matching the project-wide
+naive-UTC storage convention.
 """
 
 import logging
 from typing import List, Optional
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+
+_UTC = ZoneInfo('UTC')
+_DEFAULT_CLUSTER_TZ = 'America/Denver'
 
 
 class ReservationParser:
@@ -16,7 +28,11 @@ class ReservationParser:
         self.logger = logging.getLogger(__name__)
 
     @staticmethod
-    def parse_reservations(rstat_output: str, system_name: str) -> List[dict]:
+    def parse_reservations(
+        rstat_output: str,
+        system_name: str,
+        cluster_tz: str = _DEFAULT_CLUSTER_TZ,
+    ) -> List[dict]:
         """
         Parse PBS pbs_rstat -f output into reservation records.
 
@@ -83,7 +99,8 @@ class ReservationParser:
                 continue
 
             try:
-                resv_data = ReservationParser._parse_reservation_block(block, system_name)
+                resv_data = ReservationParser._parse_reservation_block(
+                    block, system_name, cluster_tz)
                 if resv_data:
                     reservations.append(resv_data)
             except Exception as e:
@@ -95,7 +112,11 @@ class ReservationParser:
         return reservations
 
     @staticmethod
-    def _parse_reservation_block(block: str, system_name: str) -> Optional[dict]:
+    def _parse_reservation_block(
+        block: str,
+        system_name: str,
+        cluster_tz: str = _DEFAULT_CLUSTER_TZ,
+    ) -> Optional[dict]:
         """
         Parse a single reservation block.
 
@@ -143,8 +164,8 @@ class ReservationParser:
             return None
 
         try:
-            start_time = ReservationParser._parse_pbs_datetime(start_time_str)
-            end_time = ReservationParser._parse_pbs_datetime(end_time_str)
+            start_time = ReservationParser._parse_pbs_datetime(start_time_str, cluster_tz)
+            end_time = ReservationParser._parse_pbs_datetime(end_time_str, cluster_tz)
         except ValueError as e:
             logger.warning(f"Skipping reservation {reservation_name}: datetime parse error: {e}")
             return None
@@ -169,25 +190,28 @@ class ReservationParser:
         }
 
     @staticmethod
-    def _parse_pbs_datetime(time_str: str) -> str:
+    def _parse_pbs_datetime(time_str: str, cluster_tz: str = _DEFAULT_CLUSTER_TZ) -> str:
         """
-        Parse PBS datetime string to ISO format.
+        Parse a PBS datetime string and return naive-UTC ISO.
 
-        PBS format: "Wed Nov 12 12:00:00 2025"
-        Output: "2025-11-12T12:00:00"
+        PBS format: "Wed Nov 12 12:00:00 2025" — TZ-blind, but understood
+        by convention to be the cluster's local time.  Anchor it to
+        ``cluster_tz`` so DST math is correct, then convert to naive-UTC
+        for storage (matching the project-wide convention).
 
         Args:
-            time_str: PBS datetime string
+            time_str:    PBS datetime string.
+            cluster_tz:  IANA name of the cluster's local TZ.
 
         Returns:
-            ISO format datetime string
+            Naive-UTC ISO datetime string (no offset suffix).
 
         Raises:
-            ValueError: If datetime format is invalid
+            ValueError: If datetime format is invalid.
         """
-        # PBS datetime format: "Wed Nov 12 12:00:00 2025"
         dt = datetime.strptime(time_str, "%a %b %d %H:%M:%S %Y")
-        return dt.isoformat()
+        dt = dt.replace(tzinfo=ZoneInfo(cluster_tz))
+        return dt.astimezone(_UTC).replace(tzinfo=None).isoformat()
 
     @staticmethod
     def _extract_node_count(data: dict) -> Optional[int]:
