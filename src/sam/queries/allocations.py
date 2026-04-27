@@ -1142,4 +1142,34 @@ def get_allocation_summary_with_usage(
             item['percent_used'] = (self_used / item['total_allocated'] * 100) if item['total_allocated'] > 0 else 0
         item['charges_by_type'] = charges_by_type_total
 
+        # Disk capacity override: when every allocation in this row is on
+        # a disk resource, replace the cumulative TiB-year total_used
+        # with the point-in-time TiB occupancy sum from
+        # Account.current_disk_usage(). The progress bar in the UI then
+        # reads "TiB used / TiB allocated", which is what users mean by
+        # "% used" for storage. Mixed-resource rows (rare) keep the
+        # cumulative number.
+        all_disk = bool(item_allocations) and all(
+            rt == 'DISK' for _, _, rt, _, _ in item_allocations
+        )
+        if all_disk:
+            capacity_used = 0.0
+            activity_date = None
+            for _, _, _, _, account in item_allocations:
+                snap = account.current_disk_usage()
+                if snap is None:
+                    continue
+                capacity_used += snap.used_tib
+                if activity_date is None or snap.activity_date > activity_date:
+                    activity_date = snap.activity_date
+            item['total_used'] = capacity_used
+            item['percent_used'] = (
+                (capacity_used / item['total_allocated'] * 100)
+                if item['total_allocated'] > 0 else 0
+            )
+            if 'self_used' in item:
+                item['self_used'] = capacity_used
+                item['self_percent_used'] = item['percent_used']
+            item['activity_date'] = activity_date
+
     return summary

@@ -54,7 +54,7 @@ charge-aggregation queries. Merging them would either pessimize the N=1
 case or complicate the N=many case — both are net losses for readers.
 """
 
-from datetime import datetime
+from datetime import datetime, date
 from typing import Any, List, Dict, Optional, TypedDict
 
 from sqlalchemy import func
@@ -136,6 +136,13 @@ class DashboardResource(TypedDict):
     days_until_expiration: Optional[int]
     date_group_key: str
 
+    # Disk-only: latest snapshot date for the capacity bar's "as of"
+    # label. None for non-disk resources and for disk accounts that
+    # have no snapshot yet (fresh allocations). When set, `used` and
+    # `percent_used` are point-in-time capacity (TiB used / TiB
+    # allocated), not cumulative TiB-year burn.
+    activity_date: Optional[date]
+
     # Timeline progress (mirrors allocations dashboard project_table.html)
     elapsed_pct: float
     bar_state: str  # one of: 'no-dates', 'open-ended', 'expired', 'active', 'no-duration'
@@ -178,6 +185,10 @@ def _build_project_resources_data(project: Project,
                                                         active_at=active_at)
 
     now = active_at or datetime.now()
+
+    # Map account_id → Account for disk capacity lookup. The dict is empty
+    # for projects with no disk accounts; cheap to build either way.
+    accounts_by_id = {a.account_id: a for a in project.accounts if not a.deleted}
 
     # Fetch rolling window usage (30d/90d) only when at least one account on
     # this project has a non-null threshold set. The dashboard template only
@@ -229,7 +240,8 @@ def _build_project_resources_data(project: Project,
                 bar_state   = 'no-duration'
 
         rwin = rolling_usage.get(resource_name, {}).get('windows', {})
-        resources.append({
+        resource_type = usage.get('resource_type', 'HPC')
+        resource_dict = {
             'resource_name': resource_name,
             'allocation_id': usage.get('allocation_id'),  # Required for edit functionality
             'parent_allocation_id': usage.get('parent_allocation_id'),
@@ -255,12 +267,61 @@ def _build_project_resources_data(project: Project,
             'date_group_key': date_group_key,
             'elapsed_pct': elapsed_pct,
             'bar_state': bar_state,
-            'resource_type': usage.get('resource_type', 'HPC'),
+            'resource_type': resource_type,
+            'activity_date': None,
             'rolling_30': rwin.get(30),
             'rolling_90': rwin.get(90),
-        })
+        }
+
+        if resource_type == 'DISK':
+            account = accounts_by_id.get(usage.get('account_id'))
+            if account is not None:
+                overrides = _disk_capacity_overrides(account, resource_dict['allocated'], resource_type)
+                if overrides is not None:
+                    resource_dict.update(overrides)
+
+        resources.append(resource_dict)
 
     return resources
+
+
+def _disk_capacity_overrides(
+    account: Account,
+    allocated: float,
+    resource_type: str,
+) -> Optional[Dict[str, Any]]:
+    """For disk allocations, return capacity-based overrides for the
+    dashboard dict.
+
+    Storage's user-facing "% used" is *capacity* (point-in-time TiB
+    used vs TiB allocated), not the cumulative TiB-year burn used for
+    billing. Returns a dict the caller merges into the resource dict,
+    or None for non-disk resources (caller leaves the dict unchanged).
+
+    The fields written are: ``used``, ``remaining``, ``percent_used``,
+    ``activity_date``. Cumulative TiB-yr (``charges_by_type``,
+    ``adjustments``) is intentionally untouched — it is no longer
+    surfaced in the disk UI but the underlying values remain available
+    for billing-side consumers.
+    """
+    if resource_type != 'DISK':
+        return None
+    snapshot = account.current_disk_usage()
+    if snapshot is None:
+        return {
+            'used': 0.0,
+            'remaining': allocated,
+            'percent_used': 0.0,
+            'activity_date': None,
+        }
+    used_tib = snapshot.used_tib
+    pct = (used_tib / allocated * 100) if allocated > 0 else 0.0
+    return {
+        'used': used_tib,
+        'remaining': allocated - used_tib,
+        'percent_used': pct,
+        'activity_date': snapshot.activity_date,
+    }
 
 
 def _select_query_alloc(account: Account, now: datetime):
@@ -600,7 +661,7 @@ def _build_user_projects_resources_batched(
 
         rwin = rolling_usage_by_projcode.get(project.projcode, {}).get(resource_name, {}).get('windows', {})
 
-        out[project.project_id].append({
+        resource_dict = {
             'resource_name':        resource_name,
             'allocation_id':        query_alloc.allocation_id,
             'parent_allocation_id': query_alloc.parent_allocation_id,
@@ -623,9 +684,16 @@ def _build_user_projects_resources_batched(
             'elapsed_pct':          elapsed_pct,
             'bar_state':            bar_state,
             'resource_type':        resource_type,
+            'activity_date':        None,
             'rolling_30':           rwin.get(30),
             'rolling_90':           rwin.get(90),
-        })
+        }
+
+        overrides = _disk_capacity_overrides(account, allocated, resource_type)
+        if overrides is not None:
+            resource_dict.update(overrides)
+
+        out[project.project_id].append(resource_dict)
 
     # Sort each project's resources by resource_name for stable ordering
     # (matches the implicit ordering of project.get_detailed_allocation_usage()

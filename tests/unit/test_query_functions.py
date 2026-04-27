@@ -67,9 +67,13 @@ from sam.core.groups import (
 )
 
 from factories import (
+    make_account,
     make_allocation,
     make_allocation_transaction,
     make_charge_adjustment,
+    make_project,
+    make_resource,
+    make_resource_type,
     make_user,
 )
 from factories._seq import next_int, next_seq
@@ -246,7 +250,7 @@ class TestDashboardQueries:
             'resource_name', 'allocation_id', 'parent_allocation_id',
             'is_inheriting', 'account_id', 'status', 'start_date', 'end_date',
             'days_until_expiration', 'date_group_key', 'bar_state',
-            'resource_type', 'root_projcode',
+            'resource_type', 'root_projcode', 'activity_date',
         )
         FLOAT_FIELDS = (
             'allocated', 'used', 'remaining', 'percent_used',
@@ -305,6 +309,160 @@ class TestDashboardQueries:
             assert 'values' in daily
             if daily['dates'] is not None:
                 assert len(daily['dates']) == len(daily['values'])
+
+
+class TestDiskCapacityInDashboardData:
+    """For DISK resources, both dashboard builders should emit *capacity*
+    (point-in-time TiB used / TiB allocated) in the `used`/`percent_used`
+    fields, not cumulative TiB-year burn. This pins the contract used by
+    the project card / project modal / allocations table progress bars.
+    """
+
+    def _build_disk_graph(self, session, *, allocated_tib: float):
+        """User → Project → DISK Account+Allocation. Returns (project, account, lead)."""
+        from sam import ResourceType
+        rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
+        if rt is None:
+            rt = make_resource_type(session, resource_type='DISK')
+        resource = make_resource(
+            session, resource_type=rt,
+            resource_name=f"Campaign_Store_{next_seq('cs')}",
+        )
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        make_allocation(
+            session, account=account, amount=allocated_tib,
+            start_date=datetime.now() - timedelta(days=30),
+            end_date=datetime.now() + timedelta(days=335),
+        )
+        return project, account, lead
+
+    def _seed_snapshot(self, session, *, account, lead, snap_date,
+                       bytes_used: int, terabyte_years: float):
+        """Insert one DiskChargeSummary row + mark its date current."""
+        from sam.summaries.disk_summaries import (
+            DiskChargeSummary,
+            mark_disk_snapshot_current,
+        )
+        session.add(DiskChargeSummary(
+            activity_date=snap_date,
+            account_id=account.account_id,
+            user_id=lead.user_id,
+            username=lead.username,
+            projcode=account.project.projcode,
+            number_of_files=100,
+            bytes=bytes_used,
+            terabyte_years=terabyte_years,
+            charges=terabyte_years,
+        ))
+        session.flush()
+        mark_disk_snapshot_current(session, snap_date)
+
+    def test_per_project_builder_emits_capacity_not_burn(self, session):
+        from datetime import date as _date
+        BYTES_PER_TIB = 1024 ** 4
+        project, account, lead = self._build_disk_graph(session, allocated_tib=100.0)
+        snap = _date(2026, 4, 18)
+        # 50 TiB occupancy, but 4.21 TiB-yr cumulative billing burn —
+        # the bar must read 50%, not 4.21%.
+        self._seed_snapshot(
+            session, account=account, lead=lead, snap_date=snap,
+            bytes_used=50 * BYTES_PER_TIB, terabyte_years=4.2141,
+        )
+        rows = _build_project_resources_data(project)
+        disk = next(r for r in rows if r['resource_type'] == 'DISK')
+        assert disk['used'] == pytest.approx(50.0, abs=1e-6)
+        assert disk['percent_used'] == pytest.approx(50.0, abs=1e-4)
+        assert disk['remaining'] == pytest.approx(50.0, abs=1e-6)
+        assert disk['activity_date'] == snap
+        assert disk['allocated'] == pytest.approx(100.0, abs=1e-6)
+
+    def test_batched_builder_matches_per_project_for_disk(self, session):
+        from datetime import date as _date
+        BYTES_PER_TIB = 1024 ** 4
+        project, account, lead = self._build_disk_graph(session, allocated_tib=100.0)
+        snap = _date(2026, 4, 18)
+        self._seed_snapshot(
+            session, account=account, lead=lead, snap_date=snap,
+            bytes_used=50 * BYTES_PER_TIB, terabyte_years=4.2141,
+        )
+        per = _build_project_resources_data(project)
+        bat = _build_user_projects_resources_batched(session, [project])[project.project_id]
+        # Equivalence on the disk row's capacity fields.
+        assert len(per) == len(bat)
+        per_disk = next(r for r in per if r['resource_type'] == 'DISK')
+        bat_disk = next(r for r in bat if r['resource_type'] == 'DISK')
+        assert per_disk['used'] == pytest.approx(bat_disk['used'], abs=1e-6)
+        assert per_disk['percent_used'] == pytest.approx(bat_disk['percent_used'], abs=1e-6)
+        assert per_disk['activity_date'] == bat_disk['activity_date'] == snap
+
+    def test_no_snapshot_yields_zero_capacity_and_none_activity_date(self, session):
+        project, account, lead = self._build_disk_graph(session, allocated_tib=100.0)
+        # No DiskChargeSummary row seeded — fresh allocation.
+        rows = _build_project_resources_data(project)
+        disk = next(r for r in rows if r['resource_type'] == 'DISK')
+        assert disk['used'] == 0.0
+        assert disk['percent_used'] == 0.0
+        assert disk['remaining'] == 100.0
+        assert disk['activity_date'] is None
+
+
+class TestDiskCapacityInAllocationSummary:
+    """`get_allocation_summary_with_usage` returns capacity-based
+    total_used for disk-only rows (the /allocations dashboard table)."""
+
+    def test_disk_row_uses_capacity(self, session, active_project):
+        """Hang a fresh DISK account+allocation+snapshot off an existing
+        snapshot project so the AllocationType/Panel/Facility joins in
+        get_allocation_summary() resolve. The query inner-joins
+        Project → AllocationType → Panel → Facility, so a bare
+        make_project() (no allocation_type wiring) yields zero rows."""
+        from datetime import date as _date
+        from sam import ResourceType
+        from sam.summaries.disk_summaries import (
+            DiskChargeSummary,
+            mark_disk_snapshot_current,
+        )
+        BYTES_PER_TIB = 1024 ** 4
+        rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
+        if rt is None:
+            rt = make_resource_type(session, resource_type='DISK')
+        resource = make_resource(
+            session, resource_type=rt,
+            resource_name=f"Campaign_Store_{next_seq('cs')}",
+        )
+        lead = active_project.lead or make_user(session)
+        account = make_account(session, project=active_project, resource=resource)
+        make_allocation(
+            session, account=account, amount=100.0,
+            start_date=datetime.now() - timedelta(days=30),
+            end_date=datetime.now() + timedelta(days=335),
+        )
+        snap = _date(2026, 4, 18)
+        session.add(DiskChargeSummary(
+            activity_date=snap,
+            account_id=account.account_id,
+            user_id=lead.user_id,
+            username=lead.username,
+            projcode=active_project.projcode,
+            number_of_files=100,
+            bytes=25 * BYTES_PER_TIB,
+            terabyte_years=2.5,
+            charges=2.5,
+        ))
+        session.flush()
+        mark_disk_snapshot_current(session, snap)
+        rows = get_allocation_summary_with_usage(
+            session,
+            resource_name=resource.resource_name,
+            projcode=active_project.projcode,
+        )
+        assert rows, "expected at least one summary row"
+        disk_row = rows[0]
+        assert disk_row['total_used'] == pytest.approx(25.0, abs=1e-6)
+        assert disk_row['percent_used'] == pytest.approx(25.0, abs=1e-4)
+        assert disk_row.get('activity_date') == snap
 
 
 # ============================================================================
