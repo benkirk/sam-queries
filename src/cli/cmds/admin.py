@@ -154,15 +154,35 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
 
 @cli.command()
 @click.option('--comp', is_flag=True, help='Post computational charge summaries')
-@click.option('--disk', is_flag=True, help='Post disk charge summaries (not yet implemented)')
+@click.option('--disk', is_flag=True, help='Post disk charge summaries')
 @click.option('--archive', is_flag=True, help='Post archive charge summaries (not yet implemented)')
 @click.option('--reconcile-quotas', 'reconcile_quotas', type=click.Path(exists=True, dir_okay=False),
               default=None, metavar='PATH',
               help='Reconcile SAM allocations against a storage quota file (requires --resource)')
 @click.option('--resource', type=str, default=None,
-              help='Resource name (required with --reconcile-quotas, e.g. Campaign_Store)')
+              help='Resource name (required with --reconcile-quotas/--disk, e.g. Campaign_Store)')
 @click.option('--machine', '-m', type=click.Choice(['derecho', 'casper']), default=None,
-              help='HPC machine (required with --comp/--disk/--archive)')
+              help='HPC machine (required with --comp)')
+# --disk-specific options
+@click.option('--user-usage', 'user_usage_path',
+              type=click.Path(exists=True, dir_okay=False),
+              default=None, metavar='PATH',
+              help='Per-user-per-project disk usage file (required with --disk; e.g. acct.glade.YYYY-MM-DD)')
+@click.option('--quotas', 'quotas_path',
+              type=click.Path(exists=True, dir_okay=False),
+              default=None, metavar='PATH',
+              help='GPFS cs_usage.json (required with --disk --reconcile-quota-gap)')
+@click.option('--reporting-interval', 'reporting_interval', type=int, default=7, show_default=True,
+              help='Snapshot interval in days (used in TiB-year math)')
+@click.option('--unidentified-label', 'unidentified_label', type=str, default='<unidentified>',
+              show_default=True,
+              help='Audit label for synthetic gap rows (written to act_username only; never added to users table)')
+@click.option('--reconcile-quota-gap', 'reconcile_quota_gap', is_flag=True,
+              help='Attribute (FILESET total - Σuser_rows) to project lead with --unidentified-label (requires --quotas)')
+@click.option('--gap-tolerance-bytes', 'gap_tolerance_bytes', type=int, default=1024 ** 3, show_default=True,
+              help='Minimum absolute gap in bytes before emitting a synthetic row (default 1 GiB)')
+@click.option('--gap-tolerance-frac', 'gap_tolerance_frac', type=float, default=0.01, show_default=True,
+              help='Minimum gap as a fraction of FILESET usage before emitting a synthetic row (default 1%)')
 @click.option('--start', type=str, default=None, help='Start date (YYYY-MM-DD, inclusive; default: 2024-01-01)')
 @click.option('--end', type=str, default=None, help='End date (YYYY-MM-DD, inclusive; default: yesterday)')
 @click.option('-d', '--date', 'date_str', type=str, default=None, help='Specific date (YYYY-MM-DD)')
@@ -189,7 +209,11 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
 @click.option('--verbose', '-v', is_flag=True, help='Show per-row warnings and details (charge-posting modes only)')
 @pass_context
 def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
-               machine, start, end, date_str, today_flag, last,
+               machine,
+               user_usage_path, quotas_path, reporting_interval,
+               unidentified_label, reconcile_quota_gap,
+               gap_tolerance_bytes, gap_tolerance_frac,
+               start, end, date_str, today_flag, last,
                dry_run, update_accounting_system, deactivate_orphaned,
                force, verify_paths, verify_host,
                skip_errors, create_queues, chunk_size,
@@ -197,8 +221,8 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     """Post charge summaries into SAM, or reconcile allocations against quota truth.
 
     \b
-    Two modes:
-      1. Post charge summaries  (--comp / --disk / --archive)
+    Three modes:
+      1. Post HPC charge summaries  (--comp / --archive)
          Required: --machine and a date selection.
          Date Selection:
            --date YYYY-MM-DD   Single specific date
@@ -206,7 +230,14 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
            --last N[d]         Last N days including today
            --start / --end     Date range (defaults: 2024-01-01 to yesterday)
 
-      2. Reconcile storage quotas  (--reconcile-quotas PATH)
+      2. Post disk charge summaries  (--disk)
+         Required: --resource <name> and --user-usage <path>
+         Optional: --quotas <path> --reconcile-quota-gap
+         Snapshot date is read from the user-usage file. Date flags
+         are accepted as a safety filter (we error if the snapshot
+         lies outside the selected window).
+
+      3. Reconcile storage quotas  (--reconcile-quotas PATH)
          Required: --resource <name>
          Report-only by default — full tables, no writes.  Each write
          flag is independent; combine them as needed:
@@ -282,10 +313,67 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         )
         sys.exit(exit_code)
 
-    # Charge-posting mode: machine + dates required
+    # --- Disk charge import (separate validation path) ---------------------
+    if disk:
+        if not resource:
+            ctx.console.print(
+                "Error: --disk requires --resource",
+                style="bold red",
+            )
+            sys.exit(1)
+        if machine:
+            ctx.console.print(
+                "Error: --machine is HPC-only; do not pass it with --disk",
+                style="bold red",
+            )
+            sys.exit(1)
+        if not user_usage_path:
+            ctx.console.print(
+                "Error: --disk requires --user-usage <path>",
+                style="bold red",
+            )
+            sys.exit(1)
+        if reconcile_quota_gap and not quotas_path:
+            ctx.console.print(
+                "Error: --reconcile-quota-gap requires --quotas <path>",
+                style="bold red",
+            )
+            sys.exit(1)
+
+        # Date selection is optional for --disk: the snapshot date comes
+        # from the file itself. If the admin DOES specify a window, treat
+        # it as a safety filter (we error if the snapshot lies outside).
+        start_date = end_date = None
+        if any([date_str, start, end, today_flag, last]):
+            _validate_accounting_dates(date_str, start, end, today_flag, last)
+            start_date, end_date = _resolve_accounting_dates(
+                date_str, start, end, today_flag, last
+            )
+
+        command = AccountingAdminCommand(ctx)
+        exit_code = command.execute(
+            disk=True,
+            resource=resource,
+            user_usage_path=user_usage_path,
+            quotas_path=quotas_path,
+            reporting_interval=reporting_interval,
+            unidentified_label=unidentified_label,
+            reconcile_quota_gap=reconcile_quota_gap,
+            gap_tolerance_bytes=gap_tolerance_bytes,
+            gap_tolerance_frac=gap_tolerance_frac,
+            start_date=start_date,
+            end_date=end_date,
+            dry_run=dry_run,
+            skip_errors=skip_errors,
+            chunk_size=chunk_size,
+            include_deleted_accounts=include_deleted_accounts,
+        )
+        sys.exit(exit_code)
+
+    # Charge-posting mode (--comp / --archive): machine + dates required
     if not machine:
         ctx.console.print(
-            "Error: --machine is required with --comp/--disk/--archive",
+            "Error: --machine is required with --comp",
             style="bold red",
         )
         sys.exit(1)
@@ -295,7 +383,6 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     command = AccountingAdminCommand(ctx)
     exit_code = command.execute(
         comp=comp,
-        disk=disk,
         archive=archive,
         machine=machine,
         start_date=start_date,
