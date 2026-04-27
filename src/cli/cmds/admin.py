@@ -153,13 +153,16 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
 
 
 @cli.command()
-# --- Mode selectors ---------------------------------------------------------
-@click.option('--comp', is_flag=True, help='[mode] Post computational charge summaries')
-@click.option('--disk', is_flag=True, help='[mode] Post disk charge summaries')
-@click.option('--archive', is_flag=True, help='[mode] Post archive charge summaries (not yet implemented)')
+# --- Mode selectors (mutually exclusive — pick exactly one) ----------------
+@click.option('--comp', is_flag=True,
+              help='Mode: post computational charge summaries')
+@click.option('--disk', is_flag=True,
+              help='Mode: post disk charge summaries')
+@click.option('--archive', is_flag=True,
+              help='Mode: post archive charge summaries (not yet implemented)')
 @click.option('--reconcile-quotas', 'reconcile_quotas', type=click.Path(exists=True, dir_okay=False),
               default=None, metavar='PATH',
-              help='[mode] Reconcile SAM allocations against a storage quota file (requires --resource)')
+              help='Mode: reconcile SAM allocations against a storage quota file (requires --resource)')
 # --- Common ----------------------------------------------------------------
 @click.option('--resource', type=str, default=None,
               help='[disk/reconcile] Resource name (e.g. Campaign_Store)')
