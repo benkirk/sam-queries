@@ -425,14 +425,25 @@ class AccountingAdminCommand(BaseCommand):
             )
             return 2
 
-        # ---- 3. Date-window safety check -------------------------------
+        # ---- 3. Date assertion (--date safety check) -------------------
+        # The CLI collapses --date to start_date == end_date == expected.
+        # If the operator supplied --date, the file's snapshot date must
+        # equal it exactly. This catches "wrong file fed to wrong date"
+        # mistakes early, before any DB writes.
         if start_date is not None and end_date is not None:
             if not (start_date <= snap_date <= end_date):
-                self.console.print(
-                    f"Error: snapshot date {snap_date} falls outside the "
-                    f"requested window {start_date}..{end_date}",
-                    style="bold red",
-                )
+                if start_date == end_date:
+                    self.console.print(
+                        f"Error: snapshot date {snap_date} does not match "
+                        f"--date {start_date}",
+                        style="bold red",
+                    )
+                else:
+                    self.console.print(
+                        f"Error: snapshot date {snap_date} falls outside the "
+                        f"requested window {start_date}..{end_date}",
+                        style="bold red",
+                    )
                 return 2
 
         # ---- 4. Cutover-epoch enforcement ------------------------------
