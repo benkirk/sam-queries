@@ -277,8 +277,15 @@ def queue_history(system, queue_name):
 @login_required
 @require_permission(Permission.EDIT_SYSTEM_STATUS)
 def htmx_create_outage():
-    """Create an outage and redirect back to the status page."""
+    """Create an outage and redirect back to the status page.
+
+    Form datetime-local values are TZ-blind on the wire. The companion
+    `tz` hidden field carries the operator's browser TZ (IANA name) so
+    we can normalize the entered wall-clock time to naive-UTC for
+    storage. `tz` falls back to the configured display TZ if missing
+    (older clients, scripted POSTs)."""
     from system_status.models import SystemOutage
+    from sam.fmt import naive_local_to_utc
 
     system_name = request.form.get('system_name', '').strip()
     title = request.form.get('title', '').strip()
@@ -288,6 +295,8 @@ def htmx_create_outage():
         flash('System, title, and severity are required.', 'error')
         return redirect(url_for('status_dashboard.index'))
 
+    operator_tz = request.form.get('tz', '').strip() or None
+
     outage = SystemOutage(
         system_name=system_name,
         title=title,
@@ -295,20 +304,22 @@ def htmx_create_outage():
         component=request.form.get('component', '').strip() or None,
         description=request.form.get('description', '').strip() or None,
         status='investigating',
-        start_time=datetime.now(),
+        start_time=datetime.now(),  # already UTC under TZ=UTC
     )
 
     start_time_str = request.form.get('start_time', '').strip()
     if start_time_str:
         try:
-            outage.start_time = datetime.fromisoformat(start_time_str)
+            outage.start_time = naive_local_to_utc(
+                datetime.fromisoformat(start_time_str), operator_tz)
         except ValueError:
             pass
 
     est_res_str = request.form.get('estimated_resolution', '').strip()
     if est_res_str:
         try:
-            outage.estimated_resolution = datetime.fromisoformat(est_res_str)
+            outage.estimated_resolution = naive_local_to_utc(
+                datetime.fromisoformat(est_res_str), operator_tz)
         except ValueError:
             pass
 
@@ -350,10 +361,14 @@ def htmx_update_outage(outage_id):
 
     outage.description = request.form.get('description', '').strip() or None
 
+    # Naive-UTC conversion mirrors htmx_create_outage; see its docstring.
+    from sam.fmt import naive_local_to_utc
+    operator_tz = request.form.get('tz', '').strip() or None
     est_res_str = request.form.get('estimated_resolution', '').strip()
     if est_res_str:
         try:
-            outage.estimated_resolution = datetime.fromisoformat(est_res_str)
+            outage.estimated_resolution = naive_local_to_utc(
+                datetime.fromisoformat(est_res_str), operator_tz)
         except ValueError:
             pass
     else:

@@ -85,11 +85,10 @@
                     </div>
                 </div>
                 <div class="text-end">
-                    {# PBS-sourced reservations are stored as naive cluster-local
-                       time (`pbs_rstat -f` output, parsed via strptime in
-                       collectors/lib/parsers/reservations.py) — render as-is
-                       and tag with the display TZ for clarity. #}
-                    <div class="fw-bold">{{ res.start_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} - {{ res.end_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} {{ local_tz_label() }}</div>
+                    {# PBS reservations are stored naive-UTC (parser anchors
+                       cluster-local PBS output to America/Denver and converts
+                       to UTC).  Convert back to display TZ for human reading. #}
+                    <div class="fw-bold">{{ res.start_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }} - {{ res.end_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}</div>
                 </div>
             </div>
         </div>

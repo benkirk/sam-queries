@@ -73,6 +73,30 @@ def local_tz_label() -> str:
     abbr = datetime.now(_DISPLAY_TZ).strftime('%Z')
     return abbr or _DISPLAY_TZ_NAME
 
+
+def naive_local_to_utc(
+    dt: Optional[datetime],
+    tz_name: Optional[str] = None,
+) -> Optional[datetime]:
+    """Treat a naive datetime as wall-clock time in `tz_name` and return the
+    equivalent naive-UTC datetime.  Used at form-submit time to normalize
+    operator-entered values (browser-local) into the project's naive-UTC
+    storage convention.
+
+    None passes through.  An already-aware datetime is converted directly.
+    A bad / missing tz_name falls back to STATUS_DISPLAY_TZ."""
+    if dt is None:
+        return None
+    tz = _DISPLAY_TZ
+    if tz_name:
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = _DISPLAY_TZ
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tz)
+    return dt.astimezone(_UTC).replace(tzinfo=None)
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 # Numbers ≤ this are shown exactly with thousands separators ("99,999").

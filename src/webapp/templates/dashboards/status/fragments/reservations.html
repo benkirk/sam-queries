@@ -9,10 +9,10 @@
                 </h6>
             </div>
             <div class="text-muted">
-                {# PBS reservations are stored as naive cluster-local time;
-                   render as-is (do NOT apply to_local_dt — it would shift 6h)
-                   but tag with the display TZ for clarity. #}
-                {{ res.start_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} - {{ res.end_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} {{ local_tz_label() }}
+                {# PBS reservations are stored naive-UTC (parser anchors
+                   cluster-local PBS output to America/Denver and converts
+                   to UTC).  Convert back to display TZ for human reading. #}
+                {{ res.start_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }} - {{ res.end_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
             </div>
         </div>
         {% if res.description %}
