@@ -19,10 +19,10 @@ Two helpers:
 
 from __future__ import annotations
 
-from datetime import date as _stdlib_date, datetime
+from datetime import date as _stdlib_date
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from sam.accounting.accounts import Account
@@ -259,14 +259,12 @@ def build_disk_subtree(
         a.project_id: a for a in accounts
     }
 
-    # Bulk-load active project directories for the subtree.
-    now = datetime.now()
+    # Bulk-load active project directories for the subtree. Use the
+    # universal `is_active` hybrid rather than hand-rolled date checks
+    # (CLAUDE.md "Universal is_active interface" rule).
     dirs = session.query(ProjectDirectory).filter(
         ProjectDirectory.project_id.in_(project_ids),
-        and_(
-            (ProjectDirectory.start_date == None) | (ProjectDirectory.start_date <= now),  # noqa: E711
-            (ProjectDirectory.end_date == None) | (ProjectDirectory.end_date > now),  # noqa: E711
-        ),
+        ProjectDirectory.is_active,
     ).all()
     dirs_by_project_id: Dict[int, List[str]] = {}
     for d in dirs:
