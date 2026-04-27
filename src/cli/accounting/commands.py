@@ -473,6 +473,48 @@ class AccountingAdminCommand(BaseCommand):
             e.terabyte_years = tib_years(e.bytes, reporting_interval)
             e.charges = e.terabyte_years
 
+        # ---- 6b. Resolve projcode for normal rows ----------------------
+        # The acct.glade column 3 is a fileset label (e.g. 'cesm', 'cgd')
+        # not a SAM projcode (e.g. 'CESM0001', 'NCGD0009'). The legacy
+        # Java ingest resolved this via directory_path → ProjectDirectory
+        # → Project. Mirror that here: prefer the path-based lookup, fall
+        # back to projcode-as-label, give up if neither works (the row is
+        # then skipped if --skip-errors, else aborts the chunk).
+        from sam.projects.projects import ProjectDirectory, Project
+        from sam.accounting.accounts import Account
+        pd_path_to_project: dict[str, "Project"] = {
+            pd.directory_name: proj
+            for pd, proj in (
+                self.session.query(ProjectDirectory, Project)
+                .join(Project, Project.project_id == ProjectDirectory.project_id)
+                .filter(ProjectDirectory.is_currently_active)
+                .all()
+            )
+        }
+        # Cache resolved Account per project_id for this resource.
+        account_cache: dict[int, "Account"] = {}
+
+        def _resolve_for_row(row) -> tuple[bool, Optional["Project"], Optional["Account"]]:
+            """Return (resolved_ok, project, account). For normal rows only —
+            gap rows already carry user/account overrides."""
+            project = None
+            if row.directory_path and row.directory_path in pd_path_to_project:
+                project = pd_path_to_project[row.directory_path]
+            if project is None:
+                project = Project.get_by_projcode(self.session, row.projcode)
+            if project is None:
+                return False, None, None
+            acct = account_cache.get(project.project_id)
+            if acct is None:
+                acct = Account.get_by_project_and_resource(
+                    self.session, project.project_id, resource.resource_id,
+                    exclude_deleted=not include_deleted_accounts,
+                )
+                if acct is None:
+                    return False, project, None
+                account_cache[project.project_id] = acct
+            return True, project, acct
+
         # ---- 7. Verbose dry-run table ----------------------------------
         if self.ctx.verbose:
             display_disk_dry_run_table(
@@ -481,6 +523,42 @@ class AccountingAdminCommand(BaseCommand):
 
         if dry_run:
             return 0
+
+        # ---- 7b. Idempotency: delete pre-existing rows for this
+        # (resource, snapshot_date) so a re-run replaces rather than
+        # duplicates. Necessary because the legacy ingest left
+        # `act_username` / `act_projcode` as NULL, which means our
+        # natural-key UPDATE wouldn't match those rows — they'd accumulate
+        # alongside the new ones, double-counting on roll-up. Same delete
+        # also cleans up the prior post-epoch run on this date.
+        from sam.summaries.disk_summaries import DiskChargeSummary
+        n_deleted_legacy = 0
+        try:
+            with management_transaction(self.session):
+                deleted = (
+                    self.session.query(DiskChargeSummary)
+                    .filter(DiskChargeSummary.activity_date == snap_date)
+                    .filter(
+                        DiskChargeSummary.account_id.in_(
+                            self.session.query(Account.account_id).filter(
+                                Account.resource_id == resource.resource_id,
+                            )
+                        )
+                    )
+                    .delete(synchronize_session=False)
+                )
+                n_deleted_legacy = int(deleted)
+        except Exception as exc:  # noqa: BLE001
+            self.console.print(
+                f"[bold red]Failed to clear existing rows for {snap_date}: {exc}[/bold red]"
+            )
+            return 2
+        if n_deleted_legacy:
+            self.console.print(
+                f"[dim]Cleared {n_deleted_legacy} pre-existing "
+                f"disk_charge_summary row(s) for "
+                f"{resource_name} on {snap_date} before re-import.[/dim]"
+            )
 
         # ---- 8. Chunked upsert -----------------------------------------
         n_created = 0
@@ -520,9 +598,27 @@ class AccountingAdminCommand(BaseCommand):
                                 if row.user_override is not None:
                                     act_uname = row.act_username
                                     act_pcode = None
+                                    project_for_upsert = None
+                                    account_for_upsert = row.account_override
                                 else:
                                     act_uname = row.username
-                                    act_pcode = row.projcode
+                                    # Resolve project from directory_path
+                                    # (umbrella filesets like 'cgd' map to
+                                    # specific SAM projects via
+                                    # ProjectDirectory).
+                                    ok, project_for_upsert, account_for_upsert = _resolve_for_row(row)
+                                    if not ok:
+                                        raise ValueError(
+                                            f"Could not resolve project/account for "
+                                            f"row projcode={row.projcode!r} "
+                                            f"path={row.directory_path!r} on "
+                                            f"resource {resource_name!r}"
+                                        )
+                                    # Stash the resolved projcode in the
+                                    # audit column so the row carries the
+                                    # SAM-canonical name, not the umbrella
+                                    # label from the input file.
+                                    act_pcode = project_for_upsert.projcode
                                 _, action = upsert_disk_charge_summary(
                                     self.session,
                                     activity_date=row.activity_date,
@@ -535,7 +631,8 @@ class AccountingAdminCommand(BaseCommand):
                                     bytes=row.bytes,
                                     terabyte_years=row.terabyte_years,
                                     user=row.user_override,
-                                    account=row.account_override,
+                                    project=project_for_upsert,
+                                    account=account_for_upsert,
                                     include_deleted_accounts=include_deleted_accounts,
                                 )
                                 if action == 'created':
