@@ -9,6 +9,8 @@
                 </h6>
             </div>
             <div class="text-muted">
+                {# PBS reservations are stored as naive cluster-local time;
+                   render as-is (do NOT apply to_local_dt — it would shift 6h). #}
                 {{ res.start_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} - {{ res.end_time | fmt_date(fmt='%Y-%m-%d %H:%M') }}
             </div>
         </div>

@@ -25,7 +25,7 @@
 <div class="card mb-4">
     <div class="card-header">
         <h5 class="mb-0"><i class="fas fa-clock"></i> Current Status</h5>
-        <small class="text-muted">Last Updated: {{ latest_status.timestamp | fmt_date(fmt='%Y-%m-%d %H:%M') }}</small>
+        <small class="text-muted">Last Updated: {{ latest_status.timestamp | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}</small>
     </div>
     <div class="card-body">
         <div class="row">

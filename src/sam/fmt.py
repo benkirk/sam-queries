@@ -30,10 +30,48 @@ Quick reference
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
 """
 import math
+import os
 from datetime import date, datetime
 from typing import Optional, Union
+from zoneinfo import ZoneInfo
 
 from config import SAMConfig
+
+
+# ── Display timezone for naive-UTC datetimes ────────────────────────────────
+#
+# Database / collector convention is naive-UTC (CLAUDE.md).  When rendering
+# datetimes for human eyes, convert to the configured display TZ.  Default
+# is America/Denver since the systems and most users are in NCAR's TZ.
+# Override with STATUS_DISPLAY_TZ for other deployments.
+
+_DISPLAY_TZ_NAME = os.environ.get('STATUS_DISPLAY_TZ', 'America/Denver')
+_DISPLAY_TZ = ZoneInfo(_DISPLAY_TZ_NAME)
+_UTC = ZoneInfo('UTC')
+
+
+def to_local_dt(dt: Optional[datetime]) -> Optional[datetime]:
+    """Convert a naive-UTC datetime to a tz-aware datetime in the display TZ.
+
+    Returns None unchanged.  `date` (no time) is returned unchanged since
+    a calendar date has no time-of-day to localise.  Already-aware
+    datetimes are converted to the display TZ; naive datetimes are
+    assumed to be UTC (the project-wide convention).
+    """
+    if dt is None:
+        return None
+    if not isinstance(dt, datetime):
+        return dt  # pure date — leave alone
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_UTC)
+    return dt.astimezone(_DISPLAY_TZ)
+
+
+def local_tz_label() -> str:
+    """DST-aware short abbreviation for the active display TZ (e.g. 'MDT'/'MST').
+    Falls back to the IANA name if the platform doesn't supply an abbrev."""
+    abbr = datetime.now(_DISPLAY_TZ).strftime('%Z')
+    return abbr or _DISPLAY_TZ_NAME
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -305,10 +343,11 @@ def register_jinja_filters(app) -> None:
                       {{ value | fmt_date(fmt='%b %Y') }}
         fmt_size    — {{ value | fmt_size }}
     """
-    app.jinja_env.filters['fmt_number'] = number
-    app.jinja_env.filters['fmt_pct']    = pct
-    app.jinja_env.filters['fmt_date']   = date_str
-    app.jinja_env.filters['fmt_size']   = size
+    app.jinja_env.filters['fmt_number']   = number
+    app.jinja_env.filters['fmt_pct']      = pct
+    app.jinja_env.filters['fmt_date']     = date_str
+    app.jinja_env.filters['fmt_size']     = size
+    app.jinja_env.filters['to_local_dt']  = to_local_dt
 
 
 def mpl_number_formatter(sig_figs: Optional[int] = None):

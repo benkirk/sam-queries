@@ -122,6 +122,9 @@
                     </div>
                 </div>
                 <div class="text-end">
+                    {# PBS-sourced reservations are stored as naive cluster-local
+                       time (`pbs_rstat -f` output, parsed via strptime in
+                       collectors/lib/parsers/reservations.py) — render as-is. #}
                     <div class="fw-bold">{{ res.start_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} - {{ res.end_time | fmt_date(fmt='%Y-%m-%d %H:%M') }}</div>
                 </div>
             </div>
