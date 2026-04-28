@@ -16,7 +16,13 @@ from sam.schemas.forms.user import EditAllocationForm, SetShellForm, SetPrimaryG
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
-from sam.queries.disk_usage import build_disk_subtree, get_disk_usage_timeseries_by_user
+from sam.queries.disk_usage import (
+    build_disk_subtree,
+    get_directory_user_breakdown_at,
+    get_disk_usage_timeseries_by_user,
+    get_disk_usage_timeseries_for_directory,
+    get_subtree_directory_usage_at,
+)
 from sam.queries.rolling_usage import get_project_rolling_usage
 from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project, get_charges_by_projcode
 from sam.queries.lookups import find_project_by_code, get_user_group_access, get_group_members
@@ -562,6 +568,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
     """
     resource_name = resource.resource_name
     scope = request.args.get('scope', project.projcode)
+    fileset = request.args.get('fileset') or None
 
     # Validate scope belongs to this project's tree; fall back to root.
     if scope != project.projcode:
@@ -577,6 +584,30 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
     scope_node = _find_disk_node(full_tree, scope) or full_tree
     scope_account_ids = _collect_disk_account_ids(scope_node)
 
+    # Aggregate per-fileset rows across the entire scoped subtree at
+    # the latest snapshot date — single query covering every disk
+    # account in the scope. This populates the Filesets card on
+    # *both* leaf-project and tree pages (replacing the per-node
+    # `directories` payload that build_disk_subtree only attached
+    # for the multi-fileset case).
+    subtree_activity_date = _disk_subtree_latest_activity_date(scope_node)
+    fileset_dirs = get_subtree_directory_usage_at(
+        db.session,
+        account_ids=scope_account_ids,
+        resource_name=resource_name,
+        activity_date=subtree_activity_date,
+    )
+    # Make the Filesets card visible to the template by hanging
+    # the aggregated list off scope_node.
+    scope_node['directories'] = fileset_dirs
+
+    # Validate the fileset (if any) is one of the scope's directories.
+    # An invalid `?fileset=` is silently dropped — fall back to
+    # project-scope rendering.
+    if fileset is not None:
+        if not any(d['name'] == fileset for d in fileset_dirs):
+            fileset = None
+
     # Pool capacity (TiB) for the scope: the master allocation's
     # amount, NOT the sum across child accounts. Inheriting children
     # share the parent's cap; summing them double-counts. See
@@ -586,26 +617,62 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         db.session, scope_node['projcode'], resource,
     )
 
-    used_bytes = _disk_subtree_total_bytes(scope_node)
-    used_tib = used_bytes / (1024 ** 4)
-    total_files = _disk_subtree_total_files(scope_node)
-    activity_date = _disk_subtree_latest_activity_date(scope_node)
+    if fileset is None:
+        # Project-scope rendering (default).
+        used_bytes = _disk_subtree_total_bytes(scope_node)
+        used_tib = used_bytes / (1024 ** 4)
+        total_files = _disk_subtree_total_files(scope_node)
+        activity_date = _disk_subtree_latest_activity_date(scope_node)
+        timeseries = get_disk_usage_timeseries_by_user(
+            db.session,
+            account_ids=scope_account_ids,
+            start_date=start_date.date() if hasattr(start_date, 'date') else start_date,
+            end_date=end_date.date() if hasattr(end_date, 'date') else end_date,
+            top_n=10,
+        )
+        user_rows = _build_disk_user_table(
+            db.session, scope_account_ids, activity_date, used_bytes,
+        )
+    else:
+        # Fileset-scoped rendering: chart + per-user table read from
+        # `disk_activity` (joined through `disk_charge` for `user_id`)
+        # filtered by `directory_name`. Capacity card numbers come
+        # from the aggregated per-fileset row. The fileset may belong
+        # to a child project deeper in the subtree — `scope_account_ids`
+        # bounds the query correctly without needing the owner's
+        # project_id explicitly.
+        fileset_row = next(d for d in fileset_dirs if d['name'] == fileset)
+        used_bytes = fileset_row['bytes']
+        used_tib = used_bytes / (1024 ** 4)
+        total_files = fileset_row['files']
+        activity_date = subtree_activity_date
+        timeseries = get_disk_usage_timeseries_for_directory(
+            db.session,
+            account_ids=scope_account_ids,
+            resource_name=resource_name,
+            directory_name=fileset,
+            start_date=start_date.date() if hasattr(start_date, 'date') else start_date,
+            end_date=end_date.date() if hasattr(end_date, 'date') else end_date,
+            top_n=10,
+        )
+        breakdown = get_directory_user_breakdown_at(
+            db.session,
+            account_ids=scope_account_ids,
+            resource_name=resource_name,
+            directory_name=fileset,
+            activity_date=activity_date,
+        )
+        user_rows = [{
+            'user_id':       r['user_id'],
+            'username':      r['username'],
+            'bytes':         r['bytes'],
+            'file_count':    r['files'],
+            'percent_of_project':
+                (r['bytes'] / used_bytes * 100) if used_bytes > 0 else 0.0,
+        } for r in breakdown]
+
     percent_used = (used_tib / allocated_tib * 100) if allocated_tib > 0 else 0.0
-
-    # Time-series for the stacked-area chart.
-    timeseries = get_disk_usage_timeseries_by_user(
-        db.session,
-        account_ids=scope_account_ids,
-        start_date=start_date.date() if hasattr(start_date, 'date') else start_date,
-        end_date=end_date.date() if hasattr(end_date, 'date') else end_date,
-        top_n=10,
-    )
     usage_chart = generate_disk_usage_stacked_area(timeseries)
-
-    # Per-user table at the latest snapshot date for the scope.
-    user_rows = _build_disk_user_table(
-        db.session, scope_account_ids, activity_date, used_bytes,
-    )
 
     return render_template(
         'dashboards/user/resource_details_disk.html',
@@ -616,6 +683,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         resource=resource,
         scope=scope,
         scope_node=scope_node,
+        fileset=fileset,
         tree_data=full_tree,
         has_children=bool(project.has_children),
         start_date=start_date.strftime('%Y-%m-%d'),

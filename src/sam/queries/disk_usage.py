@@ -356,6 +356,196 @@ def get_disk_usage_timeseries_by_user(
     return {'dates': dates, 'series': series}
 
 
+def get_disk_usage_timeseries_for_directory(
+    session: Session,
+    *,
+    account_ids: List[int],
+    resource_name: str,
+    directory_name: str,
+    start_date: Optional[_stdlib_date] = None,
+    end_date: Optional[_stdlib_date] = None,
+    top_n: int = 10,
+) -> Dict[str, Any]:
+    """Per-user disk-bytes timeseries for a single fileset.
+
+    Same return shape and ranking semantics as
+    :func:`get_disk_usage_timeseries_by_user`, but reads from
+    ``disk_activity`` (joined through ``disk_charge`` for ``user_id``)
+    so it can filter by ``directory_name``. Used by the dashboard
+    when the user clicks a fileset row to scope the chart.
+
+    Accepts ``account_ids`` (not a single ``project_id``) so it works
+    for any subtree slice — a fileset can belong to a child project
+    deeper in the tree, but the scope's account set still bounds it
+    correctly.
+
+    History depth is bounded by what the importer has populated in
+    ``disk_activity`` — older snapshots that pre-date Layer 2 won't
+    appear. The summary path stays as the chart source for
+    project-level views.
+    """
+    if not account_ids:
+        return {'dates': [], 'series': []}
+    q = session.query(
+        DiskActivity.activity_date,
+        DiskCharge.user_id,
+        User.username,
+        func.coalesce(func.sum(DiskActivity.bytes), 0).label('bytes'),
+    ).join(
+        DiskCharge, DiskCharge.disk_activity_id == DiskActivity.disk_activity_id,
+    ).join(
+        User, User.user_id == DiskCharge.user_id,
+    ).filter(
+        DiskCharge.account_id.in_(account_ids),
+        DiskActivity.resource_name == resource_name,
+        DiskActivity.directory_name == directory_name,
+    )
+    if start_date is not None:
+        q = q.filter(DiskActivity.activity_date >= start_date)
+    if end_date is not None:
+        q = q.filter(DiskActivity.activity_date <= end_date)
+    rows = q.group_by(
+        DiskActivity.activity_date,
+        DiskCharge.user_id,
+        User.username,
+    ).all()
+
+    if not rows:
+        return {'dates': [], 'series': []}
+
+    per_user: Dict[int, Dict[str, Any]] = {}
+    dates_set: set = set()
+    for activity_date, user_id, username, b in rows:
+        dates_set.add(activity_date)
+        u = per_user.setdefault(
+            user_id,
+            {'username': username or f'uid_{user_id}', 'by_date': {}},
+        )
+        if username and not u['username'].startswith('uid_'):
+            u['username'] = username
+        u['by_date'][activity_date] = int(b or 0)
+
+    dates = sorted(dates_set)
+    last_date = dates[-1]
+
+    ranked = sorted(
+        per_user.items(),
+        key=lambda kv: kv[1]['by_date'].get(last_date, 0),
+        reverse=True,
+    )
+    top_users = ranked[:top_n]
+    rest_users = ranked[top_n:]
+
+    series: List[Dict[str, Any]] = []
+    if rest_users:
+        others_values = [0] * len(dates)
+        for _uid, info in rest_users:
+            for i, d in enumerate(dates):
+                others_values[i] += info['by_date'].get(d, 0)
+        series.append({'username': 'Others', 'values': others_values})
+    for _uid, info in reversed(top_users):
+        series.append({
+            'username': info['username'],
+            'values':   [info['by_date'].get(d, 0) for d in dates],
+        })
+    return {'dates': dates, 'series': series}
+
+
+def get_directory_user_breakdown_at(
+    session: Session,
+    *,
+    account_ids: List[int],
+    resource_name: str,
+    directory_name: str,
+    activity_date,
+) -> List[Dict[str, Any]]:
+    """Per-user bytes/files for a single fileset at one snapshot date.
+
+    Used by the dashboard's per-user table when scoped to a fileset.
+    Returns one row per resolved (tier-2-linked) user, sorted desc
+    by bytes. Accepts an ``account_ids`` set so it works for any
+    subtree slice (matching :func:`get_disk_usage_timeseries_for_directory`).
+    """
+    if activity_date is None or not account_ids:
+        return []
+    rows = (
+        session.query(
+            User.username.label('username'),
+            DiskCharge.user_id.label('user_id'),
+            func.sum(DiskActivity.bytes).label('bytes'),
+            func.sum(DiskActivity.number_of_files).label('files'),
+        )
+        .join(DiskCharge, DiskCharge.disk_activity_id == DiskActivity.disk_activity_id)
+        .join(User, User.user_id == DiskCharge.user_id)
+        .filter(
+            DiskCharge.account_id.in_(account_ids),
+            DiskActivity.resource_name == resource_name,
+            DiskActivity.directory_name == directory_name,
+            DiskActivity.activity_date == activity_date,
+        )
+        .group_by(User.username, DiskCharge.user_id)
+        .all()
+    )
+    return sorted(
+        [{'username': r.username,
+          'user_id': r.user_id,
+          'bytes': int(r.bytes or 0),
+          'files': int(r.files or 0)} for r in rows],
+        key=lambda d: d['bytes'],
+        reverse=True,
+    )
+
+
+def get_subtree_directory_usage_at(
+    session: Session,
+    *,
+    account_ids: List[int],
+    resource_name: str,
+    activity_date,
+) -> List[Dict[str, Any]]:
+    """Per-directory snapshot summed across an entire subtree.
+
+    Like :func:`get_directory_usage_at` but takes ``account_ids``
+    (typically every disk account in the scoped subtree) instead of
+    a single ``project_id``. Each result row also carries the owning
+    project's ``projcode`` so the dashboard can show which child
+    project a directory belongs to when the scope spans multiple
+    projects.
+
+    Returns ``[{name, bytes, files, projcode}, ...]`` sorted desc
+    by bytes. Empty list if ``account_ids`` is empty or
+    ``activity_date`` is None.
+    """
+    if activity_date is None or not account_ids:
+        return []
+    rows = (
+        session.query(
+            DiskActivity.directory_name.label('name'),
+            Project.projcode.label('projcode'),
+            func.sum(DiskActivity.bytes).label('bytes'),
+            func.sum(DiskActivity.number_of_files).label('files'),
+        )
+        .join(DiskCharge, DiskCharge.disk_activity_id == DiskActivity.disk_activity_id)
+        .join(Account, Account.account_id == DiskCharge.account_id)
+        .join(Project, Project.project_id == Account.project_id)
+        .filter(
+            DiskCharge.account_id.in_(account_ids),
+            DiskActivity.resource_name == resource_name,
+            DiskActivity.activity_date == activity_date,
+        )
+        .group_by(DiskActivity.directory_name, Project.projcode)
+        .all()
+    )
+    return sorted(
+        [{'name': r.name,
+          'projcode': r.projcode,
+          'bytes': int(r.bytes or 0),
+          'files': int(r.files or 0)} for r in rows],
+        key=lambda d: d['bytes'],
+        reverse=True,
+    )
+
+
 def get_directory_usage_at(
     session: Session,
     *,
