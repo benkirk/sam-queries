@@ -6,6 +6,7 @@ from .glade_csv import GladeCsvReader
 
 _READERS = {
     'Campaign_Store': GladeCsvReader,
+    'Quasar': GladeCsvReader,
 }
 
 

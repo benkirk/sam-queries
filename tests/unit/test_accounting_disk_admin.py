@@ -200,3 +200,43 @@ class TestDiskAdminCli:
         assert gap[0].bytes == 2 * 1024 ** 3
         # The normal row stores the parsed username as act_username.
         assert normal[0].act_username == lead.username
+
+    def test_rollup_total_row_attributed_to_project_lead(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """Quasar-style feeds ship one project-rollup row with
+        ``username='total'`` (no per-user breakdown). The import path
+        must attribute the row to the project lead while keeping
+        ``act_username='total'`` as the audit label."""
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        # 5 GiB rollup row, username='total'.
+        kib = 5 * 1024 * 1024
+        f = _write_acct(tmp_path, snap, project.projcode, 'total', kib=kib)
+
+        result = runner.invoke(cli, [
+            'accounting', '--disk',
+            '--resource', resource.resource_name,
+            '--user-usage', str(f),
+            '--date', snap.isoformat(),
+        ])
+        assert result.exit_code == 0, result.output
+
+        rows = session.query(DiskChargeSummary).filter(
+            DiskChargeSummary.activity_date == snap,
+            DiskChargeSummary.account_id == project.accounts[0].account_id,
+        ).all()
+        assert len(rows) == 1
+        row = rows[0]
+        # FK side points at the project lead — that's what makes user
+        # resolution and downstream charging math work.
+        assert row.user_id == lead.user_id
+        # Audit label is preserved so rollup rows are distinguishable
+        # from real per-user rows.
+        assert row.act_username == 'total'
+        # Resolved (mirrored) username is the lead's, per the act_*
+        # mirror-when-known convention.
+        assert row.username == lead.username
+        # Bytes match the input (5 GiB).
+        assert row.bytes == 5 * 1024 ** 3
+

@@ -51,6 +51,14 @@ GPU_FRACTION_THRESHOLD = 0.01  # 1%
 # canonical 'reservation' queue per resource that covers all of them.
 _RESERVATION_QUEUE_RE = re.compile(r'^[RMS]\d')
 
+# Per-user-disk-usage feeds for some resources (e.g. Quasar) only ship a
+# single rollup row per project — username is the literal sentinel
+# `'total'`. Treat these as project-wide aggregates: keep `act_username`
+# as the audit label, attribute the row to the project lead (matching
+# the `<unidentified>` gap-row convention) so user resolution and
+# downstream charging math succeed.
+_DISK_ROLLUP_USERNAMES = frozenset({'total'})
+
 
 def normalize_queue_name(queue_name: str) -> str:
     """Map ephemeral PBS reservation queue names to the canonical 'reservation' queue.
@@ -606,6 +614,7 @@ class AccountingAdminCommand(BaseCommand):
                                 # row.act_username carries the audit
                                 # label and row.user_override is set, so
                                 # the resolver is skipped entirely.
+                                user_for_upsert = row.user_override
                                 if row.user_override is not None:
                                     act_uname = row.act_username
                                     act_pcode = None
@@ -630,6 +639,24 @@ class AccountingAdminCommand(BaseCommand):
                                     # SAM-canonical name, not the umbrella
                                     # label from the input file.
                                     act_pcode = project_for_upsert.projcode
+
+                                    # Project-rollup feeds (Quasar's
+                                    # `'total'` rows): no per-user
+                                    # breakdown is shipped, so attribute
+                                    # the row to the project lead and
+                                    # keep the rollup sentinel as the
+                                    # audit username. Mirrors the
+                                    # `<unidentified>` gap-row
+                                    # convention (see
+                                    # `_build_unidentified_disk_rows`).
+                                    if act_uname in _DISK_ROLLUP_USERNAMES:
+                                        user_for_upsert = project_for_upsert.lead
+                                        if user_for_upsert is None:
+                                            raise ValueError(
+                                                f"rollup row username={act_uname!r} for "
+                                                f"projcode={act_pcode!r} but project has "
+                                                f"no lead — cannot attribute"
+                                            )
                                 _, action = upsert_disk_charge_summary(
                                     self.session,
                                     activity_date=row.activity_date,
@@ -641,7 +668,7 @@ class AccountingAdminCommand(BaseCommand):
                                     number_of_files=row.number_of_files,
                                     bytes=row.bytes,
                                     terabyte_years=row.terabyte_years,
-                                    user=row.user_override,
+                                    user=user_for_upsert,
                                     project=project_for_upsert,
                                     account=account_for_upsert,
                                     include_deleted_accounts=include_deleted_accounts,
