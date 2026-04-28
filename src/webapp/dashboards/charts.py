@@ -177,6 +177,87 @@ def generate_usage_timeseries_matplotlib(daily_charges) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 1b. Disk usage stacked-area chart (Resource Usage Details — DISK)
+# ---------------------------------------------------------------------------
+
+_BYTES_PER_TIB = 1024 ** 4
+_BYTES_PER_PIB = 1024 ** 5
+
+
+@_chart_cache(maxsize=128)
+def generate_disk_usage_stacked_area(timeseries) -> str:
+    """Render a stacked-area chart of disk bytes vs time.
+
+    Args:
+        timeseries: dict shaped as ``sam.queries.disk_usage.get_disk_usage_timeseries_by_user``
+                    returns: ``{'dates': [...], 'series': [{'username','values'}, ...]}``.
+                    The last series is conventionally ``'Others'`` (rendered last
+                    so it sits on top of the named-user stack).
+
+    Y-axis is auto-scaled to TiB or PiB based on the peak stacked total
+    (>= 1 PiB → PiB, else TiB). X-axis is date-formatted. Legend on the
+    right.
+    """
+    if not timeseries or not timeseries.get('dates') or not timeseries.get('series'):
+        return '<div class="text-center text-muted">No disk-usage history for this period</div>'
+
+    dates = list(timeseries['dates'])
+    series = list(timeseries['series'])
+    if not dates or not series:
+        return '<div class="text-center text-muted">No disk-usage history for this period</div>'
+
+    stacked_totals = [
+        sum(s['values'][i] for s in series)
+        for i in range(len(dates))
+    ]
+    peak = max(stacked_totals) if stacked_totals else 0
+    if peak >= _BYTES_PER_PIB:
+        scale = _BYTES_PER_PIB
+        unit_label = 'PiB'
+    else:
+        scale = _BYTES_PER_TIB
+        unit_label = 'TiB'
+
+    fig, ax = plt.subplots(figsize=(12, 4.5))
+    scaled_series = [
+        [v / scale for v in s['values']]
+        for s in series
+    ]
+    labels = [s['username'] for s in series]
+    # Others (always first per get_disk_usage_timeseries_by_user) gets a
+    # neutral grey so it doesn't compete with the named-user palette.
+    # Named users use matplotlib's default tab10 cycle.
+    cmap = matplotlib.colormaps.get_cmap('tab10')
+    colors = []
+    cycle_idx = 0
+    for s in series:
+        if s['username'] == 'Others':
+            colors.append('#9ca3af')   # tailwind-style neutral grey
+        else:
+            colors.append(cmap(cycle_idx % 10))
+            cycle_idx += 1
+    ax.stackplot(dates, *scaled_series, labels=labels, colors=colors, alpha=0.85)
+    ax.set_ylabel(f'Disk usage ({unit_label})')
+    ax.grid(True, alpha=0.3)
+    # Reverse the legend so it reads top-to-bottom in the same order as
+    # the visual stack (largest user on top).
+    handles, lbls = ax.get_legend_handles_labels()
+    ax.legend(
+        handles[::-1], lbls[::-1],
+        loc='center left',
+        bbox_to_anchor=(1.01, 0.5),
+        frameon=False,
+        fontsize=9,
+    )
+    fig.autofmt_xdate()
+
+    svg_io = StringIO()
+    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
+    plt.close(fig)
+    return svg_io.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # 2. Node type history (status dashboard)
 # ---------------------------------------------------------------------------
 

@@ -16,16 +16,21 @@ from sam.schemas.forms.user import EditAllocationForm, SetShellForm, SetPrimaryG
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
+from sam.queries.disk_usage import build_disk_subtree, get_disk_usage_timeseries_by_user
 from sam.queries.rolling_usage import get_project_rolling_usage
 from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project, get_charges_by_projcode
 from sam.queries.lookups import find_project_by_code, get_user_group_access, get_group_members
 from sam.queries.shells import get_allowable_shell_names, get_user_current_shell
+from sam.accounting.accounts import Account
 from sam.core.users import User
 from sam.projects.projects import Project
+from sam.resources.resources import Resource
+from sam.summaries.disk_summaries import DiskChargeSummary
+from sqlalchemy import func
 from webapp.utils.project_permissions import can_edit_consumption_threshold
 from webapp.utils.rbac import require_permission, Permission, has_permission
 from webapp.api.access_control import require_allocation_permission, require_project_access
-from ..charts import generate_usage_timeseries_matplotlib
+from ..charts import generate_usage_timeseries_matplotlib, generate_disk_usage_stacked_area
 
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/user')
@@ -387,6 +392,19 @@ def resource_details():
         flash(f'Project {projcode} not found', 'error')
         return redirect(url_for('user_dashboard.index'))
 
+    # Disk has different semantics than HPC/DAV (capacity, not burn-rate)
+    # so it gets its own template + data assembly. Branch here once the
+    # project is loaded; all the HPC-shaped scaffolding below is skipped.
+    resource = db.session.query(Resource).filter(
+        Resource.resource_name == resource_name,
+    ).first()
+    if resource is not None and resource.resource_type \
+            and resource.resource_type.resource_type == 'DISK':
+        return _render_disk_resource_details(
+            project=project, resource=resource,
+            start_date=start_date, end_date=end_date,
+        )
+
     can_edit_threshold = can_edit_consumption_threshold(current_user, project)
     has_children = bool(project.has_children)
 
@@ -494,6 +512,203 @@ def resource_details():
         tree_data=tree_data,
         alloc_start_date=alloc_start_date,
     )
+
+
+def _disk_subtree_total_bytes(node) -> int:
+    """Sum ``current_bytes`` over a tree node and all its descendants."""
+    total = node.get('current_bytes', 0) or 0
+    for c in node.get('children', []):
+        total += _disk_subtree_total_bytes(c)
+    return total
+
+
+def _disk_subtree_total_files(node) -> int:
+    total = node.get('file_count', 0) or 0
+    for c in node.get('children', []):
+        total += _disk_subtree_total_files(c)
+    return total
+
+
+def _disk_subtree_latest_activity_date(node):
+    """Most recent ``activity_date`` across the subtree (or None)."""
+    best = node.get('activity_date')
+    for c in node.get('children', []):
+        cand = _disk_subtree_latest_activity_date(c)
+        if cand is not None and (best is None or cand > best):
+            best = cand
+    return best
+
+
+def _find_disk_node(tree, projcode):
+    """Locate a node by projcode in a build_disk_subtree tree dict."""
+    if tree.get('projcode') == projcode:
+        return tree
+    for c in tree.get('children', []):
+        hit = _find_disk_node(c, projcode)
+        if hit is not None:
+            return hit
+    return None
+
+
+def _render_disk_resource_details(*, project, resource, start_date, end_date):
+    """Disk-flavored Resource Usage Details page.
+
+    Replaces the HPC/DAV daily-charges shape with capacity-oriented
+    components: a current-snapshot capacity header, a stacked-area chart
+    of bytes vs time (top-N users + Others), a filesystem-style project
+    tree, and a per-user table for the latest snapshot. Scope (subtree
+    selection) is set via the ``?scope=`` query param exactly like the
+    HPC view.
+    """
+    resource_name = resource.resource_name
+    scope = request.args.get('scope', project.projcode)
+
+    # Validate scope belongs to this project's tree; fall back to root.
+    if scope != project.projcode:
+        candidate = Project.get_by_projcode(db.session, scope)
+        if candidate is None or candidate.tree_root != project.tree_root:
+            scope = project.projcode
+
+    # Always build the full tree from the user's root project so the
+    # tree-navigation card shows everything; chart + table re-scope by
+    # locating the scope node within it.
+    full = build_disk_subtree(db.session, project, resource_name)
+    full_tree = full['tree']
+    scope_node = _find_disk_node(full_tree, scope) or full_tree
+    scope_account_ids = _collect_disk_account_ids(scope_node)
+
+    # Pool capacity (TiB) for the scope: the master allocation's
+    # amount, NOT the sum across child accounts. Inheriting children
+    # share the parent's cap; summing them double-counts. See
+    # `sam-admin accounting --reconcile-quotas` — NMMM0003 reads 16.4
+    # PiB total, not 6 × parent.
+    allocated_tib = _scope_disk_allocation_tib(
+        db.session, scope_node['projcode'], resource,
+    )
+
+    used_bytes = _disk_subtree_total_bytes(scope_node)
+    used_tib = used_bytes / (1024 ** 4)
+    total_files = _disk_subtree_total_files(scope_node)
+    activity_date = _disk_subtree_latest_activity_date(scope_node)
+    percent_used = (used_tib / allocated_tib * 100) if allocated_tib > 0 else 0.0
+
+    # Time-series for the stacked-area chart.
+    timeseries = get_disk_usage_timeseries_by_user(
+        db.session,
+        account_ids=scope_account_ids,
+        start_date=start_date.date() if hasattr(start_date, 'date') else start_date,
+        end_date=end_date.date() if hasattr(end_date, 'date') else end_date,
+        top_n=10,
+    )
+    usage_chart = generate_disk_usage_stacked_area(timeseries)
+
+    # Per-user table at the latest snapshot date for the scope.
+    user_rows = _build_disk_user_table(
+        db.session, scope_account_ids, activity_date, used_bytes,
+    )
+
+    return render_template(
+        'dashboards/user/resource_details_disk.html',
+        user=current_user,
+        projcode=project.projcode,
+        project=project,
+        resource_name=resource_name,
+        resource=resource,
+        scope=scope,
+        scope_node=scope_node,
+        tree_data=full_tree,
+        has_children=bool(project.has_children),
+        start_date=start_date.strftime('%Y-%m-%d'),
+        end_date=end_date.strftime('%Y-%m-%d'),
+        usage_chart=usage_chart,
+        capacity={
+            'allocated_tib':  allocated_tib,
+            'used_tib':       used_tib,
+            'percent_used':   percent_used,
+            'used_bytes':     used_bytes,
+            'total_files':    total_files,
+            'activity_date':  activity_date,
+        },
+        user_rows=user_rows,
+    )
+
+
+def _collect_disk_account_ids(node) -> list:
+    out = []
+    if node.get('account_id') is not None:
+        out.append(node['account_id'])
+    for c in node.get('children', []):
+        out.extend(_collect_disk_account_ids(c))
+    return out
+
+
+def _scope_disk_allocation_tib(session, scope_projcode, resource) -> float:
+    """Pool capacity (TiB) for the scoped project on a disk resource.
+
+    The disk pool cap is the *master* allocation's amount — children
+    that inherit from it share the cap, they do not add to it. So
+    summing across all subtree allocations would double-count. We
+    instead locate the scope project's account on this resource (or
+    walk up the project tree if the scope itself doesn't hold an
+    account), pick the active allocation, and return
+    ``allocation.root.amount`` — which is the pool cap regardless of
+    whether the scope is the root or an inheriting child. Returns 0.0
+    if no active allocation can be located.
+    """
+    from sam.accounting.allocations import Allocation
+    scope_project = Project.get_by_projcode(session, scope_projcode)
+    if scope_project is None:
+        return 0.0
+    candidates = [scope_project] + scope_project.get_ancestors(include_self=False)
+    now = datetime.now()
+    for proj in candidates:
+        account = session.query(Account).filter(
+            Account.project_id == proj.project_id,
+            Account.resource_id == resource.resource_id,
+            Account.deleted == False,  # noqa: E712
+        ).first()
+        if account is None:
+            continue
+        for a in account.allocations:
+            if a.deleted:
+                continue
+            if a.start_date and a.start_date > now:
+                continue
+            if a.end_date and a.end_date < now:
+                continue
+            return float(a.root.amount)
+    return 0.0
+
+
+def _build_disk_user_table(session, account_ids, activity_date, scope_bytes):
+    """Per-user current-snapshot rows for the scope, sorted by bytes desc."""
+    if not account_ids or activity_date is None:
+        return []
+    rows = session.query(
+        DiskChargeSummary.user_id,
+        DiskChargeSummary.username,
+        func.coalesce(func.sum(DiskChargeSummary.bytes), 0).label('bytes'),
+        func.coalesce(func.sum(DiskChargeSummary.number_of_files), 0).label('files'),
+    ).filter(
+        DiskChargeSummary.account_id.in_(account_ids),
+        DiskChargeSummary.activity_date == activity_date,
+    ).group_by(
+        DiskChargeSummary.user_id,
+        DiskChargeSummary.username,
+    ).all()
+
+    out = []
+    for user_id, username, b, f in rows:
+        bytes_ = int(b or 0)
+        out.append({
+            'user_id':       user_id,
+            'username':      username or f'uid_{user_id}',
+            'bytes':         bytes_,
+            'file_count':    int(f or 0),
+            'percent_of_project': (bytes_ / scope_bytes * 100) if scope_bytes > 0 else 0.0,
+        })
+    out.sort(key=lambda r: r['bytes'], reverse=True)
+    return out
 
 
 @bp.route('/tree/<projcode>')

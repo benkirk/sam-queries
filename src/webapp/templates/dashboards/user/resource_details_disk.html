@@ -1,0 +1,242 @@
+{% extends 'dashboards/base.html' %}
+{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+
+{% block title %}Disk Usage Details - {{ resource_name }} - SAM{% endblock %}
+
+{# ── Filesystem-style project-tree macro (mirrors render_tree_node
+   in resource_details.html, but with disk size + fileset paths
+   instead of cumulative compute hours). ─────────────────────────── #}
+{% macro render_disk_tree_node(node) %}
+{% set is_selected = (node.projcode == scope) %}
+{% set is_clickable = node.account_id is not none or node.children %}
+{% set node_url = url_for('user_dashboard.resource_details',
+                           projcode=projcode, resource=resource_name,
+                           scope=node.projcode,
+                           start_date=start_date, end_date=end_date) %}
+<li style="{{ 'background: #fff3cd; border-left-color: #ffc107; font-weight: bold;' if is_selected else '' }}">
+    {% if is_clickable %}
+    <a href="{{ node_url }}" class="d-flex align-items-center gap-2 text-decoration-none text-body">
+    {% else %}
+    <span class="d-flex align-items-center gap-2 text-muted" style="cursor: default;" title="No {{ resource_name }} usage">
+    {% endif %}
+        {% if is_selected %}
+        <i class="fas fa-arrow-right text-warning me-1 flex-shrink-0"></i>
+        {% endif %}
+        <strong>{{ node.projcode }}</strong>
+        {% if node.title %}
+        <span class="{% if is_clickable %}text-muted{% endif %} fw-normal text-truncate" style="max-width: 35ch;">- {{ node.title }}</span>
+        {% endif %}
+        {% if node.fileset_paths %}
+        <span class="text-muted small font-monospace"
+              style="max-width: 70ch; white-space: normal; word-break: break-word;">
+            <i class="fas fa-folder-open me-1"></i>{{ node.fileset_paths | join(', ') }}
+        </span>
+        {% endif %}
+        {% if node.current_bytes %}
+        {% if is_selected %}
+        <span class="badge bg-warning text-dark ms-auto flex-shrink-0">
+            {{ node.current_bytes | fmt_size }}
+        </span>
+        {% else %}
+        <span class="text-muted small ms-auto flex-shrink-0 font-monospace">
+            {{ node.current_bytes | fmt_size }}
+        </span>
+        {% endif %}
+        {% endif %}
+    {% if is_clickable %}
+    </a>
+    {% else %}
+    </span>
+    {% endif %}
+    {% if node.children %}
+    <ul class="tree-list">
+        {% for child in node.children %}
+        {{ render_disk_tree_node(child) }}
+        {% endfor %}
+    </ul>
+    {% endif %}
+</li>
+{% endmacro %}
+
+{% block content %}
+{% set _from_admin = request.args.get('from') == 'admin' %}
+<div class="back-link mb-3">
+    {% if _from_admin %}
+    <a href="{{ url_for('admin_dashboard.index', projcode=projcode) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Admin</span>
+    </a>
+    {% else %}
+    <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Dashboard</span>
+    </a>
+    {% endif %}
+</div>
+
+<div class="page-header">
+    <h1>
+        <i class="fas fa-hdd"></i> Disk Usage Details
+    </h1>
+    <p class="text-muted">
+        Project: <strong>{{ projcode }}</strong>
+        | Resource: <strong>{{ resource_name }}</strong>
+        {% if scope != projcode %}
+        | Scope: <strong>{{ scope }}</strong>
+        {% endif %}
+        {% if capacity.activity_date %}
+        | <span title="Latest snapshot date">As of <strong>{{ capacity.activity_date | fmt_date }}</strong></span>
+        {% endif %}
+    </p>
+</div>
+
+{# ── Capacity summary card ─────────────────────────────────────────── #}
+<div class="card mb-4">
+    <div class="card-header cursor-pointer"
+         data-bs-toggle="collapse" data-bs-target="#collapseDiskCapacity"
+         aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-info-circle"></i> Capacity Summary
+            {% set _remaining = capacity.allocated_tib - capacity.used_tib %}
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+        </h5>
+    </div>
+    <div id="collapseDiskCapacity" class="collapse show">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered table-hover">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Resource</th>
+                            <th>Scope</th>
+                            <th>As of</th>
+                            <th>Allocated</th>
+                            <th>Used</th>
+                            <th>Remaining</th>
+                            <th class="text-end">Files</th>
+                            <th class="table-col-usage">Usage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>{{ resource_name }}</strong></td>
+                            <td><code>{{ scope }}</code></td>
+                            <td>{{ capacity.activity_date | fmt_date }}</td>
+                            <td class="text-primary">
+                                {{ capacity.allocated_tib | fmt_number }} TiB
+                            </td>
+                            <td class="text-warning">
+                                {{ capacity.used_bytes | fmt_size }}
+                                <span class="text-muted small">({{ capacity.used_tib | fmt_number }} TiB)</span>
+                            </td>
+                            <td class="text-success">
+                                {{ _remaining | fmt_number }} TiB
+                            </td>
+                            <td class="text-end">{{ capacity.total_files | fmt_number }}</td>
+                            <td>
+                                {{ render_usage_bar(capacity.percent_used,
+                                                    none,
+                                                    size_class='progress-large',
+                                                    show_label=True) }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Filesystem-style project tree ──────────────────────────────────── #}
+{% if has_children %}
+<div class="card mb-4">
+    <div class="card-header cursor-pointer"
+         data-bs-toggle="collapse" data-bs-target="#collapseDiskTree"
+         aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-sitemap"></i> Project Hierarchy
+            <small class="text-muted fw-normal ms-2">Click a project to scope the chart and table below</small>
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+        </h5>
+    </div>
+    <div id="collapseDiskTree" class="collapse show">
+        <div class="card-body p-3 bg-light rounded" style="font-size: 0.875em; max-height: 400px; overflow-y: auto;">
+            <ul class="tree-list">
+                {{ render_disk_tree_node(tree_data) }}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ── Stacked-area chart ─────────────────────────────────────────────── #}
+<div class="card mb-4">
+    <div class="card-header cursor-pointer"
+         data-bs-toggle="collapse" data-bs-target="#collapseDiskUsage"
+         aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-chart-area"></i> Usage Over Time
+            <small class="text-muted fw-normal ms-2">
+                top 10 users + Others, {{ start_date }} → {{ end_date }}
+            </small>
+            {% if has_children and scope != projcode %}
+            <small class="text-muted fw-normal ms-2">{{ scope }}</small>
+            {% endif %}
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+        </h5>
+    </div>
+    <div id="collapseDiskUsage" class="collapse show">
+        <div class="card-body">
+            <div class="chart-container">
+                {{ usage_chart | safe }}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Per-user current-snapshot table ────────────────────────────────── #}
+<div class="card mb-4">
+    <div class="card-header cursor-pointer"
+         data-bs-toggle="collapse" data-bs-target="#collapseDiskUsers"
+         aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-users"></i> Per-User Occupancy
+            {% if capacity.activity_date %}
+            <small class="text-muted fw-normal ms-2">snapshot {{ capacity.activity_date | fmt_date }}</small>
+            {% endif %}
+            {% if has_children and scope != projcode %}
+            <small class="text-muted fw-normal ms-2">{{ scope }}</small>
+            {% endif %}
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+        </h5>
+    </div>
+    <div id="collapseDiskUsers" class="collapse show">
+        <div class="card-body">
+            {% if user_rows %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Username</th>
+                            <th class="text-end">Files</th>
+                            <th class="text-end">Size</th>
+                            <th class="text-end">% of {{ scope }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in user_rows %}
+                        <tr>
+                            <td><code>{{ row.username }}</code></td>
+                            <td class="text-end">{{ row.file_count | fmt_number }}</td>
+                            <td class="text-end">{{ row.bytes | fmt_size }}</td>
+                            <td class="text-end">{{ row.percent_of_project | fmt_pct }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No per-user usage recorded for this scope.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
