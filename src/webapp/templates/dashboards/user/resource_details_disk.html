@@ -82,6 +82,14 @@
         {% if scope != projcode %}
         | Scope: <strong>{{ scope }}</strong>
         {% endif %}
+        {% if fileset %}
+        | Fileset: <strong><code>{{ fileset }}</code></strong>
+        <a href="{{ url_for('user_dashboard.resource_details',
+                            projcode=projcode, resource=resource_name,
+                            scope=scope,
+                            start_date=start_date, end_date=end_date) }}"
+           class="ms-1 small">[clear]</a>
+        {% endif %}
         {% if capacity.activity_date %}
         | <span title="Latest snapshot date">As of <strong>{{ capacity.activity_date | fmt_date }}</strong></span>
         {% endif %}
@@ -144,6 +152,82 @@
         </div>
     </div>
 </div>
+
+{# ── Per-fileset breakdown ──────────────────────────────────────────── #}
+{# Aggregated across the entire scoped subtree — shows whenever
+   any fileset in the scope has tier-1 data. Rows are clickable to
+   scope chart + per-user table by `directory_name` via `?fileset=`.
+   The selected row mirrors the warning highlight used by the
+   tree's `?scope=` selection. #}
+{% set _multi_proj = scope_node.directories
+                     and (scope_node.directories | map(attribute='projcode') | unique | list | length > 1) %}
+{% if scope_node and scope_node.directories %}
+<div class="card mb-4">
+    <div class="card-header cursor-pointer"
+         data-bs-toggle="collapse" data-bs-target="#collapseDiskFilesets"
+         aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="fas fa-folder-open"></i> Filesets
+            <small class="text-muted fw-normal ms-2">
+                {{ scope_node.directories | length }} active fileset{{ '' if scope_node.directories|length == 1 else 's' }}
+                on {{ resource_name }}
+                {% if scope != projcode %}
+                under <code>{{ scope }}</code>
+                {% endif %}
+                {% if fileset %}
+                — scoped to <code>{{ fileset }}</code>
+                {% else %}
+                <span class="text-muted">— click a row to scope chart + table</span>
+                {% endif %}
+            </small>
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+        </h5>
+    </div>
+    <div id="collapseDiskFilesets" class="collapse show">
+        <div class="card-body p-3">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="thead-light">
+                        <tr>
+                            {% if _multi_proj %}<th>Project</th>{% endif %}
+                            <th>Path</th>
+                            <th class="text-end">Files</th>
+                            <th class="text-end">Size</th>
+                            <th class="table-col-usage">Share</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set _scope_bytes = scope_node.directories | sum(attribute='bytes') %}
+                        {% for d in scope_node.directories %}
+                        {% set _share = (d.bytes / _scope_bytes * 100) if _scope_bytes else 0 %}
+                        {% set is_active = (fileset == d.name) %}
+                        {% set row_url = url_for('user_dashboard.resource_details',
+                                                  projcode=projcode, resource=resource_name,
+                                                  scope=scope, fileset=d.name,
+                                                  start_date=start_date, end_date=end_date) %}
+                        <tr style="cursor: pointer;{% if is_active %} background: #fff3cd;{% endif %}"
+                            onclick="window.location='{{ row_url }}'">
+                            {% if _multi_proj %}
+                            <td><strong>{{ d.projcode }}</strong></td>
+                            {% endif %}
+                            <td>
+                                {% if is_active %}
+                                <i class="fas fa-arrow-right text-warning me-1"></i>
+                                {% endif %}
+                                <code>{{ d.name }}</code>
+                            </td>
+                            <td class="text-end">{{ d.files | fmt_number }}</td>
+                            <td class="text-end font-monospace">{{ d.bytes | fmt_size }}</td>
+                            <td>{{ render_usage_bar(_share, none, size_class='progress-small', show_label=True) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {# ── Filesystem-style project tree ──────────────────────────────────── #}
 {% if has_children %}

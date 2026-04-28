@@ -19,6 +19,7 @@ from cli.cmds.admin import cli
 from cli.accounting import disk_usage as disk_usage_mod
 from cli.accounting import quota_readers as quota_readers_mod
 from sam.resources.resources import ResourceType
+from sam.activity.disk import DiskActivity, DiskCharge
 from sam.summaries.disk_summaries import (
     DISK_CHARGING_TIB_EPOCH,
     DiskChargeSummary,
@@ -317,4 +318,205 @@ class TestDiskAdminCli:
         assert row.username == lead.username
         # Bytes match the input (5 GiB).
         assert row.bytes == 5 * 1024 ** 3
+
+    # ------------------------------------------------------------------
+    # Layer 2: tier-1 (disk_activity) + tier-2 (disk_charge) writes
+    # ------------------------------------------------------------------
+
+    def test_import_writes_disk_activity_per_directory(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """Multi-fileset project: per-directory rows land in disk_activity
+        (one per fileset) and disk_charge (1:1)."""
+        from sam.projects.projects import ProjectDirectory
+        from datetime import datetime
+
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        backdate = datetime.now() - timedelta(days=1)
+        for sub in ('data', 'work'):
+            ProjectDirectory.create(
+                session, project_id=project.project_id,
+                directory_name=f"/gpfs/csfs1/{project.projcode.lower()}/{sub}",
+                start_date=backdate,
+            )
+        snap = DISK_CHARGING_TIB_EPOCH
+        kib_data = 2 * 1024 * 1024  # 2 GiB
+        kib_work = 3 * 1024 * 1024  # 3 GiB
+        f = _write_acct_multifileset(tmp_path, snap, project.projcode, [
+            (f"/gpfs/csfs1/{project.projcode.lower()}/data",
+             lead.username, 200, kib_data),
+            (f"/gpfs/csfs1/{project.projcode.lower()}/work",
+             lead.username, 300, kib_work),
+        ])
+
+        result = runner.invoke(cli, [
+            'accounting', '--disk',
+            '--resource', resource.resource_name,
+            '--user-usage', str(f),
+            '--date', snap.isoformat(),
+        ])
+        assert result.exit_code == 0, result.output
+
+        activities = session.query(DiskActivity).filter(
+            DiskActivity.activity_date == snap,
+            DiskActivity.resource_name == resource.resource_name,
+        ).all()
+        # One row per directory (per-fileset granularity preserved).
+        assert len(activities) == 2, [
+            (a.directory_name, a.bytes) for a in activities
+        ]
+        by_dir = {a.directory_name: a for a in activities}
+        data_path = f"/gpfs/csfs1/{project.projcode.lower()}/data"
+        work_path = f"/gpfs/csfs1/{project.projcode.lower()}/work"
+        assert by_dir[data_path].bytes == 2 * 1024 ** 3
+        assert by_dir[work_path].bytes == 3 * 1024 ** 3
+        assert by_dir[data_path].number_of_files == 200
+        assert by_dir[work_path].number_of_files == 300
+        # file_size_total mirrors bytes (legacy column parity).
+        assert by_dir[data_path].file_size_total == by_dir[data_path].bytes
+        # Resolved cleanly.
+        assert all(a.processing_status is True for a in activities)
+        assert all(a.error_comment is None for a in activities)
+
+        charges = session.query(DiskCharge).filter(
+            DiskCharge.disk_activity_id.in_(
+                [a.disk_activity_id for a in activities]
+            )
+        ).all()
+        # 1:1 with disk_activity.
+        assert len(charges) == 2
+        assert all(c.user_id == lead.user_id for c in charges)
+        assert all(c.account_id == project.accounts[0].account_id
+                   for c in charges)
+        # tib_years computed per-row at the input's bytes (no rollup).
+        # 2 GiB × 7 / 365 / 1024⁴ ≈ 3.745e-5 ; 3 GiB → 5.617e-5.
+        ty_data = (2 * 1024 ** 3) * 7 / 365 / (1024 ** 4)
+        ty_work = (3 * 1024 ** 3) * 7 / 365 / (1024 ** 4)
+        ch_by_dir = {
+            c.activity.directory_name: c for c in charges
+        }
+        assert ch_by_dir[data_path].terabyte_year == pytest.approx(
+            ty_data, abs=1e-7
+        )
+        assert ch_by_dir[work_path].terabyte_year == pytest.approx(
+            ty_work, abs=1e-7
+        )
+
+    def test_disk_activity_re_import_replaces_per_resource_date(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """Re-running the same (resource, snap_date) deletes pre-existing
+        tier-1/tier-2 rows and re-inserts — no append, no duplicates."""
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        # First run: 1 GiB.
+        f1 = _write_acct(tmp_path, snap, project.projcode, lead.username,
+                         kib=1 * 1024 * 1024)
+        r1 = runner.invoke(cli, [
+            'accounting', '--disk',
+            '--resource', resource.resource_name,
+            '--user-usage', str(f1),
+            '--date', snap.isoformat(),
+        ])
+        assert r1.exit_code == 0, r1.output
+        n_after_first = session.query(DiskActivity).filter(
+            DiskActivity.activity_date == snap,
+            DiskActivity.resource_name == resource.resource_name,
+        ).count()
+        assert n_after_first == 1
+
+        # Second run with different bytes: should REPLACE, not append.
+        f2 = _write_acct(tmp_path, snap, project.projcode, lead.username,
+                         kib=4 * 1024 * 1024)
+        r2 = runner.invoke(cli, [
+            'accounting', '--disk',
+            '--resource', resource.resource_name,
+            '--user-usage', str(f2),
+            '--date', snap.isoformat(),
+        ])
+        assert r2.exit_code == 0, r2.output
+
+        activities = session.query(DiskActivity).filter(
+            DiskActivity.activity_date == snap,
+            DiskActivity.resource_name == resource.resource_name,
+        ).all()
+        # Still exactly one row — the prior one was deleted.
+        assert len(activities) == 1
+        assert activities[0].bytes == 4 * 1024 ** 3
+
+        # disk_charge mirrors the new tier-1.
+        charges = session.query(DiskCharge).filter(
+            DiskCharge.disk_activity_id == activities[0].disk_activity_id
+        ).all()
+        assert len(charges) == 1
+
+    def test_disk_activity_skipped_for_total_rollup(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """Quasar-style ``username='total'`` rollup rows produce no
+        tier-1 row (no real directory binding), even though tier-3 still
+        attributes them to the project lead."""
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct(tmp_path, snap, project.projcode, 'total',
+                        kib=5 * 1024 * 1024)
+
+        result = runner.invoke(cli, [
+            'accounting', '--disk',
+            '--resource', resource.resource_name,
+            '--user-usage', str(f),
+            '--date', snap.isoformat(),
+        ])
+        assert result.exit_code == 0, result.output
+
+        # No tier-1 row for the rollup sentinel.
+        n_act = session.query(DiskActivity).filter(
+            DiskActivity.activity_date == snap,
+            DiskActivity.resource_name == resource.resource_name,
+        ).count()
+        assert n_act == 0
+        # But tier-3 still has the row (Layer 1 path unchanged).
+        n_summary = session.query(DiskChargeSummary).filter(
+            DiskChargeSummary.activity_date == snap,
+            DiskChargeSummary.account_id == project.accounts[0].account_id,
+        ).count()
+        assert n_summary == 1
+
+    def test_disk_activity_skipped_for_unidentified_gap_rows(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """Synthetic ``<unidentified>`` gap rows — no real directory —
+        produce no tier-1 row."""
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        kib_user = 1 * 1024 * 1024
+        kib_fileset = 3 * 1024 * 1024
+        f = _write_acct(tmp_path, snap, project.projcode, lead.username,
+                        kib=kib_user)
+        q = _write_quotas(tmp_path, snap, project.projcode.lower(),
+                          usage_kib=kib_fileset, limit_kib=10 * 1024 * 1024)
+
+        result = runner.invoke(cli, [
+            'accounting', '--disk',
+            '--resource', resource.resource_name,
+            '--user-usage', str(f),
+            '--quotas', str(q),
+            '--reconcile-quota-gap',
+            '--date', snap.isoformat(),
+        ])
+        assert result.exit_code == 0, result.output
+
+        # tier-1: only the real (lead) row, NOT the <unidentified> gap row.
+        activities = session.query(DiskActivity).filter(
+            DiskActivity.activity_date == snap,
+            DiskActivity.resource_name == resource.resource_name,
+        ).all()
+        assert len(activities) == 1
+        assert activities[0].username == lead.username
+        # tier-3 still has both rows (gap row tier-3-only).
+        n_summary = session.query(DiskChargeSummary).filter(
+            DiskChargeSummary.activity_date == snap,
+            DiskChargeSummary.account_id == project.accounts[0].account_id,
+        ).count()
+        assert n_summary == 2
 

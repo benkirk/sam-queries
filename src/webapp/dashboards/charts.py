@@ -242,12 +242,18 @@ def generate_disk_usage_stacked_area(timeseries) -> str:
     # Reverse the legend so it reads top-to-bottom in the same order as
     # the visual stack (largest user on top).
     handles, lbls = ax.get_legend_handles_labels()
+    # Legend title — show the actual count of named user series
+    # (excluding the synthetic 'Others' bucket) so it self-describes
+    # the top-N selection regardless of caller's `top_n` argument.
+    n_named = sum(1 for s in series if s['username'] != 'Others')
     ax.legend(
         handles[::-1], lbls[::-1],
+        title=f'Top {n_named} Users',
         loc='center left',
         bbox_to_anchor=(1.01, 0.5),
         frameon=False,
         fontsize=9,
+        title_fontsize=10,
     )
     fig.autofmt_xdate()
 
