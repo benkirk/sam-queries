@@ -856,104 +856,116 @@ class AccountingAdminCommand(BaseCommand):
             for i in range(0, len(writable), chunk_size)
         ]
 
-        for chunk_idx, chunk in enumerate(chunks, start=1):
-            try:
-                with management_transaction(self.session):
-                    if chunk_idx == 1:
-                        # Idempotency delete piggybacks the first chunk's
-                        # transaction. Two-step (FK has no CASCADE).
-                        existing_ids = [
-                            row[0] for row in (
-                                self.session.query(
-                                    DiskActivity.disk_activity_id
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=self.console,
+        ) as progress:
+            task = progress.add_task(
+                f"Writing {resource_name} disk_activity/disk_charge...",
+                total=len(writable),
+            )
+            for chunk_idx, chunk in enumerate(chunks, start=1):
+                try:
+                    with management_transaction(self.session):
+                        if chunk_idx == 1:
+                            # Idempotency delete piggybacks the first chunk's
+                            # transaction. Two-step (FK has no CASCADE).
+                            existing_ids = [
+                                row[0] for row in (
+                                    self.session.query(
+                                        DiskActivity.disk_activity_id
+                                    )
+                                    .filter(
+                                        DiskActivity.activity_date == snap_date,
+                                        DiskActivity.resource_name == resource_name,
+                                    )
+                                    .all()
                                 )
-                                .filter(
-                                    DiskActivity.activity_date == snap_date,
-                                    DiskActivity.resource_name == resource_name,
+                            ]
+                            if existing_ids:
+                                self.session.query(DiskCharge).filter(
+                                    DiskCharge.disk_activity_id.in_(existing_ids)
+                                ).delete(synchronize_session=False)
+                                self.session.query(DiskActivity).filter(
+                                    DiskActivity.disk_activity_id.in_(existing_ids)
+                                ).delete(synchronize_session=False)
+                        for e in chunk:
+                            progress.advance(task)
+                            # Resolve project/account first; failure is
+                            # captured as audit metadata on the tier-1 row.
+                            ok, _project, account = resolve_for_row(e)
+                            user = None
+                            err = None
+                            if not ok:
+                                err = (
+                                    f"unresolved: projcode={e.projcode!r} "
+                                    f"path={e.directory_path!r}"
                                 )
-                                .all()
-                            )
-                        ]
-                        if existing_ids:
-                            self.session.query(DiskCharge).filter(
-                                DiskCharge.disk_activity_id.in_(existing_ids)
-                            ).delete(synchronize_session=False)
-                            self.session.query(DiskActivity).filter(
-                                DiskActivity.disk_activity_id.in_(existing_ids)
-                            ).delete(synchronize_session=False)
-                    for e in chunk:
-                        # Resolve project/account first; failure is
-                        # captured as audit metadata on the tier-1 row.
-                        ok, _project, account = resolve_for_row(e)
-                        user = None
-                        err = None
-                        if not ok:
-                            err = (
-                                f"unresolved: projcode={e.projcode!r} "
-                                f"path={e.directory_path!r}"
-                            )
-                        else:
+                            else:
+                                try:
+                                    user = _resolve_user(
+                                        self.session, e.username, None,
+                                    )
+                                except ValueError as uexc:
+                                    err = str(uexc)
+
                             try:
-                                user = _resolve_user(
-                                    self.session, e.username, None,
+                                activity, _ = upsert_disk_activity(
+                                    self.session,
+                                    directory_name=e.directory_path,
+                                    username=e.username,
+                                    projcode=e.projcode,
+                                    activity_date=e.activity_date,
+                                    reporting_interval=e.reporting_interval,
+                                    bytes=e.bytes,
+                                    number_of_files=e.number_of_files,
+                                    resource_name=resource_name,
+                                    load_date=now,
+                                    disk_cos_id=0,
+                                    error_comment=err,
+                                    processing_status=err is None,
                                 )
-                            except ValueError as uexc:
-                                err = str(uexc)
+                                n_activity += 1
+                            except Exception as exc:  # noqa: BLE001
+                                if not skip_errors:
+                                    raise
+                                if self.ctx.verbose:
+                                    self.console.print(
+                                        f"[yellow]Skip disk_activity: {exc}[/yellow]"
+                                    )
+                                continue
 
-                        try:
-                            activity, _ = upsert_disk_activity(
-                                self.session,
-                                directory_name=e.directory_path,
-                                username=e.username,
-                                projcode=e.projcode,
-                                activity_date=e.activity_date,
-                                reporting_interval=e.reporting_interval,
-                                bytes=e.bytes,
-                                number_of_files=e.number_of_files,
-                                resource_name=resource_name,
-                                load_date=now,
-                                disk_cos_id=0,
-                                error_comment=err,
-                                processing_status=err is None,
-                            )
-                            n_activity += 1
-                        except Exception as exc:  # noqa: BLE001
-                            if not skip_errors:
-                                raise
-                            if self.ctx.verbose:
-                                self.console.print(
-                                    f"[yellow]Skip disk_activity: {exc}[/yellow]"
+                            if err is not None:
+                                n_unresolved += 1
+                                continue
+
+                            try:
+                                upsert_disk_charge(
+                                    self.session,
+                                    disk_activity_id=activity.disk_activity_id,
+                                    account_id=account.account_id,
+                                    user_id=user.user_id,
+                                    charge_date=now,
+                                    activity_date=e.activity_date,
+                                    terabyte_year=e.terabyte_years,
+                                    charge=e.charges,
                                 )
-                            continue
-
-                        if err is not None:
-                            n_unresolved += 1
-                            continue
-
-                        try:
-                            upsert_disk_charge(
-                                self.session,
-                                disk_activity_id=activity.disk_activity_id,
-                                account_id=account.account_id,
-                                user_id=user.user_id,
-                                charge_date=now,
-                                activity_date=e.activity_date,
-                                terabyte_year=e.terabyte_years,
-                                charge=e.charges,
-                            )
-                            n_charge += 1
-                        except Exception as exc:  # noqa: BLE001
-                            if not skip_errors:
-                                raise
-                            if self.ctx.verbose:
-                                self.console.print(
-                                    f"[yellow]Skip disk_charge: {exc}[/yellow]"
-                                )
-            except Exception as exc:  # noqa: BLE001
-                self.console.print(
-                    f"[bold red]Tier-1/Tier-2 chunk {chunk_idx} aborted: {exc}[/bold red]"
-                )
-                raise
+                                n_charge += 1
+                            except Exception as exc:  # noqa: BLE001
+                                if not skip_errors:
+                                    raise
+                                if self.ctx.verbose:
+                                    self.console.print(
+                                        f"[yellow]Skip disk_charge: {exc}[/yellow]"
+                                    )
+                except Exception as exc:  # noqa: BLE001
+                    self.console.print(
+                        f"[bold red]Tier-1/Tier-2 chunk {chunk_idx} aborted: {exc}[/bold red]"
+                    )
+                    raise
 
         return n_activity, n_charge, n_unresolved
 
