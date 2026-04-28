@@ -11,8 +11,7 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
     __tablename__ = 'organization'
 
     __table_args__ = (
-        Index('ix_organization_tree', 'tree_left', 'tree_right'),
-        Index('ix_organization_parent', 'parent_org_id'),
+        Index('organization_organization_fk', 'parent_org_id'),
     )
 
     # NestedSetMixin config
@@ -35,7 +34,7 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
 
     organization_id = Column(Integer, primary_key=True, autoincrement=False)
     name = Column(String(100), nullable=False)
-    acronym = Column(String(15), nullable=False, unique=True)
+    acronym = Column(String(15), nullable=False)
     description = Column(String(255))
     parent_org_id = Column(Integer, ForeignKey('organization.organization_id'))
 

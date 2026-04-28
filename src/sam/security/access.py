@@ -10,8 +10,12 @@ class AccessBranch(Base):
     """Access branches for resource access control."""
     __tablename__ = 'access_branch'
 
+    __table_args__ = (
+        Index('access_branch_name_unique_idx', 'name', unique=True),
+    )
+
     access_branch_id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(40), nullable=False, unique=True)
+    name = Column(String(40), nullable=False)
 
     resources = relationship('AccessBranchResource', back_populates='access_branch')
 
@@ -28,8 +32,7 @@ class AccessBranchResource(Base):
     __tablename__ = 'access_branch_resource'
 
     __table_args__ = (
-        Index('ix_access_branch_resource_branch', 'access_branch_id'),
-        Index('ix_access_branch_resource_resource', 'resource_id'),
+        Index('access_branch_resource_resources_fk', 'resource_id'),
     )
 
     access_branch_id = Column(Integer, ForeignKey('access_branch.access_branch_id'),

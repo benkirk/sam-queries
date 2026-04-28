@@ -11,10 +11,11 @@ class User(Base, TimestampMixin, SessionMixin):
     __tablename__ = 'users'
 
     __table_args__ = (
-        Index('ix_users_username', 'username'),
-        Index('ix_users_upid', 'upid'),
-        Index('ix_users_active_locked', 'active', 'locked'),
-        Index('ix_users_primary_gid', 'primary_gid'),
+        Index('username_uk', 'username', unique=True),
+        Index('idx_users_upid', 'upid', unique=True),
+        Index('idx_users_1', 'primary_gid'),
+        Index('idx_users', 'login_type_id'),
+        Index('user_academic_status_fk', 'academic_status_id'),
     )
 
     def __eq__(self, other):
@@ -29,9 +30,9 @@ class User(Base, TimestampMixin, SessionMixin):
 
     # [All existing column definitions remain the same...]
     user_id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String(35), nullable=False, unique=True)
+    username = Column(String(35), nullable=False)
     locked = Column(Boolean, nullable=False, default=False)
-    upid = Column(Integer, unique=True, nullable=True)
+    upid = Column(Integer, nullable=True)
     unix_uid = Column(Integer, nullable=False)
 
     # Personal information
@@ -603,14 +604,15 @@ class UserAlias(Base):
     __tablename__ = 'user_alias'
 
     __table_args__ = (
-        Index('ix_user_alias_username', 'username'),
-        Index('ix_user_alias_orcid', 'orcid_id'),
-        Index('ix_user_alias_access_global', 'access_global_id'),
+        Index('user_id', 'user_id', unique=True),
+        Index('username', 'username', unique=True),
+        Index('idx_orcid_id', 'orcid_id'),
+        Index('idx_access_global_id', 'access_global_id'),
     )
 
     user_alias_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False, unique=True)
-    username = Column(String(35), nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    username = Column(String(35), nullable=False)
     orcid_id = Column(String(20))
     access_global_id = Column(String(31))
     creation_time = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))  # DB: nullable
@@ -631,8 +633,7 @@ class EmailAddress(Base, TimestampMixin):
     __tablename__ = 'email_address'
 
     __table_args__ = (
-        Index('ix_email_address_user', 'user_id'),
-        Index('ix_email_address_email', 'email_address'),
+        Index('email_address_user_fk', 'user_id'),
     )
 
     def __eq__(self, other):
