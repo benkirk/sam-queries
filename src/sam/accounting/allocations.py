@@ -18,10 +18,8 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
     __tablename__ = 'allocation'
 
     __table_args__ = (
-        Index('ix_allocation_account', 'account_id'),
-        Index('ix_allocation_parent', 'parent_allocation_id'),
-        Index('ix_allocation_dates', 'start_date', 'end_date'),
-        Index('ix_allocation_active', 'deleted', 'start_date', 'end_date'),
+        Index('allocation_account_fk', 'account_id'),
+        Index('allocation_allocation_fk', 'parent_allocation_id'),
     )
 
     def __eq__(self, other):
@@ -228,9 +226,9 @@ class AllocationTransaction(Base):
     __tablename__ = 'allocation_transaction'
 
     __table_args__ = (
-        Index('ix_allocation_transaction_allocation', 'allocation_id'),
-        Index('ix_allocation_transaction_user', 'user_id'),
-        Index('ix_allocation_transaction_related', 'related_transaction_id'),
+        Index('allocation_trans_alloc_fk', 'allocation_id'),
+        Index('allocation_trans_user_fk', 'user_id'),
+        Index('allocation_trans_related_fk', 'related_transaction_id'),
     )
 
     allocation_transaction_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -302,7 +300,7 @@ class AllocationType(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     __tablename__ = 'allocation_type'
 
     __table_args__ = (
-        Index('ix_allocation_type_panel', 'panel_id'),
+        Index('idx_allocation_type', 'panel_id'),
     )
 
     allocation_type_id = Column(Integer, primary_key=True, autoincrement=True)
