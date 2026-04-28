@@ -19,7 +19,8 @@ class DavChargeSummary(Base):
     )
 
     dav_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
-    activity_date = Column(Date, nullable=False)
+    activity_date = Column(Date, ForeignKey('dav_charge_summary_status.activity_date'),
+                           nullable=False)
 
     # User identification (actual and recorded)
     act_username = Column(String(35))

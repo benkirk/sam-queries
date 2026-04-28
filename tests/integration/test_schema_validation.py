@@ -381,19 +381,15 @@ class TestIndexAlignment:
     vice versa. Catches the DiskActivity bug class: a UNIQUE index that exists
     in production but was missing from __table_args__."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="Known broad UNIQUE-index drift between prod and ORM — triaged "
-               "in follow-up PRs. When all drift is resolved, this test will "
-               "XPASS, which (with strict=True) will fail the suite — that's "
-               "the signal to remove this xfail marker and promote the guard.",
-    )
     def test_unique_constraints_match(self, session):
         """Every UNIQUE index in DB must have a matching ORM declaration.
 
         Direct regression guard against PR #209 (DiskActivity was missing
-        `disk_activity_unique_idx`). Currently xfail-strict; flips to
-        passing once the existing drift is cleaned up.
+        `disk_activity_unique_idx`). Promoted to assertive after the
+        domain-batched drift cleanup eliminated all known UNIQUE drift.
+        Add (table, index_name) entries to IGNORED_DB_INDEXES at the top
+        of this file for any DBA-added UNIQUE the ORM intentionally won't
+        track.
         """
         problems = []
         for mapper in iter_table_mappers(Base.registry):
