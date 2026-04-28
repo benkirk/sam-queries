@@ -5,7 +5,7 @@ CONDA_ROOT := $(shell conda info --base)
 # Common way to initialize environment across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
-.PHONY: help clean clobber distclean fixperms check perf docker-build docker-up docker-down docker-restart
+.PHONY: help clean clobber distclean fixperms check perf check-db-vs-orms docker-build docker-up docker-down docker-restart
 
 # -------------------------------------------------------------------
 # Default target: help
@@ -76,6 +76,10 @@ check: ## Run tests
 perf: ## Run perf regression + benchmark suite (serial)
 	$(config_env) && source etc/config_env.sh && \
 	    python3 -m pytest -m perf -n 0 -v
+
+check-db-vs-orms: ## Audit prod DB schema vs ORM models — runs check_db_drift + orm_inventory (skips if PROD_* env unset / VPN unreachable)
+	$(config_env) && source etc/config_env.sh && \
+	    python3 scripts/check_db_drift.py
 
 docker-build: ## Build docker containers
 	@docker compose build

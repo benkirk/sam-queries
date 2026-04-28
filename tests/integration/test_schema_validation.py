@@ -9,13 +9,40 @@ ideal first port.
 No write operations. No mocking. Runs against the mysql-test container
 via the session fixture in new_tests/conftest.py.
 """
+import sys
+from pathlib import Path
+
 import pytest
 from sqlalchemy import text
 
 from sam.base import Base
 
+# Pull in the shared introspection helpers used by scripts/check_db_drift.py
+# so the CI guard and the prod audit script enforce the *same* drift rules.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from scripts.lib.schema_introspection import (
+    diff_indexes,
+    get_db_indexes,
+    get_orm_indexes,
+    iter_table_mappers,
+)
+
 
 pytestmark = pytest.mark.integration
+
+
+# ============================================================================
+# Index drift guard — prevents the DiskActivity bug class from regressing
+# ============================================================================
+#
+# If the test container has DBA-added indexes the ORM intentionally doesn't
+# track (e.g. analytics-only indexes), add their (table, index_name) pair
+# here with a comment explaining why.
+IGNORED_DB_INDEXES = {
+    # ('table_name', 'index_name'),
+}
 
 
 # ============================================================================
@@ -342,3 +369,98 @@ class TestCriticalSchemas:
             f"  Actual:   {actual}"
         )
         assert 'PRI' in db_cols['resource_repository_key']['key']
+
+
+# ============================================================================
+# Index alignment — prevents PR #209-style drift (DiskActivity unique index)
+# ============================================================================
+
+
+class TestIndexAlignment:
+    """Every non-PRIMARY index in the DB should be declared in the ORM, and
+    vice versa. Catches the DiskActivity bug class: a UNIQUE index that exists
+    in production but was missing from __table_args__."""
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Known broad UNIQUE-index drift between prod and ORM — triaged "
+               "in follow-up PRs. When all drift is resolved, this test will "
+               "XPASS, which (with strict=True) will fail the suite — that's "
+               "the signal to remove this xfail marker and promote the guard.",
+    )
+    def test_unique_constraints_match(self, session):
+        """Every UNIQUE index in DB must have a matching ORM declaration.
+
+        Direct regression guard against PR #209 (DiskActivity was missing
+        `disk_activity_unique_idx`). Currently xfail-strict; flips to
+        passing once the existing drift is cleaned up.
+        """
+        problems = []
+        for mapper in iter_table_mappers(Base.registry):
+            table = mapper.persist_selectable.name
+            db_idx = get_db_indexes(session, table)
+            orm_idx = get_orm_indexes(mapper)
+            diff = diff_indexes(db_idx, orm_idx)
+
+            for name, cols, uniq in diff['in_db_not_orm']:
+                if not uniq:
+                    continue
+                if (table, name) in IGNORED_DB_INDEXES:
+                    continue
+                problems.append(
+                    f"{table}: DB has UNIQUE INDEX '{name}' on ({', '.join(cols)}) — "
+                    f"ORM does not declare it"
+                )
+
+        assert not problems, (
+            "Unique constraint drift between DB and ORM:\n"
+            + "\n".join(f"  {p}" for p in problems)
+            + "\n\nFix: declare the missing Index(..., unique=True) or "
+              "UniqueConstraint in the model's __table_args__."
+        )
+
+    def test_indexes_match(self, session):
+        """All non-PRIMARY indexes should align between DB and ORM (informational).
+
+        Reports both directions plus same-name/different-shape mismatches.
+        Currently informational — promote to assertion once known drifts
+        are triaged. Until then, the strict guard above catches the most
+        common bug class (missing UNIQUE).
+        """
+        in_db_not_orm = []
+        in_orm_not_db = []
+        mismatched = []
+
+        for mapper in iter_table_mappers(Base.registry):
+            table = mapper.persist_selectable.name
+            db_idx = get_db_indexes(session, table)
+            orm_idx = get_orm_indexes(mapper)
+            diff = diff_indexes(db_idx, orm_idx)
+
+            for name, cols, uniq in diff['in_db_not_orm']:
+                if (table, name) in IGNORED_DB_INDEXES:
+                    continue
+                kind = 'UNIQUE' if uniq else 'index'
+                in_db_not_orm.append(f"{table}.{name} ({kind}, cols={cols})")
+            for name, cols, uniq in diff['in_orm_not_db']:
+                kind = 'UNIQUE' if uniq else 'index'
+                in_orm_not_db.append(f"{table}.{name} ({kind}, cols={cols})")
+            for name, db_shape, orm_shape in diff['mismatched']:
+                mismatched.append(f"{table}.{name}: DB={db_shape} vs ORM={orm_shape}")
+
+        if in_db_not_orm:
+            print(f"\n⚠️  {len(in_db_not_orm)} indexes in DB not declared in ORM:")
+            for s in in_db_not_orm[:20]:
+                print(f"  {s}")
+            if len(in_db_not_orm) > 20:
+                print(f"  ... and {len(in_db_not_orm) - 20} more")
+        if in_orm_not_db:
+            print(f"\n⚠️  {len(in_orm_not_db)} indexes in ORM not present in DB:")
+            for s in in_orm_not_db[:20]:
+                print(f"  {s}")
+        if mismatched:
+            print(f"\n⚠️  {len(mismatched)} same-name indexes with different shape:")
+            for s in mismatched[:20]:
+                print(f"  {s}")
+        if not (in_db_not_orm or in_orm_not_db or mismatched):
+            print("✅ All indexes align between DB and ORM")
