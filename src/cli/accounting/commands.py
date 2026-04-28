@@ -51,6 +51,69 @@ GPU_FRACTION_THRESHOLD = 0.01  # 1%
 # canonical 'reservation' queue per resource that covers all of them.
 _RESERVATION_QUEUE_RE = re.compile(r'^[RMS]\d')
 
+# Per-user-disk-usage feeds for some resources (e.g. Quasar) only ship a
+# single rollup row per project — username is the literal sentinel
+# `'total'`. Treat these as project-wide aggregates: keep `act_username`
+# as the audit label, attribute the row to the project lead (matching
+# the `<unidentified>` gap-row convention) so user resolution and
+# downstream charging math succeed.
+_DISK_ROLLUP_USERNAMES = frozenset({'total'})
+
+
+def _group_disk_entries(entries: list[DiskUsageEntry]) -> list[DiskUsageEntry]:
+    """Aggregate per-(user, fileset) rows into per-(user, project) totals.
+
+    The disk-usage input (`acct.glade.YYYY-MM-DD`) ships one row per
+    (user, directory). Two filesets on the same project for the same
+    user collide on the upsert natural key
+    ``(activity_date, act_username, act_projcode, account_id)`` —
+    `directory_path` is not in the key — and silently UPDATE-overwrite,
+    losing every fileset except the last.
+
+    Sum bytes / files / terabyte_years / charges in Python before the
+    upsert so each (user, project) lands as one row, matching legacy
+    SAM's ``calculateDiskChargeSummaries`` named query
+    (``legacy_sam/.../AccountingNamedQuery.xml``):
+
+        GROUP BY (date, user, uid, user_id, projcode, account_id)
+        SUM(bytes), SUM(files), SUM(terabyte_year), SUM(charge)
+
+    Synthetic gap rows (``user_override`` set, e.g. ``<unidentified>``)
+    pass through unchanged — they already carry pre-resolved entities
+    and a unique ``act_username`` so they don't collide on the natural
+    key.
+    """
+    grouped: dict[tuple, DiskUsageEntry] = {}
+    pass_through: list[DiskUsageEntry] = []
+
+    for e in entries:
+        if e.user_override is not None:
+            pass_through.append(e)
+            continue
+        key = (e.activity_date, e.projcode, e.username)
+        existing = grouped.get(key)
+        if existing is None:
+            grouped[key] = DiskUsageEntry(
+                activity_date=e.activity_date,
+                projcode=e.projcode,
+                username=e.username,
+                number_of_files=e.number_of_files,
+                bytes=e.bytes,
+                directory_path=e.directory_path,
+                reporting_interval=e.reporting_interval,
+                cos=e.cos,
+                act_username=e.act_username,
+                terabyte_years=e.terabyte_years,
+                charges=e.charges,
+            )
+        else:
+            existing.number_of_files += e.number_of_files
+            existing.bytes += e.bytes
+            existing.terabyte_years += e.terabyte_years
+            existing.charges += e.charges
+
+    return list(grouped.values()) + pass_through
+
 
 def normalize_queue_name(queue_name: str) -> str:
     """Map ephemeral PBS reservation queue names to the canonical 'reservation' queue.
@@ -571,13 +634,31 @@ class AccountingAdminCommand(BaseCommand):
                 f"{resource_name} on {snap_date} before re-import.[/dim]"
             )
 
+        # ---- 7c. Aggregate per-(user, fileset) rows into per-(user,
+        # project) totals before upsert. The acct.glade input ships one
+        # row per (user, directory); the upsert natural key omits
+        # directory_path, so multi-fileset projects would silently
+        # UPDATE-overwrite if we fed raw entries through. Mirrors legacy
+        # SAM's `calculateDiskChargeSummaries` SUM-by-(date, user,
+        # account) — see `_group_disk_entries`.
+        entries_to_upsert = _group_disk_entries(entries)
+        if self.ctx.verbose and len(entries_to_upsert) != len(entries):
+            self.console.print(
+                f"[dim]Aggregated {len(entries)} per-fileset rows into "
+                f"{len(entries_to_upsert)} per-(user, project) rows for "
+                f"upsert (multi-fileset projects rolled up).[/dim]"
+            )
+
         # ---- 8. Chunked upsert -----------------------------------------
         n_created = 0
         n_updated = 0
         n_errors = 0
         n_skipped = 0
 
-        chunks = [entries[i:i + chunk_size] for i in range(0, len(entries), chunk_size)]
+        chunks = [
+            entries_to_upsert[i:i + chunk_size]
+            for i in range(0, len(entries_to_upsert), chunk_size)
+        ]
 
         with Progress(
             TextColumn("[progress.description]{task.description}"),
@@ -587,7 +668,8 @@ class AccountingAdminCommand(BaseCommand):
             console=self.console,
         ) as progress:
             task = progress.add_task(
-                f"Posting {resource_name} disk charges...", total=len(entries)
+                f"Posting {resource_name} disk charges...",
+                total=len(entries_to_upsert),
             )
             for chunk_idx, chunk in enumerate(chunks, start=1):
                 try:
@@ -606,6 +688,7 @@ class AccountingAdminCommand(BaseCommand):
                                 # row.act_username carries the audit
                                 # label and row.user_override is set, so
                                 # the resolver is skipped entirely.
+                                user_for_upsert = row.user_override
                                 if row.user_override is not None:
                                     act_uname = row.act_username
                                     act_pcode = None
@@ -630,6 +713,24 @@ class AccountingAdminCommand(BaseCommand):
                                     # SAM-canonical name, not the umbrella
                                     # label from the input file.
                                     act_pcode = project_for_upsert.projcode
+
+                                    # Project-rollup feeds (Quasar's
+                                    # `'total'` rows): no per-user
+                                    # breakdown is shipped, so attribute
+                                    # the row to the project lead and
+                                    # keep the rollup sentinel as the
+                                    # audit username. Mirrors the
+                                    # `<unidentified>` gap-row
+                                    # convention (see
+                                    # `_build_unidentified_disk_rows`).
+                                    if act_uname in _DISK_ROLLUP_USERNAMES:
+                                        user_for_upsert = project_for_upsert.lead
+                                        if user_for_upsert is None:
+                                            raise ValueError(
+                                                f"rollup row username={act_uname!r} for "
+                                                f"projcode={act_pcode!r} but project has "
+                                                f"no lead — cannot attribute"
+                                            )
                                 _, action = upsert_disk_charge_summary(
                                     self.session,
                                     activity_date=row.activity_date,
@@ -641,7 +742,7 @@ class AccountingAdminCommand(BaseCommand):
                                     number_of_files=row.number_of_files,
                                     bytes=row.bytes,
                                     terabyte_years=row.terabyte_years,
-                                    user=row.user_override,
+                                    user=user_for_upsert,
                                     project=project_for_upsert,
                                     account=account_for_upsert,
                                     include_deleted_accounts=include_deleted_accounts,

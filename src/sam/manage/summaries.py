@@ -225,10 +225,18 @@ def upsert_comp_charge_summary(
     machine = _resolve_machine_optional(session, machine_name, res)
     queue = _resolve_or_create_queue(session, queue_name, res, create_queue_if_missing)
 
+    # `act_unix_uid` mirrors the resolved user's uid when the caller didn't
+    # supply one (act_username / act_projcode are required so they are
+    # always populated). Keeps the as-reported column populated whenever
+    # the user is known.
+    eff_act_unix_uid = act_unix_uid if act_unix_uid is not None else (
+        user.unix_uid if user is not None else None
+    )
+
     # Resolved field defaults — explicit None checks preserve falsy values (e.g. uid=0)
     resolved_username = username if username is not None else act_username
     resolved_projcode = projcode if projcode is not None else act_projcode
-    resolved_unix_uid = unix_uid if unix_uid is not None else act_unix_uid
+    resolved_unix_uid = unix_uid if unix_uid is not None else eff_act_unix_uid
     resource_col = resource if resource is not None else resource_name
 
     # Facility name: use caller-provided value; fall back to project chain
@@ -251,7 +259,7 @@ def upsert_comp_charge_summary(
             activity_date=activity_date,
             act_username=act_username,
             act_projcode=act_projcode,
-            act_unix_uid=act_unix_uid,
+            act_unix_uid=eff_act_unix_uid,
             username=resolved_username,
             projcode=resolved_projcode,
             unix_uid=resolved_unix_uid,
@@ -339,15 +347,31 @@ def _upsert_storage_summary(
         # valid act_projcode when callers already know the account).
         project = account.project
 
+    # `act_*` fields mirror the resolved entity when the caller did NOT
+    # supply a raw value. Keeps the as-reported / resolved columns from
+    # going asymmetric — e.g. legacy disk feeds populate `username` /
+    # `projcode` but leave `act_unix_uid` NULL even though the user is
+    # fully resolved. Use these effective values for both the natural-
+    # key lookup and the inserted row so upserts stay idempotent.
+    eff_act_username = act_username if act_username is not None else (
+        user.username if user is not None else None
+    )
+    eff_act_projcode = act_projcode if act_projcode is not None else (
+        project.projcode if project is not None else None
+    )
+    eff_act_unix_uid = act_unix_uid if act_unix_uid is not None else (
+        user.unix_uid if user is not None else None
+    )
+
     # Resolved field defaults — explicit None checks preserve falsy values (e.g. uid=0)
     resolved_username = username if username is not None else (
-        user.username if user is not None else act_username
+        user.username if user is not None else eff_act_username
     )
     resolved_projcode = projcode if projcode is not None else (
-        project.projcode if project is not None else act_projcode
+        project.projcode if project is not None else eff_act_projcode
     )
     resolved_unix_uid = unix_uid if unix_uid is not None else (
-        user.unix_uid if user is not None and act_unix_uid is None else act_unix_uid
+        user.unix_uid if user is not None and act_unix_uid is None else eff_act_unix_uid
     )
 
     # Facility name: use caller-provided value; fall back to project chain
@@ -357,17 +381,17 @@ def _upsert_storage_summary(
     # Natural key: (activity_date, act_username, act_projcode, account_id)
     existing = session.query(model_cls).filter(
         model_cls.activity_date == activity_date,
-        model_cls.act_username == act_username,
-        model_cls.act_projcode == act_projcode,
+        model_cls.act_username == eff_act_username,
+        model_cls.act_projcode == eff_act_projcode,
         model_cls.account_id == account.account_id,
     ).first()
 
     if existing is None:
         record = model_cls(
             activity_date=activity_date,
-            act_username=act_username,
-            act_projcode=act_projcode,
-            act_unix_uid=act_unix_uid,
+            act_username=eff_act_username,
+            act_projcode=eff_act_projcode,
+            act_unix_uid=eff_act_unix_uid,
             username=resolved_username,
             projcode=resolved_projcode,
             unix_uid=resolved_unix_uid,
