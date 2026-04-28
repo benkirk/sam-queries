@@ -10,7 +10,7 @@ webapp:
   ingress:
     visibility: internal                  # internal or external
   container:                              # full image path
-    image: ghcr.io/benkirk/sam-queries/webapp:main
+    image: ghcr.io/benkirk/sam-queries/webapp:sha-81a8f9e
     port: 5050                            # Port your container listens on
     requests:
       memory: 4096M                       # Guaranteed memory allocation
