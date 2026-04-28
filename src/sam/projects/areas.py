@@ -182,12 +182,12 @@ class FosAoi(Base, TimestampMixin):
     __tablename__ = 'fos_aoi'
 
     __table_args__ = (
-        Index('ix_fos_aoi_fos', 'fos_id', unique=True),
-        Index('ix_fos_aoi_area', 'area_of_interest_id'),
+        Index('fos_id', 'fos_id', unique=True),
+        Index('aoi_fk', 'area_of_interest_id'),
     )
 
     fos_aoi_id = Column(Integer, primary_key=True, autoincrement=True)
-    fos_id = Column(Integer, nullable=False, unique=True)
+    fos_id = Column(Integer, nullable=False)
     area_of_interest_id = Column(Integer, ForeignKey('area_of_interest.area_of_interest_id'), nullable=False)
     fos = Column(String(255))  # FOS description/name
 

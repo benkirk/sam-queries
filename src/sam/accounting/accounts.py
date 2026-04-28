@@ -333,8 +333,11 @@ class ResponsibleParty(Base, TimestampMixin):
     __tablename__ = 'responsible_party'
 
     __table_args__ = (
-        Index('ix_responsible_party_account', 'account_id'),
-        Index('ix_responsible_party_user', 'user_id'),
+        Index('allocation_account_fk', 'account_id'),
+        Index('responsible_party_user_fk', 'user_id'),
+        Index('responsible_party_ux',
+              'account_id', 'user_id', 'responsible_party_type',
+              unique=True),
     )
 
     responsible_party_id = Column(Integer, primary_key=True, autoincrement=True)

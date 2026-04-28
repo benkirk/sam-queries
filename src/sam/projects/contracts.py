@@ -299,8 +299,12 @@ class NSFProgram(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """NSF program classifications."""
     __tablename__ = 'nsf_program'
 
+    __table_args__ = (
+        Index('nsf_program_name_uk', 'nsf_program_name', unique=True),
+    )
+
     nsf_program_id = Column(Integer, primary_key=True, autoincrement=True)
-    nsf_program_name = Column(String(255), nullable=False, unique=True)
+    nsf_program_name = Column(String(255), nullable=False)
 
     contracts = relationship('Contract', back_populates='nsf_program')
 

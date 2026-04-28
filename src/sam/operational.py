@@ -27,7 +27,10 @@ class ManualTask(Base):
     __tablename__ = 'manual_task'
 
     __table_args__ = (
-        Index('ix_manual_task_client', 'client'),
+        Index('idx_client_job_name',
+              'client', 'transaction_id', 'job_key', 'name',
+              unique=True),
+        Index('idx_client_key_name', 'client', 'job_alias', 'name'),
     )
 
     manual_task_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -60,7 +63,7 @@ class Product(Base):
     __tablename__ = 'product'
 
     __table_args__ = (
-        Index('ix_product_manual_task', 'manual_task_id'),
+        Index('manual_task_fk', 'manual_task_id'),
     )
 
     product_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -90,9 +93,9 @@ class WallclockExemption(Base, TimestampMixin, SessionMixin):
     __tablename__ = 'wallclock_exemption'
 
     __table_args__ = (
-        Index('ix_wallclock_exemption_user', 'user_id'),
-        Index('ix_wallclock_exemption_queue', 'queue_id'),
-        Index('ix_wallclock_exemption_dates', 'start_date', 'end_date'),
+        Index('user_id_fk', 'user_id'),
+        Index('queue_id_fk', 'queue_id'),
+        Index('idx_user_queue', 'user_id', 'queue_id', 'start_date', unique=True),
     )
 
     wallclock_exemption_id = Column(Integer, primary_key=True, autoincrement=True)

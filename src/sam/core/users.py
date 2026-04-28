@@ -683,7 +683,8 @@ class Phone(Base, TimestampMixin):
     __tablename__ = 'phone'
 
     __table_args__ = (
-        Index('ix_phone_user', 'user_id'),
+        Index('phone_user_fk', 'user_id'),
+        Index('phone_phone_type_fk', 'ext_phone_type_id'),
     )
 
     ext_phone_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -725,8 +726,8 @@ class UserResourceHome(Base, TimestampMixin):
     __tablename__ = 'user_resource_home'
 
     __table_args__ = (
-        Index('ix_user_resource_home_user', 'user_id'),
-        Index('ix_user_resource_home_resource', 'resource_id'),
+        Index('user_resource_home_users_fk', 'user_id'),
+        Index('user_resource_home_resources_fk', 'resource_id'),
     )
 
     user_resource_home_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -750,8 +751,10 @@ class UserResourceShell(Base, TimestampMixin):
     __tablename__ = 'user_resource_shell'
 
     __table_args__ = (
-        Index('ix_user_resource_shell_user', 'user_id'),
-        Index('ix_user_resource_shell_shell', 'resource_shell_id'),
+        Index('user_resource_shell_users_fk', 'user_id'),
+        Index('user_resource_shell_resource_shell_fk', 'resource_shell_id'),
+        Index('idx_user_resource_shell_uniq',
+              'user_id', 'resource_shell_id', unique=True),
     )
 
     user_resource_shell_id = Column(Integer, primary_key=True, autoincrement=True)

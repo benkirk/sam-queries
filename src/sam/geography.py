@@ -28,6 +28,10 @@ class StateProv(Base, TimestampMixin, SoftDeleteMixin):
     """U.S. states and international provinces."""
     __tablename__ = 'state_prov'
 
+    __table_args__ = (
+        Index('state_prov_country_fk', 'ext_country_id'),
+    )
+
     ext_state_prov_id = Column(Integer, primary_key=True, autoincrement=True)
     ext_country_id = Column(Integer, ForeignKey('country.ext_country_id'), nullable=False)
     name = Column(String(100), nullable=False)

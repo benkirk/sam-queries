@@ -1458,9 +1458,11 @@ class DefaultProject(Base, TimestampMixin):
     __tablename__ = 'default_project'
 
     __table_args__ = (
-        Index('ix_default_project_user', 'user_id'),
-        Index('ix_default_project_resource', 'resource_id'),
-        Index('ix_default_project_project', 'project_id'),
+        Index('idx_default_project', 'user_id'),
+        Index('idx_default_project_1', 'project_id'),
+        Index('idx_default_project_2', 'resource_id'),
+        Index('idx_default_project_user_resource',
+              'user_id', 'resource_id', unique=True),
     )
 
     default_project_id = Column(Integer, primary_key=True, autoincrement=True)
