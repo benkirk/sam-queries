@@ -3,6 +3,28 @@
 from ..base import *
 #-------------------------------------------------------------------------eh-
 
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class CurrentDiskUsage:
+    """Latest disk-snapshot occupancy for a single account.
+
+    Returned by ``Account.current_disk_usage()`` /
+    ``Project.current_disk_usage()``. Distinct from the cumulative
+    billing roll-up — these values are read from the single
+    ``disk_charge_summary`` row marked current, not summed.
+    """
+    activity_date: object        # datetime.date — kept loose to avoid import cycle
+    bytes: int
+    terabyte_years: float
+    number_of_files: int
+
+    @property
+    def used_tib(self) -> float:
+        """Occupancy in TiB (binary)."""
+        return self.bytes / (1024 ** 4)
+
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
@@ -159,6 +181,87 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
             self.second_threshold = second_threshold
         self.session.flush()
         return self
+
+    def current_disk_usage(self, session=None) -> Optional['CurrentDiskUsage']:
+        """Return the latest ``disk_charge_summary`` snapshot for this account.
+
+        Reads the single row whose ``activity_date`` is marked
+        ``current = True`` in ``disk_charge_summary_status``, falling
+        back to the row with the maximum ``activity_date`` if the
+        status table has no current row (defensive — should not happen
+        post-cutover).
+
+        Returns ``None`` for accounts whose resource is not a disk
+        resource, or which have no disk_charge_summary row at all.
+        Sums across all rows for the snapshot date — so when the
+        ``<unidentified>`` reconciliation is on, the lead-attributed
+        gap row is included in the total.
+        """
+        # Lazy imports to avoid cycles (DiskChargeSummary lives in
+        # sam.summaries which imports Account through relationships).
+        from sam.summaries.disk_summaries import (
+            DiskChargeSummary, DiskChargeSummaryStatus,
+        )
+
+        s = session or self.session
+        if s is None:
+            return None
+
+        # Disk resource gate: skip when the account's resource isn't disk.
+        # Use string compare to avoid an enum import; matches the constant
+        # used elsewhere in the codebase ('DISK').
+        if self.resource and self.resource.resource_type and \
+                self.resource.resource_type.resource_type != 'DISK':
+            return None
+
+        # Defensive: in legacy / test DBs there may be multiple rows with
+        # current=True. Pick the most recent and proceed.
+        current_row = (
+            s.query(DiskChargeSummaryStatus.activity_date)
+             .filter(DiskChargeSummaryStatus.current == True)  # noqa: E712
+             .order_by(DiskChargeSummaryStatus.activity_date.desc())
+             .first()
+        )
+        candidate_date = current_row[0] if current_row else None
+
+        # The "current" snapshot may not include this account (e.g. project
+        # had no usage that day, or the snapshot file was filtered). Fall
+        # back to the most recent date this account itself has a row for.
+        target_date = None
+        if candidate_date is not None:
+            has_row = (
+                s.query(DiskChargeSummary.disk_charge_summary_id)
+                 .filter(
+                     DiskChargeSummary.account_id == self.account_id,
+                     DiskChargeSummary.activity_date == candidate_date,
+                 ).first()
+            )
+            if has_row is not None:
+                target_date = candidate_date
+
+        if target_date is None:
+            target_date = s.query(func.max(DiskChargeSummary.activity_date)).filter(
+                DiskChargeSummary.account_id == self.account_id
+            ).scalar()
+
+        if target_date is None:
+            return None
+
+        agg = s.query(
+            func.coalesce(func.sum(DiskChargeSummary.bytes), 0).label('bytes'),
+            func.coalesce(func.sum(DiskChargeSummary.terabyte_years), 0).label('ty'),
+            func.coalesce(func.sum(DiskChargeSummary.number_of_files), 0).label('files'),
+        ).filter(
+            DiskChargeSummary.account_id == self.account_id,
+            DiskChargeSummary.activity_date == target_date,
+        ).one()
+
+        return CurrentDiskUsage(
+            activity_date=target_date,
+            bytes=int(agg.bytes or 0),
+            terabyte_years=float(agg.ty or 0.0),
+            number_of_files=int(agg.files or 0),
+        )
 
     def __str__(self):
         return f"{self.project.projcode if self.project else None} - {self.resource.resource_name if self.resource else None}"

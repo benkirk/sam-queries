@@ -1077,6 +1077,31 @@ def get_allocation_summary_with_usage(
     if account_infos:
         all_charges.update(Project.batch_get_account_charges(session, account_infos, include_adjustments))
 
+    # Bulk-resolve disk capacity for every all-disk row at once. The
+    # `get_subtree_disk_capacity` walk is expensive (per-account snapshot
+    # lookups) and the allocation summary may contain hundreds of disk
+    # rows — fanning out per-row drove route query counts above 4000.
+    # Collect the (project, resource_name) pairs we'll need and resolve
+    # them in a single fixed-size set of queries.
+    disk_capacity_pairs: List[Tuple['Project', str]] = []
+    for alloc_list in alloc_by_key.values():
+        if not alloc_list:
+            continue
+        if not all(rt == 'DISK' for _, _, rt, _, _ in alloc_list):
+            continue
+        unique_projects = {p.project_id: p for _, _, _, p, _ in alloc_list}
+        unique_resources = {res for _, res, _, _, _ in alloc_list}
+        if len(unique_projects) == 1 and len(unique_resources) == 1:
+            only_project = next(iter(unique_projects.values()))
+            only_resource = next(iter(unique_resources))
+            disk_capacity_pairs.append((only_project, only_resource))
+    from sam.queries.disk_usage import _EMPTY_CAP
+    if disk_capacity_pairs:
+        from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
+        disk_caps = bulk_get_subtree_disk_capacity(session, disk_capacity_pairs)
+    else:
+        disk_caps = {}
+
     # Enrich each summary item with pre-computed usage data
     for item in summary:
         key = _summary_item_key(item, resource_name, facility_name, allocation_type, projcode)
@@ -1141,5 +1166,50 @@ def get_allocation_summary_with_usage(
             item['total_used'] = self_used
             item['percent_used'] = (self_used / item['total_allocated'] * 100) if item['total_allocated'] > 0 else 0
         item['charges_by_type'] = charges_by_type_total
+
+        # Disk capacity override: when every allocation in this row is on
+        # a disk resource, replace the cumulative TiB-year total_used
+        # with the point-in-time TiB occupancy of the project subtree
+        # (so parents like NMMM0003, whose children hold the bytes,
+        # don't read 0%). For single-project rows (the common case
+        # under projcode-grouping), `get_subtree_disk_capacity` walks
+        # `project.get_descendants()` on the row's resource and sums
+        # snapshot bytes. Multi-project rows fall back to summing
+        # per-account snapshots (legacy behaviour) — capacity-aware
+        # de-duplication across overlapping subtrees in TOTAL-style
+        # aggregates is a known limitation.
+        all_disk = bool(item_allocations) and all(
+            rt == 'DISK' for _, _, rt, _, _ in item_allocations
+        )
+        if all_disk:
+            unique_projects = {p.project_id: p for _, _, _, p, _ in item_allocations}
+            unique_resources = {res for _, res, _, _, _ in item_allocations}
+            if len(unique_projects) == 1 and len(unique_resources) == 1:
+                only_project = next(iter(unique_projects.values()))
+                only_resource = next(iter(unique_resources))
+                cap = disk_caps.get(
+                    (only_project.project_id, only_resource), _EMPTY_CAP,
+                )
+                capacity_used = cap['used_tib']
+                activity_date = cap['activity_date']
+            else:
+                capacity_used = 0.0
+                activity_date = None
+                for _, _, _, _, account in item_allocations:
+                    snap = account.current_disk_usage()
+                    if snap is None:
+                        continue
+                    capacity_used += snap.used_tib
+                    if activity_date is None or snap.activity_date > activity_date:
+                        activity_date = snap.activity_date
+            item['total_used'] = capacity_used
+            item['percent_used'] = (
+                (capacity_used / item['total_allocated'] * 100)
+                if item['total_allocated'] > 0 else 0
+            )
+            if 'self_used' in item:
+                item['self_used'] = capacity_used
+                item['self_percent_used'] = item['percent_used']
+            item['activity_date'] = activity_date
 
     return summary

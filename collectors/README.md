@@ -208,6 +208,48 @@ queues:
   # ...
 ```
 
+## Time Zones
+
+**The collectors must run with `TZ=UTC` set in the environment.** The
+project-wide convention (see `CLAUDE.md`) is naive-UTC for every
+datetime stored in the database; everything downstream — the webapp's
+display layer, charge-summary windowing, the chart x-axes —
+assumes that. Python's `datetime.now()` returns the process-local
+time, so a collector running on a host in MDT/MST without `TZ=UTC`
+will write timestamps 6–7 hours behind UTC and recent records will
+silently fall outside short read windows on the dashboard.
+
+`run_collectors.sh` already does `export TZ=UTC` at the top, so the
+loop runner is correct by default. **If you invoke a collector
+directly (e.g. `./derecho/collector.py --once`), set `TZ=UTC` first**:
+
+```bash
+TZ=UTC ./derecho/collector.py --verbose
+```
+
+A systemd unit, cron entry, or any other runner needs the same:
+
+```ini
+[Service]
+Environment=TZ=UTC
+ExecStart=/path/to/run_collectors.sh
+```
+
+### PBS reservations
+
+PBS reports reservation start/end times in the cluster's local time
+with no zone marker (e.g. `Wed Nov 12 12:00:00 2025`).
+`ReservationParser` anchors that to a configurable `cluster_tz`
+(default `'America/Denver'` — both Derecho and Casper sit at
+NCAR-Wyoming) and converts to naive-UTC at parse time, so the
+storage convention holds even though PBS itself is TZ-blind. If
+this code is ever deployed at a non-Mountain site, override
+`cluster_tz` when calling `ReservationParser.parse_reservations(...)`.
+
+The dashboard converts back to a configurable display TZ at render
+time (`STATUS_DISPLAY_TZ`, also defaulting to `America/Denver`), so
+operators see times in cluster-local even though storage is UTC.
+
 ## Command-Line Options
 
 ```bash

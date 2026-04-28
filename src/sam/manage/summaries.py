@@ -300,8 +300,8 @@ def _upsert_storage_summary(
     model_cls,        # DiskChargeSummary or ArchiveChargeSummary
     *,
     activity_date: date,
-    act_username: str,
-    act_projcode: str,
+    act_username: Optional[str],
+    act_projcode: Optional[str],
     act_unix_uid: Optional[int],
     resource_name: str,
     charges: float,
@@ -313,17 +313,42 @@ def _upsert_storage_summary(
     unix_uid: Optional[int] = None,
     facility_name: Optional[str] = None,
     include_deleted_accounts: bool = False,
+    # Pre-resolved overrides — when supplied, the matching resolver call is
+    # skipped. Used by the disk-charging gap-row path (synthetic
+    # `<unidentified>` audit rows pointing at the project lead).
+    user: Optional[User] = None,
+    project: Optional[Project] = None,
+    account: Optional[Account] = None,
 ) -> Tuple[object, str]:
-    """Shared upsert logic for DiskChargeSummary and ArchiveChargeSummary."""
-    user = _resolve_user(session, act_username, act_unix_uid)
-    project = _resolve_project(session, act_projcode)
+    """Shared upsert logic for DiskChargeSummary and ArchiveChargeSummary.
+
+    When ``user``, ``project``, or ``account`` is supplied, the corresponding
+    resolver is skipped. This lets callers attribute synthetic rows
+    (e.g. ``act_username='<unidentified>'``) to a guaranteed-existing User
+    without that user actually existing under the audit name.
+    """
+    if user is None:
+        user = _resolve_user(session, act_username, act_unix_uid)
     res = _resolve_resource(session, resource_name)
-    account = _resolve_account(session, project, res, include_deleted=include_deleted_accounts)
+    if account is None:
+        if project is None:
+            project = _resolve_project(session, act_projcode)
+        account = _resolve_account(session, project, res, include_deleted=include_deleted_accounts)
+    elif project is None:
+        # Derive project from the pre-resolved account (avoids needing a
+        # valid act_projcode when callers already know the account).
+        project = account.project
 
     # Resolved field defaults — explicit None checks preserve falsy values (e.g. uid=0)
-    resolved_username = username if username is not None else act_username
-    resolved_projcode = projcode if projcode is not None else act_projcode
-    resolved_unix_uid = unix_uid if unix_uid is not None else act_unix_uid
+    resolved_username = username if username is not None else (
+        user.username if user is not None else act_username
+    )
+    resolved_projcode = projcode if projcode is not None else (
+        project.projcode if project is not None else act_projcode
+    )
+    resolved_unix_uid = unix_uid if unix_uid is not None else (
+        user.unix_uid if user is not None and act_unix_uid is None else act_unix_uid
+    )
 
     # Facility name: use caller-provided value; fall back to project chain
     if facility_name is None:
