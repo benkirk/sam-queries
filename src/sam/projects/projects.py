@@ -63,12 +63,13 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     __tablename__ = 'project'
 
     __table_args__ = (
-        Index('ix_project_projcode', 'projcode'),
-        Index('ix_project_lead', 'project_lead_user_id'),
-        Index('ix_project_admin', 'project_admin_user_id'),
-        Index('ix_project_active', 'active'),
-        Index('ix_project_tree', 'tree_left', 'tree_right'),
-        Index('ix_project_parent', 'parent_id'),
+        Index('project_projcode_uk', 'projcode', unique=True),
+        Index('project_lead_user_fk', 'project_lead_user_id'),
+        Index('project_admin_user_fk', 'project_admin_user_id'),
+        Index('project_project_fk', 'parent_id'),
+        Index('project_allocation_type_fk', 'allocation_type_id'),
+        Index('project_aoi_fk', 'area_of_interest_id'),
+        Index('project_root_fk', 'tree_root'),
     )
 
     # NestedSetMixin config
@@ -88,7 +89,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         return hash(self.project_id) if self.project_id is not None else hash(id(self))
 
     project_id = Column(Integer, primary_key=True, autoincrement=True)
-    projcode = Column(String(30), nullable=False, unique=True, default='')
+    projcode = Column(String(30), nullable=False, default='')
     title = Column(String(255), nullable=False)
     abstract = Column(Text)
 
@@ -1368,9 +1369,14 @@ class ProjectNumber(Base):
     """Sequential project numbers."""
     __tablename__ = 'project_number'
 
+    __table_args__ = (
+        Index('project_number_project_id_uk', 'project_id', unique=True),
+        Index('project_number_project_fk', 'project_id'),
+    )
+
     project_number_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'),
-                       nullable=False, unique=True)
+                       nullable=False)
 
     project = relationship('Project', back_populates='project_number')
 
@@ -1387,7 +1393,7 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
     __tablename__ = 'project_directory'
 
     __table_args__ = (
-        Index('ix_project_directory_project', 'project_id'),
+        Index('project_directory_project_fk', 'project_id'),
     )
 
     directory_name = Column(String(255), nullable=False)

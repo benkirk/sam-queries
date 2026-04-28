@@ -150,9 +150,8 @@ class UserOrganization(Base, TimestampMixin, DateRangeMixin):
     __tablename__ = 'user_organization'
 
     __table_args__ = (
-        Index('ix_user_organization_user', 'user_id'),
-        Index('ix_user_organization_org', 'organization_id'),
-        Index('ix_user_organization_dates', 'start_date', 'end_date'),
+        Index('user_organization_user_fk', 'user_id'),
+        Index('user_organization_org_fk', 'organization_id'),
     )
 
     user_organization_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -178,6 +177,11 @@ class UserOrganization(Base, TimestampMixin, DateRangeMixin):
 class Institution(Base, TimestampMixin, SessionMixin):
     """Educational and research institutions."""
     __tablename__ = 'institution'
+
+    __table_args__ = (
+        Index('idx_institution', 'state_prov_id'),
+        Index('idx_institution_1', 'institution_type_id'),
+    )
 
     def __eq__(self, other):
         """Two institutions are equal if they have the same institution_id."""
@@ -392,9 +396,8 @@ class UserInstitution(Base, TimestampMixin, DateRangeMixin):
     __tablename__ = 'user_institution'
 
     __table_args__ = (
-        Index('ix_user_institution_user', 'user_id'),
-        Index('ix_user_institution_institution', 'institution_id'),
-        Index('ix_user_institution_dates', 'start_date', 'end_date'),
+        Index('user_institution_user_fk', 'user_id'),
+        Index('user_institution_inst_fk', 'institution_id'),
     )
 
     user_institution_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -421,9 +424,14 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Mnemonic codes for project naming."""
     __tablename__ = 'mnemonic_code'
 
+    __table_args__ = (
+        Index('mnemonic_code_code_uk', 'code', unique=True),
+        Index('mnemonic_code_description_uk', 'description', unique=True),
+    )
+
     mnemonic_code_id = Column(Integer, primary_key=True, autoincrement=False)
-    code = Column(String(3), nullable=False, unique=True)
-    description = Column(String(200), nullable=False, unique=True)
+    code = Column(String(3), nullable=False)
+    description = Column(String(200), nullable=False)
 
     project_codes = relationship('ProjectCode', back_populates='mnemonic_code')
 
@@ -513,9 +521,8 @@ class ProjectOrganization(Base, TimestampMixin, DateRangeMixin, SessionMixin):
     __tablename__ = 'project_organization'
 
     __table_args__ = (
-        Index('ix_project_organization_project', 'project_id'),
-        Index('ix_project_organization_org', 'organization_id'),
-        Index('ix_project_organization_dates', 'start_date', 'end_date'),
+        Index('project_organization_proj_fk', 'project_id'),
+        Index('project_organization_org_fk', 'organization_id'),
     )
 
     project_organization_id = Column(Integer, primary_key=True, autoincrement=True)

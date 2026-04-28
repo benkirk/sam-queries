@@ -11,7 +11,7 @@ class Machine(Base, TimestampMixin, SessionMixin):
     __tablename__ = 'machine'
 
     __table_args__ = (
-        Index('ix_machine_resource', 'resource_id'),
+        Index('idx_machine', 'resource_id'),
     )
 
     machine_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -155,8 +155,7 @@ class MachineFactor(Base, TimestampMixin):
     __tablename__ = 'machine_factor'
 
     __table_args__ = (
-        Index('ix_machine_factor_machine', 'machine_id'),
-        Index('ix_machine_factor_dates', 'start_date', 'end_date'),
+        Index('idx_resource_factor', 'machine_id'),
     )
 
     machine_factor_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -184,8 +183,8 @@ class Queue(Base, TimestampMixin, SessionMixin):
     __tablename__ = 'queue'
 
     __table_args__ = (
-        Index('ix_queue_resource', 'resource_id'),
-        Index('ix_queue_name', 'queue_name'),
+        Index('queue_resource_fk', 'resource_id'),
+        Index('queue_name_resource_idx', 'queue_name', 'resource_id'),
     )
 
     queue_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -294,8 +293,7 @@ class QueueFactor(Base, TimestampMixin):
     __tablename__ = 'queue_factor'
 
     __table_args__ = (
-        Index('ix_queue_factor_queue', 'queue_id'),
-        Index('ix_queue_factor_dates', 'start_date', 'end_date'),
+        Index('queue_factor_queue_fk', 'queue_id'),
     )
 
     queue_factor_id = Column(Integer, primary_key=True, autoincrement=True)

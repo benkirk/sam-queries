@@ -11,16 +11,17 @@ class Contract(Base, TimestampMixin, SessionMixin):
     __tablename__ = 'contract'
 
     __table_args__ = (
-        Index('ix_contract_source', 'contract_source_id'),
-        Index('ix_contract_pi', 'principal_investigator_user_id'),
-        Index('ix_contract_monitor', 'contract_monitor_user_id'),
-        Index('ix_contract_nsf_program', 'nsf_program_id'),
+        Index('contract_contract_source_fk', 'contract_source_id'),
+        Index('contract_pi_user_fk', 'principal_investigator_user_id'),
+        Index('contract_contract_monitor_user_fk', 'contract_monitor_user_id'),
+        Index('contract_nsf_program_fk', 'nsf_program_id'),
+        Index('contract_contract_number_uk', 'contract_number', unique=True),
     )
 
     contract_id = Column(Integer, primary_key=True, autoincrement=True)
     contract_source_id = Column(Integer, ForeignKey('contract_source.contract_source_id'),
                                 nullable=False)
-    contract_number = Column(String(50), nullable=False, unique=True)
+    contract_number = Column(String(50), nullable=False)
     title = Column(String(255), nullable=False)
     url = Column(String(1000))
 
@@ -177,8 +178,12 @@ class ContractSource(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Sources of funding contracts."""
     __tablename__ = 'contract_source'
 
+    __table_args__ = (
+        Index('contract_source_contract_source_uk', 'contract_source', unique=True),
+    )
+
     contract_source_id = Column(Integer, primary_key=True, autoincrement=True)
-    contract_source = Column(String(50), nullable=False, unique=True)
+    contract_source = Column(String(50), nullable=False)
 
     contracts = relationship('Contract', back_populates='contract_source')
 
@@ -247,8 +252,9 @@ class ProjectContract(Base):
     __tablename__ = 'project_contract'
 
     __table_args__ = (
-        Index('ix_project_contract_project', 'project_id'),
-        Index('ix_project_contract_contract', 'contract_id'),
+        Index('project_contract_project_fk', 'project_id'),
+        Index('project_contract_contract_fk', 'contract_id'),
+        Index('project_id_contract_id_uk', 'project_id', 'contract_id', unique=True),
     )
 
     project_contract_id = Column(Integer, primary_key=True, autoincrement=True)
