@@ -71,7 +71,6 @@ class CompJob(Base):
     activity_date = Column(DateTime, nullable=False)
     load_date = Column(DateTime, nullable=False)
 
-    activities = relationship('CompActivity', back_populates='job')
 
     @property
     def wall_time_seconds(self) -> int:
@@ -124,12 +123,6 @@ class CompActivity(Base):
         PrimaryKeyConstraint('era_part_key', 'acct_part_key', 'job_id',
                              'job_idx', 'util_idx', 'machine', 'submit_time',
                              name='pk_comp_activity'),
-        ForeignKeyConstraint(
-            ['era_part_key', 'job_id', 'job_idx', 'machine', 'submit_time'],
-            ['comp_job.era_part_key', 'comp_job.job_id', 'comp_job.job_idx',
-             'comp_job.machine', 'comp_job.submit_time'],
-            name='fk_comp_activity_job'
-        ),
         Index('idx_comp_act_activity_date', 'activity_date'),
     )
 
@@ -191,13 +184,6 @@ class CompActivity(Base):
     # Processing status
     processing_status = Column(Boolean)
     error_comment = Column(Text)
-
-    # Relationship using composite foreign key
-    job = relationship(
-        'CompJob',
-        foreign_keys=[era_part_key, job_id, job_idx, machine, submit_time],
-        back_populates='activities'
-    )
 
     @property
     def cpu_time_seconds(self) -> Optional[float]:

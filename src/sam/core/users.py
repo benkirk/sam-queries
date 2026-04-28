@@ -49,7 +49,10 @@ class User(Base, TimestampMixin, SessionMixin):
 
     academic_status_id = Column(Integer, ForeignKey('academic_status.academic_status_id'))
     login_type_id = Column(Integer, ForeignKey('login_type.login_type_id'))
-    primary_gid = Column(Integer, ForeignKey('adhoc_group.group_id'))
+    # NOTE: stores a unix_gid value, not adhoc_group.group_id — resolve via
+    # sam.core.groups.resolve_group_name(session, user.primary_gid). The
+    # legacy schema lacks a real FK here; do not declare one.
+    primary_gid = Column(Integer)
     contact_person_upid = Column(Integer)
 
     pdb_modified_time = Column(TIMESTAMP)
@@ -83,7 +86,6 @@ class User(Base, TimestampMixin, SessionMixin):
     organizations = relationship('UserOrganization', back_populates='user', cascade='all, delete-orphan')
     phones = relationship('Phone', back_populates='user', cascade='all, delete-orphan')
     pi_contracts = relationship('Contract', foreign_keys='Contract.principal_investigator_user_id', back_populates='principal_investigator')
-    primary_group = relationship('AdhocGroup', foreign_keys=[primary_gid])
     resource_homes = relationship('UserResourceHome', back_populates='user', cascade='all, delete-orphan')
     resource_shells = relationship('UserResourceShell', back_populates='user', cascade='all, delete-orphan')
     responsible_accounts = relationship('ResponsibleParty', back_populates='user')

@@ -146,6 +146,20 @@ def audit_indexes(session, mapper) -> list:
     return findings
 
 
+# ORM-side FKs that are intentionally declared without a matching DB-level
+# constraint. Each entry is (table_name, frozenset_of_columns) plus a
+# one-line reason. Used to suppress the corresponding finding so the
+# legitimate drift stays visible.
+IGNORED_FK_DRIFT = {
+    # Self-referential FK driving the nested-set parent/children relationship
+    # used by the admin organizations dashboard. Prod doesn't enforce the FK
+    # constraint at the DB level, but the ORM declaration is load-bearing for
+    # SQLAlchemy joins (subqueryload(Organization.children) etc).
+    ('organization', frozenset({'parent_org_id'})): (
+        'self-FK drives Organization.parent/.children nested-set relationship'),
+}
+
+
 def audit_foreign_keys(session, mapper) -> list:
     table = mapper.persist_selectable.name
     db_fks = get_db_foreign_keys(session, table)
@@ -160,7 +174,7 @@ def audit_foreign_keys(session, mapper) -> list:
         db_fk_cols.update(info['columns'])
 
     missing_in_db = orm_fk_cols - db_fk_cols
-    if missing_in_db:
+    if missing_in_db and (table, frozenset(missing_in_db)) not in IGNORED_FK_DRIFT:
         findings.append(
             f"ORM declares FK on column(s) {sorted(missing_in_db)} but DB has no FK constraint"
         )
