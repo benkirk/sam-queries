@@ -438,6 +438,25 @@ def dump_table_where(cfg, table, where_clause):
     run(cmd)
     return out
 
+def _build_alter_add_fk(fk):
+    """Render a single ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY ... statement."""
+    child_cols  = ", ".join(f"`{c}`" for c in fk["child_cols"])
+    parent_cols = ", ".join(f"`{c}`" for c in fk["parent_cols"])
+    stmt = (
+        f"ALTER TABLE `{fk['child_table']}` "
+        f"ADD CONSTRAINT `{fk['constraint']}` "
+        f"FOREIGN KEY ({child_cols}) "
+        f"REFERENCES `{fk['parent_table']}` ({parent_cols})"
+    )
+    # MySQL's default for omitted ON DELETE/UPDATE is RESTRICT;
+    # only emit a clause when it differs, to keep the SQL clean.
+    if fk["on_delete"] and fk["on_delete"].upper() != "RESTRICT":
+        stmt += f" ON DELETE {fk['on_delete']}"
+    if fk["on_update"] and fk["on_update"].upper() != "RESTRICT":
+        stmt += f" ON UPDATE {fk['on_update']}"
+    return stmt
+
+
 def reapply_foreign_keys(cfg, fk_constraints):
     """Phase C: re-apply prod's FK constraints to the local clone.
 
@@ -447,44 +466,76 @@ def reapply_foreign_keys(cfg, fk_constraints):
     order other than strict topological. After data has been loaded
     in topological order with FK-aware sampling, parent rows for every
     sampled child row are guaranteed to exist, so we can re-apply the
-    constraints as a single batched ALTER TABLE script.
+    constraints from prod here.
 
-    This restores full prod parity for FK metadata in the local clone,
-    which is what the schema-validation tests need to assert against.
+    Tolerant of individual failures — applies each ALTER TABLE in its
+    own statement and logs failures rather than aborting the whole
+    bootstrap. Two common failure modes:
 
-    Acts as a final integrity check: if cleanup_orphans missed anything,
-    the constraint creation will fail loudly here.
+    1. Legacy MySQL/InnoDB permissiveness: prod was created when an FK
+       could reference the leftmost column of a composite PK even
+       though that column alone wasn't unique. MySQL 8.0+ enforces
+       strict matching, so these "grandfathered" FKs fail to recreate.
+       Example: `dav_activity` has PK (`dav_activity_id`, `queue_name`)
+       and prod's `fk_dav_charge_dav_activity` references just
+       `dav_activity_id` — doesn't satisfy MySQL 9's uniqueness rule.
+
+    2. Orphan data not handled by `cleanup_orphans` — sampled child
+       rows pointing at parents that didn't make it into the sample.
+       FK creation fails loudly, which is the desired signal.
+
+    Either way, the local clone ends up with *most* FKs applied and a
+    clear log of what's missing. The bootstrap continues.
     """
     if not fk_constraints:
         print("ℹ️  No FK constraints to re-apply.")
         return
 
+    # Write the full script for reference / inspection / manual replay.
     out = os.path.join(DUMP_DIR, "foreign_keys.sql")
     with open(out, "w") as f:
-        # Wrap the script so MySQL doesn't try to validate constraints
-        # mid-load when adding FKs across already-populated tables.
         f.write("SET FOREIGN_KEY_CHECKS=0;\n")
         for fk in fk_constraints:
-            child_cols  = ", ".join(f"`{c}`" for c in fk["child_cols"])
-            parent_cols = ", ".join(f"`{c}`" for c in fk["parent_cols"])
-            stmt = (
-                f"ALTER TABLE `{fk['child_table']}` "
-                f"ADD CONSTRAINT `{fk['constraint']}` "
-                f"FOREIGN KEY ({child_cols}) "
-                f"REFERENCES `{fk['parent_table']}` ({parent_cols})"
-            )
-            # MySQL's default for omitted ON DELETE/UPDATE is RESTRICT;
-            # only emit a clause when it differs, to keep the SQL clean.
-            if fk["on_delete"] and fk["on_delete"].upper() != "RESTRICT":
-                stmt += f" ON DELETE {fk['on_delete']}"
-            if fk["on_update"] and fk["on_update"].upper() != "RESTRICT":
-                stmt += f" ON UPDATE {fk['on_update']}"
-            f.write(stmt + ";\n")
+            f.write(_build_alter_add_fk(fk) + ";\n")
         f.write("SET FOREIGN_KEY_CHECKS=1;\n")
 
-    print(f"📥 Re-applying {len(fk_constraints)} FK constraints from {out} ...")
-    load_local(cfg, out, disable_fk_checks=False)
-    print(f"✅ FK constraints re-applied")
+    print(f"📥 Re-applying {len(fk_constraints)} FK constraints "
+          f"(individual statements; failures are logged, not fatal) ...")
+
+    # Connect once via pymysql for fine-grained per-statement control.
+    conn = pymysql.connect(
+        host=cfg["local"].get("host", "127.0.0.1"),
+        port=int(cfg["local"].get("port", 3306)),
+        user=cfg["local"]["user"],
+        password=cfg["local"]["password"],
+        database=cfg["local"]["database"],
+        autocommit=True,
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+    succeeded = 0
+    failed = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET FOREIGN_KEY_CHECKS=0")
+            for fk in fk_constraints:
+                stmt = _build_alter_add_fk(fk)
+                try:
+                    cur.execute(stmt)
+                    succeeded += 1
+                except pymysql.MySQLError as e:
+                    failed.append((fk, str(e)))
+            cur.execute("SET FOREIGN_KEY_CHECKS=1")
+    finally:
+        conn.close()
+
+    print(f"✅ {succeeded}/{len(fk_constraints)} FK constraints re-applied")
+    if failed:
+        print(f"⚠️  {len(failed)} FK constraints could NOT be applied:")
+        for fk, err in failed:
+            print(f"    - {fk['child_table']}.{fk['constraint']}: {err}")
+        print(f"  (see {out} for the full SQL; these are typically legacy "
+              f"FKs that no longer satisfy MySQL 9 uniqueness rules, or "
+              f"sampled rows whose parents were pruned)")
 
 
 def load_local(cfg, filename, disable_fk_checks=False):
