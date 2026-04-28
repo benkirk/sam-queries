@@ -274,7 +274,7 @@ def main() -> int:
     print("#" * 72)
     try:
         from orm_inventory import generate_report
-        generate_report(engine)
+        generate_report(engine, issues_only=True)
     except Exception as e:
         print(f"[WARN] orm_inventory failed: {e}", file=sys.stderr)
     finally:

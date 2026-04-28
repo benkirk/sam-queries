@@ -45,6 +45,8 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
     level_code = Column(String(10))
 
     idms_sync_token = Column(String(64))
+    idms_unique_name = Column(String(64))
+    deleted = Column(Boolean)
 
     children = relationship('Organization', remote_side=[parent_org_id], back_populates='parent')
     parent = relationship('Organization', remote_side=[organization_id], back_populates='children')
@@ -198,6 +200,7 @@ class Institution(Base, TimestampMixin, SessionMixin):
     institution_id = Column(Integer, primary_key=True, autoincrement=False)
     name = Column(String(80), nullable=False)
     acronym = Column(String(40), nullable=False)
+    deleted = Column(Boolean)
     nsf_org_code = Column(String(200))
     address = Column(String(255))
     city = Column(String(30))

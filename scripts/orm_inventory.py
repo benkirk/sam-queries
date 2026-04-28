@@ -1,315 +1,304 @@
 #!/usr/bin/env python3
-"""
-ORM Inventory Script
+"""ORM Inventory Script.
 
-Analyzes all SQLAlchemy ORM models and compares them against the database schema.
-Generates a comprehensive report showing:
-- All ORM models and their table mappings
-- Tables without ORM models
-- Schema mismatches (columns, types)
-- Relationship mappings
+Compares all SQLAlchemy ORM models against a database schema and reports:
+  - Tables present in DB but not modeled
+  - Views present in DB but not modeled
+  - Per-model column drift (missing/extra columns, type mismatches)
+  - Relationship summary
+
+Type-mismatch detection delegates to `scripts/lib/schema_introspection.py`
+so this script and `tests/integration/test_schema_validation.py` use the
+SAME acceptable-pairing rules (e.g. SQLAlchemy `Boolean` ↔ MySQL BIT/TINYINT,
+`Float` ↔ FLOAT/DOUBLE, `String` ↔ VARCHAR/CHAR, `DateTime` ↔ DATETIME/TIMESTAMP).
+
+Two modes:
+  * Called from `scripts/check_db_drift.py` via `generate_report(engine)` —
+    invoked with `issues_only=True` so output is terse.
+  * Run standalone (`python scripts/orm_inventory.py`) — uses the SAM_DB_*
+    environment via `sam.session.create_sam_engine()` (whatever DB the
+    `.env` is currently pointed at). No hardcoded localhost URL.
 """
 
 import sys
-from pathlib import Path
 from collections import defaultdict
-from typing import Dict, List, Set, Tuple
+from pathlib import Path
+from typing import Dict, List
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+# Make `sam` and `scripts.lib` importable regardless of cwd
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / 'src'))
+sys.path.insert(0, str(HERE.parent))
 
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import class_mapper
-from sam.session import create_sam_engine
-import sam
+
+from scripts.lib.schema_introspection import (
+    is_acceptable_type_mismatch,
+    normalize_type,
+    TYPE_MAPPINGS,
+)
 
 
-def get_all_orm_models():
-    """Find all ORM model classes."""
+# ---------------------------------------------------------------------------
+# ORM / DB inspection helpers
+# ---------------------------------------------------------------------------
+
+
+def get_all_orm_models() -> Dict[str, type]:
+    """Return {table_name: ORM class} for every mapper registered to Base."""
     from sam.base import Base
-
-    models = {}
-    for mapper in Base.registry.mappers:
-        cls = mapper.class_
-        table_name = mapper.mapped_table.name
-        models[table_name] = cls
-
-    return models
+    return {
+        m.mapped_table.name: m.class_
+        for m in Base.registry.mappers
+    }
 
 
 def get_database_tables(engine):
-    """Get all tables and views from the database."""
+    """Return (set_of_tables, set_of_views) from the bound DB."""
     inspector = inspect(engine)
-
-    tables = set(inspector.get_table_names())
-    views = set(inspector.get_view_names())
-
-    return tables, views
+    return set(inspector.get_table_names()), set(inspector.get_view_names())
 
 
 def get_table_columns(engine, table_name: str) -> Dict:
-    """Get column information for a table."""
     inspector = inspect(engine)
-    columns = {}
-
-    for col in inspector.get_columns(table_name):
-        columns[col['name']] = {
+    return {
+        col['name']: {
             'type': str(col['type']),
             'nullable': col['nullable'],
             'default': col.get('default'),
-            'autoincrement': col.get('autoincrement', False)
+            'autoincrement': col.get('autoincrement', False),
         }
-
-    return columns
+        for col in inspector.get_columns(table_name)
+    }
 
 
 def get_orm_columns(model_class) -> Dict:
-    """Get column information from ORM model."""
     mapper = class_mapper(model_class)
-    columns = {}
-
-    for col in mapper.columns:
-        columns[col.name] = {
+    return {
+        col.name: {
             'type': str(col.type),
+            'orm_type_name': type(col.type).__name__,
             'nullable': col.nullable,
             'primary_key': col.primary_key,
-            'foreign_keys': len(col.foreign_keys) > 0
+            'foreign_keys': bool(col.foreign_keys),
         }
-
-    return columns
+        for col in mapper.columns
+    }
 
 
 def get_orm_relationships(model_class) -> Dict:
-    """Get relationship information from ORM model."""
     mapper = class_mapper(model_class)
-    relationships = {}
-
-    for rel in mapper.relationships:
-        relationships[rel.key] = {
+    return {
+        rel.key: {
             'target': rel.mapper.class_.__name__,
             'direction': rel.direction.name,
-            'uselist': rel.uselist
+            'uselist': rel.uselist,
         }
+        for rel in mapper.relationships
+    }
 
-    return relationships
+
+# ---------------------------------------------------------------------------
+# Column comparison — uses shared TYPE_MAPPINGS so this stays in sync with
+# tests/integration/test_schema_validation.py
+# ---------------------------------------------------------------------------
 
 
 def compare_columns(db_cols: Dict, orm_cols: Dict) -> List[str]:
-    """Compare database columns with ORM columns."""
-    issues = []
+    """Return human-readable issues. Empty list = ORM matches DB."""
+    issues: List[str] = []
 
-    # Check for missing columns in ORM
-    db_col_names = set(db_cols.keys())
-    orm_col_names = set(orm_cols.keys())
+    db_names = set(db_cols)
+    orm_names = set(orm_cols)
 
-    missing_in_orm = db_col_names - orm_col_names
+    missing_in_orm = db_names - orm_names
     if missing_in_orm:
         issues.append(f"Missing in ORM: {', '.join(sorted(missing_in_orm))}")
 
-    extra_in_orm = orm_col_names - db_col_names
+    extra_in_orm = orm_names - db_names
     if extra_in_orm:
         issues.append(f"Extra in ORM: {', '.join(sorted(extra_in_orm))}")
 
-    # Check matching columns for type differences
-    for col_name in db_col_names & orm_col_names:
-        db_type = db_cols[col_name]['type'].upper()
-        orm_type = orm_cols[col_name]['type'].upper()
+    for col_name in db_names & orm_names:
+        db_raw = db_cols[col_name]['type']
+        orm_short = orm_cols[col_name]['orm_type_name']
+        db_norm = normalize_type(db_raw)
 
-        # Normalize type names for comparison
-        if 'VARCHAR' in db_type and 'VARCHAR' in orm_type:
-            continue
-        if 'INT' in db_type and 'INT' in orm_type:
-            continue
-        if 'DECIMAL' in db_type and 'NUMERIC' in orm_type:
-            continue
-        if 'DATETIME' in db_type and 'DATETIME' in orm_type:
-            continue
-        if 'TIMESTAMP' in db_type and 'TIMESTAMP' in orm_type:
-            continue
-        if 'TEXT' in db_type and 'TEXT' in orm_type:
-            continue
-        if 'TINYINT' in db_type and ('BOOLEAN' in orm_type or 'TINYINT' in orm_type):
-            continue
-        if 'BIGINT' in db_type and 'BIGINT' in orm_type:
+        acceptable = TYPE_MAPPINGS.get(orm_short)
+        if acceptable is None:
+            # ORM uses a type we don't have rules for (e.g. dialect-specific);
+            # fall back to a loose case-insensitive match.
+            if orm_short.upper() != db_norm:
+                issues.append(
+                    f"Type mismatch '{col_name}': DB={db_raw}, ORM={orm_short}"
+                )
             continue
 
-        # Flag significant differences
-        if db_type != orm_type:
-            issues.append(f"Type mismatch '{col_name}': DB={db_type}, ORM={orm_type}")
+        if db_norm in acceptable:
+            continue
+
+        # SQLAlchemy String → MySQL TEXT widening is a routine no-op.
+        if orm_short == 'String' and db_norm in ('TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'TINYTEXT'):
+            continue
+
+        msg = f"Type mismatch '{col_name}': DB={db_raw}, ORM={orm_short}"
+        if not is_acceptable_type_mismatch(msg):
+            issues.append(msg)
 
     return issues
 
 
-def generate_report(engine):
-    """Generate comprehensive ORM inventory report."""
+# ---------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------
 
-    print("=" * 80)
+
+# Tables we know are present in prod but intentionally have no ORM model
+# (system tables, partitioning helpers, etc.).
+_KNOWN_UNMODELED_TABLES = {
+    'EXPORT_TABLE',
+    'TIME_DIM',
+    'schema_version',
+    'tables_dictionary',
+    'stage_hpc_job',
+    'temp_joey_expired_project',
+}
+
+
+def generate_report(engine, issues_only: bool = True):
+    """Generate the inventory report.
+
+    Args:
+        engine: SQLAlchemy engine bound to the DB to audit.
+        issues_only: When True (default) only print models with findings —
+            best for running alongside `check_db_drift.py`. Set False for
+            a full per-model dump when running this script standalone for
+            exploration.
+    """
+    print("=" * 72)
     print("SAM ORM INVENTORY REPORT")
-    print("=" * 80)
-    print()
+    print("=" * 72)
 
-    # Get all data
     orm_models = get_all_orm_models()
     db_tables, db_views = get_database_tables(engine)
+    orm_table_names = set(orm_models)
 
-    print(f"📊 SUMMARY")
-    print(f"  ORM Models: {len(orm_models)}")
-    print(f"  Database Tables: {len(db_tables)}")
-    print(f"  Database Views: {len(db_views)}")
-    print()
-
-    # Check coverage
-    all_db_objects = db_tables | db_views
-    orm_table_names = set(orm_models.keys())
-
-    tables_without_orms = (db_tables - orm_table_names) - {'EXPORT_TABLE', 'TIME_DIM'}  # Known system tables
+    tables_without_orms = (db_tables - orm_table_names) - _KNOWN_UNMODELED_TABLES
     views_without_orms = db_views - orm_table_names
 
-    print(f"✅ COVERAGE")
-    print(f"  Tables with ORMs: {len(db_tables & orm_table_names)}/{len(db_tables)}")
-    print(f"  Views with ORMs: {len(db_views & orm_table_names)}/{len(db_views)}")
-    print()
+    print(f"\nORM models      : {len(orm_models)}")
+    print(f"DB tables       : {len(db_tables)} "
+          f"({len(db_tables & orm_table_names)} modeled)")
+    print(f"DB views        : {len(db_views)} "
+          f"({len(db_views & orm_table_names)} modeled)")
 
     if tables_without_orms:
-        print(f"⚠️  TABLES WITHOUT ORM MODELS ({len(tables_without_orms)}):")
-        for table in sorted(tables_without_orms):
-            print(f"    - {table}")
-        print()
+        print(f"\n⚠️  Tables without ORM models ({len(tables_without_orms)}):")
+        for t in sorted(tables_without_orms):
+            print(f"    - {t}")
 
     if views_without_orms:
-        print(f"ℹ️  VIEWS WITHOUT ORM MODELS ({len(views_without_orms)}):")
-        for view in sorted(views_without_orms):
-            print(f"    - {view}")
-        print()
+        print(f"\nℹ️  Views without ORM models ({len(views_without_orms)}):")
+        for v in sorted(views_without_orms):
+            print(f"    - {v}")
 
-    # Detailed model analysis
-    print("=" * 80)
-    print("DETAILED MODEL ANALYSIS")
-    print("=" * 80)
     print()
+    print("-" * 72)
+    print("PER-MODEL ANALYSIS" + (" (issues only)" if issues_only else ""))
+    print("-" * 72)
 
+    # Group by category for readable per-domain output (only matters in
+    # full-dump mode).
     models_by_category = defaultdict(list)
-
     for table_name, model_class in sorted(orm_models.items()):
-        module = model_class.__module__
-        category = module.split('.')[-1] if '.' in module else 'other'
+        category = (model_class.__module__.split('.')[-1]
+                    if '.' in model_class.__module__ else 'other')
         models_by_category[category].append((table_name, model_class))
 
     total_issues = 0
-    models_with_issues = []
+    models_with_issues: List[str] = []
 
-    for category in sorted(models_by_category.keys()):
+    for category in sorted(models_by_category):
         models = models_by_category[category]
-        print(f"📁 {category.upper()} ({len(models)} models)")
-        print("-" * 80)
+        category_printed = False
 
         for table_name, model_class in sorted(models):
             is_view = table_name in db_views
-            table_type = "VIEW" if is_view else "TABLE"
 
-            print(f"\n  {model_class.__name__} → {table_name} ({table_type})")
+            if is_view:
+                if not issues_only:
+                    if not category_printed:
+                        print(f"\n📁 {category.upper()} ({len(models)} models)")
+                        category_printed = True
+                    print(f"  {model_class.__name__} → {table_name} (VIEW)")
+                continue
 
-            # Get columns
-            if not is_view:  # Skip column comparison for views
-                try:
-                    db_cols = get_table_columns(engine, table_name)
-                    orm_cols = get_orm_columns(model_class)
-
-                    issues = compare_columns(db_cols, orm_cols)
-
-                    if issues:
-                        total_issues += len(issues)
-                        models_with_issues.append(table_name)
-                        print(f"    ⚠️  Issues found:")
-                        for issue in issues:
-                            print(f"        - {issue}")
-                    else:
-                        print(f"    ✅ Schema matches ({len(orm_cols)} columns)")
-
-                    # Show relationships
-                    relationships = get_orm_relationships(model_class)
-                    if relationships:
-                        print(f"    🔗 Relationships: {len(relationships)}")
-                        for rel_name, rel_info in sorted(relationships.items()):
-                            direction = rel_info['direction']
-                            target = rel_info['target']
-                            many = "List" if rel_info['uselist'] else "Single"
-                            print(f"        - {rel_name} → {target} ({direction}, {many})")
-
-                except Exception as e:
-                    print(f"    ❌ Error analyzing: {e}")
-                    total_issues += 1
-                    models_with_issues.append(table_name)
-            else:
-                # For views, just show basic info
+            try:
+                db_cols = get_table_columns(engine, table_name)
                 orm_cols = get_orm_columns(model_class)
-                print(f"    ℹ️  View with {len(orm_cols)} columns")
-                relationships = get_orm_relationships(model_class)
-                if relationships:
-                    print(f"    🔗 Relationships: {len(relationships)}")
+                issues = compare_columns(db_cols, orm_cols)
+            except Exception as e:
+                issues = [f"Error analyzing: {e}"]
 
-        print()
+            if issues:
+                total_issues += len(issues)
+                models_with_issues.append(table_name)
+                if not category_printed:
+                    print(f"\n📁 {category.upper()}")
+                    category_printed = True
+                print(f"  ⚠️  {model_class.__name__} → {table_name}")
+                for issue in issues:
+                    print(f"        - {issue}")
+            elif not issues_only:
+                if not category_printed:
+                    print(f"\n📁 {category.upper()} ({len(models)} models)")
+                    category_printed = True
+                print(f"  ✅ {model_class.__name__} → {table_name} "
+                      f"({len(orm_cols)} columns)")
 
-    # Summary
-    print("=" * 80)
+    print()
+    print("=" * 72)
     print("FINAL SUMMARY")
-    print("=" * 80)
-    print()
-    print(f"Total ORM Models: {len(orm_models)}")
-    print(f"Models with Issues: {len(models_with_issues)}")
-    print(f"Total Issues Found: {total_issues}")
-    print()
+    print("=" * 72)
+    print(f"Total ORM models      : {len(orm_models)}")
+    print(f"Models with issues    : {len(models_with_issues)}")
+    print(f"Total issues found    : {total_issues}")
 
     if models_with_issues:
-        print("Models requiring attention:")
+        print("\nModels requiring attention:")
         for model in sorted(models_with_issues):
             print(f"  - {model}")
     else:
-        print("✅ All models match database schema!")
+        print("\n✅ All models match database schema.")
 
-    print()
-    print("=" * 80)
+    print("=" * 72)
+    return total_issues
 
 
-def test_connection(engine):
-    """Test basic database connectivity."""
-    print("Testing database connection...")
+# ---------------------------------------------------------------------------
+# Standalone entry point
+# ---------------------------------------------------------------------------
+
+
+def main() -> int:
+    from sam.session import create_sam_engine
+    try:
+        engine, _ = create_sam_engine()
+    except Exception as e:
+        print(f"❌ Failed to create engine from environment: {e}", file=sys.stderr)
+        return 1
 
     try:
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT COUNT(*) as user_count FROM users"))
-            user_count = result.fetchone()[0]
-            print(f"✅ Connection successful! Found {user_count} users in database.")
-            return True
+            conn.execute(text("SELECT 1"))
     except Exception as e:
-        print(f"❌ Connection failed: {e}")
-        return False
-
-
-def main():
-    """Main entry point."""
-    print("Connecting to local MySQL database...")
-    print()
-
-    # Create connection for local MySQL
-    connection_string = 'mysql+pymysql://root:root@127.0.0.1:3306/sam'
-
-    try:
-        engine, SessionLocal = create_sam_engine(connection_string)
-
-        if not test_connection(engine):
-            return 1
-
-        print()
-        generate_report(engine)
-
-        return 0
-
-    except Exception as e:
-        print(f"❌ Fatal error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Connection failed: {e}", file=sys.stderr)
         return 1
+
+    # Standalone runs default to the full dump for exploration.
+    generate_report(engine, issues_only=False)
+    return 0
 
 
 if __name__ == '__main__':
