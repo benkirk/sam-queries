@@ -31,6 +31,7 @@ from sqlalchemy.orm import sessionmaker
 
 from scripts.lib.schema_introspection import (
     diff_indexes,
+    find_rename_pairs,
     get_db_columns,
     get_db_foreign_keys,
     get_db_indexes,
@@ -106,18 +107,37 @@ def build_prod_engine():
 
 
 def audit_indexes(session, mapper) -> list:
+    """Index findings, with rename pairs collapsed to one line each.
+
+    A "rename" is when DB and ORM both declare an index on the same
+    columns with the same uniqueness, but under different names. That
+    pair shows up as a single RENAME line — actionable as one change
+    (rename the ORM Index to match prod). Unpaired entries surface as
+    real drift.
+    """
     table = mapper.persist_selectable.name
     db_idx = get_db_indexes(session, table)
     orm_idx = get_orm_indexes(mapper)
-    diff = diff_indexes(db_idx, orm_idx)
+    diff = find_rename_pairs(diff_indexes(db_idx, orm_idx))
 
     findings = []
+
+    for cols, uniq, db_name, orm_name in diff['renames']:
+        kind = 'UNIQUE' if uniq else 'index'
+        findings.append(
+            f"RENAME {kind} on ({', '.join(cols)}): "
+            f"DB='{db_name}' vs ORM='{orm_name}' — rename ORM to match prod"
+        )
     for name, cols, uniq in diff['in_db_not_orm']:
         kind = 'UNIQUE INDEX' if uniq else 'INDEX'
-        findings.append(f"DB has {kind} '{name}' on ({', '.join(cols)}) — ORM does not declare it")
+        findings.append(
+            f"DB has {kind} '{name}' on ({', '.join(cols)}) — ORM does not declare it"
+        )
     for name, cols, uniq in diff['in_orm_not_db']:
         kind = 'UNIQUE INDEX' if uniq else 'INDEX'
-        findings.append(f"ORM declares {kind} '{name}' on ({', '.join(cols)}) — DB does not have it")
+        findings.append(
+            f"ORM declares {kind} '{name}' on ({', '.join(cols)}) — DB does not have it"
+        )
     for name, (db_cols, db_uniq), (orm_cols, orm_uniq) in diff['mismatched']:
         findings.append(
             f"INDEX '{name}' differs: DB=(cols={db_cols}, unique={db_uniq}) "

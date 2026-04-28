@@ -159,6 +159,55 @@ def diff_indexes(
     }
 
 
+def find_rename_pairs(diff: Dict[str, List]) -> Dict[str, List]:
+    """Pair up `in_db_not_orm` and `in_orm_not_db` entries that share
+    the same (columns, uniqueness) shape — those are renames, not real
+    drift.
+
+    Returns a new dict with:
+      - 'renames':       [(cols, uniq, db_name, orm_name), ...]
+      - 'in_db_not_orm': filtered (only entries with no rename match)
+      - 'in_orm_not_db': filtered (only entries with no rename match)
+      - 'mismatched':    unchanged from input
+
+    A rename match is shape-identical: same column tuple, same
+    uniqueness flag. This collapses the pairs that prod and ORM
+    differ on by name only.
+    """
+    db_left = list(diff['in_db_not_orm'])
+    orm_left = list(diff['in_orm_not_db'])
+
+    # Bucket ORM-side by shape so each DB entry can find its match in O(1)
+    orm_by_shape: Dict[Tuple[Tuple[str, ...], bool], List[str]] = defaultdict(list)
+    for name, cols, uniq in orm_left:
+        orm_by_shape[(cols, uniq)].append(name)
+
+    renames = []
+    db_unmatched = []
+    consumed_orm_names = set()
+
+    for db_name, cols, uniq in db_left:
+        bucket = orm_by_shape.get((cols, uniq))
+        if bucket:
+            orm_name = bucket.pop(0)
+            consumed_orm_names.add(orm_name)
+            renames.append((cols, uniq, db_name, orm_name))
+        else:
+            db_unmatched.append((db_name, cols, uniq))
+
+    orm_unmatched = [
+        (name, cols, uniq) for name, cols, uniq in orm_left
+        if name not in consumed_orm_names
+    ]
+
+    return {
+        'renames': renames,
+        'in_db_not_orm': db_unmatched,
+        'in_orm_not_db': orm_unmatched,
+        'mismatched': diff['mismatched'],
+    }
+
+
 # ============================================================================
 # Foreign key introspection
 # ============================================================================
