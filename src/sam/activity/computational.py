@@ -22,11 +22,7 @@ class CompJob(Base):
         PrimaryKeyConstraint('era_part_key', 'job_id', 'job_idx',
                              'machine', 'submit_time',
                              name='pk_comp_job'),
-        Index('ix_comp_job_era_job', 'era_part_key', 'job_id', 'job_idx'),
-        Index('ix_comp_job_activity_date', 'activity_date'),
-        Index('ix_comp_job_machine', 'machine'),
-        Index('ix_comp_job_projcode', 'projcode'),
-        Index('ix_comp_job_username', 'username'),
+        Index('idx_comp_job_activity_date', 'activity_date'),
     )
 
     def __eq__(self, other):
@@ -134,16 +130,7 @@ class CompActivity(Base):
              'comp_job.machine', 'comp_job.submit_time'],
             name='fk_comp_activity_job'
         ),
-        Index('ix_comp_activity_era_acct_job', 'era_part_key', 'acct_part_key',
-              'job_id', 'job_idx'),
-        Index('ix_comp_activity_activity_date', 'activity_date'),
-        Index('ix_comp_activity_charge_date', 'charge_date'),
-        Index('ix_comp_activity_processing', 'processing_status'),
-        Index('ix_comp_activity_charge_summary', 'charge_summary_id'),
-        Index('ix_comp_activity_machine', 'machine'),
-        # Index for the join with comp_job
-        Index('ix_comp_activity_job_lookup', 'era_part_key', 'job_id', 'job_idx',
-              'machine', 'submit_time'),
+        Index('idx_comp_act_activity_date', 'activity_date'),
     )
 
     def __eq__(self, other):
