@@ -11,8 +11,13 @@ class ArchiveActivity(Base):
     __tablename__ = 'archive_activity'
 
     __table_args__ = (
-        Index('ix_archive_activity_type', 'type_act'),
-        Index('ix_archive_activity_cos', 'archive_cos_id'),
+        Index('idx_archive_activity_uniq',
+              'type_act', 'activity_date', 'unix_uid', 'dns', 'projcode',
+              'archive_cos_id', unique=True),
+        Index('idx_archive_activity', 'archive_cos_id'),
+        Index('idx_processing_status', 'processing_status'),
+        Index('idx_uid_projcode', 'unix_uid', 'projcode'),
+        Index('idx_unix_uid', 'unix_uid'),
     )
 
     archive_activity_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -64,17 +69,17 @@ class ArchiveCharge(Base):
     __tablename__ = 'archive_charge'
 
     __table_args__ = (
-        Index('ix_archive_charge_account', 'account_id'),
-        Index('ix_archive_charge_user', 'user_id'),
-        Index('ix_archive_charge_activity', 'archive_activity_id', unique=True),
-        Index('ix_archive_charge_date', 'charge_date'),
+        Index('idx_archive_charge_1', 'account_id'),
+        Index('idx_archive_charge_2', 'user_id'),
+        Index('udx_archive_charge_uniq', 'archive_activity_id', unique=True),
+        Index('idx_charge_date', 'charge_date'),
     )
 
     archive_charge_id = Column(Integer, primary_key=True, autoincrement=True)
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
     archive_activity_id = Column(Integer, ForeignKey('archive_activity.archive_activity_id'),
-                                 nullable=False, unique=True)
+                                 nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     charge = Column(Float)
     terabyte_year = Column(Float)
