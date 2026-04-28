@@ -26,7 +26,7 @@ DAYS_IN_YEAR = 365
 # This date is set to the first --disk run we ship and treated as immutable
 # thereafter. Allocations whose window straddles this date will read mixed
 # units (~9.95% drift on the pre-epoch portion); see docs/plans/DISK_CHARGING.md.
-DISK_CHARGING_TIB_EPOCH = _stdlib_date(2026, 4, 18)
+DISK_CHARGING_TIB_EPOCH = _stdlib_date(2026, 1, 3)
 
 
 #-------------------------------------------------------------------------bm-
