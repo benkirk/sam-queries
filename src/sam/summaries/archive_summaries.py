@@ -11,9 +11,9 @@ class ArchiveChargeSummary(Base):
     __tablename__ = 'archive_charge_summary'
 
     __table_args__ = (
-        Index('ix_archive_charge_summary_date', 'activity_date'),
-        Index('ix_archive_charge_summary_user', 'user_id'),
-        Index('ix_archive_charge_summary_account', 'account_id'),
+        Index('idx_archive_charge_summary_date', 'activity_date'),
+        Index('idx_archive_charge_summary_user_id', 'user_id'),
+        Index('idx_archive_charge_summary_account_id', 'account_id'),
     )
 
     archive_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
