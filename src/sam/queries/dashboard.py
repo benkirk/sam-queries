@@ -186,6 +186,20 @@ def _build_project_resources_data(project: Project,
 
     now = active_at or datetime.now()
 
+    # Bulk-resolve disk-capacity overrides for this project's disk
+    # resources (one fixed-size set of queries vs one per-resource fanout
+    # if we did this inline below).
+    disk_pairs = [
+        (project, name)
+        for name, usage in usage_data.items()
+        if usage.get('resource_type') == 'DISK'
+    ]
+    if disk_pairs:
+        from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
+        disk_caps = bulk_get_subtree_disk_capacity(project.session, disk_pairs)
+    else:
+        disk_caps = {}
+
     # Fetch rolling window usage (30d/90d) only when at least one account on
     # this project has a non-null threshold set. The dashboard template only
     # displays the rolling-usage block when threshold_pct is not None
@@ -270,56 +284,31 @@ def _build_project_resources_data(project: Project,
         }
 
         if resource_type == 'DISK':
-            overrides = _disk_capacity_overrides(
-                project.session, project, resource_name,
-                resource_dict['allocated'], resource_type,
+            _apply_disk_capacity_overrides(
+                resource_dict,
+                disk_caps.get((project.project_id, resource_name)),
             )
-            if overrides is not None:
-                resource_dict.update(overrides)
 
         resources.append(resource_dict)
 
     return resources
 
 
-def _disk_capacity_overrides(
-    session,
-    project: Project,
-    resource_name: str,
-    allocated: float,
-    resource_type: str,
-) -> Optional[Dict[str, Any]]:
-    """For disk allocations, return capacity-based overrides for the
-    dashboard dict.
-
-    Storage's user-facing "% used" is *capacity* (point-in-time TiB
-    used vs TiB allocated), not the cumulative TiB-year burn used for
-    billing. The capacity is summed across the project's *subtree* on
-    this resource — parent projects (e.g. NMMM0003) hold no bytes
-    themselves; the occupancy lives on their child sub-projects. See
-    ``get_subtree_disk_capacity`` for the walk.
-
-    Returns a dict the caller merges into the resource dict, or None
-    for non-disk resources (caller leaves the dict unchanged).
-
-    The fields written are: ``used``, ``remaining``, ``percent_used``,
-    ``activity_date``. Cumulative TiB-yr (``charges_by_type``,
-    ``adjustments``) is intentionally untouched — it is no longer
-    surfaced in the disk UI but the underlying values remain available
-    for billing-side consumers.
-    """
-    if resource_type != 'DISK':
-        return None
-    from sam.queries.disk_usage import get_subtree_disk_capacity
-    cap = get_subtree_disk_capacity(session, project, resource_name)
+def _apply_disk_capacity_overrides(
+    resource_dict: Dict[str, Any],
+    cap: Optional[Dict[str, Any]],
+) -> None:
+    """Mutate resource_dict to swap cumulative TiB-yr for point-in-time
+    capacity from ``cap`` (output of bulk_get_subtree_disk_capacity)."""
+    if cap is None:
+        return
+    allocated = resource_dict.get('allocated', 0.0) or 0.0
     used_tib = cap['used_tib']
     pct = (used_tib / allocated * 100) if allocated > 0 else 0.0
-    return {
-        'used': used_tib,
-        'remaining': allocated - used_tib,
-        'percent_used': pct,
-        'activity_date': cap['activity_date'],
-    }
+    resource_dict['used'] = used_tib
+    resource_dict['remaining'] = allocated - used_tib
+    resource_dict['percent_used'] = pct
+    resource_dict['activity_date'] = cap['activity_date']
 
 
 def _select_query_alloc(account: Account, now: datetime):
@@ -599,6 +588,20 @@ def _build_user_projects_resources_batched(
     # ------------------------------------------------------------------
     out: Dict[int, List[DashboardResource]] = {p.project_id: [] for p in projects}
 
+    # Bulk-resolve disk-capacity overrides for every (project, resource)
+    # pair on a disk resource, so the per-row loop below becomes a pure
+    # dict lookup.
+    disk_pairs = [
+        (project, account.resource.resource_name)
+        for project, account, _qa, rtype, _ed in chosen.values()
+        if rtype == 'DISK'
+    ]
+    if disk_pairs:
+        from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
+        disk_caps = bulk_get_subtree_disk_capacity(session, disk_pairs)
+    else:
+        disk_caps = {}
+
     for key, (project, account, query_alloc, resource_type, end_date) in chosen.items():
         resource_name = account.resource.resource_name
         start_date = query_alloc.start_date
@@ -687,11 +690,11 @@ def _build_user_projects_resources_batched(
             'rolling_90':           rwin.get(90),
         }
 
-        overrides = _disk_capacity_overrides(
-            session, project, resource_name, allocated, resource_type,
-        )
-        if overrides is not None:
-            resource_dict.update(overrides)
+        if resource_type == 'DISK':
+            _apply_disk_capacity_overrides(
+                resource_dict,
+                disk_caps.get((project.project_id, resource_name)),
+            )
 
         out[project.project_id].append(resource_dict)
 

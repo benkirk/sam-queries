@@ -20,16 +20,25 @@ Two helpers:
 from __future__ import annotations
 
 from datetime import date as _stdlib_date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from sam.accounting.accounts import Account
 from sam.core.users import User
 from sam.projects.projects import Project, ProjectDirectory
 from sam.resources.resources import Resource
-from sam.summaries.disk_summaries import DiskChargeSummary
+from sam.summaries.disk_summaries import DiskChargeSummary, DiskChargeSummaryStatus
+
+
+_EMPTY_CAP: Dict[str, Any] = {
+    'used_bytes':    0,
+    'used_tib':      0.0,
+    'file_count':    0,
+    'activity_date': None,
+    'account_ids':   [],
+}
 
 
 def get_subtree_disk_capacity(
@@ -39,69 +48,201 @@ def get_subtree_disk_capacity(
 ) -> Dict[str, Any]:
     """Point-in-time disk occupancy summed across a project's subtree.
 
-    For NMMM0003-shaped parents, the parent's own account holds 0 bytes
-    while the actual occupancy lives on the children — `Account
-    .current_disk_usage()` against just the parent reads 0%. This helper
-    walks ``project`` + descendants (NestedSet coords), finds each
-    descendant's account on ``resource_name``, sums the snapshot bytes
-    / file count, and reports the latest activity_date across them.
-
-    Returns ``{used_bytes, used_tib, file_count, activity_date,
-    account_ids}``. ``activity_date`` is None and totals are zero if no
-    descendant has a snapshot yet.
+    Thin wrapper over :func:`bulk_get_subtree_disk_capacity` for the
+    single-pair case (e.g. resource_details route). Both paths share one
+    bulk implementation so query-count behavior is uniform.
     """
-    resource = session.query(Resource).filter(
-        Resource.resource_name == resource_name,
-    ).first()
-    empty = {
-        'used_bytes':    0,
-        'used_tib':      0.0,
-        'file_count':    0,
-        'activity_date': None,
-        'account_ids':   [],
+    out = bulk_get_subtree_disk_capacity(session, [(project, resource_name)])
+    return out.get((project.project_id, resource_name), dict(_EMPTY_CAP))
+
+
+def bulk_get_subtree_disk_capacity(
+    session: Session,
+    pairs: List[Tuple[Project, str]],
+) -> Dict[Tuple[int, str], Dict[str, Any]]:
+    """Bulk variant of :func:`get_subtree_disk_capacity`.
+
+    Resolves all ``(project, resource_name)`` pairs in a fixed number of
+    queries (regardless of pair count):
+
+      1. ONE ``Resource`` lookup for the distinct resource names.
+      2. ONE OR-combined ``Account``/``Project`` subtree query covering
+         every pair's NestedSet range (or fallback project_id match).
+      3. ONE ``DiskChargeSummaryStatus`` lookup for the current snapshot date.
+      4. ONE bulk ``DiskChargeSummary`` aggregate keyed by account_id.
+      5. ONE per-account fallback aggregate for accounts not on the
+         current snapshot date (only fires if such accounts exist).
+
+    Returns ``{(project_id, resource_name): cap_dict}``. Pairs whose
+    resource doesn't exist or whose subtree has no disk accounts get an
+    empty cap dict.
+    """
+    if not pairs:
+        return {}
+
+    out: Dict[Tuple[int, str], Dict[str, Any]] = {
+        (p.project_id, rn): dict(_EMPTY_CAP) for p, rn in pairs
     }
-    if resource is None:
-        return empty
 
-    is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
-    if is_tree_valid:
-        accounts = session.query(Account).join(
-            Project, Account.project_id == Project.project_id,
-        ).filter(
-            Project.tree_root == project.tree_root,
-            Project.tree_left >= project.tree_left,
-            Project.tree_right <= project.tree_right,
-            Account.resource_id == resource.resource_id,
-            Account.deleted == False,  # noqa: E712
-        ).all()
-    else:
-        accounts = session.query(Account).filter(
-            Account.project_id == project.project_id,
-            Account.resource_id == resource.resource_id,
-            Account.deleted == False,  # noqa: E712
-        ).all()
+    # 1) Resolve resources in one query.
+    resource_names = sorted({rn for _, rn in pairs})
+    res_rows = session.query(Resource.resource_id, Resource.resource_name).filter(
+        Resource.resource_name.in_(resource_names),
+    ).all()
+    rid_by_name = {rn: rid for rid, rn in res_rows}
 
-    used_bytes = 0
-    files = 0
-    latest = None
-    account_ids = []
-    for acct in accounts:
-        snap = acct.current_disk_usage(session)
-        if snap is None:
+    # 2) Build OR-combined subtree filter; tag rows back to their pair via
+    #    in-Python matching against the project NestedSet coords.
+    conditions = []
+    valid_pairs: List[Tuple[Project, str, int]] = []
+    for project, rn in pairs:
+        rid = rid_by_name.get(rn)
+        if rid is None:
             continue
-        used_bytes += snap.bytes
-        files += snap.number_of_files
-        if latest is None or snap.activity_date > latest:
-            latest = snap.activity_date
-        account_ids.append(acct.account_id)
+        valid_pairs.append((project, rn, rid))
+        is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
+        if is_tree_valid:
+            conditions.append(and_(
+                Project.tree_root == project.tree_root,
+                Project.tree_left >= project.tree_left,
+                Project.tree_right <= project.tree_right,
+                Account.resource_id == rid,
+            ))
+        else:
+            conditions.append(and_(
+                Account.project_id == project.project_id,
+                Account.resource_id == rid,
+            ))
 
-    return {
-        'used_bytes':    used_bytes,
-        'used_tib':      used_bytes / (1024 ** 4),
-        'file_count':    files,
-        'activity_date': latest,
-        'account_ids':   account_ids,
+    if not conditions:
+        return out
+
+    candidate_rows = session.query(
+        Account.account_id,
+        Account.resource_id,
+        Project.tree_root,
+        Project.tree_left,
+        Project.tree_right,
+        Project.project_id,
+    ).join(Project, Account.project_id == Project.project_id).filter(
+        Account.deleted == False,  # noqa: E712
+        or_(*conditions),
+    ).all()
+
+    # Re-attribute candidate accounts to each (project, resource) pair.
+    accounts_per_pair: Dict[Tuple[int, str], List[int]] = {
+        (p.project_id, rn): [] for p, rn, _ in valid_pairs
     }
+    all_account_ids: set = set()
+    for project, rn, rid in valid_pairs:
+        key = (project.project_id, rn)
+        is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
+        if is_tree_valid:
+            for r in candidate_rows:
+                if r.resource_id != rid:
+                    continue
+                if r.tree_root != project.tree_root:
+                    continue
+                if r.tree_left is None or r.tree_right is None:
+                    continue
+                if r.tree_left >= project.tree_left and r.tree_right <= project.tree_right:
+                    accounts_per_pair[key].append(r.account_id)
+                    all_account_ids.add(r.account_id)
+        else:
+            for r in candidate_rows:
+                if r.resource_id == rid and r.project_id == project.project_id:
+                    accounts_per_pair[key].append(r.account_id)
+                    all_account_ids.add(r.account_id)
+
+    if not all_account_ids:
+        for key, aids in accounts_per_pair.items():
+            out[key] = {**_EMPTY_CAP, 'account_ids': aids}
+        return out
+
+    # 3) Current snapshot date.
+    current_row = (
+        session.query(DiskChargeSummaryStatus.activity_date)
+        .filter(DiskChargeSummaryStatus.current == True)  # noqa: E712
+        .order_by(DiskChargeSummaryStatus.activity_date.desc())
+        .first()
+    )
+    candidate_date = current_row[0] if current_row else None
+
+    # 4) Bulk aggregate at the candidate date.
+    snap_by_account: Dict[int, Dict[str, Any]] = {}
+    if candidate_date is not None:
+        rows = session.query(
+            DiskChargeSummary.account_id,
+            func.coalesce(func.sum(DiskChargeSummary.bytes), 0).label('bytes'),
+            func.coalesce(func.sum(DiskChargeSummary.number_of_files), 0).label('files'),
+        ).filter(
+            DiskChargeSummary.account_id.in_(all_account_ids),
+            DiskChargeSummary.activity_date == candidate_date,
+        ).group_by(DiskChargeSummary.account_id).all()
+        for r in rows:
+            snap_by_account[r.account_id] = {
+                'bytes':         int(r.bytes or 0),
+                'files':         int(r.files or 0),
+                'activity_date': candidate_date,
+            }
+
+    # 5) Fallback: any account without a row on the current snapshot date
+    #    falls back to its own most-recent row (matches single-account
+    #    semantics in Account.current_disk_usage). One query covers all
+    #    fallback accounts at once.
+    missing = [aid for aid in all_account_ids if aid not in snap_by_account]
+    if missing:
+        max_dates = dict(session.query(
+            DiskChargeSummary.account_id,
+            func.max(DiskChargeSummary.activity_date),
+        ).filter(
+            DiskChargeSummary.account_id.in_(missing),
+        ).group_by(DiskChargeSummary.account_id).all())
+        if max_dates:
+            # ONE aggregate query for all (account_id, max_date) pairs.
+            ors = [
+                and_(
+                    DiskChargeSummary.account_id == aid,
+                    DiskChargeSummary.activity_date == d,
+                )
+                for aid, d in max_dates.items()
+            ]
+            rows = session.query(
+                DiskChargeSummary.account_id,
+                DiskChargeSummary.activity_date,
+                func.coalesce(func.sum(DiskChargeSummary.bytes), 0).label('bytes'),
+                func.coalesce(func.sum(DiskChargeSummary.number_of_files), 0).label('files'),
+            ).filter(or_(*ors)).group_by(
+                DiskChargeSummary.account_id, DiskChargeSummary.activity_date,
+            ).all()
+            for r in rows:
+                snap_by_account[r.account_id] = {
+                    'bytes':         int(r.bytes or 0),
+                    'files':         int(r.files or 0),
+                    'activity_date': r.activity_date,
+                }
+
+    # 6) Roll up per-pair.
+    for (pid, rn), aids in accounts_per_pair.items():
+        used_bytes = 0
+        files = 0
+        latest = None
+        for aid in aids:
+            snap = snap_by_account.get(aid)
+            if snap is None:
+                continue
+            used_bytes += snap['bytes']
+            files += snap['files']
+            if latest is None or snap['activity_date'] > latest:
+                latest = snap['activity_date']
+        out[(pid, rn)] = {
+            'used_bytes':    used_bytes,
+            'used_tib':      used_bytes / (1024 ** 4),
+            'file_count':    files,
+            'activity_date': latest,
+            'account_ids':   aids,
+        }
+    return out
 
 
 def get_disk_usage_timeseries_by_user(
