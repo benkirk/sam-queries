@@ -282,13 +282,20 @@ class TestBuildDiskSubtree:
         lead = make_user(session)
         project = make_project(session, lead=lead)
         make_account(session, project=project, resource=resource)
+        # Backdate start_date by a day so the row is unambiguously
+        # "active" under DateRangeMixin.is_active even if the test's
+        # Python clock and MySQL NOW() are in different timezones (CI
+        # containers can drift by hours).
+        backdate = datetime.now() - timedelta(days=1)
         ProjectDirectory.create(
             session, project_id=project.project_id,
             directory_name='/gpfs/csfs1/test/path_a',
+            start_date=backdate,
         )
         ProjectDirectory.create(
             session, project_id=project.project_id,
             directory_name='/gpfs/csfs1/test/path_b',
+            start_date=backdate,
         )
         session.flush()
         result = build_disk_subtree(session, project, resource.resource_name)
