@@ -734,6 +734,31 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
             results[resource] = result
 
+        # Disk resources need a different "% used" — point-in-time TiB
+        # capacity (snapshot bytes / allocated TiB), not cumulative
+        # TiB-yr burn. Apply the override in one bulk pass so the helper
+        # is the single source of truth across CLI, API, admin tree
+        # view, and the single-project dashboard path. `charges_by_type`
+        # stays TiB-yr for billing-side consumers.
+        disk_names = [name for name, r in results.items()
+                      if r.get('resource_type') == 'DISK']
+        if disk_names:
+            from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
+            caps = bulk_get_subtree_disk_capacity(
+                self.session, [(self, name) for name in disk_names],
+            )
+            for name in disk_names:
+                cap = caps.get((self.project_id, name))
+                if cap is None:
+                    continue
+                allocated = results[name].get('allocated', 0.0) or 0.0
+                used_tib = cap['used_tib']
+                pct = (used_tib / allocated * 100) if allocated > 0 else 0.0
+                results[name]['used'] = used_tib
+                results[name]['remaining'] = allocated - used_tib
+                results[name]['percent_used'] = pct
+                results[name]['activity_date'] = cap['activity_date']
+
         return results
 
 
