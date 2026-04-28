@@ -628,7 +628,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
             account_ids=scope_account_ids,
             start_date=start_date.date() if hasattr(start_date, 'date') else start_date,
             end_date=end_date.date() if hasattr(end_date, 'date') else end_date,
-            top_n=10,
+            top_n=15,
         )
         user_rows = _build_disk_user_table(
             db.session, scope_account_ids, activity_date, used_bytes,
@@ -653,7 +653,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
             directory_name=fileset,
             start_date=start_date.date() if hasattr(start_date, 'date') else start_date,
             end_date=end_date.date() if hasattr(end_date, 'date') else end_date,
-            top_n=10,
+            top_n=15,
         )
         breakdown = get_directory_user_breakdown_at(
             db.session,
