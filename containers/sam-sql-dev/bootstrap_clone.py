@@ -150,6 +150,65 @@ def get_foreign_keys(conn, db):
         cur.execute(q, (db,))
         return cur.fetchall()
 
+
+def get_foreign_key_constraints(conn, db):
+    """Return remote FK constraints as a list of dicts ready for ALTER TABLE.
+
+    Groups multi-column composite FKs into a single record with ordered
+    `child_cols` / `parent_cols` lists. Captures ON DELETE / ON UPDATE
+    rules from REFERENTIAL_CONSTRAINTS so the rebuilt FK matches prod
+    exactly.
+
+    Output shape per FK:
+        {
+            'child_table':   str,
+            'constraint':    str,
+            'child_cols':    [str, ...],
+            'parent_table':  str,
+            'parent_cols':   [str, ...],
+            'on_delete':     str,   # 'CASCADE' | 'SET NULL' | 'RESTRICT' | 'NO ACTION'
+            'on_update':     str,
+        }
+    """
+    q = """
+    SELECT kcu.TABLE_NAME            AS child_table,
+           kcu.CONSTRAINT_NAME       AS constraint_name,
+           kcu.COLUMN_NAME           AS child_col,
+           kcu.REFERENCED_TABLE_NAME AS parent_table,
+           kcu.REFERENCED_COLUMN_NAME AS parent_col,
+           kcu.ORDINAL_POSITION      AS ordinal,
+           rc.DELETE_RULE            AS on_delete,
+           rc.UPDATE_RULE            AS on_update
+    FROM information_schema.key_column_usage kcu
+    JOIN information_schema.referential_constraints rc
+      ON kcu.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
+     AND kcu.CONSTRAINT_NAME   = rc.CONSTRAINT_NAME
+    WHERE kcu.TABLE_SCHEMA = %s
+      AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+    ORDER BY kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, (db,))
+        rows = cur.fetchall()
+
+    grouped = {}
+    for r in rows:
+        key = (r["child_table"], r["constraint_name"])
+        if key not in grouped:
+            grouped[key] = {
+                "child_table":  r["child_table"],
+                "constraint":   r["constraint_name"],
+                "child_cols":   [],
+                "parent_table": r["parent_table"],
+                "parent_cols":  [],
+                "on_delete":    r["on_delete"],
+                "on_update":    r["on_update"],
+            }
+        grouped[key]["child_cols"].append(r["child_col"])
+        grouped[key]["parent_cols"].append(r["parent_col"])
+
+    return list(grouped.values())
+
 def get_primary_key_columns(conn, db, table):
     q = """
     SELECT COLUMN_NAME as column_name
@@ -378,6 +437,55 @@ def dump_table_where(cfg, table, where_clause):
     )
     run(cmd)
     return out
+
+def reapply_foreign_keys(cfg, fk_constraints):
+    """Phase C: re-apply prod's FK constraints to the local clone.
+
+    The schema load strips FK constraints (see load_local with
+    disable_fk_checks=True) because mysqldump's pre-table FOREIGN KEY
+    declarations cause issues on MySQL 9 when tables are loaded in any
+    order other than strict topological. After data has been loaded
+    in topological order with FK-aware sampling, parent rows for every
+    sampled child row are guaranteed to exist, so we can re-apply the
+    constraints as a single batched ALTER TABLE script.
+
+    This restores full prod parity for FK metadata in the local clone,
+    which is what the schema-validation tests need to assert against.
+
+    Acts as a final integrity check: if cleanup_orphans missed anything,
+    the constraint creation will fail loudly here.
+    """
+    if not fk_constraints:
+        print("ℹ️  No FK constraints to re-apply.")
+        return
+
+    out = os.path.join(DUMP_DIR, "foreign_keys.sql")
+    with open(out, "w") as f:
+        # Wrap the script so MySQL doesn't try to validate constraints
+        # mid-load when adding FKs across already-populated tables.
+        f.write("SET FOREIGN_KEY_CHECKS=0;\n")
+        for fk in fk_constraints:
+            child_cols  = ", ".join(f"`{c}`" for c in fk["child_cols"])
+            parent_cols = ", ".join(f"`{c}`" for c in fk["parent_cols"])
+            stmt = (
+                f"ALTER TABLE `{fk['child_table']}` "
+                f"ADD CONSTRAINT `{fk['constraint']}` "
+                f"FOREIGN KEY ({child_cols}) "
+                f"REFERENCES `{fk['parent_table']}` ({parent_cols})"
+            )
+            # MySQL's default for omitted ON DELETE/UPDATE is RESTRICT;
+            # only emit a clause when it differs, to keep the SQL clean.
+            if fk["on_delete"] and fk["on_delete"].upper() != "RESTRICT":
+                stmt += f" ON DELETE {fk['on_delete']}"
+            if fk["on_update"] and fk["on_update"].upper() != "RESTRICT":
+                stmt += f" ON UPDATE {fk['on_update']}"
+            f.write(stmt + ";\n")
+        f.write("SET FOREIGN_KEY_CHECKS=1;\n")
+
+    print(f"📥 Re-applying {len(fk_constraints)} FK constraints from {out} ...")
+    load_local(cfg, out, disable_fk_checks=False)
+    print(f"✅ FK constraints re-applied")
+
 
 def load_local(cfg, filename, disable_fk_checks=False):
     # Note: For docker exec, we use environment variable MYSQL_PWD which is less secure
@@ -678,6 +786,22 @@ def main():
             run("python3 cleanup_orphans.py")
         except Exception as e:
             print("⚠️  cleanup_orphans.py failed:", e)
+
+    # Phase C: re-apply foreign key constraints after data is in place
+    # AND orphans have been cleaned up. The schema load stripped FKs
+    # (load_local(..., disable_fk_checks=True)) so the local clone has
+    # been running without prod's referential integrity. By doing this
+    # after cleanup_orphans, the FK creation is the final integrity
+    # check — if anything still fails here, the sampling or cleanup
+    # missed something and we want to know loudly rather than silently.
+    print("\n🔗 Re-applying foreign key constraints from remote schema...")
+    try:
+        fk_constraints = get_foreign_key_constraints(remote_conn, remote["database"])
+        reapply_foreign_keys(cfg, fk_constraints)
+    except Exception as e:
+        print(f"⚠️  Error re-applying FK constraints: {e}", file=sys.stderr)
+        print("    (likely orphan data not handled by cleanup_orphans;"
+              " local clone has weaker FK integrity than prod)")
 
     print("\n🎉 Done. Local clone is ready. Connect to local db as configured.")
 
