@@ -18,7 +18,7 @@ their natural key columns, so concurrent writes for the same natural key
 (date, user, project, ...) bucket may produce duplicate rows. Batch
 processes must serialize writes for the same natural key.
 """
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -28,6 +28,7 @@ from sam.projects.projects import Project
 from sam.resources.resources import Resource
 from sam.resources.machines import Machine, Queue
 from sam.accounting.accounts import Account
+from sam.activity.disk import DiskActivity, DiskCharge
 from sam.summaries.comp_summaries import CompChargeSummary
 from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
@@ -431,3 +432,110 @@ def upsert_disk_charge_summary(session: Session, **kwargs) -> Tuple[DiskChargeSu
 def upsert_archive_charge_summary(session: Session, **kwargs) -> Tuple[ArchiveChargeSummary, str]:
     """Insert or update an ArchiveChargeSummary row. Delegates to _upsert_storage_summary."""
     return _upsert_storage_summary(session, ArchiveChargeSummary, **kwargs)
+
+
+def upsert_disk_activity(
+    session: Session,
+    *,
+    directory_name: str,
+    username: str,
+    projcode: Optional[str],
+    activity_date: datetime,
+    reporting_interval: int,
+    bytes: int,
+    number_of_files: Optional[int],
+    resource_name: str,
+    load_date: datetime,
+    disk_cos_id: int = 0,
+    error_comment: Optional[str] = None,
+    processing_status: bool = True,
+) -> Tuple[DiskActivity, str]:
+    """Insert or update a DiskActivity row keyed on
+    (directory_name, username, activity_date, projcode) — the prod
+    UNIQUE constraint. ``file_size_total`` mirrors ``bytes`` (legacy
+    column, kept for parity with the Java collector).
+    """
+    existing = session.query(DiskActivity).filter(
+        DiskActivity.directory_name == directory_name,
+        DiskActivity.username == username,
+        DiskActivity.activity_date == activity_date,
+        DiskActivity.projcode == projcode,
+    ).first()
+
+    if existing is None:
+        record = DiskActivity(
+            directory_name=directory_name,
+            username=username,
+            projcode=projcode,
+            activity_date=activity_date,
+            reporting_interval=reporting_interval,
+            file_size_total=bytes,
+            bytes=bytes,
+            number_of_files=number_of_files,
+            load_date=load_date,
+            disk_cos_id=disk_cos_id,
+            error_comment=error_comment,
+            processing_status=processing_status,
+            resource_name=resource_name,
+        )
+        session.add(record)
+        action = 'created'
+    else:
+        existing.reporting_interval = reporting_interval
+        existing.file_size_total = bytes
+        existing.bytes = bytes
+        existing.number_of_files = number_of_files
+        existing.load_date = load_date
+        existing.disk_cos_id = disk_cos_id
+        existing.error_comment = error_comment
+        existing.processing_status = processing_status
+        existing.resource_name = resource_name
+        record = existing
+        action = 'updated'
+
+    session.flush()
+    return record, action
+
+
+def upsert_disk_charge(
+    session: Session,
+    *,
+    disk_activity_id: int,
+    account_id: int,
+    user_id: int,
+    charge_date: datetime,
+    activity_date: datetime,
+    terabyte_year: float,
+    charge: float,
+) -> Tuple[DiskCharge, str]:
+    """Insert or update a DiskCharge row keyed on disk_activity_id
+    (UNIQUE → 1:1 with DiskActivity).
+    """
+    existing = session.query(DiskCharge).filter(
+        DiskCharge.disk_activity_id == disk_activity_id,
+    ).first()
+
+    if existing is None:
+        record = DiskCharge(
+            disk_activity_id=disk_activity_id,
+            account_id=account_id,
+            user_id=user_id,
+            charge_date=charge_date,
+            activity_date=activity_date,
+            terabyte_year=terabyte_year,
+            charge=charge,
+        )
+        session.add(record)
+        action = 'created'
+    else:
+        existing.account_id = account_id
+        existing.user_id = user_id
+        existing.charge_date = charge_date
+        existing.activity_date = activity_date
+        existing.terabyte_year = terabyte_year
+        existing.charge = charge
+        record = existing
+        action = 'updated'
+
+    session.flush()
+    return record, action

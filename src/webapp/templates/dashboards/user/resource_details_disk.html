@@ -26,7 +26,7 @@
         {% if node.title %}
         <span class="{% if is_clickable %}text-muted{% endif %} fw-normal text-truncate" style="max-width: 35ch;">- {{ node.title }}</span>
         {% endif %}
-        {% if node.fileset_paths %}
+        {% if node.fileset_paths and not node.directories %}
         <span class="text-muted small font-monospace"
               style="max-width: 70ch; white-space: normal; word-break: break-word;">
             <i class="fas fa-folder-open me-1"></i>{{ node.fileset_paths | join(', ') }}
@@ -47,6 +47,27 @@
     </a>
     {% else %}
     </span>
+    {% endif %}
+    {% if node.directories %}
+    <ul class="tree-list disk-fileset-list">
+        {% for d in node.directories %}
+        <li>
+            <span class="d-flex align-items-center gap-2 text-muted">
+                <i class="fas fa-folder-open me-1 flex-shrink-0"></i>
+                <span class="small font-monospace text-truncate"
+                      style="max-width: 70ch;">{{ d.name }}</span>
+                {% if d.files %}
+                <span class="text-muted small flex-shrink-0">
+                    {{ d.files | fmt_number }} files
+                </span>
+                {% endif %}
+                <span class="text-muted small ms-auto flex-shrink-0 font-monospace">
+                    {{ d.bytes | fmt_size }}
+                </span>
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
     {% endif %}
     {% if node.children %}
     <ul class="tree-list">

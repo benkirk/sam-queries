@@ -15,8 +15,11 @@ import pytest
 
 from sam import ResourceType
 from sam.projects.projects import ProjectDirectory
+from sam.activity.disk import DiskActivity, DiskCharge
 from sam.queries.disk_usage import (
     build_disk_subtree,
+    bulk_get_directory_usage_at,
+    get_directory_usage_at,
     get_disk_usage_timeseries_by_user,
 )
 from sam.summaries.disk_summaries import (
@@ -304,3 +307,285 @@ class TestBuildDiskSubtree:
             '/gpfs/csfs1/test/path_a',
             '/gpfs/csfs1/test/path_b',
         ]
+
+
+# ============================================================================
+# get_directory_usage_at / bulk_get_directory_usage_at  (Layer 2 tier-1/-2)
+# ============================================================================
+
+
+def _seed_disk_activity(
+    session, *, account, user, directory, snap, bytes_, files=10,
+    resource_name=None,
+):
+    """Insert one disk_activity + matching disk_charge row."""
+    activity = DiskActivity(
+        directory_name=directory,
+        username=user.username,
+        projcode=account.project.projcode,
+        activity_date=snap,
+        reporting_interval=7,
+        file_size_total=bytes_,
+        bytes=bytes_,
+        number_of_files=files,
+        load_date=datetime.now(),
+        disk_cos_id=0,
+        processing_status=True,
+        resource_name=resource_name,
+    )
+    session.add(activity)
+    session.flush()
+    session.add(DiskCharge(
+        disk_activity_id=activity.disk_activity_id,
+        account_id=account.account_id,
+        user_id=user.user_id,
+        charge_date=datetime.now(),
+        activity_date=snap,
+        terabyte_year=0.0,
+        charge=0.0,
+    ))
+    session.flush()
+    return activity
+
+
+class TestPerDirectoryQuery:
+
+    def test_get_directory_usage_at_returns_per_directory_rows(self, session):
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        snap = _date(2026, 4, 11)
+        _seed_disk_activity(
+            session, account=account, user=lead,
+            directory='/gpfs/csfs1/test/data',
+            snap=snap, bytes_=2 * BYTES_PER_TIB, files=200,
+            resource_name=resource.resource_name,
+        )
+        _seed_disk_activity(
+            session, account=account, user=lead,
+            directory='/gpfs/csfs1/test/work',
+            snap=snap, bytes_=3 * BYTES_PER_TIB, files=300,
+            resource_name=resource.resource_name,
+        )
+
+        rows = get_directory_usage_at(
+            session,
+            project_id=project.project_id,
+            resource_name=resource.resource_name,
+            activity_date=snap,
+        )
+        # Sorted desc by bytes.
+        assert [r['name'] for r in rows] == [
+            '/gpfs/csfs1/test/work',
+            '/gpfs/csfs1/test/data',
+        ]
+        assert rows[0]['bytes'] == 3 * BYTES_PER_TIB
+        assert rows[0]['files'] == 300
+        assert rows[1]['bytes'] == 2 * BYTES_PER_TIB
+        assert rows[1]['files'] == 200
+
+    def test_get_directory_usage_at_filters_by_resource(self, session):
+        """Rows on a different resource on the same date must not leak in."""
+        resource_a = _disk_resource(session)
+        resource_b = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        acct_a = make_account(session, project=project, resource=resource_a)
+        acct_b = make_account(session, project=project, resource=resource_b)
+        snap = _date(2026, 4, 11)
+        _seed_disk_activity(
+            session, account=acct_a, user=lead,
+            directory='/cs/data', snap=snap, bytes_=BYTES_PER_TIB,
+            resource_name=resource_a.resource_name,
+        )
+        _seed_disk_activity(
+            session, account=acct_b, user=lead,
+            directory='/quasar/data', snap=snap, bytes_=BYTES_PER_TIB,
+            resource_name=resource_b.resource_name,
+        )
+
+        rows_a = get_directory_usage_at(
+            session,
+            project_id=project.project_id,
+            resource_name=resource_a.resource_name,
+            activity_date=snap,
+        )
+        assert [r['name'] for r in rows_a] == ['/cs/data']
+
+    def test_get_directory_usage_at_unresolved_excluded(self, session):
+        """A disk_activity row with no disk_charge (unresolved) is excluded
+        — the join filter requires both tiers."""
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        snap = _date(2026, 4, 11)
+        # Resolved row (writes both tiers).
+        _seed_disk_activity(
+            session, account=account, user=lead,
+            directory='/cs/data', snap=snap, bytes_=BYTES_PER_TIB,
+            resource_name=resource.resource_name,
+        )
+        # Tier-1-only row (no tier-2 — simulates unresolved import).
+        session.add(DiskActivity(
+            directory_name='/cs/orphan',
+            username='ghost',
+            projcode='ZZZZ9999',
+            activity_date=snap,
+            reporting_interval=7,
+            file_size_total=BYTES_PER_TIB,
+            bytes=BYTES_PER_TIB,
+            number_of_files=1,
+            load_date=datetime.now(),
+            disk_cos_id=0,
+            processing_status=False,
+            error_comment='unresolved',
+            resource_name=resource.resource_name,
+        ))
+        session.flush()
+
+        rows = get_directory_usage_at(
+            session,
+            project_id=project.project_id,
+            resource_name=resource.resource_name,
+            activity_date=snap,
+        )
+        # Only the resolved row.
+        assert [r['name'] for r in rows] == ['/cs/data']
+
+    def test_bulk_per_directory_query_pairs(self, session):
+        """Bulk variant returns a dict keyed by (project_id, resource_name);
+        unrequested pairs are absent or empty."""
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        proj_a = make_project(session, lead=lead)
+        proj_b = make_project(session, lead=lead)
+        acct_a = make_account(session, project=proj_a, resource=resource)
+        acct_b = make_account(session, project=proj_b, resource=resource)
+        snap = _date(2026, 4, 11)
+        _seed_disk_activity(
+            session, account=acct_a, user=lead,
+            directory='/cs/a/data', snap=snap, bytes_=BYTES_PER_TIB,
+            resource_name=resource.resource_name,
+        )
+        _seed_disk_activity(
+            session, account=acct_a, user=lead,
+            directory='/cs/a/work', snap=snap, bytes_=2 * BYTES_PER_TIB,
+            resource_name=resource.resource_name,
+        )
+        _seed_disk_activity(
+            session, account=acct_b, user=lead,
+            directory='/cs/b/data', snap=snap, bytes_=3 * BYTES_PER_TIB,
+            resource_name=resource.resource_name,
+        )
+
+        out = bulk_get_directory_usage_at(
+            session,
+            project_resource_pairs=[
+                (proj_a.project_id, resource.resource_name),
+                (proj_b.project_id, resource.resource_name),
+            ],
+            activity_date=snap,
+        )
+        assert set(out.keys()) == {
+            (proj_a.project_id, resource.resource_name),
+            (proj_b.project_id, resource.resource_name),
+        }
+        names_a = [d['name'] for d in out[(proj_a.project_id,
+                                           resource.resource_name)]]
+        assert names_a == ['/cs/a/work', '/cs/a/data']
+        names_b = [d['name'] for d in out[(proj_b.project_id,
+                                           resource.resource_name)]]
+        assert names_b == ['/cs/b/data']
+
+    def test_bulk_per_directory_query_empty_input(self, session):
+        out = bulk_get_directory_usage_at(
+            session,
+            project_resource_pairs=[],
+            activity_date=_date(2026, 4, 11),
+        )
+        assert out == {}
+
+
+class TestBuildDiskSubtreeMultifileset:
+    """build_disk_subtree attaches per-fileset bytes when >1 active
+    ProjectDirectory exists."""
+
+    def test_multifileset_node_carries_directories(self, session):
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        backdate = datetime.now() - timedelta(days=1)
+        ProjectDirectory.create(
+            session, project_id=project.project_id,
+            directory_name='/gpfs/csfs1/test/data',
+            start_date=backdate,
+        )
+        ProjectDirectory.create(
+            session, project_id=project.project_id,
+            directory_name='/gpfs/csfs1/test/work',
+            start_date=backdate,
+        )
+        snap = _date(2026, 4, 11)
+        # Tier-3 row drives node.activity_date.
+        _seed_row(session, account=account, user=lead, snap=snap,
+                  bytes_=5 * BYTES_PER_TIB)
+        # Tier-1/2 rows drive the per-fileset breakdown.
+        _seed_disk_activity(
+            session, account=account, user=lead,
+            directory='/gpfs/csfs1/test/data',
+            snap=snap, bytes_=2 * BYTES_PER_TIB, files=200,
+            resource_name=resource.resource_name,
+        )
+        _seed_disk_activity(
+            session, account=account, user=lead,
+            directory='/gpfs/csfs1/test/work',
+            snap=snap, bytes_=3 * BYTES_PER_TIB, files=300,
+            resource_name=resource.resource_name,
+        )
+        mark_disk_snapshot_current(session, snap)
+        session.flush()
+
+        result = build_disk_subtree(session, project, resource.resource_name)
+        node = result['tree']
+        # Multi-fileset → directories attached, sorted desc by bytes.
+        assert 'directories' in node
+        assert [d['name'] for d in node['directories']] == [
+            '/gpfs/csfs1/test/work',
+            '/gpfs/csfs1/test/data',
+        ]
+        # Sum of per-fileset bytes equals the project-level current_bytes.
+        assert (sum(d['bytes'] for d in node['directories'])
+                == node['current_bytes'])
+
+    def test_single_fileset_node_omits_directories(self, session):
+        """Single-fileset projects keep the existing render path — no
+        ``directories`` payload."""
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        backdate = datetime.now() - timedelta(days=1)
+        ProjectDirectory.create(
+            session, project_id=project.project_id,
+            directory_name='/gpfs/csfs1/test/only',
+            start_date=backdate,
+        )
+        snap = _date(2026, 4, 11)
+        _seed_row(session, account=account, user=lead, snap=snap,
+                  bytes_=BYTES_PER_TIB)
+        _seed_disk_activity(
+            session, account=account, user=lead,
+            directory='/gpfs/csfs1/test/only',
+            snap=snap, bytes_=BYTES_PER_TIB,
+            resource_name=resource.resource_name,
+        )
+        mark_disk_snapshot_current(session, snap)
+        session.flush()
+
+        result = build_disk_subtree(session, project, resource.resource_name)
+        node = result['tree']
+        assert 'directories' not in node
+        assert node['fileset_paths'] == ['/gpfs/csfs1/test/only']

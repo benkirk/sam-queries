@@ -11,6 +11,9 @@ class DiskActivity(Base, TimestampMixin):
     __tablename__ = 'disk_activity'
 
     __table_args__ = (
+        Index('disk_activity_unique_idx',
+              'directory_name', 'username', 'activity_date', 'projcode',
+              unique=True),
         Index('ix_disk_activity_directory', 'directory_name'),
         Index('ix_disk_activity_cos', 'disk_cos_id'),
     )
