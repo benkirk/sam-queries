@@ -10,9 +10,16 @@ class Facility(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Facility classifications (NCAR, UNIV, etc.)."""
     __tablename__ = 'facility'
 
+    __table_args__ = (
+        Index('facility_name_uk', 'facility_name', unique=True),
+        Index('facility_code_uk', 'code', unique=True),
+        Index('facility_projcode_abbr_uk', 'code', unique=True),
+        Index('idx_facility', 'code'),
+    )
+
     facility_id = Column(Integer, primary_key=True, autoincrement=True)
-    facility_name = Column(String(30), nullable=False, unique=True)
-    code = Column(String(1), unique=True)
+    facility_name = Column(String(30), nullable=False)
+    code = Column(String(1))
     description = Column(String(255), nullable=False)
     fair_share_percentage = Column(Float)
 
@@ -113,8 +120,8 @@ class FacilityResource(Base):
     __tablename__ = 'facility_resource'
 
     __table_args__ = (
-        Index('ix_facility_resource_facility', 'facility_id'),
-        Index('ix_facility_resource_resource', 'resource_id'),
+        Index('facility_resource_facility_fk', 'facility_id'),
+        Index('facility_resource_resources_fk', 'resource_id'),
     )
 
     facility_resource_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -139,11 +146,12 @@ class Panel(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     __tablename__ = 'panel'
 
     __table_args__ = (
-        Index('ix_panel_facility', 'facility_id'),
+        Index('idx_panel', 'facility_id'),
+        Index('panel_name_uk', 'panel_name', unique=True),
     )
 
     panel_id = Column(Integer, primary_key=True, autoincrement=True)
-    panel_name = Column(String(30), nullable=False, unique=True)
+    panel_name = Column(String(30), nullable=False)
     description = Column(String(100))
     facility_id = Column(Integer, ForeignKey('facility.facility_id'), nullable=False)
 
@@ -227,11 +235,12 @@ class PanelSession(Base, TimestampMixin, SessionMixin):
     __tablename__ = 'panel_session'
 
     __table_args__ = (
-        Index('ix_panel_session_panel', 'panel_id'),
+        Index('panel_session_facility_fk', 'panel_id'),
+        Index('panel_session_name_uk', 'name', unique=True),
     )
 
     panel_session_id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50), nullable=False, unique=True)
+    name = Column(String(50), nullable=False)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
     panel_meeting_date = Column(DateTime)
@@ -332,6 +341,8 @@ class ProjectCode(Base):
 
     __table_args__ = (
         PrimaryKeyConstraint('facility_id', 'mnemonic_code_id', name='pk_project_code'),
+        Index('project_code_facility_fk', 'facility_id'),
+        Index('project_code_mnemonic_code_fk', 'mnemonic_code_id'),
     )
 
     facility_id = Column(Integer, ForeignKey('facility.facility_id'), nullable=False)

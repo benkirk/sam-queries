@@ -40,8 +40,9 @@ class RoleUser(Base):
     __tablename__ = 'role_user'
 
     __table_args__ = (
-        Index('ix_role_user_role', 'role_id'),
-        Index('ix_role_user_user', 'user_id'),
+        Index('role_user_role_fk', 'role_id'),
+        Index('role_user_user_fk', 'user_id'),
+        Index('role_user_uniq', 'role_id', 'user_id', unique=True),
     )
 
     role_user_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -71,11 +72,11 @@ class ApiCredentials(Base):
     __tablename__ = 'api_credentials'
 
     __table_args__ = (
-        Index('ix_api_credentials_username', 'username', unique=True),
+        Index('idx_api_credentials_uniq', 'username', unique=True),
     )
 
     api_credentials_id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String(11), nullable=False, unique=True)
+    username = Column(String(11), nullable=False)
     password = Column(String(64), nullable=False)  # Hashed password (bcrypt)
     enabled = Column(Boolean)
 
@@ -104,8 +105,9 @@ class RoleApiCredentials(Base):
     __tablename__ = 'role_api_credentials'
 
     __table_args__ = (
-        Index('ix_role_api_credentials_role', 'role_id'),
-        Index('ix_role_api_credentials_api', 'api_credentials_id'),
+        Index('role_api_credentials_role_fk', 'role_id'),
+        Index('role_api_credentials_api_credentials_fk', 'api_credentials_id'),
+        Index('role_api_credentials_uniq', 'role_id', 'api_credentials_id', unique=True),
     )
 
     role_api_credentials_id = Column(Integer, primary_key=True, autoincrement=True)

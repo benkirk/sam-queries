@@ -22,14 +22,14 @@ class CompChargeSummary(Base):
     __tablename__ = 'comp_charge_summary'
 
     __table_args__ = (
-        Index('ix_comp_charge_summary_date', 'activity_date'),
-        Index('ix_comp_charge_summary_user', 'user_id'),
-        Index('ix_comp_charge_summary_account', 'account_id'),
-        Index('ix_comp_charge_summary_machine', 'machine_id'),
-        Index('ix_comp_charge_summary_queue', 'queue_id'),
-        Index('ix_comp_charge_summary_resource', 'resource'),
-        Index('ix_comp_charge_summary_projcode', 'projcode'),
-        Index('ix_comp_charge_summary_date_account', 'activity_date', 'account_id'),
+        Index('idx_comp_charge_summary_uniq',
+              'activity_date', 'machine', 'queue',
+              'act_projcode', 'act_username', 'act_unix_uid', 'cos',
+              unique=True),
+        Index('fk_comp_charge_summary_user', 'user_id'),
+        Index('fk_comp_charge_summary_account', 'account_id'),
+        Index('fk_comp_charge_summary_machine', 'machine_id'),
+        Index('fk_comp_charge_summary_queue', 'queue_id'),
     )
 
     def __eq__(self, other):
@@ -140,9 +140,8 @@ class CompChargeSummaryStatus(Base):
     __tablename__ = 'comp_charge_summary_status'
 
     __table_args__ = (
-        Index('ix_comp_charge_summary_status_command', 'command_id'),
-        Index('ix_comp_charge_summary_status_summary', 'charge_summary_id'),
-        Index('ix_comp_charge_summary_status_modified', 'modified'),
+        Index('command_id', 'command_id', 'charge_summary_id', unique=True),
+        Index('fk_comp_charge_summary', 'charge_summary_id'),
     )
 
     def __eq__(self, other):

@@ -109,6 +109,7 @@ for table in \
     factor \
     formula \
     fos_aoi \
+    gid_allocation \
     hpc_activity \
     hpc_charge \
     hpc_charge_summary \

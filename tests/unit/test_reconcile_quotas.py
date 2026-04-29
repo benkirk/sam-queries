@@ -890,27 +890,31 @@ class TestTreeRollup:
         alloc = make_allocation(session, account=acct, amount=30.0)
 
         # Both filesets map to the same project via different paths;
-        # neither projcode-named, so both must hit pass 2.
+        # neither projcode-named, so both must hit pass 2. Use unique
+        # paths so we don't collide with snapshot ProjectDirectory rows
+        # (e.g. P43713000 owns /gpfs/csfs1/collections/gdex/{data,work}
+        # in the obfuscated snapshot, and `dir_to_projcode.setdefault`
+        # keeps the snapshot's mapping → our quotas would attach to the
+        # snapshot project instead of this test's project).
+        fs_a = next_seq('fsmulti_a').lower()
+        fs_b = next_seq('fsmulti_b').lower()
+        path_a = f'/gpfs/csfs1/test/{fs_a}'
+        path_b = f'/gpfs/csfs1/test/{fs_b}'
         ProjectDirectory.create(
-            session, project_id=proj.project_id,
-            directory_name='/gpfs/csfs1/collections/gdex/data',
+            session, project_id=proj.project_id, directory_name=path_a,
         )
         ProjectDirectory.create(
-            session, project_id=proj.project_id,
-            directory_name='/gpfs/csfs1/collections/gdex/work',
+            session, project_id=proj.project_id, directory_name=path_b,
         )
         quota_path = _write_quota_file(
             tmp_path,
             {
-                'rda_data': {'limit': str(_kib_for(10.0)),
-                             'usage': '0', 'files': '0'},
-                'rda_work': {'limit': str(_kib_for(20.0)),
-                             'usage': '0', 'files': '0'},
+                fs_a: {'limit': str(_kib_for(10.0)),
+                       'usage': '0', 'files': '0'},
+                fs_b: {'limit': str(_kib_for(20.0)),
+                       'usage': '0', 'files': '0'},
             },
-            paths={
-                'rda_data': '/gpfs/csfs1/collections/gdex/data',
-                'rda_work': '/gpfs/csfs1/collections/gdex/work',
-            },
+            paths={fs_a: path_a, fs_b: path_b},
         )
         admin = make_user(session)
         monkeypatch.setenv('SAM_ADMIN_USER', admin.username)

@@ -40,9 +40,9 @@ from sam.schemas.charges import (
     CompChargeSummaryInputSchema,
     DiskChargeSummaryInputSchema,
 )
-from sam.summaries.archive_summaries import ArchiveChargeSummary
+from sam.summaries.archive_summaries import ArchiveChargeSummary, ArchiveChargeSummaryStatus
 from sam.summaries.comp_summaries import CompChargeSummary
-from sam.summaries.disk_summaries import DiskChargeSummary
+from sam.summaries.disk_summaries import DiskChargeSummary, DiskChargeSummaryStatus
 
 from factories import (
     make_account,
@@ -52,6 +52,7 @@ from factories import (
     make_resource,
     make_resource_type,
     make_user,
+    next_date,
     next_seq,
 )
 
@@ -112,8 +113,18 @@ def _build_storage_graph(session, *, resource_type_name: str):
     )
     resource = make_resource(session, resource_type=rt)
     make_account(session, project=project, resource=resource)
+    # FK: *_charge_summary.activity_date → *_charge_summary_status.activity_date.
+    # Materialize the parent status rows so upsert_*_charge_summary can insert
+    # the child summary without violating the constraint. Use next_date() to
+    # get a worker-unique date so parallel xdist workers don't collide on the
+    # status row's PK.
+    activity_date = next_date("storage_test_date")
+    for status_cls in (DiskChargeSummaryStatus, ArchiveChargeSummaryStatus):
+        if session.get(status_cls, activity_date) is None:
+            session.add(status_cls(activity_date=activity_date, current=False))
+    session.flush()
     return dict(
-        activity_date=date(2098, 6, 15),
+        activity_date=activity_date,
         act_username=user.username,
         act_projcode=project.projcode,
         act_unix_uid=user.unix_uid,

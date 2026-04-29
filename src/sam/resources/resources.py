@@ -11,8 +11,11 @@ class Resource(Base, TimestampMixin, SessionMixin):
     __tablename__ = 'resources'
 
     __table_args__ = (
-        Index('ix_resources_type', 'resource_type_id'),
-        Index('ix_resources_name', 'resource_name'),
+        Index('resource_resource_type_fk', 'resource_type_id'),
+        Index('resources_name_unique_idx', 'resource_name', unique=True),
+        Index('resource_primresporgid_fk', 'prim_responsible_org_id'),
+        Index('resource_primsysadm_fk', 'prim_sys_admin_user_id'),
+        Index('resources_resource_shell_fk', 'default_resource_shell_id'),
     )
 
     def __eq__(self, other):
@@ -26,7 +29,7 @@ class Resource(Base, TimestampMixin, SessionMixin):
         return hash(self.resource_id) if self.resource_id is not None else hash(id(self))
 
     resource_id = Column(Integer, primary_key=True, autoincrement=True)
-    resource_name = Column(String(40), nullable=False, unique=True)
+    resource_name = Column(String(40), nullable=False)
     resource_type_id = Column(Integer, ForeignKey('resource_type.resource_type_id'),
                              nullable=False)
     description = Column(String(255))
@@ -262,8 +265,12 @@ class ResourceType(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Types of resources (HPC, DISK, ARCHIVE, etc.)."""
     __tablename__ = 'resource_type'
 
+    __table_args__ = (
+        Index('resource_type_uk', 'resource_type', unique=True),
+    )
+
     resource_type_id = Column(Integer, primary_key=True, autoincrement=True)
-    resource_type = Column(String(35), nullable=False, unique=True)
+    resource_type = Column(String(35), nullable=False)
     description = Column(String(255))
     grace_period_days = Column(Integer)
 
@@ -337,7 +344,9 @@ class ResourceShell(Base, TimestampMixin):
     __tablename__ = 'resource_shell'
 
     __table_args__ = (
-        Index('ix_resource_shell_resource', 'resource_id'),
+        Index('resource_shell_resources_fk', 'resource_id'),
+        Index('resource_shell_resource_shell_name_uk',
+              'resource_id', 'shell_name', unique=True),
     )
 
     resource_shell_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -361,11 +370,12 @@ class DiskResourceRootDirectory(Base, SessionMixin):
     __tablename__ = 'disk_resource_root_directory'
 
     __table_args__ = (
-        Index('ix_disk_resource_root_resource', 'resource_id'),
+        Index('resource_fk', 'resource_id'),
+        Index('root_directory_uk', 'root_directory', unique=True),
     )
 
     root_directory_id = Column(Integer, primary_key=True, autoincrement=True)
-    root_directory = Column(String(64), nullable=False, unique=True)
+    root_directory = Column(String(64), nullable=False)
     charging_exempt = Column(Boolean, nullable=False, default=False)
     resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
     # DB quirk: creation_time has ON UPDATE (semantically swapped with modified_time)

@@ -12,9 +12,10 @@ class DavActivity(Base):
 
     __table_args__ = (
         PrimaryKeyConstraint('dav_activity_id', 'queue_name', name='pk_dav_activity'),
-        Index('ix_dav_activity_job', 'job_id'),
-        Index('ix_dav_activity_cos', 'dav_cos_id'),
-        Index('ix_dav_activity_queue', 'queue_name'),
+        Index('dav_activity_unique_idx',
+              'job_id', 'machine', 'submit_time', 'job_idx',
+              unique=True),
+        Index('dav_cos_id', 'dav_cos_id'),
     )
 
     dav_activity_id = Column(Integer, autoincrement=True)
@@ -98,17 +99,18 @@ class DavCharge(Base):
     __tablename__ = 'dav_charge'
 
     __table_args__ = (
-        Index('ix_dav_charge_account', 'account_id'),
-        Index('ix_dav_charge_user', 'user_id'),
-        Index('ix_dav_charge_activity', 'dav_activity_id', unique=True),
-        Index('ix_dav_charge_date', 'charge_date'),
-        Index('ix_dav_charge_activity_date', 'activity_date'),
+        Index('idx_hpc_charge_2', 'account_id'),
+        Index('idx_dav_charge', 'user_id'),
+        Index('udx_dav_charge_uniq', 'dav_activity_id', unique=True),
+        Index('idx_charge_date', 'charge_date'),
+        Index('dav_charge_activity_date_idx', 'activity_date'),
+        Index('idx_hpc_charge_0', 'dav_activity_id'),
     )
 
     dav_charge_id = Column(Integer, primary_key=True, autoincrement=True)
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     dav_activity_id = Column(Integer, ForeignKey('dav_activity.dav_activity_id'),
-                             nullable=False, unique=True)
+                             nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
     activity_date = Column(DateTime)

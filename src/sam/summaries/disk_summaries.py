@@ -36,13 +36,14 @@ class DiskChargeSummary(Base):
     __tablename__ = 'disk_charge_summary'
 
     __table_args__ = (
-        Index('ix_disk_charge_summary_date', 'activity_date'),
-        Index('ix_disk_charge_summary_user', 'user_id'),
-        Index('ix_disk_charge_summary_account', 'account_id'),
+        Index('idx_disk_charge_summary_date', 'activity_date'),
+        Index('idx_disk_charge_summary_user_id', 'user_id'),
+        Index('idx_disk_charge_summary_account_id', 'account_id'),
     )
 
     disk_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
-    activity_date = Column(Date, nullable=False)
+    activity_date = Column(Date, ForeignKey('disk_charge_summary_status.activity_date'),
+                           nullable=False)
 
     act_username = Column(String(35))
     unix_uid = Column(Integer)
