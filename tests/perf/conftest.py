@@ -131,3 +131,42 @@ def perf_hpc_resource(session, _hpc_resource_id):
     """An active HPC resource for perf tests."""
     from sam import Resource
     return session.get(Resource, _hpc_resource_id)
+
+
+@pytest.fixture(scope="session")
+def _disk_target(engine):
+    """``(projcode, disk_resource_name)`` for the smallest active tree-root
+    project that has at least one disk-resource account anywhere in its
+    subtree. Session-scoped so the lookup runs once per worker.
+
+    Used by the resource-details disk-path route test. Picking the
+    *root* (``project_id == tree_root``) is what exercises
+    ``build_disk_subtree``'s descendant walk — which is the path the
+    bulk_current_disk_usage refactor was meant to flatten.
+    """
+    from sqlalchemy import text as _text
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, autoflush=False, future=True)
+    with Session() as s:
+        row = s.execute(_text("""
+            SELECT p.projcode, r.resource_name
+            FROM project p
+            JOIN project descendant
+              ON descendant.tree_root = p.project_id
+             AND descendant.tree_left BETWEEN p.tree_left AND p.tree_right
+            JOIN account a
+              ON a.project_id = descendant.project_id AND a.deleted = 0
+            JOIN resources r ON r.resource_id = a.resource_id
+            JOIN resource_type rt ON rt.resource_type_id = r.resource_type_id
+            WHERE rt.resource_type = 'DISK'
+              AND p.project_id = p.tree_root
+              AND p.active = 1
+            GROUP BY p.projcode, r.resource_name
+            ORDER BY p.project_id, r.resource_name
+            LIMIT 1
+        """)).first()
+    assert row is not None, (
+        "snapshot has no active tree-root projects with disk-resource accounts"
+    )
+    return row[0], row[1]
