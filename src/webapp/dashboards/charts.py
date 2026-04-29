@@ -522,6 +522,7 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
 
 _PACE_OTHER_COLOR = (0.78, 0.78, 0.78, 0.85)
 _PACE_TODAY_LINE_COLOR = (0.2, 0.2, 0.2, 0.7)
+_PACE_RATE_SCALE = 365  # internal per-day rates → per-year axis
 
 
 def _pace_bands(allocations: List[Dict], active_at: datetime,
@@ -590,7 +591,7 @@ def _pace_key_fields(allocations: List[Dict]) -> list:
     ]
 
 
-def _pace_cache_key(allocations, active_at, window_days=180, top_n=10, resource_name=''):
+def _pace_cache_key(allocations, active_at, window_days=180, top_n=15, resource_name=''):
     return _content_hash([_pace_key_fields(allocations), active_at.isoformat(),
                           int(window_days), int(top_n), resource_name])
 
@@ -601,7 +602,7 @@ def generate_pace_chart_matplotlib(
     allocations: List[Dict],
     active_at: datetime,
     window_days: int = 180,
-    top_n: int = 10,
+    top_n: int = 15,
     resource_name: str = '',
 ) -> str:
     """Stacked-area pace chart: one band per allocation, past-rate | future-rate
@@ -614,7 +615,7 @@ def generate_pace_chart_matplotlib(
             ``total_amount``, ``total_used``.
         active_at: chart centerline ("today").
         window_days: half-window on each side of ``active_at`` (default 180).
-        top_n: projects with their own color + legend entry (default 5).
+        top_n: projects with their own color + legend entry (default 15).
         resource_name: used only for cache key disambiguation.
 
     Returns:
@@ -665,7 +666,9 @@ def generate_pace_chart_matplotlib(
     ordered = [(k, group_rates[k]) for k in top_projs] + [(OTHER_KEY, group_rates[OTHER_KEY])]
     ordered = [(k, r) for k, r in ordered if r.any()]
 
-    rates_matrix = [r for _, r in ordered]
+    # Scale per-day rates to per-year for display (users reason about
+    # allocation burn in annual units).
+    rates_matrix = [r * _PACE_RATE_SCALE for _, r in ordered]
     colors = [color_map.get(k, _PACE_OTHER_COLOR) for k, _ in ordered]
 
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -705,7 +708,7 @@ def generate_pace_chart_matplotlib(
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax.set_ylabel('Rate (per day)')
+    ax.set_ylabel('Rate (per year)')
     ax.grid(True, alpha=0.2)
     fig.autofmt_xdate()
 
