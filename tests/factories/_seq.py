@@ -7,6 +7,7 @@ collisions while two workers are concurrently holding write locks on the
 same identifier. So the worker ID is baked into every generated value to
 keep namespaces disjoint across workers.
 """
+import datetime as _dt
 import os
 from collections import defaultdict
 from itertools import count
@@ -40,3 +41,24 @@ def reset_seq(prefix: Optional[str] = None) -> None:
         _counters.clear()
     else:
         _counters.pop(prefix, None)
+
+
+# Worker-namespaced date generator: each xdist worker gets a disjoint
+# slice of dates so concurrent workers don't collide on PKs of small
+# date-keyed parent tables (e.g. *_charge_summary_status). Each worker
+# slice spans 365 days; counters within a slice walk forward.
+_DATE_EPOCH = _dt.date(2090, 1, 1)
+_DATE_SLICE_DAYS = 365
+
+
+def next_date(prefix: str = "date") -> _dt.date:
+    """Return a worker-unique date that walks forward on each call.
+
+    Use for any test that needs a date-typed PK or FK target where
+    parallel workers must not collide. Stays within a worker-specific
+    365-day slice; wraps to slice start after 365 calls (more than
+    enough for any single test run).
+    """
+    worker_offset = int(_WORKER_TAG) * _DATE_SLICE_DAYS
+    counter_offset = next_int(prefix) % _DATE_SLICE_DAYS
+    return _DATE_EPOCH + _dt.timedelta(days=worker_offset + counter_offset)
