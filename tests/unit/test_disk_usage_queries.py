@@ -15,16 +15,15 @@ import pytest
 
 from sam import ResourceType
 from sam.projects.projects import ProjectDirectory
-from sam.activity.disk import DiskActivity, DiskCharge
+from sam.activity.disk import DiskActivity
 from sam.queries.disk_usage import (
     build_disk_subtree,
     bulk_get_directory_usage_at,
-    get_directory_usage_at,
     get_disk_usage_timeseries_by_user,
 )
 from sam.summaries.disk_summaries import (
     DiskChargeSummary,
-    mark_disk_snapshot_current,
+    DiskChargeSummaryStatus,
 )
 
 from factories import (
@@ -52,6 +51,23 @@ def _disk_resource(session):
         session, resource_type=rt,
         resource_name=f"Campaign_Store_{next_seq('cs')}",
     )
+
+
+def _mark_current(session, activity_date):
+    """Test-only narrow alternative to ``mark_disk_snapshot_current``.
+
+    The prod helper does a bulk ``UPDATE ... WHERE current=true``, which
+    deadlocks under xdist when two workers run it concurrently. These
+    read-path tests only need *their* own row marked current; per-test
+    SAVEPOINT rollback means we don't need to clear others. (Same
+    pattern as ``tests/unit/test_current_disk_usage.py:_mark_current``.)
+    """
+    row = session.get(DiskChargeSummaryStatus, activity_date)
+    if row is None:
+        session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=True))
+    else:
+        row.current = True
+    session.flush()
 
 
 def _seed_row(session, *, account, user, snap, bytes_, files=10):
@@ -205,7 +221,7 @@ class TestBuildDiskSubtree:
         _seed_row(session, account=account, user=lead, snap=snap,
                   bytes_=10 * BYTES_PER_TIB)
         session.flush()
-        mark_disk_snapshot_current(session, snap)
+        _mark_current(session, snap)
 
         result = build_disk_subtree(session, project, resource.resource_name)
         tree = result['tree']
@@ -234,7 +250,7 @@ class TestBuildDiskSubtree:
         _seed_row(session, account=account_b, user=child_b.lead, snap=snap,
                   bytes_=3 * BYTES_PER_TIB)
         session.flush()
-        mark_disk_snapshot_current(session, snap)
+        _mark_current(session, snap)
 
         result = build_disk_subtree(session, parent, resource.resource_name)
         tree = result['tree']
@@ -260,7 +276,7 @@ class TestBuildDiskSubtree:
         _seed_row(session, account=account_child, user=child.lead, snap=snap,
                   bytes_=2 * BYTES_PER_TIB)
         session.flush()
-        mark_disk_snapshot_current(session, snap)
+        _mark_current(session, snap)
 
         result = build_disk_subtree(session, parent, resource.resource_name)
         tree = result['tree']
@@ -310,7 +326,7 @@ class TestBuildDiskSubtree:
 
 
 # ============================================================================
-# get_directory_usage_at / bulk_get_directory_usage_at  (Layer 2 tier-1/-2)
+# bulk_get_directory_usage_at  (disk_activity-only query path)
 # ============================================================================
 
 
@@ -318,7 +334,14 @@ def _seed_disk_activity(
     session, *, account, user, directory, snap, bytes_, files=10,
     resource_name=None,
 ):
-    """Insert one disk_activity + matching disk_charge row."""
+    """Insert one disk_activity row.
+
+    The dashboard's directory-aggregation queries read disk_activity
+    directly (no disk_charge join), so we don't bother seeding a
+    disk_charge row here. Keeping ``account``/``user`` params for
+    test readability — they only feed into ``username`` /
+    ``projcode`` columns on disk_activity.
+    """
     activity = DiskActivity(
         directory_name=directory,
         username=user.username,
@@ -335,22 +358,16 @@ def _seed_disk_activity(
     )
     session.add(activity)
     session.flush()
-    session.add(DiskCharge(
-        disk_activity_id=activity.disk_activity_id,
-        account_id=account.account_id,
-        user_id=user.user_id,
-        charge_date=datetime.now(),
-        activity_date=snap,
-        terabyte_year=0.0,
-        charge=0.0,
-    ))
-    session.flush()
     return activity
 
 
-class TestPerDirectoryQuery:
+class TestBulkPerDirectoryQuery:
+    """``bulk_get_directory_usage_at`` returns per-project per-directory
+    bytes/files at one snapshot, given a ``directories_by_project_id``
+    map. Reads ``disk_activity`` directly (range seek on
+    ``disk_activity_unique_idx`` via ``directory_name``)."""
 
-    def test_get_directory_usage_at_returns_per_directory_rows(self, session):
+    def test_returns_per_directory_rows(self, session):
         resource = _disk_resource(session)
         lead = make_user(session)
         project = make_project(session, lead=lead)
@@ -369,12 +386,18 @@ class TestPerDirectoryQuery:
             resource_name=resource.resource_name,
         )
 
-        rows = get_directory_usage_at(
+        out = bulk_get_directory_usage_at(
             session,
-            project_id=project.project_id,
+            directories_by_project_id={
+                project.project_id: [
+                    '/gpfs/csfs1/test/data',
+                    '/gpfs/csfs1/test/work',
+                ],
+            },
             resource_name=resource.resource_name,
             activity_date=snap,
         )
+        rows = out[project.project_id]
         # Sorted desc by bytes.
         assert [r['name'] for r in rows] == [
             '/gpfs/csfs1/test/work',
@@ -385,8 +408,15 @@ class TestPerDirectoryQuery:
         assert rows[1]['bytes'] == 2 * BYTES_PER_TIB
         assert rows[1]['files'] == 200
 
-    def test_get_directory_usage_at_filters_by_resource(self, session):
-        """Rows on a different resource on the same date must not leak in."""
+    def test_filters_by_resource(self, session):
+        """Rows on a different resource on the same date must not leak in.
+
+        The disk_activity unique index is
+        ``(directory_name, username, activity_date, projcode)`` — note
+        ``resource_name`` is NOT in the key, so different filesets are
+        used for the two resources (matches reality: a path lives on
+        exactly one filesystem).
+        """
         resource_a = _disk_resource(session)
         resource_b = _disk_resource(session)
         lead = make_user(session)
@@ -405,29 +435,35 @@ class TestPerDirectoryQuery:
             resource_name=resource_b.resource_name,
         )
 
-        rows_a = get_directory_usage_at(
+        out = bulk_get_directory_usage_at(
             session,
-            project_id=project.project_id,
+            directories_by_project_id={
+                project.project_id: ['/cs/data', '/quasar/data'],
+            },
             resource_name=resource_a.resource_name,
             activity_date=snap,
         )
+        rows_a = out[project.project_id]
+        # Only the resource_a row passes the resource filter.
         assert [r['name'] for r in rows_a] == ['/cs/data']
+        assert rows_a[0]['bytes'] == BYTES_PER_TIB
 
-    def test_get_directory_usage_at_unresolved_excluded(self, session):
-        """A disk_activity row with no disk_charge (unresolved) is excluded
-        — the join filter requires both tiers."""
+    def test_unknown_directories_excluded(self, session):
+        """A disk_activity row whose directory_name isn't in the input
+        map is excluded — the directory_name IN (...) filter is the
+        scope boundary."""
         resource = _disk_resource(session)
         lead = make_user(session)
         project = make_project(session, lead=lead)
         account = make_account(session, project=project, resource=resource)
         snap = _date(2026, 4, 11)
-        # Resolved row (writes both tiers).
         _seed_disk_activity(
             session, account=account, user=lead,
             directory='/cs/data', snap=snap, bytes_=BYTES_PER_TIB,
             resource_name=resource.resource_name,
         )
-        # Tier-1-only row (no tier-2 — simulates unresolved import).
+        # Activity row for a directory NOT in the project's fileset list
+        # — should be filtered out.
         session.add(DiskActivity(
             directory_name='/cs/orphan',
             username='ghost',
@@ -445,18 +481,17 @@ class TestPerDirectoryQuery:
         ))
         session.flush()
 
-        rows = get_directory_usage_at(
+        out = bulk_get_directory_usage_at(
             session,
-            project_id=project.project_id,
+            directories_by_project_id={project.project_id: ['/cs/data']},
             resource_name=resource.resource_name,
             activity_date=snap,
         )
-        # Only the resolved row.
-        assert [r['name'] for r in rows] == ['/cs/data']
+        # Only the row for the requested directory.
+        assert [r['name'] for r in out[project.project_id]] == ['/cs/data']
 
-    def test_bulk_per_directory_query_pairs(self, session):
-        """Bulk variant returns a dict keyed by (project_id, resource_name);
-        unrequested pairs are absent or empty."""
+    def test_multiple_projects(self, session):
+        """Map covers multiple project_ids; each gets its own list."""
         resource = _disk_resource(session)
         lead = make_user(session)
         proj_a = make_project(session, lead=lead)
@@ -482,27 +517,24 @@ class TestPerDirectoryQuery:
 
         out = bulk_get_directory_usage_at(
             session,
-            project_resource_pairs=[
-                (proj_a.project_id, resource.resource_name),
-                (proj_b.project_id, resource.resource_name),
-            ],
+            directories_by_project_id={
+                proj_a.project_id: ['/cs/a/data', '/cs/a/work'],
+                proj_b.project_id: ['/cs/b/data'],
+            },
+            resource_name=resource.resource_name,
             activity_date=snap,
         )
-        assert set(out.keys()) == {
-            (proj_a.project_id, resource.resource_name),
-            (proj_b.project_id, resource.resource_name),
-        }
-        names_a = [d['name'] for d in out[(proj_a.project_id,
-                                           resource.resource_name)]]
+        assert set(out.keys()) == {proj_a.project_id, proj_b.project_id}
+        names_a = [d['name'] for d in out[proj_a.project_id]]
         assert names_a == ['/cs/a/work', '/cs/a/data']
-        names_b = [d['name'] for d in out[(proj_b.project_id,
-                                           resource.resource_name)]]
+        names_b = [d['name'] for d in out[proj_b.project_id]]
         assert names_b == ['/cs/b/data']
 
-    def test_bulk_per_directory_query_empty_input(self, session):
+    def test_empty_input(self, session):
         out = bulk_get_directory_usage_at(
             session,
-            project_resource_pairs=[],
+            directories_by_project_id={},
+            resource_name='whatever',
             activity_date=_date(2026, 4, 11),
         )
         assert out == {}
@@ -545,7 +577,7 @@ class TestBuildDiskSubtreeMultifileset:
             snap=snap, bytes_=3 * BYTES_PER_TIB, files=300,
             resource_name=resource.resource_name,
         )
-        mark_disk_snapshot_current(session, snap)
+        _mark_current(session, snap)
         session.flush()
 
         result = build_disk_subtree(session, project, resource.resource_name)
@@ -582,7 +614,7 @@ class TestBuildDiskSubtreeMultifileset:
             snap=snap, bytes_=BYTES_PER_TIB,
             resource_name=resource.resource_name,
         )
-        mark_disk_snapshot_current(session, snap)
+        _mark_current(session, snap)
         session.flush()
 
         result = build_disk_subtree(session, project, resource.resource_name)

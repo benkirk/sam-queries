@@ -80,5 +80,9 @@
     "fstree_api_route": {
         "queries": 65,
         "notes": "measured 44 \u2014 full GET /api/v1/fstree_access/ (all resources); cached 5min in prod"
+    },
+    "resource_details_disk_route": {
+        "queries": 50,
+        "notes": "measured 34 (test snapshot, smallest disk-root subtree) post bulk_current_disk_usage refactor. Flat regardless of subtree size \u2014 was 83 on prod (NMMM0003, 21-node subtree) and scaled with node_count_with_account before the fix. ~50% headroom for snapshot variance."
     }
 }

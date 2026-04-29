@@ -20,13 +20,13 @@ Two helpers:
 from __future__ import annotations
 
 from datetime import date as _stdlib_date
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from sam.accounting.accounts import Account
-from sam.activity.disk import DiskActivity, DiskCharge
+from sam.accounting.accounts import Account, CurrentDiskUsage
+from sam.activity.disk import DiskActivity
 from sam.core.users import User
 from sam.projects.projects import Project, ProjectDirectory
 from sam.resources.resources import Resource
@@ -40,6 +40,123 @@ _EMPTY_CAP: Dict[str, Any] = {
     'activity_date': None,
     'account_ids':   [],
 }
+
+
+def _load_disk_snapshot_by_account(
+    session: Session,
+    account_ids: Iterable[int],
+) -> Dict[int, CurrentDiskUsage]:
+    """Per-account latest disk snapshot in a fixed number of queries.
+
+    Shared kernel for :meth:`Account.current_disk_usage`,
+    :func:`bulk_current_disk_usage`, and the snapshot phase of
+    :func:`bulk_get_subtree_disk_capacity`. Semantics match the
+    single-account method exactly:
+
+      1. ONE ``DiskChargeSummaryStatus`` lookup for the most recent
+         ``current=True`` row.
+      2. ONE bulk aggregate over ``DiskChargeSummary`` at that date,
+         keyed by ``account_id`` (sums bytes, terabyte_years, files).
+      3. ONE ``max(activity_date)`` per account that lacked a row at
+         the candidate date.
+      4. ONE bulk aggregate for those (account_id, max_date) fallback
+         pairs.
+
+    Returns ``{account_id: CurrentDiskUsage}``. Accounts with no rows
+    at all are absent from the dict — matches the single-account
+    method's ``None`` return semantics.
+    """
+    aids = {int(a) for a in account_ids if a is not None}
+    if not aids:
+        return {}
+
+    out: Dict[int, CurrentDiskUsage] = {}
+
+    # 1) Current snapshot date.
+    current_row = (
+        session.query(DiskChargeSummaryStatus.activity_date)
+        .filter(DiskChargeSummaryStatus.current == True)  # noqa: E712
+        .order_by(DiskChargeSummaryStatus.activity_date.desc())
+        .first()
+    )
+    candidate_date = current_row[0] if current_row else None
+
+    # 2) Bulk aggregate at the candidate date.
+    if candidate_date is not None:
+        rows = session.query(
+            DiskChargeSummary.account_id,
+            func.coalesce(func.sum(DiskChargeSummary.bytes), 0).label('bytes'),
+            func.coalesce(func.sum(DiskChargeSummary.terabyte_years), 0).label('ty'),
+            func.coalesce(func.sum(DiskChargeSummary.number_of_files), 0).label('files'),
+        ).filter(
+            DiskChargeSummary.account_id.in_(aids),
+            DiskChargeSummary.activity_date == candidate_date,
+        ).group_by(DiskChargeSummary.account_id).all()
+        for r in rows:
+            out[r.account_id] = CurrentDiskUsage(
+                activity_date=candidate_date,
+                bytes=int(r.bytes or 0),
+                terabyte_years=float(r.ty or 0.0),
+                number_of_files=int(r.files or 0),
+            )
+
+    # 3) Per-account max() fallback for accounts without a row on the
+    #    current snapshot date. One query covers them all.
+    missing = aids - out.keys()
+    if missing:
+        max_dates = dict(session.query(
+            DiskChargeSummary.account_id,
+            func.max(DiskChargeSummary.activity_date),
+        ).filter(
+            DiskChargeSummary.account_id.in_(missing),
+        ).group_by(DiskChargeSummary.account_id).all())
+        if max_dates:
+            # 4) ONE aggregate query for all (account_id, max_date) pairs.
+            ors = [
+                and_(
+                    DiskChargeSummary.account_id == aid,
+                    DiskChargeSummary.activity_date == d,
+                )
+                for aid, d in max_dates.items()
+            ]
+            rows = session.query(
+                DiskChargeSummary.account_id,
+                DiskChargeSummary.activity_date,
+                func.coalesce(func.sum(DiskChargeSummary.bytes), 0).label('bytes'),
+                func.coalesce(func.sum(DiskChargeSummary.terabyte_years), 0).label('ty'),
+                func.coalesce(func.sum(DiskChargeSummary.number_of_files), 0).label('files'),
+            ).filter(or_(*ors)).group_by(
+                DiskChargeSummary.account_id, DiskChargeSummary.activity_date,
+            ).all()
+            for r in rows:
+                out[r.account_id] = CurrentDiskUsage(
+                    activity_date=r.activity_date,
+                    bytes=int(r.bytes or 0),
+                    terabyte_years=float(r.ty or 0.0),
+                    number_of_files=int(r.files or 0),
+                )
+
+    return out
+
+
+def bulk_current_disk_usage(
+    session: Session,
+    account_ids: Iterable[int],
+) -> Dict[int, CurrentDiskUsage]:
+    """Bulk twin of :meth:`Account.current_disk_usage`.
+
+    Returns ``{account_id: CurrentDiskUsage}`` for every requested
+    ``account_id`` that has at least one ``disk_charge_summary`` row.
+    Use this whenever you need snapshots for >1 account
+    (``build_disk_subtree``, ``Project.current_disk_usage``, …) — the
+    single-account path delegates here too, so all callers share one
+    code path with a fixed query count.
+
+    Caller is responsible for filtering to disk-resource accounts; this
+    helper does not check resource type because it's typically called
+    after a bulk ``Account`` load that already enforced the filter.
+    """
+    return _load_disk_snapshot_by_account(session, account_ids)
 
 
 def get_subtree_disk_capacity(
@@ -69,10 +186,8 @@ def bulk_get_subtree_disk_capacity(
       1. ONE ``Resource`` lookup for the distinct resource names.
       2. ONE OR-combined ``Account``/``Project`` subtree query covering
          every pair's NestedSet range (or fallback project_id match).
-      3. ONE ``DiskChargeSummaryStatus`` lookup for the current snapshot date.
-      4. ONE bulk ``DiskChargeSummary`` aggregate keyed by account_id.
-      5. ONE per-account fallback aggregate for accounts not on the
-         current snapshot date (only fires if such accounts exist).
+      3-6. Per-account snapshot via :func:`_load_disk_snapshot_by_account`
+         (status row + bulk aggregate + per-account max() fallback).
 
     Returns ``{(project_id, resource_name): cap_dict}``. Pairs whose
     resource doesn't exist or whose subtree has no disk accounts get an
@@ -160,68 +275,10 @@ def bulk_get_subtree_disk_capacity(
             out[key] = {**_EMPTY_CAP, 'account_ids': aids}
         return out
 
-    # 3) Current snapshot date.
-    current_row = (
-        session.query(DiskChargeSummaryStatus.activity_date)
-        .filter(DiskChargeSummaryStatus.current == True)  # noqa: E712
-        .order_by(DiskChargeSummaryStatus.activity_date.desc())
-        .first()
-    )
-    candidate_date = current_row[0] if current_row else None
-
-    # 4) Bulk aggregate at the candidate date.
-    snap_by_account: Dict[int, Dict[str, Any]] = {}
-    if candidate_date is not None:
-        rows = session.query(
-            DiskChargeSummary.account_id,
-            func.coalesce(func.sum(DiskChargeSummary.bytes), 0).label('bytes'),
-            func.coalesce(func.sum(DiskChargeSummary.number_of_files), 0).label('files'),
-        ).filter(
-            DiskChargeSummary.account_id.in_(all_account_ids),
-            DiskChargeSummary.activity_date == candidate_date,
-        ).group_by(DiskChargeSummary.account_id).all()
-        for r in rows:
-            snap_by_account[r.account_id] = {
-                'bytes':         int(r.bytes or 0),
-                'files':         int(r.files or 0),
-                'activity_date': candidate_date,
-            }
-
-    # 5) Fallback: any account without a row on the current snapshot date
-    #    falls back to its own most-recent row (matches single-account
-    #    semantics in Account.current_disk_usage). One query covers all
-    #    fallback accounts at once.
-    missing = [aid for aid in all_account_ids if aid not in snap_by_account]
-    if missing:
-        max_dates = dict(session.query(
-            DiskChargeSummary.account_id,
-            func.max(DiskChargeSummary.activity_date),
-        ).filter(
-            DiskChargeSummary.account_id.in_(missing),
-        ).group_by(DiskChargeSummary.account_id).all())
-        if max_dates:
-            # ONE aggregate query for all (account_id, max_date) pairs.
-            ors = [
-                and_(
-                    DiskChargeSummary.account_id == aid,
-                    DiskChargeSummary.activity_date == d,
-                )
-                for aid, d in max_dates.items()
-            ]
-            rows = session.query(
-                DiskChargeSummary.account_id,
-                DiskChargeSummary.activity_date,
-                func.coalesce(func.sum(DiskChargeSummary.bytes), 0).label('bytes'),
-                func.coalesce(func.sum(DiskChargeSummary.number_of_files), 0).label('files'),
-            ).filter(or_(*ors)).group_by(
-                DiskChargeSummary.account_id, DiskChargeSummary.activity_date,
-            ).all()
-            for r in rows:
-                snap_by_account[r.account_id] = {
-                    'bytes':         int(r.bytes or 0),
-                    'files':         int(r.files or 0),
-                    'activity_date': r.activity_date,
-                }
+    # 3-5) Per-account snapshot in a fixed number of queries (status row
+    #      + bulk aggregate + per-account max() fallback). Shared with
+    #      Account.current_disk_usage / bulk_current_disk_usage.
+    snap_by_account = _load_disk_snapshot_by_account(session, all_account_ids)
 
     # 6) Roll up per-pair.
     for (pid, rn), aids in accounts_per_pair.items():
@@ -232,10 +289,10 @@ def bulk_get_subtree_disk_capacity(
             snap = snap_by_account.get(aid)
             if snap is None:
                 continue
-            used_bytes += snap['bytes']
-            files += snap['files']
-            if latest is None or snap['activity_date'] > latest:
-                latest = snap['activity_date']
+            used_bytes += snap.bytes
+            files += snap.number_of_files
+            if latest is None or snap.activity_date > latest:
+                latest = snap.activity_date
         out[(pid, rn)] = {
             'used_bytes':    used_bytes,
             'used_tib':      used_bytes / (1024 ** 4),
@@ -359,7 +416,6 @@ def get_disk_usage_timeseries_by_user(
 def get_disk_usage_timeseries_for_directory(
     session: Session,
     *,
-    account_ids: List[int],
     resource_name: str,
     directory_name: str,
     start_date: Optional[_stdlib_date] = None,
@@ -370,35 +426,29 @@ def get_disk_usage_timeseries_for_directory(
 
     Same return shape and ranking semantics as
     :func:`get_disk_usage_timeseries_by_user`, but reads from
-    ``disk_activity`` (joined through ``disk_charge`` for ``user_id``)
-    so it can filter by ``directory_name``. Used by the dashboard
-    when the user clicks a fileset row to scope the chart.
+    ``disk_activity`` directly so it can filter by ``directory_name``.
+    Used by the dashboard when the user clicks a fileset row to scope
+    the chart.
 
-    Accepts ``account_ids`` (not a single ``project_id``) so it works
-    for any subtree slice — a fileset can belong to a child project
-    deeper in the tree, but the scope's account set still bounds it
-    correctly.
+    Filtering by ``directory_name`` is a range seek on the existing
+    ``disk_activity_unique_idx`` (which leads with ``directory_name``);
+    no join through ``disk_charge`` / ``account`` is needed since the
+    fileset name itself uniquely identifies the data we want. The
+    chart only displays the username string, so we don't resolve
+    ``user_id`` here — saves a ``users`` join too.
 
     History depth is bounded by what the importer has populated in
     ``disk_activity`` — older snapshots that pre-date Layer 2 won't
     appear. The summary path stays as the chart source for
     project-level views.
     """
-    if not account_ids:
-        return {'dates': [], 'series': []}
     q = session.query(
         DiskActivity.activity_date,
-        DiskCharge.user_id,
-        User.username,
+        DiskActivity.username,
         func.coalesce(func.sum(DiskActivity.bytes), 0).label('bytes'),
-    ).join(
-        DiskCharge, DiskCharge.disk_activity_id == DiskActivity.disk_activity_id,
-    ).join(
-        User, User.user_id == DiskCharge.user_id,
     ).filter(
-        DiskCharge.account_id.in_(account_ids),
-        DiskActivity.resource_name == resource_name,
         DiskActivity.directory_name == directory_name,
+        DiskActivity.resource_name == resource_name,
     )
     if start_date is not None:
         q = q.filter(DiskActivity.activity_date >= start_date)
@@ -406,23 +456,21 @@ def get_disk_usage_timeseries_for_directory(
         q = q.filter(DiskActivity.activity_date <= end_date)
     rows = q.group_by(
         DiskActivity.activity_date,
-        DiskCharge.user_id,
-        User.username,
+        DiskActivity.username,
     ).all()
 
     if not rows:
         return {'dates': [], 'series': []}
 
-    per_user: Dict[int, Dict[str, Any]] = {}
+    # Pivot keyed by username — disk_activity has no user_id column,
+    # only the username string. The chart legend shows usernames so
+    # this is sufficient.
+    per_user: Dict[str, Dict[str, Any]] = {}
     dates_set: set = set()
-    for activity_date, user_id, username, b in rows:
+    for activity_date, username, b in rows:
         dates_set.add(activity_date)
-        u = per_user.setdefault(
-            user_id,
-            {'username': username or f'uid_{user_id}', 'by_date': {}},
-        )
-        if username and not u['username'].startswith('uid_'):
-            u['username'] = username
+        key = username or '<unknown>'
+        u = per_user.setdefault(key, {'username': key, 'by_date': {}})
         u['by_date'][activity_date] = int(b or 0)
 
     dates = sorted(dates_set)
@@ -439,11 +487,11 @@ def get_disk_usage_timeseries_for_directory(
     series: List[Dict[str, Any]] = []
     if rest_users:
         others_values = [0] * len(dates)
-        for _uid, info in rest_users:
+        for _key, info in rest_users:
             for i, d in enumerate(dates):
                 others_values[i] += info['by_date'].get(d, 0)
         series.append({'username': 'Others', 'values': others_values})
-    for _uid, info in reversed(top_users):
+    for _key, info in reversed(top_users):
         series.append({
             'username': info['username'],
             'values':   [info['by_date'].get(d, 0) for d in dates],
@@ -454,7 +502,6 @@ def get_disk_usage_timeseries_for_directory(
 def get_directory_user_breakdown_at(
     session: Session,
     *,
-    account_ids: List[int],
     resource_name: str,
     directory_name: str,
     activity_date,
@@ -462,28 +509,32 @@ def get_directory_user_breakdown_at(
     """Per-user bytes/files for a single fileset at one snapshot date.
 
     Used by the dashboard's per-user table when scoped to a fileset.
-    Returns one row per resolved (tier-2-linked) user, sorted desc
-    by bytes. Accepts an ``account_ids`` set so it works for any
-    subtree slice (matching :func:`get_disk_usage_timeseries_for_directory`).
+    Returns one row per username found in ``disk_activity`` for the
+    given fileset/date/resource, sorted desc by bytes.
+
+    Reads ``disk_activity`` directly (range seek on
+    ``disk_activity_unique_idx`` via ``directory_name``). The
+    ``users`` table is OUTER-joined on ``username`` solely to surface
+    ``user_id`` in the result for the dashboard's per-user link;
+    rows whose username has no matching ``users`` row simply get
+    ``user_id = None`` instead of being dropped.
     """
-    if activity_date is None or not account_ids:
+    if activity_date is None:
         return []
     rows = (
         session.query(
-            User.username.label('username'),
-            DiskCharge.user_id.label('user_id'),
+            DiskActivity.username.label('username'),
+            User.user_id.label('user_id'),
             func.sum(DiskActivity.bytes).label('bytes'),
             func.sum(DiskActivity.number_of_files).label('files'),
         )
-        .join(DiskCharge, DiskCharge.disk_activity_id == DiskActivity.disk_activity_id)
-        .join(User, User.user_id == DiskCharge.user_id)
+        .outerjoin(User, User.username == DiskActivity.username)
         .filter(
-            DiskCharge.account_id.in_(account_ids),
-            DiskActivity.resource_name == resource_name,
             DiskActivity.directory_name == directory_name,
+            DiskActivity.resource_name == resource_name,
             DiskActivity.activity_date == activity_date,
         )
-        .group_by(User.username, DiskCharge.user_id)
+        .group_by(DiskActivity.username, User.user_id)
         .all()
     )
     return sorted(
@@ -499,80 +550,36 @@ def get_directory_user_breakdown_at(
 def get_subtree_directory_usage_at(
     session: Session,
     *,
-    account_ids: List[int],
+    directory_to_projcode: Dict[str, str],
     resource_name: str,
     activity_date,
 ) -> List[Dict[str, Any]]:
     """Per-directory snapshot summed across an entire subtree.
 
-    Like :func:`get_directory_usage_at` but takes ``account_ids``
-    (typically every disk account in the scoped subtree) instead of
-    a single ``project_id``. Each result row also carries the owning
-    project's ``projcode`` so the dashboard can show which child
-    project a directory belongs to when the scope spans multiple
-    projects.
+    The caller passes ``directory_to_projcode`` — a map from
+    ``directory_name`` to its owning ``projcode``, typically built by
+    walking the in-memory tree returned by :func:`build_disk_subtree`.
+    The query then becomes a single ``disk_activity`` aggregate
+    filtered by ``directory_name IN (...)``, which is a range seek on
+    the existing ``disk_activity_unique_idx`` (leading column
+    ``directory_name``). No join through ``disk_charge`` /
+    ``account`` / ``project`` is needed; the projcode mapping happens
+    in Python from data the caller already has.
 
     Returns ``[{name, bytes, files, projcode}, ...]`` sorted desc
-    by bytes. Empty list if ``account_ids`` is empty or
-    ``activity_date`` is None.
+    by bytes. Empty list if no directories or ``activity_date`` is None.
     """
-    if activity_date is None or not account_ids:
+    if activity_date is None or not directory_to_projcode:
         return []
-    rows = (
-        session.query(
-            DiskActivity.directory_name.label('name'),
-            Project.projcode.label('projcode'),
-            func.sum(DiskActivity.bytes).label('bytes'),
-            func.sum(DiskActivity.number_of_files).label('files'),
-        )
-        .join(DiskCharge, DiskCharge.disk_activity_id == DiskActivity.disk_activity_id)
-        .join(Account, Account.account_id == DiskCharge.account_id)
-        .join(Project, Project.project_id == Account.project_id)
-        .filter(
-            DiskCharge.account_id.in_(account_ids),
-            DiskActivity.resource_name == resource_name,
-            DiskActivity.activity_date == activity_date,
-        )
-        .group_by(DiskActivity.directory_name, Project.projcode)
-        .all()
-    )
-    return sorted(
-        [{'name': r.name,
-          'projcode': r.projcode,
-          'bytes': int(r.bytes or 0),
-          'files': int(r.files or 0)} for r in rows],
-        key=lambda d: d['bytes'],
-        reverse=True,
-    )
-
-
-def get_directory_usage_at(
-    session: Session,
-    *,
-    project_id: int,
-    resource_name: str,
-    activity_date,
-) -> List[Dict[str, Any]]:
-    """Per-directory snapshot for one ``(project, resource, date)``.
-
-    Joins ``disk_activity`` → ``disk_charge`` → ``account`` so unresolved
-    rows (no tier-2 row) are excluded. Returns a list of
-    ``{'name', 'bytes', 'files'}`` dicts, one per ``directory_name``,
-    sorted descending by bytes.
-    """
-    if activity_date is None:
-        return []
+    directory_names = list(directory_to_projcode.keys())
     rows = (
         session.query(
             DiskActivity.directory_name.label('name'),
             func.sum(DiskActivity.bytes).label('bytes'),
             func.sum(DiskActivity.number_of_files).label('files'),
         )
-        .join(DiskCharge,
-              DiskCharge.disk_activity_id == DiskActivity.disk_activity_id)
-        .join(Account, Account.account_id == DiskCharge.account_id)
         .filter(
-            Account.project_id == project_id,
+            DiskActivity.directory_name.in_(directory_names),
             DiskActivity.resource_name == resource_name,
             DiskActivity.activity_date == activity_date,
         )
@@ -581,6 +588,7 @@ def get_directory_usage_at(
     )
     return sorted(
         [{'name': r.name,
+          'projcode': directory_to_projcode.get(r.name),
           'bytes': int(r.bytes or 0),
           'files': int(r.files or 0)} for r in rows],
         key=lambda d: d['bytes'],
@@ -591,61 +599,62 @@ def get_directory_usage_at(
 def bulk_get_directory_usage_at(
     session: Session,
     *,
-    project_resource_pairs: List[Tuple[int, str]],
+    directories_by_project_id: Dict[int, List[str]],
+    resource_name: str,
     activity_date,
-) -> Dict[Tuple[int, str], List[Dict[str, Any]]]:
-    """Bulk variant of :func:`get_directory_usage_at`.
+) -> Dict[int, List[Dict[str, Any]]]:
+    """Per-project per-directory bytes/files at one snapshot.
 
-    One query covers many ``(project_id, resource_name)`` pairs. Result
-    is keyed by the input tuple; pairs with no rows map to an empty list.
+    ``directories_by_project_id`` maps each project_id of interest to
+    its list of active fileset ``directory_name`` strings (typically
+    sourced from ``ProjectDirectory`` rows the caller has already
+    loaded). Returns ``{project_id: [{name, bytes, files}, ...]}``
+    sorted desc by bytes; project_ids with no matching activity rows
+    map to an empty list.
+
+    Single ``disk_activity`` aggregate query — range seek on
+    ``disk_activity_unique_idx`` via ``directory_name IN (...)``. The
+    project_id mapping happens in Python from the input dict.
     """
-    out: Dict[Tuple[int, str], List[Dict[str, Any]]] = {
-        pair: [] for pair in project_resource_pairs
+    out: Dict[int, List[Dict[str, Any]]] = {
+        pid: [] for pid in directories_by_project_id
     }
-    if not project_resource_pairs or activity_date is None:
+    if not directories_by_project_id or activity_date is None:
         return out
 
-    project_ids = sorted({pid for pid, _ in project_resource_pairs})
-    resource_names = sorted({rn for _, rn in project_resource_pairs})
+    project_id_by_directory: Dict[str, int] = {}
+    for pid, dirs in directories_by_project_id.items():
+        for d in dirs:
+            project_id_by_directory[d] = pid
+    if not project_id_by_directory:
+        return out
 
     rows = (
         session.query(
-            Account.project_id.label('project_id'),
-            DiskActivity.resource_name.label('resource_name'),
             DiskActivity.directory_name.label('name'),
             func.sum(DiskActivity.bytes).label('bytes'),
             func.sum(DiskActivity.number_of_files).label('files'),
         )
-        .join(DiskCharge,
-              DiskCharge.disk_activity_id == DiskActivity.disk_activity_id)
-        .join(Account, Account.account_id == DiskCharge.account_id)
         .filter(
-            Account.project_id.in_(project_ids),
-            DiskActivity.resource_name.in_(resource_names),
+            DiskActivity.directory_name.in_(project_id_by_directory.keys()),
+            DiskActivity.resource_name == resource_name,
             DiskActivity.activity_date == activity_date,
         )
-        .group_by(
-            Account.project_id,
-            DiskActivity.resource_name,
-            DiskActivity.directory_name,
-        )
+        .group_by(DiskActivity.directory_name)
         .all()
     )
 
-    bucket: Dict[Tuple[int, str], List[Dict[str, Any]]] = {}
     for r in rows:
-        key = (r.project_id, r.resource_name)
-        if key not in out:
-            # Pair wasn't requested but slipped through the broad IN
-            # filter. Skip — caller only asked for specific pairs.
+        pid = project_id_by_directory.get(r.name)
+        if pid is None:
             continue
-        bucket.setdefault(key, []).append(
+        out[pid].append(
             {'name': r.name,
              'bytes': int(r.bytes or 0),
              'files': int(r.files or 0)}
         )
-    for key, dirs in bucket.items():
-        out[key] = sorted(dirs, key=lambda d: d['bytes'], reverse=True)
+    for pid in out:
+        out[pid].sort(key=lambda d: d['bytes'], reverse=True)
     return out
 
 
@@ -722,6 +731,14 @@ def build_disk_subtree(
     for d in dirs:
         dirs_by_project_id.setdefault(d.project_id, []).append(d.directory_name)
 
+    # ONE bulk snapshot lookup covers every account on this resource —
+    # avoids the N+1 from calling Account.current_disk_usage() per
+    # descendant (each call would issue 2-4 queries; on a 20-account
+    # subtree that's 60+ queries this single helper replaces).
+    snap_by_account_id = bulk_current_disk_usage(
+        session, [a.account_id for a in accounts],
+    )
+
     # Build a flat node map, then thread parents → children using the
     # parent_id FK (works alongside the NestedSet coords).
     node_by_pid: Dict[int, Dict[str, Any]] = {}
@@ -731,7 +748,10 @@ def build_disk_subtree(
     multifs_by_date: Dict[Any, List[int]] = {}
     for proj in descendants:
         account = account_by_project_id.get(proj.project_id)
-        snapshot = account.current_disk_usage() if account is not None else None
+        snapshot = (
+            snap_by_account_id.get(account.account_id)
+            if account is not None else None
+        )
         node = _node_dict(
             proj,
             account=account,
@@ -749,15 +769,21 @@ def build_disk_subtree(
 
     # Per-fileset bytes lookup — only for projects that have >1 active
     # fileset on this resource. Single-fileset projects keep the
-    # current per-project rendering and pay nothing.
+    # current per-project rendering and pay nothing. We already have
+    # the active fileset names per project in dirs_by_project_id from
+    # the ProjectDirectory load above; pass those directly so the
+    # bulk helper avoids re-querying ProjectDirectory.
     for activity_dt, pids in multifs_by_date.items():
         per_fs = bulk_get_directory_usage_at(
             session,
-            project_resource_pairs=[(pid, resource_name) for pid in pids],
+            directories_by_project_id={
+                pid: dirs_by_project_id.get(pid, []) for pid in pids
+            },
+            resource_name=resource_name,
             activity_date=activity_dt,
         )
         for pid in pids:
-            dirs = per_fs.get((pid, resource_name), [])
+            dirs = per_fs.get(pid, [])
             if dirs:
                 node_by_pid[pid]['directories'] = dirs
 

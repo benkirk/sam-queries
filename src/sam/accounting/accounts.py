@@ -196,72 +196,28 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
         Sums across all rows for the snapshot date — so when the
         ``<unidentified>`` reconciliation is on, the lead-attributed
         gap row is included in the total.
-        """
-        # Lazy imports to avoid cycles (DiskChargeSummary lives in
-        # sam.summaries which imports Account through relationships).
-        from sam.summaries.disk_summaries import (
-            DiskChargeSummary, DiskChargeSummaryStatus,
-        )
 
+        Thin wrapper over :func:`sam.queries.disk_usage.bulk_current_disk_usage`
+        so single- and multi-account paths share the same fixed-query
+        kernel. Use the bulk helper directly whenever loading >1
+        account at a time (``build_disk_subtree``,
+        ``Project.current_disk_usage``).
+        """
         s = session or self.session
         if s is None:
             return None
 
         # Disk resource gate: skip when the account's resource isn't disk.
-        # Use string compare to avoid an enum import; matches the constant
-        # used elsewhere in the codebase ('DISK').
+        # Match the bulk helper's contract — caller filters by resource
+        # type so the helper itself doesn't need a per-row check.
         if self.resource and self.resource.resource_type and \
                 self.resource.resource_type.resource_type != 'DISK':
             return None
 
-        # Defensive: in legacy / test DBs there may be multiple rows with
-        # current=True. Pick the most recent and proceed.
-        current_row = (
-            s.query(DiskChargeSummaryStatus.activity_date)
-             .filter(DiskChargeSummaryStatus.current == True)  # noqa: E712
-             .order_by(DiskChargeSummaryStatus.activity_date.desc())
-             .first()
-        )
-        candidate_date = current_row[0] if current_row else None
-
-        # The "current" snapshot may not include this account (e.g. project
-        # had no usage that day, or the snapshot file was filtered). Fall
-        # back to the most recent date this account itself has a row for.
-        target_date = None
-        if candidate_date is not None:
-            has_row = (
-                s.query(DiskChargeSummary.disk_charge_summary_id)
-                 .filter(
-                     DiskChargeSummary.account_id == self.account_id,
-                     DiskChargeSummary.activity_date == candidate_date,
-                 ).first()
-            )
-            if has_row is not None:
-                target_date = candidate_date
-
-        if target_date is None:
-            target_date = s.query(func.max(DiskChargeSummary.activity_date)).filter(
-                DiskChargeSummary.account_id == self.account_id
-            ).scalar()
-
-        if target_date is None:
-            return None
-
-        agg = s.query(
-            func.coalesce(func.sum(DiskChargeSummary.bytes), 0).label('bytes'),
-            func.coalesce(func.sum(DiskChargeSummary.terabyte_years), 0).label('ty'),
-            func.coalesce(func.sum(DiskChargeSummary.number_of_files), 0).label('files'),
-        ).filter(
-            DiskChargeSummary.account_id == self.account_id,
-            DiskChargeSummary.activity_date == target_date,
-        ).one()
-
-        return CurrentDiskUsage(
-            activity_date=target_date,
-            bytes=int(agg.bytes or 0),
-            terabyte_years=float(agg.ty or 0.0),
-            number_of_files=int(agg.files or 0),
-        )
+        # Lazy import: sam.queries.disk_usage already imports Account at
+        # module level, so a top-level import here would be circular.
+        from sam.queries.disk_usage import bulk_current_disk_usage
+        return bulk_current_disk_usage(s, [self.account_id]).get(self.account_id)
 
     def __str__(self):
         return f"{self.project.projcode if self.project else None} - {self.resource.resource_name if self.resource else None}"
