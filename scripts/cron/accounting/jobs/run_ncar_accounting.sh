@@ -24,7 +24,7 @@ export COLUMNS=1024 # <-- set large so python/click does not compress tables
 #which jobhist-sync
 
 # Source backend-specific env file (overrides any .env settings)
-env_file="${SCRIPT_DIR}/.env"
+env_file="${SCRIPT_DIR}/../.env"
 set -a
 source "${env_file}" && echo "Loaded .env from ${env_file}" || { echo "Could not source ${env_file}!"; exit 1; }
 set +a
