@@ -1,9 +1,8 @@
 SHELL       := /bin/bash
 .SHELLFLAGS := -e -o pipefail -c
 
-SCRIPT_DIR  := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 USAGE_DIR   := /glade/u/hdig/project_user_usage
-RUN         := $(SCRIPT_DIR)/run_ncar_accounting.sh
+RUN         := ./run_ncar_accounting.sh
 
 STAMPS := .quasar.stamp .glade.stamp
 
