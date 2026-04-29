@@ -67,6 +67,7 @@ from webapp.dashboards.user.blueprint import (  # noqa: E402
     _disk_subtree_latest_activity_date,
     _find_disk_node,
     _collect_disk_account_ids,
+    _collect_directory_to_projcode,
 )
 
 
@@ -212,13 +213,14 @@ def run_scenario(app, engine, username: str, projcode: str, resource_name: str):
         node_count = _count_nodes(full_tree)
         node_count_with_account = _count_nodes_with_account(full_tree)
         scope_account_ids = _collect_disk_account_ids(full_tree)
+        directory_to_projcode = _collect_directory_to_projcode(full_tree)
 
-        # ----- Phase 2: get_subtree_directory_usage_at (Layer-2 join) -----
+        # ----- Phase 2: get_subtree_directory_usage_at (disk_activity-only) -----
         snapshot_date = _disk_subtree_latest_activity_date(full_tree)
         with _phase(engine) as (s2, e2):
             fileset_dirs = get_subtree_directory_usage_at(
                 session,
-                account_ids=scope_account_ids,
+                directory_to_projcode=directory_to_projcode,
                 resource_name=resource_name,
                 activity_date=snapshot_date,
             )
