@@ -2,12 +2,16 @@ SHELL       := /bin/bash
 .SHELLFLAGS := -e -o pipefail -c
 
 USAGE_DIR   := /glade/u/hdig/project_user_usage
-RUN         := ./run_ncar_accounting.sh
+CS_QUOTA    := /glade/u/hdig/gladequota/cs_usage.json
 
 STAMPS := .quasar.stamp .glade.stamp
 
 .PHONY: all clean
 all: $(STAMPS)
+
+
+reconcile-cs:
+	./run_sam_reconcile.sh $(CS_QUOTA)
 
 # ACCT_RULE(stamp-key, glob-key, --resource value)
 define ACCT_RULE
@@ -15,7 +19,7 @@ LATEST_$(1) := $$(shell ls -t $$(USAGE_DIR)/acct.$(2).????-??-?? 2>/dev/null | h
 
 ifneq ($$(LATEST_$(1)),)
 .$(1).stamp: $$(LATEST_$(1))
-	$$(RUN) --resource $(3) --user-usage "$$<"
+	./run_ncar_accounting.sh --resource $(3) --user-usage "$$<"
 	date > $$@
 else
 .$(1).stamp:
