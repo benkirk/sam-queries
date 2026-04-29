@@ -1,42 +1,5 @@
 #!/bin/bash
-
-#----------------------------------------------------------------------------
-# Determine the directory containing this script, compatible with bash and zsh
-if [ -n "${BASH_SOURCE[0]}" ]; then
-  SCRIPT_PATH="${BASH_SOURCE[0]}"
-elif [ -n "${ZSH_VERSION}" ]; then
-  SCRIPT_PATH="${(%):-%x}"
-else
-  echo "Unknown shell!"
-fi
-SCRIPT_DIR=$(realpath $(dirname ${SCRIPT_PATH}))
-TOP_DIR=$(git rev-parse --show-toplevel)
-#----------------------------------------------------------------------------
-
-sep="#----------------------------------------------------------------------------"
-TIMEFORMAT='(%3R seconds elapsed)'
-
-source ${TOP_DIR}/etc/config_env.sh
-export PYTHONWARNINGS="${PYTHONWARNINGS},ignore::RuntimeWarning:importlib._bootstrap"
-export COLUMNS=1024 # <-- set large so python/click does not compress tables
-
-#which python3
-#which jobhist-sync
-
-# Source backend-specific env file (overrides any .env settings)
-env_file="${SCRIPT_DIR}/../.env"
-set -a
-source "${env_file}" && echo "Loaded .env from ${env_file}" || { echo "Could not source ${env_file}!"; exit 1; }
-set +a
-cat <<EOF
-${sep}
-# $(date)
-# (${env_file})
-# SAM_DB_SERVER=${SAM_DB_SERVER}
-# SAM_DB_USERNAME=${SAM_DB_USERNAME}
-${sep}
-
-EOF
+source "$(dirname "${BASH_SOURCE[0]}")/../common.sh"
 
 unset machine
 unset log_path

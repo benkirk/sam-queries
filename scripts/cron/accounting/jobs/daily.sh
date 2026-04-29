@@ -1,16 +1,5 @@
 #!/bin/bash
-
-#----------------------------------------------------------------------------
-# Determine the directory containing this script, compatible with bash and zsh
-if [ -n "${BASH_SOURCE[0]}" ]; then
-  SCRIPT_PATH="${BASH_SOURCE[0]}"
-elif [ -n "${ZSH_VERSION}" ]; then
-  SCRIPT_PATH="${(%):-%x}"
-else
-  echo "Unknown shell!"
-fi
-SCRIPT_DIR=$(realpath $(dirname ${SCRIPT_PATH}))
-TOP_DIR=$(git rev-parse --show-toplevel)
-#----------------------------------------------------------------------------
-
-${SCRIPT_DIR}/run_ncar_accounting.sh --last 7d
+# Thin cron wrapper. `exec` replaces this shell with run_ncar_accounting.sh
+# so the flock(1) lock in crontab is held by one PID for the whole run
+# (no parent shell lingering, no double-fork).
+exec "$(dirname "${BASH_SOURCE[0]}")/run_ncar_accounting.sh" --last 7d
