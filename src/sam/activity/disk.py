@@ -11,8 +11,10 @@ class DiskActivity(Base, TimestampMixin):
     __tablename__ = 'disk_activity'
 
     __table_args__ = (
-        Index('ix_disk_activity_directory', 'directory_name'),
-        Index('ix_disk_activity_cos', 'disk_cos_id'),
+        Index('disk_activity_unique_idx',
+              'directory_name', 'username', 'activity_date', 'projcode',
+              unique=True),
+        Index('idx_disk_activity_2', 'disk_cos_id'),
     )
 
     disk_activity_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -61,15 +63,15 @@ class DiskCharge(Base):
     __tablename__ = 'disk_charge'
 
     __table_args__ = (
-        Index('ix_disk_charge_account', 'account_id'),
-        Index('ix_disk_charge_user', 'user_id'),
-        Index('ix_disk_charge_activity', 'disk_activity_id', unique=True),
-        Index('ix_disk_charge_date', 'charge_date'),
+        Index('charge_allocation_fk_0', 'account_id'),
+        Index('idx_disk_charge', 'user_id'),
+        Index('udx_disk_charge_uniq', 'disk_activity_id', unique=True),
+        Index('idx_charge_date', 'charge_date'),
     )
 
     disk_charge_id = Column(Integer, primary_key=True, autoincrement=True)
     disk_activity_id = Column(Integer, ForeignKey('disk_activity.disk_activity_id'),
-                              nullable=False, unique=True)
+                              nullable=False)
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
@@ -92,6 +94,10 @@ class DiskCharge(Base):
 class DiskCos(Base, TimestampMixin):
     """Disk Class of Service definitions."""
     __tablename__ = 'disk_cos'
+
+    __table_args__ = (
+        Index('pk_disk_cos_1', 'disk_cos_id', unique=True),
+    )
 
     disk_cos_id = Column(Integer, primary_key=True)
     description = Column(String(255), nullable=False)

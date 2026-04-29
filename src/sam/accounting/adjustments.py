@@ -26,9 +26,9 @@ class ChargeAdjustment(Base):
     __tablename__ = 'charge_adjustment'
 
     __table_args__ = (
-        Index('ix_charge_adjustment_account', 'account_id'),
-        Index('ix_charge_adjustment_type', 'charge_adjustment_type_id'),
-        Index('ix_charge_adjustment_adjusted_by', 'adjusted_by_id'),
+        Index('idx_charge_adjustment', 'account_id'),
+        Index('idx_charge_adjustment_1', 'charge_adjustment_type_id'),
+        Index('idx_charge_adjustment_2', 'adjusted_by_id'),
     )
 
     charge_adjustment_id = Column(Integer, primary_key=True, autoincrement=True)

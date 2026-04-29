@@ -151,6 +151,74 @@ class TestSamSearchCli:
         assert result.exit_code == 0
         assert "Abstract" in result.output
 
+    def test_project_disk_row_shows_capacity_not_burn(
+        self, runner, mock_db_session, active_project, session,
+    ):
+        """`sam-search project <p> --verbose` must render DISK capacity
+        (snapshot TiB / TiB allocated) — not cumulative TiB-yr burn — so
+        the CLI matches the webapp project card. Hangs a fresh DISK
+        account+allocation+snapshot off `active_project` (which already
+        has the AllocationType/Panel/Facility wiring needed for the
+        admin tree view path) and asserts the rendered '% Used' column
+        shows the capacity percent and not the much-smaller TiB-yr
+        percent."""
+        from datetime import date as _date
+        from datetime import datetime, timedelta
+        from sam import ResourceType
+        from sam.summaries.disk_summaries import (
+            DiskChargeSummary, mark_disk_snapshot_current,
+        )
+        from factories import (
+            make_account, make_allocation, make_resource, make_resource_type,
+        )
+        from factories._seq import next_seq
+
+        BYTES_PER_TIB = 1024 ** 4
+        rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
+        if rt is None:
+            rt = make_resource_type(session, resource_type='DISK')
+        # Use a distinctive allocated amount (777 TiB) that won't collide
+        # with any snapshot row's value when scanning the rendered table.
+        resource_name = f"Campaign_Store_{next_seq('cs')}"
+        resource = make_resource(
+            session, resource_type=rt, resource_name=resource_name,
+        )
+        lead = active_project.lead
+        account = make_account(session, project=active_project, resource=resource)
+        make_allocation(
+            session, account=account, amount=777.0,
+            start_date=datetime.now() - timedelta(days=30),
+            end_date=datetime.now() + timedelta(days=335),
+        )
+        snap = _date(2026, 4, 18)
+        # 388.5 TiB capacity (= 50.0%), but only 4.21 TiB-yr cumulative
+        # burn (= 0.5%). The CLI's % Used column for *this* row must
+        # render as 50.0%, not 0.5%.
+        session.add(DiskChargeSummary(
+            activity_date=snap,
+            account_id=account.account_id,
+            user_id=lead.user_id,
+            username=lead.username,
+            projcode=active_project.projcode,
+            number_of_files=100,
+            bytes=int(388.5 * BYTES_PER_TIB),
+            terabyte_years=4.2141,
+            charges=4.2141,
+        ))
+        session.flush()
+        mark_disk_snapshot_current(session, snap)
+
+        result = runner.invoke(
+            cli, ['project', active_project.projcode, '--verbose'],
+        )
+        assert result.exit_code == 0
+        # Distinctive 777-TiB allocation row must render with capacity
+        # percent. Use substring across whitespace-collapsed text so the
+        # assertion is robust to Rich's column-width formatting.
+        flat = ' '.join(result.output.split())
+        assert "777 388 388 50.0%" in flat or "777 389 389 50.0%" in flat, \
+            f"capacity row not found in CLI output; got:\n{result.output}"
+
     # ------------------------------------------------------------------
     # Structural queries — don't care which data comes back
     # ------------------------------------------------------------------

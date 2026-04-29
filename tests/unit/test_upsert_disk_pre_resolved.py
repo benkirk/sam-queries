@@ -12,10 +12,11 @@ import pytest
 
 from sam.manage.summaries import upsert_disk_charge_summary
 from sam.resources.resources import ResourceType
+from sam.summaries.disk_summaries import DiskChargeSummaryStatus
 from factories.core import make_user
 from factories.projects import make_account, make_project
 from factories.resources import make_resource, make_resource_type
-from factories._seq import next_seq
+from factories._seq import next_date, next_seq
 
 
 def _build_disk_graph(session):
@@ -33,6 +34,13 @@ def _build_disk_graph(session):
     return user, project, resource
 
 
+def _ensure_status(session, activity_date):
+    """FK: disk_charge_summary.activity_date → disk_charge_summary_status."""
+    if session.get(DiskChargeSummaryStatus, activity_date) is None:
+        session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=False))
+        session.flush()
+
+
 class TestPreResolvedOverride:
 
     def test_act_username_is_audit_label_user_is_lead(self, session):
@@ -44,9 +52,11 @@ class TestPreResolvedOverride:
         account = Account.get_by_project_and_resource(
             session, project.project_id, resource.resource_id
         )
+        d = next_date("disk_pre_resolved")
+        _ensure_status(session, d)
         record, action = upsert_disk_charge_summary(
             session,
-            activity_date=date(2098, 6, 15),
+            activity_date=d,
             act_username='<unidentified>',
             act_projcode=None,
             act_unix_uid=None,
@@ -81,9 +91,11 @@ class TestPreResolvedOverride:
         # would raise. The override should make this succeed.
         # (DB column is varchar(35); use a short bogus literal.)
         bogus = 'no_such_user_xyz'
+        d = next_date("disk_pre_resolved")
+        _ensure_status(session, d)
         record, _ = upsert_disk_charge_summary(
             session,
-            activity_date=date(2098, 6, 16),
+            activity_date=d,
             act_username=bogus,
             act_projcode=None,
             act_unix_uid=None,
@@ -101,9 +113,11 @@ class TestPreResolvedOverride:
     def test_no_override_falls_back_to_resolver(self, session):
         """Without the override, the standard resolver path still works."""
         user, project, resource = _build_disk_graph(session)
+        d = next_date("disk_pre_resolved")
+        _ensure_status(session, d)
         record, action = upsert_disk_charge_summary(
             session,
-            activity_date=date(2098, 6, 17),
+            activity_date=d,
             act_username=user.username,
             act_projcode=project.projcode,
             act_unix_uid=user.unix_uid,

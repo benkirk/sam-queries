@@ -11,8 +11,9 @@ class DatasetActivity(Base, TimestampMixin):
     __tablename__ = 'dataset_activity'
 
     __table_args__ = (
-        Index('ix_dataset_activity_date', 'activity_date'),
-        Index('ix_dataset_activity_directory', 'project_directory'),
+        Index('dataset_activity_unique_idx',
+              'activity_date', 'project_directory', 'dataset',
+              unique=True),
     )
 
     activity_id = Column(Integer, primary_key=True, autoincrement=True)

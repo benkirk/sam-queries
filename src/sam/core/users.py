@@ -11,10 +11,11 @@ class User(Base, TimestampMixin, SessionMixin):
     __tablename__ = 'users'
 
     __table_args__ = (
-        Index('ix_users_username', 'username'),
-        Index('ix_users_upid', 'upid'),
-        Index('ix_users_active_locked', 'active', 'locked'),
-        Index('ix_users_primary_gid', 'primary_gid'),
+        Index('username_uk', 'username', unique=True),
+        Index('idx_users_upid', 'upid', unique=True),
+        Index('idx_users_1', 'primary_gid'),
+        Index('idx_users', 'login_type_id'),
+        Index('user_academic_status_fk', 'academic_status_id'),
     )
 
     def __eq__(self, other):
@@ -29,9 +30,9 @@ class User(Base, TimestampMixin, SessionMixin):
 
     # [All existing column definitions remain the same...]
     user_id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String(35), nullable=False, unique=True)
+    username = Column(String(35), nullable=False)
     locked = Column(Boolean, nullable=False, default=False)
-    upid = Column(Integer, unique=True, nullable=True)
+    upid = Column(Integer, nullable=True)
     unix_uid = Column(Integer, nullable=False)
 
     # Personal information
@@ -48,7 +49,10 @@ class User(Base, TimestampMixin, SessionMixin):
 
     academic_status_id = Column(Integer, ForeignKey('academic_status.academic_status_id'))
     login_type_id = Column(Integer, ForeignKey('login_type.login_type_id'))
-    primary_gid = Column(Integer, ForeignKey('adhoc_group.group_id'))
+    # NOTE: stores a unix_gid value, not adhoc_group.group_id — resolve via
+    # sam.core.groups.resolve_group_name(session, user.primary_gid). The
+    # legacy schema lacks a real FK here; do not declare one.
+    primary_gid = Column(Integer)
     contact_person_upid = Column(Integer)
 
     pdb_modified_time = Column(TIMESTAMP)
@@ -82,7 +86,6 @@ class User(Base, TimestampMixin, SessionMixin):
     organizations = relationship('UserOrganization', back_populates='user', cascade='all, delete-orphan')
     phones = relationship('Phone', back_populates='user', cascade='all, delete-orphan')
     pi_contracts = relationship('Contract', foreign_keys='Contract.principal_investigator_user_id', back_populates='principal_investigator')
-    primary_group = relationship('AdhocGroup', foreign_keys=[primary_gid])
     resource_homes = relationship('UserResourceHome', back_populates='user', cascade='all, delete-orphan')
     resource_shells = relationship('UserResourceShell', back_populates='user', cascade='all, delete-orphan')
     responsible_accounts = relationship('ResponsibleParty', back_populates='user')
@@ -603,14 +606,15 @@ class UserAlias(Base):
     __tablename__ = 'user_alias'
 
     __table_args__ = (
-        Index('ix_user_alias_username', 'username'),
-        Index('ix_user_alias_orcid', 'orcid_id'),
-        Index('ix_user_alias_access_global', 'access_global_id'),
+        Index('user_id', 'user_id', unique=True),
+        Index('username', 'username', unique=True),
+        Index('idx_orcid_id', 'orcid_id'),
+        Index('idx_access_global_id', 'access_global_id'),
     )
 
     user_alias_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False, unique=True)
-    username = Column(String(35), nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    username = Column(String(35), nullable=False)
     orcid_id = Column(String(20))
     access_global_id = Column(String(31))
     creation_time = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))  # DB: nullable
@@ -631,8 +635,7 @@ class EmailAddress(Base, TimestampMixin):
     __tablename__ = 'email_address'
 
     __table_args__ = (
-        Index('ix_email_address_user', 'user_id'),
-        Index('ix_email_address_email', 'email_address'),
+        Index('email_address_user_fk', 'user_id'),
     )
 
     def __eq__(self, other):
@@ -682,7 +685,8 @@ class Phone(Base, TimestampMixin):
     __tablename__ = 'phone'
 
     __table_args__ = (
-        Index('ix_phone_user', 'user_id'),
+        Index('phone_user_fk', 'user_id'),
+        Index('phone_phone_type_fk', 'ext_phone_type_id'),
     )
 
     ext_phone_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -724,8 +728,8 @@ class UserResourceHome(Base, TimestampMixin):
     __tablename__ = 'user_resource_home'
 
     __table_args__ = (
-        Index('ix_user_resource_home_user', 'user_id'),
-        Index('ix_user_resource_home_resource', 'resource_id'),
+        Index('user_resource_home_users_fk', 'user_id'),
+        Index('user_resource_home_resources_fk', 'resource_id'),
     )
 
     user_resource_home_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -749,8 +753,10 @@ class UserResourceShell(Base, TimestampMixin):
     __tablename__ = 'user_resource_shell'
 
     __table_args__ = (
-        Index('ix_user_resource_shell_user', 'user_id'),
-        Index('ix_user_resource_shell_shell', 'resource_shell_id'),
+        Index('user_resource_shell_users_fk', 'user_id'),
+        Index('user_resource_shell_resource_shell_fk', 'resource_shell_id'),
+        Index('idx_user_resource_shell_uniq',
+              'user_id', 'resource_shell_id', unique=True),
     )
 
     user_resource_shell_id = Column(Integer, primary_key=True, autoincrement=True)

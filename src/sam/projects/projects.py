@@ -63,12 +63,13 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     __tablename__ = 'project'
 
     __table_args__ = (
-        Index('ix_project_projcode', 'projcode'),
-        Index('ix_project_lead', 'project_lead_user_id'),
-        Index('ix_project_admin', 'project_admin_user_id'),
-        Index('ix_project_active', 'active'),
-        Index('ix_project_tree', 'tree_left', 'tree_right'),
-        Index('ix_project_parent', 'parent_id'),
+        Index('project_projcode_uk', 'projcode', unique=True),
+        Index('project_lead_user_fk', 'project_lead_user_id'),
+        Index('project_admin_user_fk', 'project_admin_user_id'),
+        Index('project_project_fk', 'parent_id'),
+        Index('project_allocation_type_fk', 'allocation_type_id'),
+        Index('project_aoi_fk', 'area_of_interest_id'),
+        Index('project_root_fk', 'tree_root'),
     )
 
     # NestedSetMixin config
@@ -88,7 +89,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         return hash(self.project_id) if self.project_id is not None else hash(id(self))
 
     project_id = Column(Integer, primary_key=True, autoincrement=True)
-    projcode = Column(String(30), nullable=False, unique=True, default='')
+    projcode = Column(String(30), nullable=False, default='')
     title = Column(String(255), nullable=False)
     abstract = Column(Text)
 
@@ -734,6 +735,31 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
             results[resource] = result
 
+        # Disk resources need a different "% used" — point-in-time TiB
+        # capacity (snapshot bytes / allocated TiB), not cumulative
+        # TiB-yr burn. Apply the override in one bulk pass so the helper
+        # is the single source of truth across CLI, API, admin tree
+        # view, and the single-project dashboard path. `charges_by_type`
+        # stays TiB-yr for billing-side consumers.
+        disk_names = [name for name, r in results.items()
+                      if r.get('resource_type') == 'DISK']
+        if disk_names:
+            from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
+            caps = bulk_get_subtree_disk_capacity(
+                self.session, [(self, name) for name in disk_names],
+            )
+            for name in disk_names:
+                cap = caps.get((self.project_id, name))
+                if cap is None:
+                    continue
+                allocated = results[name].get('allocated', 0.0) or 0.0
+                used_tib = cap['used_tib']
+                pct = (used_tib / allocated * 100) if allocated > 0 else 0.0
+                results[name]['used'] = used_tib
+                results[name]['remaining'] = allocated - used_tib
+                results[name]['percent_used'] = pct
+                results[name]['activity_date'] = cap['activity_date']
+
         return results
 
 
@@ -1343,9 +1369,14 @@ class ProjectNumber(Base):
     """Sequential project numbers."""
     __tablename__ = 'project_number'
 
+    __table_args__ = (
+        Index('project_number_project_id_uk', 'project_id', unique=True),
+        Index('project_number_project_fk', 'project_id'),
+    )
+
     project_number_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'),
-                       nullable=False, unique=True)
+                       nullable=False)
 
     project = relationship('Project', back_populates='project_number')
 
@@ -1362,7 +1393,7 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
     __tablename__ = 'project_directory'
 
     __table_args__ = (
-        Index('ix_project_directory_project', 'project_id'),
+        Index('project_directory_project_fk', 'project_id'),
     )
 
     directory_name = Column(String(255), nullable=False)
@@ -1427,9 +1458,11 @@ class DefaultProject(Base, TimestampMixin):
     __tablename__ = 'default_project'
 
     __table_args__ = (
-        Index('ix_default_project_user', 'user_id'),
-        Index('ix_default_project_resource', 'resource_id'),
-        Index('ix_default_project_project', 'project_id'),
+        Index('idx_default_project', 'user_id'),
+        Index('idx_default_project_1', 'project_id'),
+        Index('idx_default_project_2', 'resource_id'),
+        Index('idx_default_project_user_resource',
+              'user_id', 'resource_id', unique=True),
     )
 
     default_project_id = Column(Integer, primary_key=True, autoincrement=True)

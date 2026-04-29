@@ -10,8 +10,13 @@ class AreaOfInterest(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Research areas for projects."""
     __tablename__ = 'area_of_interest'
 
+    __table_args__ = (
+        Index('area_of_interest_uk', 'area_of_interest', unique=True),
+        Index('aoi_aoi_group_fk', 'area_of_interest_group_id'),
+    )
+
     area_of_interest_id = Column(Integer, primary_key=True, autoincrement=True)
-    area_of_interest = Column(String(255), nullable=False, unique=True)
+    area_of_interest = Column(String(255), nullable=False)
     area_of_interest_group_id = Column(Integer, ForeignKey('area_of_interest_group.area_of_interest_group_id'), nullable=False)
     group = relationship('AreaOfInterestGroup', back_populates='areas')
     projects = relationship('Project', back_populates='area_of_interest')
@@ -98,8 +103,12 @@ class AreaOfInterestGroup(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Groupings for research areas."""
     __tablename__ = 'area_of_interest_group'
 
+    __table_args__ = (
+        Index('area_of_interest_group_name_unique_idx', 'name', unique=True),
+    )
+
     area_of_interest_group_id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False, unique=True)
+    name = Column(String(100), nullable=False)
 
     areas = relationship('AreaOfInterest', back_populates='group')
 
@@ -173,12 +182,12 @@ class FosAoi(Base, TimestampMixin):
     __tablename__ = 'fos_aoi'
 
     __table_args__ = (
-        Index('ix_fos_aoi_fos', 'fos_id', unique=True),
-        Index('ix_fos_aoi_area', 'area_of_interest_id'),
+        Index('fos_id', 'fos_id', unique=True),
+        Index('aoi_fk', 'area_of_interest_id'),
     )
 
     fos_aoi_id = Column(Integer, primary_key=True, autoincrement=True)
-    fos_id = Column(Integer, nullable=False, unique=True)
+    fos_id = Column(Integer, nullable=False)
     area_of_interest_id = Column(Integer, ForeignKey('area_of_interest.area_of_interest_id'), nullable=False)
     fos = Column(String(255))  # FOS description/name
 

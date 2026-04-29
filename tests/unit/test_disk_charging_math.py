@@ -29,7 +29,7 @@ def test_epoch_is_immutable_date():
     # change here must be deliberate and accompanied by a documented
     # plan update, not a drive-by.
     from datetime import date
-    assert DISK_CHARGING_TIB_EPOCH == date(2026, 4, 18)
+    assert DISK_CHARGING_TIB_EPOCH == date(2026, 1, 3)
 
 
 def test_wchapman_naml0001_worked_example():

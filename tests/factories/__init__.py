@@ -8,7 +8,7 @@ returns the flushed instance with its primary key populated.
 Tests that need "any row from the snapshot" should use the `any_*` Layer 1
 fixtures from conftest.py instead — never blend the two strategies.
 """
-from ._seq import next_int, next_seq, reset_seq
+from ._seq import next_date, next_int, next_seq, reset_seq
 from .core import make_organization, make_user
 from .operational import make_wallclock_exemption
 from .projects import (
@@ -24,6 +24,7 @@ from .projects import (
 from .resources import make_machine, make_queue, make_resource, make_resource_type
 
 __all__ = [
+    "next_date",
     "next_int",
     "next_seq",
     "reset_seq",

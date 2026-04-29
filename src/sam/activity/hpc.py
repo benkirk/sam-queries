@@ -11,9 +11,11 @@ class HPCActivity(Base):
     __tablename__ = 'hpc_activity'
 
     __table_args__ = (
-        Index('ix_hpc_activity_job', 'job_id'),
-        Index('ix_hpc_activity_date', 'activity_date'),
-        Index('ix_hpc_activity_cos', 'hpc_cos_id'),
+        Index('idx_hpc_activity_uniq',
+              'job_id', 'machine', 'submit_time', 'job_idx',
+              unique=True),
+        Index('idx_hpc_activity_date', 'activity_date'),
+        Index('idx_hpc_activity', 'hpc_cos_id'),
     )
 
     hpc_activity_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -80,17 +82,18 @@ class HPCCharge(Base):
     __tablename__ = 'hpc_charge'
 
     __table_args__ = (
-        Index('ix_hpc_charge_account', 'account_id'),
-        Index('ix_hpc_charge_user', 'user_id'),
-        Index('ix_hpc_charge_activity', 'hpc_activity_id', unique=True),
-        Index('ix_hpc_charge_date', 'charge_date'),
-        Index('ix_hpc_charge_activity_date', 'activity_date'),
+        Index('idx_hpc_charge_account_id', 'account_id'),
+        Index('idx_hpc_charge_user_id', 'user_id'),
+        Index('udx_hpc_charge_uniq', 'hpc_activity_id', unique=True),
+        Index('idx_hpc_charge_date', 'charge_date'),
+        Index('hpc_charge_activity_date_idx', 'activity_date'),
+        Index('idx_hpc_charge_hpc_charge_id', 'hpc_charge_id'),
     )
 
     hpc_charge_id = Column(Integer, primary_key=True, autoincrement=True)
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
     hpc_activity_id = Column(Integer, ForeignKey('hpc_activity.hpc_activity_id'),
-                             nullable=False, unique=True)
+                             nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     charge_date = Column(DateTime, nullable=False)
     activity_date = Column(DateTime)

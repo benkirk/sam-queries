@@ -181,24 +181,12 @@ def _build_project_resources_data(project: Project,
         List of resource dictionaries with usage details
     """
     resources = []
+    # Note: disk-capacity overrides for DISK rows are applied inside
+    # get_detailed_allocation_usage() — no per-row override needed here.
     usage_data = project.get_detailed_allocation_usage(include_adjustments=True,
                                                         active_at=active_at)
 
     now = active_at or datetime.now()
-
-    # Bulk-resolve disk-capacity overrides for this project's disk
-    # resources (one fixed-size set of queries vs one per-resource fanout
-    # if we did this inline below).
-    disk_pairs = [
-        (project, name)
-        for name, usage in usage_data.items()
-        if usage.get('resource_type') == 'DISK'
-    ]
-    if disk_pairs:
-        from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
-        disk_caps = bulk_get_subtree_disk_capacity(project.session, disk_pairs)
-    else:
-        disk_caps = {}
 
     # Fetch rolling window usage (30d/90d) only when at least one account on
     # this project has a non-null threshold set. The dashboard template only
@@ -278,16 +266,10 @@ def _build_project_resources_data(project: Project,
             'elapsed_pct': elapsed_pct,
             'bar_state': bar_state,
             'resource_type': resource_type,
-            'activity_date': None,
+            'activity_date': usage.get('activity_date'),
             'rolling_30': rwin.get(30),
             'rolling_90': rwin.get(90),
         }
-
-        if resource_type == 'DISK':
-            _apply_disk_capacity_overrides(
-                resource_dict,
-                disk_caps.get((project.project_id, resource_name)),
-            )
 
         resources.append(resource_dict)
 

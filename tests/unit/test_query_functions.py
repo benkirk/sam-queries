@@ -469,6 +469,148 @@ class TestDiskCapacityInDashboardData:
         assert disk['activity_date'] == snap
 
 
+class TestDiskCapacityInGetDetailedAllocationUsage:
+    """`Project.get_detailed_allocation_usage()` is the data source for
+    every CLI surface (`sam-search project`, `sam-admin project`) and
+    several webapp paths (admin tree view, single-project dashboard,
+    `GET /api/v1/users/<u>`). For DISK rows it must return point-in-time
+    capacity in `used`/`remaining`/`percent_used` — not cumulative
+    TiB-yr burn — so the CLI matches the webapp."""
+
+    def test_disk_used_reflects_capacity_not_burn(self, session):
+        from datetime import date as _date
+        from sam import ResourceType
+        from sam.summaries.disk_summaries import (
+            DiskChargeSummary,
+            mark_disk_snapshot_current,
+        )
+        BYTES_PER_TIB = 1024 ** 4
+
+        rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
+        if rt is None:
+            rt = make_resource_type(session, resource_type='DISK')
+        resource = make_resource(
+            session, resource_type=rt,
+            resource_name=f"Campaign_Store_{next_seq('cs')}",
+        )
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        make_allocation(
+            session, account=account, amount=100.0,
+            start_date=datetime.now() - timedelta(days=30),
+            end_date=datetime.now() + timedelta(days=335),
+        )
+        snap = _date(2026, 4, 18)
+        # 50 TiB capacity vs. 4.21 TiB-yr cumulative burn — the helper
+        # must surface 50, not 4.21.
+        session.add(DiskChargeSummary(
+            activity_date=snap,
+            account_id=account.account_id,
+            user_id=lead.user_id,
+            username=lead.username,
+            projcode=project.projcode,
+            number_of_files=100,
+            bytes=50 * BYTES_PER_TIB,
+            terabyte_years=4.2141,
+            charges=4.2141,
+        ))
+        session.flush()
+        mark_disk_snapshot_current(session, snap)
+
+        usage = project.get_detailed_allocation_usage()
+        disk = usage[resource.resource_name]
+        assert disk['resource_type'] == 'DISK'
+        assert disk['used'] == pytest.approx(50.0, abs=1e-6)
+        assert disk['remaining'] == pytest.approx(50.0, abs=1e-6)
+        assert disk['percent_used'] == pytest.approx(50.0, abs=1e-4)
+        assert disk['activity_date'] == snap
+
+    def test_disk_capacity_includes_child_subtree(self, session):
+        """For NMMM0003-shaped parents (own account empty, children hold
+        the bytes), the helper's `used` must reflect the subtree total."""
+        from datetime import date as _date
+        from sam import ResourceType
+        from sam.summaries.disk_summaries import (
+            DiskChargeSummary,
+            mark_disk_snapshot_current,
+        )
+        BYTES_PER_TIB = 1024 ** 4
+
+        rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
+        if rt is None:
+            rt = make_resource_type(session, resource_type='DISK')
+        resource = make_resource(
+            session, resource_type=rt,
+            resource_name=f"Campaign_Store_{next_seq('cs')}",
+        )
+        parent_lead = make_user(session)
+        parent = make_project(session, lead=parent_lead)
+        child_a = make_project(session, parent=parent, lead=make_user(session))
+        child_b = make_project(session, parent=parent, lead=make_user(session))
+        parent_account = make_account(session, project=parent, resource=resource)
+        make_allocation(
+            session, account=parent_account, amount=100.0,
+            start_date=datetime.now() - timedelta(days=30),
+            end_date=datetime.now() + timedelta(days=335),
+        )
+        account_a = make_account(session, project=child_a, resource=resource)
+        account_b = make_account(session, project=child_b, resource=resource)
+        snap = _date(2026, 4, 18)
+        for acct, lead, tib in [
+            (account_a, child_a.lead, 30.0),
+            (account_b, child_b.lead, 20.0),
+        ]:
+            session.add(DiskChargeSummary(
+                activity_date=snap,
+                account_id=acct.account_id,
+                user_id=lead.user_id,
+                username=lead.username,
+                projcode=acct.project.projcode,
+                number_of_files=100,
+                bytes=int(tib * BYTES_PER_TIB),
+                terabyte_years=0.0,
+                charges=0.0,
+            ))
+        session.flush()
+        mark_disk_snapshot_current(session, snap)
+
+        usage = parent.get_detailed_allocation_usage()
+        disk = usage[resource.resource_name]
+        assert disk['used'] == pytest.approx(50.0, abs=1e-6)
+        assert disk['percent_used'] == pytest.approx(50.0, abs=1e-4)
+        assert disk['activity_date'] == snap
+
+    def test_hpc_resource_unaffected_by_disk_pass(self, session):
+        """The disk pass must not touch HPC/DAV/ARCHIVE rows."""
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        # Build an HPC account using whatever default ResourceType the
+        # factory wires (HPC by default).
+        from sam import ResourceType
+        rt = session.query(ResourceType).filter_by(resource_type='HPC').first()
+        if rt is None:
+            rt = make_resource_type(session, resource_type='HPC')
+        resource = make_resource(
+            session, resource_type=rt,
+            resource_name=f"Derecho_{next_seq('hpc')}",
+        )
+        account = make_account(session, project=project, resource=resource)
+        make_allocation(
+            session, account=account, amount=1000.0,
+            start_date=datetime.now() - timedelta(days=30),
+            end_date=datetime.now() + timedelta(days=335),
+        )
+        usage = project.get_detailed_allocation_usage()
+        hpc = usage[resource.resource_name]
+        assert hpc['resource_type'] == 'HPC'
+        # Fresh allocation, no charges → used == 0, percent_used == 0,
+        # and the helper must NOT inject `activity_date` for HPC rows.
+        assert hpc['used'] == 0.0
+        assert hpc['percent_used'] == 0.0
+        assert 'activity_date' not in hpc
+
+
 class TestDiskCapacityInAllocationSummary:
     """`get_allocation_summary_with_usage` returns capacity-based
     total_used for disk-only rows (the /allocations dashboard table)."""

@@ -11,15 +11,16 @@ class DavChargeSummary(Base):
     __tablename__ = 'dav_charge_summary'
 
     __table_args__ = (
-        Index('ix_dav_charge_summary_date', 'activity_date'),
-        Index('ix_dav_charge_summary_user', 'user_id'),
-        Index('ix_dav_charge_summary_account', 'account_id'),
-        Index('ix_dav_charge_summary_machine', 'machine'),
-        Index('ix_dav_charge_summary_queue', 'queue_name'),
+        Index('idx_dav_charge_summary_date', 'activity_date'),
+        Index('idx_dav_charge_user_id', 'user_id'),
+        Index('idx_dav_charge_summary_account_id', 'account_id'),
+        Index('idx_dav_charge_summary_machine', 'machine'),
+        Index('idx_dav_charge_summary_queue_name', 'queue_name'),
     )
 
     dav_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
-    activity_date = Column(Date, nullable=False)
+    activity_date = Column(Date, ForeignKey('dav_charge_summary_status.activity_date'),
+                           nullable=False)
 
     # User identification (actual and recorded)
     act_username = Column(String(35))

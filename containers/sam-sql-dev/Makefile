@@ -9,7 +9,7 @@ all: clone
 
 clone:
 	@python bootstrap_clone.py
-	@docker compose -f $(COMPOSE_FILE) exec -T mysql  sh -c 'mysql -uroot -proot -e "USE sam; TRUNCATE TABLE api_credentials;"'
+	@docker compose -f $(COMPOSE_FILE) exec -T mysql sh -c 'mysql -uroot -proot -e "USE sam; SET FOREIGN_KEY_CHECKS=0; TRUNCATE TABLE api_credentials; SET FOREIGN_KEY_CHECKS=1;"'
 
 clean:
 	rm -rf dump/ *.sql.xz *~

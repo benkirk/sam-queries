@@ -24,8 +24,8 @@ class AdhocGroup(Base, ActiveFlagMixin):
     __tablename__ = 'adhoc_group'
 
     __table_args__ = (
-        Index('ix_adhoc_group_gid', 'unix_gid'),
-        Index('ix_adhoc_group_name', 'group_name'),
+        Index('adhoc_group_group_name_uk', 'group_name', unique=True),
+        Index('adhoc_group_unix_gid_uk', 'unix_gid', unique=True),
     )
 
     def __eq__(self, other):
@@ -39,8 +39,8 @@ class AdhocGroup(Base, ActiveFlagMixin):
         return hash(self.group_id) if self.group_id is not None else hash(id(self))
 
     group_id = Column(Integer, primary_key=True, autoincrement=True)
-    group_name = Column(String(30), nullable=False, unique=True)
-    unix_gid = Column(Integer, nullable=False, unique=True)
+    group_name = Column(String(30), nullable=False)
+    unix_gid = Column(Integer, nullable=False)
     creation_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
     pdb_modified_time = Column(TIMESTAMP)
     idms_sync_token = Column(String(64))
@@ -89,7 +89,7 @@ class AdhocGroupTag(Base):
     __tablename__ = 'adhoc_group_tag'
 
     __table_args__ = (
-        Index('ix_adhoc_group_tag_group', 'group_id'),
+        Index('adhoc_group_tag_uk', 'group_id', 'tag', unique=True),
     )
 
     adhoc_group_tag_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -112,7 +112,9 @@ class AdhocSystemAccountEntry(Base):
     __tablename__ = 'adhoc_system_account_entry'
 
     __table_args__ = (
-        Index('ix_adhoc_system_account_group', 'group_id'),
+        Index('adhoc_system_account_entry_uk',
+              'group_id', 'access_branch_name', 'username',
+              unique=True),
     )
 
     entry_id = Column(Integer, primary_key=True, autoincrement=True)

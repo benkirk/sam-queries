@@ -19,8 +19,15 @@ class XrasResourceRepositoryKeyResource(Base):
     """
     __tablename__ = 'xras_resource_repository_key_resource'
 
+    __table_args__ = (
+        Index('xras_resource_repo_key_resource_resource_rid_uniq',
+              'resource_id', unique=True),
+        Index('xras_resource_repo_key_resource_resource_repo_key_uniq',
+              'resource_repository_key', unique=True),
+    )
+
     resource_repository_key = Column(Integer, primary_key=True)
-    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False, unique=True)
+    resource_id = Column(Integer, ForeignKey('resources.resource_id'), nullable=False)
 
     resource = relationship('Resource', back_populates='xras_resource_keys')
 

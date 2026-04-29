@@ -18,7 +18,7 @@ their natural key columns, so concurrent writes for the same natural key
 (date, user, project, ...) bucket may produce duplicate rows. Batch
 processes must serialize writes for the same natural key.
 """
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -28,6 +28,7 @@ from sam.projects.projects import Project
 from sam.resources.resources import Resource
 from sam.resources.machines import Machine, Queue
 from sam.accounting.accounts import Account
+from sam.activity.disk import DiskActivity, DiskCharge
 from sam.summaries.comp_summaries import CompChargeSummary
 from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
@@ -225,10 +226,18 @@ def upsert_comp_charge_summary(
     machine = _resolve_machine_optional(session, machine_name, res)
     queue = _resolve_or_create_queue(session, queue_name, res, create_queue_if_missing)
 
+    # `act_unix_uid` mirrors the resolved user's uid when the caller didn't
+    # supply one (act_username / act_projcode are required so they are
+    # always populated). Keeps the as-reported column populated whenever
+    # the user is known.
+    eff_act_unix_uid = act_unix_uid if act_unix_uid is not None else (
+        user.unix_uid if user is not None else None
+    )
+
     # Resolved field defaults — explicit None checks preserve falsy values (e.g. uid=0)
     resolved_username = username if username is not None else act_username
     resolved_projcode = projcode if projcode is not None else act_projcode
-    resolved_unix_uid = unix_uid if unix_uid is not None else act_unix_uid
+    resolved_unix_uid = unix_uid if unix_uid is not None else eff_act_unix_uid
     resource_col = resource if resource is not None else resource_name
 
     # Facility name: use caller-provided value; fall back to project chain
@@ -251,7 +260,7 @@ def upsert_comp_charge_summary(
             activity_date=activity_date,
             act_username=act_username,
             act_projcode=act_projcode,
-            act_unix_uid=act_unix_uid,
+            act_unix_uid=eff_act_unix_uid,
             username=resolved_username,
             projcode=resolved_projcode,
             unix_uid=resolved_unix_uid,
@@ -339,15 +348,31 @@ def _upsert_storage_summary(
         # valid act_projcode when callers already know the account).
         project = account.project
 
+    # `act_*` fields mirror the resolved entity when the caller did NOT
+    # supply a raw value. Keeps the as-reported / resolved columns from
+    # going asymmetric — e.g. legacy disk feeds populate `username` /
+    # `projcode` but leave `act_unix_uid` NULL even though the user is
+    # fully resolved. Use these effective values for both the natural-
+    # key lookup and the inserted row so upserts stay idempotent.
+    eff_act_username = act_username if act_username is not None else (
+        user.username if user is not None else None
+    )
+    eff_act_projcode = act_projcode if act_projcode is not None else (
+        project.projcode if project is not None else None
+    )
+    eff_act_unix_uid = act_unix_uid if act_unix_uid is not None else (
+        user.unix_uid if user is not None else None
+    )
+
     # Resolved field defaults — explicit None checks preserve falsy values (e.g. uid=0)
     resolved_username = username if username is not None else (
-        user.username if user is not None else act_username
+        user.username if user is not None else eff_act_username
     )
     resolved_projcode = projcode if projcode is not None else (
-        project.projcode if project is not None else act_projcode
+        project.projcode if project is not None else eff_act_projcode
     )
     resolved_unix_uid = unix_uid if unix_uid is not None else (
-        user.unix_uid if user is not None and act_unix_uid is None else act_unix_uid
+        user.unix_uid if user is not None and act_unix_uid is None else eff_act_unix_uid
     )
 
     # Facility name: use caller-provided value; fall back to project chain
@@ -357,17 +382,17 @@ def _upsert_storage_summary(
     # Natural key: (activity_date, act_username, act_projcode, account_id)
     existing = session.query(model_cls).filter(
         model_cls.activity_date == activity_date,
-        model_cls.act_username == act_username,
-        model_cls.act_projcode == act_projcode,
+        model_cls.act_username == eff_act_username,
+        model_cls.act_projcode == eff_act_projcode,
         model_cls.account_id == account.account_id,
     ).first()
 
     if existing is None:
         record = model_cls(
             activity_date=activity_date,
-            act_username=act_username,
-            act_projcode=act_projcode,
-            act_unix_uid=act_unix_uid,
+            act_username=eff_act_username,
+            act_projcode=eff_act_projcode,
+            act_unix_uid=eff_act_unix_uid,
             username=resolved_username,
             projcode=resolved_projcode,
             unix_uid=resolved_unix_uid,
@@ -407,3 +432,110 @@ def upsert_disk_charge_summary(session: Session, **kwargs) -> Tuple[DiskChargeSu
 def upsert_archive_charge_summary(session: Session, **kwargs) -> Tuple[ArchiveChargeSummary, str]:
     """Insert or update an ArchiveChargeSummary row. Delegates to _upsert_storage_summary."""
     return _upsert_storage_summary(session, ArchiveChargeSummary, **kwargs)
+
+
+def upsert_disk_activity(
+    session: Session,
+    *,
+    directory_name: str,
+    username: str,
+    projcode: Optional[str],
+    activity_date: datetime,
+    reporting_interval: int,
+    bytes: int,
+    number_of_files: Optional[int],
+    resource_name: str,
+    load_date: datetime,
+    disk_cos_id: int = 0,
+    error_comment: Optional[str] = None,
+    processing_status: bool = True,
+) -> Tuple[DiskActivity, str]:
+    """Insert or update a DiskActivity row keyed on
+    (directory_name, username, activity_date, projcode) — the prod
+    UNIQUE constraint. ``file_size_total`` mirrors ``bytes`` (legacy
+    column, kept for parity with the Java collector).
+    """
+    existing = session.query(DiskActivity).filter(
+        DiskActivity.directory_name == directory_name,
+        DiskActivity.username == username,
+        DiskActivity.activity_date == activity_date,
+        DiskActivity.projcode == projcode,
+    ).first()
+
+    if existing is None:
+        record = DiskActivity(
+            directory_name=directory_name,
+            username=username,
+            projcode=projcode,
+            activity_date=activity_date,
+            reporting_interval=reporting_interval,
+            file_size_total=bytes,
+            bytes=bytes,
+            number_of_files=number_of_files,
+            load_date=load_date,
+            disk_cos_id=disk_cos_id,
+            error_comment=error_comment,
+            processing_status=processing_status,
+            resource_name=resource_name,
+        )
+        session.add(record)
+        action = 'created'
+    else:
+        existing.reporting_interval = reporting_interval
+        existing.file_size_total = bytes
+        existing.bytes = bytes
+        existing.number_of_files = number_of_files
+        existing.load_date = load_date
+        existing.disk_cos_id = disk_cos_id
+        existing.error_comment = error_comment
+        existing.processing_status = processing_status
+        existing.resource_name = resource_name
+        record = existing
+        action = 'updated'
+
+    session.flush()
+    return record, action
+
+
+def upsert_disk_charge(
+    session: Session,
+    *,
+    disk_activity_id: int,
+    account_id: int,
+    user_id: int,
+    charge_date: datetime,
+    activity_date: datetime,
+    terabyte_year: float,
+    charge: float,
+) -> Tuple[DiskCharge, str]:
+    """Insert or update a DiskCharge row keyed on disk_activity_id
+    (UNIQUE → 1:1 with DiskActivity).
+    """
+    existing = session.query(DiskCharge).filter(
+        DiskCharge.disk_activity_id == disk_activity_id,
+    ).first()
+
+    if existing is None:
+        record = DiskCharge(
+            disk_activity_id=disk_activity_id,
+            account_id=account_id,
+            user_id=user_id,
+            charge_date=charge_date,
+            activity_date=activity_date,
+            terabyte_year=terabyte_year,
+            charge=charge,
+        )
+        session.add(record)
+        action = 'created'
+    else:
+        existing.account_id = account_id
+        existing.user_id = user_id
+        existing.charge_date = charge_date
+        existing.activity_date = activity_date
+        existing.terabyte_year = terabyte_year
+        existing.charge = charge
+        record = existing
+        action = 'updated'
+
+    session.flush()
+    return record, action

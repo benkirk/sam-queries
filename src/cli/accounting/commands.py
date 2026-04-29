@@ -27,7 +27,9 @@ from cli.accounting.path_verifier import (
     PathVerificationError, auto_detect_verifier,
 )
 from sam.manage.summaries import (
+    _resolve_user,
     upsert_comp_charge_summary, upsert_disk_charge_summary,
+    upsert_disk_activity, upsert_disk_charge,
 )
 from sam.manage.transaction import management_transaction
 from sam.manage.allocations import update_allocation
@@ -50,6 +52,69 @@ GPU_FRACTION_THRESHOLD = 0.01  # 1%
 # S870294 (standing reservation) to individual reservations.  SAM has a single
 # canonical 'reservation' queue per resource that covers all of them.
 _RESERVATION_QUEUE_RE = re.compile(r'^[RMS]\d')
+
+# Per-user-disk-usage feeds for some resources (e.g. Quasar) only ship a
+# single rollup row per project — username is the literal sentinel
+# `'total'`. Treat these as project-wide aggregates: keep `act_username`
+# as the audit label, attribute the row to the project lead (matching
+# the `<unidentified>` gap-row convention) so user resolution and
+# downstream charging math succeed.
+_DISK_ROLLUP_USERNAMES = frozenset({'total'})
+
+
+def _group_disk_entries(entries: list[DiskUsageEntry]) -> list[DiskUsageEntry]:
+    """Aggregate per-(user, fileset) rows into per-(user, project) totals.
+
+    The disk-usage input (`acct.glade.YYYY-MM-DD`) ships one row per
+    (user, directory). Two filesets on the same project for the same
+    user collide on the upsert natural key
+    ``(activity_date, act_username, act_projcode, account_id)`` —
+    `directory_path` is not in the key — and silently UPDATE-overwrite,
+    losing every fileset except the last.
+
+    Sum bytes / files / terabyte_years / charges in Python before the
+    upsert so each (user, project) lands as one row, matching legacy
+    SAM's ``calculateDiskChargeSummaries`` named query
+    (``legacy_sam/.../AccountingNamedQuery.xml``):
+
+        GROUP BY (date, user, uid, user_id, projcode, account_id)
+        SUM(bytes), SUM(files), SUM(terabyte_year), SUM(charge)
+
+    Synthetic gap rows (``user_override`` set, e.g. ``<unidentified>``)
+    pass through unchanged — they already carry pre-resolved entities
+    and a unique ``act_username`` so they don't collide on the natural
+    key.
+    """
+    grouped: dict[tuple, DiskUsageEntry] = {}
+    pass_through: list[DiskUsageEntry] = []
+
+    for e in entries:
+        if e.user_override is not None:
+            pass_through.append(e)
+            continue
+        key = (e.activity_date, e.projcode, e.username)
+        existing = grouped.get(key)
+        if existing is None:
+            grouped[key] = DiskUsageEntry(
+                activity_date=e.activity_date,
+                projcode=e.projcode,
+                username=e.username,
+                number_of_files=e.number_of_files,
+                bytes=e.bytes,
+                directory_path=e.directory_path,
+                reporting_interval=e.reporting_interval,
+                cos=e.cos,
+                act_username=e.act_username,
+                terabyte_years=e.terabyte_years,
+                charges=e.charges,
+            )
+        else:
+            existing.number_of_files += e.number_of_files
+            existing.bytes += e.bytes
+            existing.terabyte_years += e.terabyte_years
+            existing.charges += e.charges
+
+    return list(grouped.values()) + pass_through
 
 
 def normalize_queue_name(queue_name: str) -> str:
@@ -535,6 +600,31 @@ class AccountingAdminCommand(BaseCommand):
         if dry_run:
             return 0
 
+        # ---- 7a. Tier-1 / Tier-2: populate disk_activity + disk_charge.
+        # Per-fileset granularity that disk_charge_summary can't carry.
+        # Iterates raw entries (pre-_group_disk_entries) so multi-fileset
+        # projects produce one disk_activity row per (directory, user).
+        try:
+            n_act, n_ch, n_skip_tier12 = self._write_disk_activity_and_charge(
+                entries,
+                snap_date=snap_date,
+                resource_name=resource_name,
+                resolve_for_row=_resolve_for_row,
+                chunk_size=chunk_size,
+                skip_errors=skip_errors,
+            )
+        except ValueError as exc:
+            self.console.print(
+                f"[bold red]Tier-1/Tier-2 write aborted: {exc}[/bold red]"
+            )
+            return 2
+        if self.ctx.verbose:
+            self.console.print(
+                f"[dim]Wrote {n_act} disk_activity / {n_ch} disk_charge "
+                f"row(s) for {resource_name} on {snap_date} "
+                f"({n_skip_tier12} unresolved → tier-1 only).[/dim]"
+            )
+
         # ---- 7b. Idempotency: delete pre-existing rows for this
         # (resource, snapshot_date) so a re-run replaces rather than
         # duplicates. Necessary because the legacy ingest left
@@ -571,13 +661,31 @@ class AccountingAdminCommand(BaseCommand):
                 f"{resource_name} on {snap_date} before re-import.[/dim]"
             )
 
+        # ---- 7c. Aggregate per-(user, fileset) rows into per-(user,
+        # project) totals before upsert. The acct.glade input ships one
+        # row per (user, directory); the upsert natural key omits
+        # directory_path, so multi-fileset projects would silently
+        # UPDATE-overwrite if we fed raw entries through. Mirrors legacy
+        # SAM's `calculateDiskChargeSummaries` SUM-by-(date, user,
+        # account) — see `_group_disk_entries`.
+        entries_to_upsert = _group_disk_entries(entries)
+        if self.ctx.verbose and len(entries_to_upsert) != len(entries):
+            self.console.print(
+                f"[dim]Aggregated {len(entries)} per-fileset rows into "
+                f"{len(entries_to_upsert)} per-(user, project) rows for "
+                f"upsert (multi-fileset projects rolled up).[/dim]"
+            )
+
         # ---- 8. Chunked upsert -----------------------------------------
         n_created = 0
         n_updated = 0
         n_errors = 0
         n_skipped = 0
 
-        chunks = [entries[i:i + chunk_size] for i in range(0, len(entries), chunk_size)]
+        chunks = [
+            entries_to_upsert[i:i + chunk_size]
+            for i in range(0, len(entries_to_upsert), chunk_size)
+        ]
 
         with Progress(
             TextColumn("[progress.description]{task.description}"),
@@ -587,7 +695,8 @@ class AccountingAdminCommand(BaseCommand):
             console=self.console,
         ) as progress:
             task = progress.add_task(
-                f"Posting {resource_name} disk charges...", total=len(entries)
+                f"Posting {resource_name} disk charges...",
+                total=len(entries_to_upsert),
             )
             for chunk_idx, chunk in enumerate(chunks, start=1):
                 try:
@@ -606,6 +715,7 @@ class AccountingAdminCommand(BaseCommand):
                                 # row.act_username carries the audit
                                 # label and row.user_override is set, so
                                 # the resolver is skipped entirely.
+                                user_for_upsert = row.user_override
                                 if row.user_override is not None:
                                     act_uname = row.act_username
                                     act_pcode = None
@@ -630,6 +740,24 @@ class AccountingAdminCommand(BaseCommand):
                                     # SAM-canonical name, not the umbrella
                                     # label from the input file.
                                     act_pcode = project_for_upsert.projcode
+
+                                    # Project-rollup feeds (Quasar's
+                                    # `'total'` rows): no per-user
+                                    # breakdown is shipped, so attribute
+                                    # the row to the project lead and
+                                    # keep the rollup sentinel as the
+                                    # audit username. Mirrors the
+                                    # `<unidentified>` gap-row
+                                    # convention (see
+                                    # `_build_unidentified_disk_rows`).
+                                    if act_uname in _DISK_ROLLUP_USERNAMES:
+                                        user_for_upsert = project_for_upsert.lead
+                                        if user_for_upsert is None:
+                                            raise ValueError(
+                                                f"rollup row username={act_uname!r} for "
+                                                f"projcode={act_pcode!r} but project has "
+                                                f"no lead — cannot attribute"
+                                            )
                                 _, action = upsert_disk_charge_summary(
                                     self.session,
                                     activity_date=row.activity_date,
@@ -641,7 +769,7 @@ class AccountingAdminCommand(BaseCommand):
                                     number_of_files=row.number_of_files,
                                     bytes=row.bytes,
                                     terabyte_years=row.terabyte_years,
-                                    user=row.user_override,
+                                    user=user_for_upsert,
                                     project=project_for_upsert,
                                     account=account_for_upsert,
                                     include_deleted_accounts=include_deleted_accounts,
@@ -674,6 +802,172 @@ class AccountingAdminCommand(BaseCommand):
 
         display_import_summary(self.ctx, n_created, n_updated, n_errors, n_skipped)
         return 0 if n_errors == 0 else 2
+
+    def _write_disk_activity_and_charge(
+        self,
+        entries: list,
+        *,
+        snap_date: date,
+        resource_name: str,
+        resolve_for_row,
+        chunk_size: int,
+        skip_errors: bool,
+    ) -> tuple[int, int, int]:
+        """Tier-1/Tier-2 importer: populate ``disk_activity`` and
+        ``disk_charge`` from per-fileset entries.
+
+        Idempotent per ``(resource_name, snap_date)``: pre-existing rows
+        for this slice are deleted (two-step, since the prod FK has no
+        ``ON DELETE CASCADE``) before re-insert. Skips synthetic gap rows
+        (``user_override`` set) and rollup-sentinel rows
+        (``_DISK_ROLLUP_USERNAMES``) — both are tier-3-only by
+        construction.
+
+        Unresolved rows still get a ``disk_activity`` row with
+        ``processing_status=False`` and ``error_comment`` set; ``disk_charge``
+        is skipped for those (audit trail without tier-2 noise).
+
+        Returns ``(n_activity, n_charge, n_unresolved)``.
+        """
+        from sam.activity.disk import DiskActivity, DiskCharge
+
+        now = datetime.now()
+        n_activity = 0
+        n_charge = 0
+        n_unresolved = 0
+
+        # ---- Filter out tier-1-skip rows ------------------------------
+        # Compute writable BEFORE any DB access so the rollup-only /
+        # gap-only fast path is a true no-op (no probe SELECT).
+        writable = [
+            e for e in entries
+            if e.user_override is None
+            and e.username not in _DISK_ROLLUP_USERNAMES
+        ]
+        if not writable:
+            return 0, 0, 0
+
+        # ---- Idempotency: two-step delete (FK has no CASCADE).
+        # Combined with the chunked write into ONE management_transaction
+        # so nothing churns MySQL SAVEPOINTs in xdist test mode beyond
+        # what's strictly necessary.
+        chunks = [
+            writable[i:i + chunk_size]
+            for i in range(0, len(writable), chunk_size)
+        ]
+
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=self.console,
+        ) as progress:
+            task = progress.add_task(
+                f"Writing {resource_name} disk_activity/disk_charge...",
+                total=len(writable),
+            )
+            for chunk_idx, chunk in enumerate(chunks, start=1):
+                try:
+                    with management_transaction(self.session):
+                        if chunk_idx == 1:
+                            # Idempotency delete piggybacks the first chunk's
+                            # transaction. Two-step (FK has no CASCADE).
+                            existing_ids = [
+                                row[0] for row in (
+                                    self.session.query(
+                                        DiskActivity.disk_activity_id
+                                    )
+                                    .filter(
+                                        DiskActivity.activity_date == snap_date,
+                                        DiskActivity.resource_name == resource_name,
+                                    )
+                                    .all()
+                                )
+                            ]
+                            if existing_ids:
+                                self.session.query(DiskCharge).filter(
+                                    DiskCharge.disk_activity_id.in_(existing_ids)
+                                ).delete(synchronize_session=False)
+                                self.session.query(DiskActivity).filter(
+                                    DiskActivity.disk_activity_id.in_(existing_ids)
+                                ).delete(synchronize_session=False)
+                        for e in chunk:
+                            progress.advance(task)
+                            # Resolve project/account first; failure is
+                            # captured as audit metadata on the tier-1 row.
+                            ok, _project, account = resolve_for_row(e)
+                            user = None
+                            err = None
+                            if not ok:
+                                err = (
+                                    f"unresolved: projcode={e.projcode!r} "
+                                    f"path={e.directory_path!r}"
+                                )
+                            else:
+                                try:
+                                    user = _resolve_user(
+                                        self.session, e.username, None,
+                                    )
+                                except ValueError as uexc:
+                                    err = str(uexc)
+
+                            try:
+                                activity, _ = upsert_disk_activity(
+                                    self.session,
+                                    directory_name=e.directory_path,
+                                    username=e.username,
+                                    projcode=e.projcode,
+                                    activity_date=e.activity_date,
+                                    reporting_interval=e.reporting_interval,
+                                    bytes=e.bytes,
+                                    number_of_files=e.number_of_files,
+                                    resource_name=resource_name,
+                                    load_date=now,
+                                    disk_cos_id=0,
+                                    error_comment=err,
+                                    processing_status=err is None,
+                                )
+                                n_activity += 1
+                            except Exception as exc:  # noqa: BLE001
+                                if not skip_errors:
+                                    raise
+                                if self.ctx.verbose:
+                                    self.console.print(
+                                        f"[yellow]Skip disk_activity: {exc}[/yellow]"
+                                    )
+                                continue
+
+                            if err is not None:
+                                n_unresolved += 1
+                                continue
+
+                            try:
+                                upsert_disk_charge(
+                                    self.session,
+                                    disk_activity_id=activity.disk_activity_id,
+                                    account_id=account.account_id,
+                                    user_id=user.user_id,
+                                    charge_date=now,
+                                    activity_date=e.activity_date,
+                                    terabyte_year=e.terabyte_years,
+                                    charge=e.charges,
+                                )
+                                n_charge += 1
+                            except Exception as exc:  # noqa: BLE001
+                                if not skip_errors:
+                                    raise
+                                if self.ctx.verbose:
+                                    self.console.print(
+                                        f"[yellow]Skip disk_charge: {exc}[/yellow]"
+                                    )
+                except Exception as exc:  # noqa: BLE001
+                    self.console.print(
+                        f"[bold red]Tier-1/Tier-2 chunk {chunk_idx} aborted: {exc}[/bold red]"
+                    )
+                    raise
+
+        return n_activity, n_charge, n_unresolved
 
     def _build_unidentified_disk_rows(
         self,

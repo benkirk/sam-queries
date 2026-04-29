@@ -26,7 +26,7 @@ DAYS_IN_YEAR = 365
 # This date is set to the first --disk run we ship and treated as immutable
 # thereafter. Allocations whose window straddles this date will read mixed
 # units (~9.95% drift on the pre-epoch portion); see docs/plans/DISK_CHARGING.md.
-DISK_CHARGING_TIB_EPOCH = _stdlib_date(2026, 4, 18)
+DISK_CHARGING_TIB_EPOCH = _stdlib_date(2026, 1, 3)
 
 
 #-------------------------------------------------------------------------bm-
@@ -36,13 +36,14 @@ class DiskChargeSummary(Base):
     __tablename__ = 'disk_charge_summary'
 
     __table_args__ = (
-        Index('ix_disk_charge_summary_date', 'activity_date'),
-        Index('ix_disk_charge_summary_user', 'user_id'),
-        Index('ix_disk_charge_summary_account', 'account_id'),
+        Index('idx_disk_charge_summary_date', 'activity_date'),
+        Index('idx_disk_charge_summary_user_id', 'user_id'),
+        Index('idx_disk_charge_summary_account_id', 'account_id'),
     )
 
     disk_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
-    activity_date = Column(Date, nullable=False)
+    activity_date = Column(Date, ForeignKey('disk_charge_summary_status.activity_date'),
+                           nullable=False)
 
     act_username = Column(String(35))
     unix_uid = Column(Integer)

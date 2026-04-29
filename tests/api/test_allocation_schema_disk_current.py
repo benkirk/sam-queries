@@ -13,15 +13,35 @@ from sam.accounting.allocations import Allocation
 from sam.resources.resources import ResourceType
 from sam.schemas.allocation import AllocationWithUsageSchema
 from sam.summaries.disk_summaries import (
-    BYTES_PER_TIB, DiskChargeSummary, mark_disk_snapshot_current,
+    BYTES_PER_TIB, DiskChargeSummary, DiskChargeSummaryStatus,
 )
 from factories.core import make_user
 from factories.projects import make_account, make_allocation, make_project
 from factories.resources import make_resource, make_resource_type
-from factories._seq import next_seq
+from factories._seq import next_date, next_seq
 
 
 pytestmark = pytest.mark.unit
+
+
+def _ensure_status(session, activity_date):
+    """FK: disk_charge_summary.activity_date → disk_charge_summary_status.
+    Materialize the parent row before inserting the child summary."""
+    if session.get(DiskChargeSummaryStatus, activity_date) is None:
+        session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=False))
+        session.flush()
+
+
+def _mark_current(session, activity_date):
+    """Test-only narrow alternative to mark_disk_snapshot_current — see
+    note in test_current_disk_usage.py: prod helper does a bulk UPDATE
+    that deadlocks under xdist."""
+    row = session.get(DiskChargeSummaryStatus, activity_date)
+    if row is None:
+        session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=True))
+    else:
+        row.current = True
+    session.flush()
 
 
 def _disk_alloc(session, *, amount_tib: float = 100.0):
@@ -41,8 +61,14 @@ class TestAllocationDiskCurrentFields:
 
     def test_disk_allocation_has_current_used_fields(self, session):
         user, project, account, alloc = _disk_alloc(session, amount_tib=100.0)
-        # Seed today's snapshot at 47 TiB.
-        snap_date = date.today()
+        # Worker-unique snapshot date so xdist workers don't collide on
+        # the disk_charge_summary_status PK. Push the allocation window
+        # back so this date falls inside it.
+        snap_date = next_date("disk_snap")
+        alloc.start_date = datetime(snap_date.year - 1, 1, 1)
+        alloc.end_date = datetime(snap_date.year + 1, 1, 1)
+        session.flush()
+        _ensure_status(session, snap_date)
         session.add(DiskChargeSummary(
             activity_date=snap_date,
             user_id=user.user_id,
@@ -54,7 +80,7 @@ class TestAllocationDiskCurrentFields:
             number_of_files=1,
         ))
         session.flush()
-        mark_disk_snapshot_current(session, snap_date)
+        _mark_current(session, snap_date)
 
         schema = AllocationWithUsageSchema()
         schema.context = {
@@ -101,15 +127,17 @@ class TestAllocationDiskCurrentFields:
         current reflects only the latest. They differ — that's the
         whole point of the new fields."""
         user, project, account, alloc = _disk_alloc(session, amount_tib=100.0)
-        # Push allocation start back so both seeded snapshots fall inside.
-        alloc.start_date = datetime.now() - timedelta(days=30)
+        # Worker-unique snapshot dates so xdist workers don't collide on
+        # the disk_charge_summary_status PK. Set allocation window to
+        # bracket both dates.
+        d2 = next_date("disk_snap")
+        d1 = d2 - timedelta(days=7)
+        alloc.start_date = datetime(d1.year - 1, 1, 1)
+        alloc.end_date = datetime(d2.year + 1, 1, 1)
         session.flush()
-
-        # Snapshot 1: 10 TiB, charges=1.0. Snapshot 2: 20 TiB, charges=2.0.
-        d1 = date.today() - timedelta(days=7)
-        d2 = date.today()
         for d, b, ch in [(d1, 10 * BYTES_PER_TIB, 1.0),
                          (d2, 20 * BYTES_PER_TIB, 2.0)]:
+            _ensure_status(session, d)
             session.add(DiskChargeSummary(
                 activity_date=d,
                 user_id=user.user_id,
@@ -121,7 +149,7 @@ class TestAllocationDiskCurrentFields:
                 number_of_files=1,
             ))
         session.flush()
-        mark_disk_snapshot_current(session, d2)
+        _mark_current(session, d2)
 
         schema = AllocationWithUsageSchema()
         schema.context = {
