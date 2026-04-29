@@ -672,9 +672,18 @@ def generate_pace_chart_matplotlib(
     ax.stackplot(days, rates_matrix, colors=colors, edgecolor='none',
                  linewidth=0, antialiased=True)
 
-    # Today marker
+    # Clamp ymax to the larger of the stacked totals at the window edges,
+    # plus 25% headroom. Allocations expiring within a day or two of
+    # active_at otherwise produce future-rates of remaining/1d that
+    # dominate the axis and squash the rest of the chart into a flat strip.
+    totals_by_day = np.sum(rates_matrix, axis=0)
+    edge_bound = max(float(totals_by_day[0]), float(totals_by_day[-1]))
+    ax.set_ylim(bottom=0, top=(1.25 * edge_bound) if edge_bound > 0 else None)
+
+    # Today marker — placed after set_ylim so the label sits at the
+    # clamped ymax rather than the auto-scaled spike.
     ax.axvline(active_at, color=_PACE_TODAY_LINE_COLOR, linestyle='--', linewidth=1)
-    ymin, ymax = ax.get_ylim()
+    _, ymax = ax.get_ylim()
     ax.text(active_at, ymax, ' today', color=_PACE_TODAY_LINE_COLOR,
             fontsize=8, va='top', ha='left')
 
@@ -693,7 +702,6 @@ def generate_pace_chart_matplotlib(
 
     # Axes
     ax.set_xlim(window_start, window_end)
-    ax.set_ylim(bottom=0)
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
