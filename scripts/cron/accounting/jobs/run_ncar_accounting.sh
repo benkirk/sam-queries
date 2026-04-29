@@ -67,22 +67,22 @@ fi
 #     sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose --dry-run
 
 # first try - clean, no args
-time \
+{ time \
     1>${machine}-accounting.log \
     2>${machine}-accounting.err \
-    sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose && exit 0
+    sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose; } 2>&1 && exit 0
 
 # if we get here, something above failed.  Try again creating queues
-time \
+{ time \
     1>${machine}-accounting-create-queues.log \
     2>${machine}-accounting-create-queues.err \
-    sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose --create-queues && exit 0
+    sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose --create-queues; } 2>&1 && exit 0
 
 # if we get here, something above still failed.  Try again skipping errors
-time \
+{ time \
     1>${machine}-accounting-skip-errors.log \
     2>${machine}-accounting-skip-errors.err \
-    sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose --create-queues --skip-errors && exit 0
+    sam-admin accounting --machine ${machine} ${accounting_args} --comp --verbose --create-queues --skip-errors; } 2>&1 && exit 0
 
 echo "All fallbacks failed"
 exit 1
