@@ -39,6 +39,7 @@ class DiskChargeSummary(Base):
         Index('idx_disk_charge_summary_date', 'activity_date'),
         Index('idx_disk_charge_summary_user_id', 'user_id'),
         Index('idx_disk_charge_summary_account_id', 'account_id'),
+        Index('idx_disk_charge_summary_directory_id', 'directory_id'),
     )
 
     disk_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -54,6 +55,9 @@ class DiskChargeSummary(Base):
     act_projcode = Column(String(30))
     facility_name = Column(String(30))
     account_id = Column(Integer, ForeignKey('account.account_id'), nullable=False)
+    directory_id = Column(Integer,
+                          ForeignKey('project_directory.project_directory_id'),
+                          nullable=True)
 
     number_of_files = Column(Integer)
     bytes = Column(BigInteger)
@@ -62,6 +66,8 @@ class DiskChargeSummary(Base):
 
     user = relationship('User', back_populates='disk_charge_summaries')
     account = relationship('Account', back_populates='disk_charge_summaries')
+    project_directory = relationship('ProjectDirectory',
+                                     back_populates='disk_charge_summaries')
 
     def __str__(self):
         return f"DiskChargeSummary {self.disk_charge_summary_id}: {self.username}/{self.projcode} {self.activity_date}"

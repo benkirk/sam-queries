@@ -3,7 +3,11 @@ from datetime import datetime
 from typing import Optional
 
 from sam.resources.machines import Machine, Queue
-from sam.resources.resources import Resource, ResourceType
+from sam.resources.resources import (
+    DiskResourceRootDirectory,
+    Resource,
+    ResourceType,
+)
 
 from ._seq import next_seq
 
@@ -95,3 +99,26 @@ def make_queue(
     session.add(queue)
     session.flush()
     return queue
+
+
+def make_disk_resource_root_directory(
+    session,
+    *,
+    resource: Optional[Resource] = None,
+    root_directory: Optional[str] = None,
+    charging_exempt: bool = False,
+    active: bool = True,
+) -> DiskResourceRootDirectory:
+    """Build and flush a fresh DiskResourceRootDirectory, auto-building a Resource if needed."""
+    if resource is None:
+        resource = make_resource(session)
+    if root_directory is None:
+        root_directory = f"/{next_seq('rootdir')}"
+
+    return DiskResourceRootDirectory.create(
+        session,
+        resource_id=resource.resource_id,
+        root_directory=root_directory,
+        charging_exempt=charging_exempt,
+        active=active,
+    )

@@ -34,4 +34,9 @@
         {{ checkbox_field('charging_exempt', 'Charging exempt',
                           help='If checked, directories under this root do not incur disk charges.',
                           id='addDiskRootExempt') }}
+
+        {{ checkbox_field('active', 'Active',
+                          default=True,
+                          help='Uncheck to create as inactive (soft-deleted). Inactive roots remain visible to admins but are flagged disabled.',
+                          id='addDiskRootActive') }}
 {% endcall %}

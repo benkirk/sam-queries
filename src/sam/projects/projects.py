@@ -1419,6 +1419,8 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
     project = relationship('Project', back_populates='directories')
     project_directory_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
+    disk_charge_summaries = relationship('DiskChargeSummary',
+                                         back_populates='project_directory')
 
     @classmethod
     def create(cls, session, *, project_id: int, directory_name: str,
