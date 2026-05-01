@@ -20,6 +20,14 @@ Complete index of all documentation in the SAM Queries project.
   - AWS credentials
   - Security best practices
 
+- **[AUTHENTICATION.md](AUTHENTICATION.md)** - Authentication & SSO guide
+  - How users sign in (UX walkthrough for non-engineers)
+  - Technical OIDC flow with Microsoft Entra
+  - Per-environment deployment matrix (local, staging, k8s)
+  - Operations: secret rotation, troubleshooting, common failures
+  - Security model and future plans
+  - Glossary of terms
+
 - **[DATABASE_SWITCHING.md](DATABASE_SWITCHING.md)** - Switching between databases
   - Local vs production
   - Switch scripts
@@ -116,6 +124,8 @@ sam-search project SCSG0001
 
 - **Set up locally?** → [LOCAL_SETUP.md](LOCAL_SETUP.md)
 - **Configure credentials?** → [CREDENTIALS.md](CREDENTIALS.md)
+- **Understand login / SSO?** → [AUTHENTICATION.md](AUTHENTICATION.md)
+- **Rotate the OIDC client secret?** → [AUTHENTICATION.md#operations](AUTHENTICATION.md#operations)
 - **Switch databases?** → [DATABASE_SWITCHING.md](DATABASE_SWITCHING.md)
 - **Use setup scripts?** → [SCRIPTS.md](SCRIPTS.md) or [scripts/setup/README.md](../scripts/setup/README.md)
 - **Fix Docker issues?** → [DOCKER_TROUBLESHOOTING.md](DOCKER_TROUBLESHOOTING.md)

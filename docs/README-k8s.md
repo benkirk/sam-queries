@@ -164,7 +164,7 @@ helm install samuel ./helm -f helm/values.yaml -n <namespace>
 
 ### How Secrets Work on CIRRUS
 
-The three `ExternalSecret` CRD resources rendered by the chart instruct ESO to pull
+The four `ExternalSecret` CRD resources rendered by the chart instruct ESO to pull
 credentials from OpenBao and create k8s Secrets automatically:
 
 | k8s Secret | OpenBao Path | Contains |
@@ -172,9 +172,53 @@ credentials from OpenBao and create k8s Secrets automatically:
 | `samuel-db-credentials` | `csg/pg-superuser` | `STATUS_DB_USERNAME`, `STATUS_DB_PASSWORD` |
 | `samuel-sam-db-credentials` | `csg/sam-readuser` | `SAM_DB_USERNAME`, `SAM_DB_PASSWORD` |
 | `samuel-jh-credentials` | `csg/jh-api-token` | `JUPYTERHUB_API_TOKEN` |
+| `samuel-oidc-credentials` | `csg/sam-oidc` | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `FLASK_SECRET_KEY` |
 
 ESO refreshes these every hour (`refreshInterval: 1h`). You never manage these secrets
 manually on CIRRUS — rotating credentials in OpenBao is sufficient.
+
+**Force an immediate sync** (after rotating a value in OpenBao instead of waiting up to 1h):
+
+```bash
+kubectl annotate externalsecret samuel-oidc-credentials-esos -n <ns> \
+  force-sync=$(date +%s) --overwrite
+kubectl rollout restart deployment/samuel -n <ns>
+```
+
+### OIDC SSO
+
+The k8s deployment authenticates via Microsoft Entra (Azure AD) OIDC. Config:
+
+| Env var | Source | Purpose |
+|---|---|---|
+| `AUTH_PROVIDER=oidc` | `values.yaml` | Selects OIDC provider in the Flask app |
+| `OIDC_REDIRECT_URI` | `values.yaml` | Set to `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
+| `OIDC_USERNAME_CLAIM` | `values.yaml` | Default `preferred_username`; SAM resolves on the part before `@` |
+| `OIDC_SCOPES` | `values.yaml` | Default `openid email profile` |
+| `FLASK_CONFIG=production` | `values.yaml` | Required for HTTPS — sets `SESSION_COOKIE_SECURE=True` |
+| `OIDC_CLIENT_ID` | `samuel-oidc-credentials` Secret | Microsoft Entra app client ID |
+| `OIDC_CLIENT_SECRET` | `samuel-oidc-credentials` Secret | Microsoft Entra app client secret |
+| `OIDC_ISSUER` | `samuel-oidc-credentials` Secret | e.g. `https://login.microsoftonline.com/{tenant}/v2.0` |
+| `FLASK_SECRET_KEY` | `samuel-oidc-credentials` Secret | Per-environment session signing key (32-byte hex) |
+
+The Entra app's reply URLs must include `https://samuel.k8s.ucar.edu/auth/oidc/callback`.
+The post-logout redirect URI `https://samuel.k8s.ucar.edu/` must also be allowlisted
+(see `infrastructure/README.md` "OIDC SSO Integration" for the IT handoff checklist).
+
+### Per-environment matrix
+
+| Deployment | URL | Auth provider | OIDC creds source | Reply URL on Entra |
+|---|---|---|---|---|
+| Local Docker Compose (`webdev`) | `http://localhost:5050` | stub (`DISABLE_AUTH=1`) | n/a | n/a |
+| Local k8s (Docker Desktop, `values-local.yaml`) | port-forwarded | stub (`DISABLE_AUTH=1`) | n/a | n/a |
+| Fargate staging | `https://sam-staging.csgsam.ucar.edu` | oidc | AWS SSM `/sam/staging/oidc-*` | `https://sam-staging.csgsam.ucar.edu/auth/oidc/callback` |
+| CIRRUS k8s (this chart) | `https://samuel.k8s.ucar.edu` | oidc | OpenBao `csg/sam-oidc` | `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
+| Future: ECS production | tbd | oidc | AWS SSM `/sam/production/oidc-*` | tbd |
+| Future: k8s staging | tbd | oidc | OpenBao `csg/sam-staging-oidc` | tbd |
+
+When the per-environment Entra app strategy is adopted (separate `sam-production`
+and `sam-staging` Entra apps), only the OpenBao / SSM values change — the chart
+templates and Terraform modules stay identical.
 
 ### Accessing the App
 

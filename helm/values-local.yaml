@@ -16,6 +16,7 @@ webapp:
   env:
     DISABLE_AUTH: "1"                     # Skip auth for local dev
     FLASK_DEBUG: "1"
+    FLASK_CONFIG: "development"           # Override production default; DEBUG=True, SESSION_COOKIE_SECURE=False (HTTP works locally)
     FLASK_SECRET_KEY: "68e6044431211026738c8c77d7696046e9d6c440b14993557c576d66e6d03fe3"
     AUDIT_ENABLED: "0"
     AUDIT_LOG_PATH: "/tmp/model_audit.log"
@@ -26,6 +27,12 @@ webapp:
     JUPYTERHUB_API_URL: "https://jupyterhub.hpc.ucar.edu"
     JUPYTERHUB_INSTANCE: "stable"
     JUPYTERHUB_CACHE_TTL: "300"
+    # Override production OIDC envs back to stub so OAuth client never registers
+    # locally (DISABLE_AUTH=1 already short-circuits auth, this is defense-in-depth).
+    AUTH_PROVIDER: "stub"
+    OIDC_REDIRECT_URI: ""
+    OIDC_USERNAME_CLAIM: ""
+    OIDC_SCOPES: ""
 
   dbCredentials:
     enabled: true
@@ -38,3 +45,6 @@ webapp:
   jupyterhubCredentials:
     enabled: true
     useExternalSecret: false
+
+  oidcCredentials:
+    enabled: false                        # Local k8s uses DISABLE_AUTH=1 stub; no OpenBao/OIDC dependency
