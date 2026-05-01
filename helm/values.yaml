@@ -40,7 +40,7 @@ webapp:
     OIDC_SCOPES: "openid email profile"
     # API keys for HPC status collectors (bcrypt hashes — safe to store here).
     # Generate with: python scripts/gen_api_key.py --username collector
-    # API_KEYS_COLLECTOR: "$2b$12$replace_with_real_hash_from_gen_script"
+    API_KEYS_COLLECTOR: "$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2"
 
   dbCredentials:
     enabled: true                         # Enable syncing credentials from OpenBao
