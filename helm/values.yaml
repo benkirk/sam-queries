@@ -21,7 +21,7 @@ webapp:
   env:
     DISABLE_AUTH: "0"                     # Explicitly disabled — must remain 0 in production
     FLASK_DEBUG: "0"
-    FLASK_SECRET_KEY: "dev-only-insecure-key-change-for-production"
+    FLASK_CONFIG: "production"            # Selects ProductionConfig (DEBUG=False, SESSION_COOKIE_SECURE=True)
     AUDIT_ENABLED: "1"
     AUDIT_LOG_PATH: "/var/log/sam/model_audit.log"
     JUPYTERHUB_API_URL: "https://jupyterhub.hpc.ucar.edu"
@@ -32,6 +32,12 @@ webapp:
     STATUS_DB_DRIVER: "postgresql"
     STATUS_DB_SERVER: "csg-postgres.k8s.ucar.edu"
     GOOGLE_CALENDAR_EMBED_URL: "https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver"
+    # OIDC SSO via Microsoft Entra. Client ID/secret/issuer and FLASK_SECRET_KEY
+    # are injected via secretKeyRef from the oidcCredentials ExternalSecret below.
+    AUTH_PROVIDER: "oidc"
+    OIDC_REDIRECT_URI: "https://samuel.k8s.ucar.edu/auth/oidc/callback"
+    OIDC_USERNAME_CLAIM: "preferred_username"
+    OIDC_SCOPES: "openid email profile"
     # API keys for HPC status collectors (bcrypt hashes — safe to store here).
     # Generate with: python scripts/gen_api_key.py --username collector
     # API_KEYS_COLLECTOR: "$2b$12$replace_with_real_hash_from_gen_script"
@@ -58,3 +64,17 @@ webapp:
     secretStoreRefName: csg-ro            # Name of the SecretStore to use
     secretPath: csg/jh-api-token          # Path in OpenBao where JupyterHub credentials are stored
     tokenKey: token                       # Key in OpenBao for the token
+
+  # OIDC SSO credentials + Flask session-signing key.
+  # secretPath convention: csg/sam-{env}-oidc when multiple environments coexist.
+  # csg/sam-oidc is shorthand for the production-equivalent (samuel.k8s.ucar.edu) deployment.
+  # Future staging k8s deployment should override secretPath: csg/sam-staging-oidc in values-staging.yaml.
+  oidcCredentials:
+    enabled: true                         # Enable syncing OIDC credentials from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
+    secretStoreRefName: csg-ro            # Name of the SecretStore to use
+    secretPath: csg/sam-oidc              # Path in OpenBao for OIDC client + Flask session key
+    clientIdKey: client_id                # OIDC client ID (Microsoft Entra app registration)
+    clientSecretKey: client_secret        # OIDC client secret
+    issuerKey: issuer                     # OIDC issuer URL (e.g. https://login.microsoftonline.com/{tenant}/v2.0)
+    flaskSecretKeyKey: flask_secret_key   # Per-environment Flask session signing key (32-byte hex)
