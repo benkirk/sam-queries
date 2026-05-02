@@ -138,6 +138,11 @@ def log_allocation_transaction(
     # Java enum throws on anything outside {NEW, ADJUSTMENT, SUPPLEMENT,
     # EXTENSION, TRANSFER}). Tagged intents prepend "[TAG] " to the
     # comment so parse_intent() can recover the original meaning.
+    #
+    # TRANSITIONAL — REMOVE WHEN LEGACY SAM IS RETIRED. Once the Java
+    # codebase is gone, write transaction_type directly from the enum
+    # value and stop emitting [TAG] prefixes. See the retirement note
+    # on AllocationTransactionType in sam.accounting.allocations.
     db_type, tag = LEGACY_TYPE_MAP[transaction_type]
     if tag is not None:
         final_comment = f"[{tag}] {final_comment}" if final_comment else f"[{tag}]"

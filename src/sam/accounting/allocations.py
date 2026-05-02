@@ -288,6 +288,20 @@ class AllocationTransactionType(enum.StrEnum):
     ``transaction_comment`` so the original intent is recoverable via
     ``parse_intent()``. See ``LEGACY_TRANSACTION_TYPES`` for the closed
     set of strings that may appear in the column.
+
+    .. note:: **Transitional design — retire when legacy SAM is decommissioned.**
+
+       This intent → legacy-string mapping (``LEGACY_TYPE_MAP``,
+       ``intent_filter``, ``parse_intent``, the ``[TAG]`` comment
+       convention) exists solely so the new Python implementation can
+       coexist with legacy SAM's Java enum validator on shared MySQL
+       storage. Once legacy SAM is retired, the entire translation layer
+       can be deleted: drop ``LEGACY_TYPE_MAP`` / ``parse_intent`` /
+       ``intent_filter``, store the Python intent strings directly in
+       ``transaction_type``, and stop emitting ``[TAG]`` prefixes. A
+       one-shot data migration can rewrite existing rows
+       (``ADJUSTMENT`` + ``[DELETE]`` → ``DELETE``, etc.) using the same
+       ``parse_intent`` logic before deleting the helper.
     """
     # Python-side intents (translated to legacy strings on write)
     CREATE = "CREATE"
@@ -325,6 +339,9 @@ LEGACY_TRANSACTION_TYPES = frozenset({
 #: the writer also forces ``transaction_amount = 0.0`` so the legacy
 #: replay's ``addAmount`` is a no-op (these map to ADJUSTMENT, which
 #: replay treats as additive).
+#:
+#: **DELETE THIS WHEN LEGACY SAM IS RETIRED.** See
+#: ``AllocationTransactionType`` docstring for the retirement plan.
 LEGACY_TYPE_MAP: dict = {
     AllocationTransactionType.CREATE:     ("NEW",        None),
     AllocationTransactionType.RENEW:      ("NEW",        "RENEW"),
