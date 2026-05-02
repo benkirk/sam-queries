@@ -222,10 +222,7 @@ class TestReplayAmount:
 
     def test_single_new_row(self, session, acting_user):
         alloc = make_allocation(session, amount=1000.0)
-        # Reset transactions: write a clean NEW.
-        session.query(AllocationTransaction).filter_by(
-            allocation_id=alloc.allocation_id,
-        ).delete()
+        # Allocation.create() does NOT auto-log transactions.
         log_allocation_transaction(
             session, alloc, acting_user.user_id, AllocationTransactionType.CREATE,
         )
@@ -236,9 +233,6 @@ class TestReplayAmount:
 
     def test_new_then_edit_replays_correctly(self, session, acting_user):
         alloc = make_allocation(session, amount=1000.0)
-        session.query(AllocationTransaction).filter_by(
-            allocation_id=alloc.allocation_id,
-        ).delete()
         log_allocation_transaction(
             session, alloc, acting_user.user_id, AllocationTransactionType.CREATE,
         )
@@ -259,9 +253,6 @@ class TestReplayAmount:
         bug). Pre-fix replay would give 926. Post-fix, B1 ensures the
         EDIT row stores the +4 delta, so replay gives 465."""
         alloc = make_allocation(session, amount=461.0)
-        session.query(AllocationTransaction).filter_by(
-            allocation_id=alloc.allocation_id,
-        ).delete()
 
         # Two NEW rows (mirroring B2-pre bug — kept here as a regression test
         # against legacy replay's idempotent-NEW semantics).

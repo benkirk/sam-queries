@@ -66,10 +66,8 @@ def _seed_cesm0002_bug(session, user, *, intended_old=461.0, intended_new=465.0)
         start_date=datetime.now() - timedelta(days=30),
         end_date=datetime.now() + timedelta(days=365),
     )
-    # Wipe any auto-built transactions
-    session.query(AllocationTransaction).filter_by(
-        allocation_id=alloc.allocation_id,
-    ).delete()
+    # make_allocation → Allocation.create() does NOT auto-log transactions,
+    # so the audit trail is empty here and we own all the rows.
 
     # Two NEW rows (mirrors B2-pre duplicate-NEW pattern from renew.py)
     base_time = datetime(2026, 4, 23, 9, 4, 25)
@@ -190,11 +188,8 @@ class TestDiscoverFalsePositives:
             start_date=datetime.now(),
             end_date=datetime.now() + timedelta(days=30),
         )
-        # Wipe any existing transactions (factory may have logged some)
-        session.query(AllocationTransaction).filter_by(
-            allocation_id=alloc.allocation_id,
-        ).delete()
-        session.flush()
+        # Allocation.create() does NOT auto-log transactions; the audit
+        # trail is empty here.
 
         # Write a clean NEW + correct EDIT-as-ADJUSTMENT (post-B1 shape:
         # transaction_amount is the +delta, not the new total).
@@ -225,9 +220,7 @@ class TestDiscoverFalsePositives:
         must NOT be flagged as the pre-B1 bug."""
         user = make_user(session)
         alloc = make_allocation(session, amount=500.0)
-        session.query(AllocationTransaction).filter_by(
-            allocation_id=alloc.allocation_id,
-        ).delete()
+        # Allocation.create() does NOT auto-log transactions.
         session.add(AllocationTransaction(
             allocation_id=alloc.allocation_id,
             user_id=user.user_id,
@@ -269,17 +262,15 @@ class TestDiscoverFalsePositives:
                 b, user_id=user.user_id, remediation_tag=_remediation_tag(),
             ))
         session.flush()
+        # Expire so alloc.transactions reloads with the corrective row.
+        # Without this the relationship is stale and replay sees only
+        # the pre-correction history (replay=926, the bug value).
+        session.refresh(alloc)
 
-        # Re-discover — the bogus row matches the same fingerprint as
-        # before, but the allocation is now self-consistent under
-        # replay, so needs_repair should be False even if bogus_rows is
-        # non-empty (post_replay confirms the fix).
+        # Re-discover — the historical bogus row still matches the
+        # fingerprint, but the allocation is now self-consistent under
+        # replay, so needs_repair is False.
         finding2 = _discover_for_allocation(alloc)
-        finding2.post_replay = _simulate_post_correction(finding2, alloc.transactions)
-        # The discover heuristic still flags the bogus row, but a real
-        # apply step would re-introduce the correction; in practice
-        # callers should check finding.needs_repair (replay-vs-amount)
-        # before deciding to act.
         assert not finding2.needs_repair
 
 
