@@ -33,7 +33,6 @@ from sam.accounting.allocations import (
 from sam.fmt import round_to_sig_figs
 from sam.projects.projects import Project
 from sam.manage.allocations import (
-    create_allocation,
     date_ranges_overlap,
     log_allocation_transaction,
     validate_allocation_dates,
@@ -341,7 +340,13 @@ def renew_project_allocations(
         if scale != 1.0:
             scaled_root_amount = round_to_sig_figs(scaled_root_amount)
 
-        new_root = create_allocation(
+        # Create the new root allocation row directly via the model
+        # classmethod, then log exactly ONE RENEW transaction. We previously
+        # called manage.create_allocation() (which logs a CREATE) AND then
+        # logged a second RENEW row for the same allocation; that left two
+        # NEW rows in the audit trail per renewed root. Mirrors the child-
+        # allocation pattern below.
+        new_root = Allocation.create(
             session,
             project_id=root_project_id,
             resource_id=resource_id,
@@ -349,7 +354,6 @@ def renew_project_allocations(
             start_date=new_start,
             end_date=new_end,
             description=source_root.description,
-            user_id=user_id,
         )
         log_allocation_transaction(
             session,

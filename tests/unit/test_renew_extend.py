@@ -318,6 +318,34 @@ class TestRenewStandalone:
                 user_id=acting_user.user_id,
             )
 
+    def test_exactly_one_audit_row_per_renewed_allocation(
+        self, session, standalone_project, derecho, acting_user
+    ):
+        # Regression for the CESM0002 bug: pre-fix, the root-allocation
+        # branch of renew_project_allocations called
+        # manage.create_allocation() (which logs a CREATE) AND then logged
+        # a second RENEW for the same allocation, yielding two NEW rows
+        # per renewed root in the legacy DB. This asserts the expected
+        # post-fix invariant: exactly one audit row per renewed
+        # allocation, of type RENEW.
+        _seed_standalone_source(session, standalone_project, derecho)
+        created = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        txns = (
+            session.query(AllocationTransaction)
+            .filter_by(allocation_id=created[0].allocation_id)
+            .all()
+        )
+        assert len(txns) == 1
+        assert txns[0].transaction_type == AllocationTransactionType.RENEW
+
 
 class TestRenewInheritingTree:
 
