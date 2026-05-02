@@ -602,8 +602,14 @@ def htmx_admin_disk_root_create():
             form=form if form is not None else request.form,
         )
 
+    # Pre-process: drop empty strings + inject explicit booleans for checkboxes
+    # (absent from request.form when unchecked) per CLAUDE.md §9.
+    raw = {k: v for k, v in request.form.items() if v != ''}
+    raw['charging_exempt'] = 'charging_exempt' in request.form
+    raw['active'] = 'active' in request.form
+
     try:
-        data = CreateDiskResourceRootDirectoryForm().load(request.form)
+        data = CreateDiskResourceRootDirectoryForm().load(raw)
     except ValidationError as e:
         return _reload(CreateDiskResourceRootDirectoryForm.flatten_errors(e.messages))
 
@@ -618,6 +624,7 @@ def htmx_admin_disk_root_create():
                 resource_id=data['resource_id'],
                 root_directory=data['root_directory'],
                 charging_exempt=data['charging_exempt'],
+                active=data['active'],
             )
     except IntegrityError:
         db.session.rollback()
@@ -668,8 +675,14 @@ def htmx_admin_disk_root_edit(dr_id):
             form=form if form is not None else request.form,
         )
 
+    # Pre-process: drop empty strings + inject explicit booleans for checkboxes
+    # (absent from request.form when unchecked) per CLAUDE.md §9.
+    raw = {k: v for k, v in request.form.items() if v != ''}
+    raw['charging_exempt'] = 'charging_exempt' in request.form
+    raw['active'] = 'active' in request.form
+
     try:
-        data = EditDiskResourceRootDirectoryForm().load(request.form)
+        data = EditDiskResourceRootDirectoryForm().load(raw)
     except ValidationError as e:
         return _reload(EditDiskResourceRootDirectoryForm.flatten_errors(e.messages))
 
@@ -683,6 +696,7 @@ def htmx_admin_disk_root_edit(dr_id):
                 resource_id=data['resource_id'],
                 root_directory=data['root_directory'],
                 charging_exempt=data['charging_exempt'],
+                active=data['active'],
             )
     except IntegrityError:
         db.session.rollback()
@@ -691,6 +705,28 @@ def htmx_admin_disk_root_edit(dr_id):
         return _reload([f'Error updating root directory: {e}'])
 
     return htmx_success_message(_RESOURCES_TRIGGERS, 'Root directory updated.')
+
+
+@bp.route('/htmx/admin/disk-roots/<int:dr_id>/toggle-active', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_RESOURCES)
+def htmx_admin_disk_root_toggle_active(dr_id):
+    """Soft-delete toggle: flip the active flag on a DiskResourceRootDirectory."""
+    from sam.resources.resources import DiskResourceRootDirectory
+
+    dr = db.session.get(DiskResourceRootDirectory, dr_id)
+    if not dr:
+        return '<div class="alert alert-danger">Root directory not found.</div>', 404
+
+    new_state = not dr.is_active
+    try:
+        with management_transaction(db.session):
+            dr.update(active=new_state)
+    except Exception as e:
+        return f'<div class="alert alert-danger">Error: {e}</div>', 500
+
+    msg = 'Root directory activated.' if new_state else 'Root directory deactivated.'
+    return htmx_success_message(_RESOURCES_TRIGGERS, msg)
 
 
 @bp.route('/htmx/admin/disk-roots/<int:dr_id>/delete', methods=['POST'])

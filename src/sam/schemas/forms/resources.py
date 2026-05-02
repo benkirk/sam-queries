@@ -94,6 +94,7 @@ class CreateDiskResourceRootDirectoryForm(HtmxFormSchema):
     resource_id = f.Int(required=True)
     root_directory = f.Str(required=True, validate=v.Length(min=1, max=64))
     charging_exempt = f.Bool(load_default=False)
+    active = f.Bool(load_default=True)
 
     @post_load
     def normalize(self, data, **kwargs):

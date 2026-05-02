@@ -37,4 +37,9 @@
                           default=dr.charging_exempt,
                           help='If checked, directories under this root do not incur disk charges.',
                           id='editDiskRootExempt') }}
+
+        {{ checkbox_field('active', 'Active',
+                          default=dr.is_active,
+                          help='Uncheck to soft-delete this root directory. Historical disk_charge_summary rows referencing it are preserved.',
+                          id='editDiskRootActive') }}
 {% endcall %}

@@ -365,8 +365,14 @@ class ResourceShell(Base, TimestampMixin):
 
 
 #----------------------------------------------------------------------------
-class DiskResourceRootDirectory(Base, SessionMixin):
-    """Root directories for disk resources with charging exemption flags."""
+class DiskResourceRootDirectory(Base, SessionMixin, ActiveFlagMixin):
+    """Root directories for disk resources with charging exemption flags.
+
+    Soft-delete: the ``active`` column (from ``ActiveFlagMixin``) flags rows
+    that have been retired. Inactive rows remain in the table so that
+    historical references (e.g. ``ProjectDirectory`` rows under this root)
+    keep a stable parent.
+    """
     __tablename__ = 'disk_resource_root_directory'
 
     __table_args__ = (
@@ -388,7 +394,8 @@ class DiskResourceRootDirectory(Base, SessionMixin):
 
     @classmethod
     def create(cls, session, *, resource_id: int, root_directory: str,
-               charging_exempt: bool = False) -> 'DiskResourceRootDirectory':
+               charging_exempt: bool = False,
+               active: bool = True) -> 'DiskResourceRootDirectory':
         """Create a new root directory entry for a disk resource.
 
         Does NOT commit; caller must wrap in management_transaction().
@@ -399,13 +406,14 @@ class DiskResourceRootDirectory(Base, SessionMixin):
             raise ValueError('root_directory is required')
         obj = cls(resource_id=resource_id,
                   root_directory=cleaned,
-                  charging_exempt=bool(charging_exempt))
+                  charging_exempt=bool(charging_exempt),
+                  active=bool(active))
         session.add(obj)
         session.flush()
         return obj
 
     def update(self, *, resource_id=None, root_directory=None,
-               charging_exempt=None) -> 'DiskResourceRootDirectory':
+               charging_exempt=None, active=None) -> 'DiskResourceRootDirectory':
         """Update one or more fields. Does NOT commit."""
         if root_directory is not None:
             cleaned = root_directory.strip()
@@ -416,11 +424,17 @@ class DiskResourceRootDirectory(Base, SessionMixin):
             self.resource_id = resource_id
         if charging_exempt is not None:
             self.charging_exempt = bool(charging_exempt)
+        if active is not None:
+            self.active = bool(active)
         self.session.flush()
         return self
 
     def delete(self) -> None:
-        """Hard-delete this row. Does NOT commit."""
+        """Hard-delete this row. Does NOT commit.
+
+        Prefer soft-delete (``self.update(active=False)``) when ``ProjectDirectory``
+        rows under this root may already exist.
+        """
         self.session.delete(self)
         self.session.flush()
 
@@ -429,7 +443,7 @@ class DiskResourceRootDirectory(Base, SessionMixin):
 
     def __repr__(self):
         return (f"<DiskResourceRootDirectory(path='{self.root_directory}', "
-                f"exempt={self.charging_exempt})>")
+                f"exempt={self.charging_exempt}, active={self.active})>")
 
 
 # ============================================================================
