@@ -316,11 +316,18 @@ def discover(
 
 
 def _print_discover(findings: List[AllocationFinding]) -> None:
-    needs = [f for f in findings if f.bogus_rows]
+    needs = [f for f in findings if f.needs_repair]
+    legacy_only = [f for f in findings if f.bogus_rows and not f.needs_repair]
     print(f"\n=== Discover: {len(findings)} allocations under tree, "
           f"{len(needs)} need repair ===\n")
     if not needs:
-        print("  ✓ Audit trail already self-consistent — no work to do.")
+        if legacy_only:
+            print(f"  ✓ Audit trail self-consistent.  "
+                  f"({len(legacy_only)} allocation(s) carry the historical "
+                  f"bogus-row fingerprint but already have a corrective row "
+                  f"applied — no further action needed.)")
+        else:
+            print("  ✓ Audit trail clean — no work to do.")
         return
     for f in needs:
         delta_obs = f.pre_replay - f.stored_amount
@@ -336,10 +343,10 @@ def _print_discover(findings: List[AllocationFinding]) -> None:
 
 
 def _print_dry_run(findings: List[AllocationFinding], remediation_tag: str) -> None:
-    needs = [f for f in findings if f.bogus_rows]
+    needs = [f for f in findings if f.needs_repair]
     print(f"\n=== Dry-run: proposed INSERT statements ===\n")
     if not needs:
-        print("  (nothing to insert)")
+        print("  (nothing to insert — audit trail already self-consistent)")
         return
     for f in needs:
         print(f"  -- Allocation {f.allocation_id} ({f.projcode}/{f.resource_name})")
@@ -429,7 +436,10 @@ def apply_corrections(
 
     Returns the number of corrective rows successfully flushed.
     """
-    needs = [f for f in findings if f.bogus_rows]
+    # Only insert corrections for allocations whose live replay-vs-stored
+    # differs (needs_repair). Skip allocations that already carry a
+    # remediation row from a prior run — re-applying would over-correct.
+    needs = [f for f in findings if f.needs_repair]
     inserted = 0
     for f in needs:
         for b in f.bogus_rows:
@@ -440,16 +450,17 @@ def apply_corrections(
     session.flush()
 
     # Verify replay matches stored amount for every allocation we touched
-    for f in needs:
-        alloc = session.get(Allocation, f.allocation_id)
-        session.refresh(alloc)
-        replayed = replay_amount(alloc.transactions)
-        if abs(replayed - alloc.amount) > REPLAY_TOLERANCE:
-            raise ReplayMismatch(
-                f"Post-apply replay mismatch on allocation {f.allocation_id}: "
-                f"replayed={replayed:,.2f} != amount={alloc.amount:,.2f} "
-                f"(diff={replayed - alloc.amount:+,.2f})."
-            )
+    if needs:
+        for f in needs:
+            alloc = session.get(Allocation, f.allocation_id)
+            session.refresh(alloc)
+            replayed = replay_amount(alloc.transactions)
+            if abs(replayed - alloc.amount) > REPLAY_TOLERANCE:
+                raise ReplayMismatch(
+                    f"Post-apply replay mismatch on allocation {f.allocation_id}: "
+                    f"replayed={replayed:,.2f} != amount={alloc.amount:,.2f} "
+                    f"(diff={replayed - alloc.amount:+,.2f})."
+                )
 
     return inserted
 
@@ -532,6 +543,15 @@ def main() -> int:
             _print_dry_run(findings, tag)
 
         if args.apply:
+            # Capture the set of allocation_ids we're about to touch so
+            # the post-apply verification scopes to exactly those rows.
+            # Pre-existing replay drift on unrelated allocations under
+            # the same tree (e.g. retired Cheyenne allocations) is out
+            # of scope for this remediation.
+            touched_ids = {
+                f.allocation_id for f in findings if f.needs_repair
+            }
+
             print(f"\n=== Applying corrections (tag={tag}, user_id={args.user_id}) ===")
             try:
                 inserted = apply_corrections(
@@ -545,19 +565,36 @@ def main() -> int:
                 session.rollback()
                 return 1
 
+            if inserted == 0:
+                print("  (no corrections needed — audit trail already self-consistent)")
+                return 0
+
             session.commit()
             print(f"  ✓ Committed {inserted} corrective row(s)")
 
-            # Re-discover for verification
+            # Re-discover and verify only the allocations we just touched.
             print("\n=== Verification: re-running discover ===")
             session.expire_all()
             verify_findings = discover(session, args.projcode, tolerance=args.tolerance)
-            still_broken = [f for f in verify_findings if f.needs_repair]
+            still_broken = [
+                f for f in verify_findings
+                if f.allocation_id in touched_ids and f.needs_repair
+            ]
             if still_broken:
-                print(f"  ✗ {len(still_broken)} allocation(s) still report mismatches",
-                      file=sys.stderr)
+                print(f"  ✗ {len(still_broken)} touched allocation(s) still report "
+                      f"mismatches", file=sys.stderr)
                 return 1
-            print("  ✓ All allocations under tree now self-consistent")
+            print(f"  ✓ All {len(touched_ids)} touched allocation(s) now self-consistent")
+
+            unrelated = [
+                f for f in verify_findings
+                if f.allocation_id not in touched_ids and f.needs_repair
+            ]
+            if unrelated:
+                print(f"\n  Note: {len(unrelated)} unrelated allocation(s) under the "
+                      f"tree have pre-existing replay drift (no bogus-row "
+                      f"fingerprint). Out of scope for this remediation; "
+                      f"investigate separately if needed.")
 
     return 0
 
