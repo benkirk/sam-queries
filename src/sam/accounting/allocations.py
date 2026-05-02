@@ -272,21 +272,210 @@ class AllocationTransaction(Base):
 
 #----------------------------------------------------------------------------
 class AllocationTransactionType(enum.StrEnum):
-    """Transaction types for allocation audit trail."""
-    # Python-side types (new operations)
+    """Transaction types for allocation audit trail.
+
+    Two vocabularies coexist:
+
+    1. **Python-side intent** (CREATE/EDIT/RENEW/DELETE/DETACH/LINK/EXPIRE):
+       what the application means by the operation. Use these at call sites
+       — they read clearly and are greppable.
+    2. **Legacy DB strings** (NEW/ADJUSTMENT/SUPPLEMENT/EXTENSION/TRANSFER):
+       the only values legacy SAM's Java enum will accept in the
+       ``transaction_type`` column. Anything else throws on the Java side.
+
+    ``log_allocation_transaction`` translates intent → DB string via
+    ``LEGACY_TYPE_MAP`` on write, and prepends a ``[TAG]`` to
+    ``transaction_comment`` so the original intent is recoverable via
+    ``parse_intent()``. See ``LEGACY_TRANSACTION_TYPES`` for the closed
+    set of strings that may appear in the column.
+
+    .. note:: **Transitional design — retire when legacy SAM is decommissioned.**
+
+       This intent → legacy-string mapping (``LEGACY_TYPE_MAP``,
+       ``intent_filter``, ``parse_intent``, the ``[TAG]`` comment
+       convention) exists solely so the new Python implementation can
+       coexist with legacy SAM's Java enum validator on shared MySQL
+       storage. Once legacy SAM is retired, the entire translation layer
+       can be deleted: drop ``LEGACY_TYPE_MAP`` / ``parse_intent`` /
+       ``intent_filter``, store the Python intent strings directly in
+       ``transaction_type``, and stop emitting ``[TAG]`` prefixes. A
+       one-shot data migration can rewrite existing rows
+       (``ADJUSTMENT`` + ``[DELETE]`` → ``DELETE``, etc.) using the same
+       ``parse_intent`` logic before deleting the helper.
+    """
+    # Python-side intents (translated to legacy strings on write)
     CREATE = "CREATE"
     EDIT = "EDIT"
-    TRANSFER = "TRANSFER"
-    ADJUSTMENT = "ADJUSTMENT"
     EXPIRE = "EXPIRE"
     DELETE = "DELETE"
     DETACH = "DETACH"
     LINK = "LINK"
     RENEW = "RENEW"
-    # Legacy Java-side types (present in existing DB data)
+    # Legacy strings (also valid as call-site values; identity-mapped)
     NEW = "NEW"
-    EXTENSION = "EXTENSION"
+    ADJUSTMENT = "ADJUSTMENT"
     SUPPLEMENT = "SUPPLEMENT"
+    EXTENSION = "EXTENSION"
+    TRANSFER = "TRANSFER"
+
+
+#: Closed set of values that may appear in
+#: ``allocation_transaction.transaction_type``. Legacy SAM's Java enum
+#: validator throws on anything outside this set.
+LEGACY_TRANSACTION_TYPES = frozenset({
+    "NEW", "ADJUSTMENT", "SUPPLEMENT", "EXTENSION", "TRANSFER",
+})
+
+
+#: Maps Python-side intent → ``(db_string, optional_comment_tag)``.
+#:
+#: The tag — when present — is prepended to ``transaction_comment`` as
+#: ``[TAG] <comment>`` so we can recover the high-level intent without
+#: needing a second column. Only intents that collapse onto an
+#: ambiguous DB string (e.g. CREATE vs RENEW both map to NEW) get a
+#: tag; identity mappings stay untagged.
+#:
+#: For DELETE/DETACH/LINK — operations that don't change ``amount`` —
+#: the writer also forces ``transaction_amount = 0.0`` so the legacy
+#: replay's ``addAmount`` is a no-op (these map to ADJUSTMENT, which
+#: replay treats as additive).
+#:
+#: **DELETE THIS WHEN LEGACY SAM IS RETIRED.** See
+#: ``AllocationTransactionType`` docstring for the retirement plan.
+LEGACY_TYPE_MAP: dict = {
+    AllocationTransactionType.CREATE:     ("NEW",        None),
+    AllocationTransactionType.RENEW:      ("NEW",        "RENEW"),
+    AllocationTransactionType.EDIT:       ("ADJUSTMENT", None),
+    AllocationTransactionType.EXPIRE:     ("EXTENSION",  None),
+    AllocationTransactionType.DELETE:     ("ADJUSTMENT", "DELETE"),
+    AllocationTransactionType.DETACH:     ("ADJUSTMENT", "DETACH"),
+    AllocationTransactionType.LINK:       ("ADJUSTMENT", "LINK"),
+    AllocationTransactionType.NEW:        ("NEW",        None),
+    AllocationTransactionType.ADJUSTMENT: ("ADJUSTMENT", None),
+    AllocationTransactionType.SUPPLEMENT: ("SUPPLEMENT", None),
+    AllocationTransactionType.EXTENSION:  ("EXTENSION",  None),
+    AllocationTransactionType.TRANSFER:   ("TRANSFER",   None),
+}
+
+#: Tags that must NEVER change once written (Stream A backfill rows
+#: also use a different ``[REMEDIATION YYYY-MM-DD]`` prefix; that one
+#: is NOT a type-tag and is not parsed by parse_intent).
+_RECOGNIZED_TAGS = frozenset({"RENEW", "DELETE", "DETACH", "LINK"})
+
+
+def parse_intent(txn: 'AllocationTransaction') -> AllocationTransactionType:
+    """Recover the original Python-side intent from a stored row.
+
+    Reads ``transaction_type`` + the optional ``[TAG]`` prefix on
+    ``transaction_comment``. Untagged rows return the intent that
+    naturally corresponds to the DB string (e.g. ADJUSTMENT → EDIT,
+    since EDIT is the canonical Python-side name; NEW → CREATE).
+
+    Returns the original ``AllocationTransactionType`` even for rows
+    written before B3 landed (those are still legacy strings, so the
+    untagged-fallback path applies).
+    """
+    db_type = txn.transaction_type
+    comment = txn.transaction_comment or ""
+
+    # Look for a leading [TAG] prefix
+    if comment.startswith("[") and "]" in comment:
+        tag = comment[1:comment.index("]")]
+        if tag in _RECOGNIZED_TAGS:
+            try:
+                return AllocationTransactionType[tag]
+            except KeyError:
+                pass
+
+    # Untagged: map DB string → canonical Python intent
+    _DB_TO_INTENT = {
+        "NEW":        AllocationTransactionType.CREATE,
+        "ADJUSTMENT": AllocationTransactionType.EDIT,
+        "SUPPLEMENT": AllocationTransactionType.SUPPLEMENT,
+        "EXTENSION":  AllocationTransactionType.EXTENSION,
+        "TRANSFER":   AllocationTransactionType.TRANSFER,
+    }
+    return _DB_TO_INTENT.get(db_type, AllocationTransactionType.EDIT)
+
+
+def intent_filter(intent: AllocationTransactionType):
+    """Build a SQLAlchemy filter expression matching rows of a given intent.
+
+    Translates Python-side intent → legacy DB string + optional ``[TAG]``
+    comment prefix. For tagged intents (RENEW, DELETE, DETACH, LINK) the
+    expression matches both the DB string AND the leading ``[TAG]`` in
+    the comment. For untagged intents whose DB string also serves a
+    different tagged intent (e.g. EDIT and DELETE both store as
+    ``ADJUSTMENT``), the filter excludes any ``[TAG]``-prefixed comment
+    so EDIT and DELETE remain distinguishable.
+
+    Example::
+
+        rows = session.query(AllocationTransaction).filter(
+            AllocationTransaction.allocation_id == aid,
+            intent_filter(AllocationTransactionType.RENEW),
+        ).all()
+    """
+    db_type, tag = LEGACY_TYPE_MAP[intent]
+    type_match = AllocationTransaction.transaction_type == db_type
+    if tag is not None:
+        return and_(
+            type_match,
+            AllocationTransaction.transaction_comment.like(f"[{tag}]%"),
+        )
+
+    # Untagged: exclude rows whose comment starts with a recognized [TAG],
+    # so that e.g. EDIT (untagged ADJUSTMENT) doesn't match DELETE
+    # (`[DELETE] ...` ADJUSTMENT). Backfill rows with [REMEDIATION ...]
+    # comments stay matchable here because REMEDIATION is not a
+    # recognized intent tag.
+    tagged_clauses = [
+        AllocationTransaction.transaction_comment.like(f"[{t}]%")
+        for t in _RECOGNIZED_TAGS
+    ]
+    return and_(
+        type_match,
+        or_(
+            AllocationTransaction.transaction_comment.is_(None),
+            ~or_(*tagged_clauses),
+        ),
+    )
+
+
+def replay_amount(transactions, *, until: Optional[datetime] = None) -> float:
+    """Replay a list of ``AllocationTransaction`` rows and return the resulting amount.
+
+    Mirrors legacy SAM's ``DateBoundedAllocationAmount`` /
+    ``AllocationTransactionType`` semantics:
+
+    - ``NEW``: ``setAmount(transaction_amount)`` (resets running total)
+    - ``ADJUSTMENT`` / ``SUPPLEMENT`` / ``TRANSFER``:
+      ``addAmount(transaction_amount)`` (delta)
+    - ``EXTENSION``: no amount change
+
+    Used by the Stream A backfill script to *prove* that a corrective
+    row repairs the audit-trail sum before any DB write. Also used by
+    tests as the post-fix invariant: replay(history) ≈ allocation.amount.
+
+    Args:
+        transactions: iterable of AllocationTransaction rows. Replayed
+            in ``creation_time`` ascending order.
+        until: optional cutoff — only rows with ``creation_time <= until``
+            are applied (matches legacy "as of date" reporting).
+    """
+    rows = sorted(
+        (t for t in transactions
+         if until is None or (t.creation_time and t.creation_time <= until)),
+        key=lambda t: (t.creation_time, t.allocation_transaction_id or 0),
+    )
+    amount = 0.0
+    for t in rows:
+        if t.transaction_type == "NEW":
+            amount = float(t.transaction_amount or 0.0)
+        elif t.transaction_type in ("ADJUSTMENT", "SUPPLEMENT", "TRANSFER"):
+            amount += float(t.transaction_amount or 0.0)
+        # EXTENSION: end_date only — no amount effect
+    return amount
 
 
 # ============================================================================

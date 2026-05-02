@@ -1,0 +1,424 @@
+Connected to 127.0.0.1/sam
+
+=== Discover: 768 allocations under tree, 19 need repair ===
+
+  Allocation 24519 (P93300007/Derecho)
+    stored amount =   25,000,000.00
+    legacy replay =   51,100,000.00  (off by +26,100,000.00)
+    └ bogus txid=54566: "Amount: 26,100,000.0 → 25,000,000.0" stored 25,000,000.00 (intended delta -1,100,000.00)
+  Allocation 24520 (P93300012/Derecho)
+    stored amount =   30,000,000.00
+    legacy replay =  105,500,000.00  (off by +75,500,000.00)
+    └ bogus txid=54565: "Amount: 40,500,000.0 → 35,000,000.0" stored 35,000,000.00 (intended delta -5,500,000.00)
+    └ bogus txid=54575: "Amount: 35,000,000.0 → 30,000,000.0" stored 30,000,000.00 (intended delta -5,000,000.00)
+  Allocation 24521 (P93300041/Derecho)
+    stored amount =   25,000,000.00
+    legacy replay =   94,500,000.00  (off by +69,500,000.00)
+    └ bogus txid=54564: "Amount: 34,500,000.0 → 35,000,000.0" stored 35,000,000.00 (intended delta +500,000.00)
+    └ bogus txid=54572: "Amount: 35,000,000.0 → 25,000,000.0" stored 25,000,000.00 (intended delta -10,000,000.00)
+  Allocation 24522 (P93300042/Derecho)
+    stored amount =   30,000,000.00
+    legacy replay =  104,200,000.00  (off by +74,200,000.00)
+    └ bogus txid=54563: "Amount: 39,200,000.0 → 35,000,000.0" stored 35,000,000.00 (intended delta -4,200,000.00)
+    └ bogus txid=54574: "Amount: 35,000,000.0 → 30,000,000.0" stored 30,000,000.00 (intended delta -5,000,000.00)
+  Allocation 24523 (P93300043/Derecho)
+    stored amount =   25,000,000.00
+    legacy replay =   50,800,000.00  (off by +25,800,000.00)
+    └ bogus txid=54562: "Amount: 25,800,000.0 → 25,000,000.0" stored 25,000,000.00 (intended delta -800,000.00)
+  Allocation 24518 (P93300065/Derecho)
+    stored amount =   16,000,000.00
+    legacy replay =   32,100,000.00  (off by +16,100,000.00)
+    └ bogus txid=54568: "Amount: 16,100,000.0 → 16,000,000.0" stored 16,000,000.00 (intended delta -100,000.00)
+  Allocation 24524 (P93300070/Derecho)
+    stored amount =   20,000,000.00
+    legacy replay =   42,800,000.00  (off by +22,800,000.00)
+    └ bogus txid=54561: "Amount: 22,800,000.0 → 20,000,000.0" stored 20,000,000.00 (intended delta -2,800,000.00)
+  Allocation 24525 (P93300301/Derecho)
+    stored amount =   20,000,000.00
+    legacy replay =   38,100,000.00  (off by +18,100,000.00)
+    └ bogus txid=54560: "Amount: 18,100,000.0 → 20,000,000.0" stored 20,000,000.00 (intended delta +1,900,000.00)
+  Allocation 24526 (P93300313/Derecho)
+    stored amount =   20,000,000.00
+    legacy replay =   43,100,000.00  (off by +23,100,000.00)
+    └ bogus txid=54559: "Amount: 23,100,000.0 → 20,000,000.0" stored 20,000,000.00 (intended delta -3,100,000.00)
+  Allocation 24527 (P93300324/Derecho)
+    stored amount =   20,000,000.00
+    legacy replay =   41,500,000.00  (off by +21,500,000.00)
+    └ bogus txid=54558: "Amount: 21,500,000.0 → 20,000,000.0" stored 20,000,000.00 (intended delta -1,500,000.00)
+  Allocation 24528 (P93300606/Derecho)
+    stored amount =   12,000,000.00
+    legacy replay =   24,100,000.00  (off by +12,100,000.00)
+    └ bogus txid=54557: "Amount: 12,100,000.0 → 12,000,000.0" stored 12,000,000.00 (intended delta -100,000.00)
+  Allocation 24511 (CESM0002/Derecho)
+    stored amount =  465,000,000.00
+    legacy replay =  926,000,000.00  (off by +461,000,000.00)
+    duplicate NEW rows: 1
+    └ bogus txid=54552: "Amount: 461,000,000.0 → 465,000,000.0" stored 465,000,000.00 (intended delta +4,000,000.00)
+  Allocation 24512 (CESM0019/Derecho)
+    stored amount =   30,000,000.00
+    legacy replay =   60,200,000.00  (off by +30,200,000.00)
+    └ bogus txid=54553: "Amount: 30,200,000.0 → 30,000,000.0" stored 30,000,000.00 (intended delta -200,000.00)
+  Allocation 24513 (CESM0020/Derecho)
+    stored amount =   35,000,000.00
+    legacy replay =  111,300,000.00  (off by +76,300,000.00)
+    └ bogus txid=54554: "Amount: 38,300,000.0 → 38,000,000.0" stored 38,000,000.00 (intended delta -300,000.00)
+    └ bogus txid=54573: "Amount: 38,000,000.0 → 35,000,000.0" stored 35,000,000.00 (intended delta -3,000,000.00)
+  Allocation 24514 (CESM0023/Derecho)
+    stored amount =  100,000,000.00
+    legacy replay =  332,000,000.00  (off by +232,000,000.00)
+    └ bogus txid=54555: "Amount: 117,000,000.0 → 115,000,000.0" stored 115,000,000.00 (intended delta -2,000,000.00)
+    └ bogus txid=54571: "Amount: 115,000,000.0 → 100,000,000.0" stored 100,000,000.00 (intended delta -15,000,000.00)
+  Allocation 24515 (CESM0024/Derecho)
+    stored amount =   30,000,000.00
+    legacy replay =   63,500,000.00  (off by +33,500,000.00)
+    └ bogus txid=54570: "Amount: 33,500,000.0 → 30,000,000.0" stored 30,000,000.00 (intended delta -3,500,000.00)
+  Allocation 24517 (CESM0027/Derecho)
+    stored amount =    4,000,000.00
+    legacy replay =    7,350,000.00  (off by +3,350,000.00)
+    └ bogus txid=54569: "Amount: 3,350,000.0 → 4,000,000.0" stored 4,000,000.00 (intended delta +650,000.00)
+  Allocation 24516 (CESM0028/Derecho)
+    stored amount =   20,000,000.00
+    legacy replay =   38,100,000.00  (off by +18,100,000.00)
+    └ bogus txid=54567: "Amount: 18,100,000.0 → 20,000,000.0" stored 20,000,000.00 (intended delta +1,900,000.00)
+  Allocation 24529 (CESM0029/Derecho)
+    stored amount =      400,000.00
+    legacy replay =      869,000.00  (off by +469,000.00)
+    └ bogus txid=54556: "Amount: 469,000.0 → 400,000.0" stored 400,000.00 (intended delta -69,000.00)
+
+=== Dry-run: proposed INSERT statements ===
+
+  -- Allocation 24519 (P93300007/Derecho)
+  -- pre-replay  = 51,100,000.00
+  -- stored      = 25,000,000.00
+  -- post-replay = 25,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24519, :user_id, 'ADJUSTMENT',
+     -26100000.0, -26100000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54566 stored post-edit total 25,000,000.00 instead of delta -1,100,000.00)', 0, NOW());
+
+  -- Allocation 24520 (P93300012/Derecho)
+  -- pre-replay  = 105,500,000.00
+  -- stored      = 30,000,000.00
+  -- post-replay = 30,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24520, :user_id, 'ADJUSTMENT',
+     -40500000.0, -40500000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54565 stored post-edit total 35,000,000.00 instead of delta -5,500,000.00)', 0, NOW());
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24520, :user_id, 'ADJUSTMENT',
+     -35000000.0, -35000000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54575 stored post-edit total 30,000,000.00 instead of delta -5,000,000.00)', 0, NOW());
+
+  -- Allocation 24521 (P93300041/Derecho)
+  -- pre-replay  = 94,500,000.00
+  -- stored      = 25,000,000.00
+  -- post-replay = 25,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24521, :user_id, 'ADJUSTMENT',
+     -34500000.0, -34500000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54564 stored post-edit total 35,000,000.00 instead of delta +500,000.00)', 0, NOW());
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24521, :user_id, 'ADJUSTMENT',
+     -35000000.0, -35000000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54572 stored post-edit total 25,000,000.00 instead of delta -10,000,000.00)', 0, NOW());
+
+  -- Allocation 24522 (P93300042/Derecho)
+  -- pre-replay  = 104,200,000.00
+  -- stored      = 30,000,000.00
+  -- post-replay = 30,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24522, :user_id, 'ADJUSTMENT',
+     -39200000.0, -39200000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54563 stored post-edit total 35,000,000.00 instead of delta -4,200,000.00)', 0, NOW());
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24522, :user_id, 'ADJUSTMENT',
+     -35000000.0, -35000000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54574 stored post-edit total 30,000,000.00 instead of delta -5,000,000.00)', 0, NOW());
+
+  -- Allocation 24523 (P93300043/Derecho)
+  -- pre-replay  = 50,800,000.00
+  -- stored      = 25,000,000.00
+  -- post-replay = 25,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24523, :user_id, 'ADJUSTMENT',
+     -25800000.0, -25800000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54562 stored post-edit total 25,000,000.00 instead of delta -800,000.00)', 0, NOW());
+
+  -- Allocation 24518 (P93300065/Derecho)
+  -- pre-replay  = 32,100,000.00
+  -- stored      = 16,000,000.00
+  -- post-replay = 16,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24518, :user_id, 'ADJUSTMENT',
+     -16100000.0, -16100000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54568 stored post-edit total 16,000,000.00 instead of delta -100,000.00)', 0, NOW());
+
+  -- Allocation 24524 (P93300070/Derecho)
+  -- pre-replay  = 42,800,000.00
+  -- stored      = 20,000,000.00
+  -- post-replay = 20,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24524, :user_id, 'ADJUSTMENT',
+     -22800000.0, -22800000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54561 stored post-edit total 20,000,000.00 instead of delta -2,800,000.00)', 0, NOW());
+
+  -- Allocation 24525 (P93300301/Derecho)
+  -- pre-replay  = 38,100,000.00
+  -- stored      = 20,000,000.00
+  -- post-replay = 20,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24525, :user_id, 'ADJUSTMENT',
+     -18100000.0, -18100000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54560 stored post-edit total 20,000,000.00 instead of delta +1,900,000.00)', 0, NOW());
+
+  -- Allocation 24526 (P93300313/Derecho)
+  -- pre-replay  = 43,100,000.00
+  -- stored      = 20,000,000.00
+  -- post-replay = 20,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24526, :user_id, 'ADJUSTMENT',
+     -23100000.0, -23100000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54559 stored post-edit total 20,000,000.00 instead of delta -3,100,000.00)', 0, NOW());
+
+  -- Allocation 24527 (P93300324/Derecho)
+  -- pre-replay  = 41,500,000.00
+  -- stored      = 20,000,000.00
+  -- post-replay = 20,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24527, :user_id, 'ADJUSTMENT',
+     -21500000.0, -21500000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54558 stored post-edit total 20,000,000.00 instead of delta -1,500,000.00)', 0, NOW());
+
+  -- Allocation 24528 (P93300606/Derecho)
+  -- pre-replay  = 24,100,000.00
+  -- stored      = 12,000,000.00
+  -- post-replay = 12,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24528, :user_id, 'ADJUSTMENT',
+     -12100000.0, -12100000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54557 stored post-edit total 12,000,000.00 instead of delta -100,000.00)', 0, NOW());
+
+  -- Allocation 24511 (CESM0002/Derecho)
+  -- pre-replay  = 926,000,000.00
+  -- stored      = 465,000,000.00
+  -- post-replay = 465,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24511, :user_id, 'ADJUSTMENT',
+     -461000000.0, -461000000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54552 stored post-edit total 465,000,000.00 instead of delta +4,000,000.00)', 0, NOW());
+
+  -- Allocation 24512 (CESM0019/Derecho)
+  -- pre-replay  = 60,200,000.00
+  -- stored      = 30,000,000.00
+  -- post-replay = 30,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24512, :user_id, 'ADJUSTMENT',
+     -30200000.0, -30200000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54553 stored post-edit total 30,000,000.00 instead of delta -200,000.00)', 0, NOW());
+
+  -- Allocation 24513 (CESM0020/Derecho)
+  -- pre-replay  = 111,300,000.00
+  -- stored      = 35,000,000.00
+  -- post-replay = 35,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24513, :user_id, 'ADJUSTMENT',
+     -38300000.0, -38300000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54554 stored post-edit total 38,000,000.00 instead of delta -300,000.00)', 0, NOW());
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24513, :user_id, 'ADJUSTMENT',
+     -38000000.0, -38000000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54573 stored post-edit total 35,000,000.00 instead of delta -3,000,000.00)', 0, NOW());
+
+  -- Allocation 24514 (CESM0023/Derecho)
+  -- pre-replay  = 332,000,000.00
+  -- stored      = 100,000,000.00
+  -- post-replay = 100,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24514, :user_id, 'ADJUSTMENT',
+     -117000000.0, -117000000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54555 stored post-edit total 115,000,000.00 instead of delta -2,000,000.00)', 0, NOW());
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24514, :user_id, 'ADJUSTMENT',
+     -115000000.0, -115000000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54571 stored post-edit total 100,000,000.00 instead of delta -15,000,000.00)', 0, NOW());
+
+  -- Allocation 24515 (CESM0024/Derecho)
+  -- pre-replay  = 63,500,000.00
+  -- stored      = 30,000,000.00
+  -- post-replay = 30,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24515, :user_id, 'ADJUSTMENT',
+     -33500000.0, -33500000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54570 stored post-edit total 30,000,000.00 instead of delta -3,500,000.00)', 0, NOW());
+
+  -- Allocation 24517 (CESM0027/Derecho)
+  -- pre-replay  = 7,350,000.00
+  -- stored      = 4,000,000.00
+  -- post-replay = 4,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24517, :user_id, 'ADJUSTMENT',
+     -3350000.0, -3350000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54569 stored post-edit total 4,000,000.00 instead of delta +650,000.00)', 0, NOW());
+
+  -- Allocation 24516 (CESM0028/Derecho)
+  -- pre-replay  = 38,100,000.00
+  -- stored      = 20,000,000.00
+  -- post-replay = 20,000,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24516, :user_id, 'ADJUSTMENT',
+     -18100000.0, -18100000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54567 stored post-edit total 20,000,000.00 instead of delta +1,900,000.00)', 0, NOW());
+
+  -- Allocation 24529 (CESM0029/Derecho)
+  -- pre-replay  = 869,000.00
+  -- stored      = 400,000.00
+  -- post-replay = 400,000.00  ✓
+  INSERT INTO allocation_transaction
+    (allocation_id, user_id, transaction_type,
+     transaction_amount, requested_amount,
+     alloc_start_date, alloc_end_date,
+     transaction_comment, propagated, creation_time)
+  VALUES
+    (24529, :user_id, 'ADJUSTMENT',
+     -469000.0, -469000.0,
+     '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+     '[REMEDIATION 2026-05-02] correct double-counted EDIT-as-ADJUSTMENT (txid 54556 stored post-edit total 400,000.00 instead of delta -69,000.00)', 0, NOW());
+
