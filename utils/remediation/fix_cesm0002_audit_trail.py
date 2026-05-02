@@ -316,20 +316,20 @@ def discover(
 
 
 def _print_discover(findings: List[AllocationFinding]) -> None:
-    needs = [f for f in findings if f.needs_repair]
+    fixable = [f for f in findings if f.needs_repair and f.bogus_rows]
+    drift_only = [f for f in findings if f.needs_repair and not f.bogus_rows]
     legacy_only = [f for f in findings if f.bogus_rows and not f.needs_repair]
     print(f"\n=== Discover: {len(findings)} allocations under tree, "
-          f"{len(needs)} need repair ===\n")
-    if not needs:
+          f"{len(fixable)} fixable by this script ===\n")
+    if not fixable:
         if legacy_only:
-            print(f"  ✓ Audit trail self-consistent.  "
-                  f"({len(legacy_only)} allocation(s) carry the historical "
-                  f"bogus-row fingerprint but already have a corrective row "
-                  f"applied — no further action needed.)")
+            print(f"  ✓ Audit trail self-consistent for in-scope allocations.  "
+                  f"({len(legacy_only)} carry the historical bogus-row "
+                  f"fingerprint but already have a corrective row applied — "
+                  f"no further action needed.)")
         else:
             print("  ✓ Audit trail clean — no work to do.")
-        return
-    for f in needs:
+    for f in fixable:
         delta_obs = f.pre_replay - f.stored_amount
         print(f"  Allocation {f.allocation_id} ({f.projcode}/{f.resource_name})")
         print(f"    stored amount = {f.stored_amount:>15,.2f}")
@@ -341,18 +341,36 @@ def _print_discover(findings: List[AllocationFinding]) -> None:
                   f"\"Amount: {b.intended_old:,} → {b.intended_new:,}\" "
                   f"stored {b.bogus_amount:,.2f} (intended delta {b.intended_delta:+,.2f})")
 
+    if drift_only:
+        print(f"\n--- Out of scope: {len(drift_only)} allocation(s) with "
+              f"replay drift but no bogus-row fingerprint ---")
+        print(f"    (pre-existing drift, not the renew-flow bug; "
+              f"this script will not modify them)")
+        for f in drift_only:
+            delta_obs = f.pre_replay - f.stored_amount
+            print(f"  Allocation {f.allocation_id} ({f.projcode}/{f.resource_name})")
+            print(f"    stored amount = {f.stored_amount:>15,.2f}")
+            print(f"    legacy replay = {f.pre_replay:>15,.2f}  "
+                  f"(off by {delta_obs:+,.2f})")
+
 
 def _print_dry_run(findings: List[AllocationFinding], remediation_tag: str) -> None:
-    needs = [f for f in findings if f.needs_repair]
+    # Only render INSERTs for findings the script can actually fix:
+    # needs_repair AND has a bogus-row fingerprint. Findings with replay
+    # drift but no fingerprint are surfaced by _print_discover under
+    # "Out of scope" and are skipped here (no INSERTs to render).
+    fixable = [f for f in findings if f.needs_repair and f.bogus_rows]
     print(f"\n=== Dry-run: proposed INSERT statements ===\n")
-    if not needs:
-        print("  (nothing to insert — audit trail already self-consistent)")
+    if not fixable:
+        print("  (nothing to insert — audit trail already self-consistent "
+              "for in-scope allocations)")
         return
-    for f in needs:
+    for f in fixable:
         print(f"  -- Allocation {f.allocation_id} ({f.projcode}/{f.resource_name})")
         print(f"  -- pre-replay  = {f.pre_replay:,.2f}")
         print(f"  -- stored      = {f.stored_amount:,.2f}")
-        print(f"  -- post-replay = {f.post_replay:,.2f}  "
+        post = f.post_replay if f.post_replay is not None else 0.0
+        print(f"  -- post-replay = {post:,.2f}  "
               + ("✓" if f.repaired_ok else "✗ MANUAL REVIEW"))
         for b in f.bogus_rows:
             print(_render_insert_sql(b, remediation_tag))
@@ -437,9 +455,12 @@ def apply_corrections(
     Returns the number of corrective rows successfully flushed.
     """
     # Only insert corrections for allocations whose live replay-vs-stored
-    # differs (needs_repair). Skip allocations that already carry a
-    # remediation row from a prior run — re-applying would over-correct.
-    needs = [f for f in findings if f.needs_repair]
+    # differs (needs_repair) AND that carry the bogus-row fingerprint we
+    # know how to fix. Skip:
+    #   - allocations already carrying a remediation row (needs_repair=False)
+    #   - allocations with replay drift but no bogus-row fingerprint
+    #     (out of scope — likely pre-existing drift on retired resources)
+    needs = [f for f in findings if f.needs_repair and f.bogus_rows]
     inserted = 0
     for f in needs:
         for b in f.bogus_rows:
@@ -549,7 +570,8 @@ def main() -> int:
             # the same tree (e.g. retired Cheyenne allocations) is out
             # of scope for this remediation.
             touched_ids = {
-                f.allocation_id for f in findings if f.needs_repair
+                f.allocation_id for f in findings
+                if f.needs_repair and f.bogus_rows
             }
 
             print(f"\n=== Applying corrections (tag={tag}, user_id={args.user_id}) ===")
