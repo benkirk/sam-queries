@@ -133,6 +133,23 @@ def log_allocation_transaction(
     if comment:
         final_comment = f"{final_comment}; {comment}" if final_comment else comment
 
+    # transaction_amount semantics depend on the legacy replay rules
+    # (see DateBoundedAllocationAmount.java + AllocationTransactionType.java):
+    #   - NEW / EXTENSION: setAmount / setEndDate; field carries the new total
+    #     (or, for EXTENSION, is informational — replay only uses end_date).
+    #   - ADJUSTMENT / SUPPLEMENT / TRANSFER: addAmount(transaction_amount);
+    #     field carries a SIGNED DELTA.
+    # EDIT is a Python-side intent that maps to ADJUSTMENT on write (B3),
+    # so its transaction_amount must be (new - old), not the post-edit total.
+    # Writing the post-edit total here is exactly the bug that produced the
+    # CESM0002/Derecho 926M legacy-fstree mismatch.
+    if (transaction_type == AllocationTransactionType.EDIT
+            and old_values is not None and 'amount' in old_values):
+        old_amount = old_values['amount'] or 0.0
+        txn_amount = float(allocation.amount) - float(old_amount)
+    else:
+        txn_amount = allocation.amount
+
     # Create transaction record
     transaction = AllocationTransaction(
         allocation_id=allocation.allocation_id,
@@ -140,8 +157,8 @@ def log_allocation_transaction(
         transaction_type=transaction_type,
         alloc_start_date=allocation.start_date,
         alloc_end_date=allocation.end_date,
-        transaction_amount=allocation.amount,
-        requested_amount=allocation.amount,  # Same as transaction_amount for EDIT
+        transaction_amount=txn_amount,
+        requested_amount=allocation.amount,
         transaction_comment=final_comment,
         propagated=propagated,
     )

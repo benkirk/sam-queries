@@ -318,3 +318,148 @@ class TestLogAllocationTransactionPropagated:
             propagated=True,
         )
         assert txn.propagated is True
+
+
+# ---------------------------------------------------------------------------
+# log_allocation_transaction — EDIT writes signed deltas (legacy replay
+# semantics: ADJUSTMENT.transaction_amount is added by replay, so it MUST
+# be a delta, not the post-edit total).
+# ---------------------------------------------------------------------------
+
+
+class TestEditTransactionAmountIsDelta:
+
+    def test_edit_amount_increase_writes_positive_delta(
+        self, session, flat_root_allocation, acting_user
+    ):
+        old_amount = flat_root_allocation.amount
+        new_amount = old_amount + 4_000_000.0
+
+        result = update_allocation(
+            session,
+            allocation_id=flat_root_allocation.allocation_id,
+            user_id=acting_user.user_id,
+            amount=new_amount,
+        )
+
+        txn = (
+            session.query(AllocationTransaction)
+            .filter_by(
+                allocation_id=result.allocation_id,
+                transaction_type=AllocationTransactionType.EDIT,
+            )
+            .order_by(AllocationTransaction.allocation_transaction_id.desc())
+            .first()
+        )
+        assert txn is not None
+        assert txn.transaction_amount == pytest.approx(4_000_000.0)
+        assert txn.requested_amount == pytest.approx(new_amount)
+
+    def test_edit_amount_decrease_writes_negative_delta(
+        self, session, flat_root_allocation, acting_user
+    ):
+        old_amount = flat_root_allocation.amount
+        new_amount = old_amount - 1_000.0
+
+        update_allocation(
+            session,
+            allocation_id=flat_root_allocation.allocation_id,
+            user_id=acting_user.user_id,
+            amount=new_amount,
+        )
+
+        txn = (
+            session.query(AllocationTransaction)
+            .filter_by(
+                allocation_id=flat_root_allocation.allocation_id,
+                transaction_type=AllocationTransactionType.EDIT,
+            )
+            .order_by(AllocationTransaction.allocation_transaction_id.desc())
+            .first()
+        )
+        assert txn.transaction_amount == pytest.approx(-1_000.0)
+
+    def test_edit_without_amount_change_writes_zero_delta(
+        self, session, flat_root_allocation, acting_user
+    ):
+        # Edit only the description; amount unchanged → delta == 0.
+        update_allocation(
+            session,
+            allocation_id=flat_root_allocation.allocation_id,
+            user_id=acting_user.user_id,
+            description="renamed",
+        )
+
+        txn = (
+            session.query(AllocationTransaction)
+            .filter_by(
+                allocation_id=flat_root_allocation.allocation_id,
+                transaction_type=AllocationTransactionType.EDIT,
+            )
+            .order_by(AllocationTransaction.allocation_transaction_id.desc())
+            .first()
+        )
+        assert txn.transaction_amount == pytest.approx(0.0)
+
+    def test_replay_invariant_after_edit(
+        self, session, flat_root_allocation, acting_user
+    ):
+        # The legacy-replay invariant: starting from the NEW row's amount
+        # and applying every subsequent ADJUSTMENT/EDIT delta in order
+        # must reproduce allocation.amount. This is the single property
+        # the CESM0002 bug violated.
+        starting_amount = flat_root_allocation.amount
+        update_allocation(
+            session,
+            allocation_id=flat_root_allocation.allocation_id,
+            user_id=acting_user.user_id,
+            amount=starting_amount + 250.0,
+        )
+        update_allocation(
+            session,
+            allocation_id=flat_root_allocation.allocation_id,
+            user_id=acting_user.user_id,
+            amount=starting_amount + 250.0 - 75.0,
+        )
+
+        txns = (
+            session.query(AllocationTransaction)
+            .filter_by(
+                allocation_id=flat_root_allocation.allocation_id,
+                transaction_type=AllocationTransactionType.EDIT,
+            )
+            .order_by(AllocationTransaction.allocation_transaction_id.asc())
+            .all()
+        )
+        replayed = starting_amount + sum(t.transaction_amount for t in txns)
+        session.refresh(flat_root_allocation)
+        assert replayed == pytest.approx(flat_root_allocation.amount)
+
+    def test_cascaded_child_edit_writes_delta(
+        self, session, parent_allocation, acting_user
+    ):
+        child = parent_allocation.children[0]
+        old_parent = parent_allocation.amount
+        old_child = child.amount
+        new_parent = old_parent + 33_333.0
+
+        update_allocation(
+            session,
+            allocation_id=parent_allocation.allocation_id,
+            user_id=acting_user.user_id,
+            amount=new_parent,
+        )
+
+        # Child rows are cascaded with the SAME new amount; the delta on
+        # the child is (new_parent - old_child).
+        child_txn = (
+            session.query(AllocationTransaction)
+            .filter_by(
+                allocation_id=child.allocation_id,
+                transaction_type=AllocationTransactionType.EDIT,
+            )
+            .order_by(AllocationTransaction.allocation_transaction_id.desc())
+            .first()
+        )
+        assert child_txn is not None
+        assert child_txn.transaction_amount == pytest.approx(new_parent - old_child)
