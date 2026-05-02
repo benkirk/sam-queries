@@ -122,15 +122,48 @@ source.
 
 # Remediation Plan
 
-Two streams of work, **must do both**:
+## Decisions locked in
 
-- **Stream A — backfill prod data** (idempotent, repairs the 19 rows).
-- **Stream B — fix the source code** (prevents recurrence).
+- **Single PR, multiple commits.** All work lands in one PR; commits are
+  ordered so each is independently reviewable and revertable. Stream B
+  (source fixes) commits land before Stream A (backfill) so the prod
+  data fix can't be undone by the next renew + edit.
+- **B3a — emit only legacy strings.** Our write path will only ever
+  insert `transaction_type` ∈ `{NEW, ADJUSTMENT, SUPPLEMENT, EXTENSION,
+  TRANSFER}`. The richer Python-side intent (CREATE/RENEW/EDIT/DELETE/
+  DETACH/LINK) is preserved via a `[TAG]` prefix in
+  `transaction_comment`. Coexists peacefully with legacy SAM's enum
+  validator; no Java change required.
+- **Scope: CESM0002 tree only.** The user confirms the only project
+  touched by the new "Extend Project Tree" flow + amount-edit cycle was
+  CESM0002. Stream A targets that tree exclusively; the broader
+  inventory queries are kept as a *post-fix sanity check* (expected
+  empty), not as a remediation target.
+- **Prod write access available, dry-run first.** The user has prod DB
+  write credentials. Every Stream A apply step is preceded by a
+  Python-replay dry-run that *proves* the corrective row produces
+  `replayed_amount == allocation.amount` before any `INSERT`.
 
-Stream A without Stream B will be undone by the next "Extend Project
-Tree" + amount-edit cycle.
+## Two streams
 
-## Stream A — Data backfill (append-only corrective transactions)
+- **Stream B — fix the source code** (prevents recurrence). Lands first.
+- **Stream A — backfill the CESM0002 tree** (corrects already-written
+  rows). Lands after B is reviewed.
+
+## Stream A — Data backfill (CESM0002 tree, append-only corrective transactions)
+
+### Scope
+
+Per the user: the only project touched by the new "Extend Project Tree"
+flow + amount-edit cycle was **CESM0002**. Stream A targets that tree
+exclusively (root project + all inheriting children, all resources).
+The 19 fstree mismatches in the parity report are all (CESM0002 or
+descendant project) × resource pairs.
+
+The broader inventory queries (suspicious EDIT-as-ADJUSTMENT count,
+duplicate-NEW count) are run as a *post-fix sanity check* (expected to
+return zero outside the CESM0002 tree); if they don't, that's a
+separate finding to escalate, not in scope for this PR.
 
 ### Strategy: append, don't rewrite
 
@@ -260,12 +293,13 @@ After commit, both legacy views (Project Dashboard reading
 
 ### Tooling — write a script, don't hand-craft SQL
 
-Build a Python utility (proposed location:
-`utils/remediation/fix_renew_audit_trail.py`) with these phases:
+Build a Python utility at `utils/remediation/fix_cesm0002_audit_trail.py`
+(name reflects its scope) with these phases:
 
 ```
-phase 1: discover     → SELECT candidate rows (suspicious EDIT-as-ADJ)
-                        for given projcode(s) or all
+phase 1: discover     → for projcode='CESM0002' (and all inheriting
+                        descendants via project tree), SELECT candidate
+                        rows (suspicious EDIT-as-ADJ + duplicate NEWs)
 phase 2: replay-check → simulate legacy replay on each affected
                         allocation_id; confirm replayed != allocation.amount
                         (proves the row needs repair); compute proposed
@@ -274,15 +308,18 @@ phase 3: dry-run      → print proposed INSERT(s) per allocation; show
                         before/after replay sums; flag any allocation
                         whose post-correction replay still ≠ amount
                         (manual review)
-phase 4: apply        → wrap INSERTs in a transaction; require --confirm
-                        flag and explicit projcode allowlist; tag every
-                        corrective row with a uniform comment prefix
-                        "[remediation YYYY-MM-DD]" for easy rollback
+phase 4: apply        → wrap INSERTs in a transaction; require
+                        --confirm flag and an explicit
+                        --projcode=CESM0002 (no default — refuses to
+                        run without it); tag every corrective row with
+                        a uniform comment prefix "[REMEDIATION
+                        YYYY-MM-DD]" for easy rollback
 phase 5: verify       → re-run replay-check post-apply (must match);
                         call the legacy fstree API and diff vs
                         allocation.amount; re-run check_legacy_apis.py
-                        (mismatch count should drop to 0 for the
-                        scoped projects)
+                        (mismatch count should drop to 0 for CESM0002
+                        rows); run inventory queries against the rest
+                        of the DB (expected to return zero)
 ```
 
 The replay simulator is a 10–20-line port of
@@ -290,8 +327,14 @@ The replay simulator is a 10–20-line port of
 `SUPPLEMENT`/`ADJUSTMENT`/`TRANSFER` add, `EXTENSION` no-ops the
 amount. That's the only way to *prove* the repair before commit.
 
+The replay simulator is the same code that ships with B3 (the legacy
+helper used by the new history-view), so it lives in
+`src/sam/accounting/allocations.py` (alongside the enum), not in the
+remediation script — the script imports it. This keeps the canonical
+replay logic in one place and unit-tests it once.
+
 Rollback is trivial: `DELETE FROM allocation_transaction WHERE
-transaction_comment LIKE '[remediation YYYY-MM-DD]%'`.
+transaction_comment LIKE '[REMEDIATION YYYY-MM-DD]%'`.
 
 ### Inventory the affected rows before scripting
 
@@ -316,8 +359,8 @@ Both should be empty after Stream A is complete.
 
 ## Stream B — Source-code fixes
 
-Three changes, all in `src/sam`. Each gets its own PR / commit so the
-backfill script can land in parallel.
+Three commits, all in `src/sam`, ordered so each is independently
+reviewable. The whole stream lands before Stream A.
 
 ### B1. `log_allocation_transaction` writes deltas for `EDIT`
 
@@ -370,46 +413,142 @@ for children. Two options:
 Prefer **B2b** — it preserves the renewal context in the audit trail,
 which is the whole reason that second log call exists.
 
-### B3. Decide on the type-string contract with legacy SAM
+### B3. Emit only legacy strings; preserve intent via comment tags
 
-This is the one that needs a product decision before code change.
+**Decision: B3a.** The `transaction_type` column will only ever contain
+the five legacy strings (`NEW`, `ADJUSTMENT`, `SUPPLEMENT`, `EXTENSION`,
+`TRANSFER`). The Python-side `AllocationTransactionType` enum continues
+to express richer intent (CREATE, RENEW, EDIT, DELETE, DETACH, LINK,
+EXPIRE) at the call site, but `log_allocation_transaction` translates
+to the legacy vocabulary on write and prepends a `[TAG]` to
+`transaction_comment` so the high-level intent is recoverable.
 
-- **B3a — emit only legacy strings.** Map our enum on the way out:
-  `CREATE → NEW`, `RENEW → NEW`, `EDIT → ADJUSTMENT`, `EXPIRE/DELETE
-  /DETACH/LINK` → ??? (no legacy equivalent — these would still throw).
-  This matches what George did manually, makes the legacy fstree API
-  happy for the cases it understands, but loses information at the type
-  level (you can no longer distinguish a `RENEW` from a fresh `CREATE`,
-  or an `EDIT` from a `SUPPLEMENT`).
-- **B3b — widen legacy enum.** Get the Java side to ignore unknown
-  types instead of throwing (e.g. add a `UNKNOWN` fallthrough to
-  `AllocationTransactionType.fromString`). Replay then skips our
-  type-extension rows. Keeps full type fidelity in our DB; needs a
-  legacy SAM deploy.
-- **B3c — accept the divergence.** Keep both string vocabularies in the
-  same column; document that legacy SAM's replay path is not
-  authoritative for allocations created post-cutover; teach the parity
-  script to ignore mismatches on allocations whose history contains
-  unknown-to-legacy types.
+#### Mapping table
 
-**Recommendation:** B3a in the short term (unblocks the parity script
-and the legacy UI without a Java deploy), B3b once we have the appetite
-for a legacy SAM change. **B3a only works if B1 lands first** —
-otherwise renaming `EDIT → ADJUSTMENT` continues to corrupt the
-sum-of-transactions semantics.
+Verified against current call-sites (`grep AllocationTransactionType\.`
+returns these 9 active types; ADJUSTMENT/SUPPLEMENT/NEW have no direct
+Python callers — they're produced exclusively via this mapping).
 
-## Suggested ordering
+| Python intent | Legacy `transaction_type` | Comment tag | Replay effect | Notes |
+|---|---|---|---|---|
+| `CREATE` | `NEW` | (none) | `setAmount`, `setDates` | natural fit; default for `create_allocation()` |
+| `RENEW` | `NEW` | `[RENEW]` | `setAmount`, `setDates` | semantically a creation; tag carries provenance ("Renewed from #X") |
+| `EDIT` | `ADJUSTMENT` | (none) | `addAmount(delta)` | **requires B1 first** — `transaction_amount` must be `(new − old)` |
+| `EXPIRE` | `EXTENSION` | (none) | `setEndDate` | semantically "set end_date to earlier"; no Python callers today, but defined for future |
+| `DELETE` | `ADJUSTMENT` | `[DELETE]` | `addAmount(0)` (no-op) | `allocation.deleted=1` is the source of truth; this row is purely audit; `transaction_amount=0` |
+| `DETACH` | `ADJUSTMENT` | `[DETACH]` | `addAmount(0)` (no-op) | parent_allocation_id change; doesn't affect amount; `transaction_amount=0` |
+| `LINK` | `ADJUSTMENT` | `[LINK]` | `addAmount(0)` (no-op) | parent_allocation_id change; doesn't affect amount; `transaction_amount=0` |
+| `TRANSFER` | `TRANSFER` | (none) | `addAmount(delta)` | natural fit; both sides of the exchange |
+| `EXTENSION` | `EXTENSION` | (none) | `setEndDate` | natural fit (already used by `extend.py`) |
+| `ADJUSTMENT` | `ADJUSTMENT` | (none) | `addAmount(delta)` | natural fit |
+| `SUPPLEMENT` | `SUPPLEMENT` | (none) | `addAmount(delta)` | natural fit |
 
-1. **B1** — fix `log_allocation_transaction` to write deltas. Land
-   first; everything else depends on this being correct.
-2. **A** — write the backfill script. Run dry-run for the 19 fstree
-   rows, then for the broader inventory queries above.
-3. **B2** — drop the duplicate `NEW` log in renew. Land alongside or
-   after A so the script's "delete duplicate NEWs" logic doesn't fight
-   ongoing writes.
-4. **A apply** — run the backfill on prod for CESM0002 first (smoke
-   test), then the rest of the 19, then the broader inventory.
-5. **B3** — make the type-emission decision and ship it.
+The `[TAG]` prefix uses square brackets so it's unambiguous to parse
+back out and visually distinct from human-written comments (which often
+start with capitalized words like `"Renewed from..."`,
+`"End date extended..."`, etc.).
+
+#### Implementation
+
+In `src/sam/manage/allocations.py`'s `log_allocation_transaction`, add
+a translation step before the `AllocationTransaction(...)` constructor:
+
+```python
+# Map Python intent → legacy DB string + optional comment tag
+_LEGACY_TYPE_MAP = {
+    AllocationTransactionType.CREATE:    ("NEW",        None),
+    AllocationTransactionType.RENEW:     ("NEW",        "RENEW"),
+    AllocationTransactionType.EDIT:      ("ADJUSTMENT", None),
+    AllocationTransactionType.EXPIRE:    ("EXTENSION",  None),
+    AllocationTransactionType.DELETE:    ("ADJUSTMENT", "DELETE"),
+    AllocationTransactionType.DETACH:    ("ADJUSTMENT", "DETACH"),
+    AllocationTransactionType.LINK:      ("ADJUSTMENT", "LINK"),
+    AllocationTransactionType.TRANSFER:  ("TRANSFER",   None),
+    AllocationTransactionType.EXTENSION: ("EXTENSION",  None),
+    AllocationTransactionType.ADJUSTMENT:("ADJUSTMENT", None),
+    AllocationTransactionType.SUPPLEMENT:("SUPPLEMENT", None),
+    AllocationTransactionType.NEW:       ("NEW",        None),
+}
+
+db_type, tag = _LEGACY_TYPE_MAP[transaction_type]
+if tag:
+    final_comment = f"[{tag}] {final_comment}" if final_comment else f"[{tag}]"
+```
+
+For `DELETE`/`DETACH`/`LINK` — types that don't change `amount` but get
+mapped to `ADJUSTMENT` — the writer must also force
+`transaction_amount = 0.0` so legacy replay's `addAmount` is a no-op.
+This is naturally consistent with B1 (deltas), since the actual amount
+delta for these operations is zero.
+
+The Python-side enum stays as-is (call sites unchanged); only the
+write-translation is new. The enum keeps acting as the canonical
+vocabulary for *intent*; the DB column is the legacy *storage format*.
+
+#### Reading back
+
+For new readers that want to recover intent (e.g. allocation history
+view in the new web UI), parse `transaction_comment` for `^\[(\w+)\]`
+to recover the tag. Untagged rows are exactly the legacy semantics.
+A small helper `parse_intent(txn) -> AllocationTransactionType` in
+`accounting/allocations.py` keeps this in one place.
+
+#### Validation
+
+A new test asserts the invariant: `SELECT DISTINCT transaction_type
+FROM allocation_transaction` should remain a subset of the five legacy
+strings after our code writes any transaction. Add this as both:
+
+1. A unit test that exercises every `AllocationTransactionType` value
+   through `log_allocation_transaction` and asserts the resulting row's
+   `transaction_type` is in the legacy set.
+2. A migration-time integrity check (one-shot SQL) that confirms no
+   non-legacy values exist in the table at the moment B3 lands.
+
+**B3 only works if B1 lands first** — otherwise renaming `EDIT →
+ADJUSTMENT` continues to corrupt sum-of-transactions semantics. Commit
+ordering enforces this.
+
+## Commit sequence (single PR)
+
+All commits land in one PR on a feature branch (suggested name:
+`fix-renew-audit-trail`). Each commit is independently reviewable;
+the PR is **not** merged until prod backfill is verified green.
+
+| # | Commit | Files | Rationale |
+|---|---|---|---|
+| 1 | **B1**: `log_allocation_transaction` writes signed deltas for `EDIT` | `src/sam/manage/allocations.py`, tests | Fix bug #2 first — everything downstream assumes deltas are correct |
+| 2 | **B2**: `renew.py` stops double-logging | `src/sam/manage/renew.py`, tests | Fix bug #1; one `NEW` per allocation going forward |
+| 3 | **B3**: legacy-string mapping + `[TAG]` comment scheme | `src/sam/manage/allocations.py`, `src/sam/accounting/allocations.py`, tests | After B1+B2; introduces `_LEGACY_TYPE_MAP` and the `parse_intent()` reader; adds replay simulator co-located with the enum |
+| 4 | **A1**: backfill script (dry-run only) | `utils/remediation/fix_cesm0002_audit_trail.py`, tests | Discover + replay-check + dry-run modes; no `--confirm` path yet, or `--confirm` raises if not explicitly enabled |
+| 5 | **A2**: enable `--confirm` apply path | same file | Gate behind `--projcode=CESM0002` allowlist; uniform `[REMEDIATION YYYY-MM-DD]` tag |
+| 6 | **A3**: prod apply log + verification artifacts | docs only (e.g. `docs/remediation/CESM0002_2026-05-XX.md`) | Capture the actual run output: before/after replay, fstree API diffs, `check_legacy_apis.py` results |
+
+### Pre-prod gate (between commits 5 and 6)
+
+The user runs the backfill script against prod with these phases, in
+order, with explicit user confirmation between each:
+
+1. **Discover (read-only)** — `python -m utils.remediation.fix_cesm0002_audit_trail --projcode CESM0002 --discover`
+   Lists all candidate rows under the CESM0002 tree. User reviews.
+2. **Dry-run (read-only)** — `… --dry-run` runs the full replay-check
+   pipeline and prints proposed `INSERT`s with before/after replay
+   sums. User reviews; must confirm every flagged row.
+3. **Apply (writes prod)** — `… --confirm --projcode CESM0002` runs
+   inside a single DB transaction; refuses to run without explicit
+   `--projcode` and `--confirm`. On any post-apply replay mismatch,
+   `ROLLBACK` automatically.
+4. **Verify** — re-run discover + replay-check (should report nothing
+   to fix), hit legacy fstree API for CESM0002 manually, run
+   `python utils/parity/check_legacy_apis.py` (CESM0002 rows should be
+   gone from the mismatch list).
+5. **Inventory sweep (read-only)** — run the global inventory queries
+   from "Inventory the affected rows before scripting" against the
+   rest of the DB; both should return zero. If non-zero, escalate as
+   a separate finding.
+
+Only after all five steps pass does commit A3 (verification artifacts)
+land and the PR is approved for merge.
 
 ## Verification
 
@@ -423,15 +562,30 @@ End-to-end check after each apply step:
   `allocation_transaction` rows equals `allocation.amount` within float
   tolerance.
 
-## Open questions
+## Resolved decisions
 
-(Resolve before implementation, not now.)
+- **Single PR, multiple commits.** Commits 1–6 above; PR not merged
+  until prod backfill verifies green.
+- **B3a (legacy strings + `[TAG]` comments) is the long-term answer.**
+  No need to widen the legacy Java enum; the two implementations
+  coexist on shared storage, with our column values constrained to the
+  legacy vocabulary. If/when legacy SAM is decommissioned, the mapping
+  layer can be retired and the Python enum stored directly.
+- **Scope is CESM0002 tree.** No broader backfill in this PR. Inventory
+  queries are post-fix sanity checks only.
 
-- For Stream B3, does CISL want the legacy SAM Java enum widened, or do
-  we accept the lossy type mapping forever?
-- Are there allocations corrupted by this flow that the parity script
-  *doesn't* flag (e.g. the renew happened but no follow-up amount edit)?
-  The inventory queries above will tell us.
-- Do we need to backfill historical `SUPPLEMENT`/`TRANSFER` audit rows
-  written by our code, or is the bug confined to `EDIT` and the
-  duplicate-NEW from renew?
+## Residual open questions
+
+(Resolve during PR review, not blockers for starting work.)
+
+- Should the `parse_intent()` reader be exposed on the `AllocationTransaction`
+  model (e.g. `txn.intent` hybrid property) or live as a free function?
+  Lean toward hybrid property — fits existing model patterns
+  (`is_active`, etc.) and gives templates one-line access.
+- For commit ordering: do B1 + B2 + B3 land as three commits with
+  separate review, or fold into one "rewrite of `log_allocation_transaction`"
+  commit? The table above splits them; reviewer preference may collapse.
+- Cost of commit A3 (a markdown doc capturing the prod run): worth
+  keeping for audit purposes, or just reference the PR description?
+  Leaning keep — gives future investigators a concrete trail back to
+  the corrective rows by date.
