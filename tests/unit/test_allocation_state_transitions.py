@@ -21,6 +21,7 @@ from sam import Allocation, Project
 from sam.accounting.allocations import (
     AllocationTransaction,
     AllocationTransactionType,
+    intent_filter,
 )
 from sam.manage.allocations import (
     detach_allocation,
@@ -230,12 +231,13 @@ class TestDetachAllocation:
 
         assert detached.parent_allocation_id is None
 
-        # DETACH transaction logged
-        txn = session.query(AllocationTransaction).filter_by(
-            allocation_id=child_alloc.allocation_id,
-            transaction_type=AllocationTransactionType.DETACH,
+        # DETACH transaction logged (B3: stored as ADJUSTMENT with [DETACH] tag)
+        txn = session.query(AllocationTransaction).filter(
+            AllocationTransaction.allocation_id == child_alloc.allocation_id,
+            intent_filter(AllocationTransactionType.DETACH),
         ).first()
         assert txn is not None
+        assert txn.transaction_amount == 0.0  # B3: DETACH is no-op for amount
         assert f"#{root_alloc.allocation_id}" in (txn.transaction_comment or "")
 
     def test_detach_nonexistent_raises(self, session):
@@ -298,11 +300,13 @@ class TestLinkAllocationToParent:
         assert linked.start_date == FAR_START
         assert linked.end_date == FAR_END
 
-        txn = session.query(AllocationTransaction).filter_by(
-            allocation_id=linked.allocation_id,
-            transaction_type=AllocationTransactionType.LINK,
+        # B3: LINK stored as ADJUSTMENT with [LINK] tag, transaction_amount=0
+        txn = session.query(AllocationTransaction).filter(
+            AllocationTransaction.allocation_id == linked.allocation_id,
+            intent_filter(AllocationTransactionType.LINK),
         ).first()
         assert txn is not None
+        assert txn.transaction_amount == 0.0
 
     def test_link_already_inheriting_raises(self, session):
         resource, root, accounts = _build_tree(session)

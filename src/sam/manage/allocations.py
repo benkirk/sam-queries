@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from sam.accounting.allocations import (
     Allocation, AllocationTransaction, AllocationTransactionType,
     InheritingAllocationException,
+    LEGACY_TYPE_MAP,
 )
 
 
@@ -133,28 +134,43 @@ def log_allocation_transaction(
     if comment:
         final_comment = f"{final_comment}; {comment}" if final_comment else comment
 
-    # transaction_amount semantics depend on the legacy replay rules
+    # B3: translate Python-side intent → legacy DB string (legacy SAM's
+    # Java enum throws on anything outside {NEW, ADJUSTMENT, SUPPLEMENT,
+    # EXTENSION, TRANSFER}). Tagged intents prepend "[TAG] " to the
+    # comment so parse_intent() can recover the original meaning.
+    db_type, tag = LEGACY_TYPE_MAP[transaction_type]
+    if tag is not None:
+        final_comment = f"[{tag}] {final_comment}" if final_comment else f"[{tag}]"
+
+    # transaction_amount semantics depend on the *legacy* replay rules
     # (see DateBoundedAllocationAmount.java + AllocationTransactionType.java):
-    #   - NEW / EXTENSION: setAmount / setEndDate; field carries the new total
-    #     (or, for EXTENSION, is informational — replay only uses end_date).
+    #   - NEW: setAmount(transaction_amount); field is the new total.
+    #   - EXTENSION: end_date only; amount field is informational.
     #   - ADJUSTMENT / SUPPLEMENT / TRANSFER: addAmount(transaction_amount);
-    #     field carries a SIGNED DELTA.
-    # EDIT is a Python-side intent that maps to ADJUSTMENT on write (B3),
-    # so its transaction_amount must be (new - old), not the post-edit total.
-    # Writing the post-edit total here is exactly the bug that produced the
-    # CESM0002/Derecho 926M legacy-fstree mismatch.
-    if (transaction_type == AllocationTransactionType.EDIT
+    #     field is a SIGNED DELTA.
+    #
+    # EDIT maps to ADJUSTMENT (additive), so transaction_amount = (new − old).
+    # DELETE / DETACH / LINK also map to ADJUSTMENT but don't change the
+    # amount — write 0.0 so legacy replay's addAmount is a no-op.
+    no_amount_change = transaction_type in (
+        AllocationTransactionType.DELETE,
+        AllocationTransactionType.DETACH,
+        AllocationTransactionType.LINK,
+    )
+    if no_amount_change:
+        txn_amount = 0.0
+    elif (transaction_type == AllocationTransactionType.EDIT
             and old_values is not None and 'amount' in old_values):
         old_amount = old_values['amount'] or 0.0
         txn_amount = float(allocation.amount) - float(old_amount)
     else:
         txn_amount = allocation.amount
 
-    # Create transaction record
+    # Create transaction record (transaction_type is the legacy DB string)
     transaction = AllocationTransaction(
         allocation_id=allocation.allocation_id,
         user_id=user_id,
-        transaction_type=transaction_type,
+        transaction_type=db_type,
         alloc_start_date=allocation.start_date,
         alloc_end_date=allocation.end_date,
         transaction_amount=txn_amount,

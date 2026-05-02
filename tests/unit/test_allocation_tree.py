@@ -14,6 +14,7 @@ from sam.accounting.allocations import (
     AllocationTransaction,
     AllocationTransactionType,
     InheritingAllocationException,
+    intent_filter,
 )
 from sam.manage.allocations import log_allocation_transaction, update_allocation
 
@@ -272,9 +273,9 @@ class TestUpdateAllocationCascade:
 
         txn = (
             session.query(AllocationTransaction)
-            .filter_by(
-                allocation_id=child.allocation_id,
-                transaction_type=AllocationTransactionType.EDIT,
+            .filter(
+                AllocationTransaction.allocation_id == child.allocation_id,
+                intent_filter(AllocationTransactionType.EDIT),
             )
             .order_by(AllocationTransaction.allocation_transaction_id.desc())
             .first()
@@ -344,9 +345,9 @@ class TestEditTransactionAmountIsDelta:
 
         txn = (
             session.query(AllocationTransaction)
-            .filter_by(
-                allocation_id=result.allocation_id,
-                transaction_type=AllocationTransactionType.EDIT,
+            .filter(
+                AllocationTransaction.allocation_id == result.allocation_id,
+                intent_filter(AllocationTransactionType.EDIT),
             )
             .order_by(AllocationTransaction.allocation_transaction_id.desc())
             .first()
@@ -370,9 +371,9 @@ class TestEditTransactionAmountIsDelta:
 
         txn = (
             session.query(AllocationTransaction)
-            .filter_by(
-                allocation_id=flat_root_allocation.allocation_id,
-                transaction_type=AllocationTransactionType.EDIT,
+            .filter(
+                AllocationTransaction.allocation_id == flat_root_allocation.allocation_id,
+                intent_filter(AllocationTransactionType.EDIT),
             )
             .order_by(AllocationTransaction.allocation_transaction_id.desc())
             .first()
@@ -392,9 +393,9 @@ class TestEditTransactionAmountIsDelta:
 
         txn = (
             session.query(AllocationTransaction)
-            .filter_by(
-                allocation_id=flat_root_allocation.allocation_id,
-                transaction_type=AllocationTransactionType.EDIT,
+            .filter(
+                AllocationTransaction.allocation_id == flat_root_allocation.allocation_id,
+                intent_filter(AllocationTransactionType.EDIT),
             )
             .order_by(AllocationTransaction.allocation_transaction_id.desc())
             .first()
@@ -424,9 +425,9 @@ class TestEditTransactionAmountIsDelta:
 
         txns = (
             session.query(AllocationTransaction)
-            .filter_by(
-                allocation_id=flat_root_allocation.allocation_id,
-                transaction_type=AllocationTransactionType.EDIT,
+            .filter(
+                AllocationTransaction.allocation_id == flat_root_allocation.allocation_id,
+                intent_filter(AllocationTransactionType.EDIT),
             )
             .order_by(AllocationTransaction.allocation_transaction_id.asc())
             .all()
@@ -454,9 +455,9 @@ class TestEditTransactionAmountIsDelta:
         # the child is (new_parent - old_child).
         child_txn = (
             session.query(AllocationTransaction)
-            .filter_by(
-                allocation_id=child.allocation_id,
-                transaction_type=AllocationTransactionType.EDIT,
+            .filter(
+                AllocationTransaction.allocation_id == child.allocation_id,
+                intent_filter(AllocationTransactionType.EDIT),
             )
             .order_by(AllocationTransaction.allocation_transaction_id.desc())
             .first()

@@ -20,6 +20,7 @@ from sam.accounting.accounts import Account
 from sam.accounting.allocations import (
     AllocationTransaction,
     AllocationTransactionType,
+    intent_filter,
 )
 from sam.manage.extend import extend_project_allocations
 from sam.manage.renew import (
@@ -296,9 +297,9 @@ class TestRenewStandalone:
         )
         txn = (
             session.query(AllocationTransaction)
-            .filter_by(
-                allocation_id=created[0].allocation_id,
-                transaction_type=AllocationTransactionType.RENEW,
+            .filter(
+                AllocationTransaction.allocation_id == created[0].allocation_id,
+                intent_filter(AllocationTransactionType.RENEW),
             )
             .first()
         )
@@ -344,7 +345,9 @@ class TestRenewStandalone:
             .all()
         )
         assert len(txns) == 1
-        assert txns[0].transaction_type == AllocationTransactionType.RENEW
+        # B3: RENEW intent stores as legacy 'NEW' with [RENEW] comment tag.
+        assert txns[0].transaction_type == "NEW"
+        assert (txns[0].transaction_comment or '').startswith("[RENEW]")
 
 
 class TestRenewInheritingTree:
@@ -619,9 +622,9 @@ class TestRenewScaling:
         )
         txn = (
             session.query(AllocationTransaction)
-            .filter_by(
-                allocation_id=created[0].allocation_id,
-                transaction_type=AllocationTransactionType.RENEW,
+            .filter(
+                AllocationTransaction.allocation_id == created[0].allocation_id,
+                intent_filter(AllocationTransactionType.RENEW),
             )
             .first()
         )
@@ -645,9 +648,9 @@ class TestRenewScaling:
         )
         txn = (
             session.query(AllocationTransaction)
-            .filter_by(
-                allocation_id=created[0].allocation_id,
-                transaction_type=AllocationTransactionType.RENEW,
+            .filter(
+                AllocationTransaction.allocation_id == created[0].allocation_id,
+                intent_filter(AllocationTransactionType.RENEW),
             )
             .first()
         )
@@ -898,9 +901,9 @@ class TestRenewReplaceExisting:
         )
         txn = (
             session.query(AllocationTransaction)
-            .filter_by(
-                allocation_id=old_id,
-                transaction_type=AllocationTransactionType.DELETE,
+            .filter(
+                AllocationTransaction.allocation_id == old_id,
+                intent_filter(AllocationTransactionType.DELETE),
             )
             .order_by(AllocationTransaction.allocation_transaction_id.desc())
             .first()

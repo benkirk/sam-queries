@@ -280,8 +280,12 @@ def get_recent_allocation_transactions(
         facility_name: facility name(s) to include (joined via Project →
             AllocationType → Panel → Facility).
         allocation_type: allocation type name(s) to include.
-        transaction_types: one or more ``AllocationTransactionType`` values (enum
-            members or raw strings such as ``"EDIT"``).
+        transaction_types: one or more legacy DB strings (``"NEW"``,
+            ``"ADJUSTMENT"``, ``"SUPPLEMENT"``, ``"EXTENSION"``,
+            ``"TRANSFER"``). The Python-side intent enum
+            (``AllocationTransactionType.EDIT`` etc.) is translated to
+            legacy strings on write; intent-aware filtering should use
+            ``sam.accounting.allocations.intent_filter`` instead.
         start_date, end_date: inclusive bounds on ``creation_time``.
         user_id: filter by responsible-user FK. Mutually exclusive with ``username``.
         username: filter by responsible-user username (joined via User).
