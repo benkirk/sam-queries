@@ -94,6 +94,38 @@ jobs:
       - name: Terraform fmt check
         run: terraform fmt -check -recursive infrastructure/staging/
 
+  helm-render:
+    name: Helm Chart Render
+    # Skip on [skip ci] / [ci skip] / [no ci] in commit message or PR title
+    if: >-
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.head_commit.message, '[ci skip]')
+      && !contains(github.event.head_commit.message, '[no ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[ci skip]')
+      && !contains(github.event.pull_request.title, '[no ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Helm lint (chart)
+        run: helm lint helm/
+
+      - name: Helm template renders cleanly (production values)
+        run: helm template samuel helm/ -f helm/values.yaml > /dev/null
+
+      - name: Helm template renders cleanly (local dev values)
+        run: helm template samuel helm/ -f helm/values.yaml -f helm/values-local.yaml > /dev/null
+
+      - name: OIDC + ExternalSecret render assertions
+        run: bash helm/tests/test-oidc-render.sh
+
   test:
     name: Test Suite
     # Skip on [skip ci] / [ci skip] / [no ci] in commit message or PR title

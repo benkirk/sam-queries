@@ -252,6 +252,32 @@ class TestOIDCLoginRoute:
             app.config['AUTH_PROVIDER'] = 'stub'
             app.extensions.pop('oauth', None)
 
+    def test_oidc_login_uses_configured_redirect_uri(self, app):
+        """Configured OIDC_REDIRECT_URI is passed verbatim to authorize_redirect.
+
+        Locks in the contract that the per-environment redirect URI from env
+        (e.g. https://samuel.k8s.ucar.edu/auth/oidc/callback) is what Authlib
+        sends to the IdP, regardless of any X-Forwarded-* header weirdness.
+        """
+        mock_oauth = MagicMock()
+        mock_redirect_resp = MagicMock()
+        mock_redirect_resp.status_code = 302
+        mock_oauth.entra.authorize_redirect.return_value = mock_redirect_resp
+
+        configured_uri = 'https://samuel.k8s.ucar.edu/auth/oidc/callback'
+        app.extensions['oauth'] = mock_oauth
+        app.config['AUTH_PROVIDER'] = 'oidc'
+        original_redirect_uri = app.config.get('OIDC_REDIRECT_URI', '')
+        app.config['OIDC_REDIRECT_URI'] = configured_uri
+        try:
+            with app.test_client() as c:
+                c.get('/auth/oidc/login')
+                mock_oauth.entra.authorize_redirect.assert_called_once_with(configured_uri)
+        finally:
+            app.config['AUTH_PROVIDER'] = 'stub'
+            app.config['OIDC_REDIRECT_URI'] = original_redirect_uri
+            app.extensions.pop('oauth', None)
+
 
 class TestOIDCCallbackRoute:
     """Test /auth/oidc/callback token exchange and session creation."""

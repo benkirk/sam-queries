@@ -21,7 +21,13 @@ from .projects import (
     make_facility,
     make_project,
 )
-from .resources import make_machine, make_queue, make_resource, make_resource_type
+from .resources import (
+    make_disk_resource_root_directory,
+    make_machine,
+    make_queue,
+    make_resource,
+    make_resource_type,
+)
 
 __all__ = [
     "next_date",
@@ -32,6 +38,7 @@ __all__ = [
     "make_user",
     "make_resource_type",
     "make_resource",
+    "make_disk_resource_root_directory",
     "make_machine",
     "make_queue",
     "make_wallclock_exemption",

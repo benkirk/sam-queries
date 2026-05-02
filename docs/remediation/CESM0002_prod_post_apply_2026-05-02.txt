@@ -1,0 +1,23 @@
+Connected to sam-sql.ucar.edu/sam
+
+=== Discover: 768 allocations under tree, 0 fixable by this script ===
+
+  ✓ Audit trail self-consistent for in-scope allocations.  (19 carry the historical bogus-row fingerprint but already have a corrective row applied — no further action needed.)
+
+--- Out of scope: 5 allocation(s) with replay drift but no bogus-row fingerprint ---
+    (pre-existing drift, not the renew-flow bug; this script will not modify them)
+  Allocation 16997 (P93300042/Cheyenne)
+    stored amount =    6,900,000.00
+    legacy replay =    5,900,000.00  (off by -1,000,000.00)
+  Allocation 16993 (P93300070/Cheyenne)
+    stored amount =    8,400,000.00
+    legacy replay =    7,400,000.00  (off by -1,000,000.00)
+  Allocation 16990 (P93300324/Cheyenne)
+    stored amount =   14,600,000.00
+    legacy replay =   15,600,000.00  (off by +1,000,000.00)
+  Allocation 16999 (CESM0020/Cheyenne)
+    stored amount =   15,400,000.00
+    legacy replay =   16,400,000.00  (off by +1,000,000.00)
+  Allocation 16909 (CESM0023/Cheyenne)
+    stored amount =   25,000,000.00
+    legacy replay =   29,000,000.00  (off by +4,000,000.00)

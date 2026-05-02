@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from sam.accounting.allocations import (
     Allocation, AllocationTransaction, AllocationTransactionType,
     InheritingAllocationException,
+    LEGACY_TYPE_MAP,
 )
 
 
@@ -133,15 +134,52 @@ def log_allocation_transaction(
     if comment:
         final_comment = f"{final_comment}; {comment}" if final_comment else comment
 
-    # Create transaction record
+    # B3: translate Python-side intent → legacy DB string (legacy SAM's
+    # Java enum throws on anything outside {NEW, ADJUSTMENT, SUPPLEMENT,
+    # EXTENSION, TRANSFER}). Tagged intents prepend "[TAG] " to the
+    # comment so parse_intent() can recover the original meaning.
+    #
+    # TRANSITIONAL — REMOVE WHEN LEGACY SAM IS RETIRED. Once the Java
+    # codebase is gone, write transaction_type directly from the enum
+    # value and stop emitting [TAG] prefixes. See the retirement note
+    # on AllocationTransactionType in sam.accounting.allocations.
+    db_type, tag = LEGACY_TYPE_MAP[transaction_type]
+    if tag is not None:
+        final_comment = f"[{tag}] {final_comment}" if final_comment else f"[{tag}]"
+
+    # transaction_amount semantics depend on the *legacy* replay rules
+    # (see DateBoundedAllocationAmount.java + AllocationTransactionType.java):
+    #   - NEW: setAmount(transaction_amount); field is the new total.
+    #   - EXTENSION: end_date only; amount field is informational.
+    #   - ADJUSTMENT / SUPPLEMENT / TRANSFER: addAmount(transaction_amount);
+    #     field is a SIGNED DELTA.
+    #
+    # EDIT maps to ADJUSTMENT (additive), so transaction_amount = (new − old).
+    # DELETE / DETACH / LINK also map to ADJUSTMENT but don't change the
+    # amount — write 0.0 so legacy replay's addAmount is a no-op.
+    no_amount_change = transaction_type in (
+        AllocationTransactionType.DELETE,
+        AllocationTransactionType.DETACH,
+        AllocationTransactionType.LINK,
+    )
+    if no_amount_change:
+        txn_amount = 0.0
+    elif (transaction_type == AllocationTransactionType.EDIT
+            and old_values is not None and 'amount' in old_values):
+        old_amount = old_values['amount'] or 0.0
+        txn_amount = float(allocation.amount) - float(old_amount)
+    else:
+        txn_amount = allocation.amount
+
+    # Create transaction record (transaction_type is the legacy DB string)
     transaction = AllocationTransaction(
         allocation_id=allocation.allocation_id,
         user_id=user_id,
-        transaction_type=transaction_type,
+        transaction_type=db_type,
         alloc_start_date=allocation.start_date,
         alloc_end_date=allocation.end_date,
-        transaction_amount=allocation.amount,
-        requested_amount=allocation.amount,  # Same as transaction_amount for EDIT
+        transaction_amount=txn_amount,
+        requested_amount=allocation.amount,
         transaction_comment=final_comment,
         propagated=propagated,
     )
@@ -330,16 +368,22 @@ def update_allocation(
     cascadable = {'amount', 'start_date', 'end_date'} & provided_fields
     if cascadable and allocation.children:
         child_updates = {f: updates[f] for f in cascadable}
-        child_old = {f: old_values[f] for f in cascadable}
 
         def _cascade_to_child(child: Allocation) -> None:
+            # Capture *this child's* pre-mutation values (NOT the parent's)
+            # so the audit row records the child's actual delta. In a
+            # divergent tree, child.amount may differ from parent.amount,
+            # and the child's ADJUSTMENT.transaction_amount must be
+            # (new − child_old), not (new − parent_old) — otherwise legacy
+            # replay of the child's history doesn't reproduce its amount.
+            child_specific_old = {f: getattr(child, f) for f in cascadable}
             for field, value in child_updates.items():
                 setattr(child, field, value)
             log_allocation_transaction(
                 session, child, user_id,
                 AllocationTransactionType.EDIT,
                 comment=comment,
-                old_values=child_old,
+                old_values=child_specific_old,
                 propagated=True,
             )
 

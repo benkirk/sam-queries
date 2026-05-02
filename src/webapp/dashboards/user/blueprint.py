@@ -584,16 +584,24 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
     scope_node = _find_disk_node(full_tree, scope) or full_tree
     scope_account_ids = _collect_disk_account_ids(scope_node)
 
+    # Build the {directory_name → projcode} map by walking the scoped
+    # subtree's in-memory ProjectDirectory data (already loaded by
+    # build_disk_subtree). Lets the Filesets-card query hit
+    # disk_activity directly via directory_name IN (...) — a range
+    # seek on disk_activity_unique_idx with no disk_charge / account
+    # / project join.
+    directory_to_projcode = _collect_directory_to_projcode(scope_node)
+
     # Aggregate per-fileset rows across the entire scoped subtree at
-    # the latest snapshot date — single query covering every disk
-    # account in the scope. This populates the Filesets card on
-    # *both* leaf-project and tree pages (replacing the per-node
+    # the latest snapshot date — single query covering every fileset
+    # in the scope. This populates the Filesets card on *both*
+    # leaf-project and tree pages (replacing the per-node
     # `directories` payload that build_disk_subtree only attached
     # for the multi-fileset case).
     subtree_activity_date = _disk_subtree_latest_activity_date(scope_node)
     fileset_dirs = get_subtree_directory_usage_at(
         db.session,
-        account_ids=scope_account_ids,
+        directory_to_projcode=directory_to_projcode,
         resource_name=resource_name,
         activity_date=subtree_activity_date,
     )
@@ -635,12 +643,11 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         )
     else:
         # Fileset-scoped rendering: chart + per-user table read from
-        # `disk_activity` (joined through `disk_charge` for `user_id`)
-        # filtered by `directory_name`. Capacity card numbers come
-        # from the aggregated per-fileset row. The fileset may belong
-        # to a child project deeper in the subtree — `scope_account_ids`
-        # bounds the query correctly without needing the owner's
-        # project_id explicitly.
+        # `disk_activity` filtered by `directory_name` directly — a
+        # range seek on the existing unique index, no join through
+        # `disk_charge`. The fileset name itself uniquely identifies
+        # the data we want; subtree containment was already
+        # validated when we constructed `fileset_dirs`.
         fileset_row = next(d for d in fileset_dirs if d['name'] == fileset)
         used_bytes = fileset_row['bytes']
         used_tib = used_bytes / (1024 ** 4)
@@ -648,7 +655,6 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         activity_date = subtree_activity_date
         timeseries = get_disk_usage_timeseries_for_directory(
             db.session,
-            account_ids=scope_account_ids,
             resource_name=resource_name,
             directory_name=fileset,
             start_date=start_date.date() if hasattr(start_date, 'date') else start_date,
@@ -657,7 +663,6 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         )
         breakdown = get_directory_user_breakdown_at(
             db.session,
-            account_ids=scope_account_ids,
             resource_name=resource_name,
             directory_name=fileset,
             activity_date=activity_date,
@@ -707,6 +712,22 @@ def _collect_disk_account_ids(node) -> list:
         out.append(node['account_id'])
     for c in node.get('children', []):
         out.extend(_collect_disk_account_ids(c))
+    return out
+
+
+def _collect_directory_to_projcode(node) -> dict:
+    """Walk a build_disk_subtree node and return ``{directory_name: projcode}``.
+
+    The map covers every node in the subtree that has at least one
+    active fileset. Used by the disk dashboard to call
+    ``get_subtree_directory_usage_at`` without a database round-trip
+    for the projcode mapping.
+    """
+    out = {}
+    for d in node.get('fileset_paths', []):
+        out[d] = node.get('projcode')
+    for c in node.get('children', []):
+        out.update(_collect_directory_to_projcode(c))
     return out
 
 

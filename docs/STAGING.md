@@ -16,7 +16,11 @@ The staging site is only accessible from the UCAR network. Connect to VPN before
 - **MySQL 8.0** on RDS with obfuscated SAM data
 - **ALB** handling HTTP traffic on port 80
 
-Auth is disabled in staging (`DISABLE_AUTH=1`, auto-login as `benkirk`).
+Auth: **OIDC SSO via Microsoft Entra** (`AUTH_PROVIDER=oidc`,
+`OIDC_REDIRECT_URI=https://sam-staging.csgsam.ucar.edu/auth/oidc/callback`).
+Credentials are pulled from AWS SSM SecureString parameters under
+`/sam/staging/oidc-*`. See [AUTHENTICATION.md](AUTHENTICATION.md) for the
+full auth model and the per-environment deployment matrix.
 
 ## Deployment
 

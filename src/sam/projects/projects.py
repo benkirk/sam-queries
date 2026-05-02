@@ -786,7 +786,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
         ``resource_name`` filters to a single disk resource if given.
         """
-        results: Dict[str, Any] = {}
+        # Gather disk-account candidates once, then a single bulk
+        # snapshot query covers them all (matches single-account
+        # semantics in Account.current_disk_usage but with fixed query
+        # count instead of N+1).
+        candidates = []
         for account in self.accounts:
             if account.deleted:
                 continue
@@ -795,7 +799,22 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             res_name = account.resource.resource_name
             if resource_name and res_name != resource_name:
                 continue
-            usage = account.current_disk_usage(self.session)
+            rt = account.resource.resource_type
+            if rt and rt.resource_type != 'DISK':
+                continue
+            candidates.append((account, res_name))
+
+        if not candidates:
+            return {}
+
+        from sam.queries.disk_usage import bulk_current_disk_usage
+        snapshots = bulk_current_disk_usage(
+            self.session, [a.account_id for a, _ in candidates],
+        )
+
+        results: Dict[str, Any] = {}
+        for account, res_name in candidates:
+            usage = snapshots.get(account.account_id)
             if usage is None:
                 continue
             results[res_name] = {
@@ -1400,6 +1419,8 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
     project = relationship('Project', back_populates='directories')
     project_directory_id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
+    disk_charge_summaries = relationship('DiskChargeSummary',
+                                         back_populates='project_directory')
 
     @classmethod
     def create(cls, session, *, project_id: int, directory_name: str,
