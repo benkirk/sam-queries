@@ -130,87 +130,168 @@ Two streams of work, **must do both**:
 Stream A without Stream B will be undone by the next "Extend Project
 Tree" + amount-edit cycle.
 
-## Stream A — Data backfill
+## Stream A — Data backfill (append-only corrective transactions)
 
-### Strategy
+### Strategy: append, don't rewrite
 
-For every (project, resource) in the parity report (start with the 19
-fstree mismatches; the same flow likely affects more projects that
-parity didn't flag because the `EDIT` happened before the renew or
-without a follow-up edit):
+Rather than `UPDATE` or `DELETE` historical `allocation_transaction`
+rows, **append a corrective `ADJUSTMENT` row per affected allocation**
+that brings the legacy replay sum back into agreement with
+`allocation.amount`. The corrective row's `transaction_amount` is a
+proper signed delta (which is what `ADJUSTMENT` semantics demand), so
+the repair itself is well-formed even though it's compensating for a
+malformed prior row.
 
-1. **Find the corrupted rows** — `ADJUSTMENT` rows whose
+Why append-only is preferable to rewrite-in-place:
+
+- **Audit trail intact** — historical rows untouched; reviewer can trace
+  exactly what was wrong and what was done about it via the corrective
+  row's `transaction_comment`.
+- **Correct semantics** — `ADJUSTMENT` of `−Δ` *is* a delta, which is
+  the contract `ADJUSTMENT` is supposed to honor. We're not bending
+  rules to remediate; we're using the type as designed.
+- **Reversible** — a mistake can be undone by `DELETE`-ing the
+  corrective row by its `creation_time`. Rewrites lose the original
+  data.
+- **Doesn't pollute usage views** — corrective rows live in
+  `allocation_transaction`, not `charge_adjustment`. They never appear
+  as fake charges on user dashboards. (The `charge_adjustment` table
+  feeds `adjustedUsage`, not `allocationAmount`, so it cannot be used
+  to fix this class of bug — see "Why not charge_adjustment" below.)
+
+### Per-allocation procedure
+
+For each affected `allocation_id`:
+
+1. **Identify the bogus row(s).** Look for `ADJUSTMENT` rows whose
    `transaction_comment` starts with `Amount: ` AND whose
-   `transaction_amount` equals the allocation's current `amount` (a
-   strong fingerprint of bug #2: stored total instead of delta).
-2. **Parse the delta** from the comment (`Amount: X → Y` → delta = Y − X).
-3. **Repair**: rewrite the row to `transaction_amount = Y − X`, keep
-   `transaction_type = 'ADJUSTMENT'`. Don't change comment or
-   creation_time. (Alternative: rewrite type to `NEW` and leave amount
-   alone — works for the simple one-edit case but breaks if the
-   allocation has >1 `EDIT` row, see "single-row UPDATE" caveat below.)
-4. **Optionally delete the duplicate `NEW`** from renew (the one with
-   `transaction_comment LIKE 'Renewed from%'` when an `Allocation
-   created` row already exists for the same `allocation_id`). This
-   cleans the audit trail; it's not strictly required to fix the
-   replay sum because `NEW` is idempotent.
-5. **Verify**: replay the surviving rows in Python (mirroring the legacy
-   semantics) and confirm `replayed_amount == allocation.amount` within
-   float tolerance. Then re-run `utils/parity/check_legacy_apis.py`.
+   `|transaction_amount|` is comparable to `allocation.amount` (the
+   fingerprint of bug #2: stored total instead of delta). Parse
+   `X → Y` from the comment to recover the intended delta.
+2. **Compute the correction.**
+   `correction = intended_delta − stored_transaction_amount`
+   = `(Y − X) − Y`
+   = `−X`
+   For CESM0002/Derecho txid 54552: `−461,000,000`.
+3. **Compute expected post-replay amount.** Run a Python replay over
+   all existing `allocation_transaction` rows for this `allocation_id`
+   plus the proposed corrective row. Confirm
+   `replayed == allocation.amount` within float tolerance. If not,
+   the allocation has additional anomalies (e.g. multiple EDITs at
+   different intermediate values) — flag for manual review, don't
+   auto-apply.
+4. **Append the corrective `ADJUSTMENT`.**
+   ```sql
+   INSERT INTO allocation_transaction
+     (allocation_id, user_id, transaction_type,
+      transaction_amount, requested_amount,
+      alloc_start_date, alloc_end_date,
+      transaction_comment, propagated, creation_time)
+   VALUES
+     (:allocation_id, :admin_user_id, 'ADJUSTMENT',
+      :correction, :correction,
+      :alloc_start_date, :alloc_end_date,
+      CONCAT('[remediation YYYY-MM-DD] correct double-counted ',
+             'EDIT-as-ADJUSTMENT (txid ', :bad_txid,
+             ' stored post-edit total ', :stored_amount,
+             ' instead of delta ', :intended_delta, ')'),
+      0, NOW());
+   ```
+5. **(Optional, separate phase)** clean up the duplicate `NEW` rows
+   from renew. Strictly cosmetic for the replay sum (NEW is
+   idempotent); skip if you want to keep this remediation maximally
+   conservative. If you do clean up, prefer `UPDATE
+   transaction_comment` to mark them as superseded rather than
+   `DELETE`.
 
-### Tooling — write a script, don't hand-craft SQL
+### Why not `charge_adjustment`?
 
-Build a Python utility (proposed location: `utils/remediation/fix_renew_audit_trail.py`)
-with these phases:
+`charge_adjustment` rows feed `adjustedUsage`, not `allocationAmount`.
+A +461M `charge_adjustment` against CESM0002/Derecho would:
 
-```
-phase 1: discover    → SELECT candidate rows for given projcode(s) or all
-phase 2: dry-run     → print proposed UPDATEs and DELETEs, no DB writes
-phase 3: replay-check → simulate legacy replay on each affected
-                        allocation_id, confirm replayed == allocation.amount
-                        BOTH before (should mismatch) AND after (should match)
-phase 4: apply       → wrap UPDATEs/DELETEs in a transaction;
-                        require --confirm flag and projcode allowlist
-phase 5: verify      → re-run replay-check post-apply, then call the
-                        legacy fstree API and diff vs allocation.amount
-```
+| Metric | Today (legacy) | After `+461M charge_adj` (legacy) |
+|---|---|---|
+| `allocationAmount` | 926M | **926M (unchanged)** |
+| `adjustedUsage`    | ~0   | 461M (phantom usage) |
+| `balance`          | 926M | 465M |
 
-The replay simulator should be a port of `AllocationTransactionType.java`'s
-modify functions (10–20 lines of Python) — that's the only way to
-*prove* the repair before you commit.
+`balance` would match the new side, but `allocationAmount` (the field
+the parity script checks) would still mismatch, *and* `adjustedUsage`
+(currently passing) would start failing. Worse, our new side reads
+`charge_adjustment` for its user-facing dashboards too, so users would
+see 461M of fake "charges" on a brand-new project that has not run a
+single job. Discarded.
 
-### One-off SQL (for CESM0002/Derecho only)
-
-Useful as a smoke test before investing in the script:
+### One-off SQL (CESM0002/Derecho only — smoke test)
 
 ```sql
 START TRANSACTION;
 
--- Verify candidate first
+-- Confirm the bogus row
 SELECT allocation_transaction_id, allocation_id, transaction_type,
-       transaction_amount, transaction_comment
+       transaction_amount, transaction_comment, creation_time
 FROM allocation_transaction
 WHERE allocation_transaction_id = 54552;
 
--- Repair (Option A: rewrite as a proper delta)
-UPDATE allocation_transaction
-SET transaction_amount = 4000000.00,
-    transaction_comment = CONCAT('[remediation 2026-05-01] ',
-                                 transaction_comment)
-WHERE allocation_transaction_id = 54552;
+-- Append corrective ADJUSTMENT
+INSERT INTO allocation_transaction
+  (allocation_id, user_id, transaction_type,
+   transaction_amount, requested_amount,
+   alloc_start_date, alloc_end_date,
+   transaction_comment, propagated, creation_time)
+VALUES
+  (24511, <admin_user_id>, 'ADJUSTMENT',
+   -461000000.00, -461000000.00,
+   '2026-05-01 00:00:00', '2027-04-30 23:59:59',
+   '[remediation 2026-05-01] correct double-counted EDIT-as-ADJUSTMENT (txid 54552 stored post-edit total 465M instead of delta +4M)',
+   0, NOW());
 
--- Confirm via replay (manual check) before committing
--- COMMIT;  -- only if replay shows 465M
+-- Verify replay (Python, before commit)
+-- Expected sum: 461M (NEW) + 461M (NEW idempotent) + 465M (ADJ)
+--             − 461M (corrective ADJ) = 465M ✓
+
+-- COMMIT;   -- only after verification
 -- ROLLBACK;
 ```
 
-**Caveat — single-row UPDATE doesn't generalize.** Rewriting type
-`ADJUSTMENT` → `NEW` works for CESM0002 only because there's exactly
-one `EDIT` row and its stored amount happens to equal the current
-total. For allocations with >1 `EDIT` (intermediate `Y` values), only
-the last EDIT-as-ADJUSTMENT stores the current total; rewriting all of
-them to `NEW` makes last-NEW-wins land on an intermediate value.
-**Always rewrite to a proper delta, not to `NEW`.**
+After commit, both legacy views (Project Dashboard reading
+`allocation.amount` AND Account Statement → Overall Usage replaying
+`allocation_transaction`) report 465M.
+
+### Tooling — write a script, don't hand-craft SQL
+
+Build a Python utility (proposed location:
+`utils/remediation/fix_renew_audit_trail.py`) with these phases:
+
+```
+phase 1: discover     → SELECT candidate rows (suspicious EDIT-as-ADJ)
+                        for given projcode(s) or all
+phase 2: replay-check → simulate legacy replay on each affected
+                        allocation_id; confirm replayed != allocation.amount
+                        (proves the row needs repair); compute proposed
+                        correction = -X parsed from "Amount: X → Y"
+phase 3: dry-run      → print proposed INSERT(s) per allocation; show
+                        before/after replay sums; flag any allocation
+                        whose post-correction replay still ≠ amount
+                        (manual review)
+phase 4: apply        → wrap INSERTs in a transaction; require --confirm
+                        flag and explicit projcode allowlist; tag every
+                        corrective row with a uniform comment prefix
+                        "[remediation YYYY-MM-DD]" for easy rollback
+phase 5: verify       → re-run replay-check post-apply (must match);
+                        call the legacy fstree API and diff vs
+                        allocation.amount; re-run check_legacy_apis.py
+                        (mismatch count should drop to 0 for the
+                        scoped projects)
+```
+
+The replay simulator is a 10–20-line port of
+`AllocationTransactionType.java`'s `execute()` methods — `NEW` resets,
+`SUPPLEMENT`/`ADJUSTMENT`/`TRANSFER` add, `EXTENSION` no-ops the
+amount. That's the only way to *prove* the repair before commit.
+
+Rollback is trivial: `DELETE FROM allocation_transaction WHERE
+transaction_comment LIKE '[remediation YYYY-MM-DD]%'`.
 
 ### Inventory the affected rows before scripting
 
