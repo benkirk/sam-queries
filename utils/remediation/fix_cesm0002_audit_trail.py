@@ -404,6 +404,10 @@ def _build_corrective_row(
     )
 
 
+class ReplayMismatch(RuntimeError):
+    """Post-apply replay didn't match allocation.amount within tolerance."""
+
+
 def apply_corrections(
     session: Session,
     findings: List[AllocationFinding],
@@ -411,39 +415,43 @@ def apply_corrections(
     user_id: int,
     remediation_tag: str,
 ) -> int:
-    """Insert corrective rows inside a single DB transaction.
+    """Insert corrective rows and verify the post-apply replay invariant.
 
-    Auto-rolls back if any allocation's post-apply replay still differs
-    from its stored amount by more than ``REPLAY_TOLERANCE``. Returns
-    the number of corrective rows committed.
+    Flushes (does NOT commit) the corrective rows, then for every
+    affected allocation re-runs ``replay_amount`` over its full
+    history and confirms ``replayed ≈ allocation.amount`` within
+    ``REPLAY_TOLERANCE``. Raises ``ReplayMismatch`` on any deviation
+    so the caller can ``session.rollback()`` cleanly.
+
+    Commit is the caller's responsibility — that lets tests exercise
+    this function inside a SAVEPOINT and lets ``main()`` explicitly
+    confirm before committing to prod.
+
+    Returns the number of corrective rows successfully flushed.
     """
     needs = [f for f in findings if f.bogus_rows]
     inserted = 0
-    try:
-        for f in needs:
-            for b in f.bogus_rows:
-                session.add(_build_corrective_row(
-                    b, user_id=user_id, remediation_tag=remediation_tag,
-                ))
-                inserted += 1
-        session.flush()
+    for f in needs:
+        for b in f.bogus_rows:
+            session.add(_build_corrective_row(
+                b, user_id=user_id, remediation_tag=remediation_tag,
+            ))
+            inserted += 1
+    session.flush()
 
-        # Verify replay matches stored amount for every allocation we touched
-        for f in needs:
-            alloc = session.get(Allocation, f.allocation_id)
-            session.refresh(alloc)
-            replayed = replay_amount(alloc.transactions)
-            if abs(replayed - alloc.amount) > REPLAY_TOLERANCE:
-                raise RuntimeError(
-                    f"Post-apply replay mismatch on allocation {f.allocation_id}: "
-                    f"replayed={replayed:,.2f} != amount={alloc.amount:,.2f} "
-                    f"(diff={replayed - alloc.amount:+,.2f}). Rolling back."
-                )
-        session.commit()
-        return inserted
-    except Exception:
-        session.rollback()
-        raise
+    # Verify replay matches stored amount for every allocation we touched
+    for f in needs:
+        alloc = session.get(Allocation, f.allocation_id)
+        session.refresh(alloc)
+        replayed = replay_amount(alloc.transactions)
+        if abs(replayed - alloc.amount) > REPLAY_TOLERANCE:
+            raise ReplayMismatch(
+                f"Post-apply replay mismatch on allocation {f.allocation_id}: "
+                f"replayed={replayed:,.2f} != amount={alloc.amount:,.2f} "
+                f"(diff={replayed - alloc.amount:+,.2f})."
+            )
+
+    return inserted
 
 
 # ---------------------------------------------------------------------------
@@ -525,20 +533,29 @@ def main() -> int:
 
         if args.apply:
             print(f"\n=== Applying corrections (tag={tag}, user_id={args.user_id}) ===")
-            inserted = apply_corrections(
-                session, findings,
-                user_id=args.user_id,
-                remediation_tag=tag,
-            )
-            print(f"  ✓ Inserted {inserted} corrective row(s)")
+            try:
+                inserted = apply_corrections(
+                    session, findings,
+                    user_id=args.user_id,
+                    remediation_tag=tag,
+                )
+            except ReplayMismatch as exc:
+                print(f"  ✗ {exc} — rolling back, no rows committed.",
+                      file=sys.stderr)
+                session.rollback()
+                return 1
+
+            session.commit()
+            print(f"  ✓ Committed {inserted} corrective row(s)")
 
             # Re-discover for verification
             print("\n=== Verification: re-running discover ===")
             session.expire_all()
             verify_findings = discover(session, args.projcode, tolerance=args.tolerance)
-            still_broken = [f for f in verify_findings if f.bogus_rows]
+            still_broken = [f for f in verify_findings if f.needs_repair]
             if still_broken:
-                print(f"  ✗ {len(still_broken)} allocation(s) still report mismatches")
+                print(f"  ✗ {len(still_broken)} allocation(s) still report mismatches",
+                      file=sys.stderr)
                 return 1
             print("  ✓ All allocations under tree now self-consistent")
 

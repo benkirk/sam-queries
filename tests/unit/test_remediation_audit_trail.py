@@ -35,6 +35,7 @@ from utils.remediation.fix_cesm0002_audit_trail import (
     REPLAY_TOLERANCE,
     AllocationFinding,
     BogusEditRow,
+    ReplayMismatch,
     _build_corrective_row,
     _discover_for_allocation,
     _remediation_tag,
@@ -318,37 +319,71 @@ class TestRenderInsertSQL:
 
 class TestApplyCorrections:
 
-    def test_apply_inserts_one_row_per_bogus(self, session):
+    def test_apply_end_to_end_restores_replay_invariant(self, session):
+        """End-to-end: discover → apply_corrections → replay matches amount.
+        apply_corrections does NOT commit, so this runs cleanly inside the
+        per-test SAVEPOINT."""
         user = make_user(session)
         alloc = _seed_cesm0002_bug(session, user)
-        finding = _discover_for_allocation(alloc)
-        finding.post_replay = _simulate_post_correction(finding, alloc.transactions)
 
-        # Use a fresh session-bound transaction so apply_corrections'
-        # commit doesn't end the test's outer SAVEPOINT.
+        findings = [_discover_for_allocation(alloc)]
+        for f in findings:
+            f.post_replay = _simulate_post_correction(f, alloc.transactions)
+
         n_before = session.query(AllocationTransaction).filter_by(
             allocation_id=alloc.allocation_id,
         ).count()
 
-        # apply_corrections wraps in commit; for unit-test isolation
-        # we patch out the commit. We test the row-construction path.
-        for b in finding.bogus_rows:
-            row = _build_corrective_row(
-                b, user_id=user.user_id, remediation_tag=_remediation_tag(),
-            )
-            session.add(row)
-        session.flush()
+        inserted = apply_corrections(
+            session, findings,
+            user_id=user.user_id,
+            remediation_tag=_remediation_tag(),
+        )
 
+        assert inserted == 1
         n_after = session.query(AllocationTransaction).filter_by(
             allocation_id=alloc.allocation_id,
         ).count()
-        assert n_after == n_before + len(finding.bogus_rows)
+        assert n_after == n_before + 1
 
-        # Replay over the FULL history (including correction) matches stored amount
         session.refresh(alloc)
         assert replay_amount(alloc.transactions) == pytest.approx(
             alloc.amount, abs=REPLAY_TOLERANCE,
         )
+
+    def test_apply_skips_findings_with_no_bogus_rows(self, session):
+        """A finding for a clean allocation contributes zero INSERTs."""
+        user = make_user(session)
+        clean_alloc = make_allocation(session, amount=500.0)
+        finding = _discover_for_allocation(clean_alloc)
+        assert finding.bogus_rows == []
+
+        inserted = apply_corrections(
+            session, [finding],
+            user_id=user.user_id,
+            remediation_tag=_remediation_tag(),
+        )
+        assert inserted == 0
+
+    def test_apply_raises_replay_mismatch_on_bad_correction(self, session):
+        """If the correction we'd apply still leaves replay != amount,
+        apply_corrections raises ReplayMismatch (caller rollbacks)."""
+        user = make_user(session)
+        alloc = _seed_cesm0002_bug(session, user)
+
+        # Manually corrupt a finding so the correction is wrong
+        finding = _discover_for_allocation(alloc)
+        finding.bogus_rows[0].correction_amount = 0.0  # no-op correction
+
+        with pytest.raises(ReplayMismatch):
+            apply_corrections(
+                session, [finding],
+                user_id=user.user_id,
+                remediation_tag=_remediation_tag(),
+            )
+        # Outer SAVEPOINT means we don't need to rollback explicitly,
+        # but in production main() does session.rollback() on the
+        # exception. The corrective row was flushed but is uncommitted.
 
     def test_corrective_row_carries_remediation_tag(self, session):
         user = make_user(session)
