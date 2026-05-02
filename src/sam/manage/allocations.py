@@ -363,16 +363,22 @@ def update_allocation(
     cascadable = {'amount', 'start_date', 'end_date'} & provided_fields
     if cascadable and allocation.children:
         child_updates = {f: updates[f] for f in cascadable}
-        child_old = {f: old_values[f] for f in cascadable}
 
         def _cascade_to_child(child: Allocation) -> None:
+            # Capture *this child's* pre-mutation values (NOT the parent's)
+            # so the audit row records the child's actual delta. In a
+            # divergent tree, child.amount may differ from parent.amount,
+            # and the child's ADJUSTMENT.transaction_amount must be
+            # (new − child_old), not (new − parent_old) — otherwise legacy
+            # replay of the child's history doesn't reproduce its amount.
+            child_specific_old = {f: getattr(child, f) for f in cascadable}
             for field, value in child_updates.items():
                 setattr(child, field, value)
             log_allocation_transaction(
                 session, child, user_id,
                 AllocationTransactionType.EDIT,
                 comment=comment,
-                old_values=child_old,
+                old_values=child_specific_old,
                 propagated=True,
             )
 
