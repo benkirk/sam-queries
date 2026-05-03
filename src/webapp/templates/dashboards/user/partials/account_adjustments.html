@@ -1,0 +1,69 @@
+{#
+  Charge Adjustments subsection — Resource Summary card on resource_details.html.
+
+  Visible to project leads/admins and RBAC users with VIEW_ALLOCATIONS
+  (gated by the caller via `can_act_on_project(Permission.VIEW_ALLOCATIONS, project)`).
+
+  Context:
+    account_adjustments         — list[ChargeAdjustment], pre-sorted desc by date
+    adjustments_master_projcode — projcode of the master/shared account when the
+                                  current allocation inherits, else None
+#}
+<h6 class="mt-4 mb-2">
+    Charge Adjustments
+    {% if adjustments_master_projcode %}
+    <small class="text-muted">
+        (on shared account from <code>{{ adjustments_master_projcode }}</code>)
+    </small>
+    {% endif %}
+</h6>
+
+{% if account_adjustments %}
+<div class="table-responsive">
+    <table class="table table-sm table-striped table-hover mb-0">
+        <thead class="table-light">
+            <tr>
+                <th style="white-space:nowrap;">Date</th>
+                <th>Type</th>
+                <th class="text-end">Amount</th>
+                <th>Adjusted by</th>
+                <th style="width:99%;">Comment</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in account_adjustments %}
+            <tr>
+                <td style="white-space:nowrap;">{{ a.adjustment_date | fmt_date }}</td>
+                <td>
+                    <span class="badge bg-secondary">{{ a.adjustment_type.type if a.adjustment_type else '—' }}</span>
+                </td>
+                <td class="text-end" style="white-space:nowrap;">
+                    {% if a.amount is not none %}
+                        {% set cls = 'text-success' if a.amount > 0 else ('text-danger' if a.amount < 0 else '') %}
+                        <span class="{{ cls }}">{{ a.amount | fmt_number }}</span>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if a.adjusted_by %}
+                        <span title="{{ a.adjusted_by.display_name or '' }}">{{ a.adjusted_by.username }}</span>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="small text-muted"
+                    title="{{ a.comment or '' }}"
+                    style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    {{ a.comment or '' }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted small mb-0">
+    <i class="fas fa-inbox"></i> No charge adjustments on this account.
+</p>
+{% endif %}
