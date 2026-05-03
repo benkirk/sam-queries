@@ -149,19 +149,31 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     except Exception:
         config_class_name = 'unknown'
 
+    # Display timezone (sam.fmt converts naive-UTC db timestamps to this
+    # zone for human-readable rendering; charts and history use it too).
+    try:
+        from sam import fmt as _fmt
+        display_tz_name = _fmt._DISPLAY_TZ_NAME
+        display_tz_abbr = _fmt.local_tz_label()
+    except Exception:
+        display_tz_name = None
+        display_tz_abbr = None
+
     # --- Application
     application = {
-        'config_class':   config_class_name,
-        'flask_config':   os.getenv('FLASK_CONFIG', 'development'),
-        'debug':          bool(cfg.get('DEBUG')),
-        'testing':        bool(cfg.get('TESTING')),
-        'python_version': platform.python_version(),
-        'flask_version':  getattr(flask, '__version__', 'unknown'),
-        'hostname':       socket.gethostname(),
-        'start_time':     getattr(app, 'start_time', None),
-        'uptime':         _uptime(getattr(app, 'start_time', None)),
-        'git_sha':        os.getenv('GIT_SHA', '') or None,
-        'build_date':     os.getenv('BUILD_DATE', '') or None,
+        'config_class':    config_class_name,
+        'flask_config':    os.getenv('FLASK_CONFIG', 'development'),
+        'debug':           bool(cfg.get('DEBUG')),
+        'testing':         bool(cfg.get('TESTING')),
+        'python_version':  platform.python_version(),
+        'flask_version':   getattr(flask, '__version__', 'unknown'),
+        'hostname':        socket.gethostname(),
+        'start_time':      getattr(app, 'start_time', None),
+        'uptime':          _uptime(getattr(app, 'start_time', None)),
+        'display_tz':      display_tz_name,
+        'display_tz_abbr': display_tz_abbr,
+        'git_sha':         os.getenv('GIT_SHA', '') or None,
+        'build_date':      os.getenv('BUILD_DATE', '') or None,
     }
 
     # --- Database (per bind)
