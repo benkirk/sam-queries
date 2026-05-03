@@ -15,6 +15,7 @@ from sqlalchemy import text
 from webapp.extensions import db
 from webapp.api.helpers import register_error_handlers
 from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.config_inspect import pool_stats
 
 bp = Blueprint('api_health', __name__)
 register_error_handlers(bp)
@@ -108,27 +109,12 @@ def db_pool():
     Returns pool size, utilisation, overflow, and a health assessment
     for each configured engine bind. Requires SYSTEM_ADMIN permission.
     """
-
-    def _pool_stats(pool):
-        size = pool.size()
-        checked_out = pool.checkedout()
-        utilization_pct = round(checked_out / size * 100, 1) if size else 0
-        return {
-            'pool_size':       size,
-            'checked_in':      pool.checkedin(),
-            'checked_out':     checked_out,
-            'overflow':        pool.overflow(),
-            'max_overflow':    pool._max_overflow,
-            'utilization_pct': utilization_pct,
-            'health': 'warning' if utilization_pct > 80 else 'healthy',
-        }
-
     engines = {'sam': db.engine}
     ss_engine = db.engines.get('system_status')
     if ss_engine:
         engines['system_status'] = ss_engine
 
     return jsonify({
-        'pools':     {name: _pool_stats(engine.pool) for name, engine in engines.items()},
+        'pools':     {name: pool_stats(engine.pool) for name, engine in engines.items()},
         'timestamp': datetime.now().isoformat(),
     }), 200

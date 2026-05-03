@@ -104,6 +104,7 @@ class Permission(Enum):
     VIEW_SYSTEM_STATS = "view_system_stats"
     MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data (collector/API)
     EDIT_SYSTEM_STATUS = "edit_system_status"  # GUI create/edit/delete outages
+    VIEW_SYSTEM_CONFIG = "view_system_config"  # Read-only Configuration tab on Admin dashboard
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 

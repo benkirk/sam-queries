@@ -1,0 +1,215 @@
+{#
+  Admin: Configuration Card Body (lazy-loaded into the Configuration tab).
+
+  Read-only inspection of the running webapp's runtime state.
+  Visible only to users with Permission.VIEW_SYSTEM_CONFIG.
+
+  All values are pre-shaped by webapp.utils.config_inspect.gather_runtime_state.
+  Secrets are pre-masked there as 'set' / 'unset' — never raw values.
+
+  Layout: each card uses a Bootstrap <dl class="row"> with one label/value
+  pair per row (col-5 / col-7). The shared .project-stats-box class is NOT
+  used here — it's a multi-column grid sized for full-page width and
+  squashes values into 2-character columns inside half-width cards.
+#}
+{% macro stat(label, value, value_class='') %}
+    <dt class="col-5 fw-normal text-muted text-truncate" title="{{ label }}">{{ label }}</dt>
+    <dd class="col-7 mb-1 fw-semibold {{ value_class }}" style="word-break: break-word;">
+        {{ value if value not in (None, '') else '—' }}
+    </dd>
+{% endmacro %}
+
+{% macro mask_badge(state) %}
+    {% if state == 'set' %}
+        <span class="badge bg-success-subtle text-success">set</span>
+    {% else %}
+        <span class="badge bg-secondary-subtle text-muted">unset</span>
+    {% endif %}
+{% endmacro %}
+
+<div class="card-body">
+
+    <p class="text-muted small mb-4">
+        <i class="fas fa-info-circle"></i>
+        Read-only snapshot of the running webapp's configuration. Values reflect
+        process-startup state — restart the webapp to refresh.
+        Captured {{ state.gathered_at | fmt_date }} {{ state.gathered_at.strftime('%H:%M:%S') }}.
+    </p>
+
+    <div class="row g-3">
+
+        {# ── Application ──────────────────────────────────────────────── #}
+        <div class="col-12 col-xl-6">
+            <div class="card h-100">
+                <div class="card-header py-2">
+                    <strong><i class="fas fa-cube me-1"></i> Application</strong>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0 small">
+                        {{ stat('Config class',  state.application.config_class) }}
+                        {{ stat('FLASK_CONFIG',  state.application.flask_config) }}
+                        {{ stat('DEBUG',         state.application.debug) }}
+                        {{ stat('TESTING',       state.application.testing) }}
+                        {{ stat('Python',        state.application.python_version) }}
+                        {{ stat('Flask',         state.application.flask_version) }}
+                        {{ stat('Hostname',      state.application.hostname) }}
+                        {{ stat('Started',       state.application.start_time | fmt_date if state.application.start_time else '—') }}
+                        {{ stat('Uptime',        state.application.uptime) }}
+                        {{ stat('Build SHA',     state.application.git_sha) }}
+                        {{ stat('Build date',    state.application.build_date) }}
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        {# ── Database ─────────────────────────────────────────────────── #}
+        <div class="col-12 col-xl-6">
+            <div class="card h-100">
+                <div class="card-header py-2">
+                    <strong><i class="fas fa-database me-1"></i> Database</strong>
+                </div>
+                <div class="card-body">
+                    {% for db_info in state.databases %}
+                    <h6 class="mb-2 mt-{{ '0' if loop.first else '3' }}">
+                        <code>{{ db_info.name }}</code>
+                        {% if db_info.status == 'healthy' %}
+                            <span class="badge bg-success-subtle text-success">healthy</span>
+                        {% else %}
+                            <span class="badge bg-danger-subtle text-danger">unhealthy</span>
+                        {% endif %}
+                        {% if db_info.latency_ms is not none %}
+                            <small class="text-muted">· {{ db_info.latency_ms }} ms</small>
+                        {% endif %}
+                    </h6>
+                    <dl class="row mb-0 small">
+                        {{ stat('URL', db_info.url) }}
+                        {% if db_info.pool %}
+                            {{ stat('Pool size',  db_info.pool.pool_size) }}
+                            {{ stat('Checked out',
+                                    '%d / %d  (%.1f%%)' | format(db_info.pool.checked_out, db_info.pool.pool_size, db_info.pool.utilization_pct),
+                                    'text-warning' if db_info.pool.health == 'warning' else '') }}
+                            {{ stat('Overflow',
+                                    '%d / %d' | format(db_info.pool.overflow, db_info.pool.max_overflow)) }}
+                        {% else %}
+                            {{ stat('Pool',  '—') }}
+                        {% endif %}
+                        {% if db_info.error %}
+                            {{ stat('Error', db_info.error, 'text-danger') }}
+                        {% endif %}
+                    </dl>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        {# ── Authentication ───────────────────────────────────────────── #}
+        <div class="col-12 col-xl-6">
+            <div class="card h-100">
+                <div class="card-header py-2">
+                    <strong><i class="fas fa-lock me-1"></i> Authentication</strong>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0 small">
+                        {{ stat('AUTH_PROVIDER',     state.auth.auth_provider) }}
+                        {{ stat('Session HTTPONLY',  state.auth.session_httponly) }}
+                        {{ stat('Session SAMESITE',  state.auth.session_samesite) }}
+                        {{ stat('Session SECURE',    state.auth.session_secure) }}
+                        {{ stat('Session lifetime',  state.auth.session_lifetime) }}
+                        <dt class="col-5 fw-normal text-muted">FLASK_SECRET_KEY</dt>
+                        <dd class="col-7 mb-1">{{ mask_badge(state.auth.flask_secret_key) }}</dd>
+                        <dt class="col-5 fw-normal text-muted">API keys ({{ state.auth.api_key_usernames | length }})</dt>
+                        <dd class="col-7 mb-1 fw-semibold">
+                            {% if state.auth.api_key_usernames %}
+                                {% for u in state.auth.api_key_usernames %}
+                                    <code>{{ u }}</code>{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            {% else %}—{% endif %}
+                        </dd>
+                    </dl>
+
+                    {% if state.auth.oidc_active %}
+                    <hr class="my-3">
+                    <div class="text-muted small mb-2"><strong>OIDC</strong> (active)</div>
+                    <dl class="row mb-0 small">
+                        {{ stat('Issuer',         state.auth.oidc_issuer) }}
+                        {{ stat('Client ID',      state.auth.oidc_client_id) }}
+                        {{ stat('Scopes',         state.auth.oidc_scopes) }}
+                        {{ stat('Redirect URI',   state.auth.oidc_redirect_uri) }}
+                        <dt class="col-5 fw-normal text-muted">Client secret</dt>
+                        <dd class="col-7 mb-1">{{ mask_badge(state.auth.oidc_client_secret) }}</dd>
+                    </dl>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# ── Caching ──────────────────────────────────────────────────── #}
+        <div class="col-12 col-xl-6">
+            <div class="card h-100">
+                <div class="card-header py-2">
+                    <strong><i class="fas fa-bolt me-1"></i> Caching</strong>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0 small">
+                        {{ stat('Flask-Cache backend',   state.caching.flask_cache_backend) }}
+                        {{ stat('Default timeout (s)',   state.caching.cache_default_timeout) }}
+                    </dl>
+
+                    {% if state.caching.usage_cache %}
+                    <hr class="my-3">
+                    <div class="text-muted small mb-2"><strong>Allocation usage cache</strong></div>
+                    <dl class="row mb-0 small">
+                        {{ stat('Enabled', state.caching.usage_cache.enabled) }}
+                        {{ stat('TTL (s)', state.caching.usage_cache.ttl) }}
+                        {{ stat('Size',
+                                '%d / %d' | format(state.caching.usage_cache.currsize, state.caching.usage_cache.maxsize)) }}
+                    </dl>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# ── Audit & Logging (full width; recent entries inline) ──────── #}
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header py-2">
+                    <strong><i class="fas fa-clipboard-list me-1"></i> Audit &amp; Logging</strong>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-3 small">
+                        {{ stat('AUDIT_ENABLED',  state.audit_logging.audit_enabled) }}
+                        {{ stat('AUDIT_LOG_PATH', state.audit_logging.audit_log_path) }}
+                        {{ stat('LOG_LEVEL',      state.audit_logging.log_level) }}
+                        {{ stat('LOG_FILE',       state.audit_logging.log_file or '(console)') }}
+                    </dl>
+
+                    <hr class="my-3">
+
+                    <h6 class="mb-2">
+                        <i class="fas fa-history me-1"></i> Recent audit entries
+                        <small class="text-muted fw-normal ms-1">(last 25)</small>
+                    </h6>
+                    {% if state.audit_tail is none %}
+                        <p class="text-muted small mb-0">
+                            <i class="fas fa-inbox"></i> Audit log not readable
+                            ({% if state.audit_logging.audit_log_path %}
+                                missing or permission denied
+                            {% else %}
+                                AUDIT_LOG_PATH not set
+                            {% endif %}).
+                        </p>
+                    {% elif state.audit_tail | length == 0 %}
+                        <p class="text-muted small mb-0">
+                            <i class="fas fa-inbox"></i> Audit log is empty.
+                        </p>
+                    {% else %}
+                        <pre class="small text-muted mb-0"
+                             style="max-height: 22rem; overflow-y: auto; white-space: pre-wrap; word-break: break-word;">{% for line in state.audit_tail %}{{ line }}
+{% endfor %}</pre>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>

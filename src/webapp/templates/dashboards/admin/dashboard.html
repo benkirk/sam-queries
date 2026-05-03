@@ -51,6 +51,15 @@
             <i class="fas fa-building me-1"></i> Facilities &amp; Allocation Types
         </button>
     </li>
+    {% if has_permission(Permission.VIEW_SYSTEM_CONFIG) %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="configuration-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-configuration"
+                type="button" role="tab" aria-controls="tab-configuration" aria-selected="false">
+            <i class="fas fa-sliders-h me-1"></i> Configuration
+        </button>
+    </li>
+    {% endif %}
 </ul>
 
 <div class="tab-content" id="adminDashboardTabsContent">
@@ -458,6 +467,29 @@
             </div>
         </div>
     </div><!-- /#facilities-pane -->
+
+    {% if has_permission(Permission.VIEW_SYSTEM_CONFIG) %}
+    <!-- Tab 5: Configuration -->
+    <div class="tab-pane fade" id="tab-configuration" role="tabpanel" aria-labelledby="configuration-tab">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-sliders-h"></i> Configuration
+                    <small class="text-muted fw-normal ms-2">Read-only system snapshot</small>
+                </h5>
+            </div>
+            <div id="configurationSection"
+                 hx-get="{{ url_for('admin_dashboard.htmx_configuration_card') }}"
+                 hx-trigger="intersect once"
+                 hx-swap="innerHTML">
+                <div class="card-body text-center text-muted py-4" role="status">
+                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div><!-- /#configuration-pane -->
+    {% endif %}
 
 </div><!-- /#adminDashboardTabsContent -->
 

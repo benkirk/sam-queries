@@ -2,6 +2,7 @@
 import os
 import uuid
 import time
+from datetime import datetime
 os.environ['FLASK_ACTIVE'] = '1'
 
 from flask import Flask, redirect, request, make_response, url_for
@@ -266,6 +267,10 @@ def create_app(*, config_overrides: dict | None = None):
             else:
                 return redirect(url_for('user_dashboard.index'))
         return redirect(url_for('status_dashboard.index'))
+
+    # Process startup timestamp — surfaced on the Admin > Configuration tab
+    # as both an absolute time and a derived uptime.
+    app.start_time = datetime.now()
 
     return app
 
