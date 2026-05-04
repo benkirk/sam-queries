@@ -6,17 +6,21 @@ the new path's user + Account_Name extraction, sentinel handling, and
 counter aggregation.
 """
 
-import sys
+import importlib.util
 import os
 
 import pytest
 
-# Add collectors/lib to sys.path so the parser module imports cleanly
-# without requiring the collector package to be installed.
+# Load the parser via importlib so we don't pollute sys.path: prepending
+# `collectors/lib` would shadow the SAM `config` module (which `sam.fmt`
+# imports as `from config import SAMConfig`) with the collector's own
+# `config.py` and break unrelated tests collected in the same session.
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(_REPO_ROOT, "collectors", "lib"))
-
-from parsers.queues import QueueParser  # noqa: E402
+_QUEUES_PATH = os.path.join(_REPO_ROOT, "collectors", "lib", "parsers", "queues.py")
+_spec = importlib.util.spec_from_file_location("_collector_queues_under_test", _QUEUES_PATH)
+_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+QueueParser = _mod.QueueParser
 
 
 def _make_job(state, owner, account, queue, ncpus=0, ngpus=0, exec_host=None):
