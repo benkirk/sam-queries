@@ -101,7 +101,8 @@ class Permission(Enum):
     ACCESS_ADMIN_DASHBOARD = "access_admin_dashboard"  # Land on /admin/ and see the navbar tab
     MANAGE_ROLES = "manage_roles"
     IMPERSONATE_USERS = "impersonate_users"  # Actually log in as another user
-    VIEW_SYSTEM_STATS = "view_system_stats"
+    VIEW_SYSTEM_STATUS = "view_system_status"
+    VIEW_SYSTEM_STATUS_USER_INFO = "view_system_status_user_info" # view per-user/project queue history info on system status dashboard
     MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data (collector/API)
     EDIT_SYSTEM_STATUS = "edit_system_status"  # GUI create/edit/delete outages
     VIEW_SYSTEM_CONFIG = "view_system_config"  # Read-only Configuration tab on Admin dashboard

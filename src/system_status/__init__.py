@@ -5,13 +5,14 @@
 from .base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin
 from .session import create_status_engine, get_session
 from .models import (
-    System, QueueDef, Filesystem, LoginNodeDef,
+    System, QueueDef, Filesystem, LoginNodeDef, UserDef, ProjectCodeDef,
     DerechoStatus,
     CasperStatus, CasperNodeTypeStatus,
     JupyterHubStatus,
     FilesystemStatus,
     LoginNodeStatus,
     QueueStatus,
+    UserProjQueueStatus,
     SystemOutage, ResourceReservation
 )
 from .cli import main
@@ -32,6 +33,8 @@ __all__ = [
     'QueueDef',
     'Filesystem',
     'LoginNodeDef',
+    'UserDef',
+    'ProjectCodeDef',
 
     # Models
     'DerechoStatus',
@@ -41,6 +44,7 @@ __all__ = [
     'FilesystemStatus',
     'LoginNodeStatus',
     'QueueStatus',
+    'UserProjQueueStatus',
     'SystemOutage',
     'ResourceReservation',
 

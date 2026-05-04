@@ -20,6 +20,9 @@ from system_status import (
     CasperStatus,
     CasperNodeTypeStatus,
     FilesystemStatus,
+    UserProjQueueStatus,
+    UserDef,
+    ProjectCodeDef,
 )
 
 
@@ -130,6 +133,106 @@ class TestDerechoPost:
         assert len(json_data['login_node_ids']) == 1
         assert len(json_data['queue_ids']) == 1
         assert len(json_data['filesystem_ids']) == 1
+
+    def test_post_derecho_with_user_project_queues(self, api_key_client, status_session):
+        """Per-user/project rollups round-trip through the ingest path,
+        creating denormalized UserDef / ProjectCodeDef rows on demand and
+        sharing the parent's timestamp."""
+        data = {
+            'cpu_nodes_total': 100, 'cpu_nodes_available': 80,
+            'cpu_nodes_down': 5, 'cpu_nodes_reserved': 15,
+            'gpu_nodes_total': 10, 'gpu_nodes_available': 8,
+            'gpu_nodes_down': 0, 'gpu_nodes_reserved': 2,
+            'cpu_cores_total': 12800, 'cpu_cores_allocated': 10000,
+            'cpu_cores_idle': 2800,
+            'gpu_count_total': 80, 'gpu_count_allocated': 60,
+            'gpu_count_idle': 20,
+            'memory_total_gb': 25600.0, 'memory_allocated_gb': 20000.0,
+            'running_jobs': 150, 'pending_jobs': 30, 'active_users': 50,
+            'queues': [
+                {'queue_name': 'main', 'running_jobs': 4, 'cores_allocated': 320}
+            ],
+            'user_project_queues': [
+                {'username': 'benkirk', 'project_code': 'SCSG0001',
+                 'queue_name': 'main', 'running_jobs': 3, 'cores_allocated': 256},
+                {'username': 'benkirk', 'project_code': 'SCSG0001',
+                 'queue_name': 'preempt', 'pending_jobs': 1, 'cores_pending': 32},
+                {'username': 'bdobbins', 'project_code': '_unknown_',
+                 'queue_name': 'main', 'running_jobs': 1, 'cores_allocated': 64},
+            ],
+        }
+
+        response = api_key_client.post('/api/v1/status/derecho', json=data)
+        assert response.status_code == 201, response.get_json()
+
+        body = response.get_json()
+        assert body['success'] is True
+        assert len(body['user_project_queue_ids']) == 3
+        assert len(body['queue_ids']) == 1
+
+        # Lookup denormalization populated correctly.
+        users = {u.username for u in status_session.query(UserDef).all()}
+        assert {'benkirk', 'bdobbins'} <= users
+        projects = {p.project_code for p in status_session.query(ProjectCodeDef).all()}
+        assert {'SCSG0001', '_unknown_'} <= projects
+
+        rows = status_session.query(UserProjQueueStatus).all()
+        assert len(rows) == 3
+        # FK ids populated, parent linkage set.
+        derecho = status_session.query(DerechoStatus).one()
+        for r in rows:
+            assert r.derecho_status_id == derecho.status_id
+            assert r.casper_status_id is None
+            assert r.user_id is not None
+            assert r.project_code_id is not None
+            assert r.queue_id is not None
+            assert r.system_id is not None
+            # Shared timestamp with the parent snapshot.
+            assert r.timestamp == derecho.timestamp
+
+        # The QueueStatus row at queue 'main' shares its queue_id with the
+        # UserProjQueueStatus rows at queue 'main' — a JOIN-driven sanity check.
+        main_queue_status = status_session.query(QueueStatus).one()
+        upq_main = [r for r in rows if r.queue_name == 'main']
+        assert all(r.queue_id == main_queue_status.queue_id for r in upq_main)
+
+    def test_post_derecho_user_project_queues_reuses_lookup_rows(
+            self, api_key_client, status_session):
+        """Posting twice with the same user/project doesn't duplicate Def rows."""
+        base = {
+            'cpu_nodes_total': 100, 'cpu_nodes_available': 80,
+            'cpu_nodes_down': 5, 'cpu_nodes_reserved': 15,
+            'gpu_nodes_total': 10, 'gpu_nodes_available': 8,
+            'gpu_nodes_down': 0, 'gpu_nodes_reserved': 2,
+            'cpu_cores_total': 12800, 'cpu_cores_allocated': 10000,
+            'cpu_cores_idle': 2800,
+            'gpu_count_total': 80, 'gpu_count_allocated': 60,
+            'gpu_count_idle': 20,
+            'memory_total_gb': 25600.0, 'memory_allocated_gb': 20000.0,
+            'running_jobs': 1, 'pending_jobs': 0, 'active_users': 1,
+        }
+
+        first = dict(base)
+        first['timestamp'] = '2026-05-04T10:00:00'
+        first['user_project_queues'] = [
+            {'username': 'benkirk', 'project_code': 'SCSG0001',
+             'queue_name': 'main', 'running_jobs': 1, 'cores_allocated': 64},
+        ]
+        r1 = api_key_client.post('/api/v1/status/derecho', json=first)
+        assert r1.status_code == 201
+
+        second = dict(base)
+        second['timestamp'] = '2026-05-04T10:05:00'
+        second['user_project_queues'] = [
+            {'username': 'benkirk', 'project_code': 'SCSG0001',
+             'queue_name': 'main', 'running_jobs': 2, 'cores_allocated': 128},
+        ]
+        r2 = api_key_client.post('/api/v1/status/derecho', json=second)
+        assert r2.status_code == 201
+
+        assert status_session.query(UserDef).count() == 1
+        assert status_session.query(ProjectCodeDef).count() == 1
+        assert status_session.query(UserProjQueueStatus).count() == 2
 
     def test_post_derecho_missing_required_field(self, api_key_client, status_session):
         """Test posting Derecho status with missing required field."""

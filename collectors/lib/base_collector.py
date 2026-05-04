@@ -70,9 +70,13 @@ class BaseCollector:
 
             queue_summary = self.pbs.get_queue_summary()
             data['queues'] = QueueParser.parse_queues(queue_summary, jobs_json)
+            data['user_project_queues'] = QueueParser.parse_user_project_queues(jobs_json)
 
             self.logger.info(
                 f"  Jobs: {job_stats.get('running_jobs', 0)} running, {job_stats.get('pending_jobs', 0)} pending, {job_stats.get('held_jobs', 0)} held"
+            )
+            self.logger.info(
+                f"  User/project rollups: {len(data['user_project_queues'])} rows"
             )
         except Exception as e:
             self.logger.error(f"Failed to collect job data: {e}")
@@ -81,7 +85,8 @@ class BaseCollector:
                 'pending_jobs': 0,
                 'held_jobs': 0,
                 'active_users': 0,
-                'queues': []
+                'queues': [],
+                'user_project_queues': [],
             })
 
     def _collect_login_node_data(self, data: dict):

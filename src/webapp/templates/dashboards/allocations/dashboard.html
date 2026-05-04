@@ -616,48 +616,10 @@ function toggleDetails(clickedRow, detailsId) {
     }
 }
 
-/* Client-side table sorting (applied after htmx loads project tables) */
-document.body.addEventListener('htmx:afterSwap', function(e) {
-    var tables = e.detail.target.querySelectorAll('table');
-    tables.forEach(function(table) {
-        /* Mark default sort (Amount descending = column 2) */
-        var th2 = table.querySelector('th:nth-child(3)');
-        if (th2) th2.classList.add('sort-desc');
-
-        table.querySelectorAll('th.sortable-header').forEach(function(th) {
-            th.addEventListener('click', function() {
-                var colIndex = Array.from(th.parentNode.children).indexOf(th);
-                var sortType = th.dataset.sort;
-                var sortAttr = th.dataset.sortAttr;  // e.g. "sort-start" for colspan bar cells
-                var isAsc = !th.classList.contains('sort-asc');
-                table.querySelectorAll('th').forEach(function(h) { h.classList.remove('sort-asc', 'sort-desc'); });
-                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
-                var tbody = table.querySelector('tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr'));
-                rows.sort(function(a, b) {
-                    var aVal, bVal;
-                    if (sortAttr) {
-                        // Named-attribute sort: works across colspan cells
-                        var aCell = a.querySelector('[data-' + sortAttr + ']');
-                        var bCell = b.querySelector('[data-' + sortAttr + ']');
-                        aVal = aCell ? (aCell.getAttribute('data-' + sortAttr) || '') : '';
-                        bVal = bCell ? (bCell.getAttribute('data-' + sortAttr) || '') : '';
-                    } else {
-                        aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
-                        bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
-                    }
-                    if (sortType === 'numeric') {
-                        aVal = parseFloat(aVal) || 0; bVal = parseFloat(bVal) || 0;
-                        return isAsc ? aVal - bVal : bVal - aVal;
-                    }
-                    aVal = String(aVal || '').toLowerCase(); bVal = String(bVal || '').toLowerCase();
-                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-                });
-                rows.forEach(function(r) { tbody.appendChild(r); });
-            });
-        });
-    });
-});
+/* Client-side table sorting is wired by static/js/sortable_table.js
+   (loaded in dashboards/base.html). Default-sorted column is marked
+   declaratively with `class="sortable-header sort-desc"` in the
+   table partial. */
 
 /* After a successful "Create Adjustment" POST, reload the adjustments
    table fragment, carrying the current filter form so the view stays

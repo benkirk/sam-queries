@@ -4,11 +4,11 @@
 
 from sqlalchemy import Column, Integer, UniqueConstraint, ForeignKey
 from sqlalchemy.orm import relationship
-from ..base import StatusBase, StatusSnapshotMixin, SessionMixin
+from ..base import StatusBase, StatusSnapshotMixin, SessionMixin, QueueRollupMetricsMixin
 from .lookups import System, QueueDef
 
 
-class QueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
+class QueueStatus(StatusBase, StatusSnapshotMixin, QueueRollupMetricsMixin, SessionMixin):
     """
     Per-queue metrics (5-minute intervals).
     Tracks queues on multiple machines.
@@ -18,6 +18,10 @@ class QueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
     the ``queues`` and ``systems`` lookup tables. Property accessors below
     preserve the legacy attribute interface — see
     ``system_status.queries.lookups`` for the resolution machinery.
+
+    Rollup metric columns (running_jobs, pending_jobs, held_jobs, cores_*,
+    gpus_*, nodes_allocated) come from ``QueueRollupMetricsMixin`` and are
+    shared with ``UserProjQueueStatus``.
     """
     __bind_key__ = "system_status"
     __tablename__ = 'queue_status'
@@ -36,30 +40,14 @@ class QueueStatus(StatusBase, StatusSnapshotMixin, SessionMixin):
                               nullable=True, index=True,
                               comment='FK to parent Casper status snapshot')
 
-    # Lookup FKs (Phase 2). NOT NULL once backfill completes.
+    # Lookup FKs (Phase 2).
     system_id = Column(Integer, ForeignKey('systems.system_id'),
                        nullable=False, index=True)
     queue_id = Column(Integer, ForeignKey('queues.queue_id'),
                       nullable=False, index=True)
 
-    # Queue Metrics
-    running_jobs = Column(Integer, nullable=False, default=0)
-    pending_jobs = Column(Integer, nullable=False, default=0)
-    held_jobs = Column(Integer, nullable=False, default=0)
+    # Queue-grain only (not in the rollup mixin: not meaningful per-user).
     active_users = Column(Integer, nullable=False, default=0)
-
-    # Resource Allocations
-    cores_allocated = Column(Integer, nullable=False, default=0)
-    gpus_allocated = Column(Integer, nullable=False, default=0)
-    nodes_allocated = Column(Integer, nullable=False, default=0)
-
-    # Resources Pending
-    cores_pending = Column(Integer, nullable=False, default=0)
-    gpus_pending = Column(Integer, nullable=False, default=0)
-
-    # Resources Held
-    cores_held = Column(Integer, nullable=False, default=0)
-    gpus_held = Column(Integer, nullable=False, default=0)
 
     # Relationships
     derecho_status = relationship('DerechoStatus', back_populates='queues',

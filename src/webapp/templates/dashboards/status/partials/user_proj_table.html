@@ -1,0 +1,53 @@
+{# Per-user / per-project queue rollup table — latest snapshot only.
+   Sortable by any column via the shared sortable_table.js. Column set
+   matches the parent QueueStatus rollup grain so per-row values are
+   directly comparable to the totals shown in the Current Status card
+   above. #}
+{% if user_proj_rows %}
+<div class="table-responsive">
+<table class="table table-sm table-striped table-hover align-middle">
+    <thead>
+        <tr>
+            <th class="sortable-header" data-sort="text">User</th>
+            <th class="sortable-header" data-sort="text">Project</th>
+            <th class="sortable-header text-end sort-desc" data-sort="numeric">Running</th>
+            <th class="sortable-header text-end" data-sort="numeric">Pending</th>
+            <th class="sortable-header text-end" data-sort="numeric">Held</th>
+            <th class="sortable-header text-end" data-sort="numeric">Cores<br><small class="fw-normal">alloc</small></th>
+            <th class="sortable-header text-end" data-sort="numeric">Cores<br><small class="fw-normal">pending</small></th>
+            <th class="sortable-header text-end" data-sort="numeric">Cores<br><small class="fw-normal">held</small></th>
+            <th class="sortable-header text-end" data-sort="numeric">GPUs<br><small class="fw-normal">alloc</small></th>
+            <th class="sortable-header text-end" data-sort="numeric">GPUs<br><small class="fw-normal">pending</small></th>
+            <th class="sortable-header text-end" data-sort="numeric">GPUs<br><small class="fw-normal">held</small></th>
+            <th class="sortable-header text-end" data-sort="numeric">Nodes<br><small class="fw-normal">alloc</small></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in user_proj_rows %}
+        <tr>
+            <td data-sort-value="{{ r.username }}"><code>{{ r.username }}</code></td>
+            <td data-sort-value="{{ r.project_code }}"><code>{{ r.project_code }}</code></td>
+            <td class="text-end" data-sort-value="{{ r.running_jobs }}">{{ r.running_jobs | fmt_number }}</td>
+            <td class="text-end" data-sort-value="{{ r.pending_jobs }}">{{ r.pending_jobs | fmt_number }}</td>
+            <td class="text-end" data-sort-value="{{ r.held_jobs }}">{{ r.held_jobs | fmt_number }}</td>
+            <td class="text-end" data-sort-value="{{ r.cores_allocated }}">{{ r.cores_allocated | fmt_number }}</td>
+            <td class="text-end" data-sort-value="{{ r.cores_pending }}">{{ r.cores_pending | fmt_number }}</td>
+            <td class="text-end" data-sort-value="{{ r.cores_held }}">{{ r.cores_held | fmt_number }}</td>
+            <td class="text-end" data-sort-value="{{ r.gpus_allocated }}">{{ r.gpus_allocated | fmt_number }}</td>
+            <td class="text-end" data-sort-value="{{ r.gpus_pending }}">{{ r.gpus_pending | fmt_number }}</td>
+            <td class="text-end" data-sort-value="{{ r.gpus_held }}">{{ r.gpus_held | fmt_number }}</td>
+            <td class="text-end" data-sort-value="{{ r.nodes_allocated }}">{{ r.nodes_allocated | fmt_number }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+<div class="text-muted small">
+    {{ user_proj_rows|length }} row{{ 's' if user_proj_rows|length != 1 else '' }}
+</div>
+{% else %}
+<div class="text-center text-muted py-4">
+    <i class="fas fa-info-circle"></i>
+    No per-user / per-project data for this queue.
+</div>
+{% endif %}

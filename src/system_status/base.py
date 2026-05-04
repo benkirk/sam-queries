@@ -115,4 +115,59 @@ class SessionMixin:
     def session(self) -> Session:
         s = Session.object_session(self)
         return s
+
+
+class QueueRollupMetricsMixin:
+    """Per-queue rollup metric columns shared by ``QueueStatus`` and
+    ``UserProjQueueStatus``.
+
+    The two tables capture the same counters at different aggregation grains:
+    ``QueueStatus`` collapses across users/projects, ``UserProjQueueStatus``
+    keys by ``(user, project_code, queue)``. Keeping the columns in a mixin
+    avoids drift if a new metric is added.
+
+    ``active_users`` is intentionally NOT part of the mixin — it's only
+    meaningful at the queue grain (one row per user, by definition, in the
+    per-user table).
+    """
+
+    @declared_attr
+    def running_jobs(cls):
+        return Column(Integer, nullable=False, default=0)
+
+    @declared_attr
+    def pending_jobs(cls):
+        return Column(Integer, nullable=False, default=0)
+
+    @declared_attr
+    def held_jobs(cls):
+        return Column(Integer, nullable=False, default=0)
+
+    @declared_attr
+    def cores_allocated(cls):
+        return Column(Integer, nullable=False, default=0)
+
+    @declared_attr
+    def gpus_allocated(cls):
+        return Column(Integer, nullable=False, default=0)
+
+    @declared_attr
+    def nodes_allocated(cls):
+        return Column(Integer, nullable=False, default=0)
+
+    @declared_attr
+    def cores_pending(cls):
+        return Column(Integer, nullable=False, default=0)
+
+    @declared_attr
+    def gpus_pending(cls):
+        return Column(Integer, nullable=False, default=0)
+
+    @declared_attr
+    def cores_held(cls):
+        return Column(Integer, nullable=False, default=0)
+
+    @declared_attr
+    def gpus_held(cls):
+        return Column(Integer, nullable=False, default=0)
 #-------------------------------------------------------------------------em-
