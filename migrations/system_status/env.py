@@ -48,7 +48,11 @@ if _override_url:
 else:
     # Lazy import — module-import side-effects rely on STATUS_DB_* env vars.
     from system_status.session import connection_string  # type: ignore[import-not-found]
-    _DB_URL = str(connection_string)
+    # NOTE: SQLAlchemy's URL.__str__ redacts the password (replaces it
+    # with `***`); engine_from_config would then try to authenticate
+    # with the literal "***". `render_as_string(hide_password=False)`
+    # emits the real, URL-encoded password.
+    _DB_URL = connection_string.render_as_string(hide_password=False)
 
 
 # ---------------------------------------------------------------------------
