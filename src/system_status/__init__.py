@@ -5,6 +5,7 @@
 from .base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin
 from .session import create_status_engine, get_session
 from .models import (
+    System, QueueDef, Filesystem, LoginNodeDef,
     DerechoStatus,
     CasperStatus, CasperNodeTypeStatus,
     JupyterHubStatus,
@@ -25,6 +26,12 @@ __all__ = [
     # Session
     'create_status_engine',
     'get_session',
+
+    # Lookup tables
+    'System',
+    'QueueDef',
+    'Filesystem',
+    'LoginNodeDef',
 
     # Models
     'DerechoStatus',

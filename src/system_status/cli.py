@@ -409,10 +409,17 @@ class SystemStatusCLI:
     def _display_reservations(self, system_name):
         """Display active or upcoming reservations."""
         from datetime import datetime
-        reservations = self.session.query(ResourceReservation).filter(
-            ResourceReservation.system_name == system_name,
-            ResourceReservation.end_time >= datetime.now()
-        ).order_by(ResourceReservation.start_time).all()
+        from system_status.models import System
+        reservations = (
+            self.session.query(ResourceReservation)
+            .join(System, ResourceReservation.system_id == System.system_id)
+            .filter(
+                System.name == system_name,
+                ResourceReservation.end_time >= datetime.now(),
+            )
+            .order_by(ResourceReservation.start_time)
+            .all()
+        )
 
         if not reservations:
             return

@@ -38,7 +38,8 @@ from system_status import (
     LoginNodeStatus,
     QueueStatus,
     FilesystemStatus,
-    SystemOutage, ResourceReservation
+    SystemOutage, ResourceReservation,
+    System,
 )
 from system_status.schemas.status import (
     DerechoStatusSchema,
@@ -99,13 +100,16 @@ def _handle_reservations(reservations_data, system_name):
         A list of upserted reservation IDs.
     """
     from sqlalchemy import and_
+    from system_status.queries.lookups import get_or_create_system
+
+    system = get_or_create_system(db.session, system_name)
 
     reservation_ids = []
     for resv_data in reservations_data:
         # Upsert logic: check if reservation exists
         existing = db.session.query(ResourceReservation).filter(
             and_(
-                ResourceReservation.system_name == system_name,
+                ResourceReservation.system_id == system.system_id,
                 ResourceReservation.reservation_name == resv_data['reservation_name']
             )
         ).first()
@@ -122,7 +126,7 @@ def _handle_reservations(reservations_data, system_name):
         else:
             # Insert new reservation
             resv = ResourceReservation(
-                system_name=system_name,
+                system_id=system.system_id,
                 reservation_name=resv_data['reservation_name'],
                 description=resv_data.get('description'),
                 start_time=datetime.fromisoformat(resv_data['start_time']),
@@ -472,7 +476,8 @@ def get_outages():
     # Filter by system
     system_name = request.args.get('system_name')
     if system_name:
-        query = query.filter(SystemOutage.system_name == system_name)
+        query = query.join(System, SystemOutage.system_id == System.system_id) \
+                     .filter(System.name == system_name)
 
     # Filter by status
     status_filter = request.args.get('status')
@@ -580,7 +585,8 @@ def get_reservations():
     # Filter by system
     system_name = request.args.get('system_name')
     if system_name:
-        query = query.filter(ResourceReservation.system_name == system_name)
+        query = query.join(System, ResourceReservation.system_id == System.system_id) \
+                     .filter(System.name == system_name)
 
     # Filter by upcoming
     if request.args.get('upcoming_only', 'true').lower() in ('true', '1', 'yes'):

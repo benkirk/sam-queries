@@ -3,40 +3,47 @@
 #-------------------------------------------------------------------------eh-
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, Index, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Text, DateTime, Index, Enum as SQLEnum, ForeignKey
+from sqlalchemy.orm import relationship
 from ..base import StatusBase, SessionMixin
+from .lookups import System
 
 
 class SystemOutage(StatusBase, SessionMixin):
     """
     Known outages and degradations.
-    Tracks system issues with severity, status, and resolution information.
+
+    Phase 2 (PR-A): legacy ``system_name`` text column is replaced by FK
+    ``system_id`` against the ``systems`` lookup table. Property accessor
+    preserves the legacy attribute interface.
     """
-    __bind_key__ = "system_status" # <-- database for connection, if not default
+    __bind_key__ = "system_status"
     __tablename__ = 'system_outages'
 
     __table_args__ = (
-        Index('ix_outage_system_name', 'system_name'),
         Index('ix_outage_start_time', 'start_time'),
         Index('ix_outage_status', 'status'),
     )
 
     outage_id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # System Information
-    system_name = Column(String(64), nullable=False, index=True)
+    # Lookup FK (Phase 2)
+    system_id = Column(Integer, ForeignKey('systems.system_id'),
+                       nullable=False, index=True)
     component = Column(String(128), nullable=True)  # e.g., "login nodes", "queue", "filesystem"
 
     # Severity
     severity = Column(
-        SQLEnum('critical', 'major', 'minor', 'maintenance', name='outage_severity'),
+        SQLEnum('critical', 'major', 'minor', 'maintenance',
+                name='outage_severity', native_enum=False),
         nullable=False,
         default='minor'
     )
 
     # Status
     status = Column(
-        SQLEnum('investigating', 'identified', 'monitoring', 'resolved', name='outage_status'),
+        SQLEnum('investigating', 'identified', 'monitoring', 'resolved',
+                name='outage_status', native_enum=False),
         nullable=False,
         default='investigating'
     )
@@ -53,29 +60,47 @@ class SystemOutage(StatusBase, SessionMixin):
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     updated_at = Column(DateTime, nullable=True, onupdate=datetime.now)
 
+    # Relationship
+    system = relationship(System, foreign_keys=[system_id])
+
+    @property
+    def system_name(self):
+        pending = self.__dict__.get('_pending_system_name')
+        if pending is not None:
+            return pending
+        return self.system.name if self.system is not None else None
+
+    @system_name.setter
+    def system_name(self, value):
+        self.__dict__['_pending_system_name'] = value
+
     def __str__(self):
         return f"{self.system_name}: {self.title} ({self.severity}/{self.status})"
 
     def __repr__(self):
-        return f"<SystemOutage(id={self.outage_id}, system='{self.system_name}', severity='{self.severity}', status='{self.status}')>"
+        return (f"<SystemOutage(id={self.outage_id}, system='{self.system_name}', "
+                f"severity='{self.severity}', status='{self.status}')>")
 
 
 class ResourceReservation(StatusBase, SessionMixin):
     """
     Scheduled reservations for maintenance, special allocations, etc.
+
+    Phase 2 (PR-A): legacy ``system_name`` text column is replaced by FK
+    ``system_id`` against the ``systems`` lookup table.
     """
-    __bind_key__ = "system_status" # <-- database for connection, if not default
+    __bind_key__ = "system_status"
     __tablename__ = 'resource_reservations'
 
     __table_args__ = (
-        Index('ix_reservation_system_name', 'system_name'),
         Index('ix_reservation_start_time', 'start_time'),
     )
 
     reservation_id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # System Information
-    system_name = Column(String(64), nullable=False, index=True)
+    # Lookup FK (Phase 2)
+    system_id = Column(Integer, ForeignKey('systems.system_id'),
+                       nullable=False, index=True)
     reservation_name = Column(String(128), nullable=False)
 
     # Details
@@ -92,8 +117,23 @@ class ResourceReservation(StatusBase, SessionMixin):
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     updated_at = Column(DateTime, nullable=True, onupdate=datetime.now)
 
+    # Relationship
+    system = relationship(System, foreign_keys=[system_id])
+
+    @property
+    def system_name(self):
+        pending = self.__dict__.get('_pending_system_name')
+        if pending is not None:
+            return pending
+        return self.system.name if self.system is not None else None
+
+    @system_name.setter
+    def system_name(self, value):
+        self.__dict__['_pending_system_name'] = value
+
     def __str__(self):
         return f"{self.system_name}: {self.reservation_name} ({self.start_time} - {self.end_time})"
 
     def __repr__(self):
-        return f"<ResourceReservation(id={self.reservation_id}, system='{self.system_name}', name='{self.reservation_name}')>"
+        return (f"<ResourceReservation(id={self.reservation_id}, "
+                f"system='{self.system_name}', name='{self.reservation_name}')>")

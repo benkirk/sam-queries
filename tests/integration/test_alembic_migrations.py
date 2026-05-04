@@ -50,16 +50,43 @@ def _run_alembic(*args: str, db_url: str) -> subprocess.CompletedProcess:
     )
 
 
-def _load_target_metadata():
-    """Import models with FLASK_ACTIVE unset so StatusBase.metadata is the
-    same MetaData object env.py compares against."""
-    os.environ.pop("FLASK_ACTIVE", None)
-    # Importing here (inside the test process, not at module load) avoids
-    # polluting other tests that do depend on FLASK_ACTIVE.
-    import system_status.models  # noqa: F401
-    from system_status import StatusBase
+def _extract_target_schema() -> dict:
+    """Return a JSON-serializable description of StatusBase.metadata.
 
-    return StatusBase.metadata
+    Runs in a subprocess so the import happens with FLASK_ACTIVE unset
+    from the start, which is required for ``StatusBase`` to resolve to
+    a plain declarative_base whose metadata is the system_status bind.
+    Importing in-process is unsafe: an earlier Flask-context test in
+    the same xdist worker may have cached ``system_status.base`` with
+    ``StatusBase`` bound to ``db.Model`` (whose ``metadata`` belongs to
+    the default ``sam`` bind, not ``system_status``).
+    """
+    import json
+
+    extractor = (
+        "import os, json; "
+        "os.environ.pop('FLASK_ACTIVE', None); "
+        "import sys; sys.path.insert(0, 'src'); "
+        "import system_status.models; "
+        "from system_status import StatusBase; "
+        "md = StatusBase.metadata; "
+        "out = {}; "
+        "[out.setdefault(t.name, {"
+        "    'columns': sorted(c.name for c in t.columns),"
+        "    'indexes': sorted(ix.name for ix in t.indexes),"
+        "    'unique_constraints': sorted(c.name for c in t.constraints "
+        "        if c.__class__.__name__ == 'UniqueConstraint' and c.name),"
+        "}) for t in md.tables.values()]; "
+        "print(json.dumps(out))"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", extractor],
+        check=True, capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+    # `system_status.session` prints a redacted connection string on import;
+    # take the last non-empty stdout line, which is our JSON.
+    last = next(line for line in reversed(proc.stdout.splitlines()) if line.strip())
+    return json.loads(last)
 
 
 @pytest.fixture
@@ -77,18 +104,18 @@ def _alembic_internal_tables() -> set[str]:
 def test_baseline_matches_models(sqlite_db_url: str) -> None:
     """`alembic upgrade head` produces the same schema as StatusBase.metadata.
 
-    Compares table names, per-table column sets (and types), index names,
-    and unique-constraint names. Drift in either direction fails.
+    Compares table names, per-table column sets, index names, and
+    unique-constraint names. Drift in either direction fails.
     """
     _run_alembic("upgrade", "head", db_url=sqlite_db_url)
 
-    target = _load_target_metadata()
+    target = _extract_target_schema()
 
     engine = create_engine(sqlite_db_url)
     insp = inspect(engine)
 
     db_tables = set(insp.get_table_names()) - _alembic_internal_tables()
-    model_tables = set(target.tables.keys())
+    model_tables = set(target.keys())
 
     missing_in_db = model_tables - db_tables
     extra_in_db = db_tables - model_tables
@@ -96,10 +123,10 @@ def test_baseline_matches_models(sqlite_db_url: str) -> None:
     assert not extra_in_db, f"Tables created by migration but absent from models: {extra_in_db}"
 
     for table_name in sorted(model_tables):
-        model_table = target.tables[table_name]
+        info = target[table_name]
 
         db_columns = {c["name"] for c in insp.get_columns(table_name)}
-        model_columns = {c.name for c in model_table.columns}
+        model_columns = set(info["columns"])
         assert db_columns == model_columns, (
             f"Column drift in {table_name}: "
             f"only-in-db={db_columns - model_columns}, "
@@ -107,13 +134,10 @@ def test_baseline_matches_models(sqlite_db_url: str) -> None:
         )
 
         db_indexes = {ix["name"] for ix in insp.get_indexes(table_name) if ix.get("name")}
-        # SQLAlchemy registers indexes from both Index(...) declarations and
-        # Column(..., index=True). Auto-generated names go through the
-        # naming_convention; explicit names ship verbatim.
-        model_indexes = {ix.name for ix in model_table.indexes}
-        # SQLite's introspection includes auto-indexes from UNIQUE constraints
-        # (named like `sqlite_autoindex_*`); skip those — UK comparison happens below.
+        # SQLite introspection includes UK-derived auto-indexes (sqlite_autoindex_*);
+        # skip those — UK comparison handles uniqueness separately.
         db_indexes_real = {n for n in db_indexes if not n.startswith("sqlite_autoindex_")}
+        model_indexes = set(info["indexes"])
         assert db_indexes_real == model_indexes, (
             f"Index drift in {table_name}: "
             f"only-in-db={db_indexes_real - model_indexes}, "
@@ -121,10 +145,7 @@ def test_baseline_matches_models(sqlite_db_url: str) -> None:
         )
 
         db_uks = {uk["name"] for uk in insp.get_unique_constraints(table_name) if uk.get("name")}
-        model_uks = {
-            c.name for c in model_table.constraints
-            if c.__class__.__name__ == "UniqueConstraint" and c.name
-        }
+        model_uks = set(info["unique_constraints"])
         assert db_uks == model_uks, (
             f"UK drift in {table_name}: "
             f"only-in-db={db_uks - model_uks}, "
