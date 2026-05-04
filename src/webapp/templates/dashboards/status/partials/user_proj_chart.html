@@ -1,0 +1,56 @@
+{# Stacked-area chart fragment for the queue-history drill-down.
+   Returned by status_dashboard.htmx_user_proj_chart.
+
+   The selector btn-groups live INSIDE the swap target so each click
+   re-renders both the selectors (with the new active button) and the
+   chart in a single HTMX swap. No JS state to keep in sync. #}
+{% set _kwargs = {
+    'system': system, 'queue_name': queue_name,
+    'group_by': group_by, 'metric': metric, 'hours': hours,
+} %}
+<div id="upq-chart-inner">
+    <div class="d-flex flex-wrap gap-3 mb-3 align-items-center">
+        <div>
+            <label class="form-label small text-muted mb-1 me-2">Group by</label>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Group by">
+                {% for opt_val, opt_lbl in [('user', 'User'), ('project', 'Project code')] %}
+                <button type="button"
+                        class="btn btn-{% if group_by == opt_val %}primary{% else %}outline-primary{% endif %}"
+                        hx-get="{{ url_for('status_dashboard.htmx_user_proj_chart',
+                                           **dict(_kwargs, group_by=opt_val)) }}"
+                        hx-target="#upq-chart-inner"
+                        hx-swap="outerHTML">
+                    {{ opt_lbl }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+        <div>
+            <label class="form-label small text-muted mb-1 me-2">Metric</label>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Metric">
+                {% for opt_val, opt_lbl in [
+                    ('running_jobs', 'Running'),
+                    ('pending_jobs', 'Pending'),
+                    ('held_jobs',    'Held'),
+                ] %}
+                <button type="button"
+                        class="btn btn-{% if metric == opt_val %}primary{% else %}outline-primary{% endif %}"
+                        hx-get="{{ url_for('status_dashboard.htmx_user_proj_chart',
+                                           **dict(_kwargs, metric=opt_val)) }}"
+                        hx-target="#upq-chart-inner"
+                        hx-swap="outerHTML">
+                    {{ opt_lbl }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <h6 class="text-center fw-bold mb-2">
+            Top {{ top_n }} {{ group_by_label }}s by {{ metric_label }}
+            <span class="text-muted fw-normal">— {{ system|upper }} · {{ queue_name }}</span>
+        </h6>
+        {{ chart_svg | safe }}
+    </div>
+</div>

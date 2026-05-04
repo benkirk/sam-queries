@@ -20,7 +20,10 @@ from system_status.models import (
     System, QueueDef, Filesystem, LoginNodeDef,
 )
 
-from .user_proj_queues import get_latest_user_proj_queue_snapshot  # noqa: F401
+from .user_proj_queues import (  # noqa: F401
+    get_latest_user_proj_queue_snapshot,
+    get_user_proj_queue_timeseries,
+)
 
 
 def get_latest_derecho_status(session: Session) -> Optional[DerechoStatus]:

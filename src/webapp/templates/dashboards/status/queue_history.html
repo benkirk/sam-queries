@@ -116,6 +116,34 @@
         {% include 'dashboards/status/partials/user_proj_table.html' %}
     </div>
 </div>
+
+<!-- Per-user / per-project queue load over time (top-N + Others) -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-chart-area"></i> User / project load over time
+            <small class="text-muted fw-normal ms-2">
+                top 10 + Others, {{ start_date | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M') }}
+                → {{ end_date | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
+            </small>
+        </h5>
+    </div>
+    <div class="card-body">
+        {# Initial load: HTMX fetches the chart partial (which carries
+           its own selector buttons). Subsequent button clicks replace
+           #upq-chart-inner with a freshly-rendered partial. #}
+        <div hx-get="{{ url_for('status_dashboard.htmx_user_proj_chart',
+                                system=system, queue_name=queue_name,
+                                hours=hours, metric='running_jobs',
+                                group_by='user') }}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="text-center text-muted py-5">
+                <i class="fas fa-spinner fa-spin"></i> Loading chart…
+            </div>
+        </div>
+    </div>
+</div>
 {% endif %}
 
 <!-- Back Button -->

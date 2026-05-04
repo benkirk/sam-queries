@@ -9,7 +9,11 @@ from datetime import datetime, timedelta
 import logging
 
 from webapp.extensions import db
-from ..charts import generate_nodetype_history_matplotlib, generate_queue_history_matplotlib
+from ..charts import (
+    generate_nodetype_history_matplotlib,
+    generate_queue_history_matplotlib,
+    generate_user_proj_stacked_area,
+)
 
 from system_status import queries as status_queries
 
@@ -283,6 +287,70 @@ def queue_history(system, queue_name):
         end_date=end_date,
         can_view_user_info=can_view_user_info,
         user_proj_rows=user_proj_rows,
+    )
+
+
+@bp.route('/htmx/queue-history/<system>/<queue_name>/user-proj-chart')
+@login_required
+@require_permission(Permission.VIEW_SYSTEM_STATUS_USER_INFO)
+def htmx_user_proj_chart(system, queue_name):
+    """Render one of the six (group_by × metric) stacked-area charts.
+
+    Used by selector buttons in the queue-history drill-down. Time
+    window comes from the same ``hours`` param the parent chart uses,
+    so toggling the time-range picker re-fires this endpoint via
+    ``hx-include`` and the two charts stay in sync.
+    """
+    valid_metrics = ('running_jobs', 'pending_jobs', 'held_jobs')
+    valid_groups = ('user', 'project')
+
+    metric = request.args.get('metric', 'running_jobs')
+    if metric not in valid_metrics:
+        metric = 'running_jobs'
+    group_by = request.args.get('group_by', 'user')
+    if group_by not in valid_groups:
+        group_by = 'user'
+
+    if request.args.get('hours'):
+        try:
+            hours = int(request.args['hours'])
+        except ValueError:
+            hours = 168
+    elif request.args.get('days'):
+        try:
+            hours = int(request.args['days']) * 24
+        except ValueError:
+            hours = 168
+    else:
+        hours = 168
+
+    top_n = 10
+    end_date = datetime.now()
+    start_date = end_date - timedelta(hours=hours)
+
+    timeseries = status_queries.get_user_proj_queue_timeseries(
+        db.session,
+        system=system,
+        queue_name=queue_name,
+        start_date=start_date,
+        end_date=end_date,
+        metric=metric,
+        group_by=group_by,
+        top_n=top_n,
+    )
+    chart_svg = generate_user_proj_stacked_area(timeseries)
+
+    return render_template(
+        'dashboards/status/partials/user_proj_chart.html',
+        system=system,
+        queue_name=queue_name,
+        hours=hours,
+        metric=metric,
+        metric_label=timeseries.get('metric_label', metric),
+        group_by=group_by,
+        group_by_label=timeseries.get('group_by_label', group_by),
+        top_n=top_n,
+        chart_svg=chart_svg,
     )
 
 
