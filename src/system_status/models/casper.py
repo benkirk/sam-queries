@@ -54,6 +54,12 @@ class CasperStatus(StatusBase, StatusSnapshotMixin, SessionMixin, SystemStatusMi
                           cascade='all, delete-orphan',
                           lazy='selectin')
 
+    user_proj_queues = relationship('UserProjQueueStatus',
+                                    foreign_keys='UserProjQueueStatus.casper_status_id',
+                                    back_populates='casper_status',
+                                    cascade='all, delete-orphan',
+                                    lazy='selectin')
+
     filesystems = relationship('FilesystemStatus',
                                foreign_keys='FilesystemStatus.casper_status_id',
                                back_populates='casper_status',

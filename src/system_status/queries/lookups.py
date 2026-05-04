@@ -25,8 +25,10 @@ from sqlalchemy.orm import Session
 from system_status.models.lookups import (
     Filesystem,
     LoginNodeDef,
+    ProjectCodeDef,
     QueueDef,
     System,
+    UserDef,
 )
 
 
@@ -79,6 +81,26 @@ def get_or_create_login_node_def(
     return obj
 
 
+def get_or_create_user(session: Session, username: str) -> UserDef:
+    obj = session.query(UserDef).filter(UserDef.username == username).one_or_none()
+    if obj is None:
+        obj = UserDef(username=username)
+        session.add(obj)
+        session.flush()
+    return obj
+
+
+def get_or_create_project_code(session: Session, project_code: str) -> ProjectCodeDef:
+    obj = session.query(ProjectCodeDef).filter(
+        ProjectCodeDef.project_code == project_code
+    ).one_or_none()
+    if obj is None:
+        obj = ProjectCodeDef(project_code=project_code)
+        session.add(obj)
+        session.flush()
+    return obj
+
+
 # ---------------------------------------------------------------------------
 # before_flush listener
 #
@@ -100,8 +122,9 @@ def _snapshot_models():
     from system_status.models.filesystems import FilesystemStatus
     from system_status.models.login_nodes import LoginNodeStatus
     from system_status.models.outages import SystemOutage, ResourceReservation
+    from system_status.models.user_proj_queues import UserProjQueueStatus
     return (QueueStatus, FilesystemStatus, LoginNodeStatus,
-            SystemOutage, ResourceReservation)
+            SystemOutage, ResourceReservation, UserProjQueueStatus)
 
 
 def _find_in_session(session: Session, cls, **filters):
@@ -186,16 +209,40 @@ def _ensure_login_node_def(
     return obj
 
 
+def _ensure_user(session: Session, cache: dict, username: str) -> UserDef:
+    if username in cache:
+        return cache[username]
+    obj = _find_in_session(session, UserDef, username=username)
+    if obj is None:
+        obj = UserDef(username=username)
+        session.add(obj)
+    cache[username] = obj
+    return obj
+
+
+def _ensure_project_code(session: Session, cache: dict, project_code: str) -> ProjectCodeDef:
+    if project_code in cache:
+        return cache[project_code]
+    obj = _find_in_session(session, ProjectCodeDef, project_code=project_code)
+    if obj is None:
+        obj = ProjectCodeDef(project_code=project_code)
+        session.add(obj)
+    cache[project_code] = obj
+    return obj
+
+
 @event.listens_for(Session, "before_flush")
 def _resolve_pending_lookup_names(session, flush_context, instances):
     snapshot_classes = _snapshot_models()
     (QueueStatus, FilesystemStatus, LoginNodeStatus,
-     SystemOutage, ResourceReservation) = snapshot_classes
+     SystemOutage, ResourceReservation, UserProjQueueStatus) = snapshot_classes
 
     sys_cache: dict = {}
     queue_cache: dict = {}
     fs_cache: dict = {}
     ln_cache: dict = {}
+    user_cache: dict = {}
+    proj_cache: dict = {}
 
     # `session.new` is a lazy IdentitySet — copy to a list so we can iterate
     # while adding new objects (lookup rows) to the session.
@@ -208,7 +255,19 @@ def _resolve_pending_lookup_names(session, flush_context, instances):
             obj.system = _ensure_system(session, sys_cache, pending_system)
         sys_obj = obj.system  # may already have been set; may be None for legacy code
 
-        if isinstance(obj, QueueStatus):
+        if isinstance(obj, UserProjQueueStatus):
+            # Resolve queue (system-scoped), user, and project_code lookups.
+            pending_queue = obj.__dict__.pop("_pending_queue_name", None)
+            if pending_queue and sys_obj is not None:
+                obj.queue = _ensure_queue(session, queue_cache, sys_obj, pending_queue)
+            pending_user = obj.__dict__.pop("_pending_username", None)
+            if pending_user:
+                obj.user = _ensure_user(session, user_cache, pending_user)
+            pending_proj = obj.__dict__.pop("_pending_project_code", None)
+            if pending_proj:
+                obj.project = _ensure_project_code(session, proj_cache, pending_proj)
+
+        elif isinstance(obj, QueueStatus):
             pending_queue = obj.__dict__.pop("_pending_queue_name", None)
             if pending_queue and sys_obj is not None:
                 obj.queue = _ensure_queue(session, queue_cache, sys_obj, pending_queue)
