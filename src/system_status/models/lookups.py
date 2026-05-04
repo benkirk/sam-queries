@@ -103,14 +103,15 @@ class UserDef(StatusBase, SessionMixin):
     the same username refers to the same person regardless of which HPC
     system they're using.
 
-    Named ``UserDef`` (table ``users``) rather than ``User`` to avoid a
-    class-name collision with ``sam.core.User`` in the shared SQLAlchemy
-    declarative registry — same rationale as ``QueueDef`` vs.
-    ``sam.resources.Queue``. This table is intentionally not FK-linked to
-    ``sam.users``; later queries by username string will JOIN by name.
+    Named ``UserDef`` (table ``status_users``) rather than ``User`` /
+    ``users`` to avoid a class-name **and** table-name collision with
+    ``sam.core.User`` (which also maps to ``users``) in the shared
+    SQLAlchemy declarative registry. This table is intentionally not
+    FK-linked to ``sam.users``; later queries by username string will
+    JOIN by name.
     """
     __bind_key__ = "system_status"
-    __tablename__ = "users"
+    __tablename__ = "status_users"
 
     user_id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(32), nullable=False, unique=True)

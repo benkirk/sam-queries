@@ -47,13 +47,13 @@ def upgrade() -> None:
     # 1. Lookup tables — UserDef, ProjectCodeDef.
     # ------------------------------------------------------------------
     op.create_table(
-        "users",
+        "status_users",
         sa.Column("user_id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("username", sa.String(length=32), nullable=False),
         sa.Column("created_at", sa.DateTime(),
                   server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
-        sa.PrimaryKeyConstraint("user_id", name=op.f("pk_users")),
-        sa.UniqueConstraint("username", name=op.f("uq_users_username")),
+        sa.PrimaryKeyConstraint("user_id", name=op.f("pk_status_users")),
+        sa.UniqueConstraint("username", name=op.f("uq_status_users_username")),
     )
 
     op.create_table(
@@ -105,8 +105,8 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
-            ["user_id"], ["users.user_id"],
-            name=op.f("fk_user_proj_queue_status_user_id_users"),
+            ["user_id"], ["status_users.user_id"],
+            name=op.f("fk_user_proj_queue_status_user_id_status_users"),
         ),
         sa.ForeignKeyConstraint(
             ["project_code_id"], ["project_codes.project_code_id"],
@@ -145,14 +145,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("user_proj_queue_status", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_user_proj_queue_status_queue_id"))
-        batch_op.drop_index(batch_op.f("ix_user_proj_queue_status_system_id"))
-        batch_op.drop_index(batch_op.f("ix_user_proj_queue_status_project_code_id"))
-        batch_op.drop_index(batch_op.f("ix_user_proj_queue_status_user_id"))
-        batch_op.drop_index(batch_op.f("ix_user_proj_queue_status_casper_status_id"))
-        batch_op.drop_index(batch_op.f("ix_user_proj_queue_status_derecho_status_id"))
-        batch_op.drop_index(batch_op.f("ix_user_proj_queue_status_timestamp"))
+    # DROP TABLE removes the table's indexes and FK constraints in a
+    # single atomic operation on every dialect (MySQL, Postgres, SQLite).
+    # Explicit drop_index() before drop_table() fails on MySQL when the
+    # index is needed by an FK constraint that hasn't been dropped yet.
     op.drop_table("user_proj_queue_status")
     op.drop_table("project_codes")
-    op.drop_table("users")
+    op.drop_table("status_users")

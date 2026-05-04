@@ -1,12 +1,12 @@
 # Phase A — `user_proj_queue_status` cut-over runbook
 
 **Migration:** `0003_user_proj_queue_status`
-**Adds tables:** `users`, `project_codes`, `user_proj_queue_status`
+**Adds tables:** `status_users`, `project_codes`, `user_proj_queue_status`
 **Modifies:** none — this migration is **purely additive**.
 
 ## What this migration does
 
-Adds two new lookup tables (`users`, `project_codes`) and one new snapshot
+Adds two new lookup tables (`status_users`, `project_codes`) and one new snapshot
 table (`user_proj_queue_status`) for per-user / per-project / per-queue
 rollups parsed from PBS qstat output. The schema for `queue_status`
 itself is unchanged; the ORM was refactored to share the rollup metric
@@ -49,7 +49,7 @@ alembic -c migrations/system_status/alembic.ini upgrade head --sql > /tmp/0003.s
 less /tmp/0003.sql
 ```
 
-Expect: three `CREATE TABLE` statements (`users`, `project_codes`,
+Expect: three `CREATE TABLE` statements (`status_users`, `project_codes`,
 `user_proj_queue_status`), six `CREATE INDEX` on `user_proj_queue_status`,
 and the unique-constraint creation. **No `DROP`, no `UPDATE`, no
 `ALTER` to existing tables.**
@@ -74,10 +74,10 @@ make migrate-status-current
 ```sql
 -- Postgres
 \dt
--- New tables visible: users, project_codes, user_proj_queue_status
+-- New tables visible: status_users, project_codes, user_proj_queue_status
 
 -- MySQL
-SHOW TABLES LIKE 'users';
+SHOW TABLES LIKE 'status_users';
 SHOW TABLES LIKE 'project_codes';
 SHOW TABLES LIKE 'user_proj_queue_status';
 ```
@@ -100,7 +100,7 @@ Wait for the next collector cycle:
 SELECT MAX(timestamp), COUNT(*) FROM user_proj_queue_status;
 
 -- Lookup tables grow as new users / projects appear.
-SELECT COUNT(*) FROM users;
+SELECT COUNT(*) FROM status_users;
 SELECT COUNT(*) FROM project_codes;
 ```
 
@@ -112,7 +112,7 @@ alembic -c migrations/system_status/alembic.ini downgrade -1
 make migrate-status-down
 ```
 
-Drops `user_proj_queue_status`, then `project_codes`, then `users`.
+Drops `user_proj_queue_status`, then `project_codes`, then `status_users`.
 The webapp must be reverted at the same time so it stops sending
 `user_project_queues[]` payloads.
 

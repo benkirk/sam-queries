@@ -50,7 +50,7 @@ class UserProjQueueStatus(StatusBase, StatusSnapshotMixin,
                               comment='FK to parent Casper status snapshot')
 
     # Lookup FKs.
-    user_id = Column(Integer, ForeignKey('users.user_id'),
+    user_id = Column(Integer, ForeignKey('status_users.user_id'),
                      nullable=False, index=True)
     project_code_id = Column(Integer, ForeignKey('project_codes.project_code_id'),
                              nullable=False, index=True)
