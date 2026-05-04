@@ -54,6 +54,47 @@ This repository provides tools to interact with SAM data programmatically, repla
 - Session-based authentication with RBAC for browser clients
 - HTTP Basic Auth with bcrypt-hashed API keys for machine-to-machine routes (status collectors)
 
+### Database Migrations (Alembic)
+
+The `system_status` database (the one this repo *owns* and defines the
+schema for) is managed by [Alembic](https://alembic.sqlalchemy.org/).
+The legacy `sam` database is still mirrored read-only from the
+production schema and will move under Alembic management once that
+system is retired.
+
+The migration env lives at `migrations/system_status/`, scoped to a
+single bind so a future `migrations/sam/` env can be added without
+restructuring. Connection-URL resolution honors the same
+`STATUS_DB_*` env vars the runtime uses (MySQL local, Postgres prod
+via `csg-postgres.k8s.ucar.edu`), and migrations are cross-dialect:
+the same revision applies cleanly to MySQL, Postgres, and the SQLite
+tempfiles used by the test suite.
+
+Day-to-day operations:
+
+```bash
+make migrate-status-current      # show current revision
+make migrate-status-up           # upgrade head
+make migrate-status-down         # downgrade -1
+make migrate-status-history      # show revision graph
+make migrate-status-revision MSG="describe change"   # autogenerate
+make migrate-status-stamp-head   # mark existing DB at head (no DDL)
+```
+
+Test coverage:
+
+- `tests/integration/test_alembic_migrations.py` — drift test
+  (migrated schema must equal `StatusBase.metadata`) plus a round-trip
+  test (`upgrade head → downgrade base → upgrade head`).
+- `tests/integration/test_normalization_migration.py` — populated-DB
+  backfill verification for destructive migrations.
+
+For full guidance — directory layout, env.py wiring, prod stamp
+procedure, and the per-migration cut-over runbooks — see
+**[migrations/README.md](migrations/README.md)**, plus
+**[migrations/system_status/PROD_BOOTSTRAP.md](migrations/system_status/PROD_BOOTSTRAP.md)**
+and any `*_RUNBOOK.md` siblings of the corresponding revision file.
+
 ---
 
 ## Quick Start
@@ -585,6 +626,7 @@ sam-queries/
 
 ### Setup & Configuration
 - **[README.md](README.md)** - This file (overview and quick start)
+- **[migrations/README.md](migrations/README.md)** - Database migrations (Alembic) — currently manages the `system_status` database; will absorb `sam` once the legacy database is retired
 - **[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)** - Complete local development setup guide
 - **[docs/CREDENTIALS.md](docs/CREDENTIALS.md)** - Credential configuration guide
 - **[docs/DATABASE_SWITCHING.md](docs/DATABASE_SWITCHING.md)** - Switching between local and production databases

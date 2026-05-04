@@ -6,6 +6,7 @@ dependencies:
   - mysql
   - mysql-connector-python
   - coreutils
+  - postgresql=18.*
   - pip
   # docs/presentation deps:
   - quarto

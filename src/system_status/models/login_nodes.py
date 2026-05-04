@@ -5,46 +5,24 @@ Tracks individual login node status for Derecho and Casper systems.
 Each login node records availability, user load, and system metrics.
 """
 
-from sqlalchemy import Column, Integer, String, Float, Enum, ForeignKey
+from sqlalchemy import Column, Integer, Float, ForeignKey
 from sqlalchemy.orm import relationship
 from ..base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin
+from .lookups import System, LoginNodeDef
 
 
 class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin):
     """
-    Individual login node status.
+    Individual login node status snapshot.
 
-    Each node tracks availability, user count, and load metrics.
-
-    Fields:
-        login_node_id: Auto-increment primary key
-        timestamp: Links to parent {derecho,casper}_status snapshot (via StatusSnapshotMixin)
-        node_name: Login node hostname (e.g., 'derecho1', 'derecho2')
-        node_type: Node type - 'cpu', 'gpu', or 'data-access'
-        available: Boolean flag - is node accepting logins? (via AvailabilityMixin)
-        degraded: Boolean flag - is node degraded but still available? (via AvailabilityMixin)
-        user_count: Current number of logged-in users
-        num_cpus: Total CPU count on node (from 'nproc --all')
-        load_1min: 1-minute load average as % of CPU capacity (raw_load / num_cpus * 100)
-        load_5min: 5-minute load average as % of CPU capacity (raw_load / num_cpus * 100)
-        load_15min: 15-minute load average as % of CPU capacity (raw_load / num_cpus * 100)
-
-    Example:
-        >>> node = LoginNodeStatus(
-        ...     timestamp=datetime.now(),
-        ...     node_name='derecho1',
-        ...     node_type='cpu',
-        ...     system_name='derecho',
-        ...     available=True,
-        ...     degraded=False,
-        ...     user_count=42,
-        ...     num_cpus=128,
-        ...     load_1min=54.7,   # percentage: (70.0 / 128) * 100
-        ...     load_5min=50.0,
-        ...     load_15min=47.7
-        ... )
+    Phase 2 (PR-A): legacy text columns ``node_name`` / ``system_name`` and
+    the ``node_type`` enum are lifted into the ``login_nodes`` definition
+    table (one row per (system, hostname) pair, carrying ``node_type``).
+    The snapshot row now references the definition via
+    ``login_node_def_id`` and the system via ``system_id``. Property
+    accessors below preserve the legacy attribute interface.
     """
-    __bind_key__ = "system_status" # <-- database for connection, if not default
+    __bind_key__ = "system_status"
     __tablename__ = 'login_node_status'
 
     # Primary key
@@ -58,14 +36,12 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
                               nullable=True, index=True,
                               comment='FK to parent Casper status snapshot')
 
-    # Login node identification
-    node_name = Column(String(32), nullable=False, index=True,
-                      comment='Login node hostname (e.g., derecho1, derecho2)')
-    node_type = Column(Enum('cpu', 'gpu', 'data-access', name='login_node_type'),
-                      nullable=False,
-                      comment='Node type - CPU or GPU enabled')
-    system_name = Column(String(32), nullable=False, index=True,
-                         comment='System to which ths queue belongs (derecho, casper, etc.)')
+    # Lookup FKs (Phase 2)
+    system_id = Column(Integer, ForeignKey('systems.system_id'),
+                       nullable=False, index=True)
+    login_node_def_id = Column(Integer, ForeignKey('login_nodes.login_node_def_id'),
+                               nullable=False, index=True,
+                               comment='FK to login_nodes definition (system+name+type)')
 
     # User and load metrics
     user_count = Column(Integer, nullable=True,
@@ -81,13 +57,50 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
 
     # Note: available, degraded inherited from AvailabilityMixin
     # Note: timestamp, created_at inherited from StatusSnapshotMixin
-    # Note: session, get(), get_all() inherited from SessionMixin
 
-    # Relationships (back_populates to parent status records)
+    # Relationships
     derecho_status = relationship('DerechoStatus', back_populates='login_nodes',
                                   foreign_keys=[derecho_status_id])
     casper_status = relationship('CasperStatus', back_populates='login_nodes',
                                 foreign_keys=[casper_status_id])
+    system = relationship(System, foreign_keys=[system_id])
+    login_node_def = relationship(LoginNodeDef, foreign_keys=[login_node_def_id])
+
+    # ------------------------------------------------------------------
+    # Backward-compat property accessors
+    # ------------------------------------------------------------------
+    @property
+    def system_name(self):
+        pending = self.__dict__.get('_pending_system_name')
+        if pending is not None:
+            return pending
+        return self.system.name if self.system is not None else None
+
+    @system_name.setter
+    def system_name(self, value):
+        self.__dict__['_pending_system_name'] = value
+
+    @property
+    def node_name(self):
+        pending = self.__dict__.get('_pending_node_name')
+        if pending is not None:
+            return pending
+        return self.login_node_def.name if self.login_node_def is not None else None
+
+    @node_name.setter
+    def node_name(self, value):
+        self.__dict__['_pending_node_name'] = value
+
+    @property
+    def node_type(self):
+        pending = self.__dict__.get('_pending_node_type')
+        if pending is not None:
+            return pending
+        return self.login_node_def.node_type if self.login_node_def is not None else None
+
+    @node_type.setter
+    def node_type(self, value):
+        self.__dict__['_pending_node_type'] = value
 
     def __str__(self):
         return f"{self.node_name} ({self.system_name}, {self.node_type})"

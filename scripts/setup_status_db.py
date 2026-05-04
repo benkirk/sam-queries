@@ -2,9 +2,9 @@
 """
 System Status Database Setup Script
 
-Creates the system_status database (if it does not exist) and all its tables
-using SQLAlchemy ORM models. Works with both MySQL and PostgreSQL backends
-(controlled by STATUS_DB_DRIVER env var).
+Creates the system_status database (if it does not exist) and materializes
+its schema by running Alembic migrations to head. Works with both MySQL and
+PostgreSQL backends (controlled by STATUS_DB_DRIVER env var).
 
 Usage:
     python scripts/setup_status_db.py [--drop]
@@ -12,15 +12,24 @@ Usage:
 Options:
     --drop, --drop-existing    Drop existing tables before creating (DANGEROUS!)
     -y, --yes                  Skip confirmation prompts
+
+Note: For databases that already have the current schema but no
+`alembic_version` table (e.g. existing prod / long-running dev DBs), do
+NOT run this script — follow `migrations/system_status/PROD_BOOTSTRAP.md`
+to stamp at head instead.
 """
 
+import subprocess
 import sys
 import os
 from pathlib import Path
 
 # Add python directory to path
-python_dir = Path(__file__).parent.parent / 'src'
+REPO_ROOT = Path(__file__).parent.parent
+python_dir = REPO_ROOT / 'src'
 sys.path.insert(0, str(python_dir))
+
+ALEMBIC_INI = REPO_ROOT / 'migrations' / 'system_status' / 'alembic.ini'
 
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
@@ -120,13 +129,31 @@ def setup_database(drop_existing=False, yes=False):
                 sys.exit(0)
 
         print("Dropping tables...")
+        # drop_all also clears the alembic_version table by name lookup —
+        # but to be safe we explicitly drop it after metadata.drop_all
+        # in case future migrations introduce tables not represented in
+        # the live ORM.
         StatusBase.metadata.drop_all(engine)
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         print("✓ Tables dropped")
 
-    # Create all tables
-    print("\nCreating tables...")
-    StatusBase.metadata.create_all(engine)
-    print("✓ Tables created successfully")
+    # Create all tables via Alembic — this is the path of truth from now on.
+    print("\nRunning Alembic migrations to head...")
+    try:
+        subprocess.run(
+            ['alembic', '-c', str(ALEMBIC_INI), 'upgrade', 'head'],
+            check=True,
+            cwd=str(REPO_ROOT),
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"\n❌ ERROR: alembic upgrade failed (exit {e.returncode})")
+        sys.exit(1)
+    except FileNotFoundError:
+        print("\n❌ ERROR: 'alembic' executable not found — install via "
+              "`pip install -e .` to pull in the alembic dependency.")
+        sys.exit(1)
+    print("✓ Schema at head")
 
     print("\n" + "=" * 80)
     print("Database setup complete!")
