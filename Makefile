@@ -5,7 +5,13 @@ CONDA_ROOT := $(shell conda info --base)
 # Common way to initialize environment across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
-.PHONY: help clean clobber distclean fixperms check perf check-db-vs-orms docker-build docker-up docker-down docker-restart
+.PHONY: help clean clobber distclean fixperms check perf check-db-vs-orms docker-build docker-up docker-down docker-restart \
+        migrate-status-current migrate-status-up migrate-status-down migrate-status-history migrate-status-revision migrate-status-stamp-head
+
+# -------------------------------------------------------------------
+# Alembic — system_status database
+# -------------------------------------------------------------------
+ALEMBIC_STATUS := alembic -c migrations/system_status/alembic.ini
 
 # -------------------------------------------------------------------
 # Default target: help
@@ -97,3 +103,25 @@ docker-restart: ## Restart docker containers
 	@$(MAKE) docker-down
 	@$(MAKE) docker-build
 	@$(MAKE) docker-up
+
+# -------------------------------------------------------------------
+# Alembic — system_status database (per-bind env)
+# -------------------------------------------------------------------
+migrate-status-current: ## Show current alembic revision (system_status)
+	$(config_env) && source etc/config_env.sh && $(ALEMBIC_STATUS) current
+
+migrate-status-up: ## Upgrade system_status DB to head
+	$(config_env) && source etc/config_env.sh && $(ALEMBIC_STATUS) upgrade head
+
+migrate-status-down: ## Downgrade system_status DB by one revision
+	$(config_env) && source etc/config_env.sh && $(ALEMBIC_STATUS) downgrade -1
+
+migrate-status-history: ## Show system_status revision history
+	$(config_env) && source etc/config_env.sh && $(ALEMBIC_STATUS) history --verbose
+
+migrate-status-revision: ## Autogenerate a new system_status revision (use MSG="…")
+	@if [ -z "$(MSG)" ]; then echo 'usage: make migrate-status-revision MSG="describe change"'; exit 2; fi
+	$(config_env) && source etc/config_env.sh && $(ALEMBIC_STATUS) revision --autogenerate -m "$(MSG)"
+
+migrate-status-stamp-head: ## Stamp existing system_status DB at head without running DDL (prod bootstrap)
+	$(config_env) && source etc/config_env.sh && $(ALEMBIC_STATUS) stamp head
