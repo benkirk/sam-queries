@@ -100,6 +100,43 @@ class QueueSchema(BaseSchema):
     queue_id = fields.Integer(dump_only=True)
 
 
+class UserProjQueueSchema(BaseSchema):
+    """
+    Schema for per-user / per-project / per-queue queue rollup status.
+
+    Same counter shape as ``QueueSchema`` (no ``active_users`` — meaningless
+    at this grain), with two additional text identifiers:
+    ``username`` (PBS Job_Owner) and ``project_code`` (PBS Account_Name,
+    bucketed under ``'_unknown_'`` by the collector when missing).
+
+    Note: ``timestamp`` and ``system_name`` are injected by the parent schema.
+    The before_flush listener resolves the staged
+    ``_pending_username`` / ``_pending_project_code`` /
+    ``_pending_queue_name`` / ``_pending_system_name`` strings into FKs at
+    flush time.
+    """
+    class Meta(BaseSchema.Meta):
+        model = UserProjQueueStatus
+        load_instance = True
+        include_relationships = True
+        exclude = ('derecho_status', 'casper_status',
+                   'system', 'queue', 'user', 'project')
+
+    timestamp = fields.DateTime(dump_only=True)
+    system_name = fields.String(dump_only=True)
+
+    # Per-row strings — loaded into property setters, dumped via @property readers.
+    username = fields.String(required=True)
+    project_code = fields.String(required=True)
+    queue_name = fields.String(required=True)
+
+    # FKs resolved by before_flush; collectors don't send them.
+    system_id = fields.Integer(dump_only=True)
+    queue_id = fields.Integer(dump_only=True)
+    user_id = fields.Integer(dump_only=True)
+    project_code_id = fields.Integer(dump_only=True)
+
+
 # ============================================================================
 # Derecho Schemas
 # ============================================================================
@@ -124,6 +161,8 @@ class DerechoStatusSchema(BaseSchema):
 
     login_nodes = fields.Nested(LoginNodeSchema, many=True, required=False, load_default=[])
     queues = fields.Nested(QueueSchema, many=True, required=False, load_default=[])
+    user_project_queues = fields.Nested(UserProjQueueSchema, many=True,
+                                        required=False, load_default=[])
     filesystems = fields.Nested(FilesystemSchema, many=True, required=False, load_default=[])
 
     @post_load
@@ -141,6 +180,10 @@ class DerechoStatusSchema(BaseSchema):
         for queue in data.get('queues', []):
             queue.timestamp = timestamp
             queue.system_name = 'derecho'
+
+        for upq in data.get('user_project_queues', []):
+            upq.timestamp = timestamp
+            upq.system_name = 'derecho'
 
         for fs in data.get('filesystems', []):
             fs.timestamp = timestamp
@@ -184,6 +227,8 @@ class CasperStatusSchema(BaseSchema):
     login_nodes = fields.Nested(LoginNodeSchema, many=True, required=False, load_default=[])
     node_types = fields.Nested(CasperNodeTypeSchema, many=True, required=False, load_default=[])
     queues = fields.Nested(QueueSchema, many=True, required=False, load_default=[])
+    user_project_queues = fields.Nested(UserProjQueueSchema, many=True,
+                                        required=False, load_default=[])
     filesystems = fields.Nested(FilesystemSchema, many=True, required=False, load_default=[])
 
     @post_load
@@ -201,6 +246,10 @@ class CasperStatusSchema(BaseSchema):
         for queue in data.get('queues', []):
             queue.timestamp = timestamp
             queue.system_name = 'casper'
+
+        for upq in data.get('user_project_queues', []):
+            upq.timestamp = timestamp
+            upq.system_name = 'casper'
 
         for fs in data.get('filesystems', []):
             fs.timestamp = timestamp

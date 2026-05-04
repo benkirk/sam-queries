@@ -95,6 +95,67 @@ class Filesystem(StatusBase, SessionMixin):
         return f"<Filesystem(filesystem_id={self.filesystem_id}, name='{self.name}')>"
 
 
+class UserDef(StatusBase, SessionMixin):
+    """A user identified by username (e.g. 'benkirk', 'bdobbins').
+
+    Used by ``user_proj_queue_status`` to denormalize per-row username
+    storage into a 4-byte FK. Names are global (not scoped to a system) —
+    the same username refers to the same person regardless of which HPC
+    system they're using.
+
+    Named ``UserDef`` (table ``status_users``) rather than ``User`` /
+    ``users`` to avoid a class-name **and** table-name collision with
+    ``sam.core.User`` (which also maps to ``users``) in the shared
+    SQLAlchemy declarative registry. This table is intentionally not
+    FK-linked to ``sam.users``; later queries by username string will
+    JOIN by name.
+    """
+    __bind_key__ = "system_status"
+    __tablename__ = "status_users"
+
+    user_id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(32), nullable=False, unique=True)
+    created_at = Column(DateTime, nullable=False,
+                        default=datetime.now,
+                        server_default=text("CURRENT_TIMESTAMP"))
+
+    def __str__(self):
+        return f"{self.username} (user_id={self.user_id})"
+
+    def __repr__(self):
+        return f"<UserDef(user_id={self.user_id}, username='{self.username}')>"
+
+
+class ProjectCodeDef(StatusBase, SessionMixin):
+    """A project code identified by name (e.g. 'SCSG0001').
+
+    Used by ``user_proj_queue_status``. ``Account_Name`` from PBS qstat
+    output maps to this. Jobs without an Account_Name are bucketed under
+    a fixed ``'_unknown_'`` sentinel by the collector parser so totals
+    remain reconcilable with ``QueueStatus``.
+
+    Named ``ProjectCodeDef`` (table ``project_codes``) to avoid collision
+    with ``sam.projects.Project`` — same rationale as the other Def
+    classes. This table is intentionally not FK-linked to ``sam.project``;
+    later queries by projcode string will JOIN by name.
+    """
+    __bind_key__ = "system_status"
+    __tablename__ = "project_codes"
+
+    project_code_id = Column(Integer, primary_key=True, autoincrement=True)
+    project_code = Column(String(16), nullable=False, unique=True)
+    created_at = Column(DateTime, nullable=False,
+                        default=datetime.now,
+                        server_default=text("CURRENT_TIMESTAMP"))
+
+    def __str__(self):
+        return f"{self.project_code} (project_code_id={self.project_code_id})"
+
+    def __repr__(self):
+        return (f"<ProjectCodeDef(project_code_id={self.project_code_id}, "
+                f"project_code='{self.project_code}')>")
+
+
 class LoginNodeDef(StatusBase, SessionMixin):
     """A login node definition on a specific system (hostname + node_type)."""
     __bind_key__ = "system_status"

@@ -4,7 +4,7 @@
 
 # Lookup tables (Phase 2). Imported first so the FK targets exist when
 # the snapshot models below register their relationships.
-from .lookups import System, QueueDef, Filesystem, LoginNodeDef
+from .lookups import System, QueueDef, Filesystem, LoginNodeDef, UserDef, ProjectCodeDef
 
 from .derecho import DerechoStatus
 from .casper import CasperStatus, CasperNodeTypeStatus
@@ -13,6 +13,7 @@ from .outages import SystemOutage, ResourceReservation
 from .login_nodes import LoginNodeStatus
 from .filesystems import FilesystemStatus
 from .queues import QueueStatus
+from .user_proj_queues import UserProjQueueStatus
 
 # Side-effect import: registers the before_flush listener that resolves
 # `_pending_*_name` strings staged by the snapshot models' property
@@ -25,6 +26,8 @@ __all__ = [
     'QueueDef',
     'Filesystem',
     'LoginNodeDef',
+    'UserDef',
+    'ProjectCodeDef',
 
     # Derecho
     'DerechoStatus',
@@ -40,6 +43,7 @@ __all__ = [
     'LoginNodeStatus',
     'FilesystemStatus',
     'QueueStatus',
+    'UserProjQueueStatus',
 
     # Support
     'SystemOutage',

@@ -215,6 +215,7 @@ def ingest_derecho():
         - System-level metrics (cpu_nodes_total, cpu_nodes_available, etc.)
         - login_nodes (optional): List of login node status dicts
         - queues (optional): List of queue status dicts
+        - user_project_queues (optional): List of per-user/project/queue rollup dicts
         - filesystems (optional): List of filesystem status dicts
         - reservations (optional): List of reservation dicts
 
@@ -224,6 +225,7 @@ def ingest_derecho():
     id_mappers = {
         'login_node_ids': ('login_nodes', 'login_node_id'),
         'queue_ids': ('queues', 'queue_status_id'),
+        'user_project_queue_ids': ('user_project_queues', 'user_proj_queue_status_id'),
         'filesystem_ids': ('filesystems', 'fs_status_id'),
     }
     return _ingest_system_status(
@@ -247,6 +249,7 @@ def ingest_casper():
         - login_nodes (optional): List of login node status dicts
         - node_types (optional): List of node type status dicts
         - queues (optional): List of queue status dicts
+        - user_project_queues (optional): List of per-user/project/queue rollup dicts
         - reservations (optional): List of reservation dicts
 
     Returns:
@@ -256,6 +259,7 @@ def ingest_casper():
         'login_node_ids': ('login_nodes', 'login_node_id'),
         'node_type_ids': ('node_types', 'node_type_status_id'),
         'queue_ids': ('queues', 'queue_status_id'),
+        'user_project_queue_ids': ('user_project_queues', 'user_proj_queue_status_id'),
         'filesystem_ids': ('filesystems', 'fs_status_id'),
     }
     return _ingest_system_status(
