@@ -165,7 +165,7 @@ def get_user_proj_queue_timeseries(
     state: str,
     metric: str,
     group_by: str,
-    top_n: int = 10,
+    top_n: int = 15,
 ) -> Dict[str, Any]:
     """Top-N + Others time series for one queue, ranked by peak in window.
 

@@ -295,14 +295,16 @@ def generate_user_proj_stacked_area(timeseries) -> str:
     fig, ax = plt.subplots(figsize=(12, 4.5))
     values_matrix = [s['values'] for s in series]
     labels = [s['label'] for s in series]
-    cmap = matplotlib.colormaps.get_cmap('tab10')
+    # tab20 (20 distinct colours) so Top-15+Others has no colour reuse;
+    # disk_usage uses tab10 because its default top_n is 10.
+    cmap = matplotlib.colormaps.get_cmap('tab20')
     colors = []
     cycle_idx = 0
     for s in series:
         if s['label'] == 'Others':
             colors.append('#9ca3af')   # neutral grey
         else:
-            colors.append(cmap(cycle_idx % 10))
+            colors.append(cmap(cycle_idx % 20))
             cycle_idx += 1
     ax.stackplot(dates, *values_matrix, labels=labels, colors=colors, alpha=0.85)
     ax.set_ylabel(metric_label)

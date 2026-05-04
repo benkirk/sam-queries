@@ -334,7 +334,7 @@ def htmx_user_proj_chart(system, queue_name):
     else:
         hours = 168
 
-    top_n = 10
+    top_n = 15
     end_date = datetime.now()
     start_date = end_date - timedelta(hours=hours)
 
