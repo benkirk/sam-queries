@@ -170,12 +170,17 @@ class SAMModelView(ModelView):
 
     # ===== Phase 1: Auto-Add Mixin-Based Filters =====
 
-    def __init__(self, model, session, name=None, category=None, endpoint=None, url=None, **kwargs):
+    def __init__(self, model, db, name=None, category=None, endpoint=None, url=None, **kwargs):
         """
         Initialize view and auto-add mixin-based filters.
 
         Phase 1 Enhancement: Automatically prepend filters for model mixins
         to the column_filters list.
+
+        Note: ``db`` is the Flask-SQLAlchemy ``SQLAlchemy`` instance (not a
+        ``Session``). Flask-Admin pulls ``db.session`` per request internally.
+        Passing the bare ``Session`` is deprecated as of flask-admin 2.x and
+        will be removed in 3.0.
         """
         # Auto-add mixin-based filters if enabled
         if self.auto_filter_mixins:
@@ -216,7 +221,7 @@ class SAMModelView(ModelView):
             self.column_filters = all_filters if all_filters else None
 
         # Call parent __init__
-        super().__init__(model, session, name, category, endpoint, url, **kwargs)
+        super().__init__(model, db, name, category, endpoint, url, **kwargs)
 
     # ===== Phase 2: Auto-Detection Features =====
 

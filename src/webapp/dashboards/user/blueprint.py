@@ -28,6 +28,7 @@ from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_
 from sam.queries.lookups import find_project_by_code, get_user_group_access, get_group_members
 from sam.queries.shells import get_allowable_shell_names, get_user_current_shell
 from sam.accounting.accounts import Account
+from sam.accounting.allocations import Allocation
 from sam.core.users import User
 from sam.projects.projects import Project
 from sam.resources.resources import Resource
@@ -496,9 +497,51 @@ def resource_details():
     alloc_start = detail_data['resource_summary'].get('start_date')
     alloc_start_date = alloc_start.strftime('%Y-%m-%d') if alloc_start else None
 
+    # Resolve the billing account whose charge adjustments we should surface.
+    # For inheriting allocations, real charges (and any adjustments) live on
+    # the master/shared account up at the root project — show those instead
+    # of the empty local account row.
+    summary = detail_data['resource_summary']
+    adjustments_account_id = summary.get('account_id')
+    adjustments_master_projcode = None
+    if summary.get('is_inheriting') and summary.get('root_projcode') and resource is not None:
+        master_account = (db.session.query(Account)
+                                     .join(Project, Account.project_id == Project.project_id)
+                                     .filter(Project.projcode == summary['root_projcode'])
+                                     .filter(Account.resource_id == resource.resource_id)
+                                     .first())
+        if master_account is not None:
+            adjustments_account_id = master_account.account_id
+            adjustments_master_projcode = summary['root_projcode']
+
+    account_adjustments = []
+    if adjustments_account_id:
+        adj_account = db.session.get(Account, adjustments_account_id)
+        if adj_account is not None:
+            account_adjustments = sorted(
+                adj_account.charge_adjustments,
+                key=lambda a: a.adjustment_date or datetime.min,
+                reverse=True,
+            )
+
+    # Allocation history — transactions that built this allocation up to its
+    # current amount/end-date. We show the *local* allocation's history so
+    # the audit trail aligns with the "Allocated" figure in the table above.
+    allocation_transactions = []
+    history_allocation_id = summary.get('allocation_id')
+    if history_allocation_id:
+        allocation_obj = db.session.get(Allocation, history_allocation_id)
+        if allocation_obj is not None:
+            allocation_transactions = sorted(
+                allocation_obj.transactions,
+                key=lambda t: t.creation_time or datetime.min,
+                reverse=True,
+            )
+
     return render_template(
         'dashboards/user/resource_details.html',
         user=current_user,
+        project=project,
         projcode=projcode,
         resource_name=resource_name,
         start_date=start_date.strftime('%Y-%m-%d'),
@@ -517,6 +560,9 @@ def resource_details():
         scope=scope,
         tree_data=tree_data,
         alloc_start_date=alloc_start_date,
+        account_adjustments=account_adjustments,
+        adjustments_master_projcode=adjustments_master_projcode,
+        allocation_transactions=allocation_transactions,
     )
 
 

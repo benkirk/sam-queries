@@ -104,6 +104,7 @@ class Permission(Enum):
     VIEW_SYSTEM_STATS = "view_system_stats"
     MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data (collector/API)
     EDIT_SYSTEM_STATUS = "edit_system_status"  # GUI create/edit/delete outages
+    VIEW_SYSTEM_CONFIG = "view_system_config"  # Read-only Configuration tab on Admin dashboard
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 
@@ -184,6 +185,10 @@ USER_PERMISSION_OVERRIDES: Dict[str, Set[Permission]] = {
     # 'someuser': {Permission.EXPORT_DATA, Permission.VIEW_REPORTS},
     'benkirk' : [p for p in Permission],  # admin-equivalent: full access
 }
+
+# full permissions for some other app/dev/investigators:
+USER_PERMISSION_OVERRIDES['dattilo'] = USER_PERMISSION_OVERRIDES['benkirk']
+USER_PERMISSION_OVERRIDES['dvance'] = USER_PERMISSION_OVERRIDES['benkirk']
 
 
 # Per-user, per-facility permission grants — the third RBAC tier.
