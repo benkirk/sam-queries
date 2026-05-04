@@ -301,15 +301,25 @@ def htmx_user_proj_chart(system, queue_name):
     so toggling the time-range picker re-fires this endpoint via
     ``hx-include`` and the two charts stay in sync.
     """
-    valid_metrics = ('running_jobs', 'pending_jobs', 'held_jobs')
+    valid_states = ('running', 'pending', 'held')
+    valid_metrics = ('jobs', 'cores', 'gpus', 'nodes')
     valid_groups = ('user', 'project')
 
-    metric = request.args.get('metric', 'running_jobs')
+    state = request.args.get('state', 'running')
+    if state not in valid_states:
+        state = 'running'
+    metric = request.args.get('metric', 'jobs')
     if metric not in valid_metrics:
-        metric = 'running_jobs'
+        metric = 'jobs'
     group_by = request.args.get('group_by', 'user')
     if group_by not in valid_groups:
         group_by = 'user'
+
+    # `nodes` only exists for state='running' (no nodes_pending /
+    # nodes_held columns in QueueRollupMetricsMixin). Clamp to cores
+    # rather than rejecting — the UI does the same when toggling state.
+    if metric == 'nodes' and state != 'running':
+        metric = 'cores'
 
     if request.args.get('hours'):
         try:
@@ -334,6 +344,7 @@ def htmx_user_proj_chart(system, queue_name):
         queue_name=queue_name,
         start_date=start_date,
         end_date=end_date,
+        state=state,
         metric=metric,
         group_by=group_by,
         top_n=top_n,
@@ -345,6 +356,7 @@ def htmx_user_proj_chart(system, queue_name):
         system=system,
         queue_name=queue_name,
         hours=hours,
+        state=state,
         metric=metric,
         metric_label=timeseries.get('metric_label', metric),
         group_by=group_by,

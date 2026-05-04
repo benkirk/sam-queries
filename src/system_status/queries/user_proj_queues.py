@@ -22,12 +22,45 @@ from system_status.models import (
 )
 
 
-_VALID_METRICS = {
-    'running_jobs': 'Running jobs',
-    'pending_jobs': 'Pending jobs',
-    'held_jobs':    'Held jobs',
-}
 _VALID_GROUP_BY = ('user', 'project')
+
+_VALID_STATES = ('running', 'pending', 'held')
+_VALID_METRICS = ('jobs', 'cores', 'gpus', 'nodes')
+
+# (state, metric) → DB column on UserProjQueueStatus / QueueRollupMetricsMixin.
+# `nodes` is only defined for state='running' (the schema has no
+# nodes_pending / nodes_held columns); other (state, metric) combos
+# raise ValueError when looked up. Callers should clamp before calling.
+_STATE_METRIC_TO_COLUMN = {
+    ('running', 'jobs'):  'running_jobs',
+    ('pending', 'jobs'):  'pending_jobs',
+    ('held',    'jobs'):  'held_jobs',
+    ('running', 'cores'): 'cores_allocated',
+    ('pending', 'cores'): 'cores_pending',
+    ('held',    'cores'): 'cores_held',
+    ('running', 'gpus'):  'gpus_allocated',
+    ('pending', 'gpus'):  'gpus_pending',
+    ('held',    'gpus'):  'gpus_held',
+    ('running', 'nodes'): 'nodes_allocated',
+}
+
+# Display labels — used by chart Y-axis and card titles.
+_METRIC_NOUN = {
+    'jobs':  'jobs',
+    'cores': 'cores',
+    'gpus':  'GPUs',
+    'nodes': 'nodes',
+}
+_STATE_ADJECTIVE = {
+    'running': 'running',
+    'pending': 'pending',
+    'held':    'held',
+}
+
+
+def _label_for(state: str, metric: str) -> str:
+    """Human-readable Y-axis / chart-title fragment, e.g. 'Pending cores'."""
+    return f'{_STATE_ADJECTIVE[state].capitalize()} {_METRIC_NOUN[metric]}'
 
 
 def _resolve_queue_id(session: Session, system: str, queue_name: str) -> Optional[int]:
@@ -129,11 +162,23 @@ def get_user_proj_queue_timeseries(
     queue_name: str,
     start_date: datetime,
     end_date: datetime,
+    state: str,
     metric: str,
     group_by: str,
     top_n: int = 10,
 ) -> Dict[str, Any]:
     """Top-N + Others time series for one queue, ranked by peak in window.
+
+    `(state, metric)` selects the underlying column via
+    ``_STATE_METRIC_TO_COLUMN``:
+
+        state ∈ {'running', 'pending', 'held'}
+        metric ∈ {'jobs', 'cores', 'gpus', 'nodes'}
+
+    `('pending', 'nodes')` and `('held', 'nodes')` are invalid — the
+    schema has no `nodes_pending` / `nodes_held` columns. Callers
+    (route, UI) clamp these to a valid combo before reaching here; this
+    helper raises ``ValueError`` as a defensive belt-and-braces check.
 
     Returns a dict shaped for stacked-area rendering::
 
@@ -145,7 +190,10 @@ def get_user_proj_queue_timeseries(
             ...,
             {'label': 'zach',   'values': [int, ...]},   # largest named (peak)
           ],
-          'metric_label':   'Running jobs' | 'Pending jobs' | 'Held jobs',
+          'state':          'running' | 'pending' | 'held',
+          'metric':         'jobs' | 'cores' | 'gpus' | 'nodes',
+          'metric_label':   'Pending cores' / 'Running GPUs' / ...
+          'group_by':       'user' | 'project',
           'group_by_label': 'User' | 'Project code',
         }
 
@@ -157,28 +205,39 @@ def get_user_proj_queue_timeseries(
     Ranking by **MAX over the window** (not latest tick) so a brief spike
     still earns a slot — important for queue load where short pending/held
     bursts are exactly what an operator wants to see.
-
-    Empty input returns ``{'dates': [], 'series': [], 'metric_label': ...,
-    'group_by_label': ...}``.
     """
+    if state not in _VALID_STATES:
+        raise ValueError(
+            f'state must be one of {_VALID_STATES}, got {state!r}'
+        )
     if metric not in _VALID_METRICS:
         raise ValueError(
-            f'metric must be one of {sorted(_VALID_METRICS)}, got {metric!r}'
+            f'metric must be one of {_VALID_METRICS}, got {metric!r}'
+        )
+    if (state, metric) not in _STATE_METRIC_TO_COLUMN:
+        raise ValueError(
+            f'(state={state!r}, metric={metric!r}) is not a valid combination '
+            f'(no schema column); valid combos: {sorted(_STATE_METRIC_TO_COLUMN)}'
         )
     if group_by not in _VALID_GROUP_BY:
         raise ValueError(
             f'group_by must be one of {_VALID_GROUP_BY}, got {group_by!r}'
         )
 
-    metric_label = _VALID_METRICS[metric]
+    column_name = _STATE_METRIC_TO_COLUMN[(state, metric)]
+    metric_label = _label_for(state, metric)
     group_by_label = 'User' if group_by == 'user' else 'Project code'
 
     queue_id = _resolve_queue_id(session, system, queue_name)
+    empty = {
+        'dates': [], 'series': [],
+        'state': state, 'metric': metric, 'metric_label': metric_label,
+        'group_by': group_by, 'group_by_label': group_by_label,
+    }
     if queue_id is None:
-        return {'dates': [], 'series': [],
-                'metric_label': metric_label, 'group_by_label': group_by_label}
+        return empty
 
-    metric_col = getattr(UserProjQueueStatus, metric)
+    metric_col = getattr(UserProjQueueStatus, column_name)
     if group_by == 'user':
         label_col = UserDef.username.label('label')
         join_target, join_cond = UserDef, UserProjQueueStatus.user_id == UserDef.user_id
@@ -209,8 +268,7 @@ def get_user_proj_queue_timeseries(
     ).all()
 
     if not rows:
-        return {'dates': [], 'series': [],
-                'metric_label': metric_label, 'group_by_label': group_by_label}
+        return empty
 
     per_label: Dict[str, Dict[datetime, int]] = {}
     timestamps: set = set()
@@ -245,6 +303,9 @@ def get_user_proj_queue_timeseries(
     return {
         'dates': dates,
         'series': series,
+        'state': state,
+        'metric': metric,
         'metric_label': metric_label,
+        'group_by': group_by,
         'group_by_label': group_by_label,
     }

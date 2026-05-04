@@ -97,26 +97,6 @@
 </div>
 
 {% if can_view_user_info %}
-<!-- Per-user / per-project rollup (latest snapshot) -->
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">
-            <i class="fas fa-users"></i> Per-user / per-project
-            {% if user_proj_rows %}
-            <small class="text-muted fw-normal ms-2">
-                snapshot at {{ user_proj_rows[0].timestamp | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
-            </small>
-            {% endif %}
-        </h5>
-        <small class="text-muted">
-            sortable — click any column header
-        </small>
-    </div>
-    <div class="card-body">
-        {% include 'dashboards/status/partials/user_proj_table.html' %}
-    </div>
-</div>
-
 <!-- Per-user / per-project queue load over time (top-N + Others) -->
 <div class="card mb-4">
     <div class="card-header">
@@ -134,7 +114,7 @@
            #upq-chart-inner with a freshly-rendered partial. #}
         <div hx-get="{{ url_for('status_dashboard.htmx_user_proj_chart',
                                 system=system, queue_name=queue_name,
-                                hours=hours, metric='running_jobs',
+                                hours=hours, state='running', metric='jobs',
                                 group_by='user') }}"
              hx-trigger="load"
              hx-swap="innerHTML">
@@ -142,6 +122,26 @@
                 <i class="fas fa-spinner fa-spin"></i> Loading chart…
             </div>
         </div>
+    </div>
+</div>
+
+<!-- Per-user / per-project rollup (latest snapshot) -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="fas fa-users"></i> Per-user / per-project
+            {% if user_proj_rows %}
+            <small class="text-muted fw-normal ms-2">
+                snapshot at {{ user_proj_rows[0].timestamp | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
+            </small>
+            {% endif %}
+        </h5>
+        <small class="text-muted">
+            sortable — click any column header
+        </small>
+    </div>
+    <div class="card-body">
+        {% include 'dashboards/status/partials/user_proj_table.html' %}
     </div>
 </div>
 {% endif %}
