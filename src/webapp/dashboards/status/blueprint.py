@@ -9,7 +9,11 @@ from datetime import datetime, timedelta
 import logging
 
 from webapp.extensions import db
-from ..charts import generate_nodetype_history_matplotlib, generate_queue_history_matplotlib
+from ..charts import (
+    generate_nodetype_history_matplotlib,
+    generate_queue_history_matplotlib,
+    generate_user_proj_stacked_area,
+)
 
 from system_status import queries as status_queries
 
@@ -255,6 +259,21 @@ def queue_history(system, queue_name):
     # Generate chart
     chart_svg = generate_queue_history_matplotlib(history_data)
 
+    # Per-user / per-project rollup table — only fetched and rendered for
+    # operators with VIEW_SYSTEM_STATUS_USER_INFO. Skipping the query
+    # entirely (vs. always fetching + hiding in template) avoids the join
+    # cost for pages viewed by non-privileged users.
+    from webapp.utils.rbac import has_permission
+    can_view_user_info = (
+        current_user.is_authenticated
+        and has_permission(current_user, Permission.VIEW_SYSTEM_STATUS_USER_INFO)
+    )
+    user_proj_rows = []
+    if can_view_user_info:
+        user_proj_rows = status_queries.get_latest_user_proj_queue_snapshot(
+            session, system=system, queue_name=queue_name
+        )
+
     return render_template(
         'dashboards/status/queue_history.html',
         user=current_user,
@@ -266,6 +285,84 @@ def queue_history(system, queue_name):
         hours=hours,
         start_date=start_date,
         end_date=end_date,
+        can_view_user_info=can_view_user_info,
+        user_proj_rows=user_proj_rows,
+    )
+
+
+@bp.route('/htmx/queue-history/<system>/<queue_name>/user-proj-chart')
+@login_required
+@require_permission(Permission.VIEW_SYSTEM_STATUS_USER_INFO)
+def htmx_user_proj_chart(system, queue_name):
+    """Render one of the six (group_by × metric) stacked-area charts.
+
+    Used by selector buttons in the queue-history drill-down. Time
+    window comes from the same ``hours`` param the parent chart uses,
+    so toggling the time-range picker re-fires this endpoint via
+    ``hx-include`` and the two charts stay in sync.
+    """
+    valid_states = ('running', 'pending', 'held')
+    valid_metrics = ('jobs', 'cores', 'gpus', 'nodes')
+    valid_groups = ('user', 'project')
+
+    state = request.args.get('state', 'running')
+    if state not in valid_states:
+        state = 'running'
+    metric = request.args.get('metric', 'jobs')
+    if metric not in valid_metrics:
+        metric = 'jobs'
+    group_by = request.args.get('group_by', 'user')
+    if group_by not in valid_groups:
+        group_by = 'user'
+
+    # `nodes` only exists for state='running' (no nodes_pending /
+    # nodes_held columns in QueueRollupMetricsMixin). Clamp to cores
+    # rather than rejecting — the UI does the same when toggling state.
+    if metric == 'nodes' and state != 'running':
+        metric = 'cores'
+
+    if request.args.get('hours'):
+        try:
+            hours = int(request.args['hours'])
+        except ValueError:
+            hours = 168
+    elif request.args.get('days'):
+        try:
+            hours = int(request.args['days']) * 24
+        except ValueError:
+            hours = 168
+    else:
+        hours = 168
+
+    top_n = 15
+    end_date = datetime.now()
+    start_date = end_date - timedelta(hours=hours)
+
+    timeseries = status_queries.get_user_proj_queue_timeseries(
+        db.session,
+        system=system,
+        queue_name=queue_name,
+        start_date=start_date,
+        end_date=end_date,
+        state=state,
+        metric=metric,
+        group_by=group_by,
+        top_n=top_n,
+    )
+    chart_svg = generate_user_proj_stacked_area(timeseries)
+
+    return render_template(
+        'dashboards/status/partials/user_proj_chart.html',
+        system=system,
+        queue_name=queue_name,
+        hours=hours,
+        state=state,
+        metric=metric,
+        metric_label=timeseries.get('metric_label', metric),
+        group_by=group_by,
+        group_by_label=timeseries.get('group_by_label', group_by),
+        top_n=top_n,
+        chart_svg=chart_svg,
     )
 
 
