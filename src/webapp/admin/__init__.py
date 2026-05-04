@@ -25,7 +25,7 @@ admin_bp = Blueprint('admin_bp', __name__, template_folder='templates')
 def init_admin(app):
     """Initialize Flask-Admin with all model views"""
 
-    # Import db from extensions module to access Flask-SQLAlchemy session
+    # Import db (Flask-SQLAlchemy instance) to pass to Flask-Admin views.
     from webapp.extensions import db
 
     # Initialize Admin
@@ -37,59 +37,59 @@ def init_admin(app):
         url='/database'
     )
 
-    # Use db.session for all ModelViews - Flask-Admin will handle per-request session management
+    # Pass the SQLAlchemy `db` instance - Flask-Admin pulls db.session per request internally.
     # Users category
-    admin.add_view(UserAdmin(User, db.session,
+    admin.add_view(UserAdmin(User, db,
                              name='Users',
                              endpoint='users',
                              category='Users'))
-    admin.add_view(ModelView(EmailAddress, db.session,
+    admin.add_view(ModelView(EmailAddress, db,
                              name='Email Addresses',
                              endpoint='email_addresses',
                              category='Users'))
-    admin.add_view(ModelView(UserInstitution, db.session,
+    admin.add_view(ModelView(UserInstitution, db,
                              name='User Institutions',
                              endpoint='user_institutions',
                              category='Users'))
 
     # Projects category
-    admin.add_view(ProjectAdmin(Project, db.session,
+    admin.add_view(ProjectAdmin(Project, db,
                                 name='Projects',
                                 endpoint='projects',
                                 category='Projects'))
-    admin.add_view(AccountAdmin(Account, db.session,
+    admin.add_view(AccountAdmin(Account, db,
                                 name='Accounts',
                                 endpoint='accounts',
                                 category='Projects'))
-    admin.add_view(AllocationAdmin(Allocation, db.session,
+    admin.add_view(AllocationAdmin(Allocation, db,
                                    name='Allocations',
                                    endpoint='allocations',
                                    category='Projects'))
-    admin.add_view(ProjectDirectoryAdmin(ProjectDirectory, db.session,
+    admin.add_view(ProjectDirectoryAdmin(ProjectDirectory, db,
                                          name='Directories',
                                          endpoint='project_directory',
                                          category='Projects'))
 
     # Resources category
-    admin.add_view(ResourceAdmin(Resource, db.session,
+    admin.add_view(ResourceAdmin(Resource, db,
                                  name='Resources',
                                  endpoint='resources',
                                  category='Resources'))
-    admin.add_view(ModelView(Machine, db.session,
+    admin.add_view(ModelView(Machine, db,
                              name='Machines',
                              endpoint='machines',
                              category='Resources'))
-    admin.add_view(ModelView(Queue, db.session,
+    admin.add_view(ModelView(Queue, db,
                              name='Queues',
                              endpoint='queues',
                              category='Resources'))
 
     # Reports category
-    admin.add_view(ChargeSummaryAdmin(CompChargeSummary, db.session,
+    admin.add_view(ChargeSummaryAdmin(CompChargeSummary, db,
                                       name='Comp Charges',
                                       endpoint='comp_charges',
                                       category='Reports'))
-    admin.add_view(ChargeSummaryAdmin(HPCChargeSummary, db.session,
+    admin.add_view(ChargeSummaryAdmin(HPCChargeSummary, db,
                                       name='HPC Charges',
                                       endpoint='hpc_charges',
                                       category='Reports'))

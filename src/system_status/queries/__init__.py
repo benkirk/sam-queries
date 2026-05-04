@@ -16,7 +16,8 @@ from system_status.models import (
     JupyterHubStatus,
     FilesystemStatus,
     SystemOutage, ResourceReservation,
-    LoginNodeStatus, QueueStatus
+    LoginNodeStatus, QueueStatus,
+    System, QueueDef, Filesystem, LoginNodeDef,
 )
 
 
@@ -29,26 +30,38 @@ def get_latest_derecho_status(session: Session) -> Optional[DerechoStatus]:
 
 def get_latest_derecho_queues(session: Session, timestamp: datetime) -> List[QueueStatus]:
     """Get Derecho queue status for a specific timestamp."""
-    return session.query(QueueStatus).filter_by(
-        timestamp=timestamp,
-        system_name='derecho'
-    ).order_by(QueueStatus.queue_name).all()
+    return (
+        session.query(QueueStatus)
+        .join(System, QueueStatus.system_id == System.system_id)
+        .join(QueueDef, QueueStatus.queue_id == QueueDef.queue_id)
+        .filter(QueueStatus.timestamp == timestamp, System.name == 'derecho')
+        .order_by(QueueDef.name)
+        .all()
+    )
 
 
 def get_latest_derecho_filesystems(session: Session, timestamp: datetime) -> List[FilesystemStatus]:
     """Get Derecho filesystem status for a specific timestamp."""
-    return session.query(FilesystemStatus).filter_by(
-        timestamp=timestamp,
-        system_name='derecho'
-    ).order_by(FilesystemStatus.filesystem_name).all()
+    return (
+        session.query(FilesystemStatus)
+        .join(System, FilesystemStatus.system_id == System.system_id)
+        .join(Filesystem, FilesystemStatus.filesystem_id == Filesystem.filesystem_id)
+        .filter(FilesystemStatus.timestamp == timestamp, System.name == 'derecho')
+        .order_by(Filesystem.name)
+        .all()
+    )
 
 
 def get_latest_derecho_login_nodes(session: Session, timestamp: datetime) -> List[LoginNodeStatus]:
     """Get Derecho login node status for a specific timestamp."""
-    return session.query(LoginNodeStatus).filter_by(
-        timestamp=timestamp,
-        system_name='derecho'
-    ).order_by(LoginNodeStatus.node_name).all()
+    return (
+        session.query(LoginNodeStatus)
+        .join(System, LoginNodeStatus.system_id == System.system_id)
+        .join(LoginNodeDef, LoginNodeStatus.login_node_def_id == LoginNodeDef.login_node_def_id)
+        .filter(LoginNodeStatus.timestamp == timestamp, System.name == 'derecho')
+        .order_by(LoginNodeDef.name)
+        .all()
+    )
 
 
 def get_latest_casper_status(session: Session) -> Optional[CasperStatus]:
@@ -67,26 +80,38 @@ def get_latest_casper_node_types(session: Session, timestamp: datetime) -> List[
 
 def get_latest_casper_queues(session: Session, timestamp: datetime) -> List[QueueStatus]:
     """Get Casper queue status for a specific timestamp."""
-    return session.query(QueueStatus).filter_by(
-        timestamp=timestamp,
-        system_name='casper'
-    ).order_by(QueueStatus.queue_name).all()
+    return (
+        session.query(QueueStatus)
+        .join(System, QueueStatus.system_id == System.system_id)
+        .join(QueueDef, QueueStatus.queue_id == QueueDef.queue_id)
+        .filter(QueueStatus.timestamp == timestamp, System.name == 'casper')
+        .order_by(QueueDef.name)
+        .all()
+    )
 
 
 def get_latest_casper_login_nodes(session: Session, timestamp: datetime) -> List[LoginNodeStatus]:
     """Get Casper login node status for a specific timestamp."""
-    return session.query(LoginNodeStatus).filter_by(
-        timestamp=timestamp,
-        system_name='casper'
-    ).order_by(LoginNodeStatus.node_name).all()
+    return (
+        session.query(LoginNodeStatus)
+        .join(System, LoginNodeStatus.system_id == System.system_id)
+        .join(LoginNodeDef, LoginNodeStatus.login_node_def_id == LoginNodeDef.login_node_def_id)
+        .filter(LoginNodeStatus.timestamp == timestamp, System.name == 'casper')
+        .order_by(LoginNodeDef.name)
+        .all()
+    )
 
 
 def get_latest_casper_filesystems(session: Session, timestamp: datetime) -> List[FilesystemStatus]:
     """Get Casper filesystem status for a specific timestamp."""
-    return session.query(FilesystemStatus).filter_by(
-        timestamp=timestamp,
-        system_name='casper'
-    ).order_by(FilesystemStatus.filesystem_name).all()
+    return (
+        session.query(FilesystemStatus)
+        .join(System, FilesystemStatus.system_id == System.system_id)
+        .join(Filesystem, FilesystemStatus.filesystem_id == Filesystem.filesystem_id)
+        .filter(FilesystemStatus.timestamp == timestamp, System.name == 'casper')
+        .order_by(Filesystem.name)
+        .all()
+    )
 
 
 def get_latest_jupyterhub_status(session: Session) -> Optional[JupyterHubStatus]:
@@ -172,12 +197,19 @@ def get_queue_history(
     Get historical data for a specific queue.
     Returns a list of dictionaries suitable for charting.
     """
-    history_records = session.query(QueueStatus).filter(
-        QueueStatus.queue_name == queue_name,
-        QueueStatus.system_name == system,
-        QueueStatus.timestamp >= start_date,
-        QueueStatus.timestamp <= end_date
-    ).order_by(QueueStatus.timestamp).all()
+    history_records = (
+        session.query(QueueStatus)
+        .join(System, QueueStatus.system_id == System.system_id)
+        .join(QueueDef, QueueStatus.queue_id == QueueDef.queue_id)
+        .filter(
+            QueueDef.name == queue_name,
+            System.name == system,
+            QueueStatus.timestamp >= start_date,
+            QueueStatus.timestamp <= end_date,
+        )
+        .order_by(QueueStatus.timestamp)
+        .all()
+    )
 
     return [
         {
@@ -197,10 +229,14 @@ def get_queue_history(
 
 def get_latest_queue_status(session: Session, system: str, queue_name: str) -> Optional[QueueStatus]:
     """Get the latest status for a specific queue."""
-    return session.query(QueueStatus).filter(
-        QueueStatus.queue_name == queue_name,
-        QueueStatus.system_name == system
-    ).order_by(QueueStatus.timestamp.desc()).first()
+    return (
+        session.query(QueueStatus)
+        .join(System, QueueStatus.system_id == System.system_id)
+        .join(QueueDef, QueueStatus.queue_id == QueueDef.queue_id)
+        .filter(QueueDef.name == queue_name, System.name == system)
+        .order_by(QueueStatus.timestamp.desc())
+        .first()
+    )
 
 
 def get_system_partition_history(
