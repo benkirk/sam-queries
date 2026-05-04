@@ -12,10 +12,53 @@ from system_status.schemas.status import (
     CasperStatusSchema,
     LoginNodeSchema,
     QueueSchema,
+    UserProjQueueSchema,
     FilesystemSchema,
     CasperNodeTypeSchema,
     JupyterHubStatusSchema,
 )
+
+
+class TestUserProjQueueSchemaLoading:
+    """Tests for UserProjQueueSchema (per-user/project/queue rollup)."""
+
+    def test_user_proj_queue_schema_minimal(self):
+        """Required fields are username, project_code, queue_name."""
+        data = {
+            'username': 'benkirk',
+            'project_code': 'SCSG0001',
+            'queue_name': 'main',
+            'running_jobs': 3,
+            'pending_jobs': 0,
+            'cores_allocated': 256,
+        }
+        schema = UserProjQueueSchema()
+        obj = schema.load(data)
+
+        # Property accessors read from staged _pending_* slots before flush.
+        assert obj.username == 'benkirk'
+        assert obj.project_code == 'SCSG0001'
+        assert obj.queue_name == 'main'
+        assert obj.running_jobs == 3
+        assert obj.pending_jobs == 0
+        assert obj.cores_allocated == 256
+
+    def test_user_proj_queue_schema_required_fields(self):
+        """Missing username, project_code, or queue_name should raise."""
+        from marshmallow import ValidationError
+
+        for missing in ('username', 'project_code', 'queue_name'):
+            data = {
+                'username': 'benkirk',
+                'project_code': 'SCSG0001',
+                'queue_name': 'main',
+                'running_jobs': 1,
+            }
+            data.pop(missing)
+            schema = UserProjQueueSchema()
+            with pytest.raises(ValidationError) as exc_info:
+                schema.load(data)
+            assert missing in exc_info.value.messages
 
 
 class TestDerechoSchemaLoading:
@@ -136,6 +179,12 @@ class TestDerechoSchemaLoading:
             'queues': [
                 {'queue_name': 'main', 'running_jobs': 100}
             ],
+            'user_project_queues': [
+                {'username': 'benkirk', 'project_code': 'SCSG0001',
+                 'queue_name': 'main', 'running_jobs': 3, 'cores_allocated': 256},
+                {'username': 'bdobbins', 'project_code': '_unknown_',
+                 'queue_name': 'main', 'pending_jobs': 1, 'cores_pending': 64},
+            ],
             'filesystems': [
                 {'filesystem_name': 'glade', 'available': True}
             ]
@@ -146,6 +195,7 @@ class TestDerechoSchemaLoading:
 
         assert len(status.login_nodes) == 1
         assert len(status.queues) == 1
+        assert len(status.user_proj_queues) == 2
         assert len(status.filesystems) == 1
 
         # Verify all nested objects got timestamp and system_name
@@ -153,6 +203,12 @@ class TestDerechoSchemaLoading:
         assert status.queues[0].system_name == 'derecho'
         assert status.filesystems[0].timestamp == datetime(2100, 1, 25, 14, 30, 0)
         assert status.filesystems[0].system_name == 'derecho'
+
+        upq_by_user = {u.username: u for u in status.user_proj_queues}
+        assert upq_by_user['benkirk'].project_code == 'SCSG0001'
+        assert upq_by_user['benkirk'].timestamp == datetime(2100, 1, 25, 14, 30, 0)
+        assert upq_by_user['benkirk'].system_name == 'derecho'
+        assert upq_by_user['bdobbins'].project_code == '_unknown_'
 
 
 class TestCasperSchemaLoading:
