@@ -195,7 +195,7 @@ class TestDerechoSchemaLoading:
 
         assert len(status.login_nodes) == 1
         assert len(status.queues) == 1
-        assert len(status.user_proj_queues) == 2
+        assert len(status.user_project_queues) == 2
         assert len(status.filesystems) == 1
 
         # Verify all nested objects got timestamp and system_name
@@ -204,7 +204,7 @@ class TestDerechoSchemaLoading:
         assert status.filesystems[0].timestamp == datetime(2100, 1, 25, 14, 30, 0)
         assert status.filesystems[0].system_name == 'derecho'
 
-        upq_by_user = {u.username: u for u in status.user_proj_queues}
+        upq_by_user = {u.username: u for u in status.user_project_queues}
         assert upq_by_user['benkirk'].project_code == 'SCSG0001'
         assert upq_by_user['benkirk'].timestamp == datetime(2100, 1, 25, 14, 30, 0)
         assert upq_by_user['benkirk'].system_name == 'derecho'

@@ -67,9 +67,9 @@ class UserProjQueueStatus(StatusBase, StatusSnapshotMixin,
     # ``project``, ``queue``, ``system``) so the textual accessor properties
     # (``username``, ``project_code``, ``queue_name``, ``system_name``) can
     # carry the JSON-contract names without colliding.
-    derecho_status = relationship('DerechoStatus', back_populates='user_proj_queues',
+    derecho_status = relationship('DerechoStatus', back_populates='user_project_queues',
                                   foreign_keys=[derecho_status_id])
-    casper_status = relationship('CasperStatus', back_populates='user_proj_queues',
+    casper_status = relationship('CasperStatus', back_populates='user_project_queues',
                                  foreign_keys=[casper_status_id])
     user = relationship(UserDef, foreign_keys=[user_id])
     project = relationship(ProjectCodeDef, foreign_keys=[project_code_id])

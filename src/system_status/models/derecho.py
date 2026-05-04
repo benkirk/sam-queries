@@ -37,11 +37,11 @@ class DerechoStatus(StatusBase, StatusSnapshotMixin, SessionMixin, SystemStatusM
                           cascade='all, delete-orphan',
                           lazy='selectin')
 
-    user_proj_queues = relationship('UserProjQueueStatus',
-                                    foreign_keys='UserProjQueueStatus.derecho_status_id',
-                                    back_populates='derecho_status',
-                                    cascade='all, delete-orphan',
-                                    lazy='selectin')
+    user_project_queues = relationship('UserProjQueueStatus',
+                                       foreign_keys='UserProjQueueStatus.derecho_status_id',
+                                       back_populates='derecho_status',
+                                       cascade='all, delete-orphan',
+                                       lazy='selectin')
 
     filesystems = relationship('FilesystemStatus',
                                foreign_keys='FilesystemStatus.derecho_status_id',
