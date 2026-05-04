@@ -20,6 +20,8 @@ from system_status.models import (
     System, QueueDef, Filesystem, LoginNodeDef,
 )
 
+from .user_proj_queues import get_latest_user_proj_queue_snapshot  # noqa: F401
+
 
 def get_latest_derecho_status(session: Session) -> Optional[DerechoStatus]:
     """Get the latest Derecho system status."""

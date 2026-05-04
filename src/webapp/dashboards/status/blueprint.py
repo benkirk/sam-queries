@@ -255,6 +255,21 @@ def queue_history(system, queue_name):
     # Generate chart
     chart_svg = generate_queue_history_matplotlib(history_data)
 
+    # Per-user / per-project rollup table — only fetched and rendered for
+    # operators with VIEW_SYSTEM_STATUS_USER_INFO. Skipping the query
+    # entirely (vs. always fetching + hiding in template) avoids the join
+    # cost for pages viewed by non-privileged users.
+    from webapp.utils.rbac import has_permission
+    can_view_user_info = (
+        current_user.is_authenticated
+        and has_permission(current_user, Permission.VIEW_SYSTEM_STATUS_USER_INFO)
+    )
+    user_proj_rows = []
+    if can_view_user_info:
+        user_proj_rows = status_queries.get_latest_user_proj_queue_snapshot(
+            session, system=system, queue_name=queue_name
+        )
+
     return render_template(
         'dashboards/status/queue_history.html',
         user=current_user,
@@ -266,6 +281,8 @@ def queue_history(system, queue_name):
         hours=hours,
         start_date=start_date,
         end_date=end_date,
+        can_view_user_info=can_view_user_info,
+        user_proj_rows=user_proj_rows,
     )
 
 
