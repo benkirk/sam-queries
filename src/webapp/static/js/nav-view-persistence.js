@@ -195,4 +195,122 @@
         }
     });
 
+    // ── Chart selector persistence ───────────────────────────────────────────
+    //
+    // The "User / project load over time" status chart has three button-group
+    // selectors (group_by, state, metric) inside the swap target. Each click
+    // is an HTMX GET that re-renders the chart fragment; a full page reload,
+    // however, re-runs the loader's hardcoded defaults and the user's
+    // selections vanish. We persist the live URL params to localStorage,
+    // keyed by the chart's stable server-computed dom id, and replay them on
+    // the next configRequest.
+
+    var CHART_PREFIX = 'chart:';
+    var CHART_KEYS = ['group_by', 'state', 'metric'];
+
+    /** Defensive clamp so a stale saved value can't ask for invalid combos. */
+    function clampChartParams(params) {
+        if (params.metric === 'nodes' && params.state && params.state !== 'running') {
+            params.metric = 'cores';
+        }
+    }
+
+    /** Read saved selections and override hx-get parameters. Runs for every
+     *  request whose source element (or an ancestor) carries
+     *  `data-chart-persist-id`, including the loader's hx-trigger="load". */
+    document.addEventListener('htmx:configRequest', function (event) {
+        var elt = event.detail.elt;
+        var marker = elt && elt.closest ? elt.closest('[data-chart-persist-id]') : null;
+        if (!marker) return;
+
+        var id = marker.dataset.chartPersistId;
+        var raw = null;
+        try { raw = localStorage.getItem(CHART_PREFIX + id); } catch (_) { return; }
+        if (!raw) return;
+
+        var saved;
+        try { saved = JSON.parse(raw); } catch (_) { return; }
+        if (!saved || typeof saved !== 'object') return;
+
+        // Merge into a working object so we can clamp before assigning.
+        var merged = {};
+        CHART_KEYS.forEach(function (k) {
+            merged[k] = (k in saved) ? saved[k] : event.detail.parameters[k];
+        });
+        clampChartParams(merged);
+
+        CHART_KEYS.forEach(function (k) {
+            if (merged[k] !== undefined) event.detail.parameters[k] = merged[k];
+        });
+    });
+
+    /** After a chart fragment swaps in, capture the resolved request URL —
+     *  this is the source of truth for which {group_by, state, metric}
+     *  combination is now showing. Avoids reading button DOM classes. */
+    document.addEventListener('htmx:afterSettle', function (event) {
+        var elt = event.detail.elt;
+        if (!elt) return;
+
+        var chartEl = (elt.matches && elt.matches('[data-chart-persist-id]'))
+            ? elt
+            : (elt.querySelector ? elt.querySelector('[data-chart-persist-id]') : null);
+        if (!chartEl) return;
+
+        var url = event.detail.xhr && event.detail.xhr.responseURL;
+        if (!url) return;
+
+        var qs;
+        try { qs = new URL(url, window.location.origin).searchParams; } catch (_) { return; }
+
+        var saved = {};
+        CHART_KEYS.forEach(function (k) {
+            if (qs.has(k)) saved[k] = qs.get(k);
+        });
+        if (Object.keys(saved).length === 0) return;
+
+        try {
+            localStorage.setItem(CHART_PREFIX + chartEl.dataset.chartPersistId,
+                                 JSON.stringify(saved));
+        } catch (_) {}
+    });
+
+    // ── Scroll preservation across full-page navigation ──────────────────────
+    //
+    // Time-filter clicks (?hours=N) trigger `window.location.href = ...` or
+    // a plain link, both of which reload the page and reset scroll to the
+    // top — hiding the chart the user was just inspecting. We snapshot
+    // scrollY on click (capture phase, before the inline onclick fires) and
+    // restore it on the next DOMContentLoaded for the same pathname.
+
+    var SCROLL_PREFIX = 'nav:scroll:';
+    var SCROLL_TTL_MS = 5000;
+
+    document.addEventListener('click', function (e) {
+        var trigger = e.target.closest && e.target.closest('[data-scroll-preserve]');
+        if (!trigger) return;
+        try {
+            sessionStorage.setItem(
+                SCROLL_PREFIX + window.location.pathname,
+                JSON.stringify({ y: window.scrollY, ts: Date.now() })
+            );
+        } catch (_) {}
+    }, true);  // capture phase, runs before inline onclick handlers
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var key = SCROLL_PREFIX + window.location.pathname;
+        var raw = null;
+        try {
+            raw = sessionStorage.getItem(key);
+            sessionStorage.removeItem(key);  // clear immediately — one-shot
+        } catch (_) { return; }
+        if (!raw) return;
+
+        var saved;
+        try { saved = JSON.parse(raw); } catch (_) { return; }
+        if (!saved || typeof saved.y !== 'number') return;
+        if (Date.now() - saved.ts > SCROLL_TTL_MS) return;
+
+        window.scrollTo({ top: saved.y, behavior: 'instant' });
+    });
+
 })();
