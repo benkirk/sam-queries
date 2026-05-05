@@ -1,11 +1,42 @@
 #!/usr/bin/env python3
 """
-Validate ``get_user_proj_usage`` against the local system_status DB.
+Validate + benchmark ``get_user_proj_usage`` against the local
+system_status DB.
 
-Designed for the local dev DB which has <24 h of real collector data
-including missed Derecho ticks (gaps > 5 min). The variable-dt path
-of the integrator is exercised by real organic non-uniformity, not
-hand-crafted fixtures.
+This script does double duty:
+
+1. **Correctness** — reconciles the integrated user_proj output against
+   the integral of the parent ``QueueStatus`` rows over the SAME parent
+   tick set. Equality up to float64 epsilon on every queue is the
+   load-bearing assertion that the algorithm is sound.
+
+2. **Benchmark / capacity-planning** — prints wall-clock timing and
+   rows/sec for each phase (tick fetch, integration, reconciliation).
+   The intent is to **revisit this on a cadence** as upu rows accumulate:
+
+   - **Today** (initial Phase-B rollout): ~17 h, ~85k rows.
+   - **Week 1**: ~7 days, ~700k rows. Expect linear growth.
+   - **Month 1**: ~30 days, ~3M rows. Decision point — at this scale,
+     we want UI-eligible windows to stay sub-second. If a 1-day window
+     still completes in <500 ms but a 1-month window blows past 10 s,
+     we have empirical evidence for the daily-summary table proposed
+     in the design doc.
+
+   Each timed phase prints rows processed and wall-clock seconds, so a
+   `git diff` of two runs can answer "did we cross the line yet?"
+   without re-deriving anything.
+
+## What "the daily-summary decision" hinges on
+
+The design plan flagged a future
+`user_proj_queue_daily_usage` rollup as the right answer if year-scale
+queries become a UI need. The right time to build it is when:
+- A typical UI request window (e.g. last 7 days) takes >1 s consistently.
+- A reporting window (1 month) takes >30 s, blocking offline jobs.
+- DB row growth makes the chunked Python aggregation memory-bound on
+  the smallest deployable host.
+
+This script is the instrument we'll measure those thresholds with.
 
 Run from the repo host (not inside the docker network):
 
@@ -20,10 +51,29 @@ on the host loopback.
 """
 
 import sys
+import time
+from contextlib import contextmanager
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
 from sqlalchemy import select
+
+
+@contextmanager
+def timed(label, *, n=None):
+    """Context manager that prints elapsed wall time, and rows/sec if
+    a row count is given. Output is a single right-aligned line so
+    consecutive timings stack visually for comparison run-to-run."""
+    t0 = time.perf_counter()
+    yield
+    dt = time.perf_counter() - t0
+    if n is None:
+        print(f'    [t]  {label:<45} {dt:>8.3f} s')
+    else:
+        rate = (n / dt) if dt > 0 else float('inf')
+        print(f'    [t]  {label:<45} {dt:>8.3f} s  '
+              f'({n:>9,} rows, {rate:>10,.0f} rows/s)')
 
 # Allow running the script from anywhere in the repo.
 _ROOT = Path(__file__).resolve().parent.parent
@@ -73,7 +123,8 @@ def report_tick_distribution(session, parent_model, label, start=None, end=None)
     if end is not None:
         q = q.where(parent_model.timestamp <= end)
     q = q.order_by(parent_model.timestamp)
-    rows = session.execute(q).all()
+    with timed(f'fetch parent ticks ({label})'):
+        rows = session.execute(q).all()
     ts = [r[0] for r in rows]
     if len(ts) < 2:
         print(f'  {label}: <2 ticks, skipping')
@@ -132,17 +183,18 @@ def integrate_queue_status_by_queue(session, parent_model, system, start, end):
     dt_s[:-1] = np.diff(ticks).astype('int64').astype(np.float64) / 1e6
     ts_to_idx = {t: i for i, t in enumerate(parent_ts)}
 
-    qs_rows = session.execute(
-        select(QueueStatus.timestamp,
-               QueueDef.name,
-               QueueStatus.cores_allocated,
-               QueueStatus.gpus_allocated)
-        .join(QueueDef, QueueStatus.queue_id == QueueDef.queue_id)
-        .join(System, QueueStatus.system_id == System.system_id)
-        .where(System.name == system,
-               QueueStatus.timestamp >= start,
-               QueueStatus.timestamp <= end)
-    ).all()
+    with timed(f'fetch QueueStatus rows ({system})'):
+        qs_rows = session.execute(
+            select(QueueStatus.timestamp,
+                   QueueDef.name,
+                   QueueStatus.cores_allocated,
+                   QueueStatus.gpus_allocated)
+            .join(QueueDef, QueueStatus.queue_id == QueueDef.queue_id)
+            .join(System, QueueStatus.system_id == System.system_id)
+            .where(System.name == system,
+                   QueueStatus.timestamp >= start,
+                   QueueStatus.timestamp <= end)
+        ).all()
 
     # Aggregate per (queue, tick_idx). Skip QueueStatus rows whose
     # timestamp doesn't fall on a parent tick (defensive — should never
@@ -171,13 +223,15 @@ def integrate_queue_status_by_queue(session, parent_model, system, start, end):
 def reconcile(session, parent_model, system, start, end):
     """Compare per-queue QueueStatus integrals against summed
     get_user_proj_usage on each queue. Print PASS/FAIL with delta."""
-    qs_totals = integrate_queue_status_by_queue(
-        session, parent_model, system, start, end,
-    )
+    with timed(f'reconcile QueueStatus integral ({system})'):
+        qs_totals = integrate_queue_status_by_queue(
+            session, parent_model, system, start, end,
+        )
 
-    upu_rows = get_user_proj_usage(
-        session, system=system, start_date=start, end_date=end,
-    )
+    with timed(f'get_user_proj_usage full window ({system})'):
+        upu_rows = get_user_proj_usage(
+            session, system=system, start_date=start, end_date=end,
+        )
     upu_totals = {}
     for r in upu_rows:
         qn = r['queue_name']
@@ -257,10 +311,21 @@ def main():
             report_tick_distribution(session, parent, f'{system} parent ticks',
                                      start=start, end=end)
 
-            rows = get_user_proj_usage(
-                session, system=system,
-                start_date=start, end_date=end,
-            )
+            # Count input rows in the window — denominator for rows/sec.
+            n_rows = session.execute(
+                select(func.count())
+                .select_from(UserProjQueueStatus)
+                .where(UserProjQueueStatus.system_id == sys_id,
+                       UserProjQueueStatus.timestamp >= start,
+                       UserProjQueueStatus.timestamp <= end)
+            ).scalar_one()
+
+            with timed(f'get_user_proj_usage full window ({system})',
+                       n=n_rows):
+                rows = get_user_proj_usage(
+                    session, system=system,
+                    start_date=start, end_date=end,
+                )
             print(f'\n  {len(rows)} (user, project, queue) tuples with usage > 0')
             print(f'  Total core-hours: '
                   f'{sum(r["core_hours"] for r in rows):>14.3f}')
@@ -270,6 +335,30 @@ def main():
                   f'{sum(r["node_hours"] for r in rows):>14.3f}')
 
             report_top_consumers(rows, f'{system} consumers')
+
+            # Sub-window benchmarks. The growth shape vs the full-window
+            # number tells us whether the integration scales linearly
+            # (expected) and how much headroom exists before any one
+            # query class blows past the UI/offline thresholds. Revisit
+            # the absolute numbers as upu accumulates more data.
+            print(f'\n  Sub-window benchmarks (extrapolation feedstock):')
+            for label, hours in (('1 h', 1), ('6 h', 6), ('24 h (or full)', 24)):
+                w_end = end
+                w_start = max(start, end - timedelta(hours=hours))
+                if w_start >= w_end:
+                    continue
+                w_n = session.execute(
+                    select(func.count())
+                    .select_from(UserProjQueueStatus)
+                    .where(UserProjQueueStatus.system_id == sys_id,
+                           UserProjQueueStatus.timestamp >= w_start,
+                           UserProjQueueStatus.timestamp <= w_end)
+                ).scalar_one()
+                with timed(f'  trailing {label}', n=w_n):
+                    get_user_proj_usage(
+                        session, system=system,
+                        start_date=w_start, end_date=w_end,
+                    )
 
             print(f'\n  Reconciliation against QueueStatus integrals:')
             reconcile(session, parent, system, start, end)
