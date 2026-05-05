@@ -1,7 +1,9 @@
 FROM python:3
 
-RUN 'FILE1' cat > /usr/bin/list-large-directories && \
-    chmod a+rx /usr/bin/list-large-directories
+RUN echo "Creating cleanup scripts" && \
+    <<'FILE1' cat > /usr/bin/list-large-directories && \
+    chmod a+rx /usr/bin/list-large-directories && \
+    echo "Done"
 #!/bin/bash
 
 dirs="/home /mnt /tmp /opt /usr /var /container"

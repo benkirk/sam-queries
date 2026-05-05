@@ -7,7 +7,7 @@ RUN apt-get update \
     && pip install --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN echo "Creatning default .env" && \
+RUN echo "Creating default .env" && \
     <<'FILE1' cat > /.env && \
     <<'FILE2' cat > /usr/bin/list-large-directories && \
     chmod a+rx /usr/bin/list-large-directories && \
