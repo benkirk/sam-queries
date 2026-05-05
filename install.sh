@@ -129,7 +129,7 @@ cat <<EOF
 Install complete.
 To start services"
   cd \"${TARGET_DIR}\""
-  docker compose up --watch
+  docker compose --profile test up --build --watch
 
 Once all services are up, connect to http://127.0.0.1:5050/user/
 EOF
