@@ -236,9 +236,3 @@ anyway). Keeping the integration in numpy lands once, runs anywhere.
    plausibility check (won't match exactly — billing uses real
    start/end, we use 5-min snapshots — but should be within a few %).
 
-## Open question for the user
-
-I went with **left-step rectangle** integration over trapezoidal. If you
-have a strong opinion (or remember why billing uses one or the other for
-similar cases), say so before we implement — flipping later means
-re-validating reconciliation tests.
