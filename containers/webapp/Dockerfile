@@ -7,8 +7,10 @@ RUN apt-get update \
     && pip install --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN echo "Creatning default .env" && \
+RUN echo "Creating default .env" && \
     <<'FILE1' cat > /.env && \
+    <<'FILE2' cat > /usr/bin/list-large-directories && \
+    chmod a+rx /usr/bin/list-large-directories && \
     echo "Done"
 #-------------------------
 # local container instance
@@ -32,6 +34,24 @@ STATUS_DB_PASSWORD=root
 # WARNING: dev-only key - change for production
 FLASK_SECRET_KEY=dev-only-insecure-key-change-for-production
 FILE1
+#!/bin/bash
+
+dirs="/home /mnt /tmp /opt /usr /var /container"
+if [[ ${#} -ge 1 ]]; then
+    dirs=${@}
+fi
+
+THRESHOLD_SIZE_MB=4
+
+echo "[${0}]: Finding large files & directories >${THRESHOLD_SIZE_MB}MiB in ${dirs} - output is MiB"
+for dir in ${dirs}; do
+    dir=$(realpath ${dir})
+    if [[ -d ${dir} ]]; then
+        find 2>/dev/null ${dir} -type f -size +${THRESHOLD_SIZE_MB}M -print0 | xargs -0 --no-run-if-empty du --block-size=1MiB | sort -n
+        du 2>/dev/null --block-size=1MiB --threshold=${THRESHOLD_SIZE_MB}MiB --separate-dirs ${dir} | sort -n
+    fi
+done
+FILE2
 
 WORKDIR /code
 COPY . .

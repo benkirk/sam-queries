@@ -111,7 +111,9 @@
     <div class="card-body">
         {# Initial load: HTMX fetches the chart partial (which carries
            its own selector buttons). Subsequent button clicks replace
-           #upq-chart-inner with a freshly-rendered partial. #}
+           the partial's outer div with a freshly-rendered partial.
+           The id is scope-unique (e.g. upq-chart-derecho-main) so the
+           landing-page system cards don't collide on hx-target. #}
         <div hx-get="{{ url_for('status_dashboard.htmx_user_proj_chart',
                                 system=system, queue_name=queue_name,
                                 hours=hours, state='running', metric='jobs',

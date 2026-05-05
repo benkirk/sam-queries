@@ -87,6 +87,11 @@ check-db-vs-orms: ## Audit prod DB schema vs ORM models — runs check_db_drift 
 	$(config_env) && source etc/config_env.sh && \
 	    python3 scripts/check_db_drift.py
 
+validate_user_proj_usage: ## Reconcile + benchmark get_user_proj_usage against local docker MySQL (overrides STATUS_DB_DRIVER/SERVER for host access)
+	$(config_env) && source etc/config_env.sh && \
+	    STATUS_DB_DRIVER=mysql STATUS_DB_SERVER=127.0.0.1 \
+	    python3 scripts/validate_user_proj_usage.py
+
 docker-build: ## Build docker containers
 	@docker compose build
 
