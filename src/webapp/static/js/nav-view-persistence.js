@@ -215,15 +215,16 @@
         }
     }
 
-    /** Read saved selections and override hx-get parameters. Runs for every
-     *  request whose source element (or an ancestor) carries
-     *  `data-chart-persist-id`, including the loader's hx-trigger="load". */
+    /** Read saved selections and override hx-get parameters. Only applies to
+     *  the *loader* element itself — i.e. the wrapper div with hx-trigger="load"
+     *  that carries `data-chart-persist-id` directly. Selector buttons inside
+     *  the chart fragment have an ancestor with the marker, but `elt.matches`
+     *  ensures we don't clobber the user's deliberate click. */
     document.addEventListener('htmx:configRequest', function (event) {
         var elt = event.detail.elt;
-        var marker = elt && elt.closest ? elt.closest('[data-chart-persist-id]') : null;
-        if (!marker) return;
+        if (!elt || !elt.matches || !elt.matches('[data-chart-persist-id]')) return;
 
-        var id = marker.dataset.chartPersistId;
+        var id = elt.dataset.chartPersistId;
         var raw = null;
         try { raw = localStorage.getItem(CHART_PREFIX + id); } catch (_) { return; }
         if (!raw) return;
@@ -242,6 +243,21 @@
         CHART_KEYS.forEach(function (k) {
             if (merged[k] !== undefined) event.detail.parameters[k] = merged[k];
         });
+
+        // htmx appends `parameters` to `path` for GET requests, so any keys
+        // already encoded in the loader's hx-get URL would produce duplicate
+        // query keys (?metric=jobs&metric=cores). Werkzeug's request.args.get
+        // returns the FIRST value, which silently defeats the override. Strip
+        // the persisted keys from `path` so our parameters become authoritative.
+        var path = event.detail.path;
+        if (path && path.indexOf('?') !== -1) {
+            var parts = path.split('?');
+            var qs;
+            try { qs = new URLSearchParams(parts[1]); } catch (_) { return; }
+            CHART_KEYS.forEach(function (k) { qs.delete(k); });
+            var rest = qs.toString();
+            event.detail.path = rest ? parts[0] + '?' + rest : parts[0];
+        }
     });
 
     /** After a chart fragment swaps in, capture the resolved request URL —
