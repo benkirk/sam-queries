@@ -1,8 +1,9 @@
 """
 Chart generation utilities for server-side rendering.
 
-All chart functions are decorated with @_chart_cache, which caches rendered
-SVGs by content hash. The public API is unchanged -- callers pass normal Python
+All chart functions are decorated with `@caching.chart_cached(name=..., maxsize=...)`,
+which caches rendered SVGs by content hash through the unified `Caching` facade
+(see webapp.caching). The public API is unchanged -- callers pass normal Python
 objects; hashing and caching are handled internally.
 
 Cache keys are stable MD5 hex digests of the input data, so key computation is
@@ -10,15 +11,10 @@ O(n) time but O(1) memory regardless of input size. This is safe for large
 inputs (e.g. a year of 5-minute history) where materialising the full data as
 a hashable tuple would allocate several MB per call even on a cache hit.
 
-NOTE: _ChartCache is per-process and thread-safe. It is safe with both gunicorn
+NOTE: ChartCache is per-process and thread-safe. It is safe with both gunicorn
 sync workers (each worker is a forked process) and gthread workers.
 """
 
-import functools
-import hashlib
-import json
-import threading
-from collections import OrderedDict, namedtuple
 from io import StringIO
 from typing import List, Dict
 from datetime import date, datetime, timedelta
@@ -30,6 +26,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from sam import fmt
+from webapp.caching import caching
+from webapp.caching.chart import content_hash as _content_hash  # legacy alias used by _pace_cache_key
 
 
 def _to_display_tz(naive_utc_ts: datetime) -> datetime:
@@ -40,105 +38,11 @@ def _to_display_tz(naive_utc_ts: datetime) -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# Cache infrastructure
-# ---------------------------------------------------------------------------
-
-_CacheInfo = namedtuple('CacheInfo', ['hits', 'misses', 'maxsize', 'currsize'])
-
-
-def _content_hash(data) -> str:
-    """Stable MD5 hex digest of arbitrary JSON-serialisable data.
-
-    O(n) compute, O(1) memory — suitable as a cache key for large inputs
-    where materialising a hashable tuple would be prohibitive.
-    """
-    return hashlib.md5(
-        json.dumps(data, default=str, sort_keys=True).encode(),
-        usedforsecurity=False,
-    ).hexdigest()
-
-
-class _ChartCache:
-    """Thread-safe bounded LRU cache for rendered SVG strings."""
-
-    def __init__(self, maxsize: int):
-        self._data: OrderedDict[str, str] = OrderedDict()
-        self._maxsize = maxsize
-        self._lock = threading.Lock()
-        self._hits = self._misses = 0
-
-    def get(self, key: str):
-        with self._lock:
-            if key in self._data:
-                self._data.move_to_end(key)
-                self._hits += 1
-                return self._data[key]
-            self._misses += 1
-            return None
-
-    def put(self, key: str, value: str) -> None:
-        with self._lock:
-            if key in self._data:
-                self._data.move_to_end(key)
-            else:
-                if len(self._data) >= self._maxsize:
-                    self._data.popitem(last=False)
-                self._data[key] = value
-
-    def cache_info(self) -> _CacheInfo:
-        with self._lock:
-            return _CacheInfo(
-                hits=self._hits,
-                misses=self._misses,
-                maxsize=self._maxsize,
-                currsize=len(self._data),
-            )
-
-    def cache_clear(self) -> None:
-        with self._lock:
-            self._data.clear()
-            self._hits = self._misses = 0
-
-
-def _chart_cache(maxsize: int, key_fn=None):
-    """Decorator factory that caches chart SVG output by content hash.
-
-    Args:
-        maxsize:  Maximum number of SVGs to keep (LRU eviction).
-        key_fn:   Optional callable(*args, **kwargs) -> str that computes the
-                  cache key.  Defaults to _content_hash of the first argument,
-                  which covers every single-argument chart function.  Pass an
-                  explicit key_fn for functions with multiple meaningful args
-                  (e.g. the pace chart).
-
-    The decorated function gains cache_info() and cache_clear() attributes
-    matching the functools.lru_cache interface.
-    """
-    def decorator(fn):
-        cache = _ChartCache(maxsize=maxsize)
-        _key = key_fn or (lambda *args, **kwargs: _content_hash(args[0]))
-
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs):
-            key = _key(*args, **kwargs)
-            result = cache.get(key)
-            if result is None:
-                result = fn(*args, **kwargs)
-                cache.put(key, result)
-            return result
-
-        wrapper.cache_info = cache.cache_info
-        wrapper.cache_clear = cache.cache_clear
-        return wrapper
-    return decorator
-
-
-# ---------------------------------------------------------------------------
 # 1. Usage timeseries (user dashboard)
 # ---------------------------------------------------------------------------
 
 # One entry per (user, time-range) combination active in the current snapshot window.
-@_chart_cache(maxsize=128)
+@caching.chart_cached(name='usage_timeseries', maxsize=128)
 def generate_usage_timeseries_matplotlib(daily_charges) -> str:
     """
     Generate time-series bar chart using Matplotlib.
@@ -184,7 +88,7 @@ _BYTES_PER_TIB = 1024 ** 4
 _BYTES_PER_PIB = 1024 ** 5
 
 
-@_chart_cache(maxsize=128)
+@caching.chart_cached(name='disk_usage_stacked_area', maxsize=128)
 def generate_disk_usage_stacked_area(timeseries) -> str:
     """Render a stacked-area chart of disk bytes vs time.
 
@@ -267,7 +171,7 @@ def generate_disk_usage_stacked_area(timeseries) -> str:
 # 1c. User / project queue load stacked-area chart (status drill-down)
 # ---------------------------------------------------------------------------
 
-@_chart_cache(maxsize=128)
+@caching.chart_cached(name='user_proj_stacked_area', maxsize=128)
 def generate_user_proj_stacked_area(timeseries) -> str:
     """Render a stacked-area chart of per-user or per-project queue load.
 
@@ -340,7 +244,7 @@ def generate_user_proj_stacked_area(timeseries) -> str:
 # ---------------------------------------------------------------------------
 
 # One entry per node type; can be O(10s) across all machines.
-@_chart_cache(maxsize=64)
+@caching.chart_cached(name='nodetype_history', maxsize=64)
 def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
     """
     Generate node type history chart showing availability and utilization.
@@ -403,7 +307,7 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
 # ---------------------------------------------------------------------------
 
 # One entry per queue; queue counts can be O(10s) across all resources.
-@_chart_cache(maxsize=64)
+@caching.chart_cached(name='queue_history', maxsize=64)
 def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
     """
     Generate queue history chart showing job flow and resource demand.
@@ -486,7 +390,7 @@ def _pie_trim(names: list, values: list) -> tuple[list, list]:
 
 
 # One entry per resource filter combination; small number of distinct views.
-@_chart_cache(maxsize=32)
+@caching.chart_cached(name='facility_pie_chart', maxsize=32)
 def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
     """
     Generate pie chart showing distribution by facility. Title is rendered
@@ -536,7 +440,7 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
 # ---------------------------------------------------------------------------
 
 # One entry per (resource, facility) filter combination.
-@_chart_cache(maxsize=64)
+@caching.chart_cached(name='allocation_type_pie_chart', maxsize=64)
 def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
     """
     Generate pie chart showing allocation distribution by type within a facility.
@@ -669,7 +573,7 @@ def _pace_cache_key(allocations, active_at, window_days=180, top_n=15, resource_
 
 
 # One entry per (resource, window_days, top_n) combination across concurrent viewers.
-@_chart_cache(maxsize=64, key_fn=_pace_cache_key)
+@caching.chart_cached(name='pace_chart', maxsize=64, key_fn=_pace_cache_key)
 def generate_pace_chart_matplotlib(
     allocations: List[Dict],
     active_at: datetime,
