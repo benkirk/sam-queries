@@ -24,6 +24,7 @@ from .user_proj_queues import (  # noqa: F401
     get_latest_user_proj_queue_snapshot,
     get_user_proj_timeseries,
 )
+from .user_proj_usage import get_user_proj_usage  # noqa: F401
 
 
 def get_latest_derecho_status(session: Session) -> Optional[DerechoStatus]:
