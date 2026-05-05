@@ -10,7 +10,7 @@ queue drill-down view (``status_dashboard.queue_history``).
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from system_status.models import (
@@ -212,6 +212,7 @@ def get_user_proj_timeseries(
           'metric_label':   'Pending cores' / 'Running GPUs' / ...
           'group_by':       'user' | 'project',
           'group_by_label': 'User' | 'Project code',
+          'has_gpus':       bool,   # any GPU activity in scope+window
         }
 
     Series ordering matches ``get_disk_usage_timeseries_by_user``: Others
@@ -249,6 +250,7 @@ def get_user_proj_timeseries(
         'dates': [], 'series': [],
         'state': state, 'metric': metric, 'metric_label': metric_label,
         'group_by': group_by, 'group_by_label': group_by_label,
+        'has_gpus': False,
     }
 
     # Resolve scope: single queue if queue_name given, else system-wide.
@@ -260,6 +262,25 @@ def get_user_proj_timeseries(
         scope_filter = UserProjQueueStatus.system_id == scope_id
     if scope_id is None:
         return empty
+
+    # Probe whether the scope has ANY GPU activity in the window. The UI
+    # uses this to suppress the GPUs metric button on CPU-only queues
+    # (or any system+window with no GPU rollup activity) — purely
+    # data-driven, no queue/system whitelist. One indexed MAX over the
+    # same scope+window predicate as the main aggregation.
+    gpu_max = session.execute(
+        select(
+            func.coalesce(func.max(UserProjQueueStatus.gpus_allocated), 0),
+            func.coalesce(func.max(UserProjQueueStatus.gpus_pending), 0),
+            func.coalesce(func.max(UserProjQueueStatus.gpus_held), 0),
+        )
+        .where(
+            scope_filter,
+            UserProjQueueStatus.timestamp >= start_date,
+            UserProjQueueStatus.timestamp <= end_date,
+        )
+    ).one()
+    has_gpus = any(v > 0 for v in gpu_max)
 
     metric_col = getattr(UserProjQueueStatus, column_name)
     if group_by == 'user':
@@ -276,7 +297,6 @@ def get_user_proj_timeseries(
     # (user, project, queue) rows collapse to a single series row when
     # grouping by just one of those keys (and, in system-wide scope,
     # across all queues for that system).
-    from sqlalchemy import func
     rows = session.execute(
         select(
             UserProjQueueStatus.timestamp,
@@ -333,4 +353,5 @@ def get_user_proj_timeseries(
         'metric_label': metric_label,
         'group_by': group_by,
         'group_by_label': group_by_label,
+        'has_gpus': has_gpus,
     }
