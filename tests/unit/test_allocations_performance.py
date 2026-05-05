@@ -660,10 +660,10 @@ def _reset_usage_cache_globals():
     expect the cache to be disabled (TestingConfig sets TTL=0).
     """
     import sam.queries.usage_cache as uc
-    uc._cache = None
+    uc._adapter = None
     uc._disabled = False
     yield
-    uc._cache = None
+    uc._adapter = None
     uc._disabled = False
 
 
@@ -748,18 +748,18 @@ class TestUsageCacheModule:
 
     def test_info_enabled_after_initialization(self):
         import sam.queries.usage_cache as uc
-        uc._get_cache()  # triggers initialization using env-var defaults (TTL=3600)
+        uc.get_cache_adapter()  # triggers initialization using env-var defaults (TTL=3600)
         info = uc.usage_cache_info()
         assert info['enabled'] is True
         assert info['currsize'] == 0
 
-    # --- _get_cache() disabled path ---
+    # --- get_cache_adapter() disabled path ---
 
     def test_get_cache_returns_none_when_ttl_zero(self):
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
         with patch.object(uc, '_get_config', side_effect=lambda k, d: 0):
-            cache = uc._get_cache()
+            cache = uc.get_cache_adapter()
         assert cache is None
         assert uc._disabled is True
 
@@ -767,7 +767,7 @@ class TestUsageCacheModule:
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
         with patch.object(uc, '_get_config', side_effect=lambda k, d: 0):
-            cache = uc._get_cache()
+            cache = uc.get_cache_adapter()
         assert cache is None
 
     # --- purge_usage_cache() ---
@@ -786,20 +786,20 @@ class TestUsageCacheModule:
     def test_purge_clears_all_entries(self, session):
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
-        uc._get_cache()  # initialize
+        uc.get_cache_adapter()  # initialize
         with patch('sam.queries.usage_cache.get_allocation_summary_with_usage', return_value=[]):
             uc.cached_allocation_usage(session=session, resource_name='Derecho')
             uc.cached_allocation_usage(session=session, resource_name='Casper')
         n = uc.purge_usage_cache()
         assert n == 2
-        assert len(uc._cache) == 0
+        assert len(uc._adapter._cache) == 0
 
     # --- cached_allocation_usage() cache hit/miss ---
 
     def test_cache_hit_avoids_second_db_call(self, session):
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
-        uc._get_cache()
+        uc.get_cache_adapter()
         with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
             mock_fn.return_value = [{'resource': 'Derecho', 'total_amount': 100}]
             r1 = uc.cached_allocation_usage(session=session, resource_name='Derecho')
@@ -810,7 +810,7 @@ class TestUsageCacheModule:
     def test_different_resources_are_separate_cache_keys(self, session):
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
-        uc._get_cache()
+        uc.get_cache_adapter()
         with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
             mock_fn.return_value = []
             uc.cached_allocation_usage(session=session, resource_name='Derecho')
@@ -821,7 +821,7 @@ class TestUsageCacheModule:
         """['Derecho', 'Casper'] and ['Casper', 'Derecho'] must hit the same entry."""
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
-        uc._get_cache()
+        uc.get_cache_adapter()
         with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
             mock_fn.return_value = []
             uc.cached_allocation_usage(session=session, resource_name=['Derecho', 'Casper'])
@@ -843,7 +843,7 @@ class TestUsageCacheModule:
     def test_force_refresh_bypasses_cache_hit(self, session):
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
-        uc._get_cache()
+        uc.get_cache_adapter()
         with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
             mock_fn.return_value = []
             uc.cached_allocation_usage(session=session, resource_name='Derecho')
@@ -853,7 +853,7 @@ class TestUsageCacheModule:
     def test_force_refresh_updates_cached_value(self, session):
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
-        uc._get_cache()
+        uc.get_cache_adapter()
         first_result  = [{'resource': 'Derecho', 'total_amount': 100}]
         second_result = [{'resource': 'Derecho', 'total_amount': 200}]
         with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:

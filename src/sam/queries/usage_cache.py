@@ -16,8 +16,8 @@ import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from cachetools import TTLCache
-
+from sam.caching import CacheBase, TTLCacheAdapter
+from sam.caching.ttl import disabled_info
 from sam.queries.allocations import get_allocation_summary_with_usage
 
 
@@ -42,21 +42,26 @@ def _normalize(value: Any):
 
 
 # ---------------------------------------------------------------------------
-# Lazy-initialized cache
+# Lazy-initialized adapter
 # ---------------------------------------------------------------------------
 
-_cache: Optional[TTLCache] = None
-_lock = threading.RLock()
+_adapter: Optional[TTLCacheAdapter] = None
+_init_lock = threading.RLock()
 _disabled = False   # set True when TTL or SIZE == 0
 
 
-def _get_cache() -> Optional[TTLCache]:
-    """Return the shared TTLCache, initializing on first call. Returns None if disabled."""
-    global _cache, _disabled
+def get_cache_adapter() -> Optional[TTLCacheAdapter]:
+    """Return the shared CacheBase adapter, initializing on first call.
 
-    with _lock:
-        if _cache is not None or _disabled:
-            return None if _disabled else _cache
+    Returns None when caching is disabled by config (TTL or SIZE == 0).
+    Used by the Caching facade in webapp to surface this cache's stats
+    alongside the webapp-owned chart and Flask caches.
+    """
+    global _adapter, _disabled
+
+    with _init_lock:
+        if _adapter is not None or _disabled:
+            return None if _disabled else _adapter
 
         ttl  = _get_config('ALLOCATION_USAGE_CACHE_TTL',  3600)
         size = _get_config('ALLOCATION_USAGE_CACHE_SIZE', 200)
@@ -65,8 +70,8 @@ def _get_cache() -> Optional[TTLCache]:
             _disabled = True
             return None
 
-        _cache = TTLCache(maxsize=size, ttl=ttl)
-        return _cache
+        _adapter = TTLCacheAdapter(name='allocation_usage', maxsize=size, ttl=ttl)
+        return _adapter
 
 
 # ---------------------------------------------------------------------------
@@ -102,9 +107,9 @@ def cached_allocation_usage(
 
     All other args are forwarded unchanged to get_allocation_summary_with_usage().
     """
-    cache = _get_cache()
+    adapter = get_cache_adapter()
 
-    if cache is None:
+    if adapter is None:
         # Cache disabled — call through directly
         return get_allocation_summary_with_usage(
             session=session,
@@ -130,11 +135,11 @@ def cached_allocation_usage(
         root_only,
     )
 
-    with _lock:
-        if not force_refresh and key in cache:
-            return cache[key]
+    with adapter.lock:
+        if not force_refresh and key in adapter:
+            return adapter[key]
         # Remove stale entry so we can re-insert after the query
-        cache.pop(key, None)
+        adapter.pop(key, None)
 
     result = get_allocation_summary_with_usage(
         session=session,
@@ -149,9 +154,9 @@ def cached_allocation_usage(
         _summary=_summary,
     )
 
-    with _lock:
+    with adapter.lock:
         try:
-            cache[key] = result
+            adapter[key] = result
         except ValueError:
             # Cache full and all entries are unexpired (TTLCache raises ValueError
             # when maxsize is reached and no expired items are available to evict).
@@ -162,31 +167,23 @@ def cached_allocation_usage(
 
 def purge_usage_cache() -> int:
     """Clear all cached usage data. Returns number of entries cleared."""
-    cache = _get_cache()
-    if cache is None:
+    adapter = get_cache_adapter()
+    if adapter is None:
         return 0
-    with _lock:
-        n = len(cache)
-        cache.clear()
-    return n
+    return adapter.clear()
 
 
 def usage_cache_info() -> Dict:
-    """Return cache statistics for monitoring/admin display."""
-    cache = _get_cache()
-    if cache is None:
+    """Return cache statistics for monitoring/admin display.
+
+    Delegates to the adapter's `info()` (canonical CacheBase shape).
+    Backwards-compatible: the legacy keys (`enabled`, `currsize`,
+    `maxsize`, `ttl`) are still present; new fields (`hits`, `misses`,
+    `bytes_approx`, `name`, `extras`) are additive.
+    """
+    adapter = get_cache_adapter()
+    if adapter is None:
         ttl  = _get_config('ALLOCATION_USAGE_CACHE_TTL',  3600)
         size = _get_config('ALLOCATION_USAGE_CACHE_SIZE', 200)
-        return {
-            'enabled': False,
-            'currsize': 0,
-            'maxsize': size,
-            'ttl': ttl,
-        }
-    with _lock:
-        return {
-            'enabled': True,
-            'currsize': len(cache),
-            'maxsize': cache.maxsize,
-            'ttl': cache.ttl,
-        }
+        return disabled_info('allocation_usage', maxsize=size, ttl=ttl)
+    return adapter.info()

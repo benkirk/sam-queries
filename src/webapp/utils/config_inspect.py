@@ -218,20 +218,23 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'oidc_client_secret':  mask_secret(cfg.get('OIDC_CLIENT_SECRET')),
     }
 
-    # --- Caching
+    # --- Caching (unified facade — see webapp.caching)
     try:
-        from sam.queries.usage_cache import usage_cache_info
-        usage_cache = usage_cache_info()
+        from webapp.caching import caching as _caching_facade
+        caching_block = _caching_facade.stats()
+        # Legacy template keys kept alongside the new shape for back-compat.
+        caching_block['flask_cache_backend']   = caching_block.get('backend')
+        caching_block['cache_default_timeout'] = caching_block.get('default_timeout')
+        caching_block['usage_cache']           = caching_block.get('usage')
     except Exception:
-        usage_cache = None
-
-    # Flask-Cache backend type — config key set by run.py at startup.
-    cache_type = cfg.get('CACHE_TYPE', 'unknown')
-    caching = {
-        'flask_cache_backend':    cache_type,
-        'cache_default_timeout':  cfg.get('CACHE_DEFAULT_TIMEOUT'),
-        'usage_cache':            usage_cache,
-    }
+        caching_block = {
+            'flask_cache_backend':   cfg.get('CACHE_TYPE', 'unknown'),
+            'cache_default_timeout': cfg.get('CACHE_DEFAULT_TIMEOUT'),
+            'usage_cache':           None,
+            'flask':                 None,
+            'chart':                 [],
+            'usage':                 None,
+        }
 
     # --- Audit & Logging
     audit_path = cfg.get('AUDIT_LOG_PATH', '')
@@ -249,7 +252,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'application':   application,
         'databases':     databases,
         'auth':          auth,
-        'caching':       caching,
+        'caching':       caching_block,
         'audit_logging': audit_logging,
         'audit_tail':    audit_tail,
         'gathered_at':   datetime.now(),
