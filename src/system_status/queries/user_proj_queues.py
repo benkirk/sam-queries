@@ -76,6 +76,13 @@ def _resolve_queue_id(session: Session, system: str, queue_name: str) -> Optiona
     ).scalar_one_or_none()
 
 
+def _resolve_system_id(session: Session, system: str) -> Optional[int]:
+    """Return the system_id for ``system``, or ``None`` if absent."""
+    return session.execute(
+        select(System.system_id).where(System.name == system)
+    ).scalar_one_or_none()
+
+
 def get_latest_user_proj_queue_snapshot(
     session: Session,
     *,
@@ -155,11 +162,11 @@ def get_latest_user_proj_queue_snapshot(
     ]
 
 
-def get_user_proj_queue_timeseries(
+def get_user_proj_timeseries(
     session: Session,
     *,
     system: str,
-    queue_name: str,
+    queue_name: Optional[str] = None,
     start_date: datetime,
     end_date: datetime,
     state: str,
@@ -167,7 +174,17 @@ def get_user_proj_queue_timeseries(
     group_by: str,
     top_n: int = 15,
 ) -> Dict[str, Any]:
-    """Top-N + Others time series for one queue, ranked by peak in window.
+    """Top-N + Others time series for one queue, or one system, ranked
+    by peak in window.
+
+    Scope is determined by ``queue_name``:
+
+    - ``queue_name='main'`` → filter on a single ``(system, queue)``,
+      one ``UserProjQueueStatus`` row per (timestamp, user, project)
+      already aggregated to that queue.
+    - ``queue_name=None`` → sum across **all** queues for ``system``,
+      so per-tick values reflect the user/project's load on the
+      whole system.
 
     `(state, metric)` selects the underlying column via
     ``_STATE_METRIC_TO_COLUMN``:
@@ -228,13 +245,20 @@ def get_user_proj_queue_timeseries(
     metric_label = _label_for(state, metric)
     group_by_label = 'User' if group_by == 'user' else 'Project code'
 
-    queue_id = _resolve_queue_id(session, system, queue_name)
     empty = {
         'dates': [], 'series': [],
         'state': state, 'metric': metric, 'metric_label': metric_label,
         'group_by': group_by, 'group_by_label': group_by_label,
     }
-    if queue_id is None:
+
+    # Resolve scope: single queue if queue_name given, else system-wide.
+    if queue_name is not None:
+        scope_id = _resolve_queue_id(session, system, queue_name)
+        scope_filter = UserProjQueueStatus.queue_id == scope_id
+    else:
+        scope_id = _resolve_system_id(session, system)
+        scope_filter = UserProjQueueStatus.system_id == scope_id
+    if scope_id is None:
         return empty
 
     metric_col = getattr(UserProjQueueStatus, column_name)
@@ -249,8 +273,9 @@ def get_user_proj_queue_timeseries(
         )
 
     # Sum the metric within each (timestamp, label) bucket — multiple
-    # (user, project) rows may collapse to a single series row when
-    # grouping by just one of those keys.
+    # (user, project, queue) rows collapse to a single series row when
+    # grouping by just one of those keys (and, in system-wide scope,
+    # across all queues for that system).
     from sqlalchemy import func
     rows = session.execute(
         select(
@@ -260,7 +285,7 @@ def get_user_proj_queue_timeseries(
         )
         .join(join_target, join_cond)
         .where(
-            UserProjQueueStatus.queue_id == queue_id,
+            scope_filter,
             UserProjQueueStatus.timestamp >= start_date,
             UserProjQueueStatus.timestamp <= end_date,
         )

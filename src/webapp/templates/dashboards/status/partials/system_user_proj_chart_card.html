@@ -1,0 +1,42 @@
+{# System-wide user/project load chart card.
+
+   Included by derecho.html and casper.html (one card per system tab).
+   The including template sets `_chart_system` to 'derecho' / 'casper'.
+   `chart_hours` and `can_view_user_info` come from the index() route
+   context — the includer is already inside an `if can_view_user_info`
+   guard, so this partial doesn't re-check.
+
+   Picker is a 7-button strip in the card header. Each button is a
+   plain link back to the landing page with ?hours=N. The existing
+   `selected_hours` passthrough on index() picks that up; tab
+   persistence (nav-view-persistence.js) keeps the operator on this
+   tab across reloads. The chart endpoint is HTMX-fetched on card
+   load with the resolved `chart_hours` so initial render matches the
+   active picker preset. #}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h6 class="mb-0">
+            <i class="fas fa-chart-area"></i> User / project load over time
+            <span class="text-muted fw-normal small ms-2">all queues, top 15 + Others</span>
+        </h6>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Time range">
+            {% for label, h in [('6h', 6), ('12h', 12), ('1d', 24), ('3d', 72), ('7d', 168), ('14d', 336), ('30d', 720)] %}
+            <a href="{{ url_for('status_dashboard.index', hours=h) }}"
+               class="btn {% if chart_hours == h %}btn-secondary active{% else %}btn-outline-secondary{% endif %}">{{ label }}</a>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="card-body">
+        <div hx-get="{{ url_for('status_dashboard.htmx_user_proj_chart_system',
+                                system=_chart_system,
+                                hours=chart_hours,
+                                state='running', metric='jobs',
+                                group_by='user') }}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="text-center text-muted py-5">
+                <i class="fas fa-spinner fa-spin"></i> Loading chart…
+            </div>
+        </div>
+    </div>
+</div>

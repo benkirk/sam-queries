@@ -65,6 +65,17 @@
         {{ queues.queue_table(derecho_queues, show_gpus=true, system='derecho', hours=selected_hours) }}
         {% endif %}
 
+        {% if can_view_user_info %}
+        {# User/project load chart, summed across all queues for derecho.
+           Time-range picker lives inline in this card's header — clicking
+           a preset reloads the landing page with ?hours=N (the existing
+           passthrough); the casper card's picker emits the same param
+           so toggling either updates both. Tab persistence keeps the
+           operator on this tab across reloads. #}
+        {% set _chart_system = 'derecho' %}
+        {% include 'dashboards/status/partials/system_user_proj_chart_card.html' %}
+        {% endif %}
+
         <!-- Reservations -->
         {% set derecho_reservations = reservations|selectattr('system_name', 'equalto', 'derecho')|list %}
         {% if derecho_reservations %}

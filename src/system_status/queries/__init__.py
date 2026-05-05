@@ -22,7 +22,7 @@ from system_status.models import (
 
 from .user_proj_queues import (  # noqa: F401
     get_latest_user_proj_queue_snapshot,
-    get_user_proj_queue_timeseries,
+    get_user_proj_timeseries,
 )
 
 

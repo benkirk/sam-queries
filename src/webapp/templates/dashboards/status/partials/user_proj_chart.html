@@ -1,5 +1,4 @@
-{# Stacked-area chart fragment for the queue-history drill-down.
-   Returned by status_dashboard.htmx_user_proj_chart.
+{# Stacked-area chart fragment for the user/project queue load chart.
 
    Three btn-groups (group_by, state, metric) live INSIDE the swap
    target so each click re-renders both the buttons (with the new
@@ -11,9 +10,15 @@
    for state='running' — when state is pending or held the Nodes
    button is disabled, and a state button that switches AWAY from
    running while the current metric is `nodes` clamps metric back to
-   `cores` in its hx-get URL. #}
-{% set _kwargs = {
-    'system': system, 'queue_name': queue_name,
+   `cores` in its hx-get URL.
+
+   Used by two endpoints:
+     - status_dashboard.htmx_user_proj_chart        (per-queue, drill-down)
+     - status_dashboard.htmx_user_proj_chart_system (per-system, landing)
+   The route passes `endpoint_name` + `endpoint_kwargs` so the partial
+   builds selector URLs against whichever endpoint owns it. `queue_name`
+   is None in the system-wide case; the title suffix omits it. #}
+{% set _selector_kwargs = {
     'group_by': group_by, 'state': state, 'metric': metric, 'hours': hours,
 } %}
 <div id="upq-chart-inner">
@@ -24,8 +29,8 @@
                 {% for opt_val, opt_lbl in [('user', 'User'), ('project', 'Project code')] %}
                 <button type="button"
                         class="btn btn-{% if group_by == opt_val %}primary{% else %}outline-primary{% endif %}"
-                        hx-get="{{ url_for('status_dashboard.htmx_user_proj_chart',
-                                           **dict(_kwargs, group_by=opt_val)) }}"
+                        hx-get="{{ url_for(endpoint_name,
+                                           **dict(endpoint_kwargs, **dict(_selector_kwargs, group_by=opt_val))) }}"
                         hx-target="#upq-chart-inner"
                         hx-swap="outerHTML">
                     {{ opt_lbl }}
@@ -43,8 +48,8 @@
                 {% set _state_metric = 'cores' if (metric == 'nodes' and opt_val != 'running') else metric %}
                 <button type="button"
                         class="btn btn-{% if state == opt_val %}primary{% else %}outline-primary{% endif %}"
-                        hx-get="{{ url_for('status_dashboard.htmx_user_proj_chart',
-                                           **dict(_kwargs, state=opt_val, metric=_state_metric)) }}"
+                        hx-get="{{ url_for(endpoint_name,
+                                           **dict(endpoint_kwargs, **dict(_selector_kwargs, state=opt_val, metric=_state_metric))) }}"
                         hx-target="#upq-chart-inner"
                         hx-swap="outerHTML">
                     {{ opt_lbl }}
@@ -68,8 +73,8 @@
                           disabled
                           title="Nodes only available for state=Running"
                         {% else %}
-                          hx-get="{{ url_for('status_dashboard.htmx_user_proj_chart',
-                                             **dict(_kwargs, metric=opt_val)) }}"
+                          hx-get="{{ url_for(endpoint_name,
+                                             **dict(endpoint_kwargs, **dict(_selector_kwargs, metric=opt_val))) }}"
                           hx-target="#upq-chart-inner"
                           hx-swap="outerHTML"
                         {% endif %}>
@@ -83,7 +88,7 @@
     <div class="chart-container">
         <h6 class="text-center fw-bold mb-2">
             Top {{ top_n }} {{ group_by_label }}s by {{ metric_label }}
-            <span class="text-muted fw-normal">— {{ system|upper }} · {{ queue_name }}</span>
+            <span class="text-muted fw-normal">— {{ system|upper }}{% if queue_name %} · {{ queue_name }}{% endif %}</span>
         </h6>
         {{ chart_svg | safe }}
     </div>

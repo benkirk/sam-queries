@@ -82,6 +82,22 @@ def index():
     # Get upcoming reservations
     reservations = status_queries.get_upcoming_reservations(session)
 
+    # Gate the new system-wide user/project chart cards (rendered in
+    # derecho.html / casper.html) on VIEW_SYSTEM_STATUS_USER_INFO.
+    # Same flag pattern as the queue_history drill-down view.
+    from webapp.utils.rbac import has_permission
+    can_view_user_info = (
+        current_user.is_authenticated
+        and has_permission(current_user, Permission.VIEW_SYSTEM_STATUS_USER_INFO)
+    )
+
+    # Default the landing-page chart window to 7 days when no
+    # ?hours= override is in the URL — matches the drill-down default
+    # so the time_range_picker on each chart card reads sensibly on
+    # first load. selected_hours stays None when absent (other code
+    # paths that introspect it still get the same signal).
+    chart_hours = selected_hours if selected_hours is not None else 168
+
     return render_template(
         'dashboards/status/dashboard.html',
         user=current_user,
@@ -100,6 +116,8 @@ def index():
         google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
         now=datetime.now(),
         selected_hours=selected_hours,
+        can_view_user_info=can_view_user_info,
+        chart_hours=chart_hours,
     )
 
 
@@ -290,16 +308,15 @@ def queue_history(system, queue_name):
     )
 
 
-@bp.route('/htmx/queue-history/<system>/<queue_name>/user-proj-chart')
-@login_required
-@require_permission(Permission.VIEW_SYSTEM_STATUS_USER_INFO)
-def htmx_user_proj_chart(system, queue_name):
-    """Render one of the six (group_by × metric) stacked-area charts.
+def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwargs):
+    """Shared body for the queue-scoped and system-scoped chart endpoints.
 
-    Used by selector buttons in the queue-history drill-down. Time
-    window comes from the same ``hours`` param the parent chart uses,
-    so toggling the time-range picker re-fires this endpoint via
-    ``hx-include`` and the two charts stay in sync.
+    Reads selector params from ``request.args`` (``state``, ``metric``,
+    ``group_by``, ``hours``), validates + clamps invalid combos, calls
+    the aggregator (queue-scoped if ``queue_name`` set, else
+    system-wide), and renders the chart partial. ``endpoint_name`` and
+    ``endpoint_kwargs`` are passed to the partial so its selector
+    buttons emit URLs against the right route.
     """
     valid_states = ('running', 'pending', 'held')
     valid_metrics = ('jobs', 'cores', 'gpus', 'nodes')
@@ -338,7 +355,7 @@ def htmx_user_proj_chart(system, queue_name):
     end_date = datetime.now()
     start_date = end_date - timedelta(hours=hours)
 
-    timeseries = status_queries.get_user_proj_queue_timeseries(
+    timeseries = status_queries.get_user_proj_timeseries(
         db.session,
         system=system,
         queue_name=queue_name,
@@ -363,6 +380,43 @@ def htmx_user_proj_chart(system, queue_name):
         group_by_label=timeseries.get('group_by_label', group_by),
         top_n=top_n,
         chart_svg=chart_svg,
+        endpoint_name=endpoint_name,
+        endpoint_kwargs=endpoint_kwargs,
+    )
+
+
+@bp.route('/htmx/queue-history/<system>/<queue_name>/user-proj-chart')
+@login_required
+@require_permission(Permission.VIEW_SYSTEM_STATUS_USER_INFO)
+def htmx_user_proj_chart(system, queue_name):
+    """Render the user/project chart scoped to one queue.
+
+    Used by selector buttons in the queue-history drill-down.
+    """
+    return _render_user_proj_chart(
+        system=system,
+        queue_name=queue_name,
+        endpoint_name='status_dashboard.htmx_user_proj_chart',
+        endpoint_kwargs={'system': system, 'queue_name': queue_name},
+    )
+
+
+@bp.route('/htmx/system/<system>/user-proj-chart')
+@login_required
+@require_permission(Permission.VIEW_SYSTEM_STATUS_USER_INFO)
+def htmx_user_proj_chart_system(system):
+    """Render the user/project chart summed across all queues for ``system``.
+
+    Used by the chart card on the system landing page (Derecho /
+    Casper tabs of the status dashboard). Same selector behaviour as
+    the per-queue endpoint, but the aggregator filters on system_id
+    rather than queue_id.
+    """
+    return _render_user_proj_chart(
+        system=system,
+        queue_name=None,
+        endpoint_name='status_dashboard.htmx_user_proj_chart_system',
+        endpoint_kwargs={'system': system},
     )
 
 
