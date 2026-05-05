@@ -2,15 +2,16 @@ name: sam_sql
 channels:
   - conda-forge
 dependencies:
-  - python
+  - coreutils
+  - gh
   - mysql
   - mysql-connector-python
-  - coreutils
-  - postgresql=18.*
   - pip
+  - postgresql=18.*
+  - python
   # docs/presentation deps:
-  - quarto
   - eralchemy2
   - pydeps
+  - quarto
   - pip:
       - pipdeptree

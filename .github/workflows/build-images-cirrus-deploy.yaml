@@ -171,6 +171,7 @@ jobs:
         run: echo "value=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
@@ -185,6 +186,80 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
             BUILD_DATE=${{ steps.build_date.outputs.value }}
+
+      - name: Collect image facts
+        run: |
+          set -euo pipefail
+          PRIMARY_TAG=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n1)
+          DIGEST="${{ steps.build.outputs.digest }}"
+          REPO="${PRIMARY_TAG%:*}"
+
+          # Top-level OCI image index — one entry per platform plus an
+          # 'unknown/unknown' attestation manifest we filter out.
+          INDEX=$(docker buildx imagetools inspect --raw "${PRIMARY_TAG}")
+
+          SIZES_JSON='{}'
+          while IFS=$'\t' read -r child_digest os arch variant; do
+            [ -z "$child_digest" ] && continue
+            [ "$os" = "unknown" ] && continue
+            child_manifest=$(docker buildx imagetools inspect --raw "${REPO}@${child_digest}")
+            size=$(printf '%s' "$child_manifest" \
+              | jq '(.config.size // 0) + ([.layers[]?.size] | add // 0)')
+            platform="${os}/${arch}"
+            [ -n "$variant" ] && platform="${platform}/${variant}"
+            SIZES_JSON=$(printf '%s' "$SIZES_JSON" \
+              | jq --arg p "$platform" --argjson s "$size" '. + {($p): $s}')
+          done < <(printf '%s' "$INDEX" \
+            | jq -r '.manifests[] | [.digest, .platform.os // "", .platform.architecture // "", .platform.variant // ""] | @tsv')
+
+          ALL_TAGS_JSON=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | jq -R . | jq -s .)
+
+          jq -n \
+            --arg name "${{ matrix.name }}" \
+            --arg primary_tag "$PRIMARY_TAG" \
+            --argjson all_tags "$ALL_TAGS_JSON" \
+            --arg digest "$DIGEST" \
+            --argjson sizes "$SIZES_JSON" \
+            --arg build_date "${{ steps.build_date.outputs.value }}" \
+            '{name: $name, primary_tag: $primary_tag, all_tags: $all_tags, digest: $digest, sizes: $sizes, build_date: $build_date}' \
+            > "image-info-${{ matrix.name }}.json"
+
+          cat "image-info-${{ matrix.name }}.json"
+
+      - name: Upload image facts
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-info-${{ matrix.name }}
+          path: image-info-${{ matrix.name }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # -----------------------------------------------------------------------
+  # summary: aggregate per-image facts into one workflow-run summary page
+  # -----------------------------------------------------------------------
+  summary:
+    name: Build summary
+    needs: [setup, build]
+    if: always() && needs.setup.result == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download image facts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: image-info-*
+          path: image-info/
+          merge-multiple: true
+
+      - name: Render summary
+        run: |
+          python3 .github/scripts/render_build_summary.py image-info/ \
+            >> "$GITHUB_STEP_SUMMARY"
 
   # -----------------------------------------------------------------------
   # update-helm: pin helm/values.yaml to the built SHA tag, push to cirrus

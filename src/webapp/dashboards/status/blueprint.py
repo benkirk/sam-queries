@@ -366,6 +366,26 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         group_by=group_by,
         top_n=top_n,
     )
+
+    # Clamp metric=gpus → cores when this scope+window has no GPU
+    # activity. Mirrors the (state, metric) clamp above; protects
+    # against direct URL access or stale selector state when the time
+    # window scrolls past a previously-GPU-active period. Re-fetch so
+    # the rendered chart matches the buttons we'll show.
+    if metric == 'gpus' and not timeseries.get('has_gpus', False):
+        metric = 'cores'
+        timeseries = status_queries.get_user_proj_timeseries(
+            db.session,
+            system=system,
+            queue_name=queue_name,
+            start_date=start_date,
+            end_date=end_date,
+            state=state,
+            metric=metric,
+            group_by=group_by,
+            top_n=top_n,
+        )
+
     chart_svg = generate_user_proj_stacked_area(timeseries)
 
     # Two of these cards render on the landing page (one per system
@@ -392,6 +412,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         endpoint_name=endpoint_name,
         endpoint_kwargs=endpoint_kwargs,
         chart_dom_id=chart_dom_id,
+        has_gpus=timeseries.get('has_gpus', False),
     )
 
 

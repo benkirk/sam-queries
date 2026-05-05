@@ -60,12 +60,13 @@
         <div>
             <label class="form-label small text-muted mb-1 me-2">Metric</label>
             <div class="btn-group btn-group-sm" role="group" aria-label="Metric">
-                {% for opt_val, opt_lbl in [
-                    ('jobs',  'Jobs'),
-                    ('cores', 'Cores'),
-                    ('gpus',  'GPUs'),
-                    ('nodes', 'Nodes'),
-                ] %}
+                {# GPUs is data-driven: only shown when this scope+window
+                   actually had GPU activity. The route clamps metric=gpus
+                   → cores when has_gpus is false, so a stale URL stays valid. #}
+                {% set _metric_options = [('jobs', 'Jobs'), ('cores', 'Cores')] %}
+                {% if has_gpus %}{% set _metric_options = _metric_options + [('gpus', 'GPUs')] %}{% endif %}
+                {% set _metric_options = _metric_options + [('nodes', 'Nodes')] %}
+                {% for opt_val, opt_lbl in _metric_options %}
                 {% set is_invalid = (opt_val == 'nodes' and state != 'running') %}
                 <button type="button"
                         class="btn btn-{% if metric == opt_val %}primary{% else %}outline-primary{% endif %}"
@@ -86,10 +87,10 @@
     </div>
 
     <div class="chart-container">
-        <h6 class="text-center fw-bold mb-2">
-            Top {{ top_n }} {{ group_by_label }}s by {{ metric_label }}
-            <span class="text-muted fw-normal">— {{ system|upper }}{% if queue_name %} · {{ queue_name }}{% endif %}</span>
-        </h6>
+        <!-- <h6 class="text-center fw-bold mb-2"> -->
+        <!--     Top {{ top_n }} {{ group_by_label }}s by {{ metric_label }} -->
+        <!--     <span class="text-muted fw-normal">— {{ system|upper }}{% if queue_name %} · {{ queue_name }}{% endif %}</span> -->
+        <!-- </h6> -->
         {{ chart_svg | safe }}
     </div>
 </div>

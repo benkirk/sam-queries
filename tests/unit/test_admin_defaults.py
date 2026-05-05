@@ -36,7 +36,7 @@ class TestSoftDeleteFiltering:
         """Test that AllocationView hides deleted records by default."""
         with app.app_context():
             # Create view for Allocation (has SoftDeleteMixin)
-            view = SAMModelView(Allocation, session, name='Allocations')
+            view = SAMModelView(Allocation, db, name='Allocations')
 
             # Get query should filter out deleted=True records
             query = view.get_query()
@@ -50,7 +50,7 @@ class TestSoftDeleteFiltering:
     def test_allocation_count_matches_query(self, app, session):
         """Test that count query matches filtered query."""
         with app.app_context():
-            view = SAMModelView(Allocation, session, name='Allocations')
+            view = SAMModelView(Allocation, db, name='Allocations')
 
             # Get counts
             query = view.get_query()
@@ -65,7 +65,7 @@ class TestSoftDeleteFiltering:
     def test_account_get_query_hides_deleted(self, app, session):
         """Test that AccountView hides deleted records."""
         with app.app_context():
-            view = SAMModelView(Account, session, name='Accounts')
+            view = SAMModelView(Account, db, name='Accounts')
 
             query = view.get_query()
 
@@ -81,7 +81,7 @@ class TestSoftDeleteFiltering:
             class AllocationAllView(SAMModelView):
                 auto_hide_deleted = False
 
-            view = AllocationAllView(Allocation, session, name='All Allocations')
+            view = AllocationAllView(Allocation, db, name='All Allocations')
 
             query = view.get_query()
 
@@ -96,7 +96,7 @@ class TestSoftDeleteFiltering:
     def test_resource_no_deleted_column(self, app, session):
         """Test that models without 'deleted' column work normally."""
         with app.app_context():
-            view = SAMModelView(Resource, session, name='Resources')
+            view = SAMModelView(Resource, db, name='Resources')
 
             # Should not crash even though Resource doesn't have 'deleted' column
             query = view.get_query()
@@ -120,7 +120,7 @@ class TestSystemColumnExclusion:
     def test_project_form_excludes_timestamps(self, app,  session):
         """Test that Project form excludes creation_time and modified_time."""
         with app.app_context():
-            view = SAMModelView(Project, session, name='Projects')
+            view = SAMModelView(Project, db, name='Projects')
 
             # Scaffold form
             form_class = view.scaffold_form()
@@ -134,7 +134,7 @@ class TestSystemColumnExclusion:
     def test_allocation_form_excludes_soft_delete(self, app,  session):
         """Test that Allocation form excludes deleted and deletion_time."""
         with app.app_context():
-            view = SAMModelView(Allocation, session, name='Allocations')
+            view = SAMModelView(Allocation, db, name='Allocations')
 
             # Scaffold form
             form_class = view.scaffold_form()
@@ -150,7 +150,7 @@ class TestSystemColumnExclusion:
     def test_user_form_excludes_timestamps_only(self, app,  session):
         """Test that User form excludes timestamps (no soft delete)."""
         with app.app_context():
-            view = SAMModelView(User, session, name='Users')
+            view = SAMModelView(User, db, name='Users')
 
             # Scaffold form
             form_class = view.scaffold_form()
@@ -169,7 +169,7 @@ class TestSystemColumnExclusion:
                 auto_exclude_system_columns = False
                 form_excluded_columns = ['some_other_field']
 
-            view = ProjectManualExcludeView(Project, session, name='Projects Manual')
+            view = ProjectManualExcludeView(Project, db, name='Projects Manual')
 
             # Scaffold form
             form_class = view.scaffold_form()
@@ -185,7 +185,7 @@ class TestMixinBasedFilters:
     def test_project_has_active_filter(self, app,  session):
         """Test that Project view has 'active' filter (ActiveFlagMixin)."""
         with app.app_context():
-            view = SAMModelView(Project, session, name='Projects')
+            view = SAMModelView(Project, db, name='Projects')
 
             # Check column_filters attribute (set in __init__)
             assert view.column_filters is not None, "Project should have column_filters"
@@ -200,7 +200,7 @@ class TestMixinBasedFilters:
     def test_allocation_has_deleted_filter(self, app,  session):
         """Test that Allocation view has 'deleted' filter (SoftDeleteMixin)."""
         with app.app_context():
-            view = SAMModelView(Allocation, session, name='Allocations')
+            view = SAMModelView(Allocation, db, name='Allocations')
 
             filter_list = list(view.column_filters) if view.column_filters else []
 
@@ -211,7 +211,7 @@ class TestMixinBasedFilters:
     def test_project_has_timestamp_filters(self, app,  session):
         """Test that Project view has timestamp filters (TimestampMixin)."""
         with app.app_context():
-            view = SAMModelView(Project, session, name='Projects')
+            view = SAMModelView(Project, db, name='Projects')
 
             filter_list = list(view.column_filters) if view.column_filters else []
 
@@ -224,7 +224,7 @@ class TestMixinBasedFilters:
     def test_allocation_has_date_range_filters(self, app,  session):
         """Test that Allocation view has start_date/end_date filters (DateRangeMixin)."""
         with app.app_context():
-            view = SAMModelView(Allocation, session, name='Allocations')
+            view = SAMModelView(Allocation, db, name='Allocations')
 
             filter_list = list(view.column_filters) if view.column_filters else []
 
@@ -240,7 +240,7 @@ class TestMixinBasedFilters:
             class ProjectNoAutoFiltersView(SAMModelView):
                 auto_filter_mixins = False
 
-            view = ProjectNoAutoFiltersView(Project, session, name='Projects No Auto')
+            view = ProjectNoAutoFiltersView(Project, db, name='Projects No Auto')
 
             # Should have no auto-added filters (column_filters may be None or empty)
             filter_list = list(view.column_filters) if view.column_filters else []
@@ -256,7 +256,7 @@ class TestFeatureFlags:
     def test_default_feature_flags(self, app,  session):
         """Test that default feature flags are set correctly."""
         with app.app_context():
-            view = SAMModelView(User, session, name='Users')
+            view = SAMModelView(User, db, name='Users')
 
             # Check defaults
             assert view.auto_hide_deleted == True, "auto_hide_deleted should default to True"
@@ -274,7 +274,7 @@ class TestFeatureFlags:
                 auto_exclude_system_columns = False
                 auto_filter_mixins = False
 
-            view = CustomView(Project, session, name='Custom')
+            view = CustomView(Project, db, name='Custom')
 
             assert view.auto_hide_deleted == False
             assert view.auto_hide_inactive == True
@@ -291,7 +291,7 @@ class TestBackwardCompatibility:
             class UserCustomView(SAMModelView):
                 form_excluded_columns = ['led_projects', 'admin_projects', 'accounts']
 
-            view = UserCustomView(User, session, name='Users Custom')
+            view = UserCustomView(User, db, name='Users Custom')
 
             # Scaffold form
             form_class = view.scaffold_form()
@@ -309,7 +309,7 @@ class TestBackwardCompatibility:
             class ResourceDefaultAdmin(SAMModelView):
                 pass
 
-            view = ResourceDefaultAdmin(Resource, session, name='Resources')
+            view = ResourceDefaultAdmin(Resource, db, name='Resources')
 
             # Should work without errors
             query = view.get_query()

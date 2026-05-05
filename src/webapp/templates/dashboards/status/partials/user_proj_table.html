@@ -4,6 +4,14 @@
    directly comparable to the totals shown in the Current Status card
    above. #}
 {% if user_proj_rows %}
+{# Suppress GPU columns when this snapshot has no GPU activity at all —
+   purely data-driven from the rows themselves (mirrors the chart-side
+   has_gpus probe in get_user_proj_timeseries, but scoped to the latest
+   tick rather than a window). #}
+{% set _gpu_total = (user_proj_rows | sum(attribute='gpus_allocated'))
+                  + (user_proj_rows | sum(attribute='gpus_pending'))
+                  + (user_proj_rows | sum(attribute='gpus_held')) %}
+{% set has_gpus = _gpu_total > 0 %}
 <div class="table-responsive">
 <table class="table table-sm table-striped table-hover align-middle">
     <thead>
@@ -16,9 +24,11 @@
             <th class="sortable-header text-end" data-sort="numeric">Cores<br><small class="fw-normal">alloc</small></th>
             <th class="sortable-header text-end" data-sort="numeric">Cores<br><small class="fw-normal">pending</small></th>
             <th class="sortable-header text-end" data-sort="numeric">Cores<br><small class="fw-normal">held</small></th>
+            {% if has_gpus %}
             <th class="sortable-header text-end" data-sort="numeric">GPUs<br><small class="fw-normal">alloc</small></th>
             <th class="sortable-header text-end" data-sort="numeric">GPUs<br><small class="fw-normal">pending</small></th>
             <th class="sortable-header text-end" data-sort="numeric">GPUs<br><small class="fw-normal">held</small></th>
+            {% endif %}
             <th class="sortable-header text-end" data-sort="numeric">Nodes<br><small class="fw-normal">alloc</small></th>
         </tr>
     </thead>
@@ -33,9 +43,11 @@
             <td class="text-end" data-sort-value="{{ r.cores_allocated }}">{{ r.cores_allocated | fmt_number }}</td>
             <td class="text-end" data-sort-value="{{ r.cores_pending }}">{{ r.cores_pending | fmt_number }}</td>
             <td class="text-end" data-sort-value="{{ r.cores_held }}">{{ r.cores_held | fmt_number }}</td>
+            {% if has_gpus %}
             <td class="text-end" data-sort-value="{{ r.gpus_allocated }}">{{ r.gpus_allocated | fmt_number }}</td>
             <td class="text-end" data-sort-value="{{ r.gpus_pending }}">{{ r.gpus_pending | fmt_number }}</td>
             <td class="text-end" data-sort-value="{{ r.gpus_held }}">{{ r.gpus_held | fmt_number }}</td>
+            {% endif %}
             <td class="text-end" data-sort-value="{{ r.nodes_allocated }}">{{ r.nodes_allocated | fmt_number }}</td>
         </tr>
         {% endfor %}
