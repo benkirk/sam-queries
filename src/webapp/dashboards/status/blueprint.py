@@ -368,6 +368,15 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
     )
     chart_svg = generate_user_proj_stacked_area(timeseries)
 
+    # Two of these cards render on the landing page (one per system
+    # tab), so the chart wrapper div needs a scope-unique id —
+    # otherwise the second card's selector-button hx-target=#... lookup
+    # finds the first card's div and swaps the wrong one.
+    if queue_name is not None:
+        chart_dom_id = f'upq-chart-{system}-{queue_name}'
+    else:
+        chart_dom_id = f'upq-chart-{system}'
+
     return render_template(
         'dashboards/status/partials/user_proj_chart.html',
         system=system,
@@ -382,6 +391,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         chart_svg=chart_svg,
         endpoint_name=endpoint_name,
         endpoint_kwargs=endpoint_kwargs,
+        chart_dom_id=chart_dom_id,
     )
 
 
