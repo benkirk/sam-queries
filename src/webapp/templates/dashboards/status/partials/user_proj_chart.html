@@ -87,10 +87,10 @@
     </div>
 
     <div class="chart-container">
-        <h6 class="text-center fw-bold mb-2">
-            Top {{ top_n }} {{ group_by_label }}s by {{ metric_label }}
-            <span class="text-muted fw-normal">— {{ system|upper }}{% if queue_name %} · {{ queue_name }}{% endif %}</span>
-        </h6>
+        <!-- <h6 class="text-center fw-bold mb-2"> -->
+        <!--     Top {{ top_n }} {{ group_by_label }}s by {{ metric_label }} -->
+        <!--     <span class="text-muted fw-normal">— {{ system|upper }}{% if queue_name %} · {{ queue_name }}{% endif %}</span> -->
+        <!-- </h6> -->
         {{ chart_svg | safe }}
     </div>
 </div>
