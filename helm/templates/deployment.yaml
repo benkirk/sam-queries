@@ -32,6 +32,13 @@ spec:
           # spawn ~129 workers on a 64-core node and OOM the pod.
           - name: GUNICORN_WORKERS
             value: {{ mul (.Values.webapp.container.limits.cpu | int) 2 | add 1 | quote }}
+          {{- if .Values.cache.enabled }}
+          # Centralized Redis: DB 0 for cache, DB 1 for rate-limit counters.
+          - name: CACHE_REDIS_URL
+            value: "redis://{{ .Values.cache.name }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.cache.port }}/0"
+          - name: RATELIMIT_STORAGE_URI
+            value: "redis://{{ .Values.cache.name }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.cache.port }}/1"
+          {{- end }}
           {{- if .Values.webapp.dbCredentials.enabled }}
           - name: STATUS_DB_USERNAME
             valueFrom:
