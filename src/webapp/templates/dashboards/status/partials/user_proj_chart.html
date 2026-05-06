@@ -1,7 +1,7 @@
 {# Stacked-area chart fragment for the user/project queue load chart.
 
-   Three btn-groups (group_by, state, metric) live INSIDE the swap
-   target so each click re-renders both the buttons (with the new
+   Four btn-groups (group_by, state, metric, rank_by) live INSIDE the
+   swap target so each click re-renders both the buttons (with the new
    active state) and the chart in a single HTMX swap. No JS state to
    keep in sync.
 
@@ -19,7 +19,8 @@
    builds selector URLs against whichever endpoint owns it. `queue_name`
    is None in the system-wide case; the title suffix omits it. #}
 {% set _selector_kwargs = {
-    'group_by': group_by, 'state': state, 'metric': metric, 'hours': hours,
+    'group_by': group_by, 'state': state, 'metric': metric,
+    'hours': hours, 'rank_by': rank_by,
 } %}
 <div id="{{ chart_dom_id }}" data-chart-persist-id="{{ chart_dom_id }}">
     <div class="d-flex flex-wrap gap-3 mb-3 align-items-center">
@@ -79,6 +80,23 @@
                           hx-target="#{{ chart_dom_id }}"
                           hx-swap="outerHTML"
                         {% endif %}>
+                    {{ opt_lbl }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+        <div>
+            <label class="form-label small text-muted mb-1 me-2">Select by</label>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Select by">
+                {# Peak: top_n by max over the visible window (catches brief spikes).
+                   Current: top_n by value at the latest tick (who is hot right now). #}
+                {% for opt_val, opt_lbl in [('peak', 'Peak'), ('current', 'Current')] %}
+                <button type="button"
+                        class="btn btn-{% if rank_by == opt_val %}primary{% else %}outline-primary{% endif %}"
+                        hx-get="{{ url_for(endpoint_name,
+                                           **dict(endpoint_kwargs, **dict(_selector_kwargs, rank_by=opt_val))) }}"
+                        hx-target="#{{ chart_dom_id }}"
+                        hx-swap="outerHTML">
                     {{ opt_lbl }}
                 </button>
                 {% endfor %}

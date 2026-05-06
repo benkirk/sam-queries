@@ -27,6 +27,8 @@ _VALID_GROUP_BY = ('user', 'project')
 _VALID_STATES = ('running', 'pending', 'held')
 _VALID_METRICS = ('jobs', 'cores', 'gpus', 'nodes')
 
+_VALID_RANK_BY = ('peak', 'current')
+
 # (state, metric) → DB column on UserProjQueueStatus / QueueRollupMetricsMixin.
 # `nodes` is only defined for state='running' (the schema has no
 # nodes_pending / nodes_held columns); other (state, metric) combos
@@ -173,9 +175,9 @@ def get_user_proj_timeseries(
     metric: str,
     group_by: str,
     top_n: int = 15,
+    rank_by: str = 'peak',
 ) -> Dict[str, Any]:
-    """Top-N + Others time series for one queue, or one system, ranked
-    by peak in window.
+    """Top-N + Others time series for one queue, or one system.
 
     Scope is determined by ``queue_name``:
 
@@ -217,12 +219,17 @@ def get_user_proj_timeseries(
 
     Series ordering matches ``get_disk_usage_timeseries_by_user``: Others
     first (so it stacks at the bottom under a neutral colour), then named
-    series smallest-to-largest by peak value over the window so the
-    largest sits on top of the stack.
+    series smallest-to-largest by the rank value so the largest sits on
+    top of the stack.
 
-    Ranking by **MAX over the window** (not latest tick) so a brief spike
-    still earns a slot — important for queue load where short pending/held
-    bursts are exactly what an operator wants to see.
+    ``rank_by`` controls top-N selection:
+
+    - ``'peak'`` (default): rank by **MAX over the window** so a brief
+      spike still earns a slot — useful for catching short pending/held
+      bursts an operator might otherwise miss.
+    - ``'current'``: rank by the value at the **latest timestamp** in the
+      window — answers "who is loading the system right now", at the cost
+      of dropping a label whose run already ended within the window.
     """
     if state not in _VALID_STATES:
         raise ValueError(
@@ -240,6 +247,10 @@ def get_user_proj_timeseries(
     if group_by not in _VALID_GROUP_BY:
         raise ValueError(
             f'group_by must be one of {_VALID_GROUP_BY}, got {group_by!r}'
+        )
+    if rank_by not in _VALID_RANK_BY:
+        raise ValueError(
+            f'rank_by must be one of {_VALID_RANK_BY}, got {rank_by!r}'
         )
 
     column_name = _STATE_METRIC_TO_COLUMN[(state, metric)]
@@ -323,12 +334,14 @@ def get_user_proj_timeseries(
 
     dates = sorted(timestamps)
 
-    # Rank by peak value over the window (catches brief spikes).
-    ranked = sorted(
-        per_label.items(),
-        key=lambda kv: max(kv[1].values()) if kv[1] else 0,
-        reverse=True,
-    )
+    # Two ranking modes — peak catches brief spikes, current answers
+    # "who's hot right now". `dates` is non-empty here (rows guard above).
+    if rank_by == 'current':
+        latest = dates[-1]
+        rank_key = lambda kv: kv[1].get(latest, 0)
+    else:  # 'peak'
+        rank_key = lambda kv: max(kv[1].values()) if kv[1] else 0
+    ranked = sorted(per_label.items(), key=rank_key, reverse=True)
     top = ranked[:top_n]
     rest = ranked[top_n:]
 
