@@ -69,12 +69,30 @@ jobs:
         env:
           COMPOSE_SERVICE: mysql
 
+      # The conda-env CLI tools (sam-search, sam-status) run on the
+      # HOST, not inside the docker stack — they reach the docker
+      # mysql/system_status via the host port mapping (127.0.0.1:3306).
+      # Set the SAM_DB_*/STATUS_DB_* env explicitly here. We used to
+      # rely on .env.example having the LOCAL block uncommented, but
+      # that template now defaults to all-commented (so a fresh
+      # `install.sh`-generated .env doesn't leak 127.0.0.1 into
+      # in-stack containers via compose's env_file pass-through).
       - name: Run sam-search CLI tool
+        env:
+          SAM_DB_SERVER: 127.0.0.1
+          SAM_DB_USERNAME: root
+          SAM_DB_PASSWORD: root
+          SAM_DB_REQUIRE_SSL: "false"
         run: |
           sam-search --inactive-projects user benkirk --list-projects --verbose
           sam-search project SCSG0001 --verbose --list-users
 
       - name: Run sam-status CLI tool
+        env:
+          STATUS_DB_DRIVER: mysql
+          STATUS_DB_SERVER: 127.0.0.1
+          STATUS_DB_USERNAME: root
+          STATUS_DB_PASSWORD: root
         run: |
           sam-status derecho
           sam-status casper
