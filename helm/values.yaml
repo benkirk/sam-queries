@@ -1,5 +1,23 @@
 replicaCount: 2                           # Number of identical pods to run
 
+# Centralized Redis backend used by:
+#   - Flask-Caching chart cache (CACHE_REDIS_URL → DB 0)
+#   - Flask-Limiter rate-limit counters (RATELIMIT_STORAGE_URI → DB 1)
+# Single replica, no persistence, no HA. Eviction = allkeys-lru.
+# See docs/plans/REDIS.md.
+cache:
+  enabled: true
+  name: samuel-redis
+  image: redis:7-alpine
+  port: 6379
+  maxmemoryMB: 64
+  requests:
+    memory: 32Mi
+    cpu: 50m
+  limits:
+    memory: 96Mi
+    cpu: 500m
+
 webapp:
   name: samuel                            # Name for k8s objects
   group: samuel                           # Group label for related resources
