@@ -60,13 +60,43 @@ done
 # --------------------------------------------
 # Helpers
 # --------------------------------------------
+
+# Colour helpers — only emit ANSI escapes when stdout is a TTY and `tput`
+# is available with a colour-capable terminfo entry. Falls back to empty
+# strings otherwise, so `curl … | bash`, log redirects, and dumb terminals
+# all see plain ASCII. Wrapped in a parameter-expansion guard so this is
+# safe under both `set -u` (interactive) and the relaxed piped mode above.
+if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]]; then
+    C_RESET=$(tput sgr0)
+    C_BOLD=$(tput bold)
+    C_DIM=$(tput dim)
+    C_RED=$(tput setaf 1)
+    C_GREEN=$(tput setaf 2)
+    C_YELLOW=$(tput setaf 3)
+    C_BLUE=$(tput setaf 4)
+    C_CYAN=$(tput setaf 6)
+else
+    C_RESET=""
+    C_BOLD=""
+    C_DIM=""
+    C_RED=""
+    C_GREEN=""
+    C_YELLOW=""
+    C_BLUE=""
+    C_CYAN=""
+fi
+
 abort() {
-    echo "ERROR: ${*}" >&2
+    echo "${C_RED}${C_BOLD}ERROR:${C_RESET} ${*}" >&2
     exit 1
 }
 
 need_cmd() {
     command -v "${1}" >/dev/null 2>&1 || abort "Required command '${1}' not found."
+}
+
+step() {
+    echo "${C_BOLD}${C_CYAN}==>${C_RESET} ${C_BOLD}${*}${C_RESET}"
 }
 
 check_docker_compose_version() {
@@ -88,7 +118,7 @@ check_docker_compose_version() {
 # --------------------------------------------
 # Checks
 # --------------------------------------------
-echo "--- Checking requirements ---"
+step "Checking requirements"
 need_cmd git
 need_cmd git-lfs
 need_cmd docker
@@ -98,7 +128,7 @@ check_docker_compose_version
 # --------------------------------------------
 # Clone or update repo
 # --------------------------------------------
-echo "--- Preparing repository at ${TARGET_DIR} ---"
+step "Preparing repository at ${TARGET_DIR}"
 
 if [[ -d "${TARGET_DIR}/.git" ]]; then
     echo "Repository already exists. Updating..."
@@ -117,7 +147,7 @@ git -C "${TARGET_DIR}" lfs pull
 # Install / Setup step
 # You can customize this section
 # --------------------------------------------
-echo "--- Running setup ---"
+step "Running setup"
 
 # Example: create env file if not present
 if [[ ! -f "${TARGET_DIR}/.env" ]]; then
@@ -125,11 +155,38 @@ if [[ ! -f "${TARGET_DIR}/.env" ]]; then
     cp "${TARGET_DIR}/.env.example" "${TARGET_DIR}/.env" 2>/dev/null || true
 fi
 
-cat <<EOF
-Install complete.
-To start services"
-  cd \"${TARGET_DIR}\""
-  docker compose --profile test up --build --watch
+# --------------------------------------------
+# Final summary
+# --------------------------------------------
+# Build a fixed-width ASCII banner. Width is hard-coded so the box stays
+# aligned regardless of terminal capabilities — `tput cols` would give a
+# nicer fit on wide terminals but breaks under `curl … | bash` (no TTY)
+# and on systems without ncurses installed.
+RULE="------------------------------------------------------------"
 
-Once all services are up, connect to http://127.0.0.1:5050/user/
-EOF
+echo
+echo "${C_GREEN}${C_BOLD}${RULE}${C_RESET}"
+echo "${C_GREEN}${C_BOLD}  ✓ Install complete${C_RESET}"
+echo "${C_GREEN}${C_BOLD}${RULE}${C_RESET}"
+echo
+echo "${C_BOLD}Next steps:${C_RESET}"
+echo
+echo "  ${C_DIM}# 1. Move into the source tree${C_RESET}"
+echo "  ${C_CYAN}cd${C_RESET} ${C_YELLOW}\"${TARGET_DIR}\"${C_RESET}"
+echo
+echo "  ${C_DIM}# 2. Build & launch the stack (waits until every service is healthy)${C_RESET}"
+echo "  ${C_DIM}#    First run is slow: image build (~2-3 min) + MySQL backup restore (~30 s).${C_RESET}"
+echo "  ${C_CYAN}make${C_RESET} docker-up"
+echo
+echo "  ${C_DIM}# 3. (optional) Run the test suite + coverage inside docker${C_RESET}"
+echo "  ${C_CYAN}make${C_RESET} docker-pytest"
+echo
+echo "  ${C_DIM}# 4. (optional) Live-sync source changes into the running webdev${C_RESET}"
+echo "  ${C_CYAN}make${C_RESET} docker-watch"
+echo
+echo "${C_BOLD}Once 'make docker-up' reports healthy, open:${C_RESET}"
+echo "  ${C_BLUE}http://127.0.0.1:5050/${C_RESET}   ${C_DIM}# webdev (Flask debug, hot-reload)${C_RESET}"
+echo "  ${C_BLUE}http://127.0.0.1:7050/${C_RESET}   ${C_DIM}# webapp (gunicorn, prod-like)${C_RESET}"
+echo
+echo "${C_DIM}See \`make help\` from inside the source tree for other targets.${C_RESET}"
+echo
