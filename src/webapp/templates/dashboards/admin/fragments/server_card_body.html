@@ -1,0 +1,52 @@
+{#
+  Admin → Configuration → Server Information card BODY (inner content).
+
+  Rendered both inline (from configuration_card.html) and standalone (from
+  the htmx_server_card route, when the user clicks Refresh). Keep this file
+  to JUST the body content — the wrapping <div class="card"> + header +
+  refresh button live in configuration_card.html so they persist across
+  HTMX swaps.
+
+  Uses the same `stat` macro shape as configuration_card.html. Re-declared
+  locally so this fragment is self-contained when served by the refresh
+  endpoint.
+#}
+{% macro stat(label, value, value_class='') %}
+    <dt class="fw-normal text-muted">{{ label }}</dt>
+    <dd class="fw-semibold {{ value_class }}">
+        {{ value if value not in (None, '') else '—' }}
+    </dd>
+{% endmacro %}
+
+<p class="text-muted small mb-3">
+    <i class="fas fa-info-circle"></i>
+    Reflects the worker process that served this request. With multiple
+    gunicorn workers per pod, refreshing may land on a different worker
+    and show different numbers — that's expected.
+    Sampled {{ server.gathered_at.strftime('%H:%M:%S') }}.
+</p>
+
+<dl class="config-stats mb-0 small">
+    {{ stat('Pod hostname',     server.pod_hostname) }}
+    {{ stat('Worker PID',       server.worker_pid) }}
+    {{ stat('Worker started',   server.worker_started | fmt_date if server.worker_started else None) }}
+    {{ stat('Worker uptime',    server.worker_uptime) }}
+    {{ stat('Process RSS',      server.process_rss | fmt_size if server.process_rss is not none else None) }}
+    {% if server.cgroup_mem_limit %}
+        {{ stat('Pod memory',
+                '%s / %s  (%.1f%%)' | format(
+                    (server.cgroup_mem_used or 0) | fmt_size,
+                    server.cgroup_mem_limit | fmt_size,
+                    (server.cgroup_mem_used or 0) / server.cgroup_mem_limit * 100),
+                'text-warning' if server.cgroup_mem_used and server.cgroup_mem_used / server.cgroup_mem_limit > 0.8 else '') }}
+    {% elif server.cgroup_mem_used is not none %}
+        {{ stat('Pod memory', server.cgroup_mem_used | fmt_size) }}
+    {% else %}
+        {{ stat('Pod memory', None) }}
+    {% endif %}
+    {{ stat('Pod CPU limit',
+            ('%g cores' | format(server.cgroup_cpu_limit)) if server.cgroup_cpu_limit else None) }}
+    {{ stat('Gunicorn workers', server.gunicorn_workers) }}
+    {{ stat('Build SHA',        server.git_sha) }}
+    {{ stat('Build date',       server.build_date) }}
+</dl>
