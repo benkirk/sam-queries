@@ -99,27 +99,48 @@ and any `*_RUNBOOK.md` siblings of the corresponding revision file.
 
 ## Quick Start
 
-```bash
-# make sure you have git-lfs so the mock database can be cloned:
-git lfs --version
+The bundled obfuscated MySQL backup (`containers/sam-sql-dev/backups/sam-obfuscated.sql.xz`,
+~18 MiB) is stored in **Git LFS**. Without LFS the file checked out into your
+working tree is a tiny pointer file, the database container has no real data
+to restore, and the webapp comes up against an empty schema. Make sure LFS is
+both installed *and* activated for your account before cloning:
 
-# clone the repo
+```bash
+# 1. Verify Git LFS is installed AND active for your user. The first
+#    command checks the binary exists; the second registers the LFS
+#    smudge/clean filter in ~/.gitconfig (a one-time per-user step,
+#    harmless to re-run).
+git lfs --version
+git lfs install
+
+# 2. Clone — LFS files are pulled automatically when the filter is active.
 git clone https://github.com/benkirk/sam-queries.git
 cd sam-queries
 
-# build & launch the containers
+# 3. Sanity check: the backup file should be ~18 MiB, not ~130 bytes.
+ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
+# If it is tiny / shows "version https://git-lfs.github.com/...", run:
+#   git lfs pull
+
+# 4. Build & launch the containers. First run is slow: Compose builds
+#    the images (~2–3 min) and then MySQL restores the obfuscated
+#    backup (~30 s) before the healthchecks unlock the webapp.
 make docker-up
 
-# you should now be able to see
-# 'webdev' - http://127.0.0.1:5050
-# 'webapp' - http://127.0.0.1:7050
+# 5. You should now be able to see
+#      'webdev' - http://127.0.0.1:5050
+#      'webapp' - http://127.0.0.1:7050
 
-# run the test suite inside docker
+# 6. Run the test suite inside docker
 make docker-pytest
 ```
+
 See also `make help` for other targets.
 
-For interactive development you can run `make docker-watch`.  This will block the current shell with an interactive process synchronzing the local source tree to the container, so local changes are immediately served.
+For interactive development you can run `make docker-watch`. This will block
+the current shell with an interactive process synchronizing the local source
+tree into the `webdev` container, so local edits are picked up immediately
+by Flask's auto-reloader.
 
 
 ## Local Development
