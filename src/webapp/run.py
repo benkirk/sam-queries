@@ -47,9 +47,15 @@ def create_app(*, config_overrides: dict | None = None):
     """
     import os
 
-    # Load and validate environment-based configuration
+    # Load environment-based configuration. Validation is skipped when the
+    # caller passes `config_overrides=` (the test harness does this to
+    # point Flask-SQLAlchemy at the mysql-test container via SAM_TEST_DB_URL,
+    # and conftest.py never reads `SAM_DB_USERNAME` etc.). Production
+    # callers pass no overrides and see the original validate-on-startup
+    # behaviour — fail fast if the runtime env is missing required vars.
     cfg = get_webapp_config()
-    cfg.validate()
+    if config_overrides is None:
+        cfg.validate()
 
     app = Flask(__name__)
 
