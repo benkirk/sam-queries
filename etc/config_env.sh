@@ -69,6 +69,3 @@ if [[ -f "${ROOT_DIR}/collectors/.env" ]]; then
     set +a
     echo "Loaded .env from ${ROOT_DIR}/collectors"
 fi
-
-# prevent leakage
-unset SAM_DB_PASSWORD TEST_SAM_DB_PASSWORD LOCAL_SAM_DB_PASSWORD
