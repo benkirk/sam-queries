@@ -98,7 +98,11 @@ and any `*_RUNBOOK.md` siblings of the corresponding revision file.
 ---
 
 ## Quick Start
+```bash
 
+```
+
+## Local Development
 ### Option 1: Local Development (Recommended)
 
 For local development with Docker database:
@@ -449,65 +453,7 @@ For detailed Web UI documentation, see **[src/webapp/README.md](src/webapp/READM
 
 ### REST API
 
-Programmatic access via JSON REST API:
-
-```bash
-# Authenticate and save session cookie
-curl -c cookies.txt -X POST http://localhost:5050/auth/login \
-  -d "username=your_username&password=your_password"
-
-# Get user details
-curl -b cookies.txt http://localhost:5050/api/v1/users/benkirk
-
-# Get user's projects
-curl -b cookies.txt http://localhost:5050/api/v1/users/benkirk/projects
-
-# Get project details
-curl -b cookies.txt http://localhost:5050/api/v1/projects/SCSG0001
-
-# Get project allocations with real-time usage
-curl -b cookies.txt http://localhost:5050/api/v1/projects/SCSG0001/allocations
-
-# Get projects expiring in next 90 days
-curl -b cookies.txt "http://localhost:5050/api/v1/projects/expiring?days=90&facility_names=UNIV"
-
-# Get recently expired projects (90-365 days ago)
-curl -b cookies.txt "http://localhost:5050/api/v1/projects/recently_expired?min_days=90&max_days=365"
-
-# Get account balance
-curl -b cookies.txt http://localhost:5050/api/v1/accounts/12345/balance
-
-# Systems integration APIs (LDAP provisioning, PBS fairshare)
-curl -b cookies.txt http://localhost:5050/api/v1/directory_access/hpc
-curl -b cookies.txt http://localhost:5050/api/v1/project_access/hpc
-curl -b cookies.txt http://localhost:5050/api/v1/fstree_access/Derecho
-```
-
 See **[docs/apis/SYSTEMS_INTEGRATION_APIs.md](docs/apis/SYSTEMS_INTEGRATION_APIs.md)** for full schema documentation on the directory access, project access, and fairshare tree APIs.
-
-**Example Response:**
-
-```json
-{
-  "allocation_id": 12345,
-  "allocated": 1000000.0,
-  "used": 456789.12,
-  "remaining": 543210.88,
-  "percent_used": 45.68,
-  "start_date": "2024-01-01T00:00:00",
-  "end_date": "2024-12-31T23:59:59",
-  "charges_by_type": {
-    "comp": 345678.90,
-    "dav": 111110.22,
-    "disk": 0.0,
-    "archive": 0.0
-  },
-  "resource": {
-    "resource_id": 42,
-    "name": "Derecho"
-  }
-}
-```
 
 For complete API documentation, see **[src/webapp/README.md](src/webapp/README.md#rest-api)**.
 
@@ -922,23 +868,6 @@ For additional troubleshooting, see **[CONTRIBUTING.md](CONTRIBUTING.md#troubles
 - **Click** - CLI framework for sam-search command
 - **Docker Compose** - Containerized development environment
 - **Conda** - Isolated environment management
-
----
-
-## Key Contacts & Context
-
-- **Organization:** NCAR CISL (Computational & Information Systems Laboratory)
-- **Section:** USS (University Services Section)
-- **Primary Resources:** Derecho (HPC), Casper (HPC), Gust (analysis), Stratus (storage), Campaign Store (storage)
-- **Facilities:** UNIV (University), WNA (Wyoming-NCAR Alliance)
-
-For access to SAM database credentials or production systems, contact CISL staff.
-
----
-
-## License
-
-Copyright (c) 2025 NCAR CISL
 
 ---
 
