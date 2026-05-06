@@ -1,17 +1,16 @@
 FROM python:3 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
-    && apt-get install -y \
-               rsync git git-lfs \
-    && pip install --upgrade pip \
-    && rm -rf /var/lib/apt/lists/*
 
-RUN echo "Creating default .env" && \
-    <<'FILE1' cat > /.env && \
-    <<'FILE2' cat > /usr/bin/list-large-directories && \
-    chmod a+rx /usr/bin/list-large-directories && \
-    echo "Done"
+# Bake an image-default /.env so the runtime's `load_dotenv()` (in
+# sam.session, system_status.session, src/config.py) has a sane fallback
+# for in-stack DB connection settings (hostname `mysql`, root/root) and
+# the dev FLASK_SECRET_KEY. compose.yaml's environment block injects the
+# user-tunable knobs (JUPYTERHUB_*, GOOGLE_CALENDAR_*, etc.) — those
+# take precedence because python-dotenv defaults to override=False.
+# Also bake a small in-image debug helper for ad-hoc image-size
+# investigations from inside a running container (not called by code).
+RUN <<'FILE_ENV' cat > /.env
 #-------------------------
 # local container instance
 LOCAL_SAM_DB_SERVER=mysql
@@ -33,7 +32,10 @@ STATUS_DB_PASSWORD=root
 # Flask application security
 # WARNING: dev-only key - change for production
 FLASK_SECRET_KEY=dev-only-insecure-key-change-for-production
-FILE1
+FILE_ENV
+
+RUN <<'FILE_LLD' cat > /usr/bin/list-large-directories && \
+    chmod a+rx /usr/bin/list-large-directories
 #!/bin/bash
 
 dirs="/home /mnt /tmp /opt /usr /var /container"
@@ -51,11 +53,12 @@ for dir in ${dirs}; do
         du 2>/dev/null --block-size=1MiB --threshold=${THRESHOLD_SIZE_MB}MiB --separate-dirs ${dir} | sort -n
     fi
 done
-FILE2
+FILE_LLD
 
 WORKDIR /code
 COPY . .
-RUN pip install -e ".[test]"
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -e ".[test]"
 
 # Optional build provenance - set by CI via --build-arg; empty locally.
 # Placed AFTER pip install so a changing SHA does not invalidate the install layer.

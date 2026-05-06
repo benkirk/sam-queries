@@ -12,16 +12,32 @@ htmlcov/
 .coverage
 .coverage.*
 *.log
-*.sql
-*.sql.xz
+# Use ** so nested .sql / .sql.xz files (e.g. containers/sam-sql-dev/
+# dump/*.sql) are excluded too. A bare `*.sql` pattern only matches
+# the build-context root, not subdirectories — this is the reason
+# the 223 MB dump dir was previously slipping into the image.
+**/*.sql
+**/*.sql.xz
+**/*.dump
 .git/
 .gitignore
 .DS_Store
 *.swp
 *.swo
 *~
+# emacs lock + autosave files
+.#*
+\#*\#
 
 # Local working data (untracked; not used inside the image)
 data/
 logs/
 collectors/logs/
+
+# DB-image build helpers — not used by the webapp image, and not used
+# by the sam-sql-dev/mysql-test build context either (its Dockerfile
+# only COPYs init-db.sh). Excluding them here drops ~225 MiB from the
+# webapp build context.
+containers/sam-sql-dev/dump/
+containers/sam-sql-dev/__pycache__/
+containers/sam-sql-dev/anonymization_mappings.json
