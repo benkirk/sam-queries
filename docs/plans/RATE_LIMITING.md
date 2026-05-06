@@ -12,7 +12,7 @@ We want protection against brute-force, runaway scripts, and accidental DoS — 
 
 **Phasing:** Phase 1 is intentionally minimal — Flask-Limiter on per-worker memory, structured logs on every 429, and a tile in the existing Admin > Configuration card. **No new tables, no new admin page, no Alembic migration in Phase 1.** When we move to shared storage (Phase 2), we add the `RateLimitEvent` table (via Alembic), the dedicated `/admin/htmx/rate-limits` page, and the unblock action.
 
-**Storage decision** (per discussion): start with **per-worker memory** (`memory://`), with a clean swap path to a **MySQL/Postgres-backed adapter on the `system_status` DB** when we want cross-worker accuracy. The `system_status` DB is the right target because we own its schema today; the SAM DB is shared with legacy and off-limits for new tables. `system_status.session` already supports both MySQL and Postgres via `STATUS_DB_DRIVER`, so a future swap is one storage URI change.
+**Storage decision** (per discussion): start with **per-worker memory** (`memory://`), with a clean swap path to a **shared Redis backend** when we want cross-worker accuracy. The Redis Deployment provisioned by `docs/plans/REDIS.md` already exposes DB `/1` for rate-limit counters (`redis://samuel-redis:6379/1`), so the Phase 2 swap is a single env-var change. *Earlier draft routed Phase 2 to a `system_status` DB-backed adapter; superseded by the Redis decision now that the same Redis is provisioned for the unified cache work — counters fit naturally and we avoid per-request DB writes.*
 
 The per-worker phase is honest: with `(2×cores)+1` gunicorn workers, an N/min limit is effectively N×workers/min globally. That's fine for catching unsophisticated brute-force and runaway scripts; we'll document this and tighten when we move to shared storage.
 
@@ -57,6 +57,7 @@ Add to `SAMWebappConfig` in `src/webapp/config.py`:
 ```python
 RATELIMIT_ENABLED        = os.getenv('RATELIMIT_ENABLED', '1').lower() in ('1','true','yes')
 RATELIMIT_STORAGE_URI    = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
+                          # Phase 2: env defaults to redis://samuel-redis:6379/1 in helm/compose
 RATELIMIT_STRATEGY       = 'fixed-window'   # cheaper than moving-window on SQL backend
 
 # Tier limits — tunable without code change
