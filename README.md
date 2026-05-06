@@ -98,9 +98,29 @@ and any `*_RUNBOOK.md` siblings of the corresponding revision file.
 ---
 
 ## Quick Start
-```bash
 
+```bash
+# make sure you have git-lfs so the mock database can be cloned:
+git lfs --version
+
+# clone the repo
+git clone https://github.com/benkirk/sam-queries.git
+cd sam-queries
+
+# build & launch the containers
+make docker-up
+
+# you should now be able to see
+# 'webdev' - http://127.0.0.1:5050
+# 'webapp' - http://127.0.0.1:7050
+
+# run the test suite inside docker
+make docker-pytest
 ```
+See also `make help` for other targets.
+
+For interactive development you can run `make docker-watch`.  This will block the current shell with an interactive process synchronzing the local source tree to the container, so local changes are immediately served.
+
 
 ## Local Development
 ### Option 1: Local Development (Recommended)
