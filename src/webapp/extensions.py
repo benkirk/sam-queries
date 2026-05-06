@@ -6,10 +6,15 @@ Extensions are initialized here but configured in the application factory.
 """
 
 from flask_sqlalchemy import SQLAlchemy
-from flask_caching import Cache
+
+from webapp.caching import caching
 
 db = SQLAlchemy()
-cache = Cache()
+
+# DEPRECATED: prefer `from webapp.caching import caching` and use
+# `caching.flask.cached(...)` / `caching.flask.memoize(...)`. This alias is
+# retained because 40+ existing call sites import `cache` from here.
+cache = caching.flask
 
 
 def user_aware_cache_key() -> str:

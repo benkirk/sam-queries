@@ -26,6 +26,12 @@ spec:
           - name: {{ $key }}
             value: {{ $value | quote }}
           {{- end }}
+          # Gunicorn workers sized from the cgroup CPU limit (2·cpu + 1).
+          # multiprocessing.cpu_count() inside the pod returns the node's CPU
+          # count, not the cgroup quota — without this, gunicorn_config.py would
+          # spawn ~129 workers on a 64-core node and OOM the pod.
+          - name: GUNICORN_WORKERS
+            value: {{ mul (.Values.webapp.container.limits.cpu | int) 2 | add 1 | quote }}
           {{- if .Values.webapp.dbCredentials.enabled }}
           - name: STATUS_DB_USERNAME
             valueFrom:
