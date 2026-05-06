@@ -28,8 +28,11 @@ class FlaskCacheAdapter(CacheBase):
 
     name = 'flask_cache'
 
-    def __init__(self, flask_cache):
+    def __init__(self, flask_cache, *, redis_client=None):
         self._flask = flask_cache
+        # Optional Redis client — when present, info() can introspect the
+        # shared cache by SCANning the Flask-Caching key prefix.
+        self._redis_client = redis_client
 
     # ── Try to reach the SimpleCache backing dict ───────────────────────
 
@@ -54,12 +57,74 @@ class FlaskCacheAdapter(CacheBase):
                 return prefix
         return 'other'
 
+    # ── Redis introspection (used when Flask-Caching backend is Redis) ──
+
+    def _redis_introspect(self) -> Optional[dict]:
+        """Aggregate per-group counts/bytes by SCANning the Redis keyspace.
+
+        Flask-Caching's RedisCache stores keys under the key_prefix
+        configured for the extension (default ``flask_cache_``). We use
+        SCAN (not KEYS — KEYS would block Redis) to walk entries and
+        bucket them by API group based on substring match. Bytes are
+        approximated via a sampled `MEMORY USAGE` to avoid an O(N)
+        roundtrip on every entry.
+        """
+        client = self._redis_client
+        if client is None:
+            return None
+        try:
+            # Flask-Caching prefixes keys; we scan everything not owned
+            # by our chart/usage adapters (those have their own prefixes).
+            groups: dict[str, dict] = {
+                g: {'entries': 0, 'bytes_approx': 0}
+                for g in (*_KEY_GROUPS, 'other')
+            }
+            sampled_total = 0
+            sample_count = 0
+            total_entries = 0
+            for raw_key in client.scan_iter(match='*', count=200):
+                key = raw_key.decode() if isinstance(raw_key, bytes) else raw_key
+                # Skip keys owned by our other adapters.
+                if key.startswith('chart:') or key.startswith('usage:'):
+                    continue
+                total_entries += 1
+                bucket = self._bucket_for(key)
+                groups[bucket]['entries'] += 1
+                if sample_count < 50:
+                    try:
+                        used = client.memory_usage(raw_key) or 0
+                        sampled_total += int(used)
+                        sample_count += 1
+                    except Exception:
+                        # MEMORY USAGE missing on some Redis builds — skip.
+                        pass
+            avg = (sampled_total / sample_count) if sample_count else 0
+            for g in groups.values():
+                g['bytes_approx'] = int(avg * g['entries'])
+            return {
+                'name':         self.name,
+                'enabled':      True,
+                'currsize':     total_entries,
+                'maxsize':      None,
+                'ttl':          None,
+                'hits':         None,
+                'misses':       None,
+                'bytes_approx': int(avg * total_entries),
+                'extras':       {'backend': 'redis', 'groups': groups},
+            }
+        except Exception:
+            return None
+
     # ── CacheBase ───────────────────────────────────────────────────────
 
     def info(self) -> dict:
         backing = self._backing_dict()
         if backing is None:
-            # Either NullCache, Redis, Memcached, or no app context.
+            # SimpleCache not in play. Try Redis introspection if a
+            # client is wired in; otherwise fall back to placeholder.
+            redis_info = self._redis_introspect()
+            if redis_info is not None:
+                return redis_info
             return {
                 'name':         self.name,
                 'enabled':      True,

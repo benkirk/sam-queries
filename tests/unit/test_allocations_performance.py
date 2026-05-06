@@ -649,7 +649,7 @@ class TestAllocationSummaryEdgeCases:
 # ============================================================================
 
 @pytest.fixture(autouse=True)
-def _reset_usage_cache_globals():
+def _reset_usage_cache_globals(monkeypatch):
     """
     Reset usage_cache module globals before/after every test in this file.
 
@@ -658,7 +658,11 @@ def _reset_usage_cache_globals():
     this reset the first test to run outside a Flask context initializes the cache
     with env-var defaults (TTL=3600) and that TTLCache bleeds into later tests that
     expect the cache to be disabled (TestingConfig sets TTL=0).
+
+    Also drop CACHE_REDIS_URL so usage_cache picks the in-process TTLCacheAdapter
+    branch — the dedicated Redis adapter tests live in test_redis_cache.py.
     """
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
     import sam.queries.usage_cache as uc
     uc._adapter = None
     uc._disabled = False
