@@ -259,24 +259,40 @@
                     {% if state.caching.chart %}
                     <hr class="my-3">
                     <div class="text-muted small mb-2"><strong>Chart SVG caches</strong></div>
-                    {% set chart_total_currsize = state.caching.chart | sum(attribute='currsize') %}
-                    {% set chart_total_maxsize  = state.caching.chart | sum(attribute='maxsize') %}
-                    {% set chart_total_hits     = state.caching.chart | sum(attribute='hits') %}
-                    {% set chart_total_misses   = state.caching.chart | sum(attribute='misses') %}
-                    {% set chart_total_bytes    = state.caching.chart | sum(attribute='bytes_approx') %}
+                    {# `selectattr` filters out items whose attr is falsy (None, 0).
+                       Redis-backed RedisChartCache reports maxsize=None — the boundless
+                       cache is Redis-wide allkeys-lru, not per-cache. #}
+                    {% set _ns = namespace(currsize=0, maxsize=0, hits=0, misses=0, bytes=0, unbounded=false) %}
+                    {% for c in state.caching.chart %}
+                    {% set _ns.currsize = _ns.currsize + (c.currsize or 0) %}
+                    {% set _ns.hits     = _ns.hits     + (c.hits     or 0) %}
+                    {% set _ns.misses   = _ns.misses   + (c.misses   or 0) %}
+                    {% set _ns.bytes    = _ns.bytes    + (c.bytes_approx or 0) %}
+                    {% if c.maxsize is none %}
+                    {% set _ns.unbounded = true %}
+                    {% else %}
+                    {% set _ns.maxsize = _ns.maxsize + c.maxsize %}
+                    {% endif %}
+                    {% endfor %}
                     <dl class="config-stats mb-0 small">
+                        {% if _ns.unbounded %}
                         {{ stat('Total size',
-                                '%d / %d entries' | format(chart_total_currsize, chart_total_maxsize)) }}
+                                '%d entries (shared, Redis LRU)' | format(_ns.currsize)) }}
+                        {% else %}
+                        {{ stat('Total size',
+                                '%d / %d entries' | format(_ns.currsize, _ns.maxsize)) }}
+                        {% endif %}
                         {{ stat('Hits / Misses',
-                                '%d / %d' | format(chart_total_hits, chart_total_misses)) }}
-                        {{ stat('Memory (approx)', chart_total_bytes | fmt_size) }}
+                                '%d / %d' | format(_ns.hits, _ns.misses)) }}
+                        {{ stat('Memory (approx)', _ns.bytes | fmt_size) }}
                     </dl>
                     <details class="mt-2">
                         <summary class="small text-muted">Per-chart breakdown ({{ state.caching.chart | length }})</summary>
                         <dl class="config-stats mb-0 small mt-2">
                             {% for c in state.caching.chart %}
+                            {% set cap = c.maxsize if c.maxsize is not none else '∞' %}
                             {{ stat(c.name,
-                                    '%d/%d · %d hits · %s' | format(c.currsize, c.maxsize, c.hits, c.bytes_approx | fmt_size)) }}
+                                    '%s/%s · %d hits · %s' | format(c.currsize, cap, c.hits or 0, c.bytes_approx | fmt_size)) }}
                             {% endfor %}
                         </dl>
                     </details>

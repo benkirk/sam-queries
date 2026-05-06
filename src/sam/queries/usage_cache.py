@@ -16,9 +16,13 @@ import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sam.caching import CacheBase, TTLCacheAdapter
+import logging
+
+from sam.caching import CacheBase, RedisTTLAdapter, TTLCacheAdapter, make_redis_client
 from sam.caching.ttl import disabled_info
 from sam.queries.allocations import get_allocation_summary_with_usage
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -45,17 +49,21 @@ def _normalize(value: Any):
 # Lazy-initialized adapter
 # ---------------------------------------------------------------------------
 
-_adapter: Optional[TTLCacheAdapter] = None
+_adapter: Optional[CacheBase] = None
 _init_lock = threading.RLock()
 _disabled = False   # set True when TTL or SIZE == 0
 
 
-def get_cache_adapter() -> Optional[TTLCacheAdapter]:
+def get_cache_adapter() -> Optional[CacheBase]:
     """Return the shared CacheBase adapter, initializing on first call.
 
     Returns None when caching is disabled by config (TTL or SIZE == 0).
-    Used by the Caching facade in webapp to surface this cache's stats
-    alongside the webapp-owned chart and Flask caches.
+
+    Backend selection: if ``CACHE_REDIS_URL`` is set and reachable, a
+    `RedisTTLAdapter` is returned — all gunicorn workers / processes
+    share one cache. Otherwise, falls back to a per-worker
+    `TTLCacheAdapter`. Both expose the same dict-like API, so call
+    sites below are unchanged.
     """
     global _adapter, _disabled
 
@@ -69,6 +77,25 @@ def get_cache_adapter() -> Optional[TTLCacheAdapter]:
         if ttl <= 0 or size <= 0:
             _disabled = True
             return None
+
+        redis_url = os.environ.get('CACHE_REDIS_URL')
+        if redis_url:
+            try:
+                client = make_redis_client(redis_url)
+                if client is not None:
+                    _adapter = RedisTTLAdapter(
+                        name='allocation_usage',
+                        client=client,
+                        ttl=ttl,
+                        maxsize=size,
+                    )
+                    return _adapter
+            except Exception as exc:
+                logger.warning(
+                    "usage_cache: CACHE_REDIS_URL=%s set but unreachable (%s); "
+                    "falling back to per-worker TTLCacheAdapter.",
+                    redis_url, exc,
+                )
 
         _adapter = TTLCacheAdapter(name='allocation_usage', maxsize=size, ttl=ttl)
         return _adapter

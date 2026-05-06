@@ -418,7 +418,13 @@ class TestCaching:
 # ============================================================================
 
 class TestMatplotlibCaching:
-    """Tests for lru_cache on chart generation functions."""
+    """Tests for lru_cache on chart generation functions.
+
+    Cache-hit assertions use ``r1 == r2`` (content equality) plus a
+    ``cache_info().hits >= 1`` check, NOT ``r1 is r2`` (identity).
+    Identity worked for the in-process OrderedDict store but fails for
+    any backend that round-trips through bytes (Redis, memcached).
+    """
 
     def test_svg_in_allocations_response(self, auth_client):
         response = auth_client.get('/allocations/')
@@ -440,7 +446,7 @@ class TestMatplotlibCaching:
         ]
         r1 = generate_facility_pie_chart_matplotlib(data)
         r2 = generate_facility_pie_chart_matplotlib(data)
-        assert r1 is r2
+        assert r1 == r2
         assert generate_facility_pie_chart_matplotlib.cache_info().hits >= 1
 
     def test_facility_pie_cache_miss_on_different_data(self):
@@ -464,7 +470,7 @@ class TestMatplotlibCaching:
         ]
         r1 = generate_allocation_type_pie_chart_matplotlib(data)
         r2 = generate_allocation_type_pie_chart_matplotlib(data)
-        assert r1 is r2
+        assert r1 == r2
         assert generate_allocation_type_pie_chart_matplotlib.cache_info().hits >= 1
 
     def test_nodetype_history_cache_hit(self):
@@ -478,7 +484,7 @@ class TestMatplotlibCaching:
                  'utilization_percent': 85.0, 'memory_utilization_percent': 60.0}]
         r1 = generate_nodetype_history_matplotlib(data)
         r2 = generate_nodetype_history_matplotlib(data)
-        assert r1 is r2
+        assert r1 == r2
         assert generate_nodetype_history_matplotlib.cache_info().hits >= 1
 
     def test_queue_history_cache_hit(self):
@@ -492,7 +498,7 @@ class TestMatplotlibCaching:
                  'cores_pending': 200, 'gpus_allocated': 0, 'gpus_pending': 0}]
         r1 = generate_queue_history_matplotlib(data)
         r2 = generate_queue_history_matplotlib(data)
-        assert r1 is r2
+        assert r1 == r2
         assert generate_queue_history_matplotlib.cache_info().hits >= 1
 
     def test_timeseries_cache_hit(self):
@@ -503,7 +509,7 @@ class TestMatplotlibCaching:
         data = {'dates': [date(2025, 1, 1), date(2025, 1, 2)], 'values': [100.0, 200.0]}
         r1 = generate_usage_timeseries_matplotlib(data)
         r2 = generate_usage_timeseries_matplotlib(data)
-        assert r1 is r2
+        assert r1 == r2
         assert generate_usage_timeseries_matplotlib.cache_info().hits >= 1
 
     def test_empty_data_returns_fallback(self):
@@ -649,7 +655,7 @@ class TestAllocationSummaryEdgeCases:
 # ============================================================================
 
 @pytest.fixture(autouse=True)
-def _reset_usage_cache_globals():
+def _reset_usage_cache_globals(monkeypatch):
     """
     Reset usage_cache module globals before/after every test in this file.
 
@@ -658,7 +664,11 @@ def _reset_usage_cache_globals():
     this reset the first test to run outside a Flask context initializes the cache
     with env-var defaults (TTL=3600) and that TTLCache bleeds into later tests that
     expect the cache to be disabled (TestingConfig sets TTL=0).
+
+    Also drop CACHE_REDIS_URL so usage_cache picks the in-process TTLCacheAdapter
+    branch — the dedicated Redis adapter tests live in test_redis_cache.py.
     """
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
     import sam.queries.usage_cache as uc
     uc._adapter = None
     uc._disabled = False

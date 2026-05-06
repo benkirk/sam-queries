@@ -1,0 +1,51 @@
+{{- if .Values.cache.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.cache.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.cache.name }}
+    group: {{ .Values.webapp.group }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.cache.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.cache.name }}
+    spec:
+      containers:
+      - name: redis
+        image: {{ .Values.cache.image }}
+        imagePullPolicy: IfNotPresent
+        args:
+          - "redis-server"
+          - "--save"
+          - ""
+          - "--maxmemory"
+          - "{{ .Values.cache.maxmemoryMB }}mb"
+          - "--maxmemory-policy"
+          - "allkeys-lru"
+        ports:
+        - containerPort: {{ .Values.cache.port }}
+        resources:
+          requests:
+            memory: {{ .Values.cache.requests.memory }}
+            cpu: {{ .Values.cache.requests.cpu }}
+          limits:
+            memory: {{ .Values.cache.limits.memory }}
+            cpu: {{ .Values.cache.limits.cpu }}
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.cache.port }}
+          initialDelaySeconds: 2
+          periodSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.cache.port }}
+          initialDelaySeconds: 10
+          periodSeconds: 15
+{{- end }}
