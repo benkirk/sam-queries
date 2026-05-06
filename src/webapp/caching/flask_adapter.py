@@ -83,10 +83,18 @@ class FlaskCacheAdapter(CacheBase):
             sample_count = 0
             total_entries = 0
             for raw_key in client.scan_iter(match='*', count=200):
-                key = raw_key.decode() if isinstance(raw_key, bytes) else raw_key
-                # Skip keys owned by our other adapters.
-                if key.startswith('chart:') or key.startswith('usage:'):
-                    continue
+                # Skip keys owned by our other adapters before decoding —
+                # usage:* values are pickle-suffixed bytes that aren't
+                # valid UTF-8, so checking on raw bytes avoids a
+                # UnicodeDecodeError on the next line.
+                if isinstance(raw_key, bytes):
+                    if raw_key.startswith(b'chart:') or raw_key.startswith(b'usage:'):
+                        continue
+                    key = raw_key.decode('utf-8', errors='replace')
+                else:
+                    if raw_key.startswith('chart:') or raw_key.startswith('usage:'):
+                        continue
+                    key = raw_key
                 total_entries += 1
                 bucket = self._bucket_for(key)
                 groups[bucket]['entries'] += 1
