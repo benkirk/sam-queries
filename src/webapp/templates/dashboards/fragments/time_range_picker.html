@@ -23,6 +23,7 @@
                 <button type="button"
                         class="btn {% if hours == h %}btn-secondary active{% else %}btn-outline-secondary{% endif %} trp-preset-{{ uid }}"
                         data-hours="{{ h }}"
+                        data-scroll-preserve
                         onclick="trpApply_{{ uid }}({{ h }})">{{ label }}</button>
                 {% endfor %}
             </div>

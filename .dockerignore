@@ -20,3 +20,8 @@ htmlcov/
 *.swp
 *.swo
 *~
+
+# Local working data (untracked; not used inside the image)
+data/
+logs/
+collectors/logs/

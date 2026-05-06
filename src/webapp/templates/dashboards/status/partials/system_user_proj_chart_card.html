@@ -22,7 +22,8 @@
         <div class="btn-group btn-group-sm" role="group" aria-label="Time range">
             {% for label, h in [('6h', 6), ('12h', 12), ('1d', 24), ('3d', 72), ('7d', 168), ('14d', 336), ('30d', 720)] %}
             <a href="{{ url_for('status_dashboard.index', hours=h) }}"
-               class="btn {% if chart_hours == h %}btn-secondary active{% else %}btn-outline-secondary{% endif %}">{{ label }}</a>
+               class="btn {% if chart_hours == h %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
+               data-scroll-preserve>{{ label }}</a>
             {% endfor %}
         </div>
     </div>
@@ -33,7 +34,8 @@
                                 state='running', metric='jobs',
                                 group_by='user') }}"
              hx-trigger="load"
-             hx-swap="innerHTML">
+             hx-swap="innerHTML"
+             data-chart-persist-id="upq-chart-{{ _chart_system }}">
             <div class="text-center text-muted py-5">
                 <i class="fas fa-spinner fa-spin"></i> Loading chart…
             </div>

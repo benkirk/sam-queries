@@ -21,7 +21,7 @@
 {% set _selector_kwargs = {
     'group_by': group_by, 'state': state, 'metric': metric, 'hours': hours,
 } %}
-<div id="{{ chart_dom_id }}">
+<div id="{{ chart_dom_id }}" data-chart-persist-id="{{ chart_dom_id }}">
     <div class="d-flex flex-wrap gap-3 mb-3 align-items-center">
         <div>
             <label class="form-label small text-muted mb-1 me-2">Group by</label>
