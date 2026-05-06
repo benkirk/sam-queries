@@ -21,7 +21,7 @@ from flask_login import login_required
 
 from webapp.extensions import db
 from webapp.utils.rbac import require_permission, Permission
-from webapp.utils.config_inspect import gather_runtime_state
+from webapp.utils.config_inspect import gather_runtime_state, gather_server_info
 
 from .blueprint import bp
 
@@ -37,4 +37,19 @@ def htmx_configuration_card():
     return render_template(
         'dashboards/admin/fragments/configuration_card.html',
         state=state,
+    )
+
+
+@bp.route('/htmx/server', methods=['GET'])
+@login_required
+@require_permission(Permission.VIEW_SYSTEM_CONFIG)
+def htmx_server_card():
+    """Render just the Server Information card body. Used by the
+    refresh button so admins can re-poll without rebuilding the entire
+    Configuration tab — and, since the LB will likely route the refresh
+    to a different worker, naturally surfaces the per-worker view.
+    """
+    return render_template(
+        'dashboards/admin/fragments/server_card_body.html',
+        server=gather_server_info(),
     )

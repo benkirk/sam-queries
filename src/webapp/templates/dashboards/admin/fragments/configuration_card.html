@@ -55,7 +55,7 @@
 
     <div class="row g-3">
 
-        {# ── Application ──────────────────────────────────────────────── #}
+        {# ── Application (config-shaped facts only) ───────────────────── #}
         <div class="col-12 col-xl-6">
             <div class="card h-100">
                 <div class="card-header py-2">
@@ -69,16 +69,42 @@
                         {{ stat('TESTING',       state.application.testing) }}
                         {{ stat('Python',        state.application.python_version) }}
                         {{ stat('Flask',         state.application.flask_version) }}
-                        {{ stat('Hostname',      state.application.hostname) }}
-                        {{ stat('Started',       state.application.start_time | fmt_date if state.application.start_time else '—') }}
-                        {{ stat('Uptime',        state.application.uptime) }}
                         {{ stat('Display TZ',
                                 (state.application.display_tz ~ '  (' ~ state.application.display_tz_abbr ~ ')')
                                 if state.application.display_tz and state.application.display_tz_abbr
                                 else state.application.display_tz) }}
-                        {{ stat('Build SHA',     state.application.git_sha) }}
-                        {{ stat('Build date',    state.application.build_date) }}
                     </dl>
+                </div>
+            </div>
+        </div>
+
+        {# ── Server Information (worker-scoped runtime facts) ─────────── #}
+        {#  Pod hostname, worker pid/uptime/RSS, cgroup memory + CPU limits,
+            build SHA. The refresh button re-fetches just this card body —
+            the LB will likely route the refresh to a different worker, which
+            is the *point*: it surfaces the per-worker reality (different PID,
+            different RSS each time). #}
+        <div class="col-12 col-xl-6">
+            <div class="card h-100">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                    <strong><i class="fas fa-server me-1"></i> Server Information</strong>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary py-0 px-2"
+                            hx-get="{{ url_for('admin_dashboard.htmx_server_card') }}"
+                            hx-target="#server-card-body"
+                            hx-swap="innerHTML"
+                            hx-indicator="#server-card-spinner"
+                            title="Re-poll a worker (likely a different one)">
+                        <i class="fas fa-sync-alt"></i>
+                        <span class="d-none d-sm-inline ms-1">Refresh</span>
+                        <span id="server-card-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-1"
+                              role="status" aria-hidden="true"></span>
+                    </button>
+                </div>
+                <div class="card-body" id="server-card-body">
+                    {% with server = state.server %}
+                        {% include 'dashboards/admin/fragments/server_card_body.html' %}
+                    {% endwith %}
                 </div>
             </div>
         </div>

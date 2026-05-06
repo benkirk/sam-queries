@@ -22,9 +22,16 @@ import platform
 import socket
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import flask
+
+
+# Per-pid cache so a fresh worker doesn't re-parse /proc on every request.
+# Module-level dict survives forks (correctly: each forked worker gets its
+# own copy); keyed by os.getpid() so it's resilient to the master initialising
+# this dict before forking.
+_worker_started_by_pid: Dict[int, datetime] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +137,134 @@ def _uptime(start_time: Optional[datetime]) -> Optional[str]:
     return f"{minutes}m"
 
 
+# ---------------------------------------------------------------------------
+# Worker / pod runtime probes
+# ---------------------------------------------------------------------------
+#
+# These read the worker's own /proc + /sys/fs/cgroup files only. No
+# subprocess, no other-pod visibility, no privileged ops. Every probe
+# returns None on macOS dev or any host without the relevant procfs/cgroup
+# entries — so the Flask dev server (`docker compose up webdev`) and a
+# bare-metal host both render the card without raising.
+#
+# cgroup v2 only (single hierarchy at /sys/fs/cgroup/<file>). Modern k8s
+# and Docker Desktop default to v2; v1 hosts will silently report None.
+
+def _worker_start_time() -> datetime:
+    """Best-effort worker process start time, cached per pid.
+
+    Linux: parses ``/proc/self/stat`` field 22 (process start in clock
+    ticks since boot) + ``/proc/stat`` btime. This is the kernel's truth
+    even when ``preload_app=True`` makes module-level timestamps reflect
+    master init time rather than worker fork time.
+
+    macOS / non-procfs: falls back to the time of the first call from
+    this pid (close enough as a lower bound for dev).
+    """
+    pid = os.getpid()
+    cached = _worker_started_by_pid.get(pid)
+    if cached:
+        return cached
+    try:
+        with open(f'/proc/{pid}/stat', 'rb') as f:
+            data = f.read()
+        # comm field is wrapped in parens and may contain spaces or
+        # parens itself — find the LAST ')' before splitting.
+        rparen = data.rindex(b')')
+        rest = data[rparen + 2:].split()
+        # Field 22 (1-indexed) is starttime in clock ticks; index 19
+        # in `rest` because rest starts at field 3 (state).
+        starttime_ticks = int(rest[19])
+        boot = None
+        with open('/proc/stat') as f:
+            for line in f:
+                if line.startswith('btime '):
+                    boot = int(line.split()[1])
+                    break
+        if boot is None:
+            raise ValueError('btime not found')
+        clk_tck = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
+        result = datetime.fromtimestamp(boot + starttime_ticks / clk_tck)
+    except (OSError, ValueError, IndexError, KeyError):
+        result = datetime.now()
+    _worker_started_by_pid[pid] = result
+    return result
+
+
+def _proc_rss_bytes() -> Optional[int]:
+    """RSS of the current process in bytes, or None if /proc unavailable."""
+    try:
+        with open('/proc/self/status') as f:
+            for line in f:
+                if line.startswith('VmRSS:'):
+                    return int(line.split()[1]) * 1024  # kB → bytes
+    except OSError:
+        pass
+    return None
+
+
+def _cgroup_memory() -> Tuple[Optional[int], Optional[int]]:
+    """(used_bytes, limit_bytes) from cgroup v2. (None, None) outside cgroups
+    or when memory is unrestricted."""
+    used: Optional[int] = None
+    limit: Optional[int] = None
+    try:
+        used = int(Path('/sys/fs/cgroup/memory.current').read_text().strip())
+    except (OSError, ValueError):
+        pass
+    try:
+        raw = Path('/sys/fs/cgroup/memory.max').read_text().strip()
+        if raw != 'max':
+            limit = int(raw)
+    except (OSError, ValueError):
+        pass
+    return used, limit
+
+
+def _cgroup_cpu_limit() -> Optional[float]:
+    """Effective CPU limit as a float number of cores. None if unrestricted
+    or cgroup v2 unavailable. The value comes from the same file the
+    gunicorn-worker fix reads (``/sys/fs/cgroup/cpu.max``)."""
+    try:
+        raw = Path('/sys/fs/cgroup/cpu.max').read_text().strip()
+        quota_str, period_str = raw.split()
+        if quota_str == 'max':
+            return None
+        return int(quota_str) / int(period_str)
+    except (OSError, ValueError):
+        return None
+
+
+def gather_server_info() -> Dict[str, Any]:
+    """Worker-scoped runtime snapshot for the Admin → Server Information card.
+
+    Cheap to call (a handful of file reads). Safe to expose without auth
+    headers other than the existing VIEW_SYSTEM_CONFIG gate — there are no
+    secrets here, and every probe is scoped to this worker / this cgroup.
+
+    Returned values reflect *this worker process*. With gunicorn's 33+
+    workers per pod, the same admin user reloading the Configuration tab
+    can land on a different worker each time and see different numbers.
+    The card UI calls this out explicitly.
+    """
+    cg_used, cg_limit = _cgroup_memory()
+    started = _worker_start_time()
+    return {
+        'pod_hostname':      socket.gethostname(),
+        'worker_pid':        os.getpid(),
+        'worker_started':    started,
+        'worker_uptime':     _uptime(started),
+        'process_rss':       _proc_rss_bytes(),
+        'cgroup_mem_used':   cg_used,
+        'cgroup_mem_limit':  cg_limit,
+        'cgroup_cpu_limit':  _cgroup_cpu_limit(),
+        'gunicorn_workers':  os.environ.get('GUNICORN_WORKERS') or None,
+        'git_sha':           os.getenv('GIT_SHA', '') or None,
+        'build_date':        os.getenv('BUILD_DATE', '') or None,
+        'gathered_at':       datetime.now(),
+    }
+
+
 def gather_runtime_state(app, db) -> Dict[str, Any]:
     """Collect runtime state for the Admin Configuration page.
 
@@ -159,7 +294,8 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         display_tz_name = None
         display_tz_abbr = None
 
-    # --- Application
+    # --- Application (config-shaped facts; runtime instance facts moved
+    # to the Server Information card below)
     application = {
         'config_class':    config_class_name,
         'flask_config':    os.getenv('FLASK_CONFIG', 'development'),
@@ -167,14 +303,12 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'testing':         bool(cfg.get('TESTING')),
         'python_version':  platform.python_version(),
         'flask_version':   getattr(flask, '__version__', 'unknown'),
-        'hostname':        socket.gethostname(),
-        'start_time':      getattr(app, 'start_time', None),
-        'uptime':          _uptime(getattr(app, 'start_time', None)),
         'display_tz':      display_tz_name,
         'display_tz_abbr': display_tz_abbr,
-        'git_sha':         os.getenv('GIT_SHA', '') or None,
-        'build_date':      os.getenv('BUILD_DATE', '') or None,
     }
+
+    # --- Server Information (worker-scoped runtime facts)
+    server = gather_server_info()
 
     # --- Database (per bind)
     databases = []
@@ -250,6 +384,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
 
     return {
         'application':   application,
+        'server':        server,
         'databases':     databases,
         'auth':          auth,
         'caching':       caching_block,
