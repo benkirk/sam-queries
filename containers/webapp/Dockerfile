@@ -2,38 +2,9 @@ FROM python:3 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Bake an image-default /.env so the runtime's `load_dotenv()` (in
-# sam.session, system_status.session, src/config.py) has a sane fallback
-# for in-stack DB connection settings (hostname `mysql`, root/root) and
-# the dev FLASK_SECRET_KEY. compose.yaml's environment block injects the
-# user-tunable knobs (JUPYTERHUB_*, GOOGLE_CALENDAR_*, etc.) — those
-# take precedence because python-dotenv defaults to override=False.
-# Also bake a small in-image debug helper for ad-hoc image-size
-# investigations from inside a running container (not called by code).
-RUN <<'FILE_ENV' cat > /.env
-#-------------------------
-# local container instance
-LOCAL_SAM_DB_SERVER=mysql
-LOCAL_SAM_DB_USERNAME=root
-LOCAL_SAM_DB_PASSWORD=root
-SAM_DB_SERVER=${LOCAL_SAM_DB_SERVER}
-SAM_DB_USERNAME=${LOCAL_SAM_DB_USERNAME}
-SAM_DB_PASSWORD=${LOCAL_SAM_DB_PASSWORD}
-SAM_DB_REQUIRE_SSL=false
-
-#-------------------------
-# system status database
-STATUS_DB_DRIVER=mysql
-STATUS_DB_SERVER=mysql
-STATUS_DB_USERNAME=root
-STATUS_DB_PASSWORD=root
-
-#-------------------------
-# Flask application security
-# WARNING: dev-only key - change for production
-FLASK_SECRET_KEY=dev-only-insecure-key-change-for-production
-FILE_ENV
-
+# In-image debug helper for investigating image bloat / unexpected
+# on-disk state from inside a running container. Invoked manually via
+# `docker compose exec`; not called by repo code.
 RUN <<'FILE_LLD' cat > /usr/bin/list-large-directories && \
     chmod a+rx /usr/bin/list-large-directories
 #!/bin/bash

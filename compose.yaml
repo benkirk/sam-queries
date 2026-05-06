@@ -19,27 +19,51 @@ services:
       - sam-network
     volumes:
       - ./logs/prod:/var/log/sam
+    # Pass the host's `.env` through as a Docker env_file. Every key the
+    # user maintains there (MAIL_*, SAM_LEGACY_*, STATUS_API_*, etc.)
+    # reaches the container without having to be enumerated below.
+    # `required: false` so a fresh clone without `.env` doesn't error.
+    # `environment:` below takes precedence over env_file and provides
+    # defaults for the empty-`.env` case + forces compose-network-only
+    # addresses.
+    env_file:
+      - path: .env
+        required: false
     environment:
       # Each entry is YAML-quoted so future values containing `:`, `#`, `&`,
       # etc. can't surprise the parser. Compose's ${VAR:-default} substitution
       # happens INSIDE these strings — do NOT wrap the default in quotes
       # (those would become literal characters in the value).
-      - "DISABLE_AUTH=0"         # Explicitly disabled — must remain 0 in production
-      - "FLASK_DEBUG=0"
-      - "GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}"   # Pin small default; gunicorn_config.py would otherwise spawn 2·host_cpus+1
-      - "AUDIT_ENABLED=1"
-      - "AUDIT_LOG_PATH=/var/log/sam/model_audit.log"
-      - "JUPYTERHUB_API_URL=https://jupyterhub.hpc.ucar.edu"
-      - "JUPYTERHUB_INSTANCE=stable"
-      - "JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}"
-      - "JUPYTERHUB_CACHE_TTL=300"
+      #
+      # ── DB routing — substituted from .env if user set a value, else
+      #    fall back to compose service-name defaults. If the user
+      #    uncomments PROD in .env, that flows through to in-stack
+      #    containers (intentional pass-through).
+      - "SAM_DB_SERVER=${SAM_DB_SERVER:-mysql}"
+      - "SAM_DB_USERNAME=${SAM_DB_USERNAME:-root}"
+      - "SAM_DB_PASSWORD=${SAM_DB_PASSWORD:-root}"
+      - "SAM_DB_REQUIRE_SSL=${SAM_DB_REQUIRE_SSL:-false}"
       - "STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}"
       - "STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}"
       - "STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}"
       - "STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}"
+      # ── FORCED in-stack — host `.env` localhost variants would point
+      #    out of the docker network. No interpolation here on purpose.
+      - "CACHE_REDIS_URL=redis://cache:6379/0"
+      - "RATELIMIT_STORAGE_URI=redis://cache:6379/1"
+      # ── Per-service application policy
+      - "DISABLE_AUTH=0"         # Explicitly disabled — must remain 0 in production
+      - "FLASK_DEBUG=0"
+      - "AUDIT_ENABLED=1"
+      - "AUDIT_LOG_PATH=/var/log/sam/model_audit.log"
+      # ── Sensible defaults — overridable via .env
+      - "FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-dev-only-insecure-key-change-for-production}"
+      - "GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}"   # Pin small default; gunicorn_config.py would otherwise spawn 2·host_cpus+1
+      - "JUPYTERHUB_API_URL=${JUPYTERHUB_API_URL:-https://jupyterhub.hpc.ucar.edu}"
+      - "JUPYTERHUB_INSTANCE=${JUPYTERHUB_INSTANCE:-stable}"
+      - "JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}"
+      - "JUPYTERHUB_CACHE_TTL=${JUPYTERHUB_CACHE_TTL:-300}"
       - "GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver}"
-      - "CACHE_REDIS_URL=${CACHE_REDIS_URL:-redis://cache:6379/0}"
-      - "RATELIMIT_STORAGE_URI=${RATELIMIT_STORAGE_URI:-redis://cache:6379/1}"
 
     healthcheck:
       # Probe the app's own readiness endpoint, which pings every configured
@@ -70,27 +94,39 @@ services:
       - sam-network
     volumes:
       - ./logs/dev:/var/log/sam
+    # See the `webapp` service for the env_file / environment rationale.
+    env_file:
+      - path: .env
+        required: false
     # Development: Disable Python bytecode caching to avoid stale .pyc issues
     # when adding new files/functions. Remove for production deployment.
     environment:
-      # See the `webapp` service for the YAML-quoting rationale and the
-      # warning about not wrapping ${VAR:-default} values in literal quotes.
+      # ── DB routing (see `webapp` for the pass-through reasoning)
+      - "SAM_DB_SERVER=${SAM_DB_SERVER:-mysql}"
+      - "SAM_DB_USERNAME=${SAM_DB_USERNAME:-root}"
+      - "SAM_DB_PASSWORD=${SAM_DB_PASSWORD:-root}"
+      - "SAM_DB_REQUIRE_SSL=${SAM_DB_REQUIRE_SSL:-false}"
+      - "STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}"
+      - "STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}"
+      - "STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}"
+      - "STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}"
+      # ── FORCED in-stack
+      - "CACHE_REDIS_URL=redis://cache:6379/0"
+      - "RATELIMIT_STORAGE_URI=redis://cache:6379/1"
+      # ── Webdev-specific application policy (no DISABLE_AUTH — keep
+      #    click-login stub default; user picks RBAC tier via UI)
       - "PYTHONDONTWRITEBYTECODE=1"
       - "PYTHONUNBUFFERED=1"
       - "FLASK_DEBUG=1"
       - "AUDIT_ENABLED=1"
       - "AUDIT_LOG_PATH=/var/log/sam/model_audit.log"
-      - "JUPYTERHUB_API_URL=https://jupyterhub.hpc.ucar.edu"
-      - "JUPYTERHUB_INSTANCE=stable"
+      # ── Sensible defaults — overridable via .env
+      - "FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-dev-only-insecure-key-change-for-production}"
+      - "JUPYTERHUB_API_URL=${JUPYTERHUB_API_URL:-https://jupyterhub.hpc.ucar.edu}"
+      - "JUPYTERHUB_INSTANCE=${JUPYTERHUB_INSTANCE:-stable}"
       - "JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}"
-      - "JUPYTERHUB_CACHE_TTL=300"
-      - "STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}"
-      - "STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}"
-      - "STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}"
-      - "STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}"
+      - "JUPYTERHUB_CACHE_TTL=${JUPYTERHUB_CACHE_TTL:-300}"
       - "GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver}"
-      - "CACHE_REDIS_URL=${CACHE_REDIS_URL:-redis://cache:6379/0}"
-      - "RATELIMIT_STORAGE_URI=${RATELIMIT_STORAGE_URI:-redis://cache:6379/1}"
 
     # Important: watch the current directory, re-syncing as needed based on source changes
     develop:
@@ -107,6 +143,8 @@ services:
             - "*.pyc"
             - .git/
             - "*~"
+            - .env       # don't ferry the host .env into /code; env_file
+                         # already passes its values to the container
     healthcheck:
       # Probe the app's own readiness endpoint, which pings every configured
       # DB bind (sam + system_status). Returns 503 if any bind is unreachable,
