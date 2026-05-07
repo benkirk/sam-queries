@@ -19,28 +19,57 @@ services:
       - sam-network
     volumes:
       - ./logs/prod:/var/log/sam
+    # Pass the host's `.env` through as a Docker env_file. Every key the
+    # user maintains there (MAIL_*, SAM_LEGACY_*, STATUS_API_*, etc.)
+    # reaches the container without having to be enumerated below.
+    # `required: false` so a fresh clone without `.env` doesn't error.
+    # `environment:` below takes precedence over env_file and provides
+    # defaults for the empty-`.env` case + forces compose-network-only
+    # addresses.
+    env_file:
+      - path: .env
+        required: false
     environment:
-      - DISABLE_AUTH=0         # Explicitly disabled — must remain 0 in production
-      - FLASK_DEBUG=0
-      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}   # Pin small default; gunicorn_config.py would otherwise spawn 2·host_cpus+1
-      - AUDIT_ENABLED=1
-      - AUDIT_LOG_PATH=/var/log/sam/model_audit.log
-      - JUPYTERHUB_API_URL=https://jupyterhub.hpc.ucar.edu
-      - JUPYTERHUB_INSTANCE=stable
-      - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}
-      - JUPYTERHUB_CACHE_TTL=300
-      - STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}
-      - STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}
-      - STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}
-      - STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}
-      - GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-'https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver'}
-      - CACHE_REDIS_URL=${CACHE_REDIS_URL:-redis://cache:6379/0}
-      - RATELIMIT_STORAGE_URI=${RATELIMIT_STORAGE_URI:-redis://cache:6379/1}
+      # Each entry is YAML-quoted so future values containing `:`, `#`, `&`,
+      # etc. can't surprise the parser. Compose's ${VAR:-default} substitution
+      # happens INSIDE these strings — do NOT wrap the default in quotes
+      # (those would become literal characters in the value).
+      #
+      # ── DB routing — substituted from .env if user set a value, else
+      #    fall back to compose service-name defaults. If the user
+      #    uncomments PROD in .env, that flows through to in-stack
+      #    containers (intentional pass-through).
+      - "SAM_DB_SERVER=${SAM_DB_SERVER:-mysql}"
+      - "SAM_DB_USERNAME=${SAM_DB_USERNAME:-root}"
+      - "SAM_DB_PASSWORD=${SAM_DB_PASSWORD:-root}"
+      - "SAM_DB_REQUIRE_SSL=${SAM_DB_REQUIRE_SSL:-false}"
+      - "STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}"
+      - "STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}"
+      - "STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}"
+      - "STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}"
+      # ── FORCED in-stack — host `.env` localhost variants would point
+      #    out of the docker network. No interpolation here on purpose.
+      - "CACHE_REDIS_URL=redis://cache:6379/0"
+      - "RATELIMIT_STORAGE_URI=redis://cache:6379/1"
+      # ── Per-service application policy
+      - "DISABLE_AUTH=0"         # Explicitly disabled — must remain 0 in production
+      - "FLASK_DEBUG=0"
+      - "AUDIT_ENABLED=1"
+      - "AUDIT_LOG_PATH=/var/log/sam/model_audit.log"
+      # ── Sensible defaults — overridable via .env
+      - "FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-dev-only-insecure-key-change-for-production}"
+      - "GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}"   # Pin small default; gunicorn_config.py would otherwise spawn 2·host_cpus+1
+      - "JUPYTERHUB_API_URL=${JUPYTERHUB_API_URL:-https://jupyterhub.hpc.ucar.edu}"
+      - "JUPYTERHUB_INSTANCE=${JUPYTERHUB_INSTANCE:-stable}"
+      - "JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}"
+      - "JUPYTERHUB_CACHE_TTL=${JUPYTERHUB_CACHE_TTL:-300}"
+      - "GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver}"
 
     healthcheck:
-      test: |
-        python -c "import sam; import sys; sys.exit(0)"
-        sam-search user csgteam
+      # Probe the app's own readiness endpoint, which pings every configured
+      # DB bind (sam + system_status). Returns 503 if any bind is unreachable,
+      # so the webapp is only marked healthy once both databases are queryable.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:5050/api/v1/health/ready', timeout=3).read()\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -65,25 +94,39 @@ services:
       - sam-network
     volumes:
       - ./logs/dev:/var/log/sam
+    # See the `webapp` service for the env_file / environment rationale.
+    env_file:
+      - path: .env
+        required: false
     # Development: Disable Python bytecode caching to avoid stale .pyc issues
     # when adding new files/functions. Remove for production deployment.
     environment:
-      - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONUNBUFFERED=1
-      - FLASK_DEBUG=1
-      - AUDIT_ENABLED=1
-      - AUDIT_LOG_PATH=/var/log/sam/model_audit.log
-      - JUPYTERHUB_API_URL=https://jupyterhub.hpc.ucar.edu
-      - JUPYTERHUB_INSTANCE=stable
-      - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}
-      - JUPYTERHUB_CACHE_TTL=300
-      - STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}
-      - STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}
-      - STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}
-      - STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}
-      - GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-'https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver'}
-      - CACHE_REDIS_URL=${CACHE_REDIS_URL:-redis://cache:6379/0}
-      - RATELIMIT_STORAGE_URI=${RATELIMIT_STORAGE_URI:-redis://cache:6379/1}
+      # ── DB routing (see `webapp` for the pass-through reasoning)
+      - "SAM_DB_SERVER=${SAM_DB_SERVER:-mysql}"
+      - "SAM_DB_USERNAME=${SAM_DB_USERNAME:-root}"
+      - "SAM_DB_PASSWORD=${SAM_DB_PASSWORD:-root}"
+      - "SAM_DB_REQUIRE_SSL=${SAM_DB_REQUIRE_SSL:-false}"
+      - "STATUS_DB_DRIVER=${STATUS_DB_DRIVER:-mysql}"
+      - "STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}"
+      - "STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}"
+      - "STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}"
+      # ── FORCED in-stack
+      - "CACHE_REDIS_URL=redis://cache:6379/0"
+      - "RATELIMIT_STORAGE_URI=redis://cache:6379/1"
+      # ── Webdev-specific application policy (no DISABLE_AUTH — keep
+      #    click-login stub default; user picks RBAC tier via UI)
+      - "PYTHONDONTWRITEBYTECODE=1"
+      - "PYTHONUNBUFFERED=1"
+      - "FLASK_DEBUG=1"
+      - "AUDIT_ENABLED=1"
+      - "AUDIT_LOG_PATH=/var/log/sam/model_audit.log"
+      # ── Sensible defaults — overridable via .env
+      - "FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-dev-only-insecure-key-change-for-production}"
+      - "JUPYTERHUB_API_URL=${JUPYTERHUB_API_URL:-https://jupyterhub.hpc.ucar.edu}"
+      - "JUPYTERHUB_INSTANCE=${JUPYTERHUB_INSTANCE:-stable}"
+      - "JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}"
+      - "JUPYTERHUB_CACHE_TTL=${JUPYTERHUB_CACHE_TTL:-300}"
+      - "GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver}"
 
     # Important: watch the current directory, re-syncing as needed based on source changes
     develop:
@@ -95,14 +138,18 @@ services:
             - containers/
             - logs/
             - collectors/logs/
+            - conda-env/
             - __pycache__/
             - "*.pyc"
             - .git/
             - "*~"
+            - .env       # don't ferry the host .env into /code; env_file
+                         # already passes its values to the container
     healthcheck:
-      test: |
-        python -c "import sam; import sys; sys.exit(0)"
-        sam-search user csgteam
+      # Probe the app's own readiness endpoint, which pings every configured
+      # DB bind (sam + system_status). Returns 503 if any bind is unreachable,
+      # so the webdev is only marked healthy once both databases are queryable.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:5050/api/v1/health/ready', timeout=3).read()\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -133,15 +180,21 @@ services:
       context: containers/sam-sql-dev
       dockerfile: Dockerfile
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: sam
+      MYSQL_ROOT_PASSWORD: "root"
+      MYSQL_DATABASE: "sam"
     volumes:
       - samuel-mysql-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
     healthcheck:
-      # Verify MySQL is up AND the sam database is queryable.
-      # This prevents the webapp from starting before the restore completes.
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -proot && mysql -h localhost -u root -proot sam -e 'SELECT 1'"]
+      # Use 127.0.0.1 (TCP) — NOT localhost (which would use the Unix socket).
+      # During first-run init, MySQL serves init scripts (incl. the backup
+      # restore) on a socket-only instance with --skip-networking, so a
+      # socket-based ping can give a false positive long before the restore
+      # is finished. TCP only opens after init completes and the real mysqld
+      # restarts. Verifying both `sam` and `system_status` ensures the webapp
+      # never starts before the system_status schema is in place — see
+      # scripts/ci/wait-for-mysql.sh for the same approach in CI.
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 3306 -u root -proot -e 'SELECT 1' && mysql -h 127.0.0.1 -P 3306 -u root -proot sam -e 'SELECT 1' && mysql -h 127.0.0.1 -P 3306 -u root -proot system_status -e 'SELECT 1'"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -173,13 +226,15 @@ services:
       context: containers/sam-sql-dev
       dockerfile: Dockerfile
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: sam
+      MYSQL_ROOT_PASSWORD: "root"
+      MYSQL_DATABASE: "sam"
     volumes:
       - samuel-mysql-test-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -proot && mysql -h localhost -u root -proot sam -e 'SELECT 1'"]
+      # See the `mysql` service above for the rationale on TCP vs socket and
+      # on verifying both `sam` and `system_status` databases.
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 3306 -u root -proot -e 'SELECT 1' && mysql -h 127.0.0.1 -P 3306 -u root -proot sam -e 'SELECT 1' && mysql -h 127.0.0.1 -P 3306 -u root -proot system_status -e 'SELECT 1'"]
       interval: 10s
       timeout: 5s
       retries: 30

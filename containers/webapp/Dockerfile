@@ -1,39 +1,12 @@
 FROM python:3 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
-    && apt-get install -y \
-               rsync git git-lfs \
-    && pip install --upgrade pip \
-    && rm -rf /var/lib/apt/lists/*
 
-RUN echo "Creating default .env" && \
-    <<'FILE1' cat > /.env && \
-    <<'FILE2' cat > /usr/bin/list-large-directories && \
-    chmod a+rx /usr/bin/list-large-directories && \
-    echo "Done"
-#-------------------------
-# local container instance
-LOCAL_SAM_DB_SERVER=mysql
-LOCAL_SAM_DB_USERNAME=root
-LOCAL_SAM_DB_PASSWORD=root
-SAM_DB_SERVER=${LOCAL_SAM_DB_SERVER}
-SAM_DB_USERNAME=${LOCAL_SAM_DB_USERNAME}
-SAM_DB_PASSWORD=${LOCAL_SAM_DB_PASSWORD}
-SAM_DB_REQUIRE_SSL=false
-
-#-------------------------
-# system status database
-STATUS_DB_DRIVER=mysql
-STATUS_DB_SERVER=mysql
-STATUS_DB_USERNAME=root
-STATUS_DB_PASSWORD=root
-
-#-------------------------
-# Flask application security
-# WARNING: dev-only key - change for production
-FLASK_SECRET_KEY=dev-only-insecure-key-change-for-production
-FILE1
+# In-image debug helper for investigating image bloat / unexpected
+# on-disk state from inside a running container. Invoked manually via
+# `docker compose exec`; not called by repo code.
+RUN <<'FILE_LLD' cat > /usr/bin/list-large-directories && \
+    chmod a+rx /usr/bin/list-large-directories
 #!/bin/bash
 
 dirs="/home /mnt /tmp /opt /usr /var /container"
@@ -51,11 +24,12 @@ for dir in ${dirs}; do
         du 2>/dev/null --block-size=1MiB --threshold=${THRESHOLD_SIZE_MB}MiB --separate-dirs ${dir} | sort -n
     fi
 done
-FILE2
+FILE_LLD
 
 WORKDIR /code
 COPY . .
-RUN pip install -e ".[test]"
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -e ".[test]"
 
 # Optional build provenance - set by CI via --build-arg; empty locally.
 # Placed AFTER pip install so a changing SHA does not invalidate the install layer.

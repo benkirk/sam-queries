@@ -77,6 +77,22 @@ def pytest_configure(config):
     os.environ.setdefault("FLASK_CONFIG", "testing")
     os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
 
+    # Test-only placeholder values for SAM_DB_*/STATUS_DB_*. The test
+    # suite never reads these — sessions are routed through SAM_TEST_DB_URL
+    # (mysql-test) via `create_app(config_overrides=…)`, and CLI tests
+    # patch `cli.cmds.search.Session`. They exist purely to satisfy the
+    # fail-fast `SAMConfig.validate()` calls in webapp.run.create_app and
+    # the click CLI entry points, which would otherwise throw
+    # `EnvironmentError` during test collection on hosts whose `.env`
+    # has the SAM_DB_* / STATUS_DB_* blocks commented out (the new
+    # `.env.example` default state).
+    os.environ.setdefault("SAM_DB_USERNAME",    "test-placeholder-user")
+    os.environ.setdefault("SAM_DB_PASSWORD",    "test-placeholder-pass")
+    os.environ.setdefault("SAM_DB_SERVER",      "test-placeholder-host")
+    os.environ.setdefault("STATUS_DB_USERNAME", "test-placeholder-user")
+    os.environ.setdefault("STATUS_DB_PASSWORD", "test-placeholder-pass")
+    os.environ.setdefault("STATUS_DB_SERVER",   "test-placeholder-host")
+
     url = os.environ.get("SAM_TEST_DB_URL")
     if not url:
         pytest.exit(
