@@ -321,7 +321,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
     valid_states = ('running', 'pending', 'held')
     valid_metrics = ('jobs', 'cores', 'gpus', 'nodes')
     valid_groups = ('user', 'project')
-    valid_rank_by = ('peak', 'current')
+    valid_rank_by = ('current', 'peak')
 
     state = request.args.get('state', 'running')
     if state not in valid_states:
@@ -332,9 +332,9 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
     group_by = request.args.get('group_by', 'user')
     if group_by not in valid_groups:
         group_by = 'user'
-    rank_by = request.args.get('rank_by', 'peak')
+    rank_by = request.args.get('rank_by', 'current')
     if rank_by not in valid_rank_by:
-        rank_by = 'peak'
+        rank_by = 'current'
 
     # `nodes` only exists for state='running' (no nodes_pending /
     # nodes_held columns in QueueRollupMetricsMixin). Clamp to cores
