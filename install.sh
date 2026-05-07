@@ -24,18 +24,24 @@ TARGET_DIR="${SAMQ_HOME:-${HOME}/codes/project_samuel/${REPO_BRANCH}}"
 # --------------------------------------------
 # Command-line arguments
 # --------------------------------------------
+EXPLICIT_DIR=""
+EXPLICIT_REPO=""
+EXPLICIT_BRANCH=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -r|--repo)
             REPO_URL="$2"
+            EXPLICIT_REPO=1
             shift 2
             ;;
         -b|--branch)
             REPO_BRANCH="$2"
+            EXPLICIT_BRANCH=1
             shift 2
             ;;
         -d|--dir)
             TARGET_DIR="$2"
+            EXPLICIT_DIR=1
             shift 2
             ;;
         -h|--help)
@@ -47,6 +53,15 @@ Options:
   -b, --branch <branch>     Specify the git branch to clone (default: ${REPO_BRANCH})
   -d, --dir <directory>     Specify the installation directory (default: ${TARGET_DIR})
   -h, --help                Show this help message
+
+Run modes:
+  curl … | bash             Clones to <default-dir>; ideal for one-shot install.
+  ./install.sh              When invoked from a valid checkout (compose.yaml,
+                            .env.example, .git/ all present alongside this
+                            script), and no -d/-r/-b is given, the script
+                            installs IN-PLACE — it does not re-clone or change
+                            the branch. Pass any flag to force the legacy
+                            clone-to-target behaviour.
 EOF
             exit 0
             ;;
@@ -56,6 +71,36 @@ EOF
             ;;
     esac
 done
+
+# --------------------------------------------
+# In-place detection — running from a checkout?
+# --------------------------------------------
+# When invoked as `./install.sh` from inside a tree that already
+# looks like sam-queries, treat that tree as the install dir and
+# skip the clone/fetch/checkout/pull dance. `curl … | bash` falls
+# through to the legacy clone path because BASH_SOURCE[0] in piped
+# mode points at /dev/fd/* or is empty — `[[ -f … ]]` rejects it.
+# Any explicit -d/-r/-b also disables in-place detection (the user
+# has signalled they want a specific clone target).
+IN_PLACE=""
+if [[ -z "${EXPLICIT_DIR}" && -z "${EXPLICIT_REPO}" && -z "${EXPLICIT_BRANCH}" ]]; then
+    SCRIPT_PATH="${BASH_SOURCE[0]:-}"
+    if [[ -n "${SCRIPT_PATH}" && -f "${SCRIPT_PATH}" ]]; then
+        SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" >/dev/null 2>&1 && pwd)"
+        # `.git` may be a directory (normal clone), a file (worktree, where
+        # it points at the real gitdir), or absent. `git rev-parse
+        # --is-inside-work-tree` is the canonical "is this a git working
+        # tree?" check and handles all three cases. Marker files
+        # (compose.yaml, .env.example) make sure it's THIS project, not
+        # some unrelated repo that happens to wrap us.
+        if [[ -f "${SCRIPT_DIR}/compose.yaml" \
+           && -f "${SCRIPT_DIR}/.env.example" ]] \
+           && git -C "${SCRIPT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            TARGET_DIR="${SCRIPT_DIR}"
+            IN_PLACE=1
+        fi
+    fi
+fi
 
 # --------------------------------------------
 # Helpers
@@ -128,19 +173,23 @@ check_docker_compose_version
 # --------------------------------------------
 # Clone or update repo
 # --------------------------------------------
-step "Preparing repository at ${TARGET_DIR}"
-
-if [[ -d "${TARGET_DIR}/.git" ]]; then
+if [[ -n "${IN_PLACE}" ]]; then
+    step "Using existing checkout at ${TARGET_DIR} (in-place mode)"
+    echo "  Detected sam-queries tree alongside this script — skipping clone."
+    echo "  Branch and remote are left as-is; run 'git pull' yourself if needed."
+elif [[ -d "${TARGET_DIR}/.git" ]]; then
+    step "Preparing repository at ${TARGET_DIR}"
     echo "Repository already exists. Updating..."
     git -C "${TARGET_DIR}" fetch --all --quiet
     git -C "${TARGET_DIR}" checkout "${REPO_BRANCH}" --quiet
     git -C "${TARGET_DIR}" pull --ff-only --quiet
 else
+    step "Preparing repository at ${TARGET_DIR}"
     echo "Cloning branch '${REPO_BRANCH}' from ${REPO_URL} ..."
     git clone --branch "${REPO_BRANCH}" "${REPO_URL}" "${TARGET_DIR}"
 fi
 
-# Ensure git-lfs files are fetched
+# Ensure git-lfs files are fetched (cheap no-op if already present)
 git -C "${TARGET_DIR}" lfs pull
 
 # --------------------------------------------
