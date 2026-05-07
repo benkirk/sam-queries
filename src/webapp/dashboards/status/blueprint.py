@@ -392,7 +392,11 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
             rank_by=rank_by,
         )
 
-    chart_svg = generate_user_proj_stacked_area(timeseries)
+    # group_by=user → username legend → user modal; group_by=project →
+    # projcode legend → project modal. svg-legend-links.js dispatches.
+    chart_svg = generate_user_proj_stacked_area(
+        timeseries, link_kind='user' if group_by == 'user' else 'project',
+    )
 
     # Two of these cards render on the landing page (one per system
     # tab), so the chart wrapper div needs a scope-unique id —
