@@ -12,19 +12,29 @@ This script does double duty:
 
 2. **Benchmark / capacity-planning** — prints wall-clock timing and
    rows/sec for each phase (tick fetch, integration, reconciliation).
-   The intent is to **revisit this on a cadence** as upu rows accumulate:
+   The intent is to **revisit this on a cadence** as upu rows accumulate.
 
-   - **Today** (initial Phase-B rollout): ~17 h, ~85k rows.
-   - **Week 1**: ~7 days, ~700k rows. Expect linear growth.
-   - **Month 1**: ~30 days, ~3M rows. Decision point — at this scale,
-     we want UI-eligible windows to stay sub-second. If a 1-day window
-     still completes in <500 ms but a 1-month window blows past 10 s,
-     we have empirical evidence for the daily-summary table proposed
-     in the design doc.
+   Measured against prod CIRRUS Postgres on 2026-05-07 (2.8 days of
+   data, 524k rows combined across derecho+casper, ~50k rows/s
+   integration throughput):
+
+   | Window  | derecho | casper |
+   |---------|---------|--------|
+   | 1 h     | 0.24 s  | 0.34 s |
+   | 6 h     | 0.56 s  | 0.88 s |
+   | 24 h    | 1.80 s  | 2.66 s |
+   | full 67 h | 4.6 s | 6.1 s  |
+
+   The 24 h numbers are **already past the 500 ms UI target** — see
+   "daily-summary decision" below. Linear extrapolation (we're nowhere
+   near memory-bound yet) puts a 1-month window at ~120 s, which would
+   exceed the 30 s offline-job threshold. The empirical evidence the
+   design doc asked for is essentially in.
 
    Each timed phase prints rows processed and wall-clock seconds, so a
    `git diff` of two runs can answer "did we cross the line yet?"
-   without re-deriving anything.
+   without re-deriving anything. Subsequent runs should append a row
+   to the table above rather than rewrite it.
 
 ## What "the daily-summary decision" hinges on
 
@@ -35,6 +45,11 @@ queries become a UI need. The right time to build it is when:
 - A reporting window (1 month) takes >30 s, blocking offline jobs.
 - DB row growth makes the chunked Python aggregation memory-bound on
   the smallest deployable host.
+
+As of 2026-05-07 the first threshold is crossed (24 h window > 1 s on
+both systems); the second is on track to be crossed within the first
+month of capture. The third is still far off — full-window integration
+still runs at ~50k rows/s with no signs of memory pressure.
 
 This script is the instrument we'll measure those thresholds with.
 

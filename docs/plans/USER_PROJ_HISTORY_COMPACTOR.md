@@ -1,252 +1,395 @@
-# Run-length compression for `user_proj_queue_status`
+# `user_proj_queue_status` run-length compaction (Option A)
 
-## Context
+**Status**: parked 2026-05-07. Pick up from §"Order of operations" below.
+
+## Why this exists
 
 `user_proj_queue_status` snapshots every (user, project_code, queue)
-tuple every ~5 min. A long-running job whose 10 counters
-(`running_jobs`, `cores_allocated`, …) don't change for hours generates
-identical interior rows that contain no information. Question: how
-common is that, and what's the cheapest way to compress it?
-
-Prior art in this repo (commit 6922b73) does RLE at *render time only*
-on numpy arrays (`src/webapp/dashboards/charts.py:689-720`); not
-reusable for storage but confirms the team is comfortable with the
-pattern.
-
-## Phase 0 — measurement (DONE, 2026-05-07 against prod CIRRUS)
+tuple every ~5 min on derecho and casper. Phase A landed in PR #224
+(live since 2026-05-04). After 2.8 days of capture, prod data on
+csg-postgres.k8s.ucar.edu showed:
 
 ```
 total_rows  | run_starts | redundant_interior
-   527,310  |     1,637  |          509,822     ← 96.7% redundant
+   527,310  |     1,637  |          509,822     (96.7%)
+
+num_runs | avg_len | p50 | p95 | p99 | max_len
+  17,488 |   30.15 |   2 | 135 | 806 |     811
 ```
 
+Top consumers had `tick_count = 794+` for a 67h window — nearly every
+parent tick, all with byte-identical counters. Run-length distribution
+is bimodal: median 2 ticks (short jobs) but P99 of 806 ticks
+(essentially the full capture window — long-running jobs that never
+changed state).
+
+Storage baseline (combined derecho + casper, 2026-05-07):
+- 133 MB total (`pg_total_relation_size`)
+- 63 MB heap + 70 MB indexes
+- ~267 B/row, ~187k rows/day → **~17 GB/year on disk linearly extrapolated**
+
+Lookup-table baseline:
+- `status_users`: 967 (+141/day, tapering)
+- `project_codes`: 534 (+64/day, tapering)
+
+After Option A compaction the table footprint drops to ~5–6 MB at
+current scale, **~570 MB/year** projected.
+
+## What 2026-05-07 attempted, and why it didn't ship
+
+We started down "Option B" (no schema change, periodic compactor that
+keeps run endpoints and deletes interior duplicates, plus a
+partition-aware integration in `get_user_proj_usage`).
+
+**The blocker**: the read path can't disambiguate two cases that look
+byte-identical in row data:
+
+| Pattern | Same-counter row pair | Gap | Correct span for first row |
+|---|---|---|---|
+| Compacted contiguous run | `T_start`, `T_end` | hours | `T_end - T_start` (full run) |
+| Two unrelated jobs / user-gone-then-back | `T_a`, `T_b` | minutes-to-hours | `parent_dt` (1 tick — user was idle in between) |
+
+Both look identical: same counters, gap > tick interval, no rows in
+between. With a tight compactor threshold (auto-detected
+`median(parent_dt) × 1.2`) the second pattern is preserved correctly,
+but post-compaction it's indistinguishable from the first.
+
+Validation against prod showed **~10% over-count** on derecho cpu
+(`upu = 21,285,822` vs `qs = 19,313,996` core-hours) — driven by users
+running multiple discrete jobs separated by idle periods that
+coincidentally had the same allocation shape (cores/gpus/nodes).
+
+We tried several read-path rules:
+
+- Simple `span = next_in_partition - this`: over-counts coincidental
+  gaps.
+- LAG-based "close-same-counter LAG → use parent_dt; else use
+  next-in-partition": over-counts when the FIRST row after a gap has
+  a same-counter next far away.
+- Hybrid with cap: under-counts compacted long runs.
+
+**There is no rule that gets both cases right without metadata on the
+row.** This is fundamental — the storage representation literally
+contains the same bits in both cases.
+
+We considered a tick-presence guard in the compactor (only bridge if
+every interior parent tick had a row for this partition pre-compaction).
+That works for the FIRST compaction pass but fails on re-runs: once
+interior rows are deleted, "absence at interior tick" becomes
+ambiguous between "compactor cleaned up" and "user was gone". Long
+active runs would accumulate ~365 checkpoint rows per year instead of
+staying at 2.
+
+## Recommended approach: Option A (one nullable column)
+
+Add **one** nullable column to `user_proj_queue_status`:
+
+```python
+effective_until = Column(
+    DateTime, nullable=True, index=True,
+    doc="Last parent tick this row's counters apply for. NULL means "
+        "single-tick (== timestamp). Set by the compactor when "
+        "bridging an interior run.",
+)
 ```
-num_runs | avg_len | max_len | p50 | p95 | p99 | total_rows | drop_keep_endpoints | drop_keep_one
-  17,488 |   30.15 |     811 |   2 | 135 | 806 |    527,310 |             500,022 |       509,822
-                                                                      ↑ 94.8%             ↑ 96.7%
+
+The data becomes self-describing. The read path has zero ambiguity:
+
+```python
+# For each row, span = (parent tick STRICTLY AFTER effective_until) - timestamp
+# Where effective_until is NULL, treat as effective_until = timestamp,
+# which makes span = next_parent_tick - timestamp (current behavior).
+eu_us = np.where(has_eu, eu_arr.astype('int64'), ts_int_us)
+eu_next_idx = np.minimum(
+    np.searchsorted(ticks, eu_us.astype('datetime64[us]'), side='right'),
+    n_ticks - 1,
+)
+span_sec = (ticks[eu_next_idx].astype('int64') - ts_int_us
+            ).astype(np.float64) / 1e6
 ```
 
-**Headline numbers:**
-- Compression ceiling: **96.7%** (one row per run, schema-level RLE)
-- Compression realistic: **94.8%** (keep both endpoints, no schema change)
-- Δ between the two options: **9,800 rows = 1.9% of total** — **negligible**
-- Run-length distribution is bimodal: median 2 ticks (~10 min) but P99 of
-  806 ticks is essentially the full window (jobs that never changed
-  state during 67h of capture)
+Three lines, no LAG inspection, no heuristics, byte-identical to
+current logic on uncompacted data (`effective_until = NULL`
+everywhere).
 
-## A vs B — re-traded with measured data
+### Why this is the right call (re-traded vs Option B)
 
-| | **Option A** (ingest-time RLE w/ `effective_until`) | **Option B** (periodic compaction, keep endpoints) |
+| | Option A (`effective_until`) | Option B (no schema change) |
 |---|---|---|
-| Compression | 96.7% | 94.8% |
-| Schema change | + 1 nullable column + Alembic migration | none |
-| Ingest hot path | read+update per upu row (~3700 PK lookups/tick) | unchanged |
-| **Read path change** | **same change required** | **same change required** |
-| New code | ingest dedup + migration | compaction job + scheduled-task wiring |
-| Backfill | one-time `UPDATE` over 524k rows | one-time `DELETE` over 524k rows |
-| Race conditions | none (single-writer ingest) | trivial (DELETE older-than-T, no conflict with INSERTs at "now") |
-| Reversibility | hard (column committed to schema) | easy (just stop running the compactor; data continues to arrive uncompressed) |
+| Compression | 96.7% | 94.8% (1.9% less, negligible) |
+| Schema change | 1 nullable column + Alembic migration | none |
+| Read-path correctness | unambiguous in all states | **broken** — over-counts coincidental gaps by ~10% |
+| Backward compat | NULL = single-tick = old behavior | n/a |
+| Read-path complexity | 3 lines | LAG inspection, mode flags, or heuristics |
+| Compactor complexity | identifies run + sets `effective_until` on start + deletes rest | identifies run + deletes interior; keeps both ends |
 
-The critical insight: **the read-path change is the same in both cases**.
-Either way, the integration in `get_user_proj_usage` must switch from
-"dt = next-parent-tick gap" to "dt = next-row-in-partition gap" (with
-left-step fallback for the partition's last row). So that work is
-unavoidable; Option A's 1.9% extra compression buys nothing the read
-path needs.
+The 1.9% extra compression isn't the case for Option A — the case is
+**unambiguous semantics**. Option B's read-path bug isn't a
+performance issue, it's a correctness issue.
 
-**Recommendation: Option B.** The user's instinct ("compact rows
-after the fact by dropping intermediate duplicates") is the right
-call given the data — same read-path change, no schema migration,
-fully reversible, ~equal compression.
+## Schema migration
 
-## Recommended approach (Option B)
+`migrations/system_status/versions/0004_user_proj_queue_effective_until.py`:
 
-**Ordering (mandatory):** read-path change lands and is verified BEFORE
-the compactor runs. After compaction, the existing left-step integration
-that uses `dt = next_parent_tick - this_tick` is wrong by ~7× for a
-typical 35-minute run (it would credit only the two kept endpoints' 5-min
-ticks instead of the full 35 minutes). The new span-based integration
-generalizes the old one: on uncompacted data it reproduces the current
-result at float64 epsilon (regression-tested via the validate script);
-only after that's in place do we run the compactor.
+```python
+"""user_proj_queue_status: add effective_until for run-length compaction.
 
-### B.1 Compactor — SQL window query, deletes "interior of uniform run"
+Revision ID: 0004_user_proj_queue_effective_until
+Revises:    0003_user_proj_queue_status
+"""
+import sqlalchemy as sa
+from alembic import op
 
-A row qualifies for deletion when:
-- It has both a previous and next row in its (user, project, queue)
-  partition (LAG and LEAD non-null), AND
-- All 10 counters match the previous AND next row's counters, AND
-- **Both neighbor gaps are ≤ `max_run_gap` (default 15 min)** — guards
-  against collapsing genuinely-unrelated job A and job B that
-  coincidentally have identical counters but are separated by the user
-  vanishing from the snapshot for several ticks. LAG/LEAD operates on
-  *rows* not *ticks*, so without this guard a sandwich like
-  "T+0 cores=128, gone T+5–T+20, T+25 cores=128 (different job)" would
-  look like one continuous run. 15 min = 3× the current 5-min tick
-  interval, comfortable safety factor; parameterize so it can track tick
-  interval if that ever changes.
-- The row is older than a "settled" cutoff (e.g. 30 min) so we never
-  mutate the freshest tail.
+revision = '0004_user_proj_queue_effective_until'
+down_revision = '0003_user_proj_queue_status'
+
+def upgrade():
+    op.add_column(
+        'user_proj_queue_status',
+        sa.Column('effective_until', sa.DateTime(), nullable=True),
+    )
+    op.create_index(
+        'ix_user_proj_queue_effective_until',
+        'user_proj_queue_status',
+        ['effective_until'],
+    )
+
+def downgrade():
+    op.drop_index(
+        'ix_user_proj_queue_effective_until',
+        table_name='user_proj_queue_status',
+    )
+    op.drop_column('user_proj_queue_status', 'effective_until')
+```
+
+Per `project_alembic_system_status.md` memory: system_status schema
+changes go through Alembic, not `db.create_all`.
+
+ORM update in `src/system_status/models/user_proj_queues.py` — add the
+column to `UserProjQueueStatus`. Existing UNIQUE constraint
+`(timestamp, user_id, project_code_id, queue_id)` stays valid;
+`timestamp` is run-start, still unique per tuple.
+
+## Compactor script
+
+`scripts/compact_user_proj_queue_status.py` (NEW). CLI flags:
+
+- `--dry-run` (default) — count what would change, no writes.
+- `--execute` — actually mutate.
+- `--max-row-gap-seconds N` — defaults to auto-detected
+  `median(parent_dt) × 1.2` per system. Override for diagnostic runs.
+- `--settled-cutoff-minutes M` (default 30) — leave the freshest
+  rows alone.
+- `--system {derecho,casper,all}` (default `all`).
+
+Auto-detect threshold per system:
 
 ```sql
-WITH neighbored AS (
-  SELECT user_proj_queue_status_id,
-         "timestamp",
+SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM dt))
+FROM (
+  SELECT timestamp - lag(timestamp) OVER (ORDER BY timestamp) AS dt
+  FROM derecho_status   -- or casper_status
+) sub
+WHERE dt IS NOT NULL;
+```
+
+Multiply result by 1.2 to get the per-system threshold in seconds.
+Important: this auto-tracks any future tick-interval change AND
+correctly refuses to bridge across collector downtime gaps (those
+are >> median × 1.2).
+
+Compaction itself, two-pass with shared CTE / temp table:
+
+```sql
+-- Pass 1: identify maximal uniform runs and stamp effective_until on
+-- the run-start row.
+WITH ranked AS (
+  SELECT user_proj_queue_status_id, "timestamp",
+         user_id, project_code_id, queue_id,
          running_jobs, pending_jobs, held_jobs,
          cores_allocated, gpus_allocated, nodes_allocated,
          cores_pending, gpus_pending, cores_held, gpus_held,
-         LAG(running_jobs)    OVER w AS p_rj,
-         LEAD(running_jobs)   OVER w AS n_rj,
-         /* …same LAG/LEAD for the other 9 counters… */
-         LAG("timestamp")     OVER w AS p_ts,
-         LEAD("timestamp")    OVER w AS n_ts
+         sum(
+           CASE WHEN
+             /* counters changed vs LAG */
+             running_jobs    IS DISTINCT FROM lag(running_jobs)    OVER w OR
+             pending_jobs    IS DISTINCT FROM lag(pending_jobs)    OVER w OR
+             held_jobs       IS DISTINCT FROM lag(held_jobs)       OVER w OR
+             cores_allocated IS DISTINCT FROM lag(cores_allocated) OVER w OR
+             gpus_allocated  IS DISTINCT FROM lag(gpus_allocated)  OVER w OR
+             nodes_allocated IS DISTINCT FROM lag(nodes_allocated) OVER w OR
+             cores_pending   IS DISTINCT FROM lag(cores_pending)   OVER w OR
+             gpus_pending    IS DISTINCT FROM lag(gpus_pending)    OVER w OR
+             cores_held      IS DISTINCT FROM lag(cores_held)      OVER w OR
+             gpus_held       IS DISTINCT FROM lag(gpus_held)       OVER w OR
+             /* gap to LAG > threshold */
+             "timestamp" - lag("timestamp") OVER w > make_interval(secs => :max_gap)
+           THEN 1 ELSE 0 END
+         ) OVER w AS run_id
   FROM user_proj_queue_status
-  WHERE "timestamp" < NOW() - INTERVAL '30 minutes'
+  WHERE "timestamp" < NOW() - make_interval(mins => :settled_cutoff)
+    AND system_id = :sys_id
   WINDOW w AS (PARTITION BY user_id, project_code_id, queue_id
                ORDER BY "timestamp")
+),
+run_bounds AS (
+  SELECT user_id, project_code_id, queue_id, run_id,
+         min("timestamp") AS run_start_ts,
+         max("timestamp") AS run_end_ts,
+         count(*)         AS run_len
+  FROM ranked
+  GROUP BY user_id, project_code_id, queue_id, run_id
+  HAVING count(*) >= 2
 )
+UPDATE user_proj_queue_status u
+SET effective_until = rb.run_end_ts
+FROM run_bounds rb
+WHERE u.user_id          = rb.user_id
+  AND u.project_code_id  = rb.project_code_id
+  AND u.queue_id         = rb.queue_id
+  AND u."timestamp"      = rb.run_start_ts;
+
+-- Pass 2: delete the rest of each run.
 DELETE FROM user_proj_queue_status u
-USING (
-  SELECT user_proj_queue_status_id FROM neighbored
-  WHERE p_rj IS NOT NULL AND n_rj IS NOT NULL
-    AND running_jobs    = p_rj AND running_jobs    = n_rj
-    AND pending_jobs    = p_pj AND pending_jobs    = n_pj
-    AND held_jobs       = p_hj AND held_jobs       = n_hj
-    AND cores_allocated = p_ca AND cores_allocated = n_ca
-    AND gpus_allocated  = p_ga AND gpus_allocated  = n_ga
-    AND nodes_allocated = p_na AND nodes_allocated = n_na
-    AND cores_pending   = p_cp AND cores_pending   = n_cp
-    AND gpus_pending    = p_gp AND gpus_pending    = n_gp
-    AND cores_held      = p_ch AND cores_held      = n_ch
-    AND gpus_held       = p_gh AND gpus_held       = n_gh
-    AND "timestamp" - p_ts <= INTERVAL '15 minutes'
-    AND n_ts - "timestamp" <= INTERVAL '15 minutes'
-) d
-WHERE u.user_proj_queue_status_id = d.user_proj_queue_status_id;
+USING run_bounds rb
+WHERE u.user_id         = rb.user_id
+  AND u.project_code_id = rb.project_code_id
+  AND u.queue_id        = rb.queue_id
+  AND u."timestamp"     >  rb.run_start_ts
+  AND u."timestamp"     <= rb.run_end_ts;
 ```
 
-Idempotent — second run is a no-op (no row has same-counter neighbors
-once interior is gone). First run on prod history would delete ~500k
-rows in one shot; can be batched if the lock window is a concern
-(by `timestamp` daily window, e.g.).
+Materialize `run_bounds` as a temp table (`CREATE TEMP TABLE … AS …`)
+so both statements share it without re-deriving.
 
-### B.2 Manual script + later cron (out of scope for this phase)
+**Idempotent**: second run sees no rows with `len >= 2` because
+interior was already deleted. Re-running on a previously-compacted run
+that has new ticks appended (run still active) extends the existing
+run-start row's `effective_until` by re-running the same SQL — the old
+run-start has the same counters as the new appended ticks, so `run_id`
+lumps them together.
 
-Ship the compactor as a standalone CLI script
-(`scripts/compact_user_proj_queue_status.py`) with a `--dry-run` default
-that reports counts without deleting, and `--execute` to actually run
-the DELETE. User runs manually against prod for the first compaction;
-cron wiring deferred to a follow-up.
+## Order of operations to ship
 
-Suggested flags:
-- `--dry-run` (default) — print "would delete N rows of M" plus a
-  small sample, exit 0. Idempotent and side-effect-free.
-- `--execute` — run the DELETE in a transaction, print rows deleted.
-- `--max-run-gap-minutes` (default 15) — see rationale in B.1.
-- `--settled-cutoff-minutes` (default 30) — don't touch rows newer
-  than this.
-- `--batch-size N` (optional) — if specified, delete in chunks of N
-  by timestamp window, otherwise single DELETE statement (~500k rows
-  for the first prod run; Postgres handles this fine).
+1. **Bootloader: revert the WIP partition-aware integration** in
+   `src/system_status/queries/user_proj_usage.py` from the 2026-05-07
+   branch state. The current code over-counts on uncompacted data
+   (~10% on prod). After revert, run `validate_user_proj_usage.py`
+   against prod (uncompacted) and confirm PASS at float64 epsilon
+   matching the 2026-05-07 baseline (table below).
+2. Alembic migration `0004_user_proj_queue_effective_until` — add the
+   column.
+3. ORM model update in `src/system_status/models/user_proj_queues.py`.
+4. Read-path update in `get_user_proj_usage` to consult
+   `effective_until` per the 3-line snippet in §"Recommended approach".
+5. Run validate script against prod (still all NULL `effective_until`,
+   all rows single-tick) — confirm PASS at float64 epsilon (the new
+   read-path is byte-identical to old logic when `effective_until` is
+   NULL everywhere).
+6. Implement compactor script with `--dry-run` default.
+7. Test compactor in dev against a snapshot of prod data; confirm row
+   count drops from ~530k to ~17,500 and validate still PASSes with
+   the same totals.
+8. Run `--dry-run` against prod; confirm expected ~510k rows
+   would-delete, ~1.5k UPDATEs.
+9. Run `--execute` against prod (user-initiated).
+10. Re-run validate; confirm PASS at float64 epsilon and
+    `pg_total_relation_size('user_proj_queue_status')` drops from
+    133 MB to ~5–6 MB.
+11. Update `docs/USER_PROJ_QUEUE_QUICKSTART.md` retention section with
+    measured post-compaction footprint and the compactor script
+    reference; document `effective_until` semantics.
+12. (Optional, deferred) Wire compactor into a cron / scheduled task
+    so retention stays bounded long-term.
 
-### B.3 Read-path change (`src/system_status/queries/user_proj_usage.py`)
+## Verification baseline (captured 2026-05-07)
 
-Current integration loop (around lines 316–319) computes `value × dt[i]`
-where `dt[i]` is the gap to the next *parent* tick. Change to compute
-`value × span[i]` where `span[i]` is:
+Reconciliation totals on uncompacted prod data — Option A integration
+on compacted data must match these byte-for-byte at float64 epsilon:
 
-```python
-# For each row, partitioned by (user_id, project_code_id, queue_id):
-# span = next_row_in_partition.timestamp - this_row.timestamp
-# fallback (last row in partition): span = next_parent_tick - this_row.timestamp
-```
+| System | core_hours | gpu_hours | node_hours |
+|---|---|---|---|
+| derecho | 19,265,125.099 | 11,683.970 | 159,332.402 |
+| casper | 160,592.774 | 3,877.539 | 33,435.166 |
 
-Implementable in numpy with a per-partition LEAD computed via
-`np.diff` on a sort by `(user_id, project_code_id, queue_id, timestamp)`,
-plus a partition-boundary mask. ~30 lines.
+Reconciliation PASS verdict on every queue, both systems. Max relative
+delta ~1.8e-15 (derecho), ~2e-15 (casper).
 
-**Crucial property:** for an uncompressed series, this new integration
-is mathematically identical to the current one (next-row-in-partition
-== next-parent-tick when every parent tick has a row). So the
-reconciliation continues to PASS at float64 epsilon both before and
-after compaction runs, on the same data.
+After running the compactor, the same totals must reproduce. Storage
+must drop to ~5–6 MB.
 
-### B.4 Reconciliation (`scripts/validate_user_proj_usage.py`)
+## What 2026-05-07 did ship
 
-Mirror the same change in `integrate_queue_status_by_queue` — switch
-from per-parent-tick dt to per-row-in-partition span. ~20 lines. The
-PASS verdict on prod is the regression check.
+- `docs/USER_PROJ_QUEUE_QUICKSTART.md` retention section: replaced
+  the doc's `~3.4 GB/year` estimate (which was wrong even by its own
+  arithmetic) with measured `~17 GB/year` and corrected
+  rows-per-day numbers (combined-systems vs single-system).
+- `scripts/validate_user_proj_usage.py` docstring: replaced the
+  speculative Today/Week 1/Month 1 milestones with the actual
+  measured timing table (24h window already past 1s on both systems
+  pre-compaction, signalling the daily-summary threshold from the
+  Phase-A design doc is approaching).
 
-### B.5 Tests
-
-- Unit test: ingest a synthetic series with known runs, run compactor,
-  assert row count matches expectation.
-- Equivalence test: run `get_user_proj_usage` on uncompressed series
-  AND on the compacted version; assert numerical equality at float64
-  epsilon.
-- Reconciliation test: factory-build a fixture with multi-tick runs,
-  assert `reconcile()` PASS on the compacted fixture.
-
-## Effort
-
-| Task | Lines | Time |
-|---|---|---|
-| Compactor SQL + Python wrapper | ~80 | ½ day |
-| ~~Scheduled-task wiring~~ — deferred, user crons manually | — | — |
-| Read-path span-based integration | ~30 | ½ day |
-| Reconciliation script update | ~20 | ¼ day |
-| Tests (3 cases above) | ~150 | ½ day |
-| Docs update (`USER_PROJ_QUEUE_QUICKSTART.md`) | ~20 | ¼ day |
-
-**Total: ~1.5 days.** No schema migration. No ingest hot-path change.
-No scheduling wiring (user will cron later). Fully reversible —
-stopping the compactor leaves the table to grow back uncompressed.
-
-## Order of operations
-
-1. Implement read-path span-based integration (`get_user_proj_usage`).
-2. Mirror the change in `scripts/validate_user_proj_usage.py`.
-3. Run validate against current prod (uncompacted) — must still PASS
-   with same totals as the 2026-05-07 baseline. **This is the
-   regression check that the new integration generalizes the old.**
-4. Implement compactor script with `--dry-run` default.
-5. Run `--dry-run` against prod — expect ~500k rows would-delete.
-6. Run `--execute` against prod (user-initiated).
-7. Re-run validate script — must PASS with same totals; table size
-   drops from 133 MB to ~5–6 MB.
-8. Update `USER_PROJ_QUEUE_QUICKSTART.md` retention section with the
-   new compacted footprint and the compactor script reference.
-
-## Verification
-
-After implementation:
-1. Run compactor in dev against a snapshot of prod data; confirm row
-   count drops to ~17,500 (matches measured `num_runs`).
-2. Run `validate_user_proj_usage.py` against the compacted snapshot;
-   confirm PASS verdict + total core/GPU/node-hours match the
-   pre-compaction baseline (derecho 19,265,125 / 11,684 / 159,332;
-   casper 160,593 / 3,878 / 33,435 — captured 2026-05-07).
-3. Re-run `pg_total_relation_size('user_proj_queue_status')`; expect
-   ~5–6 MB (vs current 133 MB).
-4. **1-year storage projection** drops from ~17 GB to **~900 MB
-   combined**.
+These edits stand regardless of whether Option A ships. They're
+correct as facts about pre-compaction prod state.
 
 ## Critical files
 
-| File | Change |
+| File | Action |
 |---|---|
-| `src/system_status/queries/` (new file: `compaction.py` or similar) | compactor SQL + Python entry point |
-| (codebase scheduling pattern — TBD on inspection) | wire up daily run |
-| `src/system_status/queries/user_proj_usage.py:~316` | span-based integration |
-| `scripts/validate_user_proj_usage.py` | matching span-based reconciliation |
-| `tests/unit/system_status/` | tests for compaction + numerical equivalence |
-| `docs/USER_PROJ_QUEUE_QUICKSTART.md` | document compaction job + new run-length facts |
+| `src/system_status/queries/user_proj_usage.py` | revert WIP, then add `effective_until`-based span (~3 lines) |
+| `src/system_status/models/user_proj_queues.py` | add `effective_until` column |
+| `migrations/system_status/versions/0004_user_proj_queue_effective_until.py` | NEW Alembic migration |
+| `scripts/compact_user_proj_queue_status.py` | NEW compactor CLI |
+| `scripts/validate_user_proj_usage.py` | no changes needed |
+| `docs/USER_PROJ_QUEUE_QUICKSTART.md` | post-compaction retention numbers + compactor pointer + `effective_until` semantics |
+| `tests/unit/system_status/test_user_proj_compaction.py` | NEW |
 
-## Out of scope
+## Tests
 
-- Option A schema migration — re-traded against measured data, not
-  worth the 1.9% incremental gain.
-- Compression of `queue_status` itself — already bounded at ~7-12
-  rows per tick.
-- Render-time chart compression — handled separately at
-  `charts.py:689-720`.
+- **Unit (compactor)**: ingest a synthetic series with known runs, run
+  compactor, assert `effective_until` set on run-starts and interior
+  deleted.
+- **Equivalence**: run `get_user_proj_usage` on synthetic uncompacted
+  series AND on the compacted version; assert numerical equality at
+  float64 epsilon.
+- **Reconciliation**: factory-build a fixture with multi-tick runs,
+  assert `reconcile()` PASS on both pre- and post-compaction states.
+- **Idempotent compactor**: run compactor twice; second run should be
+  a no-op (zero rows changed).
+- **Re-extension**: compact a 5-tick run, append 3 more identical
+  ticks, compact again; assert `effective_until` extended on the same
+  run-start row and the 3 appended rows are deleted.
+
+## Out of scope (rejected with reasoning)
+
+- **Option B (time-gap compactor, no schema)**: rejected — read-path
+  ambiguity, ~10% over-count on prod uncompacted data. Tried 3
+  variants of the read-path rule, each fails one of {compacted long
+  run, coincidental same-counter gap}.
+- **Tick-presence compactor guard**: rejected — works on first pass,
+  fails on re-runs (long active runs accumulate ~one row per
+  compactor cycle; year-long run keeps ~365 rows instead of 2).
+- **Two-mode read-path with caller flag**: rejected — every caller
+  needs to know data state; one wrong flag silently returns wrong
+  integrals.
+- **Heuristic per-partition detection of compaction state**: rejected
+  — brittle for mixed-state partitions.
+- **Compression of `queue_status`**: out of scope; already bounded at
+  ~7-12 rows per tick.
+- **Render-time chart compression**: handled separately by
+  `src/webapp/dashboards/charts.py:689-720` (allocations pace chart,
+  commit 6922b73).
+
+## Connection to existing codebase patterns
+
+- Alembic migrations for system_status DB: see existing migrations in
+  `migrations/system_status/versions/` — `0003_user_proj_queue_status`
+  is the immediate predecessor.
+- Compactor as a manual script first, cron later: matches
+  `feedback_keep_image_debug_helpers.md` philosophy of "ship as ad-hoc
+  human tool, automate when proven."
+- Test database setup: `tests/conftest.py` provides `system_status`
+  SQLite bind; new tests use this without docker.
+- Auto-detected tick interval: median of parent ticks tracks any
+  future interval change AND correctly excludes downtime as outliers.
