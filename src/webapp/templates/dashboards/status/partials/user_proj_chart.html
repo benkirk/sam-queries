@@ -22,7 +22,9 @@
     'group_by': group_by, 'state': state, 'metric': metric,
     'hours': hours, 'rank_by': rank_by,
 } %}
-<div id="{{ chart_dom_id }}" data-chart-persist-id="{{ chart_dom_id }}">
+<div id="{{ chart_dom_id }}"
+     data-chart-persist-id="{{ chart_dom_id }}"
+     data-chart-persist-keys="group_by state metric rank_by">
     <div class="d-flex flex-wrap gap-3 mb-3 align-items-center">
         <div>
             <label class="form-label small text-muted mb-1 me-2">Group by</label>
@@ -86,11 +88,11 @@
             </div>
         </div>
         <div>
-            <label class="form-label small text-muted mb-1 me-2">Select by</label>
-            <div class="btn-group btn-group-sm" role="group" aria-label="Select by">
+            <label class="form-label small text-muted mb-1 me-2">Sort by</label>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Sort by">
                 {# Peak: top_n by max over the visible window (catches brief spikes).
                    Current: top_n by value at the latest tick (who is hot right now). #}
-                {% for opt_val, opt_lbl in [('peak', 'Peak'), ('current', 'Current')] %}
+                {% for opt_val, opt_lbl in [('current', 'Current'), ('peak', 'Peak')] %}
                 <button type="button"
                         class="btn btn-{% if rank_by == opt_val %}primary{% else %}outline-primary{% endif %}"
                         hx-get="{{ url_for(endpoint_name,

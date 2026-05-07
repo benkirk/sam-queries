@@ -197,22 +197,24 @@
 
     // ── Chart selector persistence ───────────────────────────────────────────
     //
-    // The "User / project load over time" status chart has three button-group
-    // selectors (group_by, state, metric) inside the swap target. Each click
-    // is an HTMX GET that re-renders the chart fragment; a full page reload,
-    // however, re-runs the loader's hardcoded defaults and the user's
-    // selections vanish. We persist the live URL params to localStorage,
-    // keyed by the chart's stable server-computed dom id, and replay them on
-    // the next configRequest.
+    // Chart fragments with multiple HTMX btn-group selectors (group_by,
+    // state, metric, rank_by, …) lose their selection on a full page
+    // reload — the loader's hx-get defaults run again. We persist the
+    // live URL params to localStorage, keyed by the chart's stable dom
+    // id, and replay them on the next configRequest.
+    //
+    // Which params to persist is declared by the template via
+    // `data-chart-persist-keys` (whitespace-separated). Co-locating the
+    // key list with the buttons that own it avoids JS-side hardcoding,
+    // so adding a new selector is a one-file change. Server-side
+    // validation in the route is the safety net for stale combinations.
 
     var CHART_PREFIX = 'chart:';
-    var CHART_KEYS = ['group_by', 'state', 'metric'];
 
-    /** Defensive clamp so a stale saved value can't ask for invalid combos. */
-    function clampChartParams(params) {
-        if (params.metric === 'nodes' && params.state && params.state !== 'running') {
-            params.metric = 'cores';
-        }
+    function chartPersistKeys(elt) {
+        var raw = elt.dataset.chartPersistKeys;
+        if (!raw) return [];
+        return raw.split(/\s+/).filter(Boolean);
     }
 
     /** Read saved selections and override hx-get parameters. Only applies to
@@ -224,6 +226,9 @@
         var elt = event.detail.elt;
         if (!elt || !elt.matches || !elt.matches('[data-chart-persist-id]')) return;
 
+        var keys = chartPersistKeys(elt);
+        if (keys.length === 0) return;
+
         var id = elt.dataset.chartPersistId;
         var raw = null;
         try { raw = localStorage.getItem(CHART_PREFIX + id); } catch (_) { return; }
@@ -233,15 +238,8 @@
         try { saved = JSON.parse(raw); } catch (_) { return; }
         if (!saved || typeof saved !== 'object') return;
 
-        // Merge into a working object so we can clamp before assigning.
-        var merged = {};
-        CHART_KEYS.forEach(function (k) {
-            merged[k] = (k in saved) ? saved[k] : event.detail.parameters[k];
-        });
-        clampChartParams(merged);
-
-        CHART_KEYS.forEach(function (k) {
-            if (merged[k] !== undefined) event.detail.parameters[k] = merged[k];
+        keys.forEach(function (k) {
+            if (k in saved) event.detail.parameters[k] = saved[k];
         });
 
         // htmx appends `parameters` to `path` for GET requests, so any keys
@@ -254,15 +252,15 @@
             var parts = path.split('?');
             var qs;
             try { qs = new URLSearchParams(parts[1]); } catch (_) { return; }
-            CHART_KEYS.forEach(function (k) { qs.delete(k); });
+            keys.forEach(function (k) { qs.delete(k); });
             var rest = qs.toString();
             event.detail.path = rest ? parts[0] + '?' + rest : parts[0];
         }
     });
 
     /** After a chart fragment swaps in, capture the resolved request URL —
-     *  this is the source of truth for which {group_by, state, metric}
-     *  combination is now showing. Avoids reading button DOM classes. */
+     *  this is the source of truth for which selector combination is now
+     *  showing. Avoids reading button DOM classes. */
     document.addEventListener('htmx:afterSettle', function (event) {
         var elt = event.detail.elt;
         if (!elt) return;
@@ -272,6 +270,9 @@
             : (elt.querySelector ? elt.querySelector('[data-chart-persist-id]') : null);
         if (!chartEl) return;
 
+        var keys = chartPersistKeys(chartEl);
+        if (keys.length === 0) return;
+
         var url = event.detail.xhr && event.detail.xhr.responseURL;
         if (!url) return;
 
@@ -279,7 +280,7 @@
         try { qs = new URL(url, window.location.origin).searchParams; } catch (_) { return; }
 
         var saved = {};
-        CHART_KEYS.forEach(function (k) {
+        keys.forEach(function (k) {
             if (qs.has(k)) saved[k] = qs.get(k);
         });
         if (Object.keys(saved).length === 0) return;
