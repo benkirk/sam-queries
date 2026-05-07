@@ -642,9 +642,38 @@ def generate_pace_chart_matplotlib(
     ordered = [(k, group_rates[k]) for k in top_projs] + [(OTHER_KEY, group_rates[OTHER_KEY])]
     ordered = [(k, r) for k, r in ordered if r.any()]
 
-    # Scale per-day rates to per-year for display (users reason about
-    # allocation burn in annual units).
-    rates_matrix = [r * _PACE_RATE_SCALE for _, r in ordered]
+    # Lossless run-length compression on the time axis. Each band's rate
+    # is piecewise constant (set in flat slices by `_pace_bands`), so a
+    # 361-element daily array is mostly repeated values. Subset to:
+    #   - chart endpoints (so axis bounds stay correct),
+    #   - today_idx and today_idx-1 (the past→future step is the most
+    #     prominent visual feature; keeping both anchors a vertical edge),
+    #   - every transition index i where any band's rate flips between
+    #     day i-1 and day i, plus i-1 itself (the predecessor preserves
+    #     the step appearance — without it, stackplot draws a 1-day-wide
+    #     ramp instead of a vertical edge).
+    # On a single resource, allocations typically cluster on common
+    # cycle dates (fiscal year boundaries, etc.), so the union of
+    # transition days is usually small (~10-30 of 361 days). Per-band
+    # vertex count drops by 10-50×, lossless.
+    band_rates_full = np.stack([r for _, r in ordered], axis=0)  # (n_bands, n_days)
+    diffs = np.any(np.diff(band_rates_full, axis=1) != 0, axis=0)  # (n_days-1,)
+    trans = np.flatnonzero(diffs) + 1  # day i where rate[i-1] != rate[i]
+
+    today_idx = (active_at - days[0]).days
+    keep = {0, n_days - 1, today_idx}
+    if today_idx - 1 >= 0:
+        keep.add(today_idx - 1)
+    for t in trans:
+        ti = int(t)
+        keep.add(ti)
+        if ti - 1 >= 0:
+            keep.add(ti - 1)
+    keep_idx = np.fromiter(sorted(keep), dtype=int)
+
+    days = [days[i] for i in keep_idx]
+    rates_matrix = [band_rates_full[bi, keep_idx] * _PACE_RATE_SCALE
+                    for bi in range(band_rates_full.shape[0])]
     colors = [color_map.get(k, _PACE_OTHER_COLOR) for k, _ in ordered]
 
     fig, ax = plt.subplots(figsize=(10, 4))
