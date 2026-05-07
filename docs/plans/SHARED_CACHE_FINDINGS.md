@@ -59,7 +59,17 @@ Each SVG is a matplotlib figure → `savefig(format='svg')` round-trip. matplotl
 
 ## Recommendations
 
-### Option A: Move to a shared backend (the proper fix)
+### Option A: Move to a shared backend (the proper fix) — **in progress**
+
+> **Status (2026-05-06):** implemented on branch `add_redis` per `docs/plans/REDIS.md`.
+> A single-replica Redis Deployment (`samuel-redis`, `redis:7-alpine`, no
+> persistence, `allkeys-lru` eviction at 64 MiB) is provisioned in the
+> `sam-queries` namespace. New adapters `RedisTTLAdapter` (allocation
+> usage) and `RedisChartCache` (matplotlib SVGs) sit behind the existing
+> `CacheBase` contract; the `Caching` facade switches backends based on
+> `CACHE_REDIS_URL`. Flask-Caching switches to `RedisCache`. Graceful
+> fallback to per-worker behavior when Redis is unreachable. Same Redis
+> (DB `/1`) is now the planned Phase-2 target for `RATE_LIMITING.md`.
 
 Configure Flask-Caching with a Redis or Memcached backend, and route the chart caches through it. With Helm we can add a Redis sidecar or use an existing cluster Redis.
 
@@ -67,6 +77,13 @@ Configure Flask-Caching with a Redis or Memcached backend, and route the chart c
 - Cons: Adds an infrastructure dependency. Need to handle Redis being unreachable (fallback to per-worker).
 
 The unified `Caching` facade in this PR is the right place to plumb this. `webapp/caching/flask_adapter.py` already abstracts the backend; we'd swap `CACHE_TYPE=SimpleCache` for `CACHE_TYPE=RedisCache` plus a `CACHE_REDIS_URL`. The `ChartCache` instances would need to be re-implemented as Redis-backed (or replaced by a `flask-caching` decorator). The `CacheBase` contract already gives us the abstraction layer.
+
+**Audit note (verify-only):** `src/webapp/api/v1/{fstree,directory,project}_access.py` use
+`@cache.cached(query_string=True)` and `@cache.memoize()`. Cache keys are URL/argument-only,
+not user-scoped. Response bodies for these routes are deterministic functions of URL params
+and DB state — no `current_user` dependency — so sharing them across all VIEW_PROJECTS /
+VIEW_USERS holders via Redis is safe. (Adopting `user_aware_cache_key` is a follow-up if a
+future route is found to vary by user.)
 
 ### Option B: Per-chart HTMX fragments cached at the HTTP layer
 

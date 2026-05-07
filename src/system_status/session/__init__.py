@@ -10,14 +10,25 @@ from contextlib import contextmanager
 connection_string = None
 
 def init_status_db_defaults():
+    """Build the module-level `connection_string` from STATUS_DB_* env vars.
+
+    Tolerant of missing env at import time: if any of USERNAME/PASSWORD/
+    SERVER is unset/empty, leave `connection_string = None` and return
+    silently. Callers raise a clear error when they actually need it.
+    See `sam.session.init_sam_db_defaults` for the full rationale.
+    """
     from dotenv import load_dotenv, find_dotenv
     import os
 
     load_dotenv(find_dotenv())
 
-    username = os.environ['STATUS_DB_USERNAME']
-    password = os.environ['STATUS_DB_PASSWORD']
-    server = os.environ['STATUS_DB_SERVER']
+    username = os.environ.get('STATUS_DB_USERNAME')
+    password = os.environ.get('STATUS_DB_PASSWORD')
+    server = os.environ.get('STATUS_DB_SERVER')
+
+    if not (username and password and server):
+        return
+
     database = os.getenv('STATUS_DB_NAME', 'system_status')
 
     print(f'{username}:$STATUS_DB_PASSWORD@{server}/{database}')
@@ -61,6 +72,16 @@ def create_status_engine(input_connection_string: str = None):
 
     if input_connection_string is None:
         input_connection_string = connection_string
+
+    if input_connection_string is None:
+        raise RuntimeError(
+            "system_status database connection is not configured. Set the "
+            "STATUS_DB_USERNAME, STATUS_DB_PASSWORD, and STATUS_DB_SERVER "
+            "environment variables (see `.env.example` for a template) and "
+            "call `system_status.session.init_status_db_defaults()` again, "
+            "or pass an explicit `input_connection_string` to "
+            "`create_status_engine()`."
+        )
 
     # Check if SSL is required (for remote servers)
     require_ssl = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')

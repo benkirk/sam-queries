@@ -47,9 +47,15 @@ def create_app(*, config_overrides: dict | None = None):
     """
     import os
 
-    # Load and validate environment-based configuration
+    # Load environment-based configuration. Validation is skipped when the
+    # caller passes `config_overrides=` (the test harness does this to
+    # point Flask-SQLAlchemy at the mysql-test container via SAM_TEST_DB_URL,
+    # and conftest.py never reads `SAM_DB_USERNAME` etc.). Production
+    # callers pass no overrides and see the original validate-on-startup
+    # behaviour — fail fast if the runtime env is missing required vars.
     cfg = get_webapp_config()
-    cfg.validate()
+    if config_overrides is None:
+        cfg.validate()
 
     app = Flask(__name__)
 
@@ -100,11 +106,18 @@ def create_app(*, config_overrides: dict | None = None):
     # Initialize db with app
     db.init_app(app)
 
-    # Initialize caching (NullCache when testing to avoid stale state between tests)
-    app.config.setdefault('CACHE_TYPE', 'SimpleCache')
+    # Initialize caching. Backend selection priority:
+    #   testing             → NullCache (no shared state across tests)
+    #   CACHE_REDIS_URL set → RedisCache (shared across all gunicorn workers + pods)
+    #   default             → SimpleCache (per-worker in-process)
     app.config.setdefault('CACHE_DEFAULT_TIMEOUT', 300)
     if app.config.get('TESTING') or os.environ.get('FLASK_ENV') == 'testing':
         app.config['CACHE_TYPE'] = 'NullCache'
+    elif os.environ.get('CACHE_REDIS_URL'):
+        app.config.setdefault('CACHE_TYPE', 'RedisCache')
+        app.config.setdefault('CACHE_REDIS_URL', os.environ['CACHE_REDIS_URL'])
+    else:
+        app.config.setdefault('CACHE_TYPE', 'SimpleCache')
     from webapp.caching import caching
     caching.init_app(app)
 

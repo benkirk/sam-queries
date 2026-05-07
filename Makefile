@@ -5,7 +5,7 @@ CONDA_ROOT := $(shell conda info --base)
 # Common way to initialize environment across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
-.PHONY: help clean clobber distclean fixperms check perf check-db-vs-orms docker-build docker-up docker-down docker-restart \
+.PHONY: help clean clobber distclean fixperms check perf check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
         migrate-status-current migrate-status-up migrate-status-down migrate-status-history migrate-status-revision migrate-status-stamp-head
 
 # -------------------------------------------------------------------
@@ -95,19 +95,44 @@ validate_user_proj_usage: ## Reconcile + benchmark get_user_proj_usage against l
 docker-build: ## Build docker containers
 	@docker compose build
 
-docker-up: ## Start docker containers
-	@docker compose up --detach
-	@echo "Waiting for healthy status..."
-	@timeout 300 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 5; done'
+docker-up: ## Start docker containers (waits until every service reports healthy)
+	@# `--wait` blocks until every service with a healthcheck is healthy and
+	@# exits non-zero if any becomes unhealthy. Replaces the older
+	@# `grep -q healthy` loop, which returned as soon as the first container
+	@# (usually cache, in 5s) reported healthy — well before mysql had
+	@# finished restoring the backup.
+	@docker compose up --detach --wait
 	@echo "✅ Containers ready!"
 
 docker-down: ## Stop docker containers
 	docker compose down
 
-docker-restart: ## Restart docker containers
+docker-restart: ## Rebuild and restart docker containers
 	@$(MAKE) docker-down
 	@$(MAKE) docker-build
 	@$(MAKE) docker-up
+
+docker-watch: ## Live-sync host → /code in webdev (foreground; Ctrl-C to stop)
+	@# Runs `docker compose watch` against an already-up stack so the syncer
+	@# stays in the foreground without blocking other rules. `docker-up`
+	@# brings the stack up first if it isn't already, and `--wait` ensures
+	@# we don't start syncing into containers that are still booting.
+	@$(MAKE) docker-up
+	@echo "👀 Watching for source changes — Ctrl-C to stop"
+	@docker compose watch
+
+docker-pytest: ## Run pytest with coverage inside the webapp container against mysql-test (parity with CI)
+	@# Brings up the `test` profile, which adds the isolated `mysql-test`
+	@# service on its own volume + port (see compose.yaml). `--wait` gates on
+	@# every service being healthy — including mysql-test verifying both
+	@# `sam` and `system_status` are queryable — so pytest never starts
+	@# against a half-restored DB. Mirrors `.github/workflows/sam-ci-docker.yaml`.
+	@docker compose --profile test up --detach --wait
+	@docker compose exec -T \
+	    -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+	    webapp bash -c "cd /code && pytest --cov=src --cov-report=term-missing --cov-report=html"
+	@docker compose cp webapp:/code/htmlcov ./htmlcov >/dev/null 2>&1 || echo "⚠️  No coverage report copied"
+	@echo "📊 HTML coverage report: ./htmlcov/index.html"
 
 # -------------------------------------------------------------------
 # Alembic — system_status database (per-bind env)

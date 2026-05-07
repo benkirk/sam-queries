@@ -11,6 +11,14 @@ cache) and in `webapp.caching` (`ChartCache`, `FlaskCacheAdapter`).
 """
 
 from sam.caching.base import CacheBase, approx_bytes
+from sam.caching.redis_client import make_redis_client
+from sam.caching.redis_ttl import RedisTTLAdapter
 from sam.caching.ttl import TTLCacheAdapter
 
-__all__ = ['CacheBase', 'TTLCacheAdapter', 'approx_bytes']
+__all__ = [
+    'CacheBase',
+    'RedisTTLAdapter',
+    'TTLCacheAdapter',
+    'approx_bytes',
+    'make_redis_client',
+]

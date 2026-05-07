@@ -321,6 +321,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
     valid_states = ('running', 'pending', 'held')
     valid_metrics = ('jobs', 'cores', 'gpus', 'nodes')
     valid_groups = ('user', 'project')
+    valid_rank_by = ('peak', 'current')
 
     state = request.args.get('state', 'running')
     if state not in valid_states:
@@ -331,6 +332,9 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
     group_by = request.args.get('group_by', 'user')
     if group_by not in valid_groups:
         group_by = 'user'
+    rank_by = request.args.get('rank_by', 'peak')
+    if rank_by not in valid_rank_by:
+        rank_by = 'peak'
 
     # `nodes` only exists for state='running' (no nodes_pending /
     # nodes_held columns in QueueRollupMetricsMixin). Clamp to cores
@@ -365,6 +369,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         metric=metric,
         group_by=group_by,
         top_n=top_n,
+        rank_by=rank_by,
     )
 
     # Clamp metric=gpus → cores when this scope+window has no GPU
@@ -384,6 +389,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
             metric=metric,
             group_by=group_by,
             top_n=top_n,
+            rank_by=rank_by,
         )
 
     chart_svg = generate_user_proj_stacked_area(timeseries)
@@ -407,6 +413,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         metric_label=timeseries.get('metric_label', metric),
         group_by=group_by,
         group_by_label=timeseries.get('group_by_label', group_by),
+        rank_by=rank_by,
         top_n=top_n,
         chart_svg=chart_svg,
         endpoint_name=endpoint_name,

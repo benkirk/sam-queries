@@ -29,23 +29,66 @@ Inspecting all caches (used by the admin Configuration card)::
     caching.clear('chart')     # category in {'flask','chart','usage',None}
 """
 
+import logging
+import os
 from typing import Callable, List, Optional
 
 from sam.caching import CacheBase
 from webapp.caching.chart import ChartCache, chart_cached as _chart_decorator
 from webapp.caching.flask_adapter import FlaskCacheAdapter
 
+logger = logging.getLogger(__name__)
+
 
 class Caching:
-    """Single facade for every cache layer the webapp owns or proxies."""
+    """Single facade for every cache layer the webapp owns or proxies.
+
+    On construction, checks ``CACHE_REDIS_URL``: if set and reachable,
+    routes chart caches to Redis-backed adapters; otherwise falls back
+    to per-worker in-process caches. The fallback is load-bearing —
+    if Redis is unreachable at startup, the webapp must keep serving.
+    """
 
     def __init__(self):
         from flask_caching import Cache
+
+        self._redis_client = self._init_redis_client()
         self.flask = Cache()
-        self._flask_adapter = FlaskCacheAdapter(self.flask)
-        self._chart_caches: List[ChartCache] = []
+        self._flask_adapter = FlaskCacheAdapter(self.flask, redis_client=self._redis_client)
+        self._chart_caches: List[CacheBase] = []
+
+    @staticmethod
+    def _init_redis_client():
+        url = os.environ.get('CACHE_REDIS_URL')
+        if not url:
+            return None
+        try:
+            from sam.caching import make_redis_client
+            client = make_redis_client(url)
+            logger.info("Caching: connected to Redis at %s", url)
+            return client
+        except Exception as exc:
+            logger.warning(
+                "Caching: CACHE_REDIS_URL=%s set but Redis is unreachable (%s); "
+                "falling back to per-worker in-process caches.",
+                url, exc,
+            )
+            return None
 
     def init_app(self, app, **flask_config) -> None:
+        # Reconcile Flask-Caching backend with our reachability check:
+        # if run.py set CACHE_TYPE=RedisCache (because CACHE_REDIS_URL
+        # was set in the env) but our PING failed, downgrade to
+        # SimpleCache so Flask-Caching doesn't try to talk to a dead
+        # Redis on every request. This keeps the fallback truly
+        # load-bearing.
+        if (app.config.get('CACHE_TYPE') == 'RedisCache'
+                and self._redis_client is None):
+            logger.warning(
+                "Caching: downgrading CACHE_TYPE RedisCache → SimpleCache "
+                "because Redis is unreachable; Flask-Cache layer falls back."
+            )
+            app.config['CACHE_TYPE'] = 'SimpleCache'
         self.flask.init_app(app, **flask_config)
 
     # ── Decorators ──────────────────────────────────────────────────────
@@ -54,10 +97,17 @@ class Caching:
                      key_fn: Optional[Callable] = None):
         """Decorator factory for matplotlib SVG memoization.
 
-        Each decorated function gets its own bounded LRU. The cache is
-        registered with the facade so it shows up in `stats()` and
-        responds to `clear('chart')`.
+        Each decorated function gets its own cache. With Redis
+        configured, all workers share a single Redis-backed cache for
+        each name; otherwise each worker holds its own bounded
+        OrderedDict (per-worker fallback).
         """
+        if self._redis_client is not None:
+            from webapp.caching.redis_chart import RedisChartCache, chart_cached_redis
+            cache: CacheBase = RedisChartCache(name=name, client=self._redis_client)
+            self._chart_caches.append(cache)
+            return chart_cached_redis(cache, key_fn=key_fn)
+
         cache = ChartCache(name=name, maxsize=maxsize)
         self._chart_caches.append(cache)
         return _chart_decorator(cache, key_fn=key_fn)
