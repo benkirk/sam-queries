@@ -232,7 +232,48 @@ class TestDerechoPost:
 
         assert status_session.query(UserDef).count() == 1
         assert status_session.query(ProjectCodeDef).count() == 1
+        # Counts changed between posts → new span inserted, not extended.
         assert status_session.query(UserProjQueueStatus).count() == 2
+
+    def test_post_derecho_coalesces_identical_counts(
+            self, api_key_client, status_session):
+        """Two posts with identical (user, project, queue, counts) at
+        consecutive ticks → one span with last_seen bumped, not two rows."""
+        base = {
+            'cpu_nodes_total': 100, 'cpu_nodes_available': 80,
+            'cpu_nodes_down': 5, 'cpu_nodes_reserved': 15,
+            'gpu_nodes_total': 10, 'gpu_nodes_available': 8,
+            'gpu_nodes_down': 0, 'gpu_nodes_reserved': 2,
+            'cpu_cores_total': 12800, 'cpu_cores_allocated': 10000,
+            'cpu_cores_idle': 2800,
+            'gpu_count_total': 80, 'gpu_count_allocated': 60,
+            'gpu_count_idle': 20,
+            'memory_total_gb': 25600.0, 'memory_allocated_gb': 20000.0,
+            'running_jobs': 1, 'pending_jobs': 0, 'active_users': 1,
+        }
+        upq = {'username': 'benkirk', 'project_code': 'SCSG0001',
+               'queue_name': 'main', 'running_jobs': 1, 'cores_allocated': 64}
+
+        first = dict(base, timestamp='2026-05-04T10:00:00',
+                     user_project_queues=[dict(upq)])
+        r1 = api_key_client.post('/api/v1/status/derecho', json=first)
+        assert r1.status_code == 201
+
+        second = dict(base, timestamp='2026-05-04T10:05:00',
+                      user_project_queues=[dict(upq)])
+        r2 = api_key_client.post('/api/v1/status/derecho', json=second)
+        assert r2.status_code == 201
+
+        # Single span survives, last_seen now at the second tick.
+        rows = status_session.query(UserProjQueueStatus).all()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.timestamp.isoformat() == '2026-05-04T10:00:00'
+        assert row.last_seen.isoformat() == '2026-05-04T10:05:00'
+
+        # The second response's id list excludes the extended span — no
+        # new id was minted.
+        assert r2.get_json()['user_project_queue_ids'] == []
 
     def test_post_derecho_missing_required_field(self, api_key_client, status_session):
         """Test posting Derecho status with missing required field."""

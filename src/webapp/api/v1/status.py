@@ -171,6 +171,15 @@ def _ingest_system_status(system_name, StatusSchema, id_mappers):
         schema.context = {'session': db.session}
         status_object = schema.load(data)
 
+        # Coalesce per-user/project/queue rows into spans: identical
+        # adjacent ticks UPDATE last_seen instead of inserting duplicates.
+        # Must run before db.session.add() so detached duplicates never
+        # enter the unit of work.
+        from system_status.queries.user_proj_queue_ingest import (
+            coalesce_user_proj_queue_spans,
+        )
+        coalesce_user_proj_queue_spans(db.session, status_object, timestamp)
+
         # Add to session - all nested objects are already linked
         db.session.add(status_object)
         db.session.flush()  # Get IDs for all objects
