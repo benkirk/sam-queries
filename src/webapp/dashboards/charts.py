@@ -226,7 +226,7 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None) -> str:
     metric_label = timeseries.get('metric_label', 'Jobs')
     group_by_label = timeseries.get('group_by_label', '')
 
-    fig, ax = plt.subplots(figsize=(12, 4.5))
+    fig, ax = plt.subplots(figsize=(18, 5.0))
     values_matrix = [s['values'] for s in series]
     # tab20 (20 distinct colours) so Top-15+Others has no colour reuse;
     # disk_usage uses tab10 because its default top_n is 10.
