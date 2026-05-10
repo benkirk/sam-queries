@@ -510,24 +510,7 @@
     </div>
 </div>
 
-<!-- Project Details Modal -->
-<div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog">
-    <div class="modal-dialog modal-xl" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="projectDetailsModalTitle">Project Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body" id="projectDetailsModalBody">
-                <div class="text-center">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="sr-only">Loading...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{% include 'dashboards/shared/project_details_modal.html' %}
 
 {% if has_permission(Permission.EDIT_ALLOCATIONS) %}
 <!-- Create Adjustment modal (Adjustments tab → "Create Adjustment" button) -->

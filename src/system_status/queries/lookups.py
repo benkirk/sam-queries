@@ -231,6 +231,54 @@ def _ensure_project_code(session: Session, cache: dict, project_code: str) -> Pr
     return obj
 
 
+def resolve_user_proj_queue_pending(
+    session: Session,
+    obj,
+    *,
+    sys_cache: Optional[dict] = None,
+    queue_cache: Optional[dict] = None,
+    user_cache: Optional[dict] = None,
+    proj_cache: Optional[dict] = None,
+) -> None:
+    """Resolve ``_pending_*`` strings on a ``UserProjQueueStatus`` synchronously.
+
+    Equivalent to what the ``before_flush`` listener does for these objects,
+    but callable from outside a flush — used by the ingest coalescer
+    (``user_proj_queue_ingest.coalesce_user_proj_queue_spans``) to populate
+    FK relationships before deciding INSERT-vs-UPDATE on each child row.
+
+    Mutates ``obj`` in place (assigns ``obj.system``, ``obj.queue``,
+    ``obj.user``, ``obj.project``). The caller can share cache dicts
+    across many calls to coalesce lookups for one ingest batch; missing
+    dicts are created fresh.
+    """
+    if sys_cache is None:
+        sys_cache = {}
+    if queue_cache is None:
+        queue_cache = {}
+    if user_cache is None:
+        user_cache = {}
+    if proj_cache is None:
+        proj_cache = {}
+
+    pending_system = obj.__dict__.pop("_pending_system_name", None)
+    if pending_system:
+        obj.system = _ensure_system(session, sys_cache, pending_system)
+    sys_obj = obj.system
+
+    pending_queue = obj.__dict__.pop("_pending_queue_name", None)
+    if pending_queue and sys_obj is not None:
+        obj.queue = _ensure_queue(session, queue_cache, sys_obj, pending_queue)
+
+    pending_user = obj.__dict__.pop("_pending_username", None)
+    if pending_user:
+        obj.user = _ensure_user(session, user_cache, pending_user)
+
+    pending_proj = obj.__dict__.pop("_pending_project_code", None)
+    if pending_proj:
+        obj.project = _ensure_project_code(session, proj_cache, pending_proj)
+
+
 @event.listens_for(Session, "before_flush")
 def _resolve_pending_lookup_names(session, flush_context, instances):
     snapshot_classes = _snapshot_models()
@@ -250,24 +298,23 @@ def _resolve_pending_lookup_names(session, flush_context, instances):
         if not isinstance(obj, snapshot_classes):
             continue
 
+        if isinstance(obj, UserProjQueueStatus):
+            # Single helper handles system + queue + user + project for these
+            # rows — same code path that the ingest coalescer uses
+            # synchronously.
+            resolve_user_proj_queue_pending(
+                session, obj,
+                sys_cache=sys_cache, queue_cache=queue_cache,
+                user_cache=user_cache, proj_cache=proj_cache,
+            )
+            continue
+
         pending_system = obj.__dict__.pop("_pending_system_name", None)
         if pending_system:
             obj.system = _ensure_system(session, sys_cache, pending_system)
         sys_obj = obj.system  # may already have been set; may be None for legacy code
 
-        if isinstance(obj, UserProjQueueStatus):
-            # Resolve queue (system-scoped), user, and project_code lookups.
-            pending_queue = obj.__dict__.pop("_pending_queue_name", None)
-            if pending_queue and sys_obj is not None:
-                obj.queue = _ensure_queue(session, queue_cache, sys_obj, pending_queue)
-            pending_user = obj.__dict__.pop("_pending_username", None)
-            if pending_user:
-                obj.user = _ensure_user(session, user_cache, pending_user)
-            pending_proj = obj.__dict__.pop("_pending_project_code", None)
-            if pending_proj:
-                obj.project = _ensure_project_code(session, proj_cache, pending_proj)
-
-        elif isinstance(obj, QueueStatus):
+        if isinstance(obj, QueueStatus):
             pending_queue = obj.__dict__.pop("_pending_queue_name", None)
             if pending_queue and sys_obj is not None:
                 obj.queue = _ensure_queue(session, queue_cache, sys_obj, pending_queue)

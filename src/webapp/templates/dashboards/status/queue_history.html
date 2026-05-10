@@ -120,7 +120,8 @@
                                 group_by='user') }}"
              hx-trigger="load"
              hx-swap="innerHTML"
-             data-chart-persist-id="upq-chart-{{ system }}-{{ queue_name }}">
+             data-chart-persist-id="upq-chart-{{ system }}-{{ queue_name }}"
+             data-chart-persist-keys="group_by state metric rank_by">
             <div class="text-center text-muted py-5">
                 <i class="fas fa-spinner fa-spin"></i> Loading chart…
             </div>
@@ -155,5 +156,10 @@
         <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Status Dashboard</span>
     </a>
 </div>
+
+{# Modals targeted by clickable user/project legend entries in the
+   user/project queue load chart (see svg-legend-links.js). #}
+{% include 'dashboards/user/fragments/user_details_modal.html' %}
+{% include 'dashboards/shared/project_details_modal.html' %}
 
 {% endblock %}

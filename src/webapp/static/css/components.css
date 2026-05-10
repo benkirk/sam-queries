@@ -173,3 +173,18 @@
    shown.bs.modal listener — a CSS-only approach can't cover cases
    where the stacked modals aren't DOM siblings (e.g. the singleton
    samConfirmModal at body level on top of a page-scoped modal). */
+
+/* ===================================================================
+   SVG legend links
+   ===================================================================
+   matplotlib chart legends emit <a xlink:href> wrappers via
+   Artist.set_url() for clickable projcode/username entries (see
+   js/svg-legend-links.js). Strip the default browser link styling so
+   the legend looks identical to its non-clickable form — only the
+   pointer cursor signals interactivity. */
+svg a, svg a:hover, svg a:focus, svg a:visited {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    outline: none;
+}

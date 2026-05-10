@@ -25,9 +25,23 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 
+from flask import url_for
+
 from sam import fmt
 from webapp.caching import caching
 from webapp.caching.chart import content_hash as _content_hash  # legacy alias used by _pace_cache_key
+
+
+def _project_modal_url(projcode: str) -> str:
+    """Resolve the project-details modal route, with blueprint prefix.
+    Used to mark legend entries with set_url() — svg-legend-links.js
+    intercepts clicks on these anchors and dispatches the modal."""
+    return url_for('user_dashboard.project_details_modal', projcode=projcode)
+
+
+def _user_modal_url(username: str) -> str:
+    """Resolve the user-card modal route, with blueprint prefix."""
+    return url_for('admin_dashboard.user_card', username=username)
 
 
 def _to_display_tz(naive_utc_ts: datetime) -> datetime:
@@ -171,8 +185,17 @@ def generate_disk_usage_stacked_area(timeseries) -> str:
 # 1c. User / project queue load stacked-area chart (status drill-down)
 # ---------------------------------------------------------------------------
 
-@caching.chart_cached(name='user_proj_stacked_area', maxsize=128)
-def generate_user_proj_stacked_area(timeseries) -> str:
+def _user_proj_stacked_area_cache_key(timeseries, link_kind=None):
+    return _content_hash([_content_hash(timeseries), link_kind or ''])
+
+
+# `link_kind` ('user' | 'project' | None) controls whether legend
+# entries are wrapped in <a xlink:href> SVG anchors targeting the
+# user- or project-details modal. None = no links (default, backward
+# compatible).
+@caching.chart_cached(name='user_proj_stacked_area', maxsize=128,
+                      key_fn=_user_proj_stacked_area_cache_key)
+def generate_user_proj_stacked_area(timeseries, link_kind=None) -> str:
     """Render a stacked-area chart of per-user or per-project queue load.
 
     Args:
@@ -181,6 +204,13 @@ def generate_user_proj_stacked_area(timeseries) -> str:
             returns: ``{'dates','series','metric_label','group_by_label'}``.
             ``series[0]`` is conventionally ``'Others'`` (rendered first
             so it sits at the bottom of the stack with a neutral colour).
+        link_kind: 'user' to make legend usernames clickable to
+            ``/admin/user/<username>`` (user-details modal), 'project'
+            to make legend projcodes clickable to
+            ``/project-details-modal/<projcode>`` (project-details
+            modal), or None for no links. The 'Others' bucket is never
+            linked. svg-legend-links.js intercepts the click and shows
+            the modal — set_url() only emits the ``<a>`` wrapper.
 
     Y-axis is integer counts (jobs). X-axis is datetime-formatted at
     5-minute snapshot grain. Legend on the right, reversed so it reads
@@ -198,7 +228,6 @@ def generate_user_proj_stacked_area(timeseries) -> str:
 
     fig, ax = plt.subplots(figsize=(12, 4.5))
     values_matrix = [s['values'] for s in series]
-    labels = [s['label'] for s in series]
     # tab20 (20 distinct colours) so Top-15+Others has no colour reuse;
     # disk_usage uses tab10 because its default top_n is 10.
     cmap = matplotlib.colormaps.get_cmap('tab20')
@@ -210,20 +239,25 @@ def generate_user_proj_stacked_area(timeseries) -> str:
         else:
             colors.append(cmap(cycle_idx % 20))
             cycle_idx += 1
-    ax.stackplot(dates, *values_matrix, labels=labels, colors=colors, alpha=0.85)
+    ax.stackplot(dates, *values_matrix, colors=colors, alpha=0.85)
     ax.set_ylabel(metric_label)
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, alpha=0.3)
 
-    # Reverse the legend so its top-to-bottom order matches the visual
-    # stack (largest series on top).
-    handles, lbls = ax.get_legend_handles_labels()
+    # Build the legend explicitly with reversed-order Patch handles so
+    # each handle/text artist is addressable by index for set_url() —
+    # mirrors the pace chart pattern.
+    import matplotlib.patches as mpatches
+    rev_series = list(reversed(series))
+    rev_colors = list(reversed(colors))
+    handles = [mpatches.Patch(color=c, label=s['label'])
+               for s, c in zip(rev_series, rev_colors)]
     n_named = sum(1 for s in series if s['label'] != 'Others')
     legend_title = (
         f'Top {n_named} {group_by_label}s' if group_by_label else f'Top {n_named}'
     )
-    ax.legend(
-        handles[::-1], lbls[::-1],
+    leg = ax.legend(
+        handles=handles,
         title=legend_title,
         loc='center left',
         bbox_to_anchor=(1.01, 0.5),
@@ -231,6 +265,16 @@ def generate_user_proj_stacked_area(timeseries) -> str:
         fontsize=9,
         title_fontsize=10,
     )
+
+    if link_kind in ('user', 'project'):
+        url_fn = _user_modal_url if link_kind == 'user' else _project_modal_url
+        for s, patch, text in zip(rev_series, leg.get_patches(), leg.get_texts()):
+            if s['label'] == 'Others':
+                continue
+            url = url_fn(s['label'])
+            patch.set_url(url)
+            text.set_url(url)
+
     fig.autofmt_xdate()
 
     svg_io = StringIO()
@@ -642,9 +686,38 @@ def generate_pace_chart_matplotlib(
     ordered = [(k, group_rates[k]) for k in top_projs] + [(OTHER_KEY, group_rates[OTHER_KEY])]
     ordered = [(k, r) for k, r in ordered if r.any()]
 
-    # Scale per-day rates to per-year for display (users reason about
-    # allocation burn in annual units).
-    rates_matrix = [r * _PACE_RATE_SCALE for _, r in ordered]
+    # Lossless run-length compression on the time axis. Each band's rate
+    # is piecewise constant (set in flat slices by `_pace_bands`), so a
+    # 361-element daily array is mostly repeated values. Subset to:
+    #   - chart endpoints (so axis bounds stay correct),
+    #   - today_idx and today_idx-1 (the past→future step is the most
+    #     prominent visual feature; keeping both anchors a vertical edge),
+    #   - every transition index i where any band's rate flips between
+    #     day i-1 and day i, plus i-1 itself (the predecessor preserves
+    #     the step appearance — without it, stackplot draws a 1-day-wide
+    #     ramp instead of a vertical edge).
+    # On a single resource, allocations typically cluster on common
+    # cycle dates (fiscal year boundaries, etc.), so the union of
+    # transition days is usually small (~10-30 of 361 days). Per-band
+    # vertex count drops by 10-50×, lossless.
+    band_rates_full = np.stack([r for _, r in ordered], axis=0)  # (n_bands, n_days)
+    diffs = np.any(np.diff(band_rates_full, axis=1) != 0, axis=0)  # (n_days-1,)
+    trans = np.flatnonzero(diffs) + 1  # day i where rate[i-1] != rate[i]
+
+    today_idx = (active_at - days[0]).days
+    keep = {0, n_days - 1, today_idx}
+    if today_idx - 1 >= 0:
+        keep.add(today_idx - 1)
+    for t in trans:
+        ti = int(t)
+        keep.add(ti)
+        if ti - 1 >= 0:
+            keep.add(ti - 1)
+    keep_idx = np.fromiter(sorted(keep), dtype=int)
+
+    days = [days[i] for i in keep_idx]
+    rates_matrix = [band_rates_full[bi, keep_idx] * _PACE_RATE_SCALE
+                    for bi in range(band_rates_full.shape[0])]
     colors = [color_map.get(k, _PACE_OTHER_COLOR) for k, _ in ordered]
 
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -676,8 +749,18 @@ def generate_pace_chart_matplotlib(
             color=_PACE_OTHER_COLOR,
             label=f'{other_label} ({fmt.number(group_totals[OTHER_KEY])})'
         ))
-    ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1.0, 0.5),
-              fontsize=9, frameon=False)
+    leg = ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1.0, 0.5),
+                    fontsize=9, frameon=False)
+
+    # Tag each top-N legend entry with the project-modal URL. matplotlib's
+    # SVG backend wraps the patch swatch and label text in <a xlink:href>.
+    # svg-legend-links.js intercepts the click and dispatches the existing
+    # HTMX modal trigger. The trailing "Other" patch (if present) gets no
+    # URL since it's not a single project.
+    for pc, patch, text in zip(top_projs, leg.get_patches(), leg.get_texts()):
+        url = _project_modal_url(pc)
+        patch.set_url(url)
+        text.set_url(url)
 
     # Axes
     ax.set_xlim(window_start, window_end)

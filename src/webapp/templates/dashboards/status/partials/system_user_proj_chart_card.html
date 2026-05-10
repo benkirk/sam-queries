@@ -35,7 +35,8 @@
                                 group_by='user') }}"
              hx-trigger="load"
              hx-swap="innerHTML"
-             data-chart-persist-id="upq-chart-{{ _chart_system }}">
+             data-chart-persist-id="upq-chart-{{ _chart_system }}"
+             data-chart-persist-keys="group_by state metric rank_by">
             <div class="text-center text-muted py-5">
                 <i class="fas fa-spinner fa-spin"></i> Loading chart…
             </div>
