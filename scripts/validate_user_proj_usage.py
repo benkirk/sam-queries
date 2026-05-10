@@ -3,7 +3,7 @@
 Validate + benchmark ``get_user_proj_usage`` against the local
 system_status DB.
 
-This script does double duty:
+This script does triple duty:
 
 1. **Correctness** — reconciles the integrated user_proj output against
    the integral of the parent ``QueueStatus`` rows over the SAME parent
@@ -12,19 +12,21 @@ This script does double duty:
 
 2. **Benchmark / capacity-planning** — prints wall-clock timing and
    rows/sec for each phase (tick fetch, integration, reconciliation).
-   The intent is to **revisit this on a cadence** as upu rows accumulate:
-
-   - **Today** (initial Phase-B rollout): ~17 h, ~85k rows.
-   - **Week 1**: ~7 days, ~700k rows. Expect linear growth.
-   - **Month 1**: ~30 days, ~3M rows. Decision point — at this scale,
-     we want UI-eligible windows to stay sub-second. If a 1-day window
-     still completes in <500 ms but a 1-month window blows past 10 s,
-     we have empirical evidence for the daily-summary table proposed
-     in the design doc.
+   The intent is to **revisit this on a cadence** as upu rows accumulate.
+   Under PR #248 spans the absolute row count is suppressed by the
+   coalescing compression ratio, so the threshold conversation is now
+   about (rows × compression) rather than ticks × tuples. Sub-window
+   benchmarks (1 h / 6 h / 24 h) provide the growth-shape signal for
+   the daily-summary table decision.
 
    Each timed phase prints rows processed and wall-clock seconds, so a
    `git diff` of two runs can answer "did we cross the line yet?"
    without re-deriving anything.
+
+3. **Span-coalescing health (PR #248)** — compression ratio vs naive
+   per-tick equivalent, span tick-coverage histogram, extension hit
+   rate, and spans-per-tuple distribution. Quantifies the refactor's
+   payoff at the table level, separate from the per-query benchmarks.
 
 ## What "the daily-summary decision" hinges on
 
@@ -57,7 +59,12 @@ from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
+from rich.console import Console
+from rich.table import Table
+from rich import box
 from sqlalchemy import select
+
+console = Console()
 
 
 @contextmanager
@@ -88,6 +95,8 @@ from system_status import (   # noqa: E402
     UserProjQueueStatus,
     System,
     QueueDef,
+    UserDef,
+    ProjectCodeDef,
 )
 from sqlalchemy import func   # noqa: E402
 from system_status.queries import get_user_proj_usage   # noqa: E402
@@ -148,6 +157,136 @@ def report_tick_distribution(session, parent_model, label, start=None, end=None)
     else:
         print(f'    no gaps > {GAP_THRESHOLD_S}s — uniform 5-min cadence')
     return ts
+
+
+# --------------------------------------------------------------------------
+# Span-coalescing health (PR #248)
+# --------------------------------------------------------------------------
+
+def report_span_statistics(session, system_id, parent_ts, start, end, n_rows):
+    """Coalescer effectiveness + span-shape report for one system+window.
+
+    Quantifies whether the span refactor is paying off: compression
+    ratio, tick-coverage distribution, extension hit rate,
+    spans-per-tuple distribution, and the most-coalesced tuples.
+    Output is rich Tables; querying is dialect-portable so this also
+    runs against prod Postgres.
+    """
+    if n_rows == 0 or parent_ts is None or len(parent_ts) < 2:
+        console.print('[dim]  span statistics: no rows in window, skipping[/dim]')
+        return
+
+    with timed('fetch span endpoints + keys'):
+        rows = session.execute(
+            select(UserProjQueueStatus.timestamp,
+                   UserProjQueueStatus.last_seen,
+                   UserProjQueueStatus.user_id,
+                   UserProjQueueStatus.project_code_id,
+                   UserProjQueueStatus.queue_id)
+            .where(UserProjQueueStatus.system_id == system_id,
+                   UserProjQueueStatus.timestamp >= start,
+                   UserProjQueueStatus.timestamp <= end)
+        ).all()
+
+    ticks = np.array(parent_ts, dtype='datetime64[us]')
+    fs = np.array([r[0] for r in rows], dtype='datetime64[us]')
+    ls = np.array([r[1] for r in rows], dtype='datetime64[us]')
+    uids = np.array([r[2] for r in rows], dtype=np.int64)
+    pids = np.array([r[3] for r in rows], dtype=np.int64)
+    qids = np.array([r[4] for r in rows], dtype=np.int64)
+
+    i_first = np.searchsorted(ticks, fs, side='left')
+    i_last = np.searchsorted(ticks, ls, side='right') - 1
+    coverage = np.clip(i_last - i_first + 1, 1, None)
+    naive = int(coverage.sum())
+    ratio = naive / n_rows if n_rows else 0
+    extended = int((ls > fs).sum())
+
+    # 1. Headline KPI table.
+    t = Table(title='Coalescing compression', box=box.SIMPLE_HEAVY,
+              show_header=False)
+    t.add_column('metric', justify='left', style='cyan')
+    t.add_column('value', justify='right', style='bold')
+    t.add_row('actual rows', f'{n_rows:,}')
+    t.add_row('naive (per-tick) equivalent', f'{naive:,}')
+    t.add_row('compression ratio', f'{ratio:.2f}×')
+    t.add_row('extension hit rate',
+              f'{extended:,} / {n_rows:,} ({100*extended/n_rows:.1f}%)')
+    console.print(t)
+
+    # 2. Span tick-coverage histogram.
+    cov_buckets = [(1, 1, '1 (degenerate)'),
+                   (2, 2, '2'),
+                   (3, 3, '3'),
+                   (4, 9, '4–9'),
+                   (10, 49, '10–49'),
+                   (50, None, '50+')]
+    t = Table(title='Span tick-coverage distribution', box=box.SIMPLE_HEAVY)
+    t.add_column('ticks', justify='right')
+    t.add_column('count', justify='right')
+    t.add_column('%', justify='right', style='dim')
+    for lo, hi, label in cov_buckets:
+        upper = hi if hi is not None else 10**9
+        n = int(((coverage >= lo) & (coverage <= upper)).sum())
+        t.add_row(label, f'{n:,}', f'{100*n/n_rows:.1f}')
+    console.print(t)
+
+    # 3. Spans-per-tuple histogram.
+    keys = np.stack([uids, pids, qids], axis=1)
+    _, counts = np.unique(keys, axis=0, return_counts=True)
+    spt_buckets = [(1, 1, '1'),
+                   (2, 2, '2'),
+                   (3, 3, '3'),
+                   (4, 5, '4–5'),
+                   (6, 10, '6–10'),
+                   (11, None, '11+')]
+    t = Table(title=f'Spans per (user, project, queue) tuple  '
+                    f'[{counts.size:,} tuples, mean={counts.mean():.2f}]',
+              box=box.SIMPLE_HEAVY)
+    t.add_column('spans', justify='right')
+    t.add_column('count', justify='right')
+    t.add_column('%', justify='right', style='dim')
+    for lo, hi, label in spt_buckets:
+        upper = hi if hi is not None else 10**9
+        n = int(((counts >= lo) & (counts <= upper)).sum())
+        t.add_row(label, f'{n:,}', f'{100*n/counts.size:.1f}')
+    console.print(t)
+
+    # 4. Top-5 most-coalesced tuples — max single-span coverage per tuple.
+    best = {}
+    for u, p, q, c in zip(uids.tolist(), pids.tolist(), qids.tolist(),
+                          coverage.tolist()):
+        key = (u, p, q)
+        if best.get(key, 0) < c:
+            best[key] = c
+    top = sorted(best.items(), key=lambda kv: -kv[1])[:5]
+    if not top:
+        return
+    uids_top = {k[0] for k, _ in top}
+    pids_top = {k[1] for k, _ in top}
+    qids_top = {k[2] for k, _ in top}
+    u_map = dict(session.execute(
+        select(UserDef.user_id, UserDef.username)
+        .where(UserDef.user_id.in_(uids_top))).all())
+    p_map = dict(session.execute(
+        select(ProjectCodeDef.project_code_id, ProjectCodeDef.project_code)
+        .where(ProjectCodeDef.project_code_id.in_(pids_top))).all())
+    q_map = dict(session.execute(
+        select(QueueDef.queue_id, QueueDef.name)
+        .where(QueueDef.queue_id.in_(qids_top))).all())
+    t = Table(title='Top 5 longest single spans',
+              caption='most-coalesced workloads',
+              box=box.SIMPLE_HEAVY)
+    t.add_column('user', justify='right')
+    t.add_column('project', justify='left')
+    t.add_column('queue', justify='left')
+    t.add_column('coverage', justify='right', style='bold')
+    for (u, p, q), cov in top:
+        t.add_row(u_map.get(u) or '?',
+                  p_map.get(p) or '?',
+                  q_map.get(q) or '?',
+                  f'{cov} ticks')
+    console.print(t)
 
 
 # --------------------------------------------------------------------------
@@ -304,12 +443,16 @@ def main():
                 continue
 
             span_h = (end - start).total_seconds() / 3600
-            print()
-            print('=' * 72)
-            print(f'{system}: upu window {start} → {end} ({span_h:.2f} h)')
-            print('=' * 72)
-            report_tick_distribution(session, parent, f'{system} parent ticks',
-                                     start=start, end=end)
+            console.print()
+            console.rule(
+                f'[bold cyan]{system}[/bold cyan]: upu window '
+                f'{start} → {end} ({span_h:.2f} h)',
+                style='cyan',
+            )
+            parent_ts = report_tick_distribution(
+                session, parent, f'{system} parent ticks',
+                start=start, end=end,
+            )
 
             # Count input rows in the window — denominator for rows/sec.
             n_rows = session.execute(
@@ -319,6 +462,9 @@ def main():
                        UserProjQueueStatus.timestamp >= start,
                        UserProjQueueStatus.timestamp <= end)
             ).scalar_one()
+
+            console.print()
+            report_span_statistics(session, sys_id, parent_ts, start, end, n_rows)
 
             with timed(f'get_user_proj_usage full window ({system})',
                        n=n_rows):
