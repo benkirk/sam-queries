@@ -125,6 +125,12 @@ class UserProjQueueSchema(BaseSchema):
     timestamp = fields.DateTime(dump_only=True)
     system_name = fields.String(dump_only=True)
 
+    # Collectors don't send `last_seen` — the parent schema's @post_load
+    # seeds it to `timestamp` (degenerate single-tick span) and the ingest
+    # coalescer overwrites it again before flush. Override the auto-derived
+    # required-by-NOT-NULL behavior so the load step accepts the absence.
+    last_seen = fields.DateTime(load_default=None)
+
     # Per-row strings — loaded into property setters, dumped via @property readers.
     username = fields.String(required=True)
     project_code = fields.String(required=True)
@@ -184,6 +190,8 @@ class DerechoStatusSchema(BaseSchema):
         for upq in data.get('user_project_queues', []):
             upq.timestamp = timestamp
             upq.system_name = 'derecho'
+            if upq.last_seen is None:
+                upq.last_seen = timestamp
 
         for fs in data.get('filesystems', []):
             fs.timestamp = timestamp
@@ -250,6 +258,8 @@ class CasperStatusSchema(BaseSchema):
         for upq in data.get('user_project_queues', []):
             upq.timestamp = timestamp
             upq.system_name = 'casper'
+            if upq.last_seen is None:
+                upq.last_seen = timestamp
 
         for fs in data.get('filesystems', []):
             fs.timestamp = timestamp
