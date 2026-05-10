@@ -60,10 +60,18 @@ def _make_casper(session, ts):
 
 
 def _make_upq(session, parent, *, system, queue, user, project,
-              cores=0, gpus=0, nodes=0):
-    """Add a UserProjQueueStatus row attached to its system parent."""
+              cores=0, gpus=0, nodes=0, last_seen=None):
+    """Add a UserProjQueueStatus row (span) anchored at parent.timestamp.
+
+    By default the span is degenerate (last_seen == parent.timestamp), so
+    legacy per-tick fixtures still work. Pass ``last_seen=<datetime>`` to
+    build a multi-tick span.
+    """
+    if last_seen is None:
+        last_seen = parent.timestamp
     row = UserProjQueueStatus(
         timestamp=parent.timestamp,
+        last_seen=last_seen,
         system_name=system, queue_name=queue,
         username=user, project_code=project,
         running_jobs=1 if cores or gpus or nodes else 0,
@@ -525,6 +533,63 @@ def test_multi_day_window_with_small_chunks(status_session):
     # 8 intervals of 8 hours each (last tick contributes 0)
     expected = 100 * 8 * 8 * 3600.0 / 3600.0   # cores × intervals × seconds / 3600
     assert r['core_hours'] == pytest.approx(expected)
+
+
+def test_span_integrates_correctly_across_ticks(status_session):
+    """A single span [t0..t2] at constant cores=120 covers three parent
+    ticks. Equivalent to three degenerate per-tick rows for integration
+    purposes. Confirms cum_dt prefix-sum integration is correct.
+    """
+    t0 = datetime(2026, 5, 4, 12, 0, 0)
+    t1 = t0 + timedelta(minutes=5)
+    t2 = t0 + timedelta(minutes=10)
+    t3 = t0 + timedelta(minutes=15)
+    p0 = _make_derecho(status_session, t0)
+    _make_derecho(status_session, t1)
+    _make_derecho(status_session, t2)
+    _make_derecho(status_session, t3)
+
+    # One span covering t0..t2 (last_seen=t2). Three tick intervals
+    # contribute: t0→t1 (300s), t1→t2 (300s), t2→t3 (300s) = 900s.
+    _make_upq(status_session, p0, system='derecho', queue='main',
+              user='benkirk', project='SCSG0001',
+              cores=120, last_seen=t2)
+    status_session.flush()
+
+    out = get_user_proj_usage(
+        status_session, system='derecho',
+        start_date=t0, end_date=t3,
+    )
+    assert len(out) == 1
+    r = out[0]
+    assert r['core_hours'] == pytest.approx(120 * 900.0 / 3600.0)
+    assert r['tick_count'] == 3
+    assert r['first_seen'] == t0
+    assert r['last_seen'] == t2
+
+
+def test_overlapping_window_clips_span(status_session):
+    """A span [t0..t10] queried over a sub-window [t3..t6] should only
+    integrate the in-window ticks."""
+    t0 = datetime(2026, 5, 4, 12, 0, 0)
+    ticks = [t0 + timedelta(minutes=5 * i) for i in range(11)]
+    parents = [_make_derecho(status_session, t) for t in ticks]
+    # One long span across all ticks with cores=60.
+    _make_upq(status_session, parents[0], system='derecho', queue='main',
+              user='benkirk', project='SCSG0001',
+              cores=60, last_seen=ticks[-1])
+    status_session.flush()
+
+    # Window [t3..t6]: ticks at t3,t4,t5,t6. Three intervals of 300s
+    # contribute (t6→t7 isn't included because end_date is t6).
+    out = get_user_proj_usage(
+        status_session, system='derecho',
+        start_date=ticks[3], end_date=ticks[6],
+    )
+    assert len(out) == 1
+    # Three 5-min intervals fully inside the window.
+    expected = 60 * (3 * 300.0) / 3600.0
+    assert out[0]['core_hours'] == pytest.approx(expected)
 
 
 def test_results_sorted_by_core_hours_desc(status_session):

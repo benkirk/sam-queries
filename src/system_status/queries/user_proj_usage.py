@@ -1,9 +1,9 @@
 """
-Time-integrated consumption from ``user_proj_queue_status`` snapshots.
+Time-integrated consumption from ``user_proj_queue_status`` spans.
 
 The sibling ``user_proj_queues`` module exposes instantaneous /
 time-series views of the per-user / per-project / per-queue rollup
-table. This module integrates those snapshots over a window into
+table. This module integrates those spans over a window into
 core-hours / GPU-hours / node-hours by ``(user, project, queue)``.
 
 Two complications drive the design:
@@ -14,25 +14,26 @@ Two complications drive the design:
    ``DerechoStatus`` / ``CasperStatus`` table (the canonical record of
    "the collector ran at this moment", regardless of whether any user
    had jobs).
-2. **Sparse rows** — a ``(user, project, queue)`` row exists only when
-   that tuple has ≥1 job at that tick. Absence at a tick is treated as
-   ``0 cores / 0 gpus / 0 nodes`` for that tuple at that tick (NOT
-   carry-forward — that would attribute load forever after a user's
-   jobs end).
+2. **Each row is a span, not a snapshot** — a single ``(user, project,
+   queue)`` row covers every tick from ``timestamp`` (first_seen) to
+   ``last_seen`` inclusive at constant counters (the ingest coalescer
+   collapses identical ticks into one span). When the tuple disappears
+   from the queue, its row is left alone — ``last_seen`` records the
+   final tick of the run.
 
-Integration is **left-step** (rectangle rule): a row at tick ``t_i``
-with ``cores_allocated = X`` contributes ``X * (t_{i+1} - t_i)``
-core-seconds. The last tick in the window has no successor and
-contributes 0 (boundary effect is negligible for any window > a few
-ticks). Trapezoidal would average with a "0" at the next tick when a
-tuple disappears, under-counting by half — left-step is the honest
-discretization for jobs that start/stop in discrete jumps.
+Integration is **left-step** (rectangle rule): a span at ticks
+``[t_i .. t_j]`` with ``cores_allocated = X`` contributes
+``X * Σ_{k=i}^{j} (t_{k+1} - t_k)`` core-seconds — equivalently
+``X * (cum_dt[j+1] - cum_dt[i])`` using a cumulative-sum prefix array,
+which collapses a per-row integral to O(1). The last tick in the
+window has ``dt = 0`` so closed spans never over-count.
 
-For year-scale windows (~36M rows) the snapshot rows are streamed in
-monthly chunks; per-chunk aggregation uses numpy ``bincount`` on a
-composite ``(user_id, project_code_id, queue_id)`` key, then merged
-into a master accumulator dict. See ``get_user_proj_usage`` for the
-full algorithm.
+Spans make this query dramatically smaller than the per-tick era: each
+span is one row regardless of how many ticks it covers. Year-scale
+queries that previously scanned ~36M snapshot rows now scan however
+many spans the workload churn produced. The chunking infrastructure is
+preserved for spans that straddle chunk boundaries, with a
+``seen_ids`` set deduplicating spans seen in multiple chunks.
 """
 
 from datetime import datetime, timedelta
@@ -236,6 +237,14 @@ def get_user_proj_usage(
     dt_sec = np.zeros(n_ticks, dtype=np.float64)
     dt_sec[:-1] = np.diff(ticks).astype('int64').astype(np.float64) / 1e6
 
+    # Cumulative-sum prefix so any span [i..j] integrates as
+    #   sum(dt_sec[i:j+1]) == cum_dt[j+1] - cum_dt[i]
+    # — O(1) per span instead of O(j - i + 1).
+    cum_dt = np.concatenate([[0.0], np.cumsum(dt_sec)])
+
+    start_dt64 = np.datetime64(start_date, 'us')
+    end_dt64 = np.datetime64(end_date, 'us')
+
     # ------------------------------------------------------------------
     # 2. Stream user_proj rows in chunks; per-chunk numpy aggregation
     #    merged into a master accumulator dict keyed by composite int.
@@ -243,10 +252,15 @@ def get_user_proj_usage(
     # totals[composite_key] = [core_sec, gpu_sec, node_sec,
     #                          first_us, last_us, tick_count]
     totals: Dict[int, List[float]] = {}
+    # Spans whose [first_seen, last_seen] cross a chunk boundary may
+    # appear in two consecutive chunks; this set dedups them.
+    seen_ids: set = set()
 
     base = (
         select(
+            UserProjQueueStatus.user_proj_queue_status_id,
             UserProjQueueStatus.timestamp,
+            UserProjQueueStatus.last_seen,
             UserProjQueueStatus.user_id,
             UserProjQueueStatus.project_code_id,
             UserProjQueueStatus.queue_id,
@@ -268,39 +282,53 @@ def get_user_proj_usage(
         base = base.where(UserProjQueueStatus.project_code_id != unknown_pid)
 
     for t_lo, t_hi in _iter_chunks(start_date, end_date, chunk_days):
+        # Span-overlap predicate: a span [first, last] overlaps chunk
+        # [t_lo, t_hi] iff last >= t_lo AND first <= t_hi.
         rows = session.execute(
-            base.where(UserProjQueueStatus.timestamp >= t_lo,
+            base.where(UserProjQueueStatus.last_seen >= t_lo,
                        UserProjQueueStatus.timestamp <= t_hi)
         ).all()
         if not rows:
             continue
 
+        # Drop spans we already integrated in a previous chunk.
+        rows = [r for r in rows if r[0] not in seen_ids]
+        if not rows:
+            continue
+        seen_ids.update(r[0] for r in rows)
+
         # Columnar conversion. Tuples come back from SQLAlchemy in a
         # known order, matching the SELECT above.
-        ts_arr = np.array([r[0] for r in rows], dtype='datetime64[us]')
-        uid_arr = np.fromiter((r[1] for r in rows), dtype=np.int64,
+        ts_arr = np.array([r[1] for r in rows], dtype='datetime64[us]')
+        last_arr = np.array([r[2] for r in rows], dtype='datetime64[us]')
+        uid_arr = np.fromiter((r[3] for r in rows), dtype=np.int64,
                               count=len(rows))
-        pid_arr = np.fromiter((r[2] for r in rows), dtype=np.int64,
+        pid_arr = np.fromiter((r[4] for r in rows), dtype=np.int64,
                               count=len(rows))
-        qid_arr = np.fromiter((r[3] for r in rows), dtype=np.int64,
+        qid_arr = np.fromiter((r[5] for r in rows), dtype=np.int64,
                               count=len(rows))
-        cores_arr = np.fromiter((r[4] for r in rows), dtype=np.float64,
+        cores_arr = np.fromiter((r[6] for r in rows), dtype=np.float64,
                                 count=len(rows))
-        gpus_arr = np.fromiter((r[5] for r in rows), dtype=np.float64,
+        gpus_arr = np.fromiter((r[7] for r in rows), dtype=np.float64,
                                count=len(rows))
-        nodes_arr = np.fromiter((r[6] for r in rows), dtype=np.float64,
+        nodes_arr = np.fromiter((r[8] for r in rows), dtype=np.float64,
                                 count=len(rows))
 
         _assert_id_fits(uid_arr, pid_arr, qid_arr)
 
-        # Vectorized dt lookup. `searchsorted` on a sorted tick array
-        # gives the index where each row's timestamp would be inserted;
-        # for an exact match the index points AT that tick. Defensive
-        # mask drops anything that doesn't land on a known tick (should
-        # be empty in practice — parent and child ticks share the same
-        # timestamp by construction).
-        idx = np.searchsorted(ticks, ts_arr)
-        valid = (idx < n_ticks) & (ticks[np.minimum(idx, n_ticks - 1)] == ts_arr)
+        # Span integration via prefix-sum lookup. Clamp endpoints to the
+        # query window so spans that overhang either edge contribute
+        # only the in-window portion. searchsorted on a sorted tick
+        # array places each clamped endpoint at the matching tick index
+        # (or the next-greater for an off-tick value, which is benign
+        # since collector ticks and span endpoints share the same set
+        # by construction).
+        first_clamped = np.maximum(ts_arr, start_dt64)
+        last_clamped = np.minimum(last_arr, end_dt64)
+        i_first = np.searchsorted(ticks, first_clamped)
+        i_last = np.searchsorted(ticks, last_clamped, side='right') - 1
+
+        valid = (i_first <= i_last) & (i_first >= 0) & (i_last < n_ticks)
         if not valid.all():
             uid_arr = uid_arr[valid]
             pid_arr = pid_arr[valid]
@@ -309,14 +337,17 @@ def get_user_proj_usage(
             gpus_arr = gpus_arr[valid]
             nodes_arr = nodes_arr[valid]
             ts_arr = ts_arr[valid]
-            idx = idx[valid]
-            if idx.size == 0:
+            last_arr = last_arr[valid]
+            i_first = i_first[valid]
+            i_last = i_last[valid]
+            if i_first.size == 0:
                 continue
 
-        dt_per_row = dt_sec[idx]   # seconds; 0 for last-tick rows
-        core_sec = cores_arr * dt_per_row
-        gpu_sec = gpus_arr * dt_per_row
-        node_sec = nodes_arr * dt_per_row
+        dt_total = cum_dt[i_last + 1] - cum_dt[i_first]
+        core_sec = cores_arr * dt_total
+        gpu_sec = gpus_arr * dt_total
+        node_sec = nodes_arr * dt_total
+        tick_per_row = (i_last - i_first + 1).astype(np.int64)
 
         # Composite key for groupby. int64 is large enough by
         # construction (3 × 21 = 63 bits used).
@@ -327,15 +358,16 @@ def get_user_proj_usage(
         core_sums = np.bincount(inverse, weights=core_sec, minlength=n_groups)
         gpu_sums = np.bincount(inverse, weights=gpu_sec, minlength=n_groups)
         node_sums = np.bincount(inverse, weights=node_sec, minlength=n_groups)
-        tick_counts = np.bincount(inverse, minlength=n_groups)
+        tick_counts = np.bincount(inverse, weights=tick_per_row.astype(np.float64),
+                                  minlength=n_groups)
 
-        # Per-group min/max timestamp via reduce-at-indices. Convert to
-        # int64 microseconds for arithmetic, convert back at merge.
-        ts_int = ts_arr.astype('int64')
+        # Per-group min(first_seen) and max(last_seen) via reduce-at-indices.
+        first_int = ts_arr.astype('int64')
+        last_int = last_arr.astype('int64')
         first_us = np.full(n_groups, np.iinfo(np.int64).max, dtype=np.int64)
         last_us = np.full(n_groups, np.iinfo(np.int64).min, dtype=np.int64)
-        np.minimum.at(first_us, inverse, ts_int)
-        np.maximum.at(last_us, inverse, ts_int)
+        np.minimum.at(first_us, inverse, first_int)
+        np.maximum.at(last_us, inverse, last_int)
 
         # Merge into accumulator dict. Iterating over n_groups (not
         # n_rows) keeps Python overhead bounded.

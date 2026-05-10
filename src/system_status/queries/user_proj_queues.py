@@ -10,16 +10,29 @@ queue drill-down view (``status_dashboard.queue_history``).
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from system_status.models import (
+    CasperStatus,
+    DerechoStatus,
     ProjectCodeDef,
     QueueDef,
     System,
     UserDef,
     UserProjQueueStatus,
 )
+
+
+# Parent status table by system, used to fetch the canonical tick
+# timeline for span explosion. Mirrors the dict in
+# ``user_proj_usage.py`` — duplicated here to avoid a cross-module
+# dependency loop.
+_PARENT_STATUS_BY_SYSTEM = {
+    'derecho': DerechoStatus,
+    'casper': CasperStatus,
+}
 
 
 _VALID_GROUP_BY = ('user', 'project')
@@ -94,13 +107,20 @@ def get_latest_user_proj_queue_snapshot(
     """One row per ``(user, project_code)`` for the most recent tick of
     this queue.
 
+    Under span semantics, "the most recent tick" means rows whose
+    ``last_seen`` equals the maximum ``last_seen`` for the queue — i.e.
+    spans that were still active at the most recent observation.
+
     Returns a list of dicts shaped for direct template rendering:
 
         [{'username': 'benkirk', 'project_code': 'SCSG0001',
           'running_jobs': 3, 'pending_jobs': 0, 'held_jobs': 0,
           'cores_allocated': 256, 'cores_pending': 0, 'cores_held': 0,
           'gpus_allocated': 0, 'gpus_pending': 0, 'gpus_held': 0,
-          'nodes_allocated': 4, 'timestamp': datetime(...)}, ...]
+          'nodes_allocated': 4,
+          'timestamp':  datetime(...),  # last_seen (template-facing alias)
+          'first_seen': datetime(...),  # span start
+          'last_seen':  datetime(...)}, ...]
 
     Empty list if the queue is unknown or has never reported a snapshot.
     The ``_unknown_`` project bucket (jobs missing ``Account_Name``) is
@@ -111,9 +131,9 @@ def get_latest_user_proj_queue_snapshot(
         return []
 
     latest_ts = session.execute(
-        select(UserProjQueueStatus.timestamp)
+        select(UserProjQueueStatus.last_seen)
         .where(UserProjQueueStatus.queue_id == queue_id)
-        .order_by(UserProjQueueStatus.timestamp.desc())
+        .order_by(UserProjQueueStatus.last_seen.desc())
         .limit(1)
     ).scalar_one_or_none()
     if latest_ts is None:
@@ -134,12 +154,13 @@ def get_latest_user_proj_queue_snapshot(
             UserProjQueueStatus.gpus_held,
             UserProjQueueStatus.nodes_allocated,
             UserProjQueueStatus.timestamp,
+            UserProjQueueStatus.last_seen,
         )
         .join(UserDef, UserProjQueueStatus.user_id == UserDef.user_id)
         .join(ProjectCodeDef,
               UserProjQueueStatus.project_code_id == ProjectCodeDef.project_code_id)
         .where(UserProjQueueStatus.queue_id == queue_id,
-               UserProjQueueStatus.timestamp == latest_ts)
+               UserProjQueueStatus.last_seen == latest_ts)
         .order_by(UserProjQueueStatus.running_jobs.desc(),
                   UserDef.username)
     ).all()
@@ -158,7 +179,14 @@ def get_latest_user_proj_queue_snapshot(
             'gpus_pending': r.gpus_pending,
             'gpus_held': r.gpus_held,
             'nodes_allocated': r.nodes_allocated,
-            'timestamp': r.timestamp,
+            # Templates and existing callers refer to `'timestamp'`. Under
+            # span semantics that key now carries the *last_seen* value
+            # (the most recent observation), so the rendered "as of" time
+            # is current. `'first_seen'` exposes the span start for
+            # callers that want span duration.
+            'timestamp': r.last_seen,
+            'first_seen': r.timestamp,
+            'last_seen': r.last_seen,
         }
         for r in rows
     ]
@@ -277,8 +305,8 @@ def get_user_proj_timeseries(
     # Probe whether the scope has ANY GPU activity in the window. The UI
     # uses this to suppress the GPUs metric button on CPU-only queues
     # (or any system+window with no GPU rollup activity) — purely
-    # data-driven, no queue/system whitelist. One indexed MAX over the
-    # same scope+window predicate as the main aggregation.
+    # data-driven, no queue/system whitelist. Span overlap predicate:
+    # last_seen >= start AND timestamp <= end.
     gpu_max = session.execute(
         select(
             func.coalesce(func.max(UserProjQueueStatus.gpus_allocated), 0),
@@ -287,7 +315,7 @@ def get_user_proj_timeseries(
         )
         .where(
             scope_filter,
-            UserProjQueueStatus.timestamp >= start_date,
+            UserProjQueueStatus.last_seen >= start_date,
             UserProjQueueStatus.timestamp <= end_date,
         )
     ).one()
@@ -304,58 +332,91 @@ def get_user_proj_timeseries(
             UserProjQueueStatus.project_code_id == ProjectCodeDef.project_code_id,
         )
 
-    # Sum the metric within each (timestamp, label) bucket — multiple
-    # (user, project, queue) rows collapse to a single series row when
-    # grouping by just one of those keys (and, in system-wide scope,
-    # across all queues for that system).
-    rows = session.execute(
+    # Build the canonical tick timeline from the parent status table for
+    # this system. Spans are exploded onto these ticks: each span
+    # contributes its constant value to every tick in [first_seen,
+    # last_seen] ∩ [start_date, end_date].
+    parent = _PARENT_STATUS_BY_SYSTEM.get(system)
+    if parent is None:
+        return empty
+    tick_rows = session.execute(
+        select(parent.timestamp)
+        .where(parent.timestamp >= start_date,
+               parent.timestamp <= end_date)
+        .order_by(parent.timestamp)
+    ).all()
+    tick_list = [r[0] for r in tick_rows]
+    if not tick_list:
+        return empty
+    n_ticks = len(tick_list)
+    ticks = np.array(tick_list, dtype='datetime64[us]')
+    start_dt64 = np.datetime64(start_date, 'us')
+    end_dt64 = np.datetime64(end_date, 'us')
+
+    # Fetch span rows overlapping the window and join the chosen label.
+    span_rows = session.execute(
         select(
             UserProjQueueStatus.timestamp,
+            UserProjQueueStatus.last_seen,
             label_col,
-            func.sum(metric_col).label('value'),
+            metric_col.label('value'),
         )
         .join(join_target, join_cond)
         .where(
             scope_filter,
-            UserProjQueueStatus.timestamp >= start_date,
+            UserProjQueueStatus.last_seen >= start_date,
             UserProjQueueStatus.timestamp <= end_date,
         )
-        .group_by(UserProjQueueStatus.timestamp, label_col)
     ).all()
 
-    if not rows:
+    if not span_rows:
         return empty
 
-    per_label: Dict[str, Dict[datetime, int]] = {}
-    timestamps: set = set()
-    for ts, label, value in rows:
-        timestamps.add(ts)
-        per_label.setdefault(label, {})[ts] = int(value or 0)
+    per_label: Dict[str, np.ndarray] = {}
+    for first_seen, last_seen, label, value in span_rows:
+        v = int(value or 0)
+        if v == 0:
+            continue
+        i_first = int(np.searchsorted(
+            ticks, np.datetime64(max(first_seen, start_date), 'us')))
+        i_last = int(np.searchsorted(
+            ticks, np.datetime64(min(last_seen, end_date), 'us'),
+            side='right')) - 1
+        if i_first > i_last or i_first >= n_ticks or i_last < 0:
+            continue
+        arr = per_label.get(label)
+        if arr is None:
+            arr = np.zeros(n_ticks, dtype=np.int64)
+            per_label[label] = arr
+        # Collapsed scopes (e.g. group_by='user' across multiple
+        # queues/projects) sum naturally via in-place addition.
+        arr[i_first:i_last + 1] += v
 
-    dates = sorted(timestamps)
+    if not per_label:
+        return empty
+
+    dates = list(tick_list)
 
     # Two ranking modes — peak catches brief spikes, current answers
-    # "who's hot right now". `dates` is non-empty here (rows guard above).
+    # "who's hot right now".
     if rank_by == 'current':
-        latest = dates[-1]
-        rank_key = lambda kv: kv[1].get(latest, 0)
+        rank_key = lambda kv: int(kv[1][-1])
     else:  # 'peak'
-        rank_key = lambda kv: max(kv[1].values()) if kv[1] else 0
+        rank_key = lambda kv: int(kv[1].max())
     ranked = sorted(per_label.items(), key=rank_key, reverse=True)
     top = ranked[:top_n]
     rest = ranked[top_n:]
 
     series: List[Dict[str, Any]] = []
     if rest:
-        others_values = [0] * len(dates)
-        for _label, by_ts in rest:
-            for i, d in enumerate(dates):
-                others_values[i] += by_ts.get(d, 0)
-        series.append({'label': 'Others', 'values': others_values})
-    for label, by_ts in reversed(top):
+        others_arr = np.zeros(n_ticks, dtype=np.int64)
+        for _label, arr in rest:
+            others_arr += arr
+        series.append({'label': 'Others', 'values': others_arr.tolist()})
+    for label, arr in reversed(top):
         series.append({
             'label':  label,
-            'values': [by_ts.get(d, 0) for d in dates],
+            'values': arr.tolist(),
         })
 
     return {

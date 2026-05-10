@@ -2,7 +2,7 @@
 # Per-user / per-project queue rollup snapshots
 #-------------------------------------------------------------------------eh-
 
-from sqlalchemy import Column, Integer, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, DateTime, Integer, UniqueConstraint, ForeignKey
 from sqlalchemy.orm import relationship
 from ..base import StatusBase, StatusSnapshotMixin, SessionMixin, QueueRollupMetricsMixin
 from .lookups import System, QueueDef, UserDef, ProjectCodeDef
@@ -11,28 +11,46 @@ from .lookups import System, QueueDef, UserDef, ProjectCodeDef
 class UserProjQueueStatus(StatusBase, StatusSnapshotMixin,
                           QueueRollupMetricsMixin, SessionMixin):
     """
-    Per-user / per-project / per-queue rollup metrics (5-minute intervals).
+    Per-user / per-project / per-queue rollup spans (formerly per-tick snapshots).
+
+    Each row is a **span of unchanging counts** for a single
+    ``(user, project_code, queue)`` tuple. The ``timestamp`` column is the
+    span's *first_seen* — the earliest tick the row was observed — and
+    ``last_seen`` is the most recent tick at which the same counts were
+    observed. Equality at ingest (all ten ``QueueRollupMetricsMixin``
+    counters identical) extends an existing span by bumping ``last_seen``;
+    any change in counters or the appearance of a new tuple inserts a
+    fresh row with ``timestamp == last_seen == T_new``. When the tuple
+    leaves the queue, its row is left alone — ``last_seen`` is never bumped
+    again, so the row becomes a self-contained record of one steady-state
+    run.
+
+    The parent FK (``derecho_status_id`` / ``casper_status_id``) points at
+    the parent status row at *first_seen* and is never rewritten when the
+    span is extended. CASCADE delete is preserved: pruning old parent
+    snapshots also prunes spans that started in that window.
 
     Same counter shape as ``QueueStatus`` (shared via
     ``QueueRollupMetricsMixin``) but keyed by ``(user, project_code, queue)``
-    instead of just ``queue``. Volume is ~100x larger; the table is kept
-    separate so retention can be shorter without affecting the main
-    ``queue_status`` history.
+    instead of just ``queue``. The span representation collapses long
+    runs of identical ticks into a single row.
 
     Username and project_code denormalize through ``UserDef`` and
     ``ProjectCodeDef`` lookups for compact integer keys. The ``before_flush``
     listener in ``system_status.queries.lookups`` resolves the staged
     ``_pending_username`` / ``_pending_project_code`` strings into FKs at
-    flush time, mirroring the pattern used for ``queue_name`` /
-    ``system_name``.
+    flush time for INSERTs; the ingest coalescer in
+    ``system_status.queries.user_proj_queue_ingest`` resolves them
+    synchronously before deciding INSERT-vs-UPDATE.
     """
     __bind_key__ = "system_status"
     __tablename__ = 'user_proj_queue_status'
 
-    # Snapshot uniqueness: (timestamp, user, project_code, queue). ``system_id``
-    # is intentionally absent — ``queue_id`` references a single ``QueueDef``
-    # row which is itself ``(system_id, name)``-keyed, so the queue uniquely
-    # identifies its system.
+    # Span uniqueness: (timestamp, user, project_code, queue) — i.e.
+    # ``(first_seen, ...)``. Each new span has a distinct first_seen, so
+    # the constraint is unchanged from the per-tick era. ``system_id`` is
+    # intentionally absent — ``queue_id`` references a single ``QueueDef``
+    # row which is itself ``(system_id, name)``-keyed.
     __table_args__ = (
         UniqueConstraint('timestamp', 'user_id', 'project_code_id', 'queue_id',
                          name='uq_user_proj_queue_status_snapshot'),
@@ -58,6 +76,13 @@ class UserProjQueueStatus(StatusBase, StatusSnapshotMixin,
                        nullable=False, index=True)
     queue_id = Column(Integer, ForeignKey('queues.queue_id'),
                       nullable=False, index=True)
+
+    # Span endpoint: most recent tick at which the same (user, project,
+    # queue, counts) was observed. Equals ``timestamp`` (first_seen) on a
+    # brand-new span; bumped forward when ingest coalesces an identical
+    # tick.
+    last_seen = Column(DateTime, nullable=False, index=True,
+                       comment='Most recent tick at which counts matched timestamp (first_seen)')
 
     # Rollup metric columns inherited from QueueRollupMetricsMixin:
     # running_jobs, pending_jobs, held_jobs, cores_allocated, gpus_allocated,
@@ -127,10 +152,11 @@ class UserProjQueueStatus(StatusBase, StatusSnapshotMixin,
 
     def __str__(self):
         return (f"{self.username}/{self.project_code} on {self.queue_name} "
-                f"({self.system_name}, {self.timestamp})")
+                f"({self.system_name}, {self.timestamp}..{self.last_seen})")
 
     def __repr__(self):
         return (f"<UserProjQueueStatus(id={self.user_proj_queue_status_id}, "
                 f"user='{self.username}', project='{self.project_code}', "
                 f"queue='{self.queue_name}', system='{self.system_name}', "
+                f"first_seen={self.timestamp}, last_seen={self.last_seen}, "
                 f"running={self.running_jobs})>")
