@@ -28,22 +28,33 @@ def enabled_limiter(app):
 
     The singleton facade is shared across xdist workers (within a single
     worker, that is), so we MUST restore enabled=False on the way out.
+    Storage manipulation needs an app context — `Limiter.storage` asserts
+    on `self._storage` which is only resolved with one pushed.
     """
-    facade.limiter.enabled = True
-    app.config['RATELIMIT_ENABLED'] = True
-    # Clear in-process storage to start each test from a known state.
-    _clear_memory_storage()
-    try:
-        yield
-    finally:
-        facade.limiter.enabled = False
-        app.config['RATELIMIT_ENABLED'] = False
+    with app.app_context():
+        facade.limiter.enabled = True
+        app.config['RATELIMIT_ENABLED'] = True
         _clear_memory_storage()
+        try:
+            yield
+        finally:
+            facade.limiter.enabled = False
+            app.config['RATELIMIT_ENABLED'] = False
+            _clear_memory_storage()
 
 
 def _clear_memory_storage():
-    """Drop every bucket from the per-worker memory:// store."""
-    storage = facade.limiter.storage
+    """Drop every bucket from the per-worker memory:// store.
+
+    Tolerates the case where `Limiter._storage` hasn't been set up
+    (e.g. a worker whose `app` fixture wired init_app with enabled=False
+    via a path that skipped storage construction) — there's simply
+    nothing to clear in that case.
+    """
+    try:
+        storage = facade.limiter.storage
+    except (AssertionError, AttributeError):
+        return
     inner = getattr(storage, 'storage', None)
     if isinstance(inner, dict):
         inner.clear()
