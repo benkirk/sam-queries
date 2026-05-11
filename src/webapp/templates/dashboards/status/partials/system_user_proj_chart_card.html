@@ -1,15 +1,18 @@
 {# System-wide user/project load chart card.
 
    Included by derecho.html and casper.html (one card per system tab).
-   The including template sets `_chart_system` to 'derecho' / 'casper'.
-   `chart_hours` and `can_view_user_info` come from the index() route
-   context — the includer is already inside an `if can_view_user_info`
-   guard, so this partial doesn't re-check.
+   The including template sets `_chart_system` to 'derecho' / 'casper';
+   `chart_hours` comes from the index() route context.
+
+   Visible to any logged-in user. Legend click-through into per-user /
+   per-project detail modals is gated on VIEW_SYSTEM_STATUS_USER_INFO
+   inside the chart-rendering route — non-operators get plain-text
+   legend labels rather than clickable anchors.
 
    Picker is a 7-button strip in the card header. Each button is a
    plain link back to the landing page with ?hours=N. The existing
    `selected_hours` passthrough on index() picks that up; tab
-   persistence (nav-view-persistence.js) keeps the operator on this
+   persistence (nav-view-persistence.js) keeps the viewer on this
    tab across reloads. The chart endpoint is HTMX-fetched on card
    load with the resolved `chart_hours` so initial render matches the
    active picker preset. #}

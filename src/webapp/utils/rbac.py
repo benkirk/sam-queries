@@ -102,7 +102,14 @@ class Permission(Enum):
     MANAGE_ROLES = "manage_roles"
     IMPERSONATE_USERS = "impersonate_users"  # Actually log in as another user
     VIEW_SYSTEM_STATUS = "view_system_status"
-    VIEW_SYSTEM_STATUS_USER_INFO = "view_system_status_user_info" # view per-user/project queue history info on system status dashboard
+    # The user/project queue-load chart itself is visible to any logged-in
+    # user on the status dashboard. This permission narrows to two
+    # operator-only enrichments on top of that:
+    #   1. The per-user / per-project rollup table on the queue-history
+    #      drill-down page (richer than the chart legend).
+    #   2. Click-through from the chart legend into the per-user and
+    #      per-project detail modals (link_kind in _render_user_proj_chart).
+    VIEW_SYSTEM_STATUS_USER_INFO = "view_system_status_user_info"
     MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data (collector/API)
     EDIT_SYSTEM_STATUS = "edit_system_status"  # GUI create/edit/delete outages
     VIEW_SYSTEM_CONFIG = "view_system_config"  # Read-only Configuration tab on Admin dashboard
