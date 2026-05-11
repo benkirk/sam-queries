@@ -21,7 +21,7 @@ import fakeredis
 import pytest
 from flask import g
 
-from webapp.limiter import _key_func, limiter as facade
+from webapp.limiter import _key_func, _format_429_response, limiter as facade
 from webapp.limiter.events import (
     record_429,
     recent,
@@ -169,71 +169,45 @@ def test_active_blocks_includes_recent_actors_only(app, fake_redis_events):
 
 
 # ── 429 errorhandler response shape ────────────────────────────────────
+#
+# These tests exercise `_format_429_response` directly under a synthetic
+# request context. The handler itself is just `_format_429_response` plus
+# logging + event recording, so testing the formatter covers the shape
+# branches without registering test-only routes against the
+# session-scoped app fixture (Flask 3 blocks `app.route()` after the
+# first request has been served).
 
 
-def test_429_handler_returns_json_for_api_paths(app, fake_redis_events,
-                                                  monkeypatch):
+def test_429_handler_returns_json_for_api_paths(app):
     """JSON envelope for /api/* requests."""
-    monkeypatch.setitem(app.config, 'RATELIMIT_ENABLED', True)
-    facade.limiter.enabled = True
-
-    @app.route('/api/v1/_rl_probe', endpoint='_rl_probe_json')
-    @facade.limiter.limit('1 per minute')
-    def _probe_json():
-        return 'ok'
-
-    client = app.test_client()
-    assert client.get('/api/v1/_rl_probe').status_code == 200
-    resp = client.get('/api/v1/_rl_probe')
+    with app.test_request_context('/api/v1/anything'):
+        resp = _format_429_response('5 per minute', '30')
     assert resp.status_code == 429
     assert resp.is_json
     body = resp.get_json()
     assert body['error'] == 'rate_limit_exceeded'
-    assert 'limit' in body
+    assert body['limit'] == '5 per minute'
+    assert body['retry_after'] == '30'
 
-    facade.limiter.enabled = False
 
-
-def test_429_handler_returns_html_fragment_for_htmx(app, fake_redis_events,
-                                                     monkeypatch):
-    """HX-Request → fragment body, status 429, text/html."""
-    monkeypatch.setitem(app.config, 'RATELIMIT_ENABLED', True)
-    facade.limiter.enabled = True
-
-    @app.route('/_rl_htmx_probe', endpoint='_rl_probe_htmx')
-    @facade.limiter.limit('1 per minute')
-    def _probe_htmx():
-        return 'ok'
-
-    client = app.test_client()
-    client.get('/_rl_htmx_probe', headers={'HX-Request': 'true'})
-    resp = client.get('/_rl_htmx_probe', headers={'HX-Request': 'true'})
+def test_429_handler_returns_html_fragment_for_htmx(app):
+    """HX-Request → fragment body, status 429, text/html, no `<html>`."""
+    with app.test_request_context('/anything',
+                                    headers={'HX-Request': 'true'}):
+        resp = _format_429_response('5 per minute', None)
     assert resp.status_code == 429
     assert resp.mimetype == 'text/html'
     assert b'Too many requests' in resp.data
-    assert b'<html' not in resp.data.lower()   # fragment, not full page
-
-    facade.limiter.enabled = False
+    assert b'<html' not in resp.data.lower()
 
 
-def test_429_handler_returns_full_html_otherwise(app, fake_redis_events,
-                                                  monkeypatch):
-    monkeypatch.setitem(app.config, 'RATELIMIT_ENABLED', True)
-    facade.limiter.enabled = True
-
-    @app.route('/_rl_page_probe', endpoint='_rl_probe_page')
-    @facade.limiter.limit('1 per minute')
-    def _probe_page():
-        return 'ok'
-
-    client = app.test_client()
-    client.get('/_rl_page_probe')
-    resp = client.get('/_rl_page_probe')
+def test_429_handler_returns_full_html_otherwise(app):
+    """Non-API, non-HTMX → full HTML page extending base.html."""
+    with app.test_request_context('/anything'):
+        resp = _format_429_response('5 per minute', None)
     assert resp.status_code == 429
     assert resp.mimetype == 'text/html'
-    assert b'<html' in resp.data.lower()       # full page extends base.html
-
-    facade.limiter.enabled = False
+    assert b'<html' in resp.data.lower()
 
 
 # ── Limiting.stats() ──────────────────────────────────────────────────

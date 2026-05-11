@@ -281,7 +281,7 @@ def create_app(*, config_overrides: dict | None = None):
     @app.route('/')
     @limiter.limiter.limit(
         lambda: app.config['RATELIMIT_ANON'],
-        key_func=get_remote_address,
+        key_func=lambda: f'ip:{get_remote_address()}',
     )
     def index():
         if current_user.is_authenticated:

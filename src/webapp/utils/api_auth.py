@@ -85,7 +85,9 @@ def api_key_required(f):
 
     return _facade.limiter.limit(
         lambda: current_app.config['RATELIMIT_M2M'],
-        key_func=get_remote_address,
+        # Per-IP key with the ``ip:`` prefix our event log uses, so admin
+        # unblock-by-actor matches the storage key cleanly.
+        key_func=lambda: f'ip:{get_remote_address()}',
     )(decorated_function)
 
 

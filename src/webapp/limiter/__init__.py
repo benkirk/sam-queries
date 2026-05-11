@@ -78,9 +78,6 @@ class Limiting:
     # ── Wire-up ─────────────────────────────────────────────────────────
 
     def init_app(self, app) -> None:
-        if not app.config.get('RATELIMIT_ENABLED', True):
-            self.limiter.enabled = False
-
         uri = (app.config.get('RATELIMIT_STORAGE_URI') or '').strip()
         if uri.startswith('redis://') or uri.startswith('rediss://'):
             try:
@@ -103,7 +100,19 @@ class Limiting:
         # init_app, so write the resolved value back before delegating.
         app.config['RATELIMIT_STORAGE_URI'] = self._resolved_storage_uri
 
+        # Flask-Limiter's init_app early-returns when enabled=False
+        # (storage + before_request handler never get wired). That's a
+        # problem in tests, where we want storage initialized so the
+        # `enabled` flag can be flipped on per-test. Force init_app to
+        # run with enabled=True regardless, then restore the requested
+        # state afterward — the request-time `if self.enabled` check
+        # honors the runtime flag and skips bucket math when it's False.
+        requested_enabled = bool(app.config.get('RATELIMIT_ENABLED', True))
+        app.config['RATELIMIT_ENABLED'] = True
+        self.limiter.enabled = True
         self.limiter.init_app(app)
+        app.config['RATELIMIT_ENABLED'] = requested_enabled
+        self.limiter.enabled = requested_enabled
 
         # Initialize the event ring + errorhandler last so they pick up
         # the resolved storage decision.
