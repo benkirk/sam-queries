@@ -54,6 +54,21 @@ class SAMWebappConfig(SAMConfig):
     # Distinct from the cachetools TTL below (which wraps a single query function).
     CACHE_DEFAULT_TIMEOUT = int(os.getenv('CACHE_DEFAULT_TIMEOUT', 300))
 
+    # Rate limiting (Flask-Limiter; see docs/plans/RATE_LIMITING.md).
+    # RATELIMIT_STORAGE_URI is injected by compose/helm when Redis is available;
+    # empty value falls back to per-worker memory:// with a startup warning.
+    RATELIMIT_ENABLED      = os.getenv('RATELIMIT_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    RATELIMIT_STORAGE_URI  = os.getenv('RATELIMIT_STORAGE_URI', '')
+    RATELIMIT_STRATEGY     = 'fixed-window'
+
+    RATELIMIT_AUTH_LOGIN = os.getenv('RATELIMIT_AUTH_LOGIN', '5 per minute; 20 per hour')
+    RATELIMIT_M2M        = os.getenv('RATELIMIT_M2M',        '120 per minute')
+    RATELIMIT_AUTHED     = os.getenv('RATELIMIT_AUTHED',     '200 per minute')
+    RATELIMIT_ANON       = os.getenv('RATELIMIT_ANON',       '30 per minute')
+
+    RATELIMIT_EVENT_RETENTION_HOURS = int(os.getenv('RATELIMIT_EVENT_RETENTION_HOURS', 24))
+    RATELIMIT_EVENT_MAX             = int(os.getenv('RATELIMIT_EVENT_MAX', 1000))
+
     # Usage calculation cache (TTLCache wrapping get_allocation_summary_with_usage)
     # TTL=0 disables caching; SIZE controls max LRU entries
     ALLOCATION_USAGE_CACHE_TTL  = int(os.getenv('ALLOCATION_USAGE_CACHE_TTL', 3600))   # seconds
@@ -144,6 +159,10 @@ class TestingConfig(SAMWebappConfig):
     # Disable usage cache in tests to prevent cross-test pollution
     ALLOCATION_USAGE_CACHE_TTL  = 0
     ALLOCATION_USAGE_CACHE_SIZE = 0
+
+    # Rate limiting off in tests — xdist parallelism would otherwise trip
+    # global limits across worker processes.
+    RATELIMIT_ENABLED = False
 
 
 _configs = {
