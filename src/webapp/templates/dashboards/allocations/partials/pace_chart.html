@@ -9,8 +9,14 @@
    for selector-button clicks. The wrapper's `data-chart-persist-id`
    / `data-chart-persist-keys` cooperate with
    `nav-view-persistence.js` to replay the selected `sort_by` on the
-   next page load. #}
-{% set _selector_kwargs = {'sort_by': sort_by, 'active_at': active_at} %}
+   next page load.
+
+   `selector_kwargs` is built by the route from the request's own
+   args — including any `facilities=` scope. Threading it through
+   here is what keeps per-facility cards facility-scoped across
+   selector-button clicks (otherwise the partial would emit URLs
+   without `facilities=` and the next request would silently widen
+   back to the whole resource). #}
 <div id="{{ chart_dom_id }}"
      data-chart-persist-id="{{ chart_dom_id }}"
      data-chart-persist-keys="sort_by">
@@ -31,7 +37,7 @@
                         class="btn btn-{% if sort_by == opt_val %}primary{% else %}outline-primary{% endif %}"
                         hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
                                            resource_name=resource_name,
-                                           **dict(_selector_kwargs, sort_by=opt_val)) }}"
+                                           **dict(selector_kwargs, sort_by=opt_val)) }}"
                         hx-target="#{{ chart_dom_id }}"
                         hx-swap="outerHTML">
                     {{ opt_lbl }}

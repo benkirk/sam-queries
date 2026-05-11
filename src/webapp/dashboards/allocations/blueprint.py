@@ -547,6 +547,20 @@ def htmx_pace_chart(resource_name):
     if len(requested_facilities) == 1:
         chart_dom_id += '-' + requested_facilities[0].replace(' ', '_')
 
+    # Selector-button URLs MUST carry the original facility scope
+    # forward — otherwise clicking Sort-by on a per-facility card would
+    # drop ?facilities= and the next request would un-narrow back to
+    # the whole resource (leaking cross-facility projects into a
+    # facility-scoped chart). Pass the verbatim requested list so a
+    # facility-scoped reload follows the same path as the initial
+    # loader in dashboard.html.
+    selector_kwargs = {
+        'sort_by': sort_by,
+        'active_at': active_at.strftime('%Y-%m-%d'),
+    }
+    if requested_facilities:
+        selector_kwargs['facilities'] = requested_facilities
+
     return render_template(
         'dashboards/allocations/partials/pace_chart.html',
         resource_name=resource_name,
@@ -554,6 +568,7 @@ def htmx_pace_chart(resource_name):
         sort_by=sort_by,
         active_at=active_at.strftime('%Y-%m-%d'),
         chart_dom_id=chart_dom_id,
+        selector_kwargs=selector_kwargs,
     )
 
 
