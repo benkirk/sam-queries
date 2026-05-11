@@ -122,6 +122,17 @@ def create_app(*, config_overrides: dict | None = None):
     caching.init_app(app)
 
     # =========================================================================
+    # RATE LIMITING INITIALIZATION
+    # =========================================================================
+    # Flask-Limiter, keyed per-API-key/per-user/per-IP. Storage backend is
+    # Redis when RATELIMIT_STORAGE_URI is set and reachable, otherwise
+    # per-worker memory:// with a startup warning (mirrors caching facade).
+    # The 429 errorhandler is registered as a side-effect of init_app.
+    from webapp.limiter import limiter
+    limiter.init_app(app)
+    # =========================================================================
+
+    # =========================================================================
     # AUDIT LOGGING INITIALIZATION
     # =========================================================================
     # Track INSERT/UPDATE/DELETE operations on SAM database models
