@@ -185,8 +185,8 @@ def generate_disk_usage_stacked_area(timeseries) -> str:
 # 1c. User / project queue load stacked-area chart (status drill-down)
 # ---------------------------------------------------------------------------
 
-def _user_proj_stacked_area_cache_key(timeseries, link_kind=None):
-    return _content_hash([_content_hash(timeseries), link_kind or ''])
+def _user_proj_stacked_area_cache_key(timeseries, link_kind=None, rank_by='current'):
+    return _content_hash([_content_hash(timeseries), link_kind or '', rank_by])
 
 
 # `link_kind` ('user' | 'project' | None) controls whether legend
@@ -195,7 +195,8 @@ def _user_proj_stacked_area_cache_key(timeseries, link_kind=None):
 # compatible).
 @caching.chart_cached(name='user_proj_stacked_area', maxsize=128,
                       key_fn=_user_proj_stacked_area_cache_key)
-def generate_user_proj_stacked_area(timeseries, link_kind=None) -> str:
+def generate_user_proj_stacked_area(timeseries, link_kind=None,
+                                    rank_by: str = 'current') -> str:
     """Render a stacked-area chart of per-user or per-project queue load.
 
     Args:
@@ -211,6 +212,12 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None) -> str:
             modal), or None for no links. The 'Others' bucket is never
             linked. svg-legend-links.js intercepts the click and shows
             the modal — set_url() only emits the ``<a>`` wrapper.
+        rank_by: which value to quote in parens after each legend
+            entry. Mirrors the route's `rank_by` selector so the legend
+            number tracks the active sort:
+              - ``'current'`` → ``values[-1]`` (latest tick).
+              - ``'peak'``    → ``max(values)`` over the window.
+            Unknown values fall back to ``'current'``.
 
     Y-axis is integer counts (jobs). X-axis is datetime-formatted at
     5-minute snapshot grain. Legend on the right, reversed so it reads
@@ -250,7 +257,22 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None) -> str:
     import matplotlib.patches as mpatches
     rev_series = list(reversed(series))
     rev_colors = list(reversed(colors))
-    handles = [mpatches.Patch(color=c, label=s['label'])
+
+    # Per-series legend value mirrors the active rank_by selector so
+    # the number in parens matches whichever sort the user chose:
+    # 'current' = right-edge value, 'peak' = max over window.
+    # 'Others' uses the same formula on its aggregate values array.
+    if rank_by == 'peak':
+        def _legend_value(s):
+            vs = s.get('values') or []
+            return max(vs) if vs else 0
+    else:
+        def _legend_value(s):
+            vs = s.get('values') or []
+            return vs[-1] if vs else 0
+
+    handles = [mpatches.Patch(color=c,
+                              label=f"{s['label']} ({fmt.number(_legend_value(s))})")
                for s, c in zip(rev_series, rev_colors)]
     n_named = sum(1 for s in series if s['label'] != 'Others')
     legend_title = (
@@ -262,8 +284,8 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None) -> str:
         loc='center left',
         bbox_to_anchor=(1.01, 0.5),
         frameon=False,
-        fontsize=9,
-        title_fontsize=10,
+        fontsize=11,
+        title_fontsize=12,
     )
 
     if link_kind in ('user', 'project'):

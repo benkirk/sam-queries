@@ -397,7 +397,9 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         link_kind = 'user' if group_by == 'user' else 'project'
     else:
         link_kind = None
-    chart_svg = generate_user_proj_stacked_area(timeseries, link_kind=link_kind)
+    chart_svg = generate_user_proj_stacked_area(
+        timeseries, link_kind=link_kind, rank_by=rank_by,
+    )
 
     # Two of these cards render on the landing page (one per system
     # tab), so the chart wrapper div needs a scope-unique id —
