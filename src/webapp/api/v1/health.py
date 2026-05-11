@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from webapp.extensions import db
 from webapp.api.helpers import register_error_handlers
+from webapp.limiter import limiter as _rate_limit
 from webapp.utils.rbac import require_permission, Permission
 from webapp.utils.config_inspect import pool_stats
 
@@ -67,11 +68,13 @@ def _collect_health():
 # ---------------------------------------------------------------------------
 
 @bp.route('/', methods=['GET'])
+@_rate_limit.limiter.exempt
 def health():
     """Health check for load balancers — pings all DB binds.
 
     Returns 200 when all checks pass, 503 if any fail.
-    Public endpoint (no login required).
+    Public endpoint (no login required). Exempt from rate limiting so
+    LB/Kubernetes probes never get throttled.
     """
     healthy, checks = _collect_health()
     return jsonify({
@@ -83,6 +86,7 @@ def health():
 
 
 @bp.route('/live', methods=['GET'])
+@_rate_limit.limiter.exempt
 def liveness():
     """Kubernetes liveness probe — confirms the process is running.
 
@@ -92,6 +96,7 @@ def liveness():
 
 
 @bp.route('/ready', methods=['GET'])
+@_rate_limit.limiter.exempt
 def readiness():
     """Kubernetes readiness probe — confirms the app can serve traffic.
 

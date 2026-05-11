@@ -6,6 +6,7 @@ from datetime import datetime
 os.environ['FLASK_ACTIVE'] = '1'
 
 from flask import Flask, redirect, request, make_response, url_for
+from flask_limiter.util import get_remote_address
 from flask_login import LoginManager, current_user
 import sam.session
 import system_status.session
@@ -278,6 +279,10 @@ def create_app(*, config_overrides: dict | None = None):
 
     # Home page redirect
     @app.route('/')
+    @limiter.limiter.limit(
+        lambda: app.config['RATELIMIT_ANON'],
+        key_func=get_remote_address,
+    )
     def index():
         if current_user.is_authenticated:
             # Redirect admin-capable users to admin dashboard, others to
