@@ -81,7 +81,7 @@ def generate_usage_timeseries_matplotlib(daily_charges) -> str:
     dates = list(dates)
     comp = list(comp)
 
-    fig, ax = plt.subplots(figsize=(12, 4))
+    fig, ax = plt.subplots(figsize=(18, 5))
     ax.bar(dates, comp, width=1, lw=2)
     ax.set_ylabel('Charges')
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
@@ -102,8 +102,17 @@ _BYTES_PER_TIB = 1024 ** 4
 _BYTES_PER_PIB = 1024 ** 5
 
 
-@caching.chart_cached(name='disk_usage_stacked_area', maxsize=128)
-def generate_disk_usage_stacked_area(timeseries) -> str:
+def _disk_usage_stacked_area_cache_key(timeseries, link_kind=None):
+    return _content_hash([_content_hash(timeseries), link_kind or ''])
+
+
+# `link_kind` ('user' | None) controls whether legend usernames are
+# wrapped in <a xlink:href> SVG anchors targeting the user-details
+# modal. None = no links (default, backward compatible). Mirrors the
+# user_proj_stacked_area chart's pattern.
+@caching.chart_cached(name='disk_usage_stacked_area', maxsize=128,
+                      key_fn=_disk_usage_stacked_area_cache_key)
+def generate_disk_usage_stacked_area(timeseries, link_kind=None) -> str:
     """Render a stacked-area chart of disk bytes vs time.
 
     Args:
@@ -111,6 +120,11 @@ def generate_disk_usage_stacked_area(timeseries) -> str:
                     returns: ``{'dates': [...], 'series': [{'username','values'}, ...]}``.
                     The last series is conventionally ``'Others'`` (rendered last
                     so it sits on top of the named-user stack).
+        link_kind: ``'user'`` to make legend usernames clickable to
+            ``/admin/user/<username>`` (user-details modal), or ``None``
+            for no links. The 'Others' bucket is never linked.
+            ``svg-legend-links.js`` intercepts the click and shows the
+            modal — ``set_url()`` only emits the ``<a>`` wrapper.
 
     Y-axis is auto-scaled to TiB or PiB based on the peak stacked total
     (>= 1 PiB → PiB, else TiB). X-axis is date-formatted. Legend on the
@@ -136,12 +150,11 @@ def generate_disk_usage_stacked_area(timeseries) -> str:
         scale = _BYTES_PER_TIB
         unit_label = 'TiB'
 
-    fig, ax = plt.subplots(figsize=(12, 4.5))
+    fig, ax = plt.subplots(figsize=(18, 5))
     scaled_series = [
         [v / scale for v in s['values']]
         for s in series
     ]
-    labels = [s['username'] for s in series]
     # Others (always first per get_disk_usage_timeseries_by_user) gets a
     # neutral grey so it doesn't compete with the named-user palette.
     # Named users use matplotlib's default tab10 cycle.
@@ -154,25 +167,36 @@ def generate_disk_usage_stacked_area(timeseries) -> str:
         else:
             colors.append(cmap(cycle_idx % 10))
             cycle_idx += 1
-    ax.stackplot(dates, *scaled_series, labels=labels, colors=colors, alpha=0.85)
+    ax.stackplot(dates, *scaled_series, colors=colors, alpha=0.85)
     ax.set_ylabel(f'Disk usage ({unit_label})')
     ax.grid(True, alpha=0.3)
-    # Reverse the legend so it reads top-to-bottom in the same order as
-    # the visual stack (largest user on top).
-    handles, lbls = ax.get_legend_handles_labels()
-    # Legend title — show the actual count of named user series
-    # (excluding the synthetic 'Others' bucket) so it self-describes
-    # the top-N selection regardless of caller's `top_n` argument.
-    n_named = sum(1 for s in series if s['username'] != 'Others')
-    ax.legend(
-        handles[::-1], lbls[::-1],
-        title=f'Top {n_named} Users',
+
+    # Build the legend explicitly with reversed-order Patch handles so
+    # each handle/text artist is addressable by index for set_url() —
+    # mirrors the user_proj_stacked_area / pace chart pattern. Reverses
+    # the visual stack so legend reads top-to-bottom in the same order.
+    import matplotlib.patches as mpatches
+    rev_series = list(reversed(series))
+    rev_colors = list(reversed(colors))
+    handles = [mpatches.Patch(color=c, label=s['username'])
+               for s, c in zip(rev_series, rev_colors)]
+    leg = ax.legend(
+        handles=handles,
         loc='center left',
         bbox_to_anchor=(1.01, 0.5),
         frameon=False,
-        fontsize=9,
-        title_fontsize=10,
+        fontsize=11,
+        title_fontsize=12,
     )
+
+    if link_kind == 'user':
+        for s, patch, text in zip(rev_series, leg.get_patches(), leg.get_texts()):
+            if s['username'] == 'Others':
+                continue
+            url = _user_modal_url(s['username'])
+            patch.set_url(url)
+            text.set_url(url)
+
     fig.autofmt_xdate()
 
     svg_io = StringIO()
@@ -233,7 +257,7 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
     metric_label = timeseries.get('metric_label', 'Jobs')
     group_by_label = timeseries.get('group_by_label', '')
 
-    fig, ax = plt.subplots(figsize=(18, 5.0))
+    fig, ax = plt.subplots(figsize=(18, 5))
     values_matrix = [s['values'] for s in series]
     # tab20 (20 distinct colours) so Top-15+Others has no colour reuse;
     # disk_usage uses tab10 because its default top_n is 10.
@@ -280,7 +304,7 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
     )
     leg = ax.legend(
         handles=handles,
-        title=legend_title,
+        #title=legend_title,
         loc='center left',
         bbox_to_anchor=(1.01, 0.5),
         frameon=False,
@@ -332,7 +356,7 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
     utilization = [d.get('utilization_percent') for d in history_data]
     memory_utilization = [d.get('memory_utilization_percent') for d in history_data]
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 10), sharex=True)
 
     ax1.stackplot(timestamps, nodes_down, nodes_allocated, nodes_available,
                   labels=['Down', 'Fully Allocated', 'Resources Available'],

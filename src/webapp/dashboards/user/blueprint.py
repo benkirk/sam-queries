@@ -723,7 +723,14 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         } for r in breakdown]
 
     percent_used = (used_tib / allocated_tib * 100) if allocated_tib > 0 else 0.0
-    usage_chart = generate_disk_usage_stacked_area(timeseries)
+    # Operators (VIEW_USERS) get clickable legend usernames that pop the
+    # user-details modal; non-operators get plain text since the modal
+    # endpoint would 403 on click. Same gating shape as the queue-load
+    # chart in status/blueprint.py:_render_user_proj_chart.
+    disk_link_kind = (
+        'user' if has_permission(current_user, Permission.VIEW_USERS) else None
+    )
+    usage_chart = generate_disk_usage_stacked_area(timeseries, link_kind=disk_link_kind)
 
     return render_template(
         'dashboards/user/resource_details_disk.html',
