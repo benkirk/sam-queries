@@ -109,9 +109,13 @@
         </div>
         <div class="tab-pane fade" id="pie-pace" role="tabpanel">
             <div id="facilityPaceContainer" class="chart-container pace-chart">
+                {# Each resource gets its own HTMX-loaded pace chart with
+                   a "Sort by" selector inside the swap target. The
+                   data-chart-persist-id on the loader matches the one
+                   the partial emits, so nav-view-persistence.js replays
+                   the saved sort_by on the initial request. #}
                 {% for resource_name, _ in grouped_data.items()|sort %}
-                {% set pace_chart = resource_pace_charts.get(resource_name) %}
-                {% if pace_chart %}
+                {% set _pace_id = 'pace-chart-' ~ (resource_name|replace(' ', '_')) %}
                 <div class="facility-pace-panel"
                      data-resource="{{ resource_name|replace(' ', '_') }}"
                      style="display:none;">
@@ -119,9 +123,19 @@
                         Allocation Pace
                         <span class="text-muted fw-normal">— {{ resource_name }}</span>
                     </h6>
-                    {{ pace_chart|safe }}
+                    <div hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
+                                            resource_name=resource_name,
+                                            active_at=active_at,
+                                            sort_by='size') }}"
+                         hx-trigger="load"
+                         hx-swap="innerHTML"
+                         data-chart-persist-id="{{ _pace_id }}"
+                         data-chart-persist-keys="sort_by">
+                        <div class="text-center text-muted py-5">
+                            <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                        </div>
+                    </div>
                 </div>
-                {% endif %}
                 {% endfor %}
             </div>
         </div>
@@ -326,8 +340,10 @@
                     <!-- Type Pie Chart Row (if >1 type and chart available) -->
                     {% set type_chart = allocation_type_charts.get(resource_name, {}).get(facility_name) %}
                     {% set usage_type_chart = allocation_type_usage_charts.get(resource_name, {}).get(facility_name) %}
-                    {% set pace_chart = facility_pace_charts.get(resource_name, {}).get(facility_name) %}
-                    {% if types|length > 1 and (type_chart or usage_type_chart or pace_chart) %}
+                    {# Pace card is HTMX-loaded — show it whenever there are
+                       allocations in the facility; the endpoint handles the
+                       empty-window case itself. #}
+                    {% if types|length > 1 and (type_chart or usage_type_chart) %}
                     <tr class="alloc-type-chart-row" data-fac-id="{{ fac_id }}">
                         <td colspan="7" class="p-0">
                             <div class="p-2 pb-0">
@@ -380,17 +396,31 @@
                                         {% endif %}
                                     </div>
                                     <div class="tab-pane fade" id="type-pace-{{ fac_id }}">
-                                        {% if pace_chart %}
+                                        {# Per-facility Pace card — same HTMX endpoint as the
+                                           resource-wide chart, narrowed by ?facilities=. The
+                                           dom_id is suffixed with the facility so its
+                                           persisted sort_by is independent of the
+                                           resource-wide chart's. #}
+                                        {% set _facet_pace_id = 'pace-chart-' ~ (resource_name|replace(' ', '_')) ~ '-' ~ (facility_name|replace(' ', '_')) %}
                                         <div class="chart-container pace-chart p-3">
                                             <h6 class="text-center fw-bold mb-2">
                                                 Allocation Pace
                                                 <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
                                             </h6>
-                                            {{ pace_chart|safe }}
+                                            <div hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
+                                                                    resource_name=resource_name,
+                                                                    facilities=facility_name,
+                                                                    active_at=active_at,
+                                                                    sort_by='size') }}"
+                                                 hx-trigger="load"
+                                                 hx-swap="innerHTML"
+                                                 data-chart-persist-id="{{ _facet_pace_id }}"
+                                                 data-chart-persist-keys="sort_by">
+                                                <div class="text-center text-muted small py-3">
+                                                    <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                                                </div>
+                                            </div>
                                         </div>
-                                        {% else %}
-                                        <div class="text-center text-muted small py-3">No allocations in window</div>
-                                        {% endif %}
                                     </div>
                                 </div>
                             </div>

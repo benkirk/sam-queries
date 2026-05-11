@@ -1,0 +1,47 @@
+{# Pace allocation chart fragment with a "Sort by" selector.
+
+   The btn-group lives INSIDE the swap target so each click re-renders
+   both the buttons (with the new active state) and the chart in a
+   single HTMX swap. No JS state to keep in sync.
+
+   Used by `allocations_dashboard.htmx_pace_chart` for both the
+   initial HTMX load (one loader per resource in dashboard.html) and
+   for selector-button clicks. The wrapper's `data-chart-persist-id`
+   / `data-chart-persist-keys` cooperate with
+   `nav-view-persistence.js` to replay the selected `sort_by` on the
+   next page load. #}
+{% set _selector_kwargs = {'sort_by': sort_by, 'active_at': active_at} %}
+<div id="{{ chart_dom_id }}"
+     data-chart-persist-id="{{ chart_dom_id }}"
+     data-chart-persist-keys="sort_by">
+    <div class="d-flex flex-wrap gap-3 mb-3 align-items-center">
+        <div>
+            <label class="form-label small text-muted mb-1 me-2">Sort by</label>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Sort by">
+                {# 'size': total allocated amount per project.
+                   'past': past burn rate (used / past_days), per year.
+                   'future': future required rate ((amount - used) / future_days),
+                            per year — steeper = more risk to complete. #}
+                {% for opt_val, opt_lbl in [
+                    ('size',   'Allocation Size'),
+                    ('past',   'Past Burn'),
+                    ('future', 'Future Risk'),
+                ] %}
+                <button type="button"
+                        class="btn btn-{% if sort_by == opt_val %}primary{% else %}outline-primary{% endif %}"
+                        hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
+                                           resource_name=resource_name,
+                                           **dict(_selector_kwargs, sort_by=opt_val)) }}"
+                        hx-target="#{{ chart_dom_id }}"
+                        hx-swap="outerHTML">
+                    {{ opt_lbl }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        {{ chart_svg | safe }}
+    </div>
+</div>

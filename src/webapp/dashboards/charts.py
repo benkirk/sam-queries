@@ -611,23 +611,27 @@ def _pace_key_fields(allocations: List[Dict]) -> list:
     ]
 
 
-def _pace_cache_key(allocations, active_at, window_days=180, top_n=15, resource_name=''):
+def _pace_cache_key(allocations, active_at, window_days=180, top_n=15,
+                    resource_name='', sort_by='size'):
     return _content_hash([_pace_key_fields(allocations), active_at.isoformat(),
-                          int(window_days), int(top_n), resource_name])
+                          int(window_days), int(top_n), resource_name, sort_by])
 
 
-# One entry per (resource, window_days, top_n) combination across concurrent viewers.
-@caching.chart_cached(name='pace_chart', maxsize=64, key_fn=_pace_cache_key)
+# One entry per (resource, window_days, top_n, sort_by) combination across
+# concurrent viewers. maxsize sized for ~30 resources × 3 sort_by × small
+# facility-scope fanout — well under 10 MB of cached SVG per process.
+@caching.chart_cached(name='pace_chart', maxsize=192, key_fn=_pace_cache_key)
 def generate_pace_chart_matplotlib(
     allocations: List[Dict],
     active_at: datetime,
     window_days: int = 180,
     top_n: int = 15,
     resource_name: str = '',
+    sort_by: str = 'size',
 ) -> str:
     """Stacked-area pace chart: one band per allocation, past-rate | future-rate
-    step at ``active_at``. Top-N projcodes by total allocated get distinct
-    colors; the rest share an "Other" color.
+    step at ``active_at``. Top-N projcodes get distinct colors; the rest share
+    an "Other" color.
 
     Args:
         allocations: per-allocation rows (from ``cached_allocation_usage``)
@@ -637,6 +641,13 @@ def generate_pace_chart_matplotlib(
         window_days: half-window on each side of ``active_at`` (default 180).
         top_n: projects with their own color + legend entry (default 15).
         resource_name: used only for cache key disambiguation.
+        sort_by: ranking metric for the top-N selection. One of:
+            - ``'size'``  — total allocated amount (default; legacy behaviour).
+            - ``'past'``  — past burn rate (used / past_days), per year.
+            - ``'future'`` — future required rate ((amount - used) / future_days),
+              per year — the "risk" signal: steeper future slope = more burn
+              required to complete.
+            The legend number on each band reflects this same metric.
 
     Returns:
         SVG string ready for template rendering.
@@ -651,17 +662,49 @@ def generate_pace_chart_matplotlib(
     if not bands:
         return '<div class="text-center text-muted">No allocations in the ±{}d window</div>'.format(window_days)
 
-    # Rank projcodes by total_amount across bands in scope
-    proj_totals: Dict[str, float] = {}
-    for pc, amount, _ in bands:
-        proj_totals[pc] = proj_totals.get(pc, 0.0) + amount
+    # today_idx on the full daily grid — needed both for ranking by
+    # past/future rate (band heights at the step) and for the later
+    # RLE step preservation.
+    n_days = len(days)
+    today_idx = (active_at - days[0]).days
+
+    # Per-project aggregations for the three rank metrics:
+    #   - size:   sum of total_amount   (legacy default — biggest pool)
+    #   - past:   sum of past-rate band heights at today-1 (visible
+    #             past slope, per day)
+    #   - future: sum of future-rate band heights at today   (visible
+    #             future slope = required burn-to-completion)
+    # Past/future rates are piecewise-constant inside each band (set by
+    # _pace_bands), so the value at the single sample point IS the band's
+    # rate over its active region. Summing across bands handles projects
+    # with multiple allocations on the same resource.
+    proj_size:   Dict[str, float] = {}
+    proj_past:   Dict[str, float] = {}
+    proj_future: Dict[str, float] = {}
+    past_sample_idx = max(today_idx - 1, 0)
+    future_sample_idx = min(today_idx, n_days - 1)
+    for pc, amount, rates in bands:
+        proj_size[pc]   = proj_size.get(pc, 0.0) + amount
+        proj_past[pc]   = proj_past.get(pc, 0.0) + float(rates[past_sample_idx])
+        proj_future[pc] = proj_future.get(pc, 0.0) + float(rates[future_sample_idx])
+
+    # Pick ranking + legend-display metric in lockstep so the legend
+    # number always reflects the active sort. Unknown sort_by falls
+    # back to 'size' (parallels the route's input validation).
+    if sort_by == 'past':
+        rank_metric = proj_past
+    elif sort_by == 'future':
+        rank_metric = proj_future
+    else:
+        sort_by = 'size'
+        rank_metric = proj_size
     top_projs = [pc for pc, _ in sorted(
-        proj_totals.items(), key=lambda kv: kv[1], reverse=True
+        rank_metric.items(), key=lambda kv: kv[1], reverse=True
     )[:top_n]]
     palette = plt.cm.tab10.colors if len(top_projs) <= 10 else plt.cm.tab20.colors
     color_map = {pc: palette[i] for i, pc in enumerate(top_projs)}
 
-    n_other_projs = len(proj_totals) - len(top_projs)
+    n_other_projs = len(rank_metric) - len(top_projs)
     other_label = f'Other ({n_other_projs} project{"s" if n_other_projs != 1 else ""})'
 
     # Collapse per-allocation bands into one band per color group BEFORE
@@ -670,16 +713,23 @@ def generate_pace_chart_matplotlib(
     # ~20 MB SVG. Stacking is associative, so element-wise summing the rate
     # arrays within each color group is mathematically identical and
     # visually identical (the group shares one color anyway).
-    n_days = len(days)
     OTHER_KEY = '__other__'
     group_keys = list(top_projs) + [OTHER_KEY]
     group_rates: Dict[str, np.ndarray] = {k: np.zeros(n_days) for k in group_keys}
-    group_totals: Dict[str, float] = {k: 0.0 for k in group_keys}
+    # Per-group running total of the active sort metric — used by the
+    # "Other" legend entry to summarize the long tail in the same units
+    # as the per-project entries.
+    group_sort_totals: Dict[str, float] = {k: 0.0 for k in group_keys}
 
     for pc, amount, rates in bands:
         key = pc if pc in color_map else OTHER_KEY
-        group_totals[key] += amount
         group_rates[key] += rates
+        if sort_by == 'past':
+            group_sort_totals[key] += float(rates[past_sample_idx])
+        elif sort_by == 'future':
+            group_sort_totals[key] += float(rates[future_sample_idx])
+        else:
+            group_sort_totals[key] += amount
 
     # Stack order: top-N (ranked) first, Other capping the top. Drop empty
     # groups so stackplot doesn't emit a zero-area path.
@@ -704,7 +754,6 @@ def generate_pace_chart_matplotlib(
     diffs = np.any(np.diff(band_rates_full, axis=1) != 0, axis=0)  # (n_days-1,)
     trans = np.flatnonzero(diffs) + 1  # day i where rate[i-1] != rate[i]
 
-    today_idx = (active_at - days[0]).days
     keep = {0, n_days - 1, today_idx}
     if today_idx - 1 >= 0:
         keep.add(today_idx - 1)
@@ -739,15 +788,23 @@ def generate_pace_chart_matplotlib(
     ax.text(active_at, ymax, ' today', color=_PACE_TODAY_LINE_COLOR,
             fontsize=8, va='top', ha='left')
 
-    # Deduplicated legend: one handle per top-N projcode + one Other
+    # Deduplicated legend: one handle per top-N projcode + one Other.
+    # Number shown next to each project tracks the active sort_by — see
+    # rank_metric above. For rate sorts, scale per-day → per-year so the
+    # number matches the axis units, and tag with "/yr" to keep that
+    # explicit.
     import matplotlib.patches as mpatches
+    if sort_by == 'size':
+        def _fmt_value(v): return fmt.number(v)
+    else:
+        def _fmt_value(v): return f'{fmt.number(v * _PACE_RATE_SCALE)}/yr'
     handles = [mpatches.Patch(color=color_map[pc],
-                              label=f'{pc} ({fmt.number(proj_totals[pc])})')
+                              label=f'{pc} ({_fmt_value(rank_metric[pc])})')
                for pc in top_projs]
     if n_other_projs > 0:
         handles.append(mpatches.Patch(
             color=_PACE_OTHER_COLOR,
-            label=f'{other_label} ({fmt.number(group_totals[OTHER_KEY])})'
+            label=f'{other_label} ({_fmt_value(group_sort_totals[OTHER_KEY])})'
         ))
     leg = ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1.0, 0.5),
                     fontsize=9, frameon=False)

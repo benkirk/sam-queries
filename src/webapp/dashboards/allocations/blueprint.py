@@ -447,23 +447,12 @@ def index():
                      if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
         }
 
-    # Build pace charts — reuse per_project_usage (no extra DB calls).
-    # One chart per resource (top-level) and one per (resource, facility).
-    resource_pace_charts = {}
-    facility_pace_charts = {}
-    for rn, facilities in grouped_data.items():
-        rn_rows = [r for r in per_project_usage if r.get('resource') == rn]
-        resource_pace_charts[rn] = (
-            generate_pace_chart_matplotlib(rn_rows, active_at, resource_name=rn)
-            if rn_rows else None
-        )
-        facility_pace_charts[rn] = {}
-        for fn in facilities.keys():
-            fn_rows = [r for r in rn_rows if r.get('facility') == fn]
-            facility_pace_charts[rn][fn] = (
-                generate_pace_chart_matplotlib(fn_rows, active_at, resource_name=rn)
-                if fn_rows else None
-            )
+    # Pace charts render via HTMX (one loader per resource in the template
+    # below — see `dashboards/allocations/partials/pace_chart.html` and
+    # the `htmx_pace_chart` route). Deferring the SVG render here lets the
+    # selector buttons live inside the swap target, and lets
+    # `nav-view-persistence.js` replay the persisted `sort_by` on initial
+    # load without us having to know it up front.
 
     # Defaults for the shared audit filter (Transactions + Adjustments tabs).
     # Default window is last 30 days; each tab's filter form is pre-filled with these.
@@ -475,8 +464,6 @@ def index():
         grouped_data=grouped_data,
         resource_overviews=resource_overviews,
         resource_usage_overviews=resource_usage_overviews,
-        resource_pace_charts=resource_pace_charts,
-        facility_pace_charts=facility_pace_charts,
         allocation_type_charts=allocation_type_charts,
         allocation_type_usage_charts=allocation_type_usage_charts,
         type_annualized_rates=type_annualized_rates,
@@ -488,6 +475,85 @@ def index():
         audit_end_date=audit_end_date.strftime('%Y-%m-%d'),
         allowed_facility_names=allowed_facility_names,
         selected_facilities=effective_facilities,
+    )
+
+
+_VALID_PACE_SORT_BY = ('size', 'past', 'future')
+
+
+@bp.route('/htmx/pace-chart/<resource_name>')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def htmx_pace_chart(resource_name):
+    """Render the per-resource Pace chart with selector buttons.
+
+    Used by both the initial HTMX `load` trigger on the dashboard
+    (one loader per resource) and subsequent selector-button clicks.
+    Selector state (``sort_by``) is persisted client-side by
+    ``nav-view-persistence.js`` keyed on ``data-chart-persist-id``.
+    """
+    sort_by = request.args.get('sort_by', 'size')
+    if sort_by not in _VALID_PACE_SORT_BY:
+        sort_by = 'size'
+
+    # Same active_at semantics as index(), but with no flash on bad
+    # input — an HTMX swap into a chart pane is the wrong place for a
+    # top-level alert. Silent fallback to today matches what callers
+    # would see if they hit the route with no arg at all.
+    active_at_str = request.args.get('active_at')
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    if active_at_str:
+        try:
+            active_at = datetime.strptime(active_at_str, '%Y-%m-%d')
+        except ValueError:
+            active_at = today
+    else:
+        active_at = today
+
+    # Facility-scope clamp — identical shape to index() so a WNA-scoped
+    # user gets WNA-only rows on the chart even though the URL omits
+    # ?facilities=. Unscoped users get None → no filter.
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    requested_facilities = request.args.getlist('facilities')
+    selected_facilities = apply_facility_scope(
+        requested_facilities, Permission.VIEW_PROJECTS,
+        default=(sorted(allowed) if allowed is not None else None),
+    )
+
+    per_project_usage = cached_allocation_usage(
+        session=db.session,
+        resource_name=[resource_name],
+        facility_name=None,
+        allocation_type=None,
+        projcode=None,
+        active_only=True,
+        active_at=active_at,
+        root_only=True,
+    )
+    per_project_usage = filter_rows_by_facility(per_project_usage, selected_facilities)
+
+    chart_svg = generate_pace_chart_matplotlib(
+        per_project_usage, active_at, resource_name=resource_name,
+        sort_by=sort_by,
+    )
+
+    # Sanitize resource_name into a stable HTML id — matches the
+    # `data-resource="{{ resource_name|replace(' ', '_') }}"` convention
+    # used in dashboard.html for the panel toggle. When the request
+    # narrows to a single facility (the per-facility Pace card in the
+    # allocation-type tab), include the facility in the id so its
+    # persisted sort_by doesn't collide with the resource-wide chart.
+    chart_dom_id = 'pace-chart-' + resource_name.replace(' ', '_')
+    if len(requested_facilities) == 1:
+        chart_dom_id += '-' + requested_facilities[0].replace(' ', '_')
+
+    return render_template(
+        'dashboards/allocations/partials/pace_chart.html',
+        resource_name=resource_name,
+        chart_svg=chart_svg,
+        sort_by=sort_by,
+        active_at=active_at.strftime('%Y-%m-%d'),
+        chart_dom_id=chart_dom_id,
     )
 
 
