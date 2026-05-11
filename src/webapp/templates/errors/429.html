@@ -1,0 +1,16 @@
+{% extends 'dashboards/base.html' %}
+{% block title %}Rate limit exceeded — SAM{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <div class="card border-warning">
+    <div class="card-body text-center">
+      <i class="fas fa-hourglass-half fa-3x text-warning mb-3"></i>
+      <h2 class="mb-3">Too many requests</h2>
+      <p class="text-muted mb-1">
+        You're being rate-limited. Please slow down and try again in a moment.
+      </p>
+      <p class="small text-muted mb-0">Limit: <code>{{ limit }}</code>{% if retry_after %} · retry after {{ retry_after }}s{% endif %}</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

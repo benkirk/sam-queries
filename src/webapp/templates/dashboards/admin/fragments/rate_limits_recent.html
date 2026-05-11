@@ -1,0 +1,39 @@
+{% if events %}
+<div class="table-responsive">
+    <table class="table table-sm mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Timestamp</th>
+                <th>Actor</th>
+                <th>Endpoint</th>
+                <th>Method</th>
+                <th>Path</th>
+                <th>Limit</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in events %}
+            <tr>
+                <td class="small text-muted">{{ e.dt | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}</td>
+                <td><code>{{ e.actor }}</code></td>
+                <td class="small">{{ e.endpoint or '—' }}</td>
+                <td class="small">{{ e.method }}</td>
+                <td class="small">{{ e.path }}</td>
+                <td class="small"><code>{{ e.limit }}</code></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="small text-muted mt-2 px-3 mb-2">
+    {{ events | length | fmt_number }} event{{ '' if events|length == 1 else 's' }}
+    {% if actor_filter %}matching <code>{{ actor_filter }}</code>{% endif %}
+    in the last {{ window }}.
+</p>
+{% else %}
+<div class="text-muted small p-3 mb-0">
+    No 429 events
+    {% if actor_filter %}match <code>{{ actor_filter }}</code>{% endif %}
+    in the last {{ window }}.
+</div>
+{% endif %}

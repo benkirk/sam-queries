@@ -7,10 +7,18 @@ from flask import (
     Blueprint, render_template, request, redirect, url_for,
     flash, current_app, session,
 )
+from flask_limiter.util import get_remote_address
 from flask_login import login_user, logout_user, login_required, current_user
 from webapp.auth.models import AuthUser
 from webapp.auth.providers import get_auth_provider, OIDCAuthProvider
 from webapp.extensions import db
+from webapp.limiter import limiter as _rate_limit
+
+
+def _ip_key():
+    """Per-IP rate-limit key with the same ``ip:`` prefix our event log
+    uses, so admin unblock by actor key matches storage keys cleanly."""
+    return f'ip:{get_remote_address()}'
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -43,8 +51,23 @@ def _redirect_for_role(auth_user):
 # ---------------------------------------------------------------------------
 
 @bp.route('/login', methods=['GET', 'POST'])
+@_rate_limit.limiter.limit(
+    lambda: current_app.config['RATELIMIT_AUTH_LOGIN'],
+    key_func=_ip_key,
+    methods=['POST'],
+)
+@_rate_limit.limiter.limit(
+    lambda: current_app.config['RATELIMIT_ANON'],
+    key_func=_ip_key,
+    methods=['GET'],
+)
 def login():
-    """Login page: renders SSO button (OIDC) or username/password form (stub)."""
+    """Login page: renders SSO button (OIDC) or username/password form (stub).
+
+    Rate limits are per-IP regardless of the user (the POST is the brute-force
+    surface; nothing has authenticated yet) — both decorators pin ``key_func``
+    to ``get_remote_address`` so attackers can't sidestep by varying usernames.
+    """
     if current_user.is_authenticated:
         return _redirect_for_role(current_user)
 
@@ -93,6 +116,10 @@ def login():
 # ---------------------------------------------------------------------------
 
 @bp.route('/oidc/login')
+@_rate_limit.limiter.limit(
+    lambda: current_app.config['RATELIMIT_ANON'],
+    key_func=_ip_key,
+)
 def oidc_login():
     """Initiate OIDC authorization code flow — redirect to IdP."""
     oauth = current_app.extensions.get('oauth')
@@ -113,6 +140,10 @@ def oidc_login():
 
 
 @bp.route('/oidc/callback')
+@_rate_limit.limiter.limit(
+    lambda: current_app.config['RATELIMIT_ANON'],
+    key_func=_ip_key,
+)
 def oidc_callback():
     """Handle the OIDC IdP callback — exchange code for tokens and create session."""
     oauth = current_app.extensions.get('oauth')

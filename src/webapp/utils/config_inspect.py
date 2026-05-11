@@ -21,10 +21,9 @@ import os
 import platform
 import socket
 from datetime import datetime
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
-import flask
 
 
 # Per-pid cache so a fresh worker doesn't re-parse /proc on every request.
@@ -37,6 +36,17 @@ _worker_started_by_pid: Dict[int, datetime] = {}
 # ---------------------------------------------------------------------------
 # Primitive helpers
 # ---------------------------------------------------------------------------
+
+def _safe_pkg_version(name: str) -> str:
+    """Return the installed version of a package, or ``'unknown'`` if it
+    can't be resolved. Replaces ``flask.__version__`` which Flask 3.2
+    removes; works for any importable distribution.
+    """
+    try:
+        return _pkg_version(name)
+    except PackageNotFoundError:
+        return 'unknown'
+
 
 def mask_secret(value: Any) -> str:
     """Return ``'set'`` if value is non-empty, else ``'unset'``.
@@ -302,7 +312,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'debug':           bool(cfg.get('DEBUG')),
         'testing':         bool(cfg.get('TESTING')),
         'python_version':  platform.python_version(),
-        'flask_version':   getattr(flask, '__version__', 'unknown'),
+        'flask_version':   _safe_pkg_version('flask'),
         'display_tz':      display_tz_name,
         'display_tz_abbr': display_tz_abbr,
     }
@@ -370,6 +380,20 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'usage':                 None,
         }
 
+    # --- Rate limiting (unified facade — see webapp.limiter)
+    try:
+        from webapp.limiter import limiter as _limiter_facade
+        rate_limits_block = _limiter_facade.stats()
+    except Exception:
+        rate_limits_block = {
+            'enabled':             False,
+            'storage':             None,
+            'tiers':               {},
+            'events_24h':          0,
+            'top_offenders_24h':   [],
+            'active_blocks_count': 0,
+        }
+
     # --- Audit & Logging
     audit_path = cfg.get('AUDIT_LOG_PATH', '')
     audit_logging = {
@@ -388,6 +412,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'databases':     databases,
         'auth':          auth,
         'caching':       caching_block,
+        'rate_limits':   rate_limits_block,
         'audit_logging': audit_logging,
         'audit_tail':    audit_tail,
         'gathered_at':   datetime.now(),

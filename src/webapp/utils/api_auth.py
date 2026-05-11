@@ -23,6 +23,7 @@ import bcrypt
 from functools import wraps
 from typing import Optional
 from flask import request, jsonify, current_app, g, make_response, url_for
+from flask_limiter.util import get_remote_address
 from flask_login import current_user
 from webapp.utils.rbac import has_permission, Permission
 
@@ -34,7 +35,15 @@ def api_key_required(f):
     Reads API_KEYS from app config (dict of username -> bcrypt hash).
     Returns 401 + WWW-Authenticate header on auth failure.
     Stores authenticated username in g.api_key_user for logging.
+
+    Stacks the M2M rate limit (``RATELIMIT_M2M``, per-IP) on every wrapped
+    route — Flask-Limiter checks limits in a before_request hook, which
+    fires before this decorator gets a chance to set ``g.api_key_user``,
+    so we pin ``key_func`` to the source IP. 120/min default is enough
+    headroom for legitimate collectors while still bounding abuse.
     """
+    from webapp.limiter import limiter as _facade
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         auth = request.authorization
@@ -74,7 +83,12 @@ def api_key_required(f):
         g.api_key_user = auth.username  # available to view functions for logging
         return f(*args, **kwargs)
 
-    return decorated_function
+    return _facade.limiter.limit(
+        lambda: current_app.config['RATELIMIT_M2M'],
+        # Per-IP key with the ``ip:`` prefix our event log uses, so admin
+        # unblock-by-actor matches the storage key cleanly.
+        key_func=lambda: f'ip:{get_remote_address()}',
+    )(decorated_function)
 
 
 def login_or_token_required(permission: Optional[Permission] = None):

@@ -6,6 +6,7 @@ from datetime import datetime
 os.environ['FLASK_ACTIVE'] = '1'
 
 from flask import Flask, redirect, request, make_response, url_for
+from flask_limiter.util import get_remote_address
 from flask_login import LoginManager, current_user
 import sam.session
 import system_status.session
@@ -120,6 +121,17 @@ def create_app(*, config_overrides: dict | None = None):
         app.config.setdefault('CACHE_TYPE', 'SimpleCache')
     from webapp.caching import caching
     caching.init_app(app)
+
+    # =========================================================================
+    # RATE LIMITING INITIALIZATION
+    # =========================================================================
+    # Flask-Limiter, keyed per-API-key/per-user/per-IP. Storage backend is
+    # Redis when RATELIMIT_STORAGE_URI is set and reachable, otherwise
+    # per-worker memory:// with a startup warning (mirrors caching facade).
+    # The 429 errorhandler is registered as a side-effect of init_app.
+    from webapp.limiter import limiter
+    limiter.init_app(app)
+    # =========================================================================
 
     # =========================================================================
     # AUDIT LOGGING INITIALIZATION
@@ -267,6 +279,10 @@ def create_app(*, config_overrides: dict | None = None):
 
     # Home page redirect
     @app.route('/')
+    @limiter.limiter.limit(
+        lambda: app.config['RATELIMIT_ANON'],
+        key_func=lambda: f'ip:{get_remote_address()}',
+    )
     def index():
         if current_user.is_authenticated:
             # Redirect admin-capable users to admin dashboard, others to

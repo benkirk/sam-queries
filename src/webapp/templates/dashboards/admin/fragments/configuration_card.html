@@ -301,6 +301,56 @@
             </div>
         </div>
 
+        {# ── Rate limiting (Flask-Limiter facade; webapp.limiter) ──────── #}
+        <div class="col-12 col-xl-6">
+            <div class="card h-100">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                    <strong><i class="fas fa-traffic-light me-1"></i> Rate limiting</strong>
+                    {# Link target lands in the dedicated admin page commit; left
+                       as a relative path so this tile renders before that route
+                       is registered. #}
+                    <a href="/admin/htmx/rate-limits" class="small text-decoration-none">
+                        Details &raquo;
+                    </a>
+                </div>
+                <div class="card-body">
+                    <dl class="config-stats mb-3 small">
+                        {{ stat('Enabled', state.rate_limits.enabled) }}
+                        {{ stat('Storage backend', state.rate_limits.storage or '—') }}
+                    </dl>
+
+                    {% if state.rate_limits.tiers %}
+                    <div class="text-muted small mb-2"><strong>Tiers</strong></div>
+                    <dl class="config-stats mb-3 small">
+                        {{ stat('Auth login (per IP)', state.rate_limits.tiers.auth_login) }}
+                        {{ stat('M2M (per IP)',        state.rate_limits.tiers.m2m) }}
+                        {{ stat('Authed (per user)',   state.rate_limits.tiers.authed) }}
+                        {{ stat('Anon (per IP)',       state.rate_limits.tiers.anon) }}
+                    </dl>
+                    {% endif %}
+
+                    <hr class="my-3">
+                    <dl class="config-stats mb-0 small">
+                        {{ stat('429s in last 24h',    state.rate_limits.events_24h | fmt_number) }}
+                        {{ stat('Active blocks',       state.rate_limits.active_blocks_count | fmt_number) }}
+                    </dl>
+
+                    {% if state.rate_limits.top_offenders_24h %}
+                    <details class="mt-2">
+                        <summary class="small text-muted">
+                            Top offenders (last 24h) — {{ state.rate_limits.top_offenders_24h | length }}
+                        </summary>
+                        <dl class="config-stats mb-0 small mt-2">
+                            {% for actor, count in state.rate_limits.top_offenders_24h %}
+                            {{ stat(actor, count | fmt_number) }}
+                            {% endfor %}
+                        </dl>
+                    </details>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
         {# ── Audit & Logging (full width; recent entries inline) ──────── #}
         <div class="col-12">
             <div class="card">
