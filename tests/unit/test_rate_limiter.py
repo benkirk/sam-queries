@@ -177,9 +177,9 @@ def test_429_handler_returns_json_for_api_paths(app, fake_redis_events,
     monkeypatch.setitem(app.config, 'RATELIMIT_ENABLED', True)
     facade.limiter.enabled = True
 
-    @app.route('/api/v1/_rl_probe')
+    @app.route('/api/v1/_rl_probe', endpoint='_rl_probe_json')
     @facade.limiter.limit('1 per minute')
-    def _probe():
+    def _probe_json():
         return 'ok'
 
     client = app.test_client()
@@ -200,9 +200,9 @@ def test_429_handler_returns_html_fragment_for_htmx(app, fake_redis_events,
     monkeypatch.setitem(app.config, 'RATELIMIT_ENABLED', True)
     facade.limiter.enabled = True
 
-    @app.route('/_rl_htmx_probe')
+    @app.route('/_rl_htmx_probe', endpoint='_rl_probe_htmx')
     @facade.limiter.limit('1 per minute')
-    def _probe():
+    def _probe_htmx():
         return 'ok'
 
     client = app.test_client()
@@ -221,9 +221,9 @@ def test_429_handler_returns_full_html_otherwise(app, fake_redis_events,
     monkeypatch.setitem(app.config, 'RATELIMIT_ENABLED', True)
     facade.limiter.enabled = True
 
-    @app.route('/_rl_page_probe')
+    @app.route('/_rl_page_probe', endpoint='_rl_probe_page')
     @facade.limiter.limit('1 per minute')
-    def _probe():
+    def _probe_page():
         return 'ok'
 
     client = app.test_client()

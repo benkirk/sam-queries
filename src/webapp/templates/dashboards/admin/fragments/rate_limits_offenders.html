@@ -1,0 +1,15 @@
+{% if ranked %}
+<table class="table table-sm mb-0 small">
+    <thead><tr><th>Actor</th><th class="text-end">429s</th></tr></thead>
+    <tbody>
+        {% for actor, count in ranked %}
+        <tr>
+            <td><code>{{ actor }}</code></td>
+            <td class="text-end">{{ count | fmt_number }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="text-muted small">No 429 events in the last 24h.</div>
+{% endif %}
