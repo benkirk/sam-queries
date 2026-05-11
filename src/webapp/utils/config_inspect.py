@@ -370,6 +370,20 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'usage':                 None,
         }
 
+    # --- Rate limiting (unified facade — see webapp.limiter)
+    try:
+        from webapp.limiter import limiter as _limiter_facade
+        rate_limits_block = _limiter_facade.stats()
+    except Exception:
+        rate_limits_block = {
+            'enabled':             False,
+            'storage':             None,
+            'tiers':               {},
+            'events_24h':          0,
+            'top_offenders_24h':   [],
+            'active_blocks_count': 0,
+        }
+
     # --- Audit & Logging
     audit_path = cfg.get('AUDIT_LOG_PATH', '')
     audit_logging = {
@@ -388,6 +402,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'databases':     databases,
         'auth':          auth,
         'caching':       caching_block,
+        'rate_limits':   rate_limits_block,
         'audit_logging': audit_logging,
         'audit_tail':    audit_tail,
         'gathered_at':   datetime.now(),
