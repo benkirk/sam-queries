@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 import os
+import re
 import uuid
 import time
 from datetime import datetime
+
+_HEALTH_PATH_RE = re.compile(r'^/api/v\d+/health(/|$)')
 os.environ['FLASK_ACTIVE'] = '1'
 
 from flask import Flask, redirect, request, make_response, url_for
@@ -163,11 +166,17 @@ def create_app(*, config_overrides: dict | None = None):
         from flask import g, request
         elapsed_ms = round((time.monotonic() - g.request_start) * 1000, 1)
         response.headers['X-Request-ID'] = g.request_id
-        app.logger.info(
-            '%s %s → %s  (%.1f ms)  rid=%s',
-            request.method, request.path, response.status_code,
-            elapsed_ms, g.request_id,
+        # Healthcheck probes fire every 10s — log only when they fail.
+        is_health_probe = (
+            _HEALTH_PATH_RE.match(request.path)
+            and response.status_code < 400
         )
+        if not is_health_probe:
+            app.logger.info(
+                '%s %s → %s  (%.1f ms)  rid=%s',
+                request.method, request.path, response.status_code,
+                elapsed_ms, g.request_id,
+            )
         if elapsed_ms > 5000:
             app.logger.warning(
                 'Slow request: %.1f ms  %s %s',

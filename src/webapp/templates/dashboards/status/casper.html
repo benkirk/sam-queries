@@ -45,10 +45,10 @@
                     </h6>
                     <div class="value">{{ casper_status.cpu_nodes_available }} / {{ casper_status.cpu_nodes_total }} Available</div>
                     {% if casper_status.cpu_nodes_down > 0 %}
-                    <div class="text-danger mt-2">{{ casper_status.cpu_nodes_down }} nodes down</div>
+                    <div class="text-danger mt-2">{{ casper_status.cpu_nodes_down }} node{{ '' if casper_status.cpu_nodes_down == 1 else 's' }} down</div>
                     {% endif %}
                     {% if casper_status.cpu_nodes_reserved > 0 %}
-                    <div class="text-warning mt-1">{{ casper_status.cpu_nodes_reserved }} nodes reserved</div>
+                    <div class="text-warning mt-1">{{ casper_status.cpu_nodes_reserved }} node{{ '' if casper_status.cpu_nodes_reserved == 1 else 's' }} reserved</div>
                     {% endif %}
                 </div>
             </div>
@@ -62,10 +62,10 @@
                     </h6>
                     <div class="value">{{ casper_status.gpu_nodes_available }} / {{ casper_status.gpu_nodes_total }} Available</div>
                     {% if casper_status.gpu_nodes_down > 0 %}
-                    <div class="text-danger mt-2">{{ casper_status.gpu_nodes_down }} nodes down</div>
+                    <div class="text-danger mt-2">{{ casper_status.gpu_nodes_down }} node{{ '' if casper_status.gpu_nodes_down == 1 else 's' }} down</div>
                     {% endif %}
                     {% if casper_status.gpu_nodes_reserved > 0 %}
-                    <div class="text-warning mt-1">{{ casper_status.gpu_nodes_reserved }} nodes reserved</div>
+                    <div class="text-warning mt-1">{{ casper_status.gpu_nodes_reserved }} node{{ '' if casper_status.gpu_nodes_reserved == 1 else 's' }} reserved</div>
                     {% endif %}
                 </div>
             </div>
@@ -79,10 +79,10 @@
                     </h6>
                     <div class="value">{{ casper_status.viz_nodes_available }} / {{ casper_status.viz_nodes_total }} Available</div>
                     {% if casper_status.viz_nodes_down > 0 %}
-                    <div class="text-danger mt-2">{{ casper_status.viz_nodes_down }} nodes down</div>
+                    <div class="text-danger mt-2">{{ casper_status.viz_nodes_down }} node{{ '' if casper_status.viz_nodes_down == 1 else 's' }} down</div>
                     {% endif %}
                     {% if casper_status.viz_nodes_reserved > 0 %}
-                    <div class="text-warning mt-1">{{ casper_status.viz_nodes_reserved }} nodes reserved</div>
+                    <div class="text-warning mt-1">{{ casper_status.viz_nodes_reserved }} node{{ '' if casper_status.viz_nodes_reserved == 1 else 's' }} reserved</div>
                     {% endif %}
                 </div>
             </div>
