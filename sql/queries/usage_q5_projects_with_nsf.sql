@@ -116,7 +116,14 @@ SELECT
     COALESCE(alt.allocation_type, '(none)')                   AS allocation_type,
     o.acronym                                                 AS lead_org_acronym,
     o.name                                                    AS lead_org_name,
-    COALESCE(ol.lab_acronym, o.acronym)                       AS lab_acronym,
+    -- Three-tier lab attribution:
+    --   (1) project lead's lab,
+    --   (2) project lead's immediate org if (1) doesn't roll up to a Lab,
+    --   (3) tree_root project's lead's lab (covers projects whose own
+    --       lead has no user_organization rows at all — common for
+    --       service-account or auto-created child projects under a
+    --       lab Parent Project).
+    COALESCE(ol.lab_acronym, o.acronym, root_ol.lab_acronym, root_o.acronym) AS lab_acronym,
     c.contract_id                                             AS contract_id,
     c.contract_number                                         AS contract_number,
     csrc.contract_source                                      AS contract_source,
@@ -134,6 +141,11 @@ LEFT JOIN allocation_type alt    ON alt.allocation_type_id = p.allocation_type_i
 LEFT JOIN lead_org lo            ON lo.user_id = p.project_lead_user_id
 LEFT JOIN organization o         ON o.organization_id = lo.organization_id
 LEFT JOIN org_lab ol             ON ol.organization_id = lo.organization_id
+-- Tree-root fallback (used by lab_acronym COALESCE above)
+LEFT JOIN project root_p         ON root_p.project_id = p.tree_root
+LEFT JOIN lead_org root_lo       ON root_lo.user_id = root_p.project_lead_user_id
+LEFT JOIN organization root_o    ON root_o.organization_id = root_lo.organization_id
+LEFT JOIN org_lab root_ol        ON root_ol.organization_id = root_lo.organization_id
 LEFT JOIN project_contract pc    ON pc.project_id = p.project_id
 LEFT JOIN contract c             ON c.contract_id = pc.contract_id
 LEFT JOIN contract_source csrc   ON csrc.contract_source_id = c.contract_source_id
