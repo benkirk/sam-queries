@@ -2,8 +2,30 @@
 
 Documentation: https://docs.gunicorn.org/en/stable/settings.html
 """
+import logging
 import multiprocessing
 import os
+import re
+
+_HEALTH_PATH_RE = re.compile(r'^/api/v\d+/health(/|$)')
+
+
+class _SkipHealthProbes(logging.Filter):
+    """Drop successful /api/v<N>/health/* access-log lines (every-10s noise)."""
+    def filter(self, record):
+        args = record.args or {}
+        if not isinstance(args, dict):
+            return True
+        if not _HEALTH_PATH_RE.match(args.get('U', '')):
+            return True
+        try:
+            return int(args.get('s', 0)) >= 400  # keep failures only
+        except (TypeError, ValueError):
+            return True
+
+
+def post_fork(server, worker):
+    logging.getLogger('gunicorn.access').addFilter(_SkipHealthProbes())
 
 # Server socket — match compose.yaml port mapping (host:7050 → container:5050)
 bind = '0.0.0.0:5050'
