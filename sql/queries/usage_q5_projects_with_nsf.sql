@@ -59,18 +59,27 @@ proj_fac_alloc AS (
       AND (a.end_date IS NULL OR a.end_date >= @start_date)
     GROUP BY p.projcode
 ),
--- Pick the most recent (or current) organization affiliation per user.
--- Prefer current (end_date NULL or in future); else the latest by start_date.
+-- Pick the most recent organization affiliation per user.
+-- Two-tier preference: (1) current affiliations (end_date NULL or future),
+-- pick the one with the latest start_date; (2) if none current, fall back
+-- to the most recent expired affiliation. This covers project leads whose
+-- HR record has lapsed but who are still effectively at their last lab —
+-- without this fallback they show up as "(unknown)" in the report.
 lead_org AS (
-    SELECT uo.user_id,
-           uo.organization_id
-    FROM   user_organization uo
-    JOIN   (
-        SELECT user_id, MAX(start_date) AS max_start
-        FROM   user_organization
-        WHERE  end_date IS NULL OR end_date > NOW()
-        GROUP BY user_id
-    ) cur ON cur.user_id = uo.user_id AND cur.max_start = uo.start_date
+    SELECT user_id, organization_id
+    FROM (
+        SELECT uo.user_id,
+               uo.organization_id,
+               ROW_NUMBER() OVER (
+                   PARTITION BY uo.user_id
+                   ORDER BY
+                       (uo.end_date IS NULL OR uo.end_date > NOW()) DESC,
+                       uo.start_date DESC,
+                       uo.user_organization_id DESC
+               ) AS rn
+        FROM user_organization uo
+    ) ranked
+    WHERE rn = 1
 ),
 -- Walk up parent_org_id until we hit a Lab-level org (level_code = '0300'),
 -- which is what the annual report's "Lab/Division" column uses.
