@@ -28,8 +28,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import sys
+import time
+import urllib.error
+import urllib.request
 from collections import defaultdict
 from datetime import date
 
@@ -86,10 +90,93 @@ def _facility_set(facility_names_field):
     return {f.strip() for f in facility_names_field.split("|") if f.strip()}
 
 
+# ----------------------- NSF award API resolver -----------------------------
+
+NSF_AWARD_URL = "https://api.nsf.gov/services/v1/awards/{num}.json"
+
+
+def _load_award_lookup_cache(path):
+    """award_number (str) -> division_code (str). Missing file -> empty dict."""
+    cache = {}
+    if not os.path.isfile(path):
+        return cache
+    with open(path, newline="", encoding="utf-8") as fh:
+        lines = [ln for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
+    reader = csv.DictReader(lines)
+    for row in reader:
+        a = (row.get("award_number") or "").strip()
+        d = (row.get("division_code") or "").strip()
+        if a and d:
+            cache[a] = d
+    return cache
+
+
+def _save_award_lookup_cache(path, cache):
+    """Rewrite the cache file, preserving leading comment lines if present."""
+    header = []
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as fh:
+            for ln in fh:
+                if ln.lstrip().startswith("#"):
+                    header.append(ln.rstrip("\n"))
+                else:
+                    break
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        for ln in header:
+            fh.write(ln + "\n")
+        w = csv.writer(fh)
+        w.writerow(["award_number", "division_code"])
+        for k in sorted(cache):
+            w.writerow([k, cache[k]])
+
+
+def _fetch_nsf_division(award_number, timeout=10):
+    """Hit the NSF awards API for one award. Return divAbbr (or '' if missing)."""
+    url = NSF_AWARD_URL.format(num=award_number)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            payload = json.load(r)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as e:
+        print(f"    NSF API error for {award_number}: {e}", file=sys.stderr)
+        return ""
+    try:
+        awards = payload["response"]["award"]
+    except (KeyError, TypeError):
+        return ""
+    if not awards:
+        return ""
+    return (awards[0].get("divAbbr") or "").strip()
+
+
+def resolve_unknown_awards(award_numbers, cache_path, sleep_between=0.3):
+    """
+    Fill in division_code for any award_numbers not yet in the cache file.
+    Returns the merged cache. Writes any newly-resolved entries back to disk.
+    """
+    cache = _load_award_lookup_cache(cache_path)
+    todo = sorted({a for a in award_numbers if a and a not in cache})
+    if not todo:
+        return cache
+    print(f"  Resolving {len(todo)} NSF award number(s) via api.nsf.gov ...", file=sys.stderr)
+    new_count = 0
+    for a in todo:
+        div = _fetch_nsf_division(a)
+        if div:
+            cache[a] = div
+            new_count += 1
+            print(f"    {a} -> {div}", file=sys.stderr)
+        time.sleep(sleep_between)
+    if new_count:
+        _save_award_lookup_cache(cache_path, cache)
+        print(f"  Cached {new_count} new lookup(s) in {cache_path}", file=sys.stderr)
+    return cache
+
+
 # --------------------------- core algorithm ---------------------------------
 
 def load_projects(q5_path, q6_path, q7_path,
-                  nsf_map, bucket_map, campaign_resource_name):
+                  nsf_map, bucket_map, campaign_resource_name,
+                  award_cache_path=None, allow_network=True):
     """
     Return projects = { projcode: {
         title, facilities, allocation_type, lead_org_acronym,
@@ -101,6 +188,25 @@ def load_projects(q5_path, q6_path, q7_path,
     projects = {}
     unmapped_alloc_types = set()
     unmapped_divisions = set()
+
+    # First pass: collect every numeric-looking NSF division_code that isn't
+    # already in nsf_directorate_map.csv. These are bare NSF award numbers
+    # (e.g. "2317820") from post-~2020 awards that no longer carry a
+    # division prefix. We'll batch-resolve them via the NSF API once.
+    numeric_codes_to_resolve = set()
+    with open(q5_path, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            src = (row.get("contract_source") or "").strip().upper()
+            div = (row.get("nsf_division_code") or "").strip().upper()
+            if src == "NSF" and div and div.isdigit() and div not in nsf_map:
+                numeric_codes_to_resolve.add(div)
+
+    award_cache = {}
+    if numeric_codes_to_resolve and allow_network and award_cache_path:
+        award_cache = resolve_unknown_awards(numeric_codes_to_resolve, award_cache_path)
+    elif award_cache_path:
+        award_cache = _load_award_lookup_cache(award_cache_path)
 
     # --- Q5: project metadata + NSF contracts ---
     with open(q5_path, newline="", encoding="utf-8") as fh:
@@ -128,6 +234,10 @@ def load_projects(q5_path, q6_path, q7_path,
             src = (row.get("contract_source") or "").strip().upper()
             div = (row.get("nsf_division_code") or "").strip().upper()
             if src == "NSF" and div:
+                # If div is a bare numeric award number, try the cached
+                # NSF API lookup to translate it into a real division code.
+                if div.isdigit() and div in award_cache:
+                    div = award_cache[div]
                 p["nsf_division_codes"].add(div)
                 if div in nsf_map:
                     directorate = nsf_map[div]["directorate"]
@@ -437,6 +547,8 @@ def main():
                     help="Directory holding nsf_directorate_map.csv and allocation_type_buckets.csv")
     ap.add_argument("--campaign-resource", default="Campaign_Store",
                     help='resources.resource_name to treat as Campaign TB-yrs (default: "Campaign_Store")')
+    ap.add_argument("--no-network", action="store_true",
+                    help="Don't hit the NSF API; rely on existing nsf_award_lookups.csv cache only.")
     args = ap.parse_args()
 
     nsf_map = _read_mapping(
@@ -459,7 +571,9 @@ def main():
         q7 = None
 
     projects, unmapped_alloc, unmapped_div = load_projects(
-        q5, q6, q7, nsf_map, bucket_map, args.campaign_resource)
+        q5, q6, q7, nsf_map, bucket_map, args.campaign_resource,
+        award_cache_path=os.path.join(args.maps, "nsf_award_lookups.csv"),
+        allow_network=not args.no_network)
 
     errors = []
     if unmapped_alloc:
