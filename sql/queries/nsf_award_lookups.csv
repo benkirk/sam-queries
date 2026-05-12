@@ -1,0 +1,22 @@
+# Cache of NSF award_number -> division_code lookups via the public NSF API.
+# Auto-populated by build_annual_report.py when it encounters a numeric NSF
+# contract_number not yet seen. Safe to delete; will be rebuilt on next run.
+# Safe to commit; persisting it avoids hitting the API on every run.
+award_number,division_code
+2317820,OIA
+2337607,OCE
+2410916,AGS
+2421811,OCE
+2426524,AGS
+2437879,AGS
+2446011,OCE
+2502332,AGS
+2502905,AGS
+2513280,OAC
+2518299,RISE
+2519484,RISE
+2530609,RISE
+2530610,RISE
+2530747,RISE
+2533222,TI
+2535750,AGS
