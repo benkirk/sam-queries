@@ -20,9 +20,11 @@ from cli.accounting.commands import (
 pytestmark = pytest.mark.unit
 
 
-def _row(*, cpu_hours=0.0, gpu_hours=0.0, cpu_charges=0.0, gpu_charges=0.0):
+def _row(*, cpu_hours=0.0, gpu_hours=0.0, cpu_charges=0.0, gpu_charges=0.0,
+         queue="main"):
     """Minimal jobstats row — only the keys adapt_jobstats_row reads."""
     return {
+        "queue": queue,
         "cpu_hours": cpu_hours,
         "gpu_hours": gpu_hours,
         "cpu_charges": cpu_charges,
@@ -104,6 +106,57 @@ class TestAdaptJobstatsRow:
     def test_unknown_machine_raises(self):
         with pytest.raises(ValueError, match="Unknown machine"):
             adapt_jobstats_row(_row(cpu_hours=10.0), "frontier")
+
+
+class TestVisQueueCpuOnly:
+    """The `vis` queue uses GPUs but is intentionally not GPU-billed, so
+    that projects without a GPU allocation can still use it. GPU hours
+    and charges must be dropped before classification, and the row must
+    never land on a *GPU resource regardless of machine or gpu_fraction.
+    """
+
+    def test_vis_derecho_gpu_only_classifies_as_cpu_with_zero_charges(self):
+        """Pure-GPU vis row → after zeroing, total drops to 0 → skipped."""
+        result = adapt_jobstats_row(
+            _row(queue="vis", gpu_hours=100.0, gpu_charges=200.0),
+            "derecho",
+        )
+        assert result is None
+
+    def test_vis_derecho_mixed_charges_only_cpu(self):
+        """Mixed CPU/GPU vis row → Derecho CPU resource, GPU dropped.
+
+        gpu_fraction would be 80/130 ≈ 0.62 — well above the threshold —
+        so without the vis rule this would misroute to Derecho GPU.
+        """
+        result = adapt_jobstats_row(
+            _row(queue="vis", cpu_hours=50.0, gpu_hours=80.0,
+                 cpu_charges=10.0, gpu_charges=40.0),
+            "derecho",
+        )
+        assert result == ("Derecho", "derecho", 50.0, 10.0)
+
+    def test_vis_casper_mixed_charges_only_cpu(self):
+        """Same rule on casper — vis zeroing is machine-agnostic."""
+        result = adapt_jobstats_row(
+            _row(queue="vis", cpu_hours=50.0, gpu_hours=80.0,
+                 cpu_charges=10.0, gpu_charges=40.0),
+            "casper",
+        )
+        assert result == ("Casper", "Casper", 50.0, 10.0)
+
+    def test_non_vis_queue_with_gpu_still_charges_gpu(self):
+        """Negative control: the rule must apply ONLY to queue == 'vis'.
+
+        Identical row body on the main queue must classify as Derecho
+        GPU with GPU hours/charges intact.
+        """
+        result = adapt_jobstats_row(
+            _row(queue="main", cpu_hours=50.0, gpu_hours=80.0,
+                 cpu_charges=10.0, gpu_charges=40.0),
+            "derecho",
+        )
+        assert result == ("Derecho GPU", "derecho-gpu", 80.0, 40.0)
 
 
 class TestNormalizeQueueName:
