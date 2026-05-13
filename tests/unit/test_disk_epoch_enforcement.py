@@ -71,3 +71,20 @@ class TestEpochEnforcement:
         # outcomes: 0 (clean), or 2 if user resolution fails — either way
         # the EPOCH error must NOT appear.
         assert "DISK_CHARGING_TIB_EPOCH" not in result.output
+
+    def test_pre_epoch_date_allowed_with_override(self, runner, mock_db_session, tmp_path):
+        pre = DISK_CHARGING_TIB_EPOCH - timedelta(days=1)
+        f = _make_acct_glade(tmp_path, pre)
+        result = runner.invoke(cli, [
+            'accounting', '--disk',
+            '--resource', 'Campaign_Store',
+            '--user-usage', str(f),
+            '--date', pre.isoformat(),
+            '--epoch', pre.isoformat(),
+            '--dry-run',
+            '--skip-errors',
+        ])
+        # With the override, the epoch gate should not fire. Like the
+        # at-epoch case, the run may still fail later (resource lookup,
+        # entity resolution) — only the epoch-error string is asserted.
+        assert "DISK_CHARGING_TIB_EPOCH" not in result.output
