@@ -1,7 +1,25 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
+from datetime import date as _stdlib_date
 #-------------------------------------------------------------------------eh-
+
+
+# ============================================================================
+# Comp-charging cutover constant
+# ============================================================================
+
+# Cutover epoch: the earliest activity_date that `sam-admin accounting --comp`
+# is allowed to write into `comp_charge_summary`. Runs whose `start_date` is
+# before this date are refused with a clear error pointing at this constant,
+# protecting the post-epoch regime (validated hpc-usage-queries feed +
+# current charging formulas) from accidental backfill against pre-epoch
+# historical data.
+#
+# Treated as immutable. Overridable per-invocation via `sam-admin accounting
+# --epoch YYYY-MM-DD` for one-off backfills the operator knows are safe.
+# Analogous to `disk_summaries.DISK_CHARGING_TIB_EPOCH`.
+COMP_CHARGING_EPOCH = _stdlib_date(1970, 1, 1)
 
 
 #-------------------------------------------------------------------------bm-

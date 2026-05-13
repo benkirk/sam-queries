@@ -37,6 +37,7 @@ from sam.plugins import HPC_USAGE_QUERIES
 from sam.summaries.disk_summaries import (
     DISK_CHARGING_TIB_EPOCH, mark_disk_snapshot_current, tib_years,
 )
+from sam.summaries.comp_summaries import COMP_CHARGING_EPOCH
 
 
 # Reconcile tolerance: allocations within this fraction of quota truth are
@@ -222,6 +223,8 @@ class AccountingAdminCommand(BaseCommand):
         reconcile_quota_gap: bool = False,
         gap_tolerance_bytes: int = 1024 ** 3,    # 1 GiB
         gap_tolerance_frac: float = 0.01,        # 1%
+        # --comp/--disk epoch override (default: hard-coded constant per mode)
+        epoch: Optional[date] = None,
     ) -> int:
         if reconcile_quotas is not None:
             return self._run_reconcile_quotas(
@@ -241,6 +244,7 @@ class AccountingAdminCommand(BaseCommand):
                 create_queues=create_queues,
                 chunk_size=chunk_size,
                 include_deleted_accounts=include_deleted_accounts,
+                epoch=epoch,
             )
         if disk:
             return self._run_disk(
@@ -258,6 +262,7 @@ class AccountingAdminCommand(BaseCommand):
                 skip_errors=skip_errors,
                 chunk_size=chunk_size,
                 include_deleted_accounts=include_deleted_accounts,
+                epoch=epoch,
             )
         if archive:
             self.console.print("[yellow]--archive: not yet implemented[/yellow]")
@@ -270,6 +275,22 @@ class AccountingAdminCommand(BaseCommand):
 
     def _run_comp(self, machine: str, start_date: date, end_date: date, **kwargs) -> int:
         """Query hpc-usage-queries and post results to comp_charge_summary."""
+        # --- 0. Cutover-epoch enforcement (refuse pre-epoch writes) ----
+        # Check before plugin load so operators see a clean epoch error
+        # even when hpc-usage-queries isn't installed.
+        effective_epoch = kwargs.get("epoch") or COMP_CHARGING_EPOCH
+        if start_date < effective_epoch:
+            self.console.print(
+                f"Error: start_date {start_date} is before the "
+                f"COMP_CHARGING_EPOCH ({effective_epoch}). "
+                "This command only writes post-epoch comp_charge_summary "
+                "rows; pre-epoch historical data is not rewritten. "
+                "Pass --epoch YYYY-MM-DD to override for a known-safe "
+                "backfill.",
+                style="bold red",
+            )
+            return 2
+
         # --- 1. Load job_history plugin (graceful error if not installed) ---
         mod = self.require_plugin(HPC_USAGE_QUERIES)
         if mod is None:
@@ -417,6 +438,7 @@ class AccountingAdminCommand(BaseCommand):
         skip_errors: bool,
         chunk_size: int,
         include_deleted_accounts: bool,
+        epoch: Optional[date] = None,
     ) -> int:
         """Import a per-user-per-project disk usage snapshot into ``disk_charge_summary``.
 
@@ -512,12 +534,19 @@ class AccountingAdminCommand(BaseCommand):
                 return 2
 
         # ---- 4. Cutover-epoch enforcement ------------------------------
-        if snap_date < DISK_CHARGING_TIB_EPOCH:
+        # `epoch` (from --epoch) overrides the hard-coded constant for
+        # known-safe backfills; the error message still names
+        # DISK_CHARGING_TIB_EPOCH so operators know which constant the
+        # override is replacing.
+        effective_epoch = epoch or DISK_CHARGING_TIB_EPOCH
+        if snap_date < effective_epoch:
             self.console.print(
                 f"Error: snapshot date {snap_date} is before the "
-                f"DISK_CHARGING_TIB_EPOCH ({DISK_CHARGING_TIB_EPOCH}). "
+                f"DISK_CHARGING_TIB_EPOCH ({effective_epoch}). "
                 "This command only writes post-epoch TiB-year rows; "
-                "pre-epoch legacy rows are not rewritten.",
+                "pre-epoch legacy rows are not rewritten. "
+                "Pass --epoch YYYY-MM-DD to override for a known-safe "
+                "backfill.",
                 style="bold red",
             )
             return 2
