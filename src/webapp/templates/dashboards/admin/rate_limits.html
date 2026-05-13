@@ -1,0 +1,114 @@
+{% extends 'dashboards/base.html' %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
+
+{% block title %}Rate limiting — SAM admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-end">
+        <div>
+            <h2 class="mb-1"><i class="fas fa-traffic-light"></i> Rate limiting</h2>
+            <p class="text-muted mb-0">
+                Per-actor 429 events and active blocks. Backend:
+                <code>{{ stats.storage or '—' }}</code> ·
+                {% if stats.enabled %}<span class="text-success">enabled</span>
+                {% else %}<span class="text-danger">disabled</span>{% endif %}
+            </p>
+        </div>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin_dashboard.index') }}">
+            <i class="fas fa-chevron-left"></i> Back to Admin
+        </a>
+    </div>
+</div>
+
+<div class="row g-3">
+    {# ── Tier configuration (read-only) ─────────────────────────────── #}
+    <div class="col-12 col-xl-4">
+        <div class="card h-100">
+            <div class="card-header py-2"><strong>Tier configuration</strong></div>
+            <div class="card-body small">
+                <dl class="config-stats mb-0">
+                    <dt>Auth login (per IP)</dt><dd><code>{{ stats.tiers.auth_login }}</code></dd>
+                    <dt>M2M (per IP)</dt>       <dd><code>{{ stats.tiers.m2m }}</code></dd>
+                    <dt>Authed (per user)</dt>  <dd><code>{{ stats.tiers.authed }}</code></dd>
+                    <dt>Anon (per IP)</dt>      <dd><code>{{ stats.tiers.anon }}</code></dd>
+                </dl>
+                <p class="text-muted small mb-0 mt-3">
+                    Tiers are env-overridable
+                    (<code>RATELIMIT_AUTH_LOGIN</code>, <code>RATELIMIT_M2M</code>, …);
+                    redeploy or restart workers to apply a change.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    {# ── Top offenders ───────────────────────────────────────────────── #}
+    <div class="col-12 col-xl-4">
+        <div class="card h-100">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <strong>Top offenders (24h)</strong>
+                <button class="btn btn-sm btn-outline-secondary"
+                        hx-get="{{ url_for('admin_dashboard.rate_limits_offenders') }}"
+                        hx-target="#offenders-body" hx-swap="innerHTML">
+                    <i class="fas fa-sync"></i>
+                </button>
+            </div>
+            <div class="card-body" id="offenders-body"
+                 hx-get="{{ url_for('admin_dashboard.rate_limits_offenders') }}"
+                 hx-trigger="load" hx-swap="innerHTML">
+                <div class="text-muted small">Loading…</div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Active blocks ───────────────────────────────────────────────── #}
+    <div class="col-12 col-xl-4">
+        <div class="card h-100">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <strong>Active blocks</strong>
+                <button class="btn btn-sm btn-outline-secondary"
+                        hx-get="{{ url_for('admin_dashboard.rate_limits_blocks') }}"
+                        hx-target="#blocks-body" hx-swap="innerHTML">
+                    <i class="fas fa-sync"></i>
+                </button>
+            </div>
+            <div class="card-body" id="blocks-body"
+                 hx-get="{{ url_for('admin_dashboard.rate_limits_blocks') }}"
+                 hx-trigger="load" hx-swap="innerHTML">
+                <div class="text-muted small">Loading…</div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Recent events ──────────────────────────────────────────────── #}
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                <strong>Recent 429 events</strong>
+                <form class="d-flex gap-2 align-items-center small"
+                      hx-get="{{ url_for('admin_dashboard.rate_limits_recent') }}"
+                      hx-target="#recent-body" hx-swap="innerHTML"
+                      hx-trigger="submit, change from:select[name=window], keyup changed delay:500ms from:input[name=actor]">
+                    <input type="search" name="actor" class="form-control form-control-sm"
+                           placeholder="filter by actor (e.g. ip:10.0.0.5)" style="min-width: 18rem;">
+                    <select name="window" class="form-select form-select-sm" style="width:auto">
+                        <option value="1h">Last 1h</option>
+                        <option value="24h" selected>Last 24h</option>
+                    </select>
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </form>
+            </div>
+            <div class="card-body p-0" id="recent-body"
+                 hx-get="{{ url_for('admin_dashboard.rate_limits_recent') }}"
+                 hx-trigger="load" hx-swap="innerHTML">
+                <div class="text-muted small p-3">Loading…</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -82,15 +82,6 @@ def index():
     # Get upcoming reservations
     reservations = status_queries.get_upcoming_reservations(session)
 
-    # Gate the new system-wide user/project chart cards (rendered in
-    # derecho.html / casper.html) on VIEW_SYSTEM_STATUS_USER_INFO.
-    # Same flag pattern as the queue_history drill-down view.
-    from webapp.utils.rbac import has_permission
-    can_view_user_info = (
-        current_user.is_authenticated
-        and has_permission(current_user, Permission.VIEW_SYSTEM_STATUS_USER_INFO)
-    )
-
     # Default the landing-page chart window to 7 days when no
     # ?hours= override is in the URL — matches the drill-down default
     # so the time_range_picker on each chart card reads sensibly on
@@ -116,7 +107,6 @@ def index():
         google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
         now=datetime.now(),
         selected_hours=selected_hours,
-        can_view_user_info=can_view_user_info,
         chart_hours=chart_hours,
     )
 
@@ -394,8 +384,21 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
 
     # group_by=user → username legend → user modal; group_by=project →
     # projcode legend → project modal. svg-legend-links.js dispatches.
+    # Only operators (VIEW_SYSTEM_STATUS_USER_INFO) get clickable legend
+    # entries — the user/project detail modal endpoints have their own
+    # RBAC and would 403 a non-operator's click. Plain-text labels for
+    # everyone else keeps the chart universally readable.
+    from webapp.utils.rbac import has_permission
+    can_link_legend = (
+        current_user.is_authenticated
+        and has_permission(current_user, Permission.VIEW_SYSTEM_STATUS_USER_INFO)
+    )
+    if can_link_legend:
+        link_kind = 'user' if group_by == 'user' else 'project'
+    else:
+        link_kind = None
     chart_svg = generate_user_proj_stacked_area(
-        timeseries, link_kind='user' if group_by == 'user' else 'project',
+        timeseries, link_kind=link_kind, rank_by=rank_by,
     )
 
     # Two of these cards render on the landing page (one per system
@@ -429,11 +432,13 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
 
 @bp.route('/htmx/queue-history/<system>/<queue_name>/user-proj-chart')
 @login_required
-@require_permission(Permission.VIEW_SYSTEM_STATUS_USER_INFO)
 def htmx_user_proj_chart(system, queue_name):
     """Render the user/project chart scoped to one queue.
 
-    Used by selector buttons in the queue-history drill-down.
+    Used by selector buttons in the queue-history drill-down. Visible
+    to any logged-in user; legend click-through is gated separately
+    in ``_render_user_proj_chart`` on
+    ``Permission.VIEW_SYSTEM_STATUS_USER_INFO``.
     """
     return _render_user_proj_chart(
         system=system,
@@ -445,14 +450,15 @@ def htmx_user_proj_chart(system, queue_name):
 
 @bp.route('/htmx/system/<system>/user-proj-chart')
 @login_required
-@require_permission(Permission.VIEW_SYSTEM_STATUS_USER_INFO)
 def htmx_user_proj_chart_system(system):
     """Render the user/project chart summed across all queues for ``system``.
 
     Used by the chart card on the system landing page (Derecho /
     Casper tabs of the status dashboard). Same selector behaviour as
     the per-queue endpoint, but the aggregator filters on system_id
-    rather than queue_id.
+    rather than queue_id. Visible to any logged-in user; legend
+    click-through is gated separately in ``_render_user_proj_chart``
+    on ``Permission.VIEW_SYSTEM_STATUS_USER_INFO``.
     """
     return _render_user_proj_chart(
         system=system,

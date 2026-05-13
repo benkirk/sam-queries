@@ -1,0 +1,30 @@
+# Map of allocation_type (as it appears in the DB) -> display bucket + section.
+# section must be one of: non_nsf_univ, nsf_univ, ncar_strategic, csl_wna, skip
+# Lines beginning with '#' and blank lines are ignored.
+#
+# NOTE on section vs facility precedence:
+#   build_annual_report.py overrides this 'section' for projects whose
+#   charge_summary rows land in UNIV (-> nsf_univ if any NSF contract,
+#   else non_nsf_univ), CSL (-> csl_wna), or WNA (-> csl_wna). The
+#   'bucket' column is still used for the row label in those sections.
+allocation_type,bucket,section
+Small (No NSF award),Exploratory (No NSF Award),non_nsf_univ
+CHAP,Exploratory (No NSF Award),non_nsf_univ
+Explore ACCESS,Exploratory (No NSF Award),non_nsf_univ
+Discover ACCESS,Exploratory (No NSF Award),non_nsf_univ
+Classroom,Classroom,non_nsf_univ
+Data,Data Analysis,non_nsf_univ
+Small,(NSF-sponsored),nsf_univ
+NSC,NSC & ASD,ncar_strategic
+ASD-NCAR,NSC & ASD,ncar_strategic
+Divisional,DIVISIONAL,ncar_strategic
+External Project,EXTERNAL PROJECTS,ncar_strategic
+Director Reserve,DIRRS,ncar_strategic
+Staff,(staff),skip
+Paid Services,(paid services),skip
+IUCRC,(iucrc),skip
+CSL,CSL,csl_wna
+WRAP,WNA,csl_wna
+Education,WNA,csl_wna
+LCAP,WNA,csl_wna
+(none),(uncategorized),skip

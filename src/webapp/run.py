@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 import os
+import re
 import uuid
 import time
 from datetime import datetime
+
+_HEALTH_PATH_RE = re.compile(r'^/api/v\d+/health(/|$)')
 os.environ['FLASK_ACTIVE'] = '1'
 
 from flask import Flask, redirect, request, make_response, url_for
+from flask_limiter.util import get_remote_address
 from flask_login import LoginManager, current_user
 import sam.session
 import system_status.session
@@ -122,6 +126,17 @@ def create_app(*, config_overrides: dict | None = None):
     caching.init_app(app)
 
     # =========================================================================
+    # RATE LIMITING INITIALIZATION
+    # =========================================================================
+    # Flask-Limiter, keyed per-API-key/per-user/per-IP. Storage backend is
+    # Redis when RATELIMIT_STORAGE_URI is set and reachable, otherwise
+    # per-worker memory:// with a startup warning (mirrors caching facade).
+    # The 429 errorhandler is registered as a side-effect of init_app.
+    from webapp.limiter import limiter
+    limiter.init_app(app)
+    # =========================================================================
+
+    # =========================================================================
     # AUDIT LOGGING INITIALIZATION
     # =========================================================================
     # Track INSERT/UPDATE/DELETE operations on SAM database models
@@ -151,11 +166,17 @@ def create_app(*, config_overrides: dict | None = None):
         from flask import g, request
         elapsed_ms = round((time.monotonic() - g.request_start) * 1000, 1)
         response.headers['X-Request-ID'] = g.request_id
-        app.logger.info(
-            '%s %s → %s  (%.1f ms)  rid=%s',
-            request.method, request.path, response.status_code,
-            elapsed_ms, g.request_id,
+        # Healthcheck probes fire every 10s — log only when they fail.
+        is_health_probe = (
+            _HEALTH_PATH_RE.match(request.path)
+            and response.status_code < 400
         )
+        if not is_health_probe:
+            app.logger.info(
+                '%s %s → %s  (%.1f ms)  rid=%s',
+                request.method, request.path, response.status_code,
+                elapsed_ms, g.request_id,
+            )
         if elapsed_ms > 5000:
             app.logger.warning(
                 'Slow request: %.1f ms  %s %s',
@@ -267,6 +288,10 @@ def create_app(*, config_overrides: dict | None = None):
 
     # Home page redirect
     @app.route('/')
+    @limiter.limiter.limit(
+        lambda: app.config['RATELIMIT_ANON'],
+        key_func=lambda: f'ip:{get_remote_address()}',
+    )
     def index():
         if current_user.is_authenticated:
             # Redirect admin-capable users to admin dashboard, others to

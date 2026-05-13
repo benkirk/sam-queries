@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Tuple, Optional, List, Dict
 from jinja2 import Environment, FileSystemLoader
 import jinja2
+from rich.progress import (
+    Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn,
+)
 
 
 class EmailNotificationService:
@@ -178,28 +181,42 @@ class EmailNotificationService:
         if dry_run:
             results['preview_samples'] = []
 
-        for i, notification in enumerate(notifications):
-            if dry_run:
-                # Dry-run: render email but don't send
-                try:
-                    rendered = self._render_email_preview(notification)
-                    results['success'].append(notification)
+        description = (
+            "Rendering email previews..." if dry_run
+            else "Sending expiration notifications..."
+        )
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=self.ctx.console,
+            transient=False,
+        ) as progress:
+            task = progress.add_task(description, total=len(notifications))
+            for i, notification in enumerate(notifications):
+                if dry_run:
+                    # Dry-run: render email but don't send
+                    try:
+                        rendered = self._render_email_preview(notification)
+                        results['success'].append(notification)
 
-                    # Collect first 2 emails as samples
-                    if i < 2:
-                        results['preview_samples'].append(rendered)
-                except Exception as e:
-                    notification['error'] = str(e)
-                    results['failed'].append(notification)
-            else:
-                # Normal mode: actually send email
-                success, error = self.send_expiration_notification(notification)
-
-                if success:
-                    results['success'].append(notification)
+                        # Collect first 2 emails as samples
+                        if i < 2:
+                            results['preview_samples'].append(rendered)
+                    except Exception as e:
+                        notification['error'] = str(e)
+                        results['failed'].append(notification)
                 else:
-                    notification['error'] = error
-                    results['failed'].append(notification)
+                    # Normal mode: actually send email
+                    success, error = self.send_expiration_notification(notification)
+
+                    if success:
+                        results['success'].append(notification)
+                    else:
+                        notification['error'] = error
+                        results['failed'].append(notification)
+                progress.advance(task)
 
         return results
 

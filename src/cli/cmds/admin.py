@@ -215,6 +215,11 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
               help='[disk] Minimum absolute gap in bytes before emitting a synthetic row (default 1 GiB)')
 @click.option('--gap-tolerance-frac', 'gap_tolerance_frac', type=float, default=0.01, show_default=True,
               help='[disk] Minimum gap as a fraction of FILESET usage (default 1%)')
+# --- Comp/Disk shared epoch override ---------------------------------------
+@click.option('--epoch', 'epoch_str', type=str, default=None, metavar='YYYY-MM-DD',
+              help='[comp/disk] Override the hard-coded charging epoch. '
+                   'Default: COMP_CHARGING_EPOCH for --comp, '
+                   'DISK_CHARGING_TIB_EPOCH for --disk.')
 # --- Reconcile (--reconcile-quotas) ----------------------------------------
 @click.option('--update-accounting-system', 'update_accounting_system', is_flag=True,
               help='[reconcile] Apply mismatched amount updates (default: report-only)')
@@ -234,6 +239,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
                user_usage_path, quotas_path, reporting_interval,
                unidentified_label, reconcile_quota_gap,
                gap_tolerance_bytes, gap_tolerance_frac,
+               epoch_str,
                start, end, date_str, today_flag, last,
                dry_run, update_accounting_system, deactivate_orphaned,
                force, verify_paths, verify_host,
@@ -316,6 +322,26 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
             style="bold red",
         )
         sys.exit(1)
+
+    # --- --epoch parse + scope check --------------------------------------
+    # --epoch only applies to --comp / --disk. Reject early elsewhere so
+    # operators don't get a silent no-op under --reconcile-quotas/--archive.
+    epoch_date = None
+    if epoch_str:
+        if not (comp or disk):
+            ctx.console.print(
+                "Error: --epoch only applies to --comp or --disk",
+                style="bold red",
+            )
+            sys.exit(1)
+        try:
+            epoch_date = datetime.strptime(epoch_str, '%Y-%m-%d').date()
+        except ValueError:
+            ctx.console.print(
+                "Error: --epoch must be in YYYY-MM-DD format",
+                style="bold red",
+            )
+            sys.exit(1)
 
     if reconcile_mode:
         if not resource:
@@ -420,6 +446,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
             skip_errors=skip_errors,
             chunk_size=chunk_size,
             include_deleted_accounts=include_deleted_accounts,
+            epoch=epoch_date,
         )
         sys.exit(exit_code)
 
@@ -445,6 +472,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         create_queues=create_queues,
         chunk_size=chunk_size,
         include_deleted_accounts=include_deleted_accounts,
+        epoch=epoch_date,
     )
     sys.exit(exit_code)
 

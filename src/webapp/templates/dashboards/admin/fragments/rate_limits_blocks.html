@@ -1,0 +1,38 @@
+{% if message %}
+<div class="alert alert-success py-2 mb-2 small">{{ message }}</div>
+{% endif %}
+{% if errors %}
+<div class="alert alert-danger py-2 mb-2 small">
+    {% for err in errors %}<div>{{ err }}</div>{% endfor %}
+</div>
+{% endif %}
+
+{% if blocks %}
+<table class="table table-sm mb-0 small">
+    <thead>
+        <tr><th>Actor</th><th>Last 429</th><th>Path</th><th></th></tr>
+    </thead>
+    <tbody>
+        {% for b in blocks %}
+        <tr>
+            <td><code>{{ b.actor }}</code></td>
+            <td class="text-muted">{{ b.last_429_dt | fmt_date(fmt='%H:%M:%S') }}</td>
+            <td class="text-muted">{{ b.last_path }}</td>
+            <td class="text-end">
+                <form hx-post="{{ url_for('admin_dashboard.rate_limits_unblock') }}"
+                      hx-target="#blocks-body" hx-swap="innerHTML"
+                      hx-confirm="Clear all rate-limit buckets for {{ b.actor }}?"
+                      class="d-inline">
+                    <input type="hidden" name="actor" value="{{ b.actor }}">
+                    <button type="submit" class="btn btn-sm btn-outline-warning">
+                        <i class="fas fa-unlock"></i> Unblock
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="text-muted small">No actively blocked actors.</div>
+{% endif %}
