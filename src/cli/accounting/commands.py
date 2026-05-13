@@ -291,6 +291,23 @@ class AccountingAdminCommand(BaseCommand):
             )
             return 2
 
+        # NOTE: unlike _run_disk, we intentionally do NOT write to
+        # `comp_charge_summary_status`. The asymmetry is deliberate:
+        # legacy migration V13 reshaped that table from a (activity_date,
+        # current) per-date marker into an in-flight aggregation lock
+        # keyed by (command_id, charge_summary_id). It's not a
+        # "this date is posted" checkpoint — it's a transient lock that
+        # legacy's Quartz watchdog cleaned up on command completion.
+        # Prod state (queried 2026-05-13) shows that lock pipeline is
+        # dormant since 2024-11 (438 stale rows from one abandoned
+        # command_id, no new activity since), and no legacy report
+        # joins the status table to filter comp_charge_summary. Our
+        # writes are therefore visible to legacy reports as-is, and
+        # populating the lock table would only add coordination cost
+        # for the deprecated Java path. See
+        # `~/.claude/plans/consider-git-grep-epoch-vivid-hartmanis.md`
+        # for the full investigation.
+
         # --- 1. Load job_history plugin (graceful error if not installed) ---
         mod = self.require_plugin(HPC_USAGE_QUERIES)
         if mod is None:

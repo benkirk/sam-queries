@@ -78,12 +78,21 @@ class DiskChargeSummary(Base):
 
 #----------------------------------------------------------------------------
 class DiskChargeSummaryStatus(Base):
-    """Tracks which disk charge summary date is the current snapshot.
+    """Per-date validity flag for the disk charge summary.
 
-    The row whose ``current = True`` marks the latest fully-imported
-    snapshot. Used by ``Account.current_disk_usage()`` /
-    ``Project.current_disk_usage()`` to answer "how full is this project
-    *right now*?" without summing across snapshots.
+    Legacy SAM semantics (confirmed against prod ``sam-sql.ucar.edu`` on
+    2026-05-13: 883 imported dates, all ``current=TRUE``):
+
+    - One row per successfully imported ``activity_date``.
+    - ``current = TRUE`` → that date's summary is valid / posted.
+    - ``current = FALSE`` → that date has been invalidated and needs
+      recalculation (legacy named query
+      ``findInvalidDiskChargeSummaryDates``).
+    - Multiple ``current = TRUE`` rows are normal — readers pick
+      ``MAX(activity_date) WHERE current = TRUE`` for "right now"
+      queries (``Account.current_disk_usage()`` /
+      ``Project.current_disk_usage()`` /
+      ``bulk_current_disk_usage()``).
 
     Maintained by ``mark_disk_snapshot_current()``.
     """
@@ -104,16 +113,18 @@ class DiskChargeSummaryStatus(Base):
 # ============================================================================
 
 def mark_disk_snapshot_current(session, activity_date) -> None:
-    """Mark ``activity_date`` as the current disk snapshot.
+    """Mark ``activity_date`` as a valid disk snapshot (``current=TRUE``).
 
-    Clears ``current=True`` from any prior row, then upserts
-    ``(activity_date, current=True)`` for the given date. Does NOT
-    commit — caller wraps in ``management_transaction``.
+    Upserts only the given date. Does NOT touch any other row's
+    ``current`` flag — that flag is per-date in the legacy schema, not
+    a single-row pointer. Flipping prior rows to ``current=FALSE``
+    would tell legacy reports that every historical date needs
+    recalculation
+    (cf. ``findInvalidDiskChargeSummaryDates``); see
+    ``DiskChargeSummaryStatus`` docstring for the full semantics.
+
+    Does NOT commit — caller wraps in ``management_transaction``.
     """
-    session.query(DiskChargeSummaryStatus).filter(
-        DiskChargeSummaryStatus.current == True  # noqa: E712 — SQL boolean
-    ).update({DiskChargeSummaryStatus.current: False}, synchronize_session=False)
-
     existing = session.get(DiskChargeSummaryStatus, activity_date)
     if existing is None:
         session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=True))

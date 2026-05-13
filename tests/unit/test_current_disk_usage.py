@@ -51,13 +51,12 @@ def _seed_summary(session, account, user, *, activity_date, bytes_, ty=1.0, file
 
 
 def _mark_current(session, activity_date):
-    """Test-only narrow alternative to mark_disk_snapshot_current.
+    """Test helper kept for symmetry with `mark_disk_snapshot_current`.
 
-    The prod helper does a bulk UPDATE on every row where current=true, which
-    deadlocks under xdist when two workers run it concurrently. These read-path
-    tests only need *their* row marked current; per-test SAVEPOINT rollback
-    means we don't need to clear others. Use the real helper only in tests
-    that are testing it (TestMarkSnapshotCurrent).
+    Functionally equivalent to the prod helper after we corrected the
+    semantics in 2026-05 (upsert single row, do not touch others). Used
+    by read-path tests to seed an explicit current=True row without
+    importing the prod helper directly.
     """
     row = session.get(DiskChargeSummaryStatus, activity_date)
     if row is None:
@@ -79,21 +78,33 @@ class TestMarkSnapshotCurrent:
         assert len(rows) == 1
         assert rows[0].activity_date == d
 
-    def test_subsequent_call_clears_prior(self, session):
+    def test_does_not_clobber_prior_current_rows(self, session):
+        """Calling mark_disk_snapshot_current(d2) must NOT flip d1 to False.
+
+        Legacy semantics (and prod state on sam-sql.ucar.edu) keep every
+        successfully imported date at current=True; the flag is per-date,
+        not a single-pointer. The earlier "clear all, set one" behavior
+        would mass-invalidate historical disk summaries on first prod run
+        and break legacy reports that key off current=False for recalc.
+        """
         d1 = next_date("disk_snap")
         d2 = d1 + timedelta(days=7)
         mark_disk_snapshot_current(session, d1)
         mark_disk_snapshot_current(session, d2)
-        # Only the new date should be current — among rows for these
-        # specific dates (other workers may have their own current rows).
-        currents = session.query(DiskChargeSummaryStatus).filter(
-            DiskChargeSummaryStatus.activity_date.in_((d1, d2)),
-            DiskChargeSummaryStatus.current == True  # noqa: E712
-        ).all()
-        assert [r.activity_date for r in currents] == [d2]
-        # The prior row exists but is False.
-        prior = session.get(DiskChargeSummaryStatus, d1)
-        assert prior is not None and prior.current is False
+        rows = session.query(DiskChargeSummaryStatus).filter(
+            DiskChargeSummaryStatus.activity_date.in_((d1, d2))
+        ).order_by(DiskChargeSummaryStatus.activity_date).all()
+        assert [(r.activity_date, r.current) for r in rows] == [(d1, True), (d2, True)]
+
+    def test_revalidates_invalidated_date(self, session):
+        """A pre-existing current=False row (legacy invalidation) flips to
+        current=True when re-imported."""
+        d = next_date("disk_snap")
+        session.add(DiskChargeSummaryStatus(activity_date=d, current=False))
+        session.flush()
+        mark_disk_snapshot_current(session, d)
+        row = session.get(DiskChargeSummaryStatus, d)
+        assert row is not None and row.current is True
 
 
 class TestAccountCurrentDiskUsage:
