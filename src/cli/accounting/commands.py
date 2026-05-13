@@ -156,10 +156,16 @@ def adapt_jobstats_row(row: dict, machine: str) -> Optional[tuple]:
     Raises:
         ValueError: For rows with an unknown machine name.
     """
+    queue = row.get("queue", "Unknown")
     cpu_h = row["cpu_hours"] or 0.0
     gpu_h = row["gpu_hours"] or 0.0
     cpu_c = row["cpu_charges"] or 0.0
     gpu_c = row["gpu_charges"] or 0.0
+
+    # special rules for special queues
+    if queue == "vis":      # vis queue consumes GPUs, but we don't charge for that
+        gpu_h = gpu_c = 0.0 # (so accessible to projects without GPU allocations)
+
     total = cpu_h + gpu_h
 
     if total <= 0.0:
@@ -171,11 +177,9 @@ def adapt_jobstats_row(row: dict, machine: str) -> Optional[tuple]:
         if gpu_h > 0 and gpu_fraction >= GPU_FRACTION_THRESHOLD:
             # Meaningful GPU usage → Derecho GPU resource
             # core_hours = GPU hours (the Derecho GPU billing metric)
-            # TODO: confirm whether charges = gpu_hours or a weighted formula
             return "Derecho GPU", "derecho-gpu", gpu_h, gpu_c
         # Pure CPU job (or anomalous GPU ratio → treat as CPU)
         # core_hours = CPU core-hours (numnodes * 128 * wall_hours)
-        # TODO: confirm charges formula (queue_factor multiplier?)
         return "Derecho", "derecho", cpu_h, cpu_c
 
     elif machine == "casper":
@@ -184,7 +188,6 @@ def adapt_jobstats_row(row: dict, machine: str) -> Optional[tuple]:
             # TODO: confirm Casper GPU resource name and charges formula
             return "Casper GPU", "Casper-gpu", gpu_h, gpu_c
         # Casper CPU resource
-        # TODO: confirm Casper charges formula (cpu_hours + memory_hours?)
         return "Casper", "Casper", cpu_h, cpu_c
 
     else:
@@ -386,6 +389,9 @@ class AccountingAdminCommand(BaseCommand):
                             # Warn on anomalous GPU fraction (proceeded as CPU)
                             cpu_h = row["cpu_hours"] or 0.0
                             gpu_h = row["gpu_hours"] or 0.0
+                            queue = row.get("queue", "Unknown")
+                            if queue == "vis":
+                                gpu_h = 0.0
                             if gpu_h > 0 and resource_name in ("Derecho", "Casper"):
                                 gpu_fraction = gpu_h / (cpu_h + gpu_h)
                                 if self.ctx.verbose:
