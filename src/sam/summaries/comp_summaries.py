@@ -19,7 +19,7 @@ from datetime import date as _stdlib_date
 # Treated as immutable. Overridable per-invocation via `sam-admin accounting
 # --epoch YYYY-MM-DD` for one-off backfills the operator knows are safe.
 # Analogous to `disk_summaries.DISK_CHARGING_TIB_EPOCH`.
-COMP_CHARGING_EPOCH = _stdlib_date(1970, 1, 1)
+COMP_CHARGING_EPOCH = _stdlib_date(2026, 5, 13)
 
 
 #-------------------------------------------------------------------------bm-
