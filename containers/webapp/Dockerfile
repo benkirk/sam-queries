@@ -29,7 +29,8 @@ FILE_LLD
 WORKDIR /code
 COPY . .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -e ".[test]"
+    pip install --no-cache-dir -e ".[test]" && \
+    pip install --no-cache-dir 'hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git'
 
 # Optional build provenance - set by CI via --build-arg; empty locally.
 # Placed AFTER pip install so a changing SHA does not invalidate the install layer.
