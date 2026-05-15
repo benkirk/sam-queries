@@ -71,7 +71,7 @@ Each subsystem phase considers, where applicable:
 | # | Phase | File | Status |
 |---|---|---|---|
 | 0 | Workspace setup | *(this file)* | ✅ Done |
-| 1 | Orientation & doc-drift | [`01_orientation.md`](01_orientation.md) | ⏳ Pending |
+| 1 | Orientation & doc-drift | [`01_orientation.md`](01_orientation.md) | ✅ Done |
 | 2 | Web (`src/webapp/`) | [`02_web.md`](02_web.md) | ⏳ Pending |
 | 3 | Status (`src/system_status/`) | [`03_status.md`](03_status.md) | ⏳ Pending |
 | 4 | ORM/CLI (`src/sam/`, `src/cli/`) | [`04_orm_cli.md`](04_orm_cli.md) | ⏳ Pending |
