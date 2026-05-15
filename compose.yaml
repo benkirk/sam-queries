@@ -113,6 +113,14 @@ services:
       # ── FORCED in-stack
       - "CACHE_REDIS_URL=redis://cache:6379/0"
       - "RATELIMIT_STORAGE_URI=redis://cache:6379/1"
+      # job_history postgres lives in a separate compose stack
+      # (hpc-usage-postgres). Reach it via the host's published 5432
+      # rather than .env's `localhost` (which, inside the container,
+      # is the container itself). No network attachment — the hpc-usage
+      # stack is an optional runtime dependency, not a compose-time
+      # one; `sam-admin accounting` CLI calls will simply fail at call
+      # time if that postgres container is not running.
+      - "JOB_HISTORY_PG_HOST=host.docker.internal"
       # ── Webdev-specific application policy (no DISABLE_AUTH — keep
       #    click-login stub default; user picks RBAC tier via UI)
       - "PYTHONDONTWRITEBYTECODE=1"
