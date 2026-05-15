@@ -146,11 +146,16 @@ def _resolve_or_create_queue(
     queue_name: str,
     resource: Resource,
     create_if_missing: bool,
+    start_date: Optional[datetime] = None,
 ) -> Queue:
     """
     Look up queue by name within resource.
     If not found and create_if_missing=True, auto-creates the queue.
     If not found and create_if_missing=False, raises ValueError with actionable hint.
+
+    When auto-creating, ``start_date`` is recorded on the new row (typically
+    the ``activity_date`` of the import that triggered creation, normalized
+    to midnight per the SAM start-of-period convention).
     """
     queue = session.query(Queue).filter_by(
         queue_name=queue_name, resource_id=resource.resource_id
@@ -166,6 +171,7 @@ def _resolve_or_create_queue(
             resource_id=resource.resource_id,
             description=f"Auto-created from charge summary import",
             wall_clock_hours_limit=12,
+            start_date=start_date,
         )
         session.add(queue)
         session.flush()  # Populate queue_id before referencing it
@@ -224,7 +230,13 @@ def upsert_comp_charge_summary(
     res = _resolve_resource(session, resource_name)
     account = _resolve_account(session, project, res, include_deleted=include_deleted_accounts)
     machine = _resolve_machine_optional(session, machine_name, res)
-    queue = _resolve_or_create_queue(session, queue_name, res, create_queue_if_missing)
+    queue = _resolve_or_create_queue(
+        session,
+        queue_name,
+        res,
+        create_queue_if_missing,
+        start_date=datetime.combine(activity_date, datetime.min.time()),
+    )
 
     # `act_unix_uid` mirrors the resolved user's uid when the caller didn't
     # supply one (act_username / act_projcode are required so they are
