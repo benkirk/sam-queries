@@ -1,7 +1,8 @@
-"""Factories for core domain entities: User, Organization."""
+"""Factories for core domain entities: User, Organization, GidAllocation."""
 import os
 from typing import Optional
 
+from sam.core.groups import GidAllocation
 from sam.core.organizations import Organization
 from sam.core.users import User
 
@@ -79,3 +80,43 @@ def make_user(
     session.add(user)
     session.flush()
     return user
+
+
+# gid_allocation blocks must not overlap each other. Each xdist worker
+# gets a disjoint 1M-wide slice of the GID number-line, well above any
+# range a production block could plausibly occupy.
+_GID_BLOCK_BASE = 90_000_000
+_GID_BLOCK_PER_WORKER = 1_000_000
+_GID_BLOCK_DEFAULT_SIZE = 1_000
+_GID_BLOCK_WORKER_BASE = _GID_BLOCK_BASE + _WORKER_NUM * _GID_BLOCK_PER_WORKER
+
+
+def make_gid_allocation(
+    session,
+    *,
+    size: int = _GID_BLOCK_DEFAULT_SIZE,
+    start_gid: Optional[int] = None,
+    next_gid: Optional[int] = None,
+    end_gid: Optional[int] = None,
+) -> GidAllocation:
+    """Build and flush a fresh gid_allocation row.
+
+    Carves out a worker-namespaced GID block. By default the block is
+    pristine (``next_gid IS NULL``). Pass ``next_gid`` to start partway
+    through the block, or ``end_gid`` to override the computed end.
+    """
+    if start_gid is None:
+        # Each call gets a fresh, non-overlapping `size`-wide slot.
+        slot = next_int("gid_block_slot")
+        start_gid = _GID_BLOCK_WORKER_BASE + slot * size
+    if end_gid is None:
+        end_gid = start_gid + size - 1
+
+    block = GidAllocation(
+        start_gid=start_gid,
+        next_gid=next_gid,
+        end_gid=end_gid,
+    )
+    session.add(block)
+    session.flush()
+    return block
