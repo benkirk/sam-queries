@@ -1,5 +1,6 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
+from dataclasses import dataclass
 from ..base import *
 #-------------------------------------------------------------------------eh-
 
@@ -161,6 +162,15 @@ class NoAvailableGidError(RuntimeError):
     """Raised when every gid_allocation block is exhausted."""
 
 
+@dataclass(frozen=True)
+class GidPoolSummary:
+    """Aggregate view of the GID allocation pool, for admin UIs."""
+    available: int               # GIDs still drawable across all blocks
+    total: int                   # sum of block sizes across all blocks
+    block_count: int             # number of blocks in the table
+    exhausted_block_count: int   # subset of blocks with no remaining GIDs
+
+
 #----------------------------------------------------------------------------
 class GidAllocation(Base):
     """Block of Unix GIDs available for assignment to new projects.
@@ -236,6 +246,25 @@ class GidAllocation(Base):
     def list_blocks(cls, session) -> List['GidAllocation']:
         """All blocks ordered by ``start_gid`` ascending."""
         return session.query(cls).order_by(cls.start_gid).all()
+
+    @classmethod
+    def pool_summary(cls, session) -> GidPoolSummary:
+        """Aggregate view of every block.
+
+        Walks all blocks once and tallies remaining capacity, total
+        capacity (block size), block count, and how many blocks are
+        exhausted. Read-only: no rows are locked or mutated.
+        """
+        blocks = cls.list_blocks(session)
+        available = sum(b.available_count for b in blocks)
+        total = sum(b.end_gid - b.start_gid + 1 for b in blocks)
+        exhausted = sum(1 for b in blocks if b.is_exhausted)
+        return GidPoolSummary(
+            available=available,
+            total=total,
+            block_count=len(blocks),
+            exhausted_block_count=exhausted,
+        )
 
     @classmethod
     def _available_block_query(cls, session):
