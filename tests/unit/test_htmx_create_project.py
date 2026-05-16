@@ -36,10 +36,24 @@ def _summary(available):
 class TestGidPoolBadge:
 
     def test_exhausted_disables_submit(self):
+        """All blocks exhausted (block_count > 0, available == 0)."""
         b = _gid_pool_badge(_summary(0))
         assert b['disable_submit'] is True
         assert 'exhaust' in b['label'].lower()
         assert b['css_class'] == 'bg-danger'
+
+    def test_no_blocks_defined_disables_submit_with_distinct_label(self):
+        """Empty table (block_count == 0): operator sees a different
+        message because the remediation is different — seed a block
+        via IDMS, not extend an existing exhausted block."""
+        empty = GidPoolSummary(available=0, total=0,
+                               block_count=0, exhausted_block_count=0)
+        b = _gid_pool_badge(empty)
+        assert b['disable_submit'] is True
+        assert b['css_class'] == 'bg-danger'
+        # Wording distinguishes the two zero-states.
+        assert 'no gid blocks' in b['label'].lower()
+        assert 'exhaust' not in b['label'].lower()
 
     @pytest.mark.parametrize('n', [1, 5, 9])
     def test_red_below_danger_threshold(self, n):
