@@ -55,8 +55,15 @@ def _gid_pool_badge(summary) -> dict:
     """
     n = summary.available
     if n == 0:
+        # Distinguish "table never populated" from "all blocks exhausted" —
+        # both block project creation, but the remediation differs (seed a
+        # block via IDMS vs. extend an existing range).
+        if summary.block_count == 0:
+            label = 'No GID blocks defined'
+        else:
+            label = 'GID pool exhausted'
         return {
-            'label': 'GID pool exhausted',
+            'label': label,
             'css_class': 'bg-danger',
             'icon': 'fa-circle-exclamation',
             'disable_submit': True,

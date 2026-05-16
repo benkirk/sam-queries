@@ -538,6 +538,74 @@ def reapply_foreign_keys(cfg, fk_constraints):
               f"sampled rows whose parents were pruned)")
 
 
+def seed_dev_gid_block(cfg):
+    """Optionally seed a `gid_allocation` block in the local clone.
+
+    Production's `gid_allocation` table is empty (the legacy IDMS-sync
+    path that populated it was never run in this org's deployment), so
+    a faithful clone of prod also leaves the local table empty. That
+    makes the Create Project HTMX form report "No GID blocks defined"
+    and disable submission — which is correct, but makes local dev /
+    UI smoke-testing of the project-creation flow impossible.
+
+    When `settings.dev_seed.gid_allocation` is configured in config.yaml,
+    this step inserts a single dev-only block if (and only if) the
+    table is currently empty. Idempotent: a re-clone wipes the table
+    and re-seeds; a manual INSERT prior to clone is preserved.
+
+    config.yaml shape (under `settings:`):
+
+        dev_seed:
+          gid_allocation:
+            start_gid: 80000
+            end_gid:   80999
+
+    Omit the block (or the whole `dev_seed` section) on production-
+    style clones to leave the table untouched.
+    """
+    seed_cfg = cfg.get("settings", {}).get("dev_seed", {}).get("gid_allocation")
+    if not seed_cfg:
+        return
+
+    start_gid = seed_cfg.get("start_gid")
+    end_gid = seed_cfg.get("end_gid")
+    if start_gid is None or end_gid is None:
+        print("⚠️  dev_seed.gid_allocation: missing start_gid/end_gid; skipping")
+        return
+    if int(start_gid) > int(end_gid):
+        print(f"⚠️  dev_seed.gid_allocation: start_gid ({start_gid}) > "
+              f"end_gid ({end_gid}); skipping")
+        return
+
+    conn = pymysql.connect(
+        host=cfg["local"].get("host", "127.0.0.1"),
+        port=int(cfg["local"].get("port", 3306)),
+        user=cfg["local"]["user"],
+        password=cfg["local"]["password"],
+        database=cfg["local"]["database"],
+        autocommit=True,
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM gid_allocation")
+            existing = cur.fetchone()["n"]
+            if existing > 0:
+                print(f"ℹ️  dev_seed: gid_allocation already has {existing} "
+                      f"row(s); skipping seed")
+                return
+            cur.execute(
+                "INSERT INTO gid_allocation (startGid, endGid) "
+                "VALUES (%s, %s)",
+                (int(start_gid), int(end_gid)),
+            )
+            size = int(end_gid) - int(start_gid) + 1
+            print(f"✅ dev_seed: inserted gid_allocation block "
+                  f"[{start_gid}, {end_gid}] ({size:,} GIDs)")
+    finally:
+        conn.close()
+
+
 def load_local(cfg, filename, disable_fk_checks=False):
     # Note: For docker exec, we use environment variable MYSQL_PWD which is less secure
     # but only visible within the docker container context. The password is not exposed
@@ -853,6 +921,15 @@ def main():
         print(f"⚠️  Error re-applying FK constraints: {e}", file=sys.stderr)
         print("    (likely orphan data not handled by cleanup_orphans;"
               " local clone has weaker FK integrity than prod)")
+
+    # Dev-only seed: insert a gid_allocation block when configured and
+    # the cloned table is empty. Skipped silently when not configured —
+    # production-style clones leave the table as-cloned.
+    print("\n🌱 Checking for dev-only seed steps...")
+    try:
+        seed_dev_gid_block(cfg)
+    except Exception as e:
+        print(f"⚠️  Error seeding dev gid_allocation block: {e}", file=sys.stderr)
 
     print("\n🎉 Done. Local clone is ready. Connect to local db as configured.")
 
