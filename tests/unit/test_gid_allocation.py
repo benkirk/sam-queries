@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.dialects import mysql
 
-from sam import GidAllocation, NoAvailableGidError
+from sam import GidAllocation, GidPoolSummary, NoAvailableGidError
 
 from factories import make_gid_allocation
 
@@ -281,3 +281,79 @@ class TestAllocateNextGid:
 
         with pytest.raises(NoAvailableGidError):
             GidAllocation.allocate_next_gid(session)
+
+
+# ============================================================================
+# Pool summary aggregate
+# ============================================================================
+
+
+class TestPoolSummary:
+    """`pool_summary` walks every block in the table, so the absolute
+    counts include any snapshot rows. The tests below verify behavior
+    by computing deltas around fresh blocks added inside the test's
+    SAVEPOINT."""
+
+    def test_returns_gidpoolsummary_dataclass(self, session):
+        summary = GidAllocation.pool_summary(session)
+        assert isinstance(summary, GidPoolSummary)
+        assert summary.available >= 0
+        assert summary.total >= 0
+        assert summary.block_count >= 0
+        assert summary.exhausted_block_count >= 0
+        assert summary.exhausted_block_count <= summary.block_count
+
+    def test_pristine_block_contributes_full_size(self, session):
+        before = GidAllocation.pool_summary(session)
+        make_gid_allocation(session, size=100)  # pristine
+        after = GidAllocation.pool_summary(session)
+
+        assert after.available - before.available == 100
+        assert after.total - before.total == 100
+        assert after.block_count - before.block_count == 1
+        assert after.exhausted_block_count == before.exhausted_block_count
+
+    def test_mid_block_contributes_only_remaining(self, session):
+        before = GidAllocation.pool_summary(session)
+        block = make_gid_allocation(session, size=100)
+        block.next_gid = block.start_gid + 30
+        session.flush()
+        after = GidAllocation.pool_summary(session)
+
+        assert after.available - before.available == 70
+        assert after.total - before.total == 100
+        assert after.block_count - before.block_count == 1
+        assert after.exhausted_block_count == before.exhausted_block_count
+
+    def test_exhausted_block_counted_in_exhausted_total(self, session):
+        before = GidAllocation.pool_summary(session)
+        block = make_gid_allocation(session, size=100)
+        block.next_gid = block.end_gid + 1
+        session.flush()
+        after = GidAllocation.pool_summary(session)
+
+        assert after.available - before.available == 0
+        assert after.total - before.total == 100
+        assert after.block_count - before.block_count == 1
+        assert after.exhausted_block_count - before.exhausted_block_count == 1
+
+    def test_pool_summary_does_not_mutate(self, session):
+        """Calling pool_summary must not change next_gid on any block —
+        a subsequent allocate must produce the same GID as if
+        pool_summary had not been called."""
+        block = make_gid_allocation(session, size=10)  # pristine
+
+        # Drain the snapshot blocks first so our block wins the race.
+        for b in session.query(GidAllocation).all():
+            if b.gid_allocation_id != block.gid_allocation_id and not b.is_exhausted:
+                b.next_gid = b.end_gid + 1
+        session.flush()
+
+        # Reading the summary should not advance next_gid.
+        _ = GidAllocation.pool_summary(session)
+        session.refresh(block)
+        assert block.next_gid is None
+
+        # The next allocate should still draw start_gid from our block.
+        gid = GidAllocation.allocate_next_gid(session)
+        assert gid == block.start_gid

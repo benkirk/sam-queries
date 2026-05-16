@@ -53,6 +53,7 @@ from .core.groups import (
     AdhocGroupTag,
     AdhocSystemAccountEntry,
     GidAllocation,
+    GidPoolSummary,
     NoAvailableGidError,
 )
 
@@ -222,7 +223,7 @@ __all__ = [
     'UserInstitution', 'MnemonicCode', 'ProjectOrganization',
     # Core - Groups
     'AdhocGroup', 'AdhocGroupTag', 'AdhocSystemAccountEntry',
-    'GidAllocation', 'NoAvailableGidError',
+    'GidAllocation', 'GidPoolSummary', 'NoAvailableGidError',
     # Resources
     'Resource', 'ResourceType', 'ResourceShell', 'DiskResourceRootDirectory',
     'Machine', 'MachineFactor', 'Queue', 'QueueFactor',
