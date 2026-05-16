@@ -31,7 +31,8 @@ class CreateProjectForm(HtmxFormSchema):
     contract_id = f.Int(load_default=None)
     organization_id = f.Int(load_default=None)
     charging_exempt = f.Bool(load_default=False)
-    unix_gid = f.Int(load_default=None)
+    # unix_gid is auto-assigned by the route at submit time via
+    # GidAllocation.allocate_next_gid — it is no longer a form field.
     ext_alias = f.Str(load_default=None)
 
     @validates('projcode')
