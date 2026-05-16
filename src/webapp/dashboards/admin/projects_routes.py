@@ -29,6 +29,7 @@ from webapp.utils.project_permissions import (
     can_exchange_allocations,
 )
 from sam.manage import management_transaction
+from sam.core.groups import GidAllocation, NoAvailableGidError
 
 from .blueprint import bp
 
@@ -36,6 +37,50 @@ from .blueprint import bp
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# Low-water thresholds for the GID pool indicator on the Create Project form.
+# Tuned so operators get a visible warning well before the pool actually runs
+# out — typical production blocks hand out thousands of GIDs, but new blocks
+# require coordination with the IDMS team to arrange.
+_GID_POOL_WARN_THRESHOLD = 100   # >= GREEN
+_GID_POOL_DANGER_THRESHOLD = 10  # >= YELLOW; below = RED
+
+
+def _gid_pool_badge(summary) -> dict:
+    """Map a GidPoolSummary to badge metadata for the Create Project form.
+
+    Returns a dict with ``label``, ``css_class``, ``icon``, and
+    ``disable_submit``. Keeping the threshold logic out of the template
+    avoids a tangle of Jinja ternaries.
+    """
+    n = summary.available
+    if n == 0:
+        return {
+            'label': 'GID pool exhausted',
+            'css_class': 'bg-danger',
+            'icon': 'fa-circle-exclamation',
+            'disable_submit': True,
+        }
+    if n < _GID_POOL_DANGER_THRESHOLD:
+        return {
+            'label': f'Only {n} GID' + ('s' if n != 1 else '') + ' available',
+            'css_class': 'bg-danger',
+            'icon': 'fa-circle-exclamation',
+            'disable_submit': False,
+        }
+    if n < _GID_POOL_WARN_THRESHOLD:
+        return {
+            'label': f'{n} GIDs available',
+            'css_class': 'bg-warning text-dark',
+            'icon': 'fa-triangle-exclamation',
+            'disable_submit': False,
+        }
+    return {
+        'label': f'{n:,} GIDs available',
+        'css_class': 'bg-success',
+        'icon': 'fa-check',
+        'disable_submit': False,
+    }
 
 def _project_form_data(form=None) -> dict:
     """Load form option lists shared by create (and later edit) forms.
@@ -105,6 +150,8 @@ def _project_form_data(form=None) -> dict:
             except (ValueError, TypeError):
                 pass
 
+    pool_summary = GidAllocation.pool_summary(db.session)
+
     return dict(
         areas=areas,
         aoi_groups=aoi_groups,
@@ -112,6 +159,8 @@ def _project_form_data(form=None) -> dict:
         mnemonics=mnemonics,
         panels_for_facility=panels_for_facility,
         alloc_types_for_panel=alloc_types_for_panel,
+        gid_pool_summary=pool_summary,
+        gid_pool_badge=_gid_pool_badge(pool_summary),
     )
 
 
@@ -378,6 +427,19 @@ def htmx_project_create():
                 [f'Project code "{data["projcode"]}" is already in use.']
             )
 
+        # Draw a Unix GID from the pool. Happens inside the outer
+        # `management_transaction`, so a downstream failure in
+        # `Project.create()` (or any of the linked-org/contract steps
+        # below) rolls back the gid_allocation.next_gid increment too —
+        # an abandoned/failed creation never consumes a GID.
+        try:
+            unix_gid = GidAllocation.allocate_next_gid(db.session)
+        except NoAvailableGidError:
+            raise FKValidationError([
+                'GID pool is exhausted — no Unix GID could be allocated. '
+                'Add a new gid_allocation block before creating more projects.'
+            ])
+
         # facility_id / panel_id are existence-only; Project.create() derives
         # the effective facility/panel from allocation_type_id.
         project_kwargs = {
@@ -385,6 +447,7 @@ def htmx_project_create():
             if k not in ('facility_id', 'panel_id',
                          'contract_id', 'organization_id')
         }
+        project_kwargs['unix_gid'] = unix_gid
         project = Project.create(db.session, **project_kwargs)
         if data.get('contract_id'):
             ProjectContract.create(
@@ -409,7 +472,10 @@ def htmx_project_create():
             'loadNewProject': project.projcode,
         },
         success_message='Project created successfully.',
-        success_detail=lambda project: f'{project.projcode} — {project.title}',
+        success_detail=lambda project: (
+            f'{project.projcode} — {project.title}  '
+            f'(Unix GID: {project.unix_gid})'
+        ),
         error_prefix='Error creating project',
         do_action=_do_action,
     )
