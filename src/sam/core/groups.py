@@ -263,18 +263,41 @@ class GidAllocation(Base):
     def allocate_next_gid(cls, session) -> int:
         """Atomically draw the next available GID.
 
-        Locks the chosen block with ``SELECT … FOR UPDATE`` so concurrent
-        project creations cannot return the same GID. The lowest-
-        ``start_gid`` block with capacity is selected; if ``next_gid`` is
-        NULL the block's ``start_gid`` is returned (and ``next_gid`` is
-        initialized to ``start_gid + 1``), otherwise the current
-        ``next_gid`` is returned and incremented by one.
+        Uses a two-step lock pattern to avoid the gap-lock deadlocks that
+        MySQL's InnoDB would otherwise produce under REPEATABLE READ when
+        two concurrent transactions each scan the table with
+        ``WHERE next_gid IS NULL OR next_gid <= end_gid ORDER BY start_gid
+        LIMIT 1 FOR UPDATE``:
 
-        Raises ``NoAvailableGidError`` when every block is exhausted.
+          1. Pick the lowest-``start_gid`` block with capacity using an
+             ordinary read (no row locks, no gap locks).
+          2. Re-fetch the candidate ``FOR UPDATE`` by primary key. PK
+             equality locks are pure row locks — InnoDB does not need a
+             gap lock to enforce them — so two concurrent allocations
+             serialize cleanly without ever deadlocking.
+          3. Re-verify that the locked block still has capacity. A
+             second allocator that locked the same block first could
+             have drained it between (1) and (2). If so, recurse to pick
+             the next candidate. Progress is guaranteed: every losing
+             race advances some block's ``next_gid`` by one.
+
+        Returns the chosen GID. Raises ``NoAvailableGidError`` when every
+        block is exhausted.
         """
-        block = cls.next_available_block(session, lock=True)
-        if block is None:
+        candidate = cls._available_block_query(session).first()
+        if candidate is None:
             raise NoAvailableGidError("No available GID blocks!")
+
+        block = (session.query(cls)
+                 .filter(cls.gid_allocation_id == candidate.gid_allocation_id)
+                 .with_for_update()
+                 .one())
+
+        if not block.has_capacity:
+            # Lost the race; another transaction drained this block while
+            # we were acquiring the lock. Try again with a fresh scan.
+            return cls.allocate_next_gid(session)
+
         chosen = (block.next_gid
                   if block.next_gid is not None else block.start_gid)
         block.next_gid = chosen + 1
