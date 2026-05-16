@@ -157,4 +157,129 @@ def resolve_group_name(session, unix_gid):
 # ============================================================================
 
 
+class NoAvailableGidError(RuntimeError):
+    """Raised when every gid_allocation block is exhausted."""
+
+
+#----------------------------------------------------------------------------
+class GidAllocation(Base):
+    """Block of Unix GIDs available for assignment to new projects.
+
+    Each row defines a half-open allocation block ``[start_gid, end_gid]``
+    (both endpoints inclusive). ``next_gid`` is the next GID to hand out;
+    it is ``NULL`` until the first allocation, after which it advances by
+    one for each GID drawn. When ``next_gid > end_gid`` the block is
+    exhausted. ``allocate_next_gid()`` picks the lowest-``start_gid`` block
+    that still has capacity.
+    """
+    __tablename__ = 'gid_allocation'
+
+    gid_allocation_id = Column(Integer, primary_key=True, autoincrement=True)
+    # MySQL columns are camelCase; map to snake_case attributes.
+    start_gid = Column('startGid', Integer, nullable=False)
+    next_gid = Column('nextGid', Integer)
+    end_gid = Column('endGid', Integer, nullable=False)
+    creation_time = Column(DateTime, nullable=False,
+                           default=datetime.now,
+                           server_default=text('CURRENT_TIMESTAMP'))
+    # No server_default — MySQL defines this column as NULL DEFAULT NULL
+    # with ON UPDATE CURRENT_TIMESTAMP.
+    modified_time = Column(TIMESTAMP, onupdate=text('CURRENT_TIMESTAMP'))
+    idms_sync_token = Column(String(64))
+
+    def __eq__(self, other):
+        if not isinstance(other, GidAllocation):
+            return False
+        return (self.gid_allocation_id is not None
+                and self.gid_allocation_id == other.gid_allocation_id)
+
+    def __hash__(self):
+        return (hash(self.gid_allocation_id)
+                if self.gid_allocation_id is not None else hash(id(self)))
+
+    def __str__(self):
+        n = self.next_gid if self.next_gid is not None else self.start_gid
+        return f"gid_allocation[{self.start_gid}-{self.end_gid}] next={n}"
+
+    def __repr__(self):
+        return (f"<GidAllocation(id={self.gid_allocation_id}, "
+                f"start={self.start_gid}, next={self.next_gid}, "
+                f"end={self.end_gid})>")
+
+    # --- introspection ------------------------------------------------------
+    @property
+    def is_initialized(self) -> bool:
+        """True once at least one GID has been drawn from this block."""
+        return self.next_gid is not None
+
+    @property
+    def is_exhausted(self) -> bool:
+        """True when no more GIDs remain in this block."""
+        if self.next_gid is None:
+            return False
+        return self.next_gid > self.end_gid
+
+    @property
+    def has_capacity(self) -> bool:
+        """True when at least one GID is still available in this block."""
+        return not self.is_exhausted
+
+    @property
+    def available_count(self) -> int:
+        """Number of GIDs still available in this block."""
+        effective_next = (self.next_gid
+                          if self.next_gid is not None else self.start_gid)
+        return max(0, self.end_gid - effective_next + 1)
+
+    # --- query helpers ------------------------------------------------------
+    @classmethod
+    def list_blocks(cls, session) -> List['GidAllocation']:
+        """All blocks ordered by ``start_gid`` ascending."""
+        return session.query(cls).order_by(cls.start_gid).all()
+
+    @classmethod
+    def _available_block_query(cls, session):
+        """Base query: blocks with capacity, ordered by start_gid asc.
+
+        A block has capacity when ``next_gid IS NULL`` (pristine, never
+        allocated from) or ``next_gid <= end_gid`` (not yet exhausted).
+        """
+        return (session.query(cls)
+                .filter(or_(cls.next_gid.is_(None),
+                            cls.next_gid <= cls.end_gid))
+                .order_by(cls.start_gid))
+
+    @classmethod
+    def next_available_block(cls, session, *,
+                             lock: bool = False) -> Optional['GidAllocation']:
+        """Lowest-``start_gid`` block with remaining capacity, or None."""
+        q = cls._available_block_query(session)
+        if lock:
+            q = q.with_for_update()
+        return q.first()
+
+    # --- allocation ---------------------------------------------------------
+    @classmethod
+    def allocate_next_gid(cls, session) -> int:
+        """Atomically draw the next available GID.
+
+        Locks the chosen block with ``SELECT … FOR UPDATE`` so concurrent
+        project creations cannot return the same GID. The lowest-
+        ``start_gid`` block with capacity is selected; if ``next_gid`` is
+        NULL the block's ``start_gid`` is returned (and ``next_gid`` is
+        initialized to ``start_gid + 1``), otherwise the current
+        ``next_gid`` is returned and incremented by one.
+
+        Raises ``NoAvailableGidError`` when every block is exhausted.
+        """
+        block = cls.next_available_block(session, lock=True)
+        if block is None:
+            raise NoAvailableGidError("No available GID blocks!")
+        chosen = (block.next_gid
+                  if block.next_gid is not None else block.start_gid)
+        block.next_gid = chosen + 1
+        session.flush()
+        return chosen
+
+
 #-------------------------------------------------------------------------em-
