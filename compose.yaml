@@ -259,5 +259,5 @@ networks:
     driver: bridge
 
 volumes:
-  samuel-mysql-data:
-  samuel-mysql-test-data:
+  mysql-data:
+  mysql-test-data:
