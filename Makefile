@@ -101,11 +101,11 @@ docker-up: ## Start docker containers (waits until every service reports healthy
 	@# `grep -q healthy` loop, which returned as soon as the first container
 	@# (usually cache, in 5s) reported healthy — well before mysql had
 	@# finished restoring the backup.
-	@docker compose up --detach --wait
+	@docker compose --profile test up --detach --wait
 	@echo "✅ Containers ready!"
 
 docker-down: ## Stop docker containers
-	docker compose down
+	docker compose --profile test down
 
 docker-restart: ## Rebuild and restart docker containers
 	@$(MAKE) docker-down

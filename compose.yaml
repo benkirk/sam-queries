@@ -193,7 +193,7 @@ services:
       MYSQL_ROOT_PASSWORD: "root"
       MYSQL_DATABASE: "sam"
     volumes:
-      - samuel-mysql-data:/var/lib/mysql
+      - mysql-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
     healthcheck:
       # Use 127.0.0.1 (TCP) — NOT localhost (which would use the Unix socket).
@@ -239,7 +239,7 @@ services:
       MYSQL_ROOT_PASSWORD: "root"
       MYSQL_DATABASE: "sam"
     volumes:
-      - samuel-mysql-test-data:/var/lib/mysql
+      - mysql-test-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
     healthcheck:
       # See the `mysql` service above for the rationale on TCP vs socket and
