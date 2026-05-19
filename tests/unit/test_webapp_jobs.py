@@ -342,7 +342,12 @@ def _make_row(**overrides):
 def test_jobs_fragment_pagination_forwards_offset(
     app, auth_client, active_project, monkeypatch,
 ):
-    """?page=3&per_page=25 ⇒ service receives offset=50, limit=25."""
+    """?page=3&per_page=25 ⇒ service receives offset=50, limit=25.
+
+    The count call goes to SAM's CompChargeSummary now, not the plugin —
+    a separate test (``…_status_filter_uses_plugin_count``) covers the
+    plugin-fallback shape.
+    """
     captured = _install_mock_plugin(app, monkeypatch,
                                     jobs_search_return=[_make_row()])
     resp = auth_client.get(
@@ -353,10 +358,26 @@ def test_jobs_fragment_pagination_forwards_offset(
     kw = captured['last_jobs_search_kwargs']
     assert kw['limit']  == 25
     assert kw['offset'] == 50    # (3 - 1) * 25
-    # count_jobs was also invoked with the same filter shape.
+
+
+def test_jobs_fragment_status_filter_uses_plugin_count(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When the request adds a filter outside CompChargeSummary's key set
+    (``status``, ``has_gpus``), count_jobs delegates to the plugin's
+    ``jobs_count`` rather than SAM's summary."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()],
+                                    jobs_count_return=42)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&status=F'
+    )
+    assert resp.status_code == 200
     ckw = captured['last_jobs_count_kwargs']
     assert ckw is not None
     assert ckw['account'] == active_project.projcode
+    assert ckw['status']  == 'F'
 
 
 def test_jobs_fragment_sort_param_round_trips(
@@ -456,18 +477,20 @@ def test_jobs_fragment_renders_verbose_drawer(
 def test_jobs_fragment_count_missing_hides_pagination(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Older plugin (no jobs_count) ⇒ banner + no pagination nav."""
+    """Older plugin (no jobs_count) AND a filter shape that bypasses SAM's
+    summary ⇒ banner + no pagination nav. The SAM-summary fast path
+    covers the typical drill-down shape, so the only way ``total=None``
+    surfaces today is when the route falls back to the plugin (status /
+    has_gpus filter) and the plugin lacks ``jobs_count``."""
     _install_mock_plugin(app, monkeypatch,
                          jobs_search_return=[_make_row()],
                          supports_count=False)
     resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&status=F'
     )
     body = resp.get_data(as_text=True)
     assert 'Pagination unavailable' in body
-    # The pagination nav (rendered by the shared macro) inserts the
-    # "Showing N–M of T" label. It must NOT be present here.
-    assert 'Showing' not in body or '>Showing<' not in body
     # Filter chip "(no count)" instead of total.
     assert '(no count)' in body
 

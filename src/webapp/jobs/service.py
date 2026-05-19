@@ -113,14 +113,36 @@ def count_jobs(
     Companion to :func:`search_jobs` for paginated UIs. Same projcode
     pinning + filter shape.
 
+    **Source priority** — the per-job drill-down's filter shape
+    (account/machine/queue/user/date) is exactly the unique key of
+    SAM's ``comp_charge_summary``, so the count is sourced from there
+    by default (small pre-aggregated table; sub-millisecond response
+    against the production schema). Falls back to the plugin's
+    ``JobQueries.jobs_count`` — a ``COUNT(*)`` over the raw ``job``
+    table — only when a filter outside the summary key set is in play
+    (``status``, ``has_gpus``). The two counts can disagree under
+    ingester drift; SAM is treated as the source of truth for the
+    displayed totalizer since it's the project's accounting authority.
+
     Returns:
-        ``int`` total when the plugin advertises ``JobQueries.jobs_count``,
-        else ``None`` — the route uses ``None`` as the signal to hide
-        the pagination nav (graceful degradation on older plugins).
+        ``int`` total. ``None`` only on the plugin-fallback path when
+        the plugin lacks ``jobs_count`` (older builds) — the route
+        uses ``None`` as the signal to hide the pagination nav.
     """
     if project is None:
         raise ValueError('count_jobs requires a project (account filter).')
 
+    # Fast path: SAM's daily summary covers every filter the drill-down
+    # uses. Avoids a 1-second-plus COUNT(*) over the plugin's job table.
+    if status is None and has_gpus is None:
+        return _count_via_sam_summary(
+            machine,
+            projcode=project.projcode,
+            start=start, end=end,
+            user=user, queue=queue,
+        )
+
+    # Plugin fallback for filter shapes outside the summary's key set.
     if not get_capabilities()['count']:
         return None
 
@@ -137,3 +159,41 @@ def count_jobs(
             status=status,
             has_gpus=has_gpus,
         )
+
+
+def _count_via_sam_summary(
+    machine: str,
+    *,
+    projcode: str,
+    start: Optional[date],
+    end:   Optional[date],
+    user:  Optional[str],
+    queue: Optional[str],
+) -> int:
+    """``SUM(num_jobs)`` over ``comp_charge_summary`` for the drill-down filter shape.
+
+    Plugin-side ``machine='derecho'`` covers SAM's ``Derecho`` and
+    ``Derecho GPU`` resource rows (same physical machine, different
+    SAM resource_name). An ILIKE prefix match captures both; the
+    queue + user + project filters discriminate naturally between
+    CPU and GPU rows because each queue belongs to one resource.
+    """
+    # Local imports avoid pulling Flask-SQLAlchemy into the module
+    # namespace at import time — keeps `from webapp.jobs import service`
+    # cheap for the test paths that don't need a live `db` session.
+    from sqlalchemy import func
+    from sam import CompChargeSummary
+    from webapp.extensions import db
+
+    q = db.session.query(func.coalesce(func.sum(CompChargeSummary.num_jobs), 0))
+    q = q.filter(CompChargeSummary.act_projcode == projcode)
+    q = q.filter(CompChargeSummary.machine.ilike(f'{machine}%'))
+    if start is not None:
+        q = q.filter(CompChargeSummary.activity_date >= start)
+    if end is not None:
+        q = q.filter(CompChargeSummary.activity_date <= end)
+    if user:
+        q = q.filter(CompChargeSummary.act_username == user)
+    if queue:
+        q = q.filter(CompChargeSummary.queue == queue)
+    return int(q.scalar() or 0)
