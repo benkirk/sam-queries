@@ -23,7 +23,6 @@ and let the rest of the webapp boot — same posture as ``sam-admin``.
 
 from __future__ import annotations
 
-import inspect
 import logging
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
@@ -60,12 +59,6 @@ def init_job_history(app: Flask) -> None:
         'module':  None,
         'engines': {},  # machine -> Engine
         'enabled': False,
-        # Plugin-feature probes, set once at startup. Routes read these to
-        # decide whether to surface pagination/sort UI or fall back to the
-        # limit-only path. Mirrors the pool_kwargs= drift handling below.
-        'supports_offset':  False,
-        'supports_sort':    False,
-        'supports_count':   False,
     }
     app.extensions[_EXT_KEY] = state
 
@@ -86,36 +79,11 @@ def init_job_history(app: Flask) -> None:
 
     state['module'] = mod
 
-    get_engine = getattr(mod, 'get_engine', None)
-    if get_engine is None:
-        logger.error(
-            'hpc-usage-queries loaded but exposes no get_engine(); refusing to '
-            'use it. Upgrade the plugin (PR #60 or later).'
-        )
-        return
-
-    # Detect plugin signature drift once at startup, not per-machine.
-    # PR #60 added pool_kwargs= to get_engine(); older plugin builds
-    # raise TypeError on the keyword. We fall back to the old signature
-    # so the integration still works (just without webapp-side pool
-    # tuning) and surface one clear warning instead of N silent ones.
-    supports_pool_kwargs = _accepts_kwarg(get_engine, 'pool_kwargs')
-    if not supports_pool_kwargs:
-        logger.warning(
-            'hpc-usage-queries plugin is out of date: get_engine() does not '
-            'accept pool_kwargs=. Engines will open without webapp-side pool '
-            'tuning. Upgrade the plugin to PR #60 or later to enable '
-            'JOB_HISTORY_POOL_* config.'
-        )
-
     # Eagerly create one Engine per machine. A failure here is logged
     # per-machine; other machines can still come up.
     for machine in machines:
         try:
-            if supports_pool_kwargs:
-                engine = get_engine(machine, pool_kwargs=pool_kwargs)
-            else:
-                engine = get_engine(machine)
+            engine = mod.get_engine(machine, pool_kwargs=pool_kwargs)
             state['engines'][machine] = engine
             logger.info(
                 'hpc-usage-queries engine ready: machine=%s url=%s',
@@ -129,39 +97,6 @@ def init_job_history(app: Flask) -> None:
             )
 
     state['enabled'] = bool(state['engines'])
-
-    # Probe paginated-search/count support on the plugin. These reads are
-    # cheap and let the route degrade gracefully — older plugin builds
-    # render the limit-only table without a 500.
-    jq = getattr(mod, 'JobQueries', None)
-    if jq is not None:
-        js = getattr(jq, 'jobs_search', None)
-        if js is not None:
-            state['supports_offset'] = _accepts_kwarg(js, 'offset')
-            state['supports_sort']   = _accepts_kwarg(js, 'sort_by')
-        state['supports_count'] = callable(getattr(jq, 'jobs_count', None))
-    if state['enabled'] and not (state['supports_offset'] and state['supports_count']):
-        logger.warning(
-            'hpc-usage-queries plugin is out of date: missing offset=/jobs_count '
-            'on JobQueries — per-job UI will render without pagination. '
-            'Upgrade the plugin to pick up the offset/sort/count PR.'
-        )
-
-
-def _accepts_kwarg(fn, name: str) -> bool:
-    """True if *fn* accepts a keyword argument named *name*.
-
-    Conservative: if introspection itself fails (C-implemented callables,
-    decorators that hide the signature, …) returns True so we attempt the
-    call and let any real failure surface through the per-machine try.
-    """
-    try:
-        params = inspect.signature(fn).parameters
-    except (TypeError, ValueError):
-        return True
-    if name in params:
-        return True
-    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
 def is_enabled(app: Optional[Flask] = None) -> bool:
@@ -180,21 +115,6 @@ def get_engines(app: Optional[Flask] = None) -> Dict[str, Any]:
     """Return ``{machine: Engine}`` (possibly empty)."""
     state = (app or current_app).extensions.get(_EXT_KEY) or {}
     return state.get('engines') or {}
-
-
-def get_capabilities(app: Optional[Flask] = None) -> Dict[str, bool]:
-    """Return ``{offset, sort, count}`` plugin-capability flags.
-
-    Set once during :func:`init_job_history` by introspecting the loaded
-    plugin. Routes consult these to decide whether to render pagination /
-    sort controls or degrade to the limit-only table.
-    """
-    state = (app or current_app).extensions.get(_EXT_KEY) or {}
-    return {
-        'offset': bool(state.get('supports_offset')),
-        'sort':   bool(state.get('supports_sort')),
-        'count':  bool(state.get('supports_count')),
-    }
 
 
 @contextmanager

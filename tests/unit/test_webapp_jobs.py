@@ -95,46 +95,6 @@ def test_init_job_history_plugin_missing_does_not_raise(monkeypatch):
         assert is_enabled() is False
 
 
-def test_init_job_history_falls_back_when_plugin_lacks_pool_kwargs(monkeypatch, caplog):
-    """An old plugin without pool_kwargs= still produces engines; one warning logged."""
-    from webapp.jobs.session import init_job_history, get_engines, is_enabled
-
-    seen_kwargs = []
-
-    # Old plugin signature: positional machine + echo only, no pool_kwargs.
-    def _old_get_engine(machine, echo=False):
-        seen_kwargs.append(('positional', machine, echo))
-        return MagicMock(name=f'engine_{machine}')
-
-    fake_mod = types.SimpleNamespace(
-        get_engine=_old_get_engine,
-        get_session=lambda machine, engine=None: None,
-        JobQueries=object,
-    )
-    monkeypatch.setattr('sam.plugins.HPC_USAGE_QUERIES.load', lambda: fake_mod)
-
-    a = _build_isolated_app(['derecho'])
-    # Non-trivial pool_kwargs so the test would catch a regression that
-    # silently forwards them despite the signature mismatch.
-    a.config['JOB_HISTORY_POOL_KWARGS'] = {'pool_size': 99}
-
-    with caplog.at_level('WARNING', logger='webapp.jobs.session'):
-        init_job_history(a)
-
-    with a.app_context():
-        assert is_enabled() is True
-        assert 'derecho' in get_engines()
-    # get_engine was called WITHOUT pool_kwargs (just the positional machine).
-    assert seen_kwargs == [('positional', 'derecho', False)]
-    # Exactly one pool_kwargs drift warning, not one per machine. A
-    # second "out of date" line about missing offset=/jobs_count may
-    # also fire because the FakeJobQueries here is just ``object``;
-    # filter by the pool_kwargs marker to keep this test focused.
-    drift_warnings = [r for r in caplog.records
-                      if 'pool_kwargs=' in r.getMessage()]
-    assert len(drift_warnings) == 1
-
-
 def test_init_job_history_engine_failure_skips_machine(monkeypatch):
     """One bad machine logs and is skipped; healthy machines still come up."""
     from webapp.jobs.session import init_job_history, get_engines, is_enabled
@@ -168,15 +128,9 @@ def test_init_job_history_engine_failure_skips_machine(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
-                        jobs_count_return=None, machines=('derecho',),
-                        supports_offset=True, supports_sort=True,
-                        supports_count=True):
+                        jobs_count_return=None, machines=('derecho',)):
     """Wire a mock job_history module onto app.extensions and return the
     captured JobQueries kwargs so tests can assert on the call.
-
-    The ``supports_*`` flags control the capability state the route reads
-    via ``get_capabilities()``. Pass ``supports_count=False`` (etc.) to
-    simulate an older plugin and exercise the graceful-fallback paths.
 
     Uses ``monkeypatch.setitem`` so the original (empty/None) extension
     state is restored at test teardown — the ``app`` fixture is
@@ -209,9 +163,6 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
         'module':  fake_mod,
         'engines': {m: MagicMock(name=f'engine_{m}') for m in machines},
         'enabled': True,
-        'supports_offset': supports_offset,
-        'supports_sort':   supports_sort,
-        'supports_count':  supports_count,
     }
     monkeypatch.setitem(app.extensions, 'hpc_usage_queries', new_state)
     return captured
@@ -611,27 +562,6 @@ def test_jobs_fragment_renders_verbose_drawer(
     assert 'CPU type' in body
     # Drawer renders the values.
     assert 'milan' in body
-
-
-def test_jobs_fragment_count_missing_hides_pagination(
-    app, auth_client, active_project, monkeypatch,
-):
-    """Older plugin (no jobs_count) AND a filter shape that bypasses SAM's
-    summary ⇒ banner + no pagination nav. The SAM-summary fast path
-    covers the typical drill-down shape, so the only way ``total=None``
-    surfaces today is when the route falls back to the plugin (status /
-    has_gpus filter) and the plugin lacks ``jobs_count``."""
-    _install_mock_plugin(app, monkeypatch,
-                         jobs_search_return=[_make_row()],
-                         supports_count=False)
-    resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}'
-        '?machine=derecho&status=F'
-    )
-    body = resp.get_data(as_text=True)
-    assert 'Pagination unavailable' in body
-    # Filter chip "(no count)" instead of total.
-    assert '(no count)' in body
 
 
 def test_resource_details_includes_jobs_fragment_url(

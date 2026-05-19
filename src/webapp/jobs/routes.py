@@ -33,7 +33,7 @@ from flask_login import login_required
 
 from webapp.api.access_control import require_project_access
 from webapp.jobs import service
-from webapp.jobs.session import get_capabilities, is_enabled
+from webapp.jobs.session import is_enabled
 
 bp = Blueprint('jobs', __name__)
 
@@ -147,7 +147,7 @@ def jobs_fragment(project):
             filters={}, page={'n': 1, 'per_page': _DEFAULT_PER_PAGE},
             sort={'sort_by': None, 'sort_dir': 'desc'},
             total=None, visible_cols=[], verbose_extras=[],
-            column_specs={}, capabilities={'offset': False, 'sort': False, 'count': False},
+            column_specs={},
             enabled=False, error=None,
         )
 
@@ -164,8 +164,7 @@ def jobs_fragment(project):
     }
     page = _parse_pagination()
     sort = _parse_sort()
-    caps = get_capabilities()
-    offset = (page['n'] - 1) * page['per_page'] if caps['offset'] else 0
+    offset = (page['n'] - 1) * page['per_page']
 
     # Always request the verbose column superset so the per-row drawer
     # renders without a second fetch. Plugin still validates each key.
@@ -224,7 +223,6 @@ def jobs_fragment(project):
         visible_cols=visible_cols,
         verbose_extras=list(_VERBOSE_EXTRAS),
         column_specs=column_specs,
-        capabilities=caps,
         sortable_columns=sorted(_SORT_WHITELIST),
         fragment_url=fragment_url,
         target_id=f'jobs-{project.projcode}-{machine}',

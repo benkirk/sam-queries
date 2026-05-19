@@ -5,7 +5,6 @@
   Context (set in webapp/jobs/routes.py):
     project, machine, rows, filters, page, sort, total
     visible_cols, verbose_extras, column_specs
-    capabilities = {'offset': bool, 'sort': bool, 'count': bool}
     sortable_columns, fragment_url, target_id, enabled, error
 #}
 
@@ -59,7 +58,7 @@
 {% macro sort_link(col) %}
   {%- set label = _header_overrides.get(col, column_specs.get(col, {}).get('header', col)) -%}
   {%- set numeric = col in _numeric_cols -%}
-  {%- if capabilities.sort and col in sortable_columns -%}
+  {%- if col in sortable_columns -%}
     {%- set is_active = (sort['sort_by'] == col) -%}
     {%- set next_dir = 'asc' if (is_active and sort['sort_dir'] == 'desc') else 'desc' -%}
     <a class="text-decoration-none" href="#"
@@ -122,12 +121,7 @@
       <span class="badge bg-light text-dark me-1">queue: {{ filters.queue }}</span>
     {% endif %}
     <span class="ms-auto text-muted small">
-      {% if total is not none %}
-        {{ total | fmt_number }} job{{ '' if total == 1 else 's' }}
-      {% else %}
-        {{ rows | length }} job{{ '' if rows | length == 1 else 's' }}
-        <span class="text-muted">(no count)</span>
-      {% endif %}
+      {{ total | fmt_number }} job{{ '' if total == 1 else 's' }}
     </span>
   </div>
 
@@ -184,16 +178,7 @@
       </table>
     </div>
 
-    {% if total is not none and capabilities.offset %}
-      {{ pagination(page, total, fragment_url, target_id,
-                    'jobs-filters-' ~ target_id, sort) }}
-    {% elif total is none %}
-      <div class="text-muted small mt-2">
-        <i class="fas fa-info-circle me-1"></i>
-        Pagination unavailable — running against an older
-        <code>hpc-usage-queries</code> build. Showing the first
-        {{ rows | length }} rows.
-      </div>
-    {% endif %}
+    {{ pagination(page, total, fragment_url, target_id,
+                  'jobs-filters-' ~ target_id, sort) }}
   {% endif %}
 {% endif %}

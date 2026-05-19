@@ -8,11 +8,6 @@ session bound to the cached engine.
 Auth is the route's job, not the service's — but the service refuses to
 issue an unscoped query (no ``project``) so a caller can't accidentally
 return cross-project rows by forgetting a filter.
-
-Plugin-capability fallback: ``offset`` / ``sort_by`` / ``sort_dir`` /
-``has_gpus`` are forwarded only when the loaded plugin advertises them
-(probed in :func:`webapp.jobs.session.init_job_history`). Against an
-older plugin the call still succeeds — pagination just degrades.
 """
 
 from __future__ import annotations
@@ -20,7 +15,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
-from webapp.jobs.session import get_capabilities, get_module, job_history_session
+from webapp.jobs.session import get_module, job_history_session
 
 
 def _normalize_queue_for_plugin(queue: Optional[str]) -> Optional[str]:
@@ -77,14 +72,12 @@ def search_jobs(
         start, end: Date range filter on ``Job.end``.
         user, queue, status: Optional plain-text filters.
         has_gpus: ``None`` ignore; ``True`` → GPU jobs only; ``False`` →
-            CPU-only jobs. Forwarded to the plugin when supported.
+            CPU-only jobs.
         columns: Optional column projection. Default is the plugin's
             ``DEFAULT_COLUMNS`` set.
         limit: Optional server-side LIMIT.
-        offset: Optional server-side OFFSET; silently dropped if the
-            loaded plugin lacks ``offset=`` (logged once at startup).
-        sort_by, sort_dir: Optional sort column + direction; silently
-            dropped if the loaded plugin lacks ``sort_by=``.
+        offset: Optional server-side OFFSET.
+        sort_by, sort_dir: Optional sort column + direction.
         account_projcodes: Optional sequence of projcodes for tree-aware
             filtering. When provided, takes precedence over
             ``project.projcode`` — the upstream plugin applies
@@ -102,8 +95,7 @@ def search_jobs(
         raise ValueError('search_jobs requires a project (account filter).')
 
     mod = get_module()
-    JobQueries = mod.JobQueries  # AttributeError here means stale plugin
-    caps = get_capabilities()
+    JobQueries = mod.JobQueries
 
     kwargs: Dict[str, Any] = {
         'start':   start,
@@ -115,11 +107,10 @@ def search_jobs(
         'status':  status,
         'columns': columns,
         'limit':   limit,
+        'offset':  offset,
+        'has_gpus': has_gpus,
     }
-    if caps['offset']:
-        kwargs['offset'] = offset
-        kwargs['has_gpus'] = has_gpus
-    if caps['sort'] and sort_by is not None:
+    if sort_by is not None:
         kwargs['sort_by']  = sort_by
         kwargs['sort_dir'] = sort_dir
 
@@ -138,7 +129,7 @@ def count_jobs(
     status: Optional[str] = None,
     has_gpus: Optional[bool] = None,
     account_projcodes: Optional[Sequence[str]] = None,
-) -> Optional[int]:
+) -> int:
     """Return the total number of jobs matching the search filters.
 
     Companion to :func:`search_jobs` for paginated UIs. Same projcode
@@ -157,9 +148,7 @@ def count_jobs(
     displayed totalizer since it's the project's accounting authority.
 
     Returns:
-        ``int`` total. ``None`` only on the plugin-fallback path when
-        the plugin lacks ``jobs_count`` (older builds) — the route
-        uses ``None`` as the signal to hide the pagination nav.
+        ``int`` total.
     """
     if project is None:
         raise ValueError('count_jobs requires a project (account filter).')
@@ -178,9 +167,6 @@ def count_jobs(
         )
 
     # Plugin fallback for filter shapes outside the summary's key set.
-    if not get_capabilities()['count']:
-        return None
-
     mod = get_module()
     JobQueries = mod.JobQueries
 
