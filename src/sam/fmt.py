@@ -256,6 +256,36 @@ def number(
     return _compact(float(x), use_sf)
 
 
+def hours(
+    seconds:  Optional[Union[int, float]],
+    *,
+    decimals: int  = 2,
+    null:     str  = '—',
+) -> str:
+    """Format a duration given in seconds as a decimal-hours string.
+
+    Useful for elapsed/walltime columns where the underlying integer
+    second count is awkward (a 77-second test job and a 23-hour
+    production run shouldn't both display as the same magnitude).
+    Defaults to 2 decimal places so sub-minute jobs still render as
+    ``0.02`` rather than collapsing to ``0`` under fmt.number().
+
+    Args:
+        seconds:  Duration in seconds.  None → null.
+        decimals: Fractional digits to keep.  Default 2.
+        null:     Placeholder returned for None values.
+
+    Examples:
+        hours(77)       → '0.02'
+        hours(3600)     → '1.00'
+        hours(86_400)   → '24.00'
+        hours(None)     → '—'
+    """
+    if seconds is None:
+        return null
+    return f"{seconds / 3600:,.{decimals}f}"
+
+
 def pct(
     x:        Optional[Union[int, float]],
     *,
@@ -371,6 +401,7 @@ def register_jinja_filters(app) -> None:
     app.jinja_env.filters['fmt_pct']      = pct
     app.jinja_env.filters['fmt_date']     = date_str
     app.jinja_env.filters['fmt_size']     = size
+    app.jinja_env.filters['fmt_hours']    = hours
     app.jinja_env.filters['to_local_dt']  = to_local_dt
     # Global (not a filter) so templates can render "{{ local_tz_label() }}"
     # alongside naive-local timestamps that don't go through to_local_dt.

@@ -18,6 +18,16 @@
                         'cpu_charges', 'gpu_charges', 'memory_charges',
                         'qos_factor', 'charge_version'] %}
 
+{# Plugin emits elapsed/walltime in seconds; render as decimal hours
+   via fmt_hours. Header labels are overridden alongside so the unit
+   is explicit. #}
+{% set _seconds_to_hours = ['elapsed', 'walltime'] %}
+{# Plugin emits reqmem/memory/vmemory in bytes; use fmt_size (KiB/MiB/GiB)
+   instead of fmt_number's compact decimal which renders "GB" as a
+   billions-suffix and is easy to misread as bytes. #}
+{% set _byte_cols = ['reqmem', 'memory', 'vmemory'] %}
+{% set _header_overrides = {'elapsed': 'Elapsed (h)', 'walltime': 'Walltime (h)'} %}
+
 {% macro render_value(col, val) %}
   {%- if val is none or val == '' -%}
     <span class="text-muted">—</span>
@@ -35,6 +45,10 @@
     <code class="small" title="{{ val }}">{{ val }}</code>
   {%- elif col in ('name', 'resources') -%}
     <span title="{{ val }}">{{ val }}</span>
+  {%- elif col in _seconds_to_hours -%}
+    {{ val | fmt_hours }}
+  {%- elif col in _byte_cols -%}
+    {{ val | fmt_size }}
   {%- elif col in _numeric_cols -%}
     {{ val | fmt_number }}
   {%- else -%}
@@ -43,7 +57,7 @@
 {% endmacro %}
 
 {% macro sort_link(col) %}
-  {%- set label = column_specs.get(col, {}).get('header', col) -%}
+  {%- set label = _header_overrides.get(col, column_specs.get(col, {}).get('header', col)) -%}
   {%- set numeric = col in _numeric_cols -%}
   {%- if capabilities.sort and col in sortable_columns -%}
     {%- set is_active = (sort['sort_by'] == col) -%}
@@ -157,7 +171,7 @@
                     {% set v = r.get(col) %}
                     {% if v is not none and v != '' and v != 0 %}
                       <dt class="col-sm-3 col-md-2 text-muted">
-                        {{ column_specs.get(col, {}).get('header', col) }}
+                        {{ _header_overrides.get(col, column_specs.get(col, {}).get('header', col)) }}
                       </dt>
                       <dd class="col-sm-9 col-md-10">{{ render_value(col, v) }}</dd>
                     {% endif %}
