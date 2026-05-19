@@ -211,6 +211,12 @@ def jobs_fragment(project):
     column_specs = _load_column_specs()
     fragment_url = url_for('jobs.jobs_fragment', projcode=project.projcode)
 
+    # The caller passes the id of the container that owns this fragment so
+    # sort / pagination clicks can swap that same container's innerHTML.
+    # Falls back to a generic id when called without one (legacy paths).
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-{project.projcode}-{machine}'
+
     return render_template(
         'dashboards/user/partials/jobs_fragment.html',
         project=project,
@@ -225,7 +231,7 @@ def jobs_fragment(project):
         column_specs=column_specs,
         sortable_columns=sorted(_SORT_WHITELIST),
         fragment_url=fragment_url,
-        target_id=f'jobs-{project.projcode}-{machine}',
+        target_id=target_id,
         enabled=True,
         error=error,
     )

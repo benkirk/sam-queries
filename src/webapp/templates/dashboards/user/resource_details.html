@@ -32,12 +32,17 @@
                            colspan=5, outer_tr_collapse_id=None) %}
 <tr {% if outer_tr_collapse_id %}class="collapse" id="{{ outer_tr_collapse_id }}"{% endif %}>
     <td colspan="{{ colspan }}" class="p-0">
+        {# target_id round-trips to the route so sort / pagination click
+           handlers inside the fragment know which container's innerHTML
+           to swap — without it they'd target a stale id from the route's
+           generic fallback. #}
         <div class="collapse" id="{{ jid }}"
              hx-get="{{ url_for('jobs.jobs_fragment',
                                 projcode=projcode,
                                 machine=jobs_machine,
                                 user=user, queue=queue,
-                                start=start, end=end) }}"
+                                start=start, end=end,
+                                target_id=jid ~ '-content') }}"
              hx-target="#{{ jid }}-content"
              hx-trigger="shown.bs.collapse once"
              hx-swap="innerHTML">
