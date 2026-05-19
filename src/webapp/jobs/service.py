@@ -23,6 +23,27 @@ from typing import Any, Dict, List, Optional, Sequence
 from webapp.jobs.session import get_capabilities, get_module, job_history_session
 
 
+def _normalize_queue_for_plugin(queue: Optional[str]) -> Optional[str]:
+    """Strip the rolled-up suffix from legacy synthetic queue names.
+
+    TODO(legacy-queue-names): pre-2026-05-13 ingester runs wrote
+    synthetic queue names like ``cpu-special`` / ``cpu-economy`` into
+    ``comp_charge_summary``. The underlying ``Job.queue`` column never
+    used these — the real queue is the substring before the first dash
+    (``cpu``). Until the affected summary rows are re-ingested with
+    real queue names, normalize at the plugin call sites so drill-down
+    rows return jobs. ``_count_via_sam_summary`` keeps the raw value
+    because the summary table IS the source of truth for itself.
+
+    Remove this helper and its call sites once the historical
+    ``comp_charge_summary`` rows have been rewritten with the canonical
+    queue names.
+    """
+    if not queue or '-' not in queue:
+        return queue
+    return queue.split('-', 1)[0]
+
+
 def search_jobs(
     machine: str,
     *,
@@ -89,7 +110,8 @@ def search_jobs(
         'end':     end,
         'account': list(account_projcodes) if account_projcodes is not None else project.projcode,
         'user':    user,
-        'queue':   queue,
+        # TODO(legacy-queue-names): see _normalize_queue_for_plugin.
+        'queue':   _normalize_queue_for_plugin(queue),
         'status':  status,
         'columns': columns,
         'limit':   limit,
@@ -168,7 +190,8 @@ def count_jobs(
             end=end,
             account=projcodes if account_projcodes is not None else project.projcode,
             user=user,
-            queue=queue,
+            # TODO(legacy-queue-names): see _normalize_queue_for_plugin.
+            queue=_normalize_queue_for_plugin(queue),
             status=status,
             has_gpus=has_gpus,
         )

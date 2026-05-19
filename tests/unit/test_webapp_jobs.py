@@ -269,6 +269,80 @@ def test_search_jobs_requires_project():
         service.search_jobs('derecho', project=None)
 
 
+def test_search_jobs_normalizes_legacy_queue_name(
+    app, active_project, monkeypatch,
+):
+    """TODO(legacy-queue-names) workaround: pre-2026-05-13 summary rows
+    have synthetic queue names like ``cpu-special`` that the plugin's
+    ``Job.queue`` column never used. The plugin call site strips
+    everything after the first dash so jobs actually return; the SAM
+    summary path keeps the raw value (covered by the count test
+    below)."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs(
+            'derecho',
+            project=active_project,
+            queue='cpu-special',
+            limit=50,
+        )
+
+    assert captured['last_jobs_search_kwargs']['queue'] == 'cpu'
+
+
+def test_count_jobs_sam_summary_keeps_legacy_queue_name(
+    app, active_project, monkeypatch,
+):
+    """The SAM ``comp_charge_summary`` fast path must NOT normalize the
+    queue — that table stores the synthetic name and a stripped query
+    would miss its own rows. Counterpart to the ``search_jobs``
+    normalization test."""
+    from webapp.jobs import service
+
+    captured_queue = {}
+
+    def _fake_count_via_sam_summary(machine, *, projcodes, start, end, user, queue):
+        captured_queue['queue'] = queue
+        return 5
+
+    monkeypatch.setattr(service, '_count_via_sam_summary', _fake_count_via_sam_summary)
+    _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        # No status / has_gpus → goes through the SAM summary fast path.
+        total = service.count_jobs(
+            'derecho', project=active_project, queue='cpu-special',
+        )
+
+    assert total == 5
+    assert captured_queue['queue'] == 'cpu-special'
+
+
+def test_count_jobs_plugin_fallback_normalizes_legacy_queue_name(
+    app, active_project, monkeypatch,
+):
+    """When the request adds a filter outside the summary key set
+    (``status``, ``has_gpus``), count_jobs hits the plugin — which DOES
+    need the normalized queue. Mirrors the search_jobs test."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=7)
+
+    with app.app_context():
+        service.count_jobs(
+            'derecho', project=active_project,
+            queue='cpu-economy',
+            status='F',  # forces plugin path
+        )
+
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert ckw['queue'] == 'cpu'
+
+
 # ---------------------------------------------------------------------------
 # routes.jobs_fragment — HTMX endpoint surface
 # ---------------------------------------------------------------------------
