@@ -1,0 +1,76 @@
+{# Per-job rows fragment — embedded into resource_details.html via hx-get.
+   Minimal table for now; the resource-details template wire-in and richer
+   styling are tracked separately. #}
+
+{% if not enabled %}
+  <div class="alert alert-secondary py-2 mb-0" role="status">
+    <small>
+      Per-job data is unavailable: the
+      <code>hpc-usage-queries</code> plugin is not loaded.
+      <a href="/dashboards/admin/configuration"
+         target="_blank" rel="noopener">
+        Check the Database card on the Admin → Configuration page
+      </a>
+      for plugin/DB health.
+    </small>
+  </div>
+{% elif error %}
+  <div class="alert alert-warning py-2 mb-0" role="alert">
+    <small>Could not load per-job data: {{ error }}</small>
+  </div>
+{% else %}
+  <div class="d-flex align-items-center mb-2">
+    <strong class="me-2">{{ project.projcode }}</strong>
+    <span class="text-muted small me-3">{{ machine }}</span>
+    {% if filters.start or filters.end %}
+      <span class="text-muted small me-3">
+        {{ filters.start | fmt_date }} … {{ filters.end | fmt_date }}
+      </span>
+    {% endif %}
+    {% if filters.user %}
+      <span class="badge bg-light text-dark me-1">user: {{ filters.user }}</span>
+    {% endif %}
+    {% if filters.queue %}
+      <span class="badge bg-light text-dark me-1">queue: {{ filters.queue }}</span>
+    {% endif %}
+    <span class="ms-auto text-muted small">
+      {{ rows | length }} job{{ '' if rows | length == 1 else 's' }}
+      {% if rows | length == limit %}(capped at {{ limit }}){% endif %}
+    </span>
+  </div>
+
+  {% if not rows %}
+    <p class="text-muted small mb-0">No jobs match the current filters.</p>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Job ID</th>
+            <th>User</th>
+            <th>Queue</th>
+            <th>Start</th>
+            <th>End</th>
+            <th class="text-end">Elapsed (s)</th>
+            <th class="text-end">CPU hrs</th>
+            <th class="text-end">GPU hrs</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td><code class="small">{{ r.job_id }}</code></td>
+              <td>{{ r.user }}</td>
+              <td>{{ r.queue }}</td>
+              <td class="text-nowrap small">{{ r.start }}</td>
+              <td class="text-nowrap small">{{ r.end }}</td>
+              <td class="text-end">{{ r.elapsed | fmt_number }}</td>
+              <td class="text-end">{{ r.cpu_hours | fmt_number }}</td>
+              <td class="text-end">{{ r.gpu_hours | fmt_number }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% endif %}

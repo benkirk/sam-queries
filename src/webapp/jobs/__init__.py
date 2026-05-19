@@ -14,6 +14,7 @@ still boots — downstream features just degrade. Job-level UI rendering
 checks :func:`is_enabled` before issuing any query.
 """
 
+from webapp.jobs.routes import bp
 from webapp.jobs.session import (
     init_job_history,
     is_enabled,
@@ -23,6 +24,7 @@ from webapp.jobs.session import (
 )
 
 __all__ = [
+    'bp',
     'init_job_history',
     'is_enabled',
     'job_history_session',

@@ -249,7 +249,7 @@ def create_app(*, config_overrides: dict | None = None):
     # job_history package and opens one Engine per configured machine so
     # connection pools are warm before the first per-job query. Disabled
     # in tests (TestingConfig.JOB_HISTORY_MACHINES = []).
-    from webapp.jobs import init_job_history
+    from webapp.jobs import init_job_history, bp as jobs_bp
     init_job_history(app)
 
     # Register blueprints
@@ -259,6 +259,7 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(status_dashboard_bp)
     app.register_blueprint(allocations_dashboard_bp)
     app.register_blueprint(project_members_bp)
+    app.register_blueprint(jobs_bp, url_prefix='/dashboards/user/jobs')
     # NOTE: admin_bp blueprint removed - Flask-Admin handles /database routing
     # app.register_blueprint(admin_bp, url_prefix='/database')
 
