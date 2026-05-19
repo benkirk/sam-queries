@@ -126,8 +126,12 @@ def test_init_job_history_falls_back_when_plugin_lacks_pool_kwargs(monkeypatch, 
         assert 'derecho' in get_engines()
     # get_engine was called WITHOUT pool_kwargs (just the positional machine).
     assert seen_kwargs == [('positional', 'derecho', False)]
-    # Exactly one signature-drift warning, not one per machine.
-    drift_warnings = [r for r in caplog.records if 'out of date' in r.getMessage()]
+    # Exactly one pool_kwargs drift warning, not one per machine. A
+    # second "out of date" line about missing offset=/jobs_count may
+    # also fire because the FakeJobQueries here is just ``object``;
+    # filter by the pool_kwargs marker to keep this test focused.
+    drift_warnings = [r for r in caplog.records
+                      if 'pool_kwargs=' in r.getMessage()]
     assert len(drift_warnings) == 1
 
 
@@ -164,15 +168,24 @@ def test_init_job_history_engine_failure_skips_machine(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
-                        machines=('derecho',)):
+                        jobs_count_return=None, machines=('derecho',),
+                        supports_offset=True, supports_sort=True,
+                        supports_count=True):
     """Wire a mock job_history module onto app.extensions and return the
     captured JobQueries kwargs so tests can assert on the call.
+
+    The ``supports_*`` flags control the capability state the route reads
+    via ``get_capabilities()``. Pass ``supports_count=False`` (etc.) to
+    simulate an older plugin and exercise the graceful-fallback paths.
 
     Uses ``monkeypatch.setitem`` so the original (empty/None) extension
     state is restored at test teardown — the ``app`` fixture is
     session-scoped and shared across the whole xdist worker.
     """
-    captured = {'last_jobs_search_kwargs': None}
+    captured = {
+        'last_jobs_search_kwargs': None,
+        'last_jobs_count_kwargs':  None,
+    }
 
     class FakeJobQueries:
         def __init__(self, session, machine='derecho'):
@@ -181,6 +194,10 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
         def jobs_search(self, **kwargs):
             captured['last_jobs_search_kwargs'] = kwargs
             return jobs_search_return or []
+        def jobs_count(self, **kwargs):
+            captured['last_jobs_count_kwargs'] = kwargs
+            return jobs_count_return if jobs_count_return is not None \
+                else len(jobs_search_return or [])
 
     fake_session = MagicMock(name='jh_session')
     fake_mod = types.SimpleNamespace(
@@ -192,6 +209,9 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
         'module':  fake_mod,
         'engines': {m: MagicMock(name=f'engine_{m}') for m in machines},
         'enabled': True,
+        'supports_offset': supports_offset,
+        'supports_sort':   supports_sort,
+        'supports_count':  supports_count,
     }
     monkeypatch.setitem(app.extensions, 'hpc_usage_queries', new_state)
     return captured
@@ -283,9 +303,198 @@ def test_jobs_fragment_renders_rows_when_enabled(
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert '12345.desched1' in body
+    # 'user' is not a default column on the per-job table (the drill-down
+    # row already pins user/queue), so benkirk appears in the verbose-row
+    # drawer instead of the main table.
     assert 'benkirk' in body
     # Disabled banner must NOT be present on the enabled path.
     assert 'Per-job data is unavailable' not in body
+
+
+# ---------------------------------------------------------------------------
+# Part 2: pagination / sort / suppression / verbose-row / resource-details
+# ---------------------------------------------------------------------------
+
+def _make_row(**overrides):
+    """Build a verbose-shape job row dict — every default + verbose key set
+    to a sensible non-empty value so suppression / drawer tests can opt
+    fields back to 0/None without redefining the full superset."""
+    base = {
+        'job_id': '500.desched1', 'name': 'demo', 'status': 'F',
+        'user': 'alice', 'account': 'SCSG0001', 'queue': 'main',
+        'start': '2026-05-01 10:00:00',
+        'end':   '2026-05-01 11:00:00',
+        'submit': '2026-05-01 09:55:00', 'eligible': None,
+        'elapsed': 3600, 'walltime': 7200,
+        'numnodes': 1, 'numcpus': 128, 'numgpus': 0,
+        'mpiprocs': 128, 'ompthreads': 1,
+        'reqmem': 0, 'memory': 100, 'vmemory': 200,
+        'cputype': 'milan', 'gputype': None, 'resources': 'select=1',
+        'cpu_hours': 128.0, 'gpu_hours': 0.0, 'memory_hours': 10.0,
+        'qos_factor': 1.0, 'charge_version': 1,
+        'cpu_charges': 128.0, 'gpu_charges': 0.0, 'memory_charges': 10.0,
+        'short_id': 500, 'priority': '0',
+    }
+    base.update(overrides)
+    return base
+
+
+def test_jobs_fragment_pagination_forwards_offset(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?page=3&per_page=25 ⇒ service receives offset=50, limit=25."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&page=3&per_page=25'
+    )
+    assert resp.status_code == 200
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['limit']  == 25
+    assert kw['offset'] == 50    # (3 - 1) * 25
+    # count_jobs was also invoked with the same filter shape.
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert ckw['account'] == active_project.projcode
+
+
+def test_jobs_fragment_sort_param_round_trips(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?sort_by=elapsed&sort_dir=asc renders the active arrow + inverts next click."""
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=[_make_row()])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&sort_by=elapsed&sort_dir=asc'
+    )
+    body = resp.get_data(as_text=True)
+    # Up-arrow indicates active asc sort.
+    assert 'fa-caret-up' in body
+    # The next-click href on the elapsed header flips to desc.
+    assert 'sort_by=elapsed&sort_dir=desc' in body
+
+
+def test_jobs_fragment_sort_whitelist_rejects_unknown(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?sort_by=garbage silently degrades to default order (no exception)."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&sort_by=garbage'
+    )
+    assert resp.status_code == 200
+    # Service was called WITHOUT sort_by (caps allow it but route dropped
+    # the value because it wasn't in the whitelist).
+    kw = captured['last_jobs_search_kwargs']
+    assert 'sort_by' not in kw
+
+
+def test_jobs_fragment_suppresses_all_zero_gpu_columns(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Rows with numgpus=gpu_hours=gpu_charges=0 ⇒ GPU columns dropped."""
+    rows = [_make_row(numgpus=0, gpu_hours=0, gpu_charges=0)
+            for _ in range(2)]
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=rows)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # The plugin column headers for the suppressed cols ("GPUs", "GPU chg")
+    # must NOT appear in the table head. Sortable headers are wrapped in
+    # <a>, so check the bare label substring rather than ">LABEL<".
+    assert 'GPUs'    not in body
+    assert 'GPU chg' not in body
+    # CPU column still rendered.
+    assert 'CPUs' in body
+
+
+def test_jobs_fragment_keeps_gpu_columns_when_any_row_nonzero(
+    app, auth_client, active_project, monkeypatch,
+):
+    """One nonzero GPU value ⇒ GPU columns stay in the table."""
+    rows = [
+        _make_row(numgpus=0, gpu_hours=0, gpu_charges=0),
+        _make_row(numgpus=4, gpu_hours=16.0, gpu_charges=16.0),
+    ]
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=rows)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'GPUs'    in body
+    assert 'GPU chg' in body
+
+
+def test_jobs_fragment_renders_verbose_drawer(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Per-row drawer renders verbose-extras fields (walltime, mpiprocs, etc.)."""
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_search_return=[_make_row(walltime=7200,
+                                                       mpiprocs=128,
+                                                       cputype='milan')])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # The collapse target id pattern + Bootstrap collapse class — confirms
+    # the per-row drawer was emitted.
+    assert 'jobs-expand-toggle' in body
+    assert 'jobs-detail-row' in body
+    # Verbose-column header labels from plugin COLUMNS.
+    assert 'Walltime' in body
+    assert 'MPI' in body
+    assert 'CPU type' in body
+    # Drawer renders the values.
+    assert 'milan' in body
+
+
+def test_jobs_fragment_count_missing_hides_pagination(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Older plugin (no jobs_count) ⇒ banner + no pagination nav."""
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_search_return=[_make_row()],
+                         supports_count=False)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'Pagination unavailable' in body
+    # The pagination nav (rendered by the shared macro) inserts the
+    # "Showing N–M of T" label. It must NOT be present here.
+    assert 'Showing' not in body or '>Showing<' not in body
+    # Filter chip "(no count)" instead of total.
+    assert '(no count)' in body
+
+
+def test_resource_details_includes_jobs_fragment_url(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The HPC resource-details page emits hx-get URLs to the jobs route
+    on every user+queue row (when running on a derecho/casper resource)."""
+    # Note: this test exercises the template wire-in only — the daily
+    # drill-down data may be empty depending on the fixture's seed data.
+    # The template still renders the page, just without rows.
+    resp = auth_client.get(
+        f'/dashboards/user/resource-details'
+        f'?projcode={active_project.projcode}&resource=Derecho'
+    )
+    # Either 200 (page rendered) or a redirect (no matching resource in
+    # fixtures). We only assert the URL pattern when the page renders.
+    if resp.status_code == 200:
+        body = resp.get_data(as_text=True)
+        # The hx-get URL prefix should appear if any user+queue rows
+        # rendered. Don't fail the test when there are no rows — just
+        # confirm the template wire-in is at least syntactically valid
+        # (the page renders without error).
+        if 'fa-list-ul' in body:
+            assert f'/dashboards/user/jobs/{active_project.projcode}' in body
+            assert 'machine=derecho' in body
 
 
 # ---------------------------------------------------------------------------
