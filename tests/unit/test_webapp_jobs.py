@@ -95,6 +95,42 @@ def test_init_job_history_plugin_missing_does_not_raise(monkeypatch):
         assert is_enabled() is False
 
 
+def test_init_job_history_falls_back_when_plugin_lacks_pool_kwargs(monkeypatch, caplog):
+    """An old plugin without pool_kwargs= still produces engines; one warning logged."""
+    from webapp.jobs.session import init_job_history, get_engines, is_enabled
+
+    seen_kwargs = []
+
+    # Old plugin signature: positional machine + echo only, no pool_kwargs.
+    def _old_get_engine(machine, echo=False):
+        seen_kwargs.append(('positional', machine, echo))
+        return MagicMock(name=f'engine_{machine}')
+
+    fake_mod = types.SimpleNamespace(
+        get_engine=_old_get_engine,
+        get_session=lambda machine, engine=None: None,
+        JobQueries=object,
+    )
+    monkeypatch.setattr('sam.plugins.HPC_USAGE_QUERIES.load', lambda: fake_mod)
+
+    a = _build_isolated_app(['derecho'])
+    # Non-trivial pool_kwargs so the test would catch a regression that
+    # silently forwards them despite the signature mismatch.
+    a.config['JOB_HISTORY_POOL_KWARGS'] = {'pool_size': 99}
+
+    with caplog.at_level('WARNING', logger='webapp.jobs.session'):
+        init_job_history(a)
+
+    with a.app_context():
+        assert is_enabled() is True
+        assert 'derecho' in get_engines()
+    # get_engine was called WITHOUT pool_kwargs (just the positional machine).
+    assert seen_kwargs == [('positional', 'derecho', False)]
+    # Exactly one signature-drift warning, not one per machine.
+    drift_warnings = [r for r in caplog.records if 'out of date' in r.getMessage()]
+    assert len(drift_warnings) == 1
+
+
 def test_init_job_history_engine_failure_skips_machine(monkeypatch):
     """One bad machine logs and is skipped; healthy machines still come up."""
     from webapp.jobs.session import init_job_history, get_engines, is_enabled

@@ -23,6 +23,7 @@ and let the rest of the webapp boot — same posture as ``sam-admin``.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
@@ -87,11 +88,28 @@ def init_job_history(app: Flask) -> None:
         )
         return
 
+    # Detect plugin signature drift once at startup, not per-machine.
+    # PR #60 added pool_kwargs= to get_engine(); older plugin builds
+    # raise TypeError on the keyword. We fall back to the old signature
+    # so the integration still works (just without webapp-side pool
+    # tuning) and surface one clear warning instead of N silent ones.
+    supports_pool_kwargs = _accepts_kwarg(get_engine, 'pool_kwargs')
+    if not supports_pool_kwargs:
+        logger.warning(
+            'hpc-usage-queries plugin is out of date: get_engine() does not '
+            'accept pool_kwargs=. Engines will open without webapp-side pool '
+            'tuning. Upgrade the plugin to PR #60 or later to enable '
+            'JOB_HISTORY_POOL_* config.'
+        )
+
     # Eagerly create one Engine per machine. A failure here is logged
     # per-machine; other machines can still come up.
     for machine in machines:
         try:
-            engine = get_engine(machine, pool_kwargs=pool_kwargs)
+            if supports_pool_kwargs:
+                engine = get_engine(machine, pool_kwargs=pool_kwargs)
+            else:
+                engine = get_engine(machine)
             state['engines'][machine] = engine
             logger.info(
                 'hpc-usage-queries engine ready: machine=%s url=%s',
@@ -105,6 +123,22 @@ def init_job_history(app: Flask) -> None:
             )
 
     state['enabled'] = bool(state['engines'])
+
+
+def _accepts_kwarg(fn, name: str) -> bool:
+    """True if *fn* accepts a keyword argument named *name*.
+
+    Conservative: if introspection itself fails (C-implemented callables,
+    decorators that hide the signature, …) returns True so we attempt the
+    call and let any real failure surface through the per-machine try.
+    """
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return True
+    if name in params:
+        return True
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
 def is_enabled(app: Optional[Flask] = None) -> bool:

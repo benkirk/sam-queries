@@ -53,6 +53,11 @@ services:
       #    out of the docker network. No interpolation here on purpose.
       - "CACHE_REDIS_URL=redis://cache:6379/0"
       - "RATELIMIT_STORAGE_URI=redis://cache:6379/1"
+      # job_history postgres lives in a separate compose stack
+      # (hpc-usage-postgres). Reach it via the host's published 5432
+      # rather than .env's `localhost` (which, inside the container,
+      # is the container itself). Mirrors the webdev override below.
+      - "JOB_HISTORY_PG_HOST=host.docker.internal"
       # ── Per-service application policy
       - "DISABLE_AUTH=0"         # Explicitly disabled — must remain 0 in production
       - "FLASK_DEBUG=0"
