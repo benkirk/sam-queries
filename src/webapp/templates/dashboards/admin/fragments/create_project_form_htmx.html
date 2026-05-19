@@ -14,7 +14,9 @@
     url_for('admin_dashboard.htmx_project_create'),
     '#createProjectFormContainer',
     'Create Project',
-    submit_icon='folder-plus'
+    submit_icon='folder-plus',
+    submit_disabled=gid_pool_badge.disable_submit,
+    submit_disabled_title='Add a new gid_allocation block to enable project creation.'
 ) %}
         <div class="row">
             <div class="col-md-6">
@@ -235,9 +237,17 @@
 
         <div class="row">
             <div class="col-md-4">
-                {{ number_field('unix_gid', 'Unix GID',
-                                min=1,
-                                id='createProjectUnixGid') }}
+                <label class="form-label fw-semibold">Unix GID</label>
+                <div>
+                    <span class="badge {{ gid_pool_badge.css_class }}"
+                          id="createProjectGidPoolBadge">
+                        <i class="fas {{ gid_pool_badge.icon }}"></i>
+                        {{ gid_pool_badge.label }}
+                    </span>
+                </div>
+                <div class="form-text">
+                    Auto-assigned from the GID pool when the project is created.
+                </div>
             </div>
             <div class="col-md-4">
                 {{ text_field('ext_alias', 'External Alias',

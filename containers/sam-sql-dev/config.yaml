@@ -70,6 +70,22 @@ settings:
       column: activity_date
       days: 400
 
+  # --- Dev-only post-clone seeds ---
+  # Production's `gid_allocation` table is empty (the legacy IDMS-sync path
+  # that populated it was never run in this org's deployment), so a faithful
+  # clone also leaves it empty — which makes the Create Project HTMX form
+  # report "No GID blocks defined" and disable submission. The seed below
+  # inserts ONE dev-only block when the cloned table is empty so local
+  # project-creation smoke testing works. Comment out the whole `dev_seed`
+  # section on production-style clones to leave the table as-cloned.
+  #
+  # Range chosen well above the highest unix_gid currently in production
+  # (78,427 as of 2026-05) to avoid colliding with established projects.
+  dev_seed:
+    gid_allocation:
+      start_gid: 80000
+      end_gid:   80999
+
 # --- Anonymization settings ---
 anonymization:
   # Usernames to preserve (for testing/development purposes)
