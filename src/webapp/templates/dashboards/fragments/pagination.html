@@ -26,6 +26,9 @@
 
 {% if total == 0 %}
 <div class="text-muted small py-2">No matching rows.</div>
+{% elif last <= 1 %}
+{# Single-page result — skip the nav entirely. Row count is already
+   visible in the parent context (drill-down row, card header, …). #}
 {% else %}
 {% set _sort_params -%}
     {%- if sort['sort_by'] -%}&sort_by={{ sort['sort_by'] }}&sort_dir={{ sort['sort_dir'] }}{%- endif -%}
