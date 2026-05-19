@@ -1,6 +1,68 @@
-{# Per-job rows fragment — embedded into resource_details.html via hx-get.
-   Minimal table for now; the resource-details template wire-in and richer
-   styling are tracked separately. #}
+{% from 'dashboards/fragments/pagination.html' import pagination %}
+{#
+  Per-job rows fragment — embedded into resource_details.html via hx-get.
+
+  Context (set in webapp/jobs/routes.py):
+    project, machine, rows, filters, page, sort, total
+    visible_cols, verbose_extras, column_specs
+    capabilities = {'offset': bool, 'sort': bool, 'count': bool}
+    sortable_columns, fragment_url, target_id, enabled, error
+#}
+
+{# Numeric columns get text-end alignment in the header AND every body cell.
+   Kept here as a single source of truth so render_value + sort_link stay aligned. #}
+{% set _numeric_cols = ['numnodes', 'numcpus', 'numgpus',
+                        'elapsed', 'walltime', 'mpiprocs', 'ompthreads',
+                        'reqmem', 'memory', 'vmemory',
+                        'cpu_hours', 'gpu_hours', 'memory_hours',
+                        'cpu_charges', 'gpu_charges', 'memory_charges',
+                        'qos_factor', 'charge_version'] %}
+
+{% macro render_value(col, val) %}
+  {%- if val is none or val == '' -%}
+    <span class="text-muted">—</span>
+  {%- elif col in ('start', 'end', 'submit', 'eligible') -%}
+    {# Plugin serializes datetimes to ISO strings ("YYYY-MM-DD HH:MM:SS")
+       via Job.end.isoformat(sep=" "); render the string directly. Real
+       date/datetime objects (e.g. from a future plugin version) still
+       go through fmt_date. #}
+    {%- if val is string -%}
+      <span class="text-nowrap small">{{ val }}</span>
+    {%- else -%}
+      {{ val | fmt_date }}
+    {%- endif -%}
+  {%- elif col == 'job_id' -%}
+    <code class="small" title="{{ val }}">{{ val }}</code>
+  {%- elif col in ('name', 'resources') -%}
+    <span title="{{ val }}">{{ val }}</span>
+  {%- elif col in _numeric_cols -%}
+    {{ val | fmt_number }}
+  {%- else -%}
+    {{ val }}
+  {%- endif -%}
+{% endmacro %}
+
+{% macro sort_link(col) %}
+  {%- set label = column_specs.get(col, {}).get('header', col) -%}
+  {%- set numeric = col in _numeric_cols -%}
+  {%- if capabilities.sort and col in sortable_columns -%}
+    {%- set is_active = (sort['sort_by'] == col) -%}
+    {%- set next_dir = 'asc' if (is_active and sort['sort_dir'] == 'desc') else 'desc' -%}
+    <a class="text-decoration-none" href="#"
+       hx-get="{{ fragment_url }}?sort_by={{ col }}&sort_dir={{ next_dir }}&page=1&per_page={{ page.per_page }}"
+       hx-target="#{{ target_id }}"
+       hx-include="#jobs-filters-{{ target_id }}"
+       hx-swap="innerHTML">
+      {{ label }}
+      {%- if is_active -%}
+        {%- if sort['sort_dir'] == 'asc' %} <i class="fas fa-caret-up ms-1"></i>
+        {%- else %} <i class="fas fa-caret-down ms-1"></i>{% endif -%}
+      {%- else %} <i class="fas fa-sort text-muted small ms-1"></i>{%- endif -%}
+    </a>
+  {%- else -%}
+    {{ label }}
+  {%- endif -%}
+{% endmacro %}
 
 {% if not enabled %}
   <div class="alert alert-secondary py-2 mb-0" role="status">
@@ -19,6 +81,18 @@
     <small>Could not load per-job data: {{ error }}</small>
   </div>
 {% else %}
+
+  {# Hidden filter form — pagination/sort hx-includes pick up its values
+     so users keep their filters as they page or re-sort. #}
+  <form id="jobs-filters-{{ target_id }}" class="d-none">
+    <input type="hidden" name="machine" value="{{ machine }}">
+    {% if filters.start %}<input type="hidden" name="start" value="{{ filters.start }}">{% endif %}
+    {% if filters.end %}<input type="hidden" name="end" value="{{ filters.end }}">{% endif %}
+    {% if filters.user %}<input type="hidden" name="user" value="{{ filters.user }}">{% endif %}
+    {% if filters.queue %}<input type="hidden" name="queue" value="{{ filters.queue }}">{% endif %}
+    {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
+  </form>
+
   <div class="d-flex align-items-center mb-2">
     <strong class="me-2">{{ project.projcode }}</strong>
     <span class="text-muted small me-3">{{ machine }}</span>
@@ -34,8 +108,12 @@
       <span class="badge bg-light text-dark me-1">queue: {{ filters.queue }}</span>
     {% endif %}
     <span class="ms-auto text-muted small">
-      {{ rows | length }} job{{ '' if rows | length == 1 else 's' }}
-      {% if rows | length == limit %}(capped at {{ limit }}){% endif %}
+      {% if total is not none %}
+        {{ total | fmt_number }} job{{ '' if total == 1 else 's' }}
+      {% else %}
+        {{ rows | length }} job{{ '' if rows | length == 1 else 's' }}
+        <span class="text-muted">(no count)</span>
+      {% endif %}
     </span>
   </div>
 
@@ -43,34 +121,65 @@
     <p class="text-muted small mb-0">No jobs match the current filters.</p>
   {% else %}
     <div class="table-responsive">
-      <table class="table table-sm table-hover align-middle mb-0">
+      <table class="table table-sm table-hover align-middle mb-0 jobs-fragment-table">
         <thead class="table-light">
           <tr>
-            <th>Job ID</th>
-            <th>User</th>
-            <th>Queue</th>
-            <th>Start</th>
-            <th>End</th>
-            <th class="text-end">Elapsed (s)</th>
-            <th class="text-end">CPU hrs</th>
-            <th class="text-end">GPU hrs</th>
+            <th style="width:1.5rem;" aria-label="Expand"></th>
+            {% for col in visible_cols %}
+              <th class="{% if col in _numeric_cols %}text-end{% endif %}">{{ sort_link(col) }}</th>
+            {% endfor %}
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
+            {% set rowid = target_id ~ '-r' ~ loop.index %}
             <tr>
-              <td><code class="small">{{ r.job_id }}</code></td>
-              <td>{{ r.user }}</td>
-              <td>{{ r.queue }}</td>
-              <td class="text-nowrap small">{{ r.start }}</td>
-              <td class="text-nowrap small">{{ r.end }}</td>
-              <td class="text-end">{{ r.elapsed | fmt_number }}</td>
-              <td class="text-end">{{ r.cpu_hours | fmt_number }}</td>
-              <td class="text-end">{{ r.gpu_hours | fmt_number }}</td>
+              <td class="text-center p-0">
+                <button type="button"
+                        class="btn btn-link p-0 text-muted jobs-expand-toggle"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#{{ rowid }}"
+                        aria-expanded="false" aria-controls="{{ rowid }}"
+                        title="Show details">
+                  <i class="fas fa-chevron-right small collapse-icon"></i>
+                </button>
+              </td>
+              {% for col in visible_cols %}
+                <td class="{% if col in _numeric_cols %}text-end{% endif %}{% if col in ('job_id', 'name') %} text-nowrap small{% endif %}">
+                  {{ render_value(col, r.get(col)) }}
+                </td>
+              {% endfor %}
+            </tr>
+            <tr class="collapse jobs-detail-row" id="{{ rowid }}">
+              <td colspan="{{ visible_cols | length + 1 }}" class="bg-light">
+                <dl class="row mb-0 small">
+                  {% for col in verbose_extras %}
+                    {% set v = r.get(col) %}
+                    {% if v is not none and v != '' and v != 0 %}
+                      <dt class="col-sm-3 col-md-2 text-muted">
+                        {{ column_specs.get(col, {}).get('header', col) }}
+                      </dt>
+                      <dd class="col-sm-9 col-md-10">{{ render_value(col, v) }}</dd>
+                    {% endif %}
+                  {% endfor %}
+                </dl>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+
+    {% if total is not none and capabilities.offset %}
+      {{ pagination(page, total, fragment_url, target_id,
+                    'jobs-filters-' ~ target_id, sort) }}
+    {% elif total is none %}
+      <div class="text-muted small mt-2">
+        <i class="fas fa-info-circle me-1"></i>
+        Pagination unavailable — running against an older
+        <code>hpc-usage-queries</code> build. Showing the first
+        {{ rows | length }} rows.
+      </div>
+    {% endif %}
   {% endif %}
 {% endif %}
