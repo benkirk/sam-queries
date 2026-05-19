@@ -1,3 +1,5 @@
+name: project-samuel
+
 services:
 
   #---------------------------------------------
@@ -51,6 +53,11 @@ services:
       #    out of the docker network. No interpolation here on purpose.
       - "CACHE_REDIS_URL=redis://cache:6379/0"
       - "RATELIMIT_STORAGE_URI=redis://cache:6379/1"
+      # job_history postgres lives in a separate compose stack
+      # (hpc-usage-postgres). Reach it via the host's published 5432
+      # rather than .env's `localhost` (which, inside the container,
+      # is the container itself). Mirrors the webdev override below.
+      - "JOB_HISTORY_PG_HOST=host.docker.internal"
       # ── Per-service application policy
       - "DISABLE_AUTH=0"         # Explicitly disabled — must remain 0 in production
       - "FLASK_DEBUG=0"
@@ -191,7 +198,7 @@ services:
       MYSQL_ROOT_PASSWORD: "root"
       MYSQL_DATABASE: "sam"
     volumes:
-      - samuel-mysql-data:/var/lib/mysql
+      - mysql-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
     healthcheck:
       # Use 127.0.0.1 (TCP) — NOT localhost (which would use the Unix socket).
@@ -237,7 +244,7 @@ services:
       MYSQL_ROOT_PASSWORD: "root"
       MYSQL_DATABASE: "sam"
     volumes:
-      - samuel-mysql-test-data:/var/lib/mysql
+      - mysql-test-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
     healthcheck:
       # See the `mysql` service above for the rationale on TCP vs socket and
@@ -257,5 +264,5 @@ networks:
     driver: bridge
 
 volumes:
-  samuel-mysql-data:
-  samuel-mysql-test-data:
+  mysql-data:
+  mysql-test-data:

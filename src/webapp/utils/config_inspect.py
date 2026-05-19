@@ -345,6 +345,26 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'pool':       stats,
         })
 
+    # hpc-usage-queries plugin (one engine per configured machine).
+    # Registered on app.extensions by webapp.jobs.init_job_history at
+    # startup; absent / empty when the plugin is disabled or not
+    # installed, in which case no rows are added.
+    jh_state = app.extensions.get('hpc_usage_queries') or {}
+    for machine, engine in (jh_state.get('engines') or {}).items():
+        ok, latency_ms, err = _ping_engine(engine)
+        try:
+            stats = pool_stats(engine.pool)
+        except Exception:
+            stats = None
+        databases.append({
+            'name':       f'job_history ({machine})',
+            'url':        format_db_url_safe(engine),
+            'status':     'healthy' if ok else 'unhealthy',
+            'latency_ms': latency_ms,
+            'error':      err,
+            'pool':       stats,
+        })
+
     # --- Authentication
     auth = {
         'auth_provider':       cfg.get('AUTH_PROVIDER', 'stub'),

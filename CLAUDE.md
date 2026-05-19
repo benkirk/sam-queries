@@ -38,6 +38,28 @@ session = Session(engine)
 
 ---
 
+## Related projects
+
+**hpc-usage-queries** (`/Users/benkirk/codes/hpc-usage-queries/devel`) ships
+the `jobhist` CLI for PBS job history, charging, and daily summaries. SAM
+loads it as an optional plugin via `require_plugin(HPC_USAGE_QUERIES)` —
+see `src/cli/core/base.py:30` and `sam/plugins.py`. The two CLIs share
+architectural conventions deliberately:
+
+- Same `Context` / `BaseCommand` hierarchy shape
+- Same exit codes (`EXIT_SUCCESS=0` / `EXIT_NOT_FOUND=1` / `EXIT_ERROR=2` / `EXIT_KEYBOARD_INTERRUPT=130`)
+- Same JSON envelope conventions (top-level `kind`, ISO-8601 dates, `float(Decimal)`, sorted sets, `indent=2`, `sort_keys=False`)
+- Same `ExporterRegistry` interface (`rich` / `json` for stdout; `dat` / `csv` / `md` / `json-file` for files)
+
+If you change the shape of the JSON envelope, the `Exporter` ABC, or
+the `EXIT_*` codes in this repo, check the parallel structures in
+`hpc-usage-queries/devel/job_history/cli/` before merging — and update
+both repos in lockstep. See `hpc-usage-queries/devel/job_history/README.md`
+§ *CLI Architecture* for the canonical recipe (mirrored in SAM's
+`src/cli/README.md`).
+
+---
+
 ## Code Organization
 
 ```
