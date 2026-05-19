@@ -74,6 +74,23 @@ class SAMWebappConfig(SAMConfig):
     ALLOCATION_USAGE_CACHE_TTL  = int(os.getenv('ALLOCATION_USAGE_CACHE_TTL', 3600))   # seconds
     ALLOCATION_USAGE_CACHE_SIZE = int(os.getenv('ALLOCATION_USAGE_CACHE_SIZE', 200))    # max entries
 
+    # hpc-usage-queries plugin (per-job rows on resource-usage detail pages).
+    # The plugin owns its own database — typically a per-machine PostgreSQL
+    # database (derecho_jobs, casper_jobs) configured via JOB_HISTORY_PG_*
+    # env vars consumed by the plugin itself. The values below are the
+    # SAM-side tuning knobs only; the plugin's own env-driven config is
+    # read at engine-creation time inside job_history.database.session.
+    JOB_HISTORY_MACHINES = [
+        m.strip() for m in os.getenv('JOB_HISTORY_MACHINES', 'derecho,casper').split(',')
+        if m.strip()
+    ]
+    JOB_HISTORY_POOL_KWARGS = {
+        'pool_size':      int(os.getenv('JOB_HISTORY_POOL_SIZE',     5)),
+        'max_overflow':   int(os.getenv('JOB_HISTORY_POOL_MAX_OVERFLOW', 10)),
+        'pool_pre_ping':  True,
+        'pool_recycle':   int(os.getenv('JOB_HISTORY_POOL_RECYCLE',  3600)),
+    }
+
     # Session cookies (common defaults; subclasses tighten for prod)
     SESSION_COOKIE_HTTPONLY    = True
     SESSION_COOKIE_SAMESITE    = 'Lax'
@@ -163,6 +180,12 @@ class TestingConfig(SAMWebappConfig):
     # Rate limiting off in tests — xdist parallelism would otherwise trip
     # global limits across worker processes.
     RATELIMIT_ENABLED = False
+
+    # The hpc-usage-queries plugin talks to a separate (per-machine
+    # PostgreSQL) database that the test container does not provide.
+    # Empty machine list disables eager engine init at startup; route-
+    # level tests stub the service layer instead.
+    JOB_HISTORY_MACHINES = []
 
 
 _configs = {

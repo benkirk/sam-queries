@@ -59,6 +59,14 @@ webapp:
     # API keys for HPC status collectors (bcrypt hashes — safe to store here).
     # Generate with: python scripts/gen_api_key.py --username collector
     API_KEYS_COLLECTOR: "$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2"
+    # hpc-usage-queries plugin (per-job drill-down on resource-usage pages).
+    # The plugin reads JOB_HISTORY_PG_* at engine-creation time;
+    # JOB_HISTORY_PG_USER / JOB_HISTORY_PG_PASSWORD are injected below
+    # from the jhDbCredentials ExternalSecret.
+    JOB_HISTORY_DB_BACKEND: "postgres"
+    JOB_HISTORY_PG_HOST: "csg-postgres.k8s.ucar.edu"
+    JOB_HISTORY_PG_PORT: "5432"
+    JOB_HISTORY_MACHINES: "derecho,casper"
 
   dbCredentials:
     enabled: true                         # Enable syncing credentials from OpenBao
@@ -73,6 +81,18 @@ webapp:
     useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
     secretStoreRefName: csg-ro            # Name of the SecretStore to use
     secretPath: csg/sam-readuser          # Path in OpenBao where SAM DB credentials are stored
+    usernameKey: username                 # Key in OpenBao for username
+    passwordKey: password                 # Key in OpenBao for password
+
+  # hpc-usage-queries plugin's per-machine job_history Postgres
+  # (derecho_jobs / casper_jobs on csg-postgres.k8s.ucar.edu).
+  # Read-only application user — distinct from dbCredentials' pg-superuser
+  # since the plugin only needs SELECT on the job_history tables.
+  jhDbCredentials:
+    enabled: true                         # Enable syncing credentials from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
+    secretStoreRefName: csg-ro            # Name of the SecretStore to use
+    secretPath: csg/pg-appuser            # Path in OpenBao where credentials are stored
     usernameKey: username                 # Key in OpenBao for username
     passwordKey: password                 # Key in OpenBao for password
 
