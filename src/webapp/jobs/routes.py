@@ -171,6 +171,15 @@ def jobs_fragment(project):
     # renders without a second fetch. Plugin still validates each key.
     requested_cols = tuple(_DEFAULT_COLS) + tuple(_VERBOSE_EXTRAS)
 
+    # Expand the project tree so a parent's drill-down rows surface jobs
+    # charged to child projcodes. Mirrors the Historical Usage rollup in
+    # webapp/dashboards/user/blueprint.py — `get_descendants(include_self=True)`
+    # returns just [project] for non-tree projects, so single-project
+    # callers get the same effective filter as before.
+    account_projcodes = [
+        p.projcode for p in project.get_descendants(include_self=True)
+    ]
+
     error = None
     rows = []
     total: Optional[int] = None
@@ -180,9 +189,14 @@ def jobs_fragment(project):
             limit=page['per_page'], offset=offset,
             sort_by=sort['sort_by'], sort_dir=sort['sort_dir'],
             columns=requested_cols,
+            account_projcodes=account_projcodes,
             **filters,
         )
-        total = service.count_jobs(machine, project=project, **filters)
+        total = service.count_jobs(
+            machine, project=project,
+            account_projcodes=account_projcodes,
+            **filters,
+        )
     except Exception as exc:
         # Catch-all so a transient plugin/DB issue degrades to a banner
         # rather than a 500 on the surrounding page. App logger captures

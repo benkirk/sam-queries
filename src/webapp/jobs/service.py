@@ -38,17 +38,21 @@ def search_jobs(
     offset: int = 0,
     sort_by: Optional[str] = None,
     sort_dir: str = 'desc',
+    account_projcodes: Optional[Sequence[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Return per-job rows for *project* on *machine*.
 
-    The PBS ``Job.account`` filter is always set to ``project.projcode``
-    so callers cannot leak rows from another project. All other filters
-    are optional and compose via AND inside the plugin.
+    The PBS ``Job.account`` filter is always set so callers cannot leak
+    rows from another project. By default it pins to ``project.projcode``
+    (single value). Pass ``account_projcodes`` to broaden the filter to
+    every projcode in a project tree (parent + descendants) — the route
+    does this so child-projcode jobs show up under the parent's
+    drill-down rows.
 
     Args:
         machine: Machine name (e.g. 'derecho', 'casper').
-        project: SAM Project — supplies the ``account`` filter via
-            ``project.projcode``.
+        project: SAM Project — supplies the default ``account`` filter
+            via ``project.projcode``.
         start, end: Date range filter on ``Job.end``.
         user, queue, status: Optional plain-text filters.
         has_gpus: ``None`` ignore; ``True`` → GPU jobs only; ``False`` →
@@ -60,6 +64,10 @@ def search_jobs(
             loaded plugin lacks ``offset=`` (logged once at startup).
         sort_by, sort_dir: Optional sort column + direction; silently
             dropped if the loaded plugin lacks ``sort_by=``.
+        account_projcodes: Optional sequence of projcodes for tree-aware
+            filtering. When provided, takes precedence over
+            ``project.projcode`` — the upstream plugin applies
+            ``Job.account IN (...)``.
 
     Returns:
         ``list[dict]`` ordered by *sort_by* (default ``Job.end DESC``);
@@ -79,7 +87,7 @@ def search_jobs(
     kwargs: Dict[str, Any] = {
         'start':   start,
         'end':     end,
-        'account': project.projcode,
+        'account': list(account_projcodes) if account_projcodes is not None else project.projcode,
         'user':    user,
         'queue':   queue,
         'status':  status,
@@ -107,11 +115,13 @@ def count_jobs(
     queue: Optional[str] = None,
     status: Optional[str] = None,
     has_gpus: Optional[bool] = None,
+    account_projcodes: Optional[Sequence[str]] = None,
 ) -> Optional[int]:
     """Return the total number of jobs matching the search filters.
 
     Companion to :func:`search_jobs` for paginated UIs. Same projcode
-    pinning + filter shape.
+    pinning + filter shape; ``account_projcodes`` broadens the filter
+    to a project tree exactly like :func:`search_jobs`.
 
     **Source priority** — the per-job drill-down's filter shape
     (account/machine/queue/user/date) is exactly the unique key of
@@ -132,12 +142,15 @@ def count_jobs(
     if project is None:
         raise ValueError('count_jobs requires a project (account filter).')
 
+    projcodes = (list(account_projcodes) if account_projcodes is not None
+                 else [project.projcode])
+
     # Fast path: SAM's daily summary covers every filter the drill-down
     # uses. Avoids a 1-second-plus COUNT(*) over the plugin's job table.
     if status is None and has_gpus is None:
         return _count_via_sam_summary(
             machine,
-            projcode=project.projcode,
+            projcodes=projcodes,
             start=start, end=end,
             user=user, queue=queue,
         )
@@ -153,7 +166,7 @@ def count_jobs(
         return JobQueries(session, machine=machine).jobs_count(
             start=start,
             end=end,
-            account=project.projcode,
+            account=projcodes if account_projcodes is not None else project.projcode,
             user=user,
             queue=queue,
             status=status,
@@ -164,7 +177,7 @@ def count_jobs(
 def _count_via_sam_summary(
     machine: str,
     *,
-    projcode: str,
+    projcodes: Sequence[str],
     start: Optional[date],
     end:   Optional[date],
     user:  Optional[str],
@@ -177,6 +190,9 @@ def _count_via_sam_summary(
     SAM resource_name). An ILIKE prefix match captures both; the
     queue + user + project filters discriminate naturally between
     CPU and GPU rows because each queue belongs to one resource.
+
+    ``projcodes`` is always a sequence — the caller normalizes singular
+    vs. tree-wide inputs. An empty sequence yields zero (`IN ()`).
     """
     # Local imports avoid pulling Flask-SQLAlchemy into the module
     # namespace at import time — keeps `from webapp.jobs import service`
@@ -186,7 +202,7 @@ def _count_via_sam_summary(
     from webapp.extensions import db
 
     q = db.session.query(func.coalesce(func.sum(CompChargeSummary.num_jobs), 0))
-    q = q.filter(CompChargeSummary.act_projcode == projcode)
+    q = q.filter(CompChargeSummary.act_projcode.in_(projcodes))
     q = q.filter(CompChargeSummary.machine.ilike(f'{machine}%'))
     if start is not None:
         q = q.filter(CompChargeSummary.activity_date >= start)

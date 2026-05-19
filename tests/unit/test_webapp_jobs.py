@@ -233,10 +233,34 @@ def test_search_jobs_pins_account_to_projcode(app, active_project, monkeypatch):
         )
 
     kw = captured['last_jobs_search_kwargs']
+    # No account_projcodes passed → fall back to single-projcode string
+    # form so existing single-project callers (CLI, isolated tests) keep
+    # the cheaper `==` filter on the plugin side.
     assert kw['account'] == active_project.projcode
     assert kw['user']    == 'someone'
     assert kw['queue']   == 'main'
     assert kw['limit']   == 50
+
+
+def test_search_jobs_account_projcodes_overrides_single(
+    app, active_project, monkeypatch,
+):
+    """When account_projcodes is passed, it takes precedence over project.projcode
+    and is forwarded to the plugin as a list (`Job.account IN (...)`)."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs(
+            'derecho',
+            project=active_project,
+            account_projcodes=['PARENT0001', 'PARENT0001_a', 'PARENT0001_b'],
+            limit=50,
+        )
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['account'] == ['PARENT0001', 'PARENT0001_a', 'PARENT0001_b']
 
 
 def test_search_jobs_requires_project():
@@ -376,8 +400,49 @@ def test_jobs_fragment_status_filter_uses_plugin_count(
     assert resp.status_code == 200
     ckw = captured['last_jobs_count_kwargs']
     assert ckw is not None
-    assert ckw['account'] == active_project.projcode
+    # Route now expands the project tree and forwards the descendant
+    # list as `account=[...]`. For a leaf project this is just
+    # [project.projcode]; the membership check is independent of
+    # whether the snapshot picked a leaf or a tree-parent fixture.
+    assert isinstance(ckw['account'], list)
+    assert active_project.projcode in ckw['account']
     assert ckw['status']  == 'F'
+
+
+def test_jobs_fragment_passes_tree_projcodes(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Route expands the project tree (parent + descendants) and forwards
+    every projcode to the plugin as a list. Mirrors what the Historical
+    Usage rollup does for daily totals — so jobs charged to child
+    projcodes show up under the parent's drill-down rows.
+
+    Factory-built projects don't work here: the route's
+    ``@require_project_access`` loads the project via Flask-SQLAlchemy's
+    own db.session (different connection from the test session), so
+    factory rows aren't visible. Instead patch ``Project.get_descendants``
+    at the class level to return a synthetic tree for whatever
+    snapshot project the route resolved. The captured plugin kwargs
+    show whether the route forwarded the full list verbatim.
+    """
+    from sam import Project
+
+    stub_codes = ['CESM0002', 'CESM0002_alpha', 'CESM0002_beta']
+    fake_descendants = [types.SimpleNamespace(projcode=p) for p in stub_codes]
+    monkeypatch.setattr(
+        Project, 'get_descendants',
+        lambda self, include_self=True: fake_descendants,
+    )
+
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    assert resp.status_code == 200
+    kw = captured['last_jobs_search_kwargs']
+    assert isinstance(kw['account'], list)
+    assert set(kw['account']) == set(stub_codes)
 
 
 def test_jobs_fragment_sort_param_round_trips(
