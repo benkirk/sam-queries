@@ -18,15 +18,16 @@
     target        - CSS selector for hx-target (required)
     submit_text   - label on the submit button (required)
     submit_icon   - Font Awesome icon name without 'fa-' prefix (default: 'save')
-    is_edit       - True uses btn-warning; False uses btn-success (default: False)
-    submit_class  - Override button class entirely (e.g. 'btn-primary')
+    is_edit       - Kept for backward compatibility; no longer changes button
+                    color since Unity NCAR uses btn-primary uniformly.
+    submit_class  - Override button class entirely (e.g. 'btn-outline-primary')
     errors        - Optional list of validation-error strings; rendered as a
                     Bootstrap danger alert above the footer.  Omit / pass none
                     (the default) on forms that have no error surface.
 #}
 
 {% macro htmx_form(post_url, target, submit_text, submit_icon='save', is_edit=False, submit_class=None, errors=none) %}
-{% set _btn_class = submit_class if submit_class else ('btn-warning' if is_edit else 'btn-success') %}
+{% set _btn_class = submit_class if submit_class else 'btn-primary' %}
 <form hx-post="{{ post_url }}"
       hx-target="{{ target }}"
       hx-swap="innerHTML"

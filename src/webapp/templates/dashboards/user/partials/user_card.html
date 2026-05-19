@@ -198,7 +198,7 @@
         <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}"
               onsubmit="return confirm('Impersonate {{ sam_user.display_name }} ({{ sam_user.username }})?');">
             <input type="hidden" name="username" value="{{ sam_user.username }}">
-            <button type="submit" class="btn btn-sm btn-warning">
+            <button type="submit" class="btn btn-sm btn-primary">
                 <i class="fas fa-user-secret"></i> Impersonate {{ sam_user.username }}
             </button>
         </form>

@@ -86,7 +86,7 @@ body {
 
 .navbar .site-name a:hover,
 .navbar .site-name a:active {
-    color: var(--ncar-sky);
+    color: var(--ncar-blue);
 }
 
 .site-name h1 {
@@ -118,7 +118,7 @@ body {
 
 .navbar .nav-link:hover,
 .navbar .nav-link:focus {
-    color: var(--ncar-sky);
+    color: var(--ncar-blue);
 }
 
 .navbar .nav-item {
@@ -220,17 +220,36 @@ body {
     }
 }
 
-.page-header {
-    margin-bottom: 30px;
-    padding-bottom: 20px;
-    border-bottom: 3px solid var(--ncar-blue);
+/* ============================================================================
+   HEADINGS — Unity NCAR typography. Sizes/weights/line-heights match Unity's
+   responsive scale. h1/h2 use ncar-navy in main content; h3-h6 inherit body.
+   ========================================================================= */
+
+h1, .h1 { font-size: 1.875rem; line-height: 2.625rem; font-weight: var(--font-weight-semi-bold); }
+h2, .h2 { font-size: 1.25rem;  line-height: 1.875rem; font-weight: var(--font-weight-semi-bold); }
+h3, .h3 { font-size: 1.125rem; line-height: 1.875rem; font-weight: var(--font-weight-semi-bold); }
+h4, .h4 { font-size: 1rem;     line-height: 1.5rem;   font-weight: var(--font-weight-semi-bold); }
+h5, .h5 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-weight-semi-bold); }
+h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-weight-semi-bold); }
+
+@media (min-width: 64rem) {
+    h1, .h1 { font-size: 3rem;     line-height: 3.75rem;  font-weight: var(--font-weight-bold); }
+    h2, .h2 { font-size: 2.25rem;  line-height: 3rem;     font-weight: var(--font-weight-bold); }
+    h3, .h3 { font-size: 1.875rem; line-height: 2.625rem; }
+    h4, .h4 { font-size: 1.5rem;   line-height: 2.25rem; }
+    h5, .h5 { font-size: 1.25rem;  line-height: 1.875rem; }
+    h6, .h6 { font-size: 1.125rem; line-height: 1.875rem; }
 }
 
-.page-header h1 {
+.main-content h1,
+.main-content h2 {
     color: var(--ncar-navy);
-    font-size: 2.25rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
+}
+
+.page-header {
+    margin-bottom: 1.875rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 3px solid var(--ncar-blue);
 }
 
 .page-header p {
@@ -265,26 +284,25 @@ body {
    ========================================================================= */
 
 .card {
-    border: none;
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-md);
-    margin-bottom: 24px;
-    background: white;
-    transition: all var(--transition-base);
-}
-
-.card:hover {
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
+    /* Override Bootstrap card vars to match Unity's flat editorial style.
+       No border, no shadow — cards are just padded content blocks. */
+    --bs-card-spacer-y: 1.875rem;
+    --bs-card-spacer-x: 1.875rem;
+    --bs-card-border-radius: 0;
+    --bs-card-inner-border-radius: 0;
+    --bs-card-border-width: 0;
+    --bs-card-color: var(--ncar-space-blue);
+    --bs-card-bg: #fff;
+    --bs-card-cap-padding-y: 0.9375rem;
+    --bs-card-cap-padding-x: 1.875rem;
+    --bs-card-cap-bg: #fff;
+    margin-bottom: 1.5rem;
 }
 
 .card > .card-header {
-    background-color: #fff;
     border-bottom: 2px solid var(--ncar-blue);
     font-weight: var(--font-weight-semi-bold);
-    padding: 16px 24px;
     color: var(--ncar-space-blue);
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 }
 
 .card-header h5 {
@@ -293,58 +311,64 @@ body {
     margin: 0;
 }
 
-.card-body {
-    padding: 24px;
-}
-
 /* ============================================================================
-   BUTTONS
+   BUTTONS — Unity NCAR style: flat (0 radius), bold (700), 3px border,
+   inverting hover (filled ↔ outlined). Uses Bootstrap btn CSS variables.
    ========================================================================= */
 
-.btn-primary {
-    background: linear-gradient(135deg, var(--ncar-blue) 0%, var(--ncar-light-blue) 100%);
-    border: none;
-    font-weight: 600;
-    padding: 10px 24px;
-    border-radius: var(--radius-md);
-    transition: all var(--transition-base);
-    box-shadow: 0 2px 4px rgba(var(--ncar-teal-rgb), 0.2);
+.btn {
+    --bs-btn-font-weight: var(--font-weight-bold);
+    --bs-btn-border-width: 3px;
+    --bs-btn-border-radius: 0;
+    --bs-btn-box-shadow: none;
 }
 
-.btn-primary:hover {
-    background: linear-gradient(135deg, var(--ncar-light-blue) 0%, var(--ncar-blue) 100%);
-    box-shadow: 0 4px 8px rgba(var(--ncar-teal-rgb), 0.3);
-    transform: translateY(-1px);
+.btn-primary {
+    --bs-btn-bg: var(--ncar-blue);
+    --bs-btn-border-color: var(--ncar-blue);
+    --bs-btn-color: #fff;
+    --bs-btn-hover-bg: transparent;
+    --bs-btn-hover-border-color: var(--ncar-blue);
+    --bs-btn-hover-color: var(--ncar-blue);
+    --bs-btn-active-bg: var(--ncar-blue);
+    --bs-btn-active-border-color: var(--ncar-blue);
+    --bs-btn-active-color: #fff;
+}
+
+.btn-outline-primary {
+    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-border-color: var(--ncar-blue);
+    --bs-btn-hover-bg: var(--ncar-blue);
+    --bs-btn-hover-border-color: var(--ncar-blue);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: var(--ncar-blue);
+    --bs-btn-active-border-color: var(--ncar-blue);
+    --bs-btn-active-color: #fff;
 }
 
 .btn-outline-secondary {
-    border-color: var(--ncar-navy);
-    color: var(--ncar-navy);
-    font-weight: 600;
-    transition: all var(--transition-base);
-}
-
-.btn-outline-secondary:hover {
-    background-color: var(--ncar-navy);
-    border-color: var(--ncar-navy);
-    color: white;
-}
-
-.btn-sm {
-    padding: 6px 16px;
-    font-size: 0.875rem;
+    --bs-btn-color: var(--ncar-navy);
+    --bs-btn-border-color: var(--ncar-navy);
+    --bs-btn-hover-bg: var(--ncar-navy);
+    --bs-btn-hover-border-color: var(--ncar-navy);
+    --bs-btn-hover-color: #fff;
 }
 
 .btn-link {
-    color: var(--ncar-blue);
-    font-weight: 600;
+    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-hover-color: var(--ncar-sky);
     text-decoration: none;
 }
 
 .btn-link:hover {
-    color: var(--ncar-navy);
     text-decoration: underline;
 }
+
+/* Unity NCAR defines only .btn-primary and .btn-outline-primary. Other
+   semantic variants (.btn-success/.btn-danger/.btn-warning/.btn-info) are
+   intentionally NOT styled here — templates should use btn-primary for
+   positive actions and btn-outline-primary for destructive/informational
+   actions instead. */
 
 /* ============================================================================
    FOOTER
@@ -554,7 +578,13 @@ body {
 
 .nav-tabs {
     border-bottom: 2px solid var(--ncar-blue);
-    gap: 0.25rem;
+}
+
+/* When tabs are followed by tab-content, kill any mb-* utility margin so the
+   active tab attaches seamlessly to the panel below. !important matches
+   Bootstrap utility specificity. */
+.nav-tabs:has(+ .tab-content) {
+    margin-bottom: 0 !important;
 }
 
 .nav-tabs .nav-link {
@@ -583,6 +613,13 @@ body {
     border: none;
 }
 
+/* Tab content panel — flat white surface attached to .nav-tabs above, matching
+   Unity's seamless tab→panel transition. No borders — content just flows. */
+.tab-content {
+    background-color: #fff;
+    padding: 1.875rem;
+}
+
 /* ============================================================================
    PROJECT CARDS (User Dashboard Specific)
    ========================================================================= */
@@ -595,7 +632,24 @@ body {
     cursor: pointer;
     user-select: none;
     padding: 8px 16px;
+    /* Thin gray hairline divider matching Unity's panel separators
+       (overrides the heavier 2px blue from the global .card > .card-header rule) */
+    border-bottom: 1px solid var(--ncar-gray-light);
+    color: var(--ncar-blue);
     transition: background-color var(--transition-base), color var(--transition-base);
+}
+
+/* Match Unity's .accordion-button: fixed 1rem font, semi-bold, single weight
+   (the inner <strong> tag inherits so the title stays one consistent weight). */
+.project-card .card-header h5 {
+    font-size: 1rem;
+    line-height: 1.5;
+    font-weight: var(--font-weight-semi-bold);
+    color: inherit;
+}
+
+.project-card .card-header h5 strong {
+    font-weight: inherit;
 }
 
 .project-card .card-header:hover {
@@ -613,6 +667,16 @@ body {
     color: #fff;
 }
 
+/* Accordion chevron — reusable affordance for any collapsible header.
+   Rotates 180° when the parent toggle is expanded. */
+.accordion-chevron {
+    transition: transform var(--transition-base);
+}
+
+[aria-expanded="true"] .accordion-chevron {
+    transform: rotate(180deg);
+}
+
 /* Fluid 1800px cap: smoother than Bootstrap's stepped .container breakpoints
    on laptop/desktop, without stretching to ultra-wide monitor edges.  Used
    on navbar, flash messages, footer, and any content block that opts in via
@@ -624,8 +688,8 @@ body {
 }
 
 .project-stats-box {
-    background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
-    border-radius: var(--radius-lg);
+    background-color: var(--bg-gray-light);
+    border-radius: 0;
     padding: 12px 16px;
     margin-bottom: 16px;
     border-left: 4px solid var(--ncar-blue);

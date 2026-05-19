@@ -14,7 +14,7 @@
         {% if has_permission(Permission.EDIT_PROJECTS) %}
         <div class="d-flex justify-content-end mb-2">
             <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
-               class="btn btn-sm btn-warning">
+               class="btn btn-sm btn-primary">
                 <i class="fas fa-edit"></i> Edit Project
             </a>
         </div>

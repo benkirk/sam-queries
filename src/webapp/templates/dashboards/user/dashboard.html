@@ -5,8 +5,10 @@
 {% block title %}User Dashboard - SAM{% endblock %}
 
 {% block content %}
+<h1>User Dashboard</h1>
+
 <!-- Tab Navigation -->
-<ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
+<ul class="nav nav-tabs mb-0" id="dashboardTabs" role="tablist">
     <li class="nav-item">
         <a class="nav-link active" id="account-statements-tab" data-bs-toggle="tab" href="#account-statements" role="tab">
             <i class="fas fa-file-invoice-dollar"></i>
@@ -66,11 +68,7 @@
 
     <!-- User Information Tab -->
     <div class="tab-pane fade" id="user-info" role="tabpanel">
-        <div class="row">
-            <div class="col-md-8 offset-md-2">
-                {{ render_user_card(user) }}
-            </div>
-        </div>
+        {{ render_user_card(user) }}
     </div>
     <!-- End User Information Tab -->
 </div>

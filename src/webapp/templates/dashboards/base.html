@@ -44,6 +44,7 @@
                                                 data-bs-target="#navbarNav,#navbarNavMobile"
                                                 data-bs-toggle="collapse"
                                                 id="menuIcon" type="button">
+                                            <span class="navbar-toggler-icon"></span>
                                         </button>
                                     </div>
                                 </div>
@@ -80,23 +81,27 @@
                 <!-- Row 2: Nav links -->
                 <div class="col-12 navbar-wrapper border-top">
                     <div class="container-lg collapse navbar-collapse" id="navbarNav">
+                        {# Helper: 'active' class + aria-current when current page's blueprint matches. #}
+                        {% macro nav_active(blueprint) -%}
+                        {%- if request.blueprint == blueprint -%}active{%- endif -%}
+                        {%- endmacro %}
                         <ul class="menu navbar-nav me-auto mb-2 mb-md-0 align-items-center">
                             {% if current_user.is_authenticated %}
                             <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('user_dashboard.index') }}">User Dashboard</a>
+                                <a class="nav-link {{ nav_active('user_dashboard') }}" href="{{ url_for('user_dashboard.index') }}"{% if request.blueprint == 'user_dashboard' %} aria-current="page"{% endif %}>User Dashboard</a>
                             </li>
                             {% endif %}
                             <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('status_dashboard.index') }}">System Status</a>
+                                <a class="nav-link {{ nav_active('status_dashboard') }}" href="{{ url_for('status_dashboard.index') }}"{% if request.blueprint == 'status_dashboard' %} aria-current="page"{% endif %}>System Status</a>
                             </li>
                             {% if has_permission('view_projects') %}
                             <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('allocations_dashboard.index') }}">Allocations</a>
+                                <a class="nav-link {{ nav_active('allocations_dashboard') }}" href="{{ url_for('allocations_dashboard.index') }}"{% if request.blueprint == 'allocations_dashboard' %} aria-current="page"{% endif %}>Allocations</a>
                             </li>
                             {% endif %}
                             {% if has_permission('impersonate_users') %}
                             <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('admin_dashboard.index') }}">Admin</a>
+                                <a class="nav-link {{ nav_active('admin_dashboard') }}" href="{{ url_for('admin_dashboard.index') }}"{% if request.blueprint == 'admin_dashboard' %} aria-current="page"{% endif %}>Admin</a>
                             </li>
                             {% endif %}
                         </ul>

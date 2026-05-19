@@ -9,7 +9,7 @@
 {% block content %}
 <div class="row mb-4">
     <div class="col-12">
-        <h2><i class="fas fa-user-shield"></i> Admin Dashboard</h2>
+        <h1><i class="fas fa-user-shield"></i> Admin Dashboard</h1>
         <p class="text-muted">Administrative tools for managing users and projects</p>
     </div>
 </div>
@@ -65,7 +65,7 @@
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="fas fa-search"></i> Search Projects</h5>
                         {% if has_permission(Permission.CREATE_PROJECTS) %}
-                        <button type="button" class="btn btn-sm btn-success"
+                        <button type="button" class="btn btn-sm btn-primary"
                                 data-bs-toggle="modal"
                                 data-bs-target="#createProjectModal"
                                 hx-get="{{ url_for('admin_dashboard.htmx_project_create_form') }}"
@@ -174,7 +174,7 @@
                                                 onclick="reloadActiveExpirationsTab()">
                                             <i class="fas fa-search"></i> Apply Filters
                                         </button>
-                                        <button type="button" class="btn btn-success"
+                                        <button type="button" class="btn btn-primary"
                                                 onclick="exportExpirationsCsv()">
                                             <i class="fas fa-download"></i> Export CSV
                                         </button>
