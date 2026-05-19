@@ -20,7 +20,7 @@ spec:
       - name: {{ .Values.webapp.name }}
         image: {{ .Values.webapp.container.image }}
         imagePullPolicy: IfNotPresent
-        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled .Values.webapp.oidcCredentials.enabled))) }}
+        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled (or .Values.webapp.oidcCredentials.enabled .Values.webapp.jhDbCredentials.enabled)))) }}
         env:
           {{- range $key, $value := .Values.webapp.env }}
           - name: {{ $key }}
@@ -61,6 +61,18 @@ spec:
             valueFrom:
               secretKeyRef:
                 name: {{ .Values.webapp.name }}-sam-db-credentials
+                key: password
+          {{- end }}
+          {{- if .Values.webapp.jhDbCredentials.enabled }}
+          - name: JOB_HISTORY_PG_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-jh-db-credentials
+                key: username
+          - name: JOB_HISTORY_PG_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-jh-db-credentials
                 key: password
           {{- end }}
           {{- if .Values.webapp.jupyterhubCredentials.enabled }}
