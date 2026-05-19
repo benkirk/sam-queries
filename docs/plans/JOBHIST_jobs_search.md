@@ -158,7 +158,70 @@ template to add a 4th collapsible level under date+user+queue that
 issues `hx-get` to the new fragment route. The template change is
 out of scope for this plan (deferred per user).
 
-### Part C — config + tests
+### Part C — Admin > Configuration DB card
+
+The card at `/htmx/configuration` (rendered by
+`src/webapp/dashboards/admin/configuration_routes.py:29` and
+`src/webapp/templates/dashboards/admin/fragments/configuration_card.html:112`)
+already loops over `state.databases` and shows
+**name / URL (password-redacted) / health badge / latency /
+pool_size / checked_out / overflow / error** per entry. To add
+per-machine job_history rows we extend the *data collector*; the
+template needs no changes.
+
+**File to modify**:
+`src/webapp/utils/config_inspect.py` — `gather_runtime_state(app, db)`
+around lines 278–419 (today's block at 324–328 collects `sam` +
+`system_status` engines).
+
+**Change**: after the existing engines are appended, iterate the
+per-machine job_history engines stashed on
+`app.extensions['hpc_usage_queries_engines']` (registered in
+Part B's `session.py`):
+
+```python
+jh_engines = app.extensions.get('hpc_usage_queries_engines', {})
+for machine, engine in jh_engines.items():
+    ok, latency_ms, err = _ping_engine(engine)
+    databases.append({
+        'name': f'job_history ({machine})',
+        'url': format_db_url_safe(engine),
+        'healthy': ok,
+        'latency_ms': latency_ms,
+        'error': err,
+        **pool_stats(engine.pool),
+    })
+```
+
+Reuse the existing helpers — no new infrastructure:
+- `_ping_engine(engine)` —
+  `src/webapp/api/v1/health.py:29` (`SELECT 1` + latency)
+- `format_db_url_safe(engine)` —
+  `src/webapp/utils/config_inspect.py:65` (password redaction;
+  works for any SQLAlchemy URL, including the
+  `postgresql+psycopg://...` URLs job_history will produce)
+- `pool_stats(pool)` —
+  `src/webapp/utils/config_inspect.py:80`
+
+**Required from Part B for this to work**:
+- The startup hook in `src/webapp/jobs/session.py` must register the
+  cached engines on `app.extensions['hpc_usage_queries_engines']` as
+  a `dict[str, Engine]` keyed by machine name. (This is essentially
+  free — Part B already creates these engines; we just need to stash
+  them on `app.extensions` instead of a module-level cache.)
+- When the plugin is missing, the dict is absent / empty and
+  `gather_runtime_state` simply produces no extra rows — no error
+  path, no template guard.
+
+**Access control**: the existing route is already
+`@login_required + @require_permission(Permission.VIEW_SYSTEM_CONFIG)`
+(line 30–31) — no change needed.
+
+**Naming**: use `job_history (<machine>)` so each machine gets a
+distinct, sortable row in the UI alongside `sam` and
+`system_status`.
+
+### Part D — config + tests
 
 - Add env vars to `.env.example` and to the Flask `Config` class
   (likely `src/webapp/config.py` or wherever `SQLALCHEMY_*` lives —
@@ -183,6 +246,9 @@ out of scope for this plan (deferred per user).
   pool config; add startup hook here
 - `src/webapp/dashboards/user/blueprint.py:347` —
   `/resource-details` route (template wire-in deferred)
+- `src/webapp/utils/config_inspect.py:278-419` — extend
+  `gather_runtime_state` to surface job_history engines on the
+  Admin > Configuration DB card (Part C)
 - **New**: `src/webapp/jobs/{__init__,session,service,routes}.py`
 - **Upstream**:
   `hpc-usage-queries/devel/job_history/database/session.py:149-201`
@@ -203,11 +269,18 @@ out of scope for this plan (deferred per user).
    issue the HTMX fragment URL directly with curl/devtools to confirm
    per-job rows return for one of bdobbins's projects, 403 for a
    project he's not on.
-4. **Pool behavior**: hit the fragment route N times in quick
+4. **DB card**: visit `/htmx/configuration` as a user with
+   `VIEW_SYSTEM_CONFIG` — the card should now list `sam`,
+   `system_status`, and one row per configured job_history machine
+   (e.g. `job_history (derecho)`, `job_history (casper)`) with
+   green health badge + non-zero latency + pool stats. Force a
+   PostgreSQL outage and confirm the row flips to red + shows the
+   driver error in the `error` field.
+5. **Pool behavior**: hit the fragment route N times in quick
    succession; confirm via Postgres `pg_stat_activity` (or
    SQLAlchemy logging) that the connection count stays bounded by
    `pool_size + max_overflow`, not N.
-5. **Tests**: `source etc/config_env.sh && pytest tests/api/
+6. **Tests**: `source etc/config_env.sh && pytest tests/api/
    tests/unit/test_webapp_jobs.py` (user runs by hand per
    `feedback_testing.md`).
 
