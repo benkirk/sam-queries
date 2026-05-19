@@ -45,6 +45,7 @@
     --ncar-teal:       #00818F;   /* NSF NCAR teal dark */
     --ncar-sky:        #42C0FF;   /* NSF NCAR sky light */
     --ncar-vermilion:  #ff1f1f;   /* NSF NCAR defining accent */
+    --ncar-gold:       #fdd509;   /* Unity yellow — bright gold accent (e.g. dark-panel headings) */
     --ncar-gray:       #97999b;
     --ncar-navy-mid:   #003579;   /* gradient midpoint (navy → blue) */
     --ncar-teal-rgb:   0, 153, 204;  /* #0099CC used in rgba() calls */

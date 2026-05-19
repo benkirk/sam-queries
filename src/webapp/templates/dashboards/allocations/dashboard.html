@@ -12,155 +12,33 @@
     <h1><i class="fas fa-chart-pie"></i> Allocations Dashboard</h1>
 </div>
 
-<!-- Facility Pie: single container above tabs, swaps when active tab changes -->
+<!-- ─────── Row 1: tabs only (left col), sits ABOVE the filter row ─── -->
 {% if grouped_data %}
-{% if show_usage %}
-<!-- 2-tab interface: Allocated | Usage -->
-<div class="mb-3">
-    <ul class="nav nav-pills nav-fill mb-2 justify-content-center" id="pieChartTabs" role="tablist" style="max-width:320px; margin-left:auto; margin-right:auto;">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active py-1 px-3 small" id="pie-allocated-tab"
-                    data-bs-toggle="pill" data-bs-target="#pie-allocated"
-                    type="button" role="tab">Allocated</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link py-1 px-3 small" id="pie-usage-tab"
-                    data-bs-toggle="pill" data-bs-target="#pie-usage"
-                    type="button" role="tab">Usage</button>
-        </li>
-    </ul>
-    <div class="tab-content">
-        <div class="tab-pane fade show active" id="pie-allocated" role="tabpanel">
-            <div id="facilityPieContainer" class="chart-container">
-                {% for resource_name, _ in grouped_data.items()|sort %}
-                {% set overview = resource_overviews[resource_name] %}
-                {% if overview.table_data|length > 1 %}
-                <div class="facility-pie-panel"
-                     data-resource="{{ resource_name|replace(' ', '_') }}"
-                     style="display:none;">
-                    {{ overview.chart|safe }}
-                </div>
-                {% endif %}
-                {% endfor %}
-            </div>
-        </div>
-        <div class="tab-pane fade" id="pie-usage" role="tabpanel">
-            <div id="facilityUsagePieContainer" class="chart-container">
-                {% for resource_name, _ in grouped_data.items()|sort %}
-                {% set usage_overview = resource_usage_overviews.get(resource_name, {}) %}
-                {% if usage_overview and usage_overview.table_data|length > 1 %}
-                <div class="facility-usage-pie-panel"
-                     data-resource="{{ resource_name|replace(' ', '_') }}"
-                     style="display:none;">
-                    {{ usage_overview.chart|safe }}
-                </div>
-                {% elif usage_overview and usage_overview.table_data|length == 1 %}
-                <div class="facility-usage-pie-panel"
-                     data-resource="{{ resource_name|replace(' ', '_') }}"
-                     style="display:none;">
-                    <div class="text-center text-muted small py-3">Single facility — no pie chart</div>
-                </div>
-                {% endif %}
-                {% endfor %}
-            </div>
-        </div>
+<div class="row g-0">
+    <div class="col-lg-9">
+        <ul class="nav nav-tabs" id="resourceTabs" role="tablist">
+            {% for resource_name in grouped_data.keys()|sort %}
+            <li class="nav-item">
+                <a class="nav-link {% if loop.first %}active{% endif %}"
+                   id="{{ resource_name|replace(' ', '_') }}-tab"
+                   data-bs-toggle="tab"
+                   href="#{{ resource_name|replace(' ', '_') }}"
+                   role="tab">
+                    {{ resource_name }}
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
     </div>
-</div>
-{% else %}
-<!-- Standard single pie chart (no usage toggle) -->
-<div id="facilityPieContainer" class="chart-container mb-3">
-    {% for resource_name, _ in grouped_data.items()|sort %}
-    {% set overview = resource_overviews[resource_name] %}
-    {% if overview.table_data|length > 1 %}
-    <div class="facility-pie-panel"
-         data-resource="{{ resource_name|replace(' ', '_') }}"
-         style="display:none;">
-        {{ overview.chart|safe }}
-    </div>
-    {% endif %}
-    {% endfor %}
 </div>
 {% endif %}
-{% endif %}
 
-<!-- Filter Panel: collapsed-by-default summary bar; placed below the chart
-     since changes are infrequent. Expanded form lives in the .collapse body.
-     The .collapse[id] is auto-persisted by nav-view-persistence.js so a
-     user who expands it once keeps it expanded across reloads. -->
-{% set _resource_summary -%}
-    {%- if selected_resources|length == all_resources|length -%}All resources
-    {%- elif selected_resources|length > 3 -%}{{ selected_resources|length }} resources
-    {%- else -%}{{ selected_resources|join(', ') }}
-    {%- endif %}
-{%- endset %}
-<div class="card mb-3">
-    <div class="card-header py-2 collapse-toggle collapsed"
-         data-bs-toggle="collapse" data-bs-target="#allocationsFilterPanel"
-         role="button" aria-expanded="false" aria-controls="allocationsFilterPanel"
-         style="cursor: pointer;">
-        <span class="text-muted small">
-            <i class="fas fa-filter me-1"></i>
-            <strong class="text-dark me-2">Filters</strong>
-            Resources: <strong class="text-dark">{{ _resource_summary }}</strong>
-            <span class="mx-2">·</span>
-            Active at: <strong class="text-dark">{{ active_at }}</strong>
-            <span class="mx-2">·</span>
-            Usage: <strong class="text-dark">{{ 'on' if show_usage else 'off' }}</strong>
-        </span>
-    </div>
-    <div class="collapse" id="allocationsFilterPanel">
-        <div class="card-body py-3">
-            <form method="GET" class="d-flex flex-wrap align-items-start gap-4 mb-0" id="dateFilterForm">
-                <div>
-                    <label for="resources" class="form-label small mb-1"><strong>Resources</strong></label>
-                    <select class="form-control form-control-sm" id="resources" name="resources"
-                            multiple size="4" style="width: 240px;">
-                        {% for res in all_resources %}
-                        <option value="{{ res }}" {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
-                        {% endfor %}
-                    </select>
-                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
-                </div>
+<!-- ─────── Row 2: tab-content (left) flush against filter sidebar (right),
+            tops aligned to row top, bottoms stretched to match ─── -->
+<div class="row g-0">
+    <div class="col-lg-9">
 
-                <div class="d-flex flex-column gap-2">
-                    <div>
-                        <label for="active_at" class="form-label small mb-1"><strong>Active at</strong></label>
-                        <input type="date" class="form-control form-control-sm" id="active_at"
-                               name="active_at" value="{{ active_at }}" style="width: 160px;">
-                    </div>
-
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="showUsage"
-                               name="show_usage" value="true"
-                               {% if show_usage %}checked{% endif %}>
-                        <label class="form-check-label small" for="showUsage">Show usage</label>
-                    </div>
-
-                    <button type="submit" class="btn btn-sm btn-primary" style="width: 160px;">
-                        <i class="fas fa-search"></i> Update
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Resource Tabs -->
 {% if grouped_data %}
-<ul class="nav nav-tabs" id="resourceTabs" role="tablist">
-    {% for resource_name in grouped_data.keys()|sort %}
-    <li class="nav-item">
-        <a class="nav-link {% if loop.first %}active{% endif %}"
-           id="{{ resource_name|replace(' ', '_') }}-tab"
-           data-bs-toggle="tab"
-           href="#{{ resource_name|replace(' ', '_') }}"
-           role="tab">
-            {{ resource_name }}
-        </a>
-    </li>
-    {% endfor %}
-</ul>
-
 <div class="tab-content" id="resourceTabsContent">
     {% for resource_name, facilities in grouped_data.items()|sort %}
     <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
@@ -342,6 +220,122 @@
 {% else %}
 <div class="alert alert-info mt-3">
     <i class="fas fa-info-circle"></i> No active allocations found for the selected date.
+</div>
+{% endif %}
+
+    </div>
+    <!-- ─────────────── Filter sidebar (Unity NCAR style) ─────────────── -->
+    <aside class="col-lg-3">
+        <div class="filter-sidebar">
+            <div class="filter-sidebar-header">
+                <h2 class="filter-sidebar-title">Filters</h2>
+                <a href="{{ url_for('allocations_dashboard.index') }}" class="filter-sidebar-clear">Clear filters</a>
+            </div>
+
+            <form method="GET" id="dateFilterForm">
+                <div class="mb-3">
+                    <label for="resources" class="form-label"><strong>Resources</strong></label>
+                    <select class="form-control" id="resources" name="resources"
+                            multiple size="6">
+                        {% for res in all_resources %}
+                        <option value="{{ res }}" {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
+                </div>
+
+                <div class="mb-3">
+                    <label for="active_at" class="form-label"><strong>Active at</strong></label>
+                    <input type="date" class="form-control" id="active_at"
+                           name="active_at" value="{{ active_at }}">
+                </div>
+
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="showUsage"
+                           name="show_usage" value="true"
+                           {% if show_usage %}checked{% endif %}>
+                    <label class="form-check-label" for="showUsage">Show usage</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="fas fa-search"></i> Update
+                </button>
+            </form>
+        </div>
+    </aside>
+</div>
+
+<!-- ─────── Pie chart — placed below the tabs/content/filter so the
+            content body can sit flush against the filter sidebar. Wrapped
+            in a bordered .card for the Unity panel containment look. ─── -->
+{% if grouped_data %}
+<div class="card mt-4">
+    <div class="card-body">
+        <h6 class="text-primary text-uppercase fw-bold mb-3">Allocation Overview</h6>
+        {% if show_usage %}
+        <ul class="nav nav-pills nav-fill mb-2 justify-content-center" id="pieChartTabs" role="tablist" style="max-width:320px; margin-left:auto; margin-right:auto;">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active py-1 px-3 small" id="pie-allocated-tab"
+                        data-bs-toggle="pill" data-bs-target="#pie-allocated"
+                        type="button" role="tab">Allocated</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link py-1 px-3 small" id="pie-usage-tab"
+                        data-bs-toggle="pill" data-bs-target="#pie-usage"
+                        type="button" role="tab">Usage</button>
+            </li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="pie-allocated" role="tabpanel">
+                <div id="facilityPieContainer" class="chart-container">
+                    {% for resource_name, _ in grouped_data.items()|sort %}
+                    {% set overview = resource_overviews[resource_name] %}
+                    {% if overview.table_data|length > 1 %}
+                    <div class="facility-pie-panel"
+                         data-resource="{{ resource_name|replace(' ', '_') }}"
+                         style="display:none;">
+                        {{ overview.chart|safe }}
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="tab-pane fade" id="pie-usage" role="tabpanel">
+                <div id="facilityUsagePieContainer" class="chart-container">
+                    {% for resource_name, _ in grouped_data.items()|sort %}
+                    {% set usage_overview = resource_usage_overviews.get(resource_name, {}) %}
+                    {% if usage_overview and usage_overview.table_data|length > 1 %}
+                    <div class="facility-usage-pie-panel"
+                         data-resource="{{ resource_name|replace(' ', '_') }}"
+                         style="display:none;">
+                        {{ usage_overview.chart|safe }}
+                    </div>
+                    {% elif usage_overview and usage_overview.table_data|length == 1 %}
+                    <div class="facility-usage-pie-panel"
+                         data-resource="{{ resource_name|replace(' ', '_') }}"
+                         style="display:none;">
+                        <div class="text-center text-muted small py-3">Single facility — no pie chart</div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div id="facilityPieContainer" class="chart-container">
+            {% for resource_name, _ in grouped_data.items()|sort %}
+            {% set overview = resource_overviews[resource_name] %}
+            {% if overview.table_data|length > 1 %}
+            <div class="facility-pie-panel"
+                 data-resource="{{ resource_name|replace(' ', '_') }}"
+                 style="display:none;">
+                {{ overview.chart|safe }}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
 </div>
 {% endif %}
 

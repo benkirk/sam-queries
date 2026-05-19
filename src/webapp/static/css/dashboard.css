@@ -305,6 +305,14 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: var(--ncar-space-blue);
 }
 
+/* Opt-in modifier: a card with a visible 1px hairline border. Use when a
+   card needs to read as a self-contained panel (e.g. wrapping a chart or
+   a contacts list). Matches Unity's bordered editorial card look. */
+.card-bordered {
+    --bs-card-border-width: 1px;
+    border-color: var(--ncar-gray-light);
+}
+
 .card-header h5 {
     color: var(--ncar-space-blue);
     font-weight: var(--font-weight-semi-bold);
@@ -577,7 +585,14 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    ========================================================================= */
 
 .nav-tabs {
-    border-bottom: 2px solid var(--ncar-blue);
+    border-bottom: 0;
+    /* Never wrap to a second row — horizontal scroll if necessary. */
+    flex-wrap: nowrap;
+    overflow-x: auto;
+}
+
+.nav-tabs .nav-item {
+    flex-shrink: 0;
 }
 
 /* When tabs are followed by tab-content, kill any mb-* utility margin so the
