@@ -60,6 +60,12 @@ def init_job_history(app: Flask) -> None:
         'module':  None,
         'engines': {},  # machine -> Engine
         'enabled': False,
+        # Plugin-feature probes, set once at startup. Routes read these to
+        # decide whether to surface pagination/sort UI or fall back to the
+        # limit-only path. Mirrors the pool_kwargs= drift handling below.
+        'supports_offset':  False,
+        'supports_sort':    False,
+        'supports_count':   False,
     }
     app.extensions[_EXT_KEY] = state
 
@@ -124,6 +130,23 @@ def init_job_history(app: Flask) -> None:
 
     state['enabled'] = bool(state['engines'])
 
+    # Probe paginated-search/count support on the plugin. These reads are
+    # cheap and let the route degrade gracefully — older plugin builds
+    # render the limit-only table without a 500.
+    jq = getattr(mod, 'JobQueries', None)
+    if jq is not None:
+        js = getattr(jq, 'jobs_search', None)
+        if js is not None:
+            state['supports_offset'] = _accepts_kwarg(js, 'offset')
+            state['supports_sort']   = _accepts_kwarg(js, 'sort_by')
+        state['supports_count'] = callable(getattr(jq, 'jobs_count', None))
+    if state['enabled'] and not (state['supports_offset'] and state['supports_count']):
+        logger.warning(
+            'hpc-usage-queries plugin is out of date: missing offset=/jobs_count '
+            'on JobQueries — per-job UI will render without pagination. '
+            'Upgrade the plugin to pick up the offset/sort/count PR.'
+        )
+
 
 def _accepts_kwarg(fn, name: str) -> bool:
     """True if *fn* accepts a keyword argument named *name*.
@@ -157,6 +180,21 @@ def get_engines(app: Optional[Flask] = None) -> Dict[str, Any]:
     """Return ``{machine: Engine}`` (possibly empty)."""
     state = (app or current_app).extensions.get(_EXT_KEY) or {}
     return state.get('engines') or {}
+
+
+def get_capabilities(app: Optional[Flask] = None) -> Dict[str, bool]:
+    """Return ``{offset, sort, count}`` plugin-capability flags.
+
+    Set once during :func:`init_job_history` by introspecting the loaded
+    plugin. Routes consult these to decide whether to render pagination /
+    sort controls or degrade to the limit-only table.
+    """
+    state = (app or current_app).extensions.get(_EXT_KEY) or {}
+    return {
+        'offset': bool(state.get('supports_offset')),
+        'sort':   bool(state.get('supports_sort')),
+        'count':  bool(state.get('supports_count')),
+    }
 
 
 @contextmanager

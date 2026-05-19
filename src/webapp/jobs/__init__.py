@@ -21,6 +21,7 @@ from webapp.jobs.session import (
     job_history_session,
     get_engines,
     get_module,
+    get_capabilities,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     'job_history_session',
     'get_engines',
     'get_module',
+    'get_capabilities',
 ]
