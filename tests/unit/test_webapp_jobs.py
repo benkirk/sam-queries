@@ -360,6 +360,42 @@ def test_jobs_fragment_renders_rows_when_enabled(
     assert 'Per-job data is unavailable' not in body
 
 
+def test_jobs_fragment_accepts_user_only_filter(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Usage-by-User drill-down: route accepts `user` alone (no queue, no date).
+
+    The Usage-by-User card surfaces a leaf row at the user level whenever
+    the user has a single queue — the resulting drill omits both the
+    queue filter (since there's only one) and the date range (since the
+    leaf aggregates over all dates). The route + service forward None
+    filters as "no filter", and the plugin / SAM-summary count path
+    handle the omission. This test pins the contract: a request with
+    only `machine` and `user` returns HTTP 200 with rows and does NOT
+    forward an explicit queue/start/end to the plugin.
+    """
+    captured = _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[{'job_id': '999.desched1', 'user': 'benkirk',
+                             'queue': 'main', 'end': '2026-05-01 11:00:00'}],
+    )
+
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        f'?machine=derecho&user=benkirk'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert '999.desched1' in body
+
+    # Filters forwarded to the plugin: user pinned, others None.
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['user']  == 'benkirk'
+    assert kw['queue'] is None
+    assert kw['start'] is None
+    assert kw['end']   is None
+
+
 # ---------------------------------------------------------------------------
 # Part 2: pagination / sort / suppression / verbose-row / resource-details
 # ---------------------------------------------------------------------------
