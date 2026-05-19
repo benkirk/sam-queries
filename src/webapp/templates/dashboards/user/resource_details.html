@@ -139,15 +139,10 @@
                             data-bs-toggle="collapse"
                             data-bs-target="#{{ jid }}"
                             aria-expanded="false" aria-controls="{{ jid }}"
-                            hx-get="{{ url_for('jobs.jobs_fragment', projcode=projcode, machine=jobs_machine, start=day.date, end=day.date, user=sub.username, queue=sub.queue) }}"
-                            hx-target="#{{ jid }}-content"
-                            hx-trigger="click once"
-                            hx-swap="innerHTML"
                             title="Show individual jobs">
                         <i class="fas fa-list-ul small"></i>
                         <span class="small">jobs</span>
                         <i class="fas fa-chevron-right ms-1 small collapse-icon"></i>
-                        <span class="spinner-border spinner-border-sm ms-1 htmx-indicator" role="status" aria-hidden="true"></span>
                     </button>
                     {% endif %}
                 </td>
@@ -157,9 +152,16 @@
                 <td class="text-end"><small>{{ sub.total_charges | fmt_number }}</small></td>
             </tr>
             {% if jobs_machine %}
+            {# hx-trigger fires on `shown.bs.collapse` so a programmatic
+               .show() from nav-view-persistence's restore-on-reload also
+               kicks off the fetch — not just a real button click. #}
             <tr class="collapse" id="day-detail-{{ did }}">
                 <td colspan="5" class="p-0">
-                    <div class="collapse" id="{{ jid }}">
+                    <div class="collapse" id="{{ jid }}"
+                         hx-get="{{ url_for('jobs.jobs_fragment', projcode=projcode, machine=jobs_machine, start=day.date, end=day.date, user=sub.username, queue=sub.queue) }}"
+                         hx-target="#{{ jid }}-content"
+                         hx-trigger="shown.bs.collapse once"
+                         hx-swap="innerHTML">
                         <div class="p-2 bg-white border-start border-3" id="{{ jid }}-content">
                             <span class="text-muted small">
                                 <i class="fas fa-spinner fa-spin me-1"></i> Loading jobs…
@@ -202,15 +204,10 @@
                             data-bs-toggle="collapse"
                             data-bs-target="#{{ jid }}"
                             aria-expanded="false" aria-controls="{{ jid }}"
-                            hx-get="{{ url_for('jobs.jobs_fragment', projcode=projcode, machine=jobs_machine, start=day.date, end=day.date, user=sub.username, queue=sub.queue) }}"
-                            hx-target="#{{ jid }}-content"
-                            hx-trigger="click once"
-                            hx-swap="innerHTML"
                             title="Show individual jobs">
                         <i class="fas fa-list-ul small"></i>
                         <span class="small">jobs</span>
                         <i class="fas fa-chevron-right ms-1 small collapse-icon"></i>
-                        <span class="spinner-border spinner-border-sm ms-1 htmx-indicator" role="status" aria-hidden="true"></span>
                     </button>
                     {% endif %}
                 </td>
@@ -222,7 +219,11 @@
             {% if jobs_machine %}
             <tr>
                 <td colspan="5" class="p-0">
-                    <div class="collapse" id="{{ jid }}">
+                    <div class="collapse" id="{{ jid }}"
+                         hx-get="{{ url_for('jobs.jobs_fragment', projcode=projcode, machine=jobs_machine, start=day.date, end=day.date, user=sub.username, queue=sub.queue) }}"
+                         hx-target="#{{ jid }}-content"
+                         hx-trigger="shown.bs.collapse once"
+                         hx-swap="innerHTML">
                         <div class="p-2 bg-white border-start border-3" id="{{ jid }}-content">
                             <span class="text-muted small">
                                 <i class="fas fa-spinner fa-spin me-1"></i> Loading jobs…
