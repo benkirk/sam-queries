@@ -245,6 +245,13 @@ def create_app(*, config_overrides: dict | None = None):
     def shutdown_session(exception=None):
         db.session.remove()
 
+    # Initialize the hpc-usage-queries plugin (optional). Loads the
+    # job_history package and opens one Engine per configured machine so
+    # connection pools are warm before the first per-job query. Disabled
+    # in tests (TestingConfig.JOB_HISTORY_MACHINES = []).
+    from webapp.jobs import init_job_history
+    init_job_history(app)
+
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(user_dashboard_bp)
