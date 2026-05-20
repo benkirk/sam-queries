@@ -165,7 +165,8 @@ def generate_usage_timeseries_matplotlib(daily_charges) -> str:
     comp = list(comp)
 
     fig, ax = plt.subplots(figsize=(18, 5))
-    ax.bar(dates, comp, width=1, lw=2)
+    ax.bar(dates, comp, width=1, lw=2,
+           color=UNITY_NCAR_BLUE, edgecolor=UNITY_NCAR_NAVY)
     ax.set_ylabel('Charges')
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, alpha=0.3)
@@ -443,7 +444,7 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
 
     ax1.stackplot(timestamps, nodes_down, nodes_allocated, nodes_available,
                   labels=['Down', 'Fully Allocated', 'Resources Available'],
-                  colors=['C3', 'C0', 'C9'])
+                  colors=[UNITY_NCAR_VERMILION, UNITY_NCAR_BLUE, UNITY_NCAR_SKY])
     ax1.set_ylabel('Number of Nodes', fontsize=11)
     ax1.set_ylim([0, None])
     ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
@@ -453,12 +454,12 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
     if any(u is not None for u in utilization):
         util_times = [timestamps[i] for i, u in enumerate(utilization) if u is not None]
         util_vals = [u for u in utilization if u is not None]
-        ax2.plot(util_times, util_vals, 'b', linewidth=3, label='CPU/GPU Utilization')
+        ax2.plot(util_times, util_vals, color=UNITY_NCAR_BLUE, linewidth=3, label='CPU/GPU Utilization')
 
     if any(m is not None for m in memory_utilization):
         mem_times = [timestamps[i] for i, m in enumerate(memory_utilization) if m is not None]
         mem_vals = [m for m in memory_utilization if m is not None]
-        ax2.plot(mem_times, mem_vals, 'c', linewidth=3, label='Memory Utilization')
+        ax2.plot(mem_times, mem_vals, color=UNITY_NCAR_TEAL, linewidth=3, label='Memory Utilization')
 
     ax2.set_ylabel('Utilization', fontsize=11)
     ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=11)
@@ -509,10 +510,10 @@ def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 
-    ax1.plot(timestamps, running_jobs, 'g-', linewidth=3, label='Running')
-    ax1.plot(timestamps, pending_jobs, 'orange', linewidth=3, label='Pending')
-    ax1.plot(timestamps, held_jobs, 'r-', linewidth=3, label='Held')
-    ax1.plot(timestamps, active_users, 'b--', linewidth=2, label='Active Users')
+    ax1.plot(timestamps, running_jobs, color=UNITY_NCAR_TEAL, linewidth=3, label='Running')
+    ax1.plot(timestamps, pending_jobs, color=UNITY_NCAR_ORANGE, linewidth=3, label='Pending')
+    ax1.plot(timestamps, held_jobs, color=UNITY_NCAR_VERMILION, linewidth=3, label='Held')
+    ax1.plot(timestamps, active_users, color=UNITY_NCAR_BLUE, linestyle='--', linewidth=2, label='Active Users')
     ax1.set_ylim([0, None])
     ax1.set_ylabel('Count', fontsize=11)
     ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
@@ -520,11 +521,11 @@ def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
     ax1.grid(True, alpha=0.3)
 
     if has_gpus:
-        ax2.plot(timestamps, gpus_allocated, 'b', linewidth=3, label='GPUs Running')
-        ax2.plot(timestamps, gpus_pending, 'c', linewidth=3, label='GPUs Pending')
+        ax2.plot(timestamps, gpus_allocated, color=UNITY_NCAR_BLUE, linewidth=3, label='GPUs Running')
+        ax2.plot(timestamps, gpus_pending, color=UNITY_NCAR_TEAL, linewidth=3, label='GPUs Pending')
     else:
-        ax2.plot(timestamps, cores_allocated, 'b', linewidth=3, label='Cores Running')
-        ax2.plot(timestamps, cores_pending, 'c', linewidth=3, label='Cores Pending')
+        ax2.plot(timestamps, cores_allocated, color=UNITY_NCAR_BLUE, linewidth=3, label='Cores Running')
+        ax2.plot(timestamps, cores_pending, color=UNITY_NCAR_TEAL, linewidth=3, label='Cores Pending')
 
     ax2.set_ylim([0, None])
     ax2.set_ylabel('Resources', fontsize=11)
