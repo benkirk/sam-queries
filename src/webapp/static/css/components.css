@@ -9,10 +9,14 @@
 
 .clickable-row {
     cursor: pointer;
+    transition: background-color var(--transition-fast);
 }
 
+/* Pale-teal tint matches the .resource-row treatment in dashboard.css —
+   --bg-gray-light (#f8f9fa) on the previous rule was invisible against
+   white table cells. !important beats Bootstrap's .table bg. */
 .clickable-row:hover {
-    background-color: var(--bg-gray-light);
+    background-color: rgba(var(--ncar-teal-rgb), 0.08) !important;
 }
 
 /* ===================================================================
