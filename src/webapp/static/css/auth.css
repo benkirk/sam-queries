@@ -1,8 +1,10 @@
 /**
- * SAM Auth/Login Page CSS
- * Styles for login and authentication pages with NCAR branding.
+ * SAM Auth/Login Page CSS — Unity NCAR style.
+ * Thin layer on top of dashboard.css; defines only login-page-specific
+ * chrome (centered container, page background, quick-login section).
  *
- * Design tokens are defined in variables.css, which must be loaded first.
+ * Design tokens are defined in variables.css; component rules (.btn,
+ * .form-control, .alert, typography) come from dashboard.css.
  */
 
 /* ===================================================================
@@ -10,218 +12,185 @@
    =================================================================== */
 
 body {
-    background: linear-gradient(135deg, var(--ncar-navy) 0%, var(--ncar-navy-mid) 50%, var(--ncar-blue) 100%);
+    /* Match the dashboard wave watermark so the login page reads as the
+       same app — same color, same image, same position triple. The flex
+       centering is the only login-specific addition. */
+    background-color: var(--bg-light);
+    background-image: url('../img/UCAR-Waves-Lines-Only-66.png');
+    background-position: 150% 0%;
+    background-repeat: repeat-y;
+    background-size: 53%;
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
     font-family: var(--font-family-default);
+    color: var(--text-dark);
 }
 
 /* ===================================================================
-   Login Container
+   Login Container — flat editorial panel matching .card-bordered.
    =================================================================== */
 
 .login-container {
-    background: white;
-    padding: 45px;
-    border-radius: 16px;
-    box-shadow: 0 20px 60px rgba(0, 46, 108, 0.3);
+    background: #fff;
+    padding: 2.5rem;
+    border: 1px solid var(--ncar-gray-light);
+    border-top: 5px solid var(--ncar-blue);
+    box-shadow: var(--shadow-md);
     max-width: 480px;
     width: 100%;
-    border-top: 5px solid var(--ncar-blue);
+    margin: 1rem;
 }
 
 /* ===================================================================
-   Login Header
+   Login Header — NCAR logo + "Systems Accounting Manager" wordmark,
+   matching the dashboard navbar branding (single brand treatment).
    =================================================================== */
 
 .login-header {
     text-align: center;
-    margin-bottom: 35px;
+    margin-bottom: 2rem;
 }
 
 .login-logo {
-    width: 64px;
-    height: 64px;
-    margin: 0 auto 16px;
-    background: linear-gradient(135deg, var(--ncar-blue) 0%, var(--ncar-light-blue) 100%);
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 12px rgba(var(--ncar-teal-rgb), 0.3);
+    width: 12rem;
+    margin: 0 auto 1rem;
 }
 
-.login-logo i {
-    font-size: 28px;
-    color: white;
+.login-logo img {
+    width: 100%;
 }
 
 .login-header h1 {
-    color: var(--ncar-navy);
-    font-size: 32px;
-    font-weight: 700;
-    margin-bottom: 10px;
-    letter-spacing: -0.5px;
-}
-
-.login-header p {
-    color: var(--ncar-gray);
-    font-size: 15px;
-    font-weight: var(--font-weight-semi-bold);
+    color: var(--ncar-space-blue);
+    font-size: var(--font-size-xlg);
+    font-weight: var(--font-weight-regular);
+    line-height: 1.2;
+    text-transform: uppercase;
+    margin: 0;
 }
 
 /* ===================================================================
-   Form Controls
+   Form Controls — defer to Bootstrap/Unity defaults. We only set the
+   focus ring to Unity blue (dashboard.css already does this for
+   .form-control:focus on dashboard pages; replicated here because
+   dashboard.css's selector wins by source order). No bespoke radius
+   or border-width — keep Bootstrap's flat baseline.
    =================================================================== */
-
-.form-group label {
-    color: var(--ncar-navy);
-    font-weight: 600;
-    font-size: 14px;
-    margin-bottom: 8px;
-}
-
-.form-control {
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
-    padding: 12px 16px;
-    font-size: 15px;
-    transition: all 0.3s ease;
-}
-
-.form-control:focus {
-    border-color: var(--ncar-blue);
-    box-shadow: 0 0 0 3px rgba(var(--ncar-teal-rgb), 0.1);
-}
 
 .form-check-label {
     color: var(--ncar-gray);
-    font-size: 14px;
     font-weight: var(--font-weight-semi-bold);
 }
 
 /* ===================================================================
-   Login Button
+   Login Button — Unity .btn-primary already supplies the flat blue,
+   0 radius, 3px border, invert-on-hover treatment. We only stretch it
+   to full width and slightly enlarge type.
    =================================================================== */
 
 .btn-login {
     width: 100%;
-    background: linear-gradient(135deg, var(--ncar-blue) 0%, var(--ncar-light-blue) 100%);
-    border: none;
-    padding: 14px;
-    font-size: 16px;
-    font-weight: 700;
-    border-radius: 8px;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(var(--ncar-teal-rgb), 0.3);
-    letter-spacing: 0.5px;
-}
-
-.btn-login:hover {
-    background: linear-gradient(135deg, var(--ncar-light-blue) 0%, var(--ncar-blue) 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(var(--ncar-teal-rgb), 0.4);
-}
-
-.btn-login:active {
-    transform: translateY(0);
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    letter-spacing: 0.05em;
 }
 
 /* ===================================================================
-   Development Alert
+   Development-mode alert — flat soft-yellow with a single left accent.
    =================================================================== */
 
 .alert-dev {
-    background: linear-gradient(135deg, #fff3cd 0%, #fff9e6 100%);
-    border: 2px solid var(--warning-color);
-    border-left: 5px solid var(--warning-color);
+    background-color: #fff8e1;
+    border-left: 4px solid var(--warning-color);
     color: var(--bs-warning-text);
-    padding: 14px 16px;
-    border-radius: 8px;
-    margin-bottom: 25px;
-    font-size: 13px;
+    padding: 0.875rem 1rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.875rem;
     font-weight: var(--font-weight-semi-bold);
 }
 
 /* ===================================================================
-   Quick Login Section
-   =================================================================== */
-
-.quick-login-section {
-    margin-top: 30px;
-    padding-top: 30px;
-    border-top: 2px solid var(--border-color);
-}
-
-.quick-login-section h5 {
-    color: var(--ncar-navy);
-    font-size: 15px;
-    font-weight: 700;
-    margin-bottom: 18px;
-    text-align: center;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.user-btn {
-    width: 100%;
-    margin-bottom: 10px;
-    text-align: left;
-    padding: 12px 16px;
-    border: 2px solid var(--border-color);
-    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-    color: var(--ncar-navy);
-    font-size: 14px;
-    font-weight: var(--font-weight-semi-bold);
-    border-radius: 8px;
-    transition: all 0.3s ease;
-}
-
-.user-btn:hover {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    border-color: var(--ncar-blue);
-    color: var(--ncar-navy);
-    transform: translateX(4px);
-    box-shadow: 0 4px 12px rgba(var(--ncar-teal-rgb), 0.15);
-}
-
-.user-btn .role-badge {
-    float: right;
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 4px;
-    background: linear-gradient(135deg, var(--ncar-blue) 0%, var(--ncar-light-blue) 100%);
-    color: white;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-}
-
-/* ===================================================================
-   Divider
+   Divider — "OR" rule between manual login and quick-login.
    =================================================================== */
 
 .divider {
     text-align: center;
-    margin: 25px 0;
-    color: #999;
-    font-size: 13px;
-    font-weight: 600;
+    margin: 1.5rem 0;
+    color: var(--ncar-gray-light);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-semi-bold);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.1em;
+    position: relative;
 }
+
+.divider::before,
+.divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 42%;
+    height: 1px;
+    background: var(--ncar-gray-light);
+}
+.divider::before { left: 0; }
+.divider::after  { right: 0; }
 
 /* ===================================================================
-   Utilities
+   Quick Login Section — flat hairline-bordered cards adopting Unity
+   blue on hover. No gradients, no transforms.
    =================================================================== */
 
-.text-muted {
-    color: var(--color-gray-muted) !important;
+.quick-login-section {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--ncar-gray-light);
 }
 
-.login-form {
-    margin: 0;
+.quick-login-section h5 {
+    color: var(--ncar-space-blue);
+    font-size: 0.875rem;
+    font-weight: var(--font-weight-semi-bold);
+    margin-bottom: 1rem;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.user-btn {
+    width: 100%;
+    margin-bottom: 0.5rem;
+    text-align: left;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--ncar-gray-light);
+    background: #fff;
+    color: var(--ncar-space-blue);
+    font-size: 0.875rem;
+    font-weight: var(--font-weight-semi-bold);
+    border-radius: 0;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.user-btn:hover {
+    background: #fff;
+    border-color: var(--ncar-blue);
+    color: var(--ncar-blue);
+}
+
+/* Role chip on the right side of each quick-login button — uses the
+   same muted-badge palette as .badge.bg-info elsewhere (Phase 2). */
+.user-btn .role-badge {
+    float: right;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    background-color: var(--bs-info-bg-subtle);
+    color: var(--bs-info-text-emphasis);
+    border: 1px solid var(--bs-info-border-subtle);
+    font-weight: var(--font-weight-semi-bold);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
 }
 
 /* ===================================================================
@@ -230,10 +199,10 @@ body {
 
 .help-link {
     color: var(--ncar-gray);
-    font-size: 13px;
+    font-size: 0.875rem;
     font-weight: var(--font-weight-semi-bold);
     text-decoration: none;
-    transition: color 0.2s ease;
+    transition: color var(--transition-fast);
 }
 
 .help-link:hover {
@@ -242,12 +211,20 @@ body {
 }
 
 /* ===================================================================
-   Footer
+   Login form & footer
    =================================================================== */
+
+.login-form {
+    margin: 0;
+}
+
+.text-muted {
+    color: var(--color-gray-muted) !important;
+}
 
 .login-footer {
     text-align: center;
-    margin-top: 24px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border-color);
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--ncar-gray-light);
 }
