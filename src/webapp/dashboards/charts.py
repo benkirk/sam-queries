@@ -406,14 +406,24 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
     values_matrix = [s['values'] for s in series]
     # UNITY_STACK_20 (20 distinct colours) so Top-15+Others has no colour
     # reuse; disk_usage uses UNITY_STACK_10 because its default top_n is 10.
+    #
+    # Series ordering convention here is [Others, lowest-rank, …, highest-rank]
+    # (Others first so it sits at the bottom of the visual stack). Walking the
+    # palette forward would give the LOWEST-rank entry the warmest color and
+    # the highest-rank entry a cool one — backwards from how pace_chart
+    # behaves. Reverse the palette index for named entries so the largest
+    # visual band (highest-rank, top of the stack) gets UNITY_STACK_20[0]
+    # (gold), matching the pace_chart convention.
+    n_named = sum(1 for s in series if s['label'] != 'Others')
     colors = []
-    cycle_idx = 0
+    named_idx = 0
     for s in series:
         if s['label'] == 'Others':
             colors.append(UNITY_NCAR_GRAY_LIGHT)  # NCAR ncar-gray-light
         else:
-            colors.append(UNITY_STACK_20[cycle_idx % 20])
-            cycle_idx += 1
+            palette_idx = (n_named - 1 - named_idx) % 20
+            colors.append(UNITY_STACK_20[palette_idx])
+            named_idx += 1
     ax.stackplot(dates, *values_matrix, colors=colors, alpha=0.85)
     ax.set_ylabel(metric_label)
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
