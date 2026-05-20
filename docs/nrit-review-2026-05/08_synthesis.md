@@ -20,6 +20,11 @@
 - **`audit/events.py` `before_flush` listener** covers all ORM writes app-wide with documented exclusions (`system_status` bind, `ApiCredentials`) that check out. (Phase 2)
 - **429 errorhandler is content-negotiated** (JSON for `/api/`, HTMX fragment for `HX-Request`, HTML otherwise) — surfaces `Retry-After`, records to ring buffer. Solid. (Phase 2)
 - **`user_aware_cache_key()` design** is right: scoped on user + facility + path + query string. Used where appropriate, skipped where genuinely shared. (Phase 2)
+- **`system_status` is the strongest engineered subsystem in the audit so far.** The `before_flush` lookup-resolver, the span-coalescer for `UserProjQueueStatus`, the dual-mode `StatusBase` resolution, the `URL.render_as_string(hide_password=False)` defensive trick — these are signs of someone who's been bitten by these problems and wrote down the lessons. (Phase 3)
+- **Alembic env.py** properly forces standalone `StatusBase` (`env.py:39`), uses `render_as_batch=True` for cross-dialect compatibility (SQLite tests + MySQL/Postgres prod), and lazy-imports `connection_string` so dialect/SSL dispatch isn't duplicated. (Phase 3)
+- **Migration runbooks** (`PROD_BOOTSTRAP.md` and the per-revision RUNBOOKs) are exemplary — backup-first, dry-run-before-stamp, MySQL-DDL-implicitly-commits warnings, expected-table verification. The kind of runbook you wish every project had. (Phase 3)
+- **Span coalescer with `MAX_SPAN_GAP` outage guard** (`user_proj_queue_ingest.py`) — turns 4,080 inserts/hour into mostly UPDATEs while explicitly not extending spans across collector outages. (Phase 3)
+- **SQLite-per-worker test isolation for status tier** — portable column types let SQLAlchemy materialize the same schema cleanly; no per-worker MySQL DB dance; `DELETE FROM` on `sorted_tables` for ordered teardown. (Phase 3)
 
 ## Action register
 
@@ -79,6 +84,12 @@
 - **P1-13** [Phase 2 / A11y] **Wire `aria-live="polite"` + `aria-busy` toggling in `htmx-config.js`.** One handler covers all 60+ HTMX swap sites. Effort: **Small**. → `static/js/htmx-config.js`
 - **P1-14** [Phase 2 / A11y] **Mechanical `scope="col"` pass on all `<th>` in `partials/*_table.html` + `fragments/*_table.html`.** ~10-15 templates; sed-able. Effort: **Tiny**. (compliance depends on Q8)
 
+#### Status tier (Phase 3)
+
+- **P1-15** [Phase 3 / S1] **Remove stray `print()` of `username@server/database`** at module import. Fires on every import in every context; spammy in prod logs, leaks operational info. Effort: **Tiny**. → `system_status/session/__init__.py:34`
+- **P1-16** [Phase 3 / S2] **Silent fallback in `StatusBase` resolution under `FLASK_ACTIVE=1`.** When `from webapp.extensions import db` fails, falls back to standalone `declarative_base` instead of refusing — masks misconfiguration. Same fail-open pattern as the P0 auth findings. Fix: log a warning, or raise. Effort: **Tiny**. → `system_status/base.py:44-51`
+- **P1-17** [Phase 3 / O1] **`cleanup_status_data.py` not visibly scheduled in-repo** — no helm CronJob, no GitHub Actions, no systemd timer checked in. Either it's externally scheduled (verify) or `system_status` grows unbounded. Effort: **Small** (add helm CronJob or document scheduler). Depends on Q14.
+
 ### P2 — Worth fixing; act eventually
 
 #### Auth / authz polish
@@ -115,6 +126,14 @@
 - **P2-21** [Phase 2 / A11y] Icon-only buttons rely on `title=`; add `aria-label`. Effort: **Small** (mechanical across handful of templates). → `members_table.html:67-87, 91-111`
 - **P2-22** [Phase 2 / A11y] Decorative FA icons next to text mostly lack `aria-hidden="true"`. Low practical impact, mechanical fix. Effort: **Tiny**.
 
+#### Status tier polish (Phase 3)
+
+- **P2-34** [Phase 3 / S3] **`schemas/status.py:24` uses `from system_status import *`** which pulls `main` (the CLI entry point) into schema namespace. Replace with explicit imports. Effort: **Tiny**. → `system_status/schemas/status.py:24`
+- **P2-35** [Phase 3 / S4] **`cli.py:22-23` does module-level `sys.path.insert`.** Works around proper packaging; works fine in practice but bites when installed vs. run-from-source. Effort: **Tiny**.
+- **P2-36** [Phase 3 / S5] **`cli.py:62` hardcodes system choices `['derecho', 'casper', 'jupyterhub']`.** Drifts when new systems are added. Optional: derive from `System` lookup table at parser-build time. Effort: **Small** (or document-only).
+- **P2-37** [Phase 3 / O2] **Cleanup script doesn't reap lookup tables** (`UserDef`, `ProjectCodeDef`, etc.). In practice these are bounded by the user/project/queue catalog and won't blow up, but a one-off bad ingest leaves orphans forever. Effort: **Small**.
+- **P2-38** [Phase 3 / O3] **Document the monotonic-`T_new` assumption in the span coalescer.** Out-of-order or backfill ingests aren't currently a concern (collectors push monotonically every 5 minutes), but the assumption is implicit. Effort: **Tiny** (comment-only).
+
 #### Docs hygiene (deferred to Phase 7 for final dispositions)
 
 - **P2-23** [Phase 1] **CONTRIBUTING.md test stats stale** (380+ claimed, 1,750 actual). Re-run `pytest --cov`, refresh. (Depends on Q1.) Effort: **Tiny**.
@@ -134,10 +153,10 @@
 > Rolled up from `[XC: …]` tags across phases — composed at end of audit.
 
 ### `[XC: prod-config-hardening]`
-*Synthesis pending.* Currently: 3 env-misconfig footguns gating on optional flags (DISABLE_AUTH, AUTH_PROVIDER=stub, RATELIMIT_STORAGE_URI). The pattern of "depend on operator to set X to Y" vs. "fail-closed unless X is set" deserves a single principled stance.
+*Synthesis pending.* Currently: 4 env-misconfig footguns gating on optional flags (DISABLE_AUTH, AUTH_PROVIDER=stub, RATELIMIT_STORAGE_URI, `StatusBase` Flask-fallback). Same theme each time: when the "expected" env doesn't hold, code falls back silently instead of refusing. Deserves a single principled stance: fail-closed unless explicitly enabled.
 
 ### `[XC: convention-drift]`
-*Synthesis pending.* Currently: hand-rolled authz in ~9 routes (where canonical decorators exist), inline coercion in ~10 mutation routes (where `sam.schemas.forms` is the documented pattern). Pattern is right; coverage is incomplete.
+*Synthesis pending.* Currently: hand-rolled authz in ~9 routes (where canonical decorators exist), inline coercion in ~10 mutation routes (where `sam.schemas.forms` is the documented pattern), stray `print()` of connection info at status-package import time. Pattern is right; coverage is incomplete.
 
 ### `[XC: docs-drift]`
 *Synthesis pending.* Currently: stale stats in `CONTRIBUTING.md` + `README.md`, stale API section in `src/webapp/README.md`, AI-collab residue in `src/webapp/{DESIGN,IMPLEMENTATION_SUMMARY,REFACTORING_PLAN}.md`, overlap clusters in `docs/` setup + k8s docs.
@@ -146,10 +165,10 @@
 *Synthesis pending.* Currently: systemic table + HTMX-swap + landmark gaps; forms/modals okay. Quick-win bundle (P1-12, P1-13, P1-14) gets the most ROI.
 
 ### `[XC: ops]`
-*Synthesis pending.* Currently: audit log file-local with no off-host shipping; global cache invalidation on every commit; remediation logs checked into repo; HA limiter/caching story not fully worked out.
+*Synthesis pending.* Currently: audit log file-local with no off-host shipping; global cache invalidation on every commit; remediation logs checked into repo; HA limiter/caching story not fully worked out; `cleanup_status_data.py` not visibly scheduled in-repo.
 
 ### `[XC: testing]`
-*Pending Phase 3+.*
+*Synthesis pending.* So far: test infrastructure is generally strong (Phase 1's ~1,750-test claim, Phase 3's SQLite-per-worker isolation pattern). Two import-order traps documented but mitigated: `FLASK_ACTIVE=1` must land before any `system_status.*` import, and the `app` fixture is session-scoped (one per xdist worker). No findings yet — but coverage of the routes flagged in Phase 2 (hand-rolled authz, inline coercion) wasn't measured.
 
 ### `[XC: perf]`
 *Pending Phase 4+.*
@@ -185,6 +204,12 @@
 12. Global `cache.clear()` on commit — intentional, or open to staleness for warmer caches?
 13. UCAR/NCAR a11y compliance posture — Section 508 / WCAG 2.1 AA?
 14. Wallclock-exemption refactor — appetite for a focused PR?
+
+### From Phase 3 (status)
+15. Is `cleanup_status_data.py` actually running in production? If yes, where's the scheduler (helm CronJob, OS cron, GitHub Actions, …)? If no, what's keeping `system_status` from growing unbounded?
+16. `csg-postgres.k8s.ucar.edu` — is that the canonical prod `system_status` host, or is MySQL the prod target and Postgres a parallel deployment? Affects how much the dual-driver code paths actually get exercised.
+17. Out-of-order or backfill ingests — ever expected? The span coalescer assumes monotonic `T_new`; worth documenting either way.
+18. The stray `print()` in `system_status/session/__init__.py:34` — intentional debug breadcrumb or leftover?
 
 ## Reviewer notes
 
