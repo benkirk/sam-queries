@@ -584,7 +584,7 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
     names, values = _pie_trim(raw_names, raw_values)
 
     legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(names, values)]
-    colors = plt.cm.tab20.colors[:len(names)]
+    colors = UNITY_PALETTE_10[:len(names)]
 
     fig, ax = plt.subplots(figsize=(7, 4))
     wedges, _texts, autotexts = ax.pie(
@@ -596,8 +596,8 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
         colors=colors,
         pctdistance=0.85,
     )
-    for at in autotexts:
-        at.set_color('white')
+    for at, wedge_color in zip(autotexts, colors):
+        at.set_color(_autopct_color_for(wedge_color))
         at.set_fontweight('bold')
         at.set_fontsize(8)
 
@@ -634,7 +634,7 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
     names, values = _pie_trim(raw_names, raw_values)
 
     legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(names, values)]
-    colors = plt.cm.tab20.colors[:len(names)]
+    colors = UNITY_PALETTE_10[:len(names)]
 
     fig, ax = plt.subplots(figsize=(7, 4))
     wedges, _texts, autotexts = ax.pie(
@@ -646,8 +646,8 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
         colors=colors,
         pctdistance=0.85,
     )
-    for at in autotexts:
-        at.set_color('white')
+    for at, wedge_color in zip(autotexts, colors):
+        at.set_color(_autopct_color_for(wedge_color))
         at.set_fontweight('bold')
         at.set_fontsize(8)
 
