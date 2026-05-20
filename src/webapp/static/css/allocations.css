@@ -4,6 +4,84 @@
  */
 
 /* ===================================================================
+   Filter Sidebar — Unity NCAR style (dark navy panel, right column).
+   Reusable: any page can drop a .filter-sidebar block in a sidebar col.
+   =================================================================== */
+
+.filter-sidebar {
+    background-color: var(--ncar-navy);
+    color: #fff;
+    padding: 1.5rem;
+}
+
+/* Stretch BOTH columns + their content so the tab area (left) and filter
+   sidebar (right) have identical top AND bottom edges regardless of which
+   side has more content. Without this, Bootstrap stretches the .col
+   elements but not their inner panels — leaving the white tab-content or
+   the navy filter visibly short at top or bottom. */
+@media (min-width: 992px) {
+    .row.g-0 > .col-lg-9,
+    .row.g-0 > .col-lg-3 {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .row.g-0 > .col-lg-9 > .tab-content,
+    .row.g-0 > .col-lg-3 > .filter-sidebar {
+        flex: 1;
+    }
+}
+
+.filter-sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+/* Selector needs to beat .main-content h2 (specificity 0,1,1) — chain the
+   parent class so we hit 0,2,1 and the gold color wins over navy-on-navy.
+   Fixed 1rem font keeps it from inheriting the giant h2 desktop scale. */
+.filter-sidebar .filter-sidebar-title {
+    color: var(--ncar-gold);
+    font-size: 1rem;
+    line-height: 1.5;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+}
+
+.filter-sidebar-clear {
+    color: #fff;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-decoration: none;
+    font-weight: var(--font-weight-semi-bold);
+}
+
+.filter-sidebar-clear:hover {
+    color: var(--ncar-sky);
+}
+
+.filter-sidebar .form-label,
+.filter-sidebar .form-check-label {
+    color: #fff;
+}
+
+.filter-sidebar .form-text {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.filter-sidebar select,
+.filter-sidebar input[type="date"] {
+    background-color: #fff;
+    color: var(--ncar-space-blue);
+}
+
+/* ===================================================================
    Allocation Cards
    =================================================================== */
 
