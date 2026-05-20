@@ -93,7 +93,7 @@
           </label>
         </div>
         <div class="mt-2">
-          <button type="button" class="btn btn-sm btn-danger"
+          <button type="button" class="btn btn-sm btn-outline-primary"
                   hx-post="{{ url_for('admin_dashboard.htmx_detach_allocation', allocation_id=allocation.allocation_id) }}"
                   hx-target="#editAllocationFormContainer"
                   hx-confirm="Permanently detach allocation #{{ allocation.allocation_id }}? This breaks inheritance and cannot be undone from this view."
