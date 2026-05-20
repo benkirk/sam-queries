@@ -367,6 +367,23 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-btn-hover-color: #fff;
 }
 
+/* Unity-style :disabled — transparent fill, transparent 3px border (keeps
+   the button's footprint so layout doesn't shift / nothing visually
+   disappears), gray text. opacity:1 overrides Bootstrap's default .65 fade.
+   Mirrors source/scss/_theme-colors.scss .ncar .btn-primary:disabled but
+   keeps the border slot so it reads as "available shape, just inert". */
+.btn-primary:disabled,
+.btn-primary[disabled],
+.btn-outline-primary:disabled,
+.btn-outline-primary[disabled],
+.btn-outline-secondary:disabled,
+.btn-outline-secondary[disabled] {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    color: var(--ncar-gray) !important;
+    opacity: 1;
+}
+
 .btn-link {
     --bs-btn-color: var(--ncar-blue);
     --bs-btn-hover-color: var(--ncar-sky);
