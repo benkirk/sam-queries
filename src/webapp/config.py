@@ -76,19 +76,23 @@ class SAMWebappConfig(SAMConfig):
 
     # hpc-usage-queries plugin (per-job rows on resource-usage detail pages).
     # The plugin owns its own database — typically a per-machine PostgreSQL
-    # database (derecho_jobs, casper_jobs) configured via JOB_HISTORY_PG_*
-    # env vars consumed by the plugin itself. The values below are the
-    # SAM-side tuning knobs only; the plugin's own env-driven config is
-    # read at engine-creation time inside job_history.database.session.
+    # database (derecho_jobs, casper_jobs) on the shared `csg-postgres` cluster
+    # (cap: 100 connections cluster-wide). Defaults are sized for that
+    # constraint: each pod runs ~33 gunicorn workers and the cluster has
+    # multiple consumers, so a 5+10 per-worker pool with a 1h recycle window
+    # accumulates idle connections faster than the cluster can absorb. Keep
+    # the per-worker ceiling low and recycle aggressively — bursty per-job
+    # query traffic does not need a fat warm pool. All knobs remain env-
+    # overridable for deployments backed by a larger/dedicated postgres.
     JOB_HISTORY_MACHINES = [
         m.strip() for m in os.getenv('JOB_HISTORY_MACHINES', 'derecho,casper').split(',')
         if m.strip()
     ]
     JOB_HISTORY_POOL_KWARGS = {
-        'pool_size':      int(os.getenv('JOB_HISTORY_POOL_SIZE',     5)),
-        'max_overflow':   int(os.getenv('JOB_HISTORY_POOL_MAX_OVERFLOW', 10)),
+        'pool_size':      int(os.getenv('JOB_HISTORY_POOL_SIZE',     1)),
+        'max_overflow':   int(os.getenv('JOB_HISTORY_POOL_MAX_OVERFLOW', 4)),
         'pool_pre_ping':  True,
-        'pool_recycle':   int(os.getenv('JOB_HISTORY_POOL_RECYCLE',  3600)),
+        'pool_recycle':   int(os.getenv('JOB_HISTORY_POOL_RECYCLE',  600)),
     }
 
     # Session cookies (common defaults; subclasses tighten for prod)

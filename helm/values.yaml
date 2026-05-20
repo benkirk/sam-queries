@@ -49,14 +49,10 @@ webapp:
     SAM_DB_REQUIRE_SSL: "true"
     STATUS_DB_DRIVER: "postgresql"
     STATUS_DB_SERVER: "csg-postgres.k8s.ucar.edu"
-    # system_status connection pool — small, per gunicorn worker. The default
-    # SQLALCHEMY_ENGINE_OPTIONS (pool_size=10, max_overflow=20) is sized for
-    # the main SAM database; the system_status DB is low-traffic and a fat
-    # pool here produces hundreds of idle connections on csg-postgres
-    # (gunicorn workers × pods). See webapp/run.py.
-    STATUS_DB_POOL_SIZE: "2"
-    STATUS_DB_POOL_MAX_OVERFLOW: "4"
-    STATUS_DB_POOL_RECYCLE: "600"
+    # STATUS_DB_POOL_* defaults (size=2, overflow=4, recycle=600) live in
+    # webapp/run.py and are already sized for csg-postgres' 100-slot cap.
+    # Override here only if a future deployment uses a different backing
+    # database (e.g. dedicated postgres with more headroom).
     GOOGLE_CALENDAR_EMBED_URL: "https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver"
     # OIDC SSO via Microsoft Entra. Client ID/secret/issuer and FLASK_SECRET_KEY
     # are injected via secretKeyRef from the oidcCredentials ExternalSecret below.
