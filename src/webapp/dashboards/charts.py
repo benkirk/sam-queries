@@ -16,12 +16,14 @@ sync workers (each worker is a forked process) and gthread workers.
 """
 
 from io import StringIO
+from pathlib import Path
 from typing import List, Dict
 from datetime import date, datetime, timedelta
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.dates as mdates
+import matplotlib.font_manager
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -30,6 +32,149 @@ from flask import url_for
 from sam import fmt
 from webapp.caching import caching
 from webapp.caching.chart import content_hash as _content_hash  # legacy alias used by _pace_cache_key
+
+
+# ---------------------------------------------------------------------------
+# Unity NCAR chart styling — runs once at module import.
+#
+# Two pieces:
+#   1. Register Poppins TTFs with matplotlib's font manager. Skipped silently
+#      if the directory is empty / missing, so the import still works in
+#      environments where the static assets haven't been deployed yet.
+#   2. Apply rcParams that mirror the editorial flat look on the HTML side:
+#      Poppins text, space-blue chrome, hairline gray grid, no top/right
+#      spines, transparent figure/axes (we already savefig with
+#      transparent=True so legend/grid colors carry against any backdrop).
+# ---------------------------------------------------------------------------
+
+_FONT_DIR = Path(__file__).resolve().parent.parent / 'static' / 'fonts' / 'poppins'
+if _FONT_DIR.exists():
+    for _ttf in _FONT_DIR.glob('*.ttf'):
+        matplotlib.font_manager.fontManager.addfont(str(_ttf))
+
+plt.rcParams.update({
+    'font.family':        ['Poppins', 'DejaVu Sans'],   # fallback if Poppins missing
+    'font.size':          11,
+    'axes.titleweight':   600,
+    'axes.titlecolor':    '#011837',   # ncar-space-blue
+    'axes.labelcolor':    '#011837',
+    'axes.labelweight':   600,
+    'axes.edgecolor':     '#011837',
+    'axes.spines.top':    False,
+    'axes.spines.right':  False,
+    'xtick.color':        '#011837',
+    'ytick.color':        '#011837',
+    'grid.color':         '#bbbcbc',   # ncar-gray-light
+    'grid.alpha':         0.4,
+    'grid.linewidth':     0.5,
+    'legend.fontsize':    11,
+    'legend.frameon':     False,
+    'figure.facecolor':   'none',
+    'axes.facecolor':     'none',
+})
+
+
+# Unity NCAR palette ordered for chart use. Indices 0-2 are the brand spine
+# (blue → navy → vermilion); 3-4 the warm accents (gold, orange); 5-7 the
+# teal family (teal, sky, light-blue); 8-9 are tertiary fillers. Sequential
+# visual distinction at small sizes (pie wedges).
+UNITY_PALETTE_10 = (
+    '#0057c2',  # ncar-blue
+    '#00357a',  # ncar-navy
+    '#ff1f1f',  # ncar-vermilion
+    '#fdd509',  # ncar-gold
+    '#faa119',  # ncar-orange
+    '#00818F',  # ncar-teal
+    '#42C0FF',  # ncar-sky
+    '#00A2B4',  # ncar-light-blue
+    '#011837',  # ncar-space-blue
+    '#97999b',  # ncar-gray
+)
+
+UNITY_NCAR_BLUE       = '#0057c2'
+UNITY_NCAR_NAVY       = '#00357a'
+UNITY_NCAR_VERMILION  = '#ff1f1f'
+UNITY_NCAR_ORANGE     = '#faa119'
+UNITY_NCAR_GOLD       = '#fdd509'
+UNITY_NCAR_TEAL       = '#00818F'
+UNITY_NCAR_SKY        = '#42C0FF'
+UNITY_NCAR_LIGHT_BLUE = '#00A2B4'
+UNITY_NCAR_SPACE_BLUE = '#011837'
+UNITY_NCAR_GRAY_LIGHT = '#bbbcbc'
+UNITY_NCAR_GRAY       = '#97999b'
+
+
+# Stacked-area categorical palette. Family-grouped: each color family's
+# shades sit adjacent (gold→yellow-33→yellow-66, orange→orange-33→…),
+# then we move to the next family. Within a family, ordered saturated →
+# pale. Ordered warm → cool so the highest-rank bands (which stackplot
+# puts at the bottom, visually most prominent) get the loudest warm
+# anchors (gold, orange, vermilion), then transition through teal /
+# sky / blue / navy as rank decreases.
+UNITY_STACK_20 = (
+    # Gold family — bright warm anchor, highest visual prominence
+    '#fdd509',   # 1.  gold
+    '#fbe174',   # 2.  yellow-33
+    '#f8ebb7',   # 3.  yellow-66
+
+    # Orange family
+    '#faa119',   # 4.  orange
+    '#fabe72',   # 5.  orange-33
+    '#f8dbb5',   # 6.  orange-66
+
+    # Vermilion (single; no lighter variant in Unity's secondary ladder)
+    '#ff1f1f',   # 7.  vermilion
+
+    # Teal family — warm-cool transition
+    '#00818F',   # 8.  teal
+    '#00a2b4',   # 9.  ucar-base-33
+    '#71c0cb',   # 10. ucar-base-66
+
+    # Sky / cyan family
+    '#42c0ff',   # 11. sky
+    '#86d3fc',   # 12. ncar-light-33
+    '#34e1f4',   # 13. ucar-light (cyan)
+    '#86e8f5',   # 14. ucar-light-33
+
+    # Blue family (deep cool)
+    '#0057c2',   # 15. ncar-blue
+    '#5a77a6',   # 16. blue-33
+    '#a8b7ce',   # 17. blue-66
+    '#adc2e6',   # 18. ncar-base-66
+
+    # Navy / slate family
+    '#00357a',   # 19. navy
+    '#556379',   # 20. space-blue-33
+)
+
+# 10-color variant: distinct tuple (NOT UNITY_STACK_20[:10], which would be
+# 3 golds + 3 oranges + vermilion + 3 teals — too warm-loaded). Picks 2
+# shades from each main hue family plus vermilion, in the same warm-to-cool
+# order as _20 so the same chart looks like a subsetted version, not a
+# different palette.
+UNITY_STACK_10 = (
+    '#fdd509',   # 1.  gold
+    '#fbe174',   # 2.  yellow-33
+    '#faa119',   # 3.  orange
+    '#fabe72',   # 4.  orange-33
+    '#ff1f1f',   # 5.  vermilion
+    '#00818F',   # 6.  teal
+    '#00a2b4',   # 7.  ucar-base-33
+    '#42c0ff',   # 8.  sky
+    '#0057c2',   # 9.  ncar-blue
+    '#5a77a6',   # 10. blue-33
+)
+
+
+def _autopct_color_for(bg_hex: str) -> str:
+    """Pick a readable text color for percent labels on a colored pie wedge.
+
+    Returns space-blue on light wedges (gold, sky) and white on dark wedges
+    (blue, navy, vermilion). Luminance threshold ~0.6 — empirically tuned
+    against UNITY_PALETTE_10."""
+    r, g, b = (int(bg_hex[i:i+2], 16) / 255 for i in (1, 3, 5))
+    lum = 0.299 * r + 0.587 * g + 0.114 * b
+    return UNITY_NCAR_SPACE_BLUE if lum > 0.6 else '#fff'
 
 
 def _project_modal_url(projcode: str) -> str:
@@ -82,7 +227,8 @@ def generate_usage_timeseries_matplotlib(daily_charges) -> str:
     comp = list(comp)
 
     fig, ax = plt.subplots(figsize=(18, 5))
-    ax.bar(dates, comp, width=1, lw=2)
+    ax.bar(dates, comp, width=1, lw=2,
+           color=UNITY_NCAR_BLUE, edgecolor=UNITY_NCAR_NAVY)
     ax.set_ylabel('Charges')
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, alpha=0.3)
@@ -157,15 +303,14 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None) -> str:
     ]
     # Others (always first per get_disk_usage_timeseries_by_user) gets a
     # neutral grey so it doesn't compete with the named-user palette.
-    # Named users use matplotlib's default tab10 cycle.
-    cmap = matplotlib.colormaps.get_cmap('tab10')
+    # Named users use the Unity 10-color stacked palette.
     colors = []
     cycle_idx = 0
     for s in series:
         if s['username'] == 'Others':
-            colors.append('#9ca3af')   # tailwind-style neutral grey
+            colors.append(UNITY_NCAR_GRAY_LIGHT)  # NCAR ncar-gray-light
         else:
-            colors.append(cmap(cycle_idx % 10))
+            colors.append(UNITY_STACK_10[cycle_idx % 10])
             cycle_idx += 1
     ax.stackplot(dates, *scaled_series, colors=colors, alpha=0.85)
     ax.set_ylabel(f'Disk usage ({unit_label})')
@@ -259,19 +404,29 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
 
     fig, ax = plt.subplots(figsize=(18, 5))
     values_matrix = [s['values'] for s in series]
-    # tab20 (20 distinct colours) so Top-15+Others has no colour reuse;
-    # disk_usage uses tab10 because its default top_n is 10.
-    cmap = matplotlib.colormaps.get_cmap('tab20')
+    # UNITY_STACK_20 (20 distinct colours) so Top-15+Others has no colour
+    # reuse; disk_usage uses UNITY_STACK_10 because its default top_n is 10.
+    #
+    # Series ordering convention here is [Others, lowest-rank, …, highest-rank]
+    # (Others first so it sits at the bottom of the visual stack). Walking the
+    # palette forward would give the LOWEST-rank entry the warmest color and
+    # the highest-rank entry a cool one — backwards from how pace_chart
+    # behaves. Reverse the palette index for named entries so the largest
+    # visual band (highest-rank, top of the stack) gets UNITY_STACK_20[0]
+    # (gold), matching the pace_chart convention.
+    n_named = sum(1 for s in series if s['label'] != 'Others')
     colors = []
-    cycle_idx = 0
+    named_idx = 0
     for s in series:
         if s['label'] == 'Others':
-            colors.append('#9ca3af')   # neutral grey
+            colors.append(UNITY_NCAR_GRAY_LIGHT)  # NCAR ncar-gray-light
         else:
-            colors.append(cmap(cycle_idx % 20))
-            cycle_idx += 1
+            palette_idx = (n_named - 1 - named_idx) % 20
+            colors.append(UNITY_STACK_20[palette_idx])
+            named_idx += 1
     ax.stackplot(dates, *values_matrix, colors=colors, alpha=0.85)
-    ax.set_ylabel(metric_label)
+    ax.set_ylabel(metric_label, fontsize=13)
+    ax.tick_params(axis='both', labelsize=12)
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, alpha=0.3)
 
@@ -308,8 +463,9 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
         loc='center left',
         bbox_to_anchor=(1.01, 0.5),
         frameon=False,
-        fontsize=11,
+        fontsize=13,
         title_fontsize=12,
+        labelspacing=0.7,
     )
 
     if link_kind in ('user', 'project'):
@@ -360,28 +516,30 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
 
     ax1.stackplot(timestamps, nodes_down, nodes_allocated, nodes_available,
                   labels=['Down', 'Fully Allocated', 'Resources Available'],
-                  colors=['C3', 'C0', 'C9'])
+                  colors=[UNITY_NCAR_VERMILION, UNITY_NCAR_BLUE, UNITY_NCAR_SKY])
     ax1.set_ylabel('Number of Nodes', fontsize=11)
     ax1.set_ylim([0, None])
     ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax1.legend(loc=2, fontsize=10)
+    ax1.legend(loc=2, fontsize=10,
+               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
     ax1.grid(True, alpha=0.3, color='grey')
 
     if any(u is not None for u in utilization):
         util_times = [timestamps[i] for i, u in enumerate(utilization) if u is not None]
         util_vals = [u for u in utilization if u is not None]
-        ax2.plot(util_times, util_vals, 'b', linewidth=3, label='CPU/GPU Utilization')
+        ax2.plot(util_times, util_vals, color=UNITY_NCAR_BLUE, linewidth=3, label='CPU/GPU Utilization')
 
     if any(m is not None for m in memory_utilization):
         mem_times = [timestamps[i] for i, m in enumerate(memory_utilization) if m is not None]
         mem_vals = [m for m in memory_utilization if m is not None]
-        ax2.plot(mem_times, mem_vals, 'c', linewidth=3, label='Memory Utilization')
+        ax2.plot(mem_times, mem_vals, color=UNITY_NCAR_TEAL, linewidth=3, label='Memory Utilization')
 
     ax2.set_ylabel('Utilization', fontsize=11)
     ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=11)
     ax2.set_ylim(0, 100)
     ax2.yaxis.set_major_formatter(fmt.mpl_pct_formatter())
-    ax2.legend(loc='best', fontsize=10)
+    ax2.legend(loc='best', fontsize=10,
+               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
     ax2.grid(True, alpha=0.3)
 
     fig.autofmt_xdate()
@@ -426,28 +584,30 @@ def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 
-    ax1.plot(timestamps, running_jobs, 'g-', linewidth=3, label='Running')
-    ax1.plot(timestamps, pending_jobs, 'orange', linewidth=3, label='Pending')
-    ax1.plot(timestamps, held_jobs, 'r-', linewidth=3, label='Held')
-    ax1.plot(timestamps, active_users, 'b--', linewidth=2, label='Active Users')
+    ax1.plot(timestamps, running_jobs, color=UNITY_NCAR_TEAL, linewidth=3, label='Running')
+    ax1.plot(timestamps, pending_jobs, color=UNITY_NCAR_ORANGE, linewidth=3, label='Pending')
+    ax1.plot(timestamps, held_jobs, color=UNITY_NCAR_VERMILION, linewidth=3, label='Held')
+    ax1.plot(timestamps, active_users, color=UNITY_NCAR_BLUE, linestyle='--', linewidth=2, label='Active Users')
     ax1.set_ylim([0, None])
     ax1.set_ylabel('Count', fontsize=11)
     ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax1.legend(loc=2, fontsize=10)
+    ax1.legend(loc=2, fontsize=10,
+               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
     ax1.grid(True, alpha=0.3)
 
     if has_gpus:
-        ax2.plot(timestamps, gpus_allocated, 'b', linewidth=3, label='GPUs Running')
-        ax2.plot(timestamps, gpus_pending, 'c', linewidth=3, label='GPUs Pending')
+        ax2.plot(timestamps, gpus_allocated, color=UNITY_NCAR_BLUE, linewidth=3, label='GPUs Running')
+        ax2.plot(timestamps, gpus_pending, color=UNITY_NCAR_TEAL, linewidth=3, label='GPUs Pending')
     else:
-        ax2.plot(timestamps, cores_allocated, 'b', linewidth=3, label='Cores Running')
-        ax2.plot(timestamps, cores_pending, 'c', linewidth=3, label='Cores Pending')
+        ax2.plot(timestamps, cores_allocated, color=UNITY_NCAR_BLUE, linewidth=3, label='Cores Running')
+        ax2.plot(timestamps, cores_pending, color=UNITY_NCAR_TEAL, linewidth=3, label='Cores Pending')
 
     ax2.set_ylim([0, None])
     ax2.set_ylabel('Resources', fontsize=11)
     ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=11)
     ax2.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax2.legend(loc=2, fontsize=10)
+    ax2.legend(loc=2, fontsize=10,
+               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
     ax2.grid(True, alpha=0.3)
 
     fig.autofmt_xdate()
@@ -500,7 +660,7 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
     names, values = _pie_trim(raw_names, raw_values)
 
     legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(names, values)]
-    colors = plt.cm.tab20.colors[:len(names)]
+    colors = UNITY_PALETTE_10[:len(names)]
 
     fig, ax = plt.subplots(figsize=(7, 4))
     wedges, _texts, autotexts = ax.pie(
@@ -512,8 +672,8 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
         colors=colors,
         pctdistance=0.85,
     )
-    for at in autotexts:
-        at.set_color('white')
+    for at, wedge_color in zip(autotexts, colors):
+        at.set_color(_autopct_color_for(wedge_color))
         at.set_fontweight('bold')
         at.set_fontsize(8)
 
@@ -550,7 +710,7 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
     names, values = _pie_trim(raw_names, raw_values)
 
     legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(names, values)]
-    colors = plt.cm.tab20.colors[:len(names)]
+    colors = UNITY_PALETTE_10[:len(names)]
 
     fig, ax = plt.subplots(figsize=(7, 4))
     wedges, _texts, autotexts = ax.pie(
@@ -562,8 +722,8 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
         colors=colors,
         pctdistance=0.85,
     )
-    for at in autotexts:
-        at.set_color('white')
+    for at, wedge_color in zip(autotexts, colors):
+        at.set_color(_autopct_color_for(wedge_color))
         at.set_fontweight('bold')
         at.set_fontsize(8)
 
@@ -586,8 +746,8 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
 # share a muted "Other" color.
 # ---------------------------------------------------------------------------
 
-_PACE_OTHER_COLOR = (0.78, 0.78, 0.78, 0.85)
-_PACE_TODAY_LINE_COLOR = (0.2, 0.2, 0.2, 0.7)
+_PACE_OTHER_COLOR = matplotlib.colors.to_rgba(UNITY_NCAR_GRAY_LIGHT, 0.85)
+_PACE_TODAY_LINE_COLOR = matplotlib.colors.to_rgba(UNITY_NCAR_NAVY, 0.7)
 _PACE_RATE_SCALE = 365  # internal per-day rates → per-year axis
 
 
@@ -671,7 +831,7 @@ def generate_pace_chart_matplotlib(
     allocations: List[Dict],
     active_at: datetime,
     window_days: int = 180,
-    top_n: int = 15,
+    top_n: int = 20,
     resource_name: str = '',
     sort_by: str = 'size',
 ) -> str:
@@ -685,7 +845,7 @@ def generate_pace_chart_matplotlib(
             ``total_amount``, ``total_used``.
         active_at: chart centerline ("today").
         window_days: half-window on each side of ``active_at`` (default 180).
-        top_n: projects with their own color + legend entry (default 15).
+        top_n: projects with their own color + legend entry (default 20).
         resource_name: used only for cache key disambiguation.
         sort_by: ranking metric for the top-N selection. One of:
             - ``'size'``  — total allocated amount (default; legacy behaviour).
@@ -747,7 +907,7 @@ def generate_pace_chart_matplotlib(
     top_projs = [pc for pc, _ in sorted(
         rank_metric.items(), key=lambda kv: kv[1], reverse=True
     )[:top_n]]
-    palette = plt.cm.tab10.colors if len(top_projs) <= 10 else plt.cm.tab20.colors
+    palette = UNITY_STACK_10 if len(top_projs) <= 10 else UNITY_STACK_20
     color_map = {pc: palette[i] for i, pc in enumerate(top_projs)}
 
     n_other_projs = len(rank_metric) - len(top_projs)
