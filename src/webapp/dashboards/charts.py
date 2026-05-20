@@ -104,35 +104,62 @@ UNITY_NCAR_GRAY_LIGHT = '#bbbcbc'
 UNITY_NCAR_GRAY       = '#97999b'
 
 
-# Stacked-area categorical palette. The first 10 entries are saturated NCAR
-# brand anchors hue-cycled to maximize adjacency distinction (cool→warm→cool…);
-# entries 11-20 are Unity's own -33 / -66 lighter variants (from upstream
-# _variables.scss). Sorted loudest → quietest so the natural ordering (top-N
-# rank) maps onto visual prominence — high-rank bands get the strongest brand
-# colors, long tail gets desaturated variants.
+# Stacked-area categorical palette. Family-grouped: each color family's
+# shades sit adjacent (blue+blue-33+blue-66+…), then we move to the next
+# family. Within a family, ordered saturated → pale. This makes the
+# stack visually smoother — adjacent bands share a hue, transitions
+# between bands feel like gradations rather than harsh hue jumps.
 UNITY_STACK_20 = (
+    # Blue family (deep)
     '#0057c2',   # 1.  ncar-blue
-    '#faa119',   # 2.  orange
-    '#00818F',   # 3.  teal
-    '#ff1f1f',   # 4.  vermilion
-    '#fdd509',   # 5.  gold
-    '#00357a',   # 6.  navy
-    '#42c0ff',   # 7.  sky
-    '#fabe72',   # 8.  orange-33  (paler warm)
-    '#34e1f4',   # 9.  ucar-light (bright cyan)
-    '#5a77a6',   # 10. blue-33    (muted dark blue)
-    '#fbe174',   # 11. yellow-33  (paler gold)
-    '#a8b7ce',   # 12. blue-66    (very pale steel)
-    '#00a2b4',   # 13. ucar-base-33 (mid teal)
-    '#f8dbb5',   # 14. orange-66  (peach)
-    '#86d3fc',   # 15. ncar-light-33 (paler sky)
-    '#86e8f5',   # 16. ucar-light-33 (paler cyan)
-    '#556379',   # 17. space-blue-33 (slate)
-    '#a5adb7',   # 18. space-blue-66 (light slate)
-    '#adc2e6',   # 19. ncar-base-66 (very pale blue)
-    '#f8ebb7',   # 20. yellow-66  (pale gold)
+    '#5a77a6',   # 2.  blue-33
+    '#a8b7ce',   # 3.  blue-66
+    '#adc2e6',   # 4.  ncar-base-66
+
+    # Sky / cyan family (bright cool)
+    '#42c0ff',   # 5.  sky
+    '#86d3fc',   # 6.  ncar-light-33
+    '#34e1f4',   # 7.  ucar-light (cyan)
+    '#86e8f5',   # 8.  ucar-light-33
+
+    # Teal family
+    '#00818F',   # 9.  teal
+    '#00a2b4',   # 10. ucar-base-33
+    '#71c0cb',   # 11. ucar-base-66
+
+    # Orange family (warm)
+    '#faa119',   # 12. orange
+    '#fabe72',   # 13. orange-33
+    '#f8dbb5',   # 14. orange-66
+
+    # Gold family
+    '#fdd509',   # 15. gold
+    '#fbe174',   # 16. yellow-33
+    '#f8ebb7',   # 17. yellow-66
+
+    # Vermilion (single; no lighter variant in Unity's secondary ladder)
+    '#ff1f1f',   # 18. vermilion
+
+    # Navy / slate family
+    '#00357a',   # 19. navy
+    '#556379',   # 20. space-blue-33
 )
-UNITY_STACK_10 = UNITY_STACK_20[:10]
+
+# 10-color variant: distinct tuple (NOT UNITY_STACK_20[:10], which would be
+# 4 blues + 4 skies + 2 teals — all-cool). Picks 2 shades from each of the
+# main hue families plus vermilion, so a 10-user stack still spans the brand.
+UNITY_STACK_10 = (
+    '#0057c2',   # 1.  ncar-blue
+    '#5a77a6',   # 2.  blue-33
+    '#42c0ff',   # 3.  sky
+    '#86d3fc',   # 4.  ncar-light-33
+    '#00818F',   # 5.  teal
+    '#00a2b4',   # 6.  ucar-base-33
+    '#faa119',   # 7.  orange
+    '#fabe72',   # 8.  orange-33
+    '#fdd509',   # 9.  gold
+    '#ff1f1f',   # 10. vermilion
+)
 
 
 def _autopct_color_for(bg_hex: str) -> str:
