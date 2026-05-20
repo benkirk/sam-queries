@@ -425,7 +425,8 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
             colors.append(UNITY_STACK_20[palette_idx])
             named_idx += 1
     ax.stackplot(dates, *values_matrix, colors=colors, alpha=0.85)
-    ax.set_ylabel(metric_label)
+    ax.set_ylabel(metric_label, fontsize=13)
+    ax.tick_params(axis='both', labelsize=12)
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, alpha=0.3)
 
