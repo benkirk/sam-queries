@@ -123,14 +123,25 @@ def _attach_application_name(engine, app_name: str) -> None:
     pool checkout), so this is the cheap, correct hook to tag connections
     when the engine's ``connect_args`` are owned by the plugin and can't
     be amended in-place.
+
+    Toggles autocommit around the ``SET`` because postgres documents
+    that ``application_name`` changes made via ``SET`` "will not appear
+    in pg_stat_activity until after a commit or rollback" — and
+    psycopg2's default is ``autocommit=False``, so a bare ``SET``
+    inside the implicit transaction would never become visible.
     """
     @event.listens_for(engine, 'connect')
     def _set_app_name(dbapi_conn, _conn_record):
-        cur = dbapi_conn.cursor()
+        saved = dbapi_conn.autocommit
+        dbapi_conn.autocommit = True
         try:
-            cur.execute("SET application_name = %s", (app_name,))
+            cur = dbapi_conn.cursor()
+            try:
+                cur.execute("SET application_name = %s", (app_name,))
+            finally:
+                cur.close()
         finally:
-            cur.close()
+            dbapi_conn.autocommit = saved
 
 
 def is_enabled(app: Optional[Flask] = None) -> bool:
