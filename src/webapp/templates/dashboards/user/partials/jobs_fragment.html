@@ -96,9 +96,12 @@
 {% else %}
 
   {# Hidden filter form — pagination/sort hx-includes pick up its values
-     so users keep their filters as they page or re-sort. #}
+     so users keep their filters as they page or re-sort. `target_id` is
+     round-tripped here so the next request's response targets the same
+     container this fragment was originally swapped into. #}
   <form id="jobs-filters-{{ target_id }}" class="d-none">
     <input type="hidden" name="machine" value="{{ machine }}">
+    <input type="hidden" name="target_id" value="{{ target_id }}">
     {% if filters.start %}<input type="hidden" name="start" value="{{ filters.start }}">{% endif %}
     {% if filters.end %}<input type="hidden" name="end" value="{{ filters.end }}">{% endif %}
     {% if filters.user %}<input type="hidden" name="user" value="{{ filters.user }}">{% endif %}

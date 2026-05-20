@@ -42,11 +42,6 @@ bp = Blueprint('jobs', __name__)
 # route can reject bad input without touching the plugin.
 _VALID_MACHINES = {'derecho', 'casper'}
 
-# Subset of plugin COLUMNS exposed as sortable headers in the UI. The
-# plugin itself accepts any COLUMNS key; the whitelist keeps the URL
-# surface tight and prevents surprising sort outcomes from typos.
-_SORT_WHITELIST = {'start', 'elapsed', 'cpu_charges', 'gpu_charges'}
-
 # Default columns shown when drilled into a user+queue row. user/queue/
 # account are dropped because the row context already pins them.
 _DEFAULT_COLS = (
@@ -54,6 +49,13 @@ _DEFAULT_COLS = (
     'numnodes', 'numcpus', 'numgpus',
     'cpu_charges', 'gpu_charges',
 )
+
+# Every column rendered as a table header is sortable. The plugin maps
+# `job.*` / `charge.*` keys to their SQLAlchemy columns and the
+# computed `*_charges` keys to `hours × COALESCE(qos_factor, 1)`, so
+# every key in _DEFAULT_COLS resolves to a valid ORDER BY at the SQL
+# level. Built from _DEFAULT_COLS to stay in lockstep automatically.
+_SORT_WHITELIST = set(_DEFAULT_COLS)
 
 # Extra columns revealed in the per-row "expand" drawer. Order is the
 # render order in the drawer.
@@ -211,6 +213,12 @@ def jobs_fragment(project):
     column_specs = _load_column_specs()
     fragment_url = url_for('jobs.jobs_fragment', projcode=project.projcode)
 
+    # The caller passes the id of the container that owns this fragment so
+    # sort / pagination clicks can swap that same container's innerHTML.
+    # Falls back to a generic id when called without one (legacy paths).
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-{project.projcode}-{machine}'
+
     return render_template(
         'dashboards/user/partials/jobs_fragment.html',
         project=project,
@@ -225,7 +233,7 @@ def jobs_fragment(project):
         column_specs=column_specs,
         sortable_columns=sorted(_SORT_WHITELIST),
         fragment_url=fragment_url,
-        target_id=f'jobs-{project.projcode}-{machine}',
+        target_id=target_id,
         enabled=True,
         error=error,
     )

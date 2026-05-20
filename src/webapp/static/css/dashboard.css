@@ -12,8 +12,12 @@
 
 body {
     background-color: var(--bg-light);
+    background-image: url('../img/UCAR-Waves-Lines-Only-66.png');
+    background-position: 150% 0%;
+    background-repeat: repeat-y;
+    background-size: 53%;
     min-height: 100vh;
-    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-family-default);
     color: var(--text-dark);
 }
 
@@ -22,51 +26,183 @@ body {
    ========================================================================= */
 
 .navbar {
-    background: linear-gradient(135deg, var(--ncar-navy) 0%, #003579 100%);
-    box-shadow: var(--shadow-md);
-    padding: 0.75rem 0;
+    background-color: #fff;
+    padding-top: 0;
+    padding-bottom: 0;
 }
 
-.navbar-dark .navbar-brand {
-    color: white;
-    font-weight: 700;
-    font-size: 1.75rem;
-    letter-spacing: 0.5px;
-    transition: all var(--transition-base);
+.navbar-light {
+    background-color: #fff;
 }
 
-.navbar-dark .navbar-brand:hover {
-    color: var(--ncar-cyan);
-    transform: translateX(2px);
+.navbar button {
+    border: 0;
+    padding: 0 0.5rem;
 }
 
-.navbar-dark .navbar-nav .nav-link {
-    color: rgba(255,255,255,0.9);
-    font-weight: 500;
-    padding: 0.5rem 1rem;
-    transition: all var(--transition-base);
-    border-radius: var(--radius-sm);
-    margin: 0 2px;
+/* Override Bootstrap's stepped container-lg inside the navbar.
+   Unity's container-lg is fluid until 86.25rem, then caps at 88.25rem.
+   Bootstrap 5's default caps at 960px at 992px — far too narrow. */
+.navbar .container-lg {
+    max-width: 100%;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
 }
 
-.navbar-dark .navbar-nav .nav-link:hover {
-    color: white;
-    background-color: rgba(255,255,255,0.1);
+@media (min-width: 86.25rem) {
+    .navbar .container-lg {
+        max-width: 88.25rem;
+    }
 }
 
-.user-info {
-    color: white;
-    padding: 8px 16px;
-    background: rgba(var(--ncar-teal-rgb), 0.3);
-    border-radius: var(--radius-md);
-    font-weight: 500;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    transition: all var(--transition-base);
+/* Logo */
+.logo-ncar {
+    width: 13rem;
 }
 
-.user-info:hover {
-    background: rgba(var(--ncar-teal-rgb), 0.4);
-    border-color: rgba(255, 255, 255, 0.3);
+.logo-ncar img {
+    width: 100%;
+}
+
+@media (min-width: 768px) {
+    .logo-ncar {
+        width: 18.5rem;
+    }
+}
+
+/* Site name */
+.navbar .site-name {
+    align-self: center;
+    font-size: 0.875rem;
+    font-weight: var(--font-weight-semi-bold);
+    line-height: 1rem;
+    padding-right: 1.875rem;
+}
+
+.navbar .site-name a {
+    color: var(--ncar-blue);
+    text-decoration: none;
+}
+
+.navbar .site-name a:hover,
+.navbar .site-name a:active {
+    color: var(--ncar-blue);
+}
+
+.site-name h1 {
+    font-size: var(--font-size-xlg);
+    font-weight: var(--font-weight-regular);
+    line-height: 3rem;
+    text-transform: uppercase;
+    margin: 0;
+}
+
+.site-name h1 a {
+    color: var(--ncar-space-blue);
+    text-decoration: none;
+}
+
+.site-name h1 a:hover {
+    color: var(--ncar-blue);
+}
+
+/* Nav links — mobile: full-width with 1.875rem vertical padding */
+.navbar .nav-link {
+    color: var(--ncar-space-blue);
+    font-size: 1rem;
+    line-height: 1.5rem;
+    padding-top: 1.875rem;
+    padding-bottom: 1.875rem;
+    padding-left: 1.875rem;
+}
+
+.navbar .nav-link:hover,
+.navbar .nav-link:focus {
+    color: var(--ncar-blue);
+}
+
+.navbar .nav-item {
+    border-bottom: 1px solid var(--ncar-gray-light);
+    list-style: none;
+    justify-content: space-between;
+    width: 100%;
+}
+
+/* Mobile toggler */
+.mobile-toggler {
+    max-width: 4rem;
+}
+
+.mobile-toggler button {
+    padding: 1.6rem;
+}
+
+/* Utility menu (desktop) */
+.utility-menu {
+    font-size: 0.875rem;
+    line-height: 1.35;
+}
+
+.utility-menu .nav-link {
+    color: var(--ncar-space-blue);
+    font-weight: var(--font-weight-semi-bold);
+    padding: 0;
+}
+
+.utility-menu .nav-link:hover {
+    color: var(--ncar-blue);
+}
+
+/* Nav row border */
+.navbar-wrapper.border-top {
+    border-top-color: var(--ncar-gray-light) !important;
+}
+
+.navbar .navbar-collapse {
+    padding: 0.375rem 0;
+}
+
+/* Desktop — md breakpoint matches navbar-expand-md */
+@media (min-width: 768px) {
+    .navbar {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.175);
+    }
+
+    .navbar .nav-item {
+        border-bottom: 0;
+        justify-content: center;
+        width: auto;
+        padding-right: 1.875rem;
+    }
+
+    .navbar .nav-item.dropdown {
+        padding-right: 1.125rem;
+    }
+
+    .navbar .navbar-collapse {
+        padding-left: calc(var(--bs-gutter-x) / 2);
+        padding-right: calc(var(--bs-gutter-x) / 2);
+    }
+
+    .navbar .nav-link {
+        padding: 0;
+    }
+
+    .navbar .nav-link.active {
+        border-bottom: 0.1875rem solid var(--ncar-blue);
+        margin-bottom: -0.1875rem;
+        color: var(--ncar-space-blue);
+    }
+
+    .navbar .site-name {
+        font-size: 1rem;
+        line-height: 1.2rem;
+    }
+
+    .site-name h1 {
+        font-size: var(--font-size-xsm);
+        line-height: 1.2rem;
+    }
 }
 
 /* ============================================================================
@@ -74,21 +210,46 @@ body {
    ========================================================================= */
 
 .main-content {
-    padding: 30px 0;
+    padding: 0.5rem 0;
     min-height: calc(100vh - 200px);
 }
 
-.page-header {
-    margin-bottom: 30px;
-    padding-bottom: 20px;
-    border-bottom: 3px solid var(--ncar-blue);
+@media (min-width: 64rem) {
+    .main-content {
+        padding-top: 1.875rem;
+    }
 }
 
-.page-header h1 {
+/* ============================================================================
+   HEADINGS — Unity NCAR typography. Sizes/weights/line-heights match Unity's
+   responsive scale. h1/h2 use ncar-navy in main content; h3-h6 inherit body.
+   ========================================================================= */
+
+h1, .h1 { font-size: 1.875rem; line-height: 2.625rem; font-weight: var(--font-weight-semi-bold); }
+h2, .h2 { font-size: 1.25rem;  line-height: 1.875rem; font-weight: var(--font-weight-semi-bold); }
+h3, .h3 { font-size: 1.125rem; line-height: 1.875rem; font-weight: var(--font-weight-semi-bold); }
+h4, .h4 { font-size: 1rem;     line-height: 1.5rem;   font-weight: var(--font-weight-semi-bold); }
+h5, .h5 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-weight-semi-bold); }
+h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-weight-semi-bold); }
+
+@media (min-width: 64rem) {
+    h1, .h1 { font-size: 3rem;     line-height: 3.75rem;  font-weight: var(--font-weight-bold); }
+    h2, .h2 { font-size: 2.25rem;  line-height: 3rem;     font-weight: var(--font-weight-bold); }
+    h3, .h3 { font-size: 1.875rem; line-height: 2.625rem; }
+    h4, .h4 { font-size: 1.5rem;   line-height: 2.25rem; }
+    h5, .h5 { font-size: 1.25rem;  line-height: 1.875rem; }
+    h6, .h6 { font-size: 1.125rem; line-height: 1.875rem; }
+}
+
+.main-content h1,
+.main-content h2 {
     color: var(--ncar-navy);
-    font-size: 2.25rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
+}
+
+.page-header {
+    margin-bottom: 1.875rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 3px solid var(--ncar-blue);
 }
 
 .page-header p {
@@ -97,90 +258,125 @@ body {
 }
 
 /* ============================================================================
+   ACCORDION — Bootstrap CSS variable overrides to match Unity NCAR tokens
+   ========================================================================= */
+
+.accordion {
+    --bs-accordion-color: var(--ncar-space-blue);
+    --bs-accordion-btn-color: var(--ncar-space-blue);
+    --bs-accordion-active-color: #fff;
+    --bs-accordion-active-bg: rgba(0, 87, 194, 0.1);
+    --bs-accordion-btn-focus-border-color: var(--ncar-blue);
+    --bs-accordion-btn-focus-box-shadow: 0 0 0 0.25rem rgba(0, 87, 194, 0.25);
+    /* Chevron icon filled with space-blue for collapsed state */
+    --bs-accordion-btn-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23011837'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+    /* Chevron icon filled with white for expanded state */
+    --bs-accordion-btn-active-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: var(--ncar-blue);
+    color: #fff;
+}
+
+/* ============================================================================
    CARDS
    ========================================================================= */
 
 .card {
-    border: none;
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-md);
-    margin-bottom: 24px;
-    background: white;
-    transition: all var(--transition-base);
-}
-
-.card:hover {
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
+    /* Override Bootstrap card vars to match Unity's flat editorial style.
+       No border, no shadow — cards are just padded content blocks. */
+    --bs-card-spacer-y: 1.875rem;
+    --bs-card-spacer-x: 1.875rem;
+    --bs-card-border-radius: 0;
+    --bs-card-inner-border-radius: 0;
+    --bs-card-border-width: 0;
+    --bs-card-color: var(--ncar-space-blue);
+    --bs-card-bg: #fff;
+    --bs-card-cap-padding-y: 0.9375rem;
+    --bs-card-cap-padding-x: 1.875rem;
+    --bs-card-cap-bg: #fff;
+    margin-bottom: 1.5rem;
 }
 
 .card > .card-header {
-    background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
     border-bottom: 2px solid var(--ncar-blue);
-    font-weight: 700;
-    padding: 16px 24px;
-    color: var(--ncar-navy);
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    font-weight: var(--font-weight-semi-bold);
+    color: var(--ncar-space-blue);
+}
+
+/* Opt-in modifier: a card with a visible 1px hairline border. Use when a
+   card needs to read as a self-contained panel (e.g. wrapping a chart or
+   a contacts list). Matches Unity's bordered editorial card look. */
+.card-bordered {
+    --bs-card-border-width: 1px;
+    border-color: var(--ncar-gray-light);
 }
 
 .card-header h5 {
-    color: var(--ncar-navy);
-    font-weight: 700;
+    color: var(--ncar-space-blue);
+    font-weight: var(--font-weight-semi-bold);
     margin: 0;
 }
 
-.card-body {
-    padding: 24px;
-}
-
 /* ============================================================================
-   BUTTONS
+   BUTTONS — Unity NCAR style: flat (0 radius), bold (700), 3px border,
+   inverting hover (filled ↔ outlined). Uses Bootstrap btn CSS variables.
    ========================================================================= */
 
-.btn-primary {
-    background: linear-gradient(135deg, var(--ncar-blue) 0%, var(--ncar-light-blue) 100%);
-    border: none;
-    font-weight: 600;
-    padding: 10px 24px;
-    border-radius: var(--radius-md);
-    transition: all var(--transition-base);
-    box-shadow: 0 2px 4px rgba(var(--ncar-teal-rgb), 0.2);
+.btn {
+    --bs-btn-font-weight: var(--font-weight-bold);
+    --bs-btn-border-width: 3px;
+    --bs-btn-border-radius: 0;
+    --bs-btn-box-shadow: none;
 }
 
-.btn-primary:hover {
-    background: linear-gradient(135deg, var(--ncar-light-blue) 0%, var(--ncar-blue) 100%);
-    box-shadow: 0 4px 8px rgba(var(--ncar-teal-rgb), 0.3);
-    transform: translateY(-1px);
+.btn-primary {
+    --bs-btn-bg: var(--ncar-blue);
+    --bs-btn-border-color: var(--ncar-blue);
+    --bs-btn-color: #fff;
+    --bs-btn-hover-bg: transparent;
+    --bs-btn-hover-border-color: var(--ncar-blue);
+    --bs-btn-hover-color: var(--ncar-blue);
+    --bs-btn-active-bg: var(--ncar-blue);
+    --bs-btn-active-border-color: var(--ncar-blue);
+    --bs-btn-active-color: #fff;
+}
+
+.btn-outline-primary {
+    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-border-color: var(--ncar-blue);
+    --bs-btn-hover-bg: var(--ncar-blue);
+    --bs-btn-hover-border-color: var(--ncar-blue);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: var(--ncar-blue);
+    --bs-btn-active-border-color: var(--ncar-blue);
+    --bs-btn-active-color: #fff;
 }
 
 .btn-outline-secondary {
-    border-color: var(--ncar-navy);
-    color: var(--ncar-navy);
-    font-weight: 600;
-    transition: all var(--transition-base);
-}
-
-.btn-outline-secondary:hover {
-    background-color: var(--ncar-navy);
-    border-color: var(--ncar-navy);
-    color: white;
-}
-
-.btn-sm {
-    padding: 6px 16px;
-    font-size: 0.875rem;
+    --bs-btn-color: var(--ncar-navy);
+    --bs-btn-border-color: var(--ncar-navy);
+    --bs-btn-hover-bg: var(--ncar-navy);
+    --bs-btn-hover-border-color: var(--ncar-navy);
+    --bs-btn-hover-color: #fff;
 }
 
 .btn-link {
-    color: var(--ncar-blue);
-    font-weight: 600;
+    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-hover-color: var(--ncar-sky);
     text-decoration: none;
 }
 
 .btn-link:hover {
-    color: var(--ncar-navy);
     text-decoration: underline;
 }
+
+/* Unity NCAR defines only .btn-primary and .btn-outline-primary. Other
+   semantic variants (.btn-success/.btn-danger/.btn-warning/.btn-info) are
+   intentionally NOT styled here — templates should use btn-primary for
+   positive actions and btn-outline-primary for destructive/informational
+   actions instead. */
 
 /* ============================================================================
    FOOTER
@@ -195,7 +391,7 @@ body {
 
 .footer small {
     color: var(--ncar-gray);
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
 }
 
 /* ============================================================================
@@ -384,32 +580,59 @@ body {
 }
 
 /* ============================================================================
-   TABS
+   TABS — Unity NCAR style: inactive = solid blue, active = white with blue text
+   Mirrors Unity's cascade: base color set first, :not(.active) overrides inactive.
    ========================================================================= */
 
 .nav-tabs {
-    border-bottom: 2px solid var(--border-color);
+    border-bottom: 0;
+    /* Never wrap to a second row — horizontal scroll if necessary. */
+    flex-wrap: nowrap;
+    overflow-x: auto;
+}
+
+.nav-tabs .nav-item {
+    flex-shrink: 0;
+}
+
+/* When tabs are followed by tab-content, kill any mb-* utility margin so the
+   active tab attaches seamlessly to the panel below. !important matches
+   Bootstrap utility specificity. */
+.nav-tabs:has(+ .tab-content) {
+    margin-bottom: 0 !important;
 }
 
 .nav-tabs .nav-link {
-    color: var(--ncar-gray);
-    font-weight: 600;
+    color: var(--ncar-blue);
+    font-weight: var(--font-weight-semi-bold);
+    background-color: #fff;
     border: none;
-    border-bottom: 3px solid transparent;
-    transition: all var(--transition-base);
+    border-radius: 0;
+    transition: background-color var(--transition-base), color var(--transition-base);
 }
 
-.nav-tabs .nav-link:hover {
+.nav-tabs .nav-link:not(.active) {
+    background-color: var(--ncar-blue);
+    color: #fff;
+}
+
+.nav-tabs .nav-link:not(.active):hover {
+    background-color: var(--ncar-navy);
+    color: #fff;
     border-color: transparent;
-    border-bottom-color: var(--ncar-cyan);
-    color: var(--ncar-navy);
 }
 
 .nav-tabs .nav-link.active {
-    color: var(--ncar-navy);
-    background-color: transparent;
-    border-color: transparent;
-    border-bottom-color: var(--ncar-blue);
+    color: var(--ncar-blue);
+    background-color: #fff;
+    border: none;
+}
+
+/* Tab content panel — flat white surface attached to .nav-tabs above, matching
+   Unity's seamless tab→panel transition. No borders — content just flows. */
+.tab-content {
+    background-color: #fff;
+    padding: 1.875rem;
 }
 
 /* ============================================================================
@@ -423,13 +646,50 @@ body {
 .project-card .card-header {
     cursor: pointer;
     user-select: none;
-    /* Tighter than the global .card-header 16px/24px — each collapsed card
-       is a single-line summary, so the extra padding only fluffed the list. */
     padding: 8px 16px;
+    /* Thin gray hairline divider matching Unity's panel separators
+       (overrides the heavier 2px blue from the global .card > .card-header rule) */
+    border-bottom: 1px solid var(--ncar-gray-light);
+    color: var(--ncar-blue);
+    transition: background-color var(--transition-base), color var(--transition-base);
+}
+
+/* Match Unity's .accordion-button: fixed 1rem font, semi-bold, single weight
+   (the inner <strong> tag inherits so the title stays one consistent weight). */
+.project-card .card-header h5 {
+    font-size: 1rem;
+    line-height: 1.5;
+    font-weight: var(--font-weight-semi-bold);
+    color: inherit;
+}
+
+.project-card .card-header h5 strong {
+    font-weight: inherit;
 }
 
 .project-card .card-header:hover {
-    background: linear-gradient(135deg, var(--bg-gray-medium) 0%, #dee2e6 100%);
+    background-color: rgba(0, 87, 194, 0.06);
+}
+
+/* Expanded state: NCAR blue bg + white text, matching Unity's active accordion */
+.project-card .card-header[aria-expanded="true"] {
+    background-color: var(--ncar-blue);
+    color: #fff;
+    border-bottom-color: var(--ncar-blue);
+}
+
+.project-card .card-header[aria-expanded="true"] * {
+    color: #fff;
+}
+
+/* Accordion chevron — reusable affordance for any collapsible header.
+   Rotates 180° when the parent toggle is expanded. */
+.accordion-chevron {
+    transition: transform var(--transition-base);
+}
+
+[aria-expanded="true"] .accordion-chevron {
+    transform: rotate(180deg);
 }
 
 /* Fluid 1800px cap: smoother than Bootstrap's stepped .container breakpoints
@@ -437,14 +697,14 @@ body {
    on navbar, flash messages, footer, and any content block that opts in via
    the content_container_class block override. */
 .sam-fluid-1800 {
-    max-width: 1800px;
+    max-width: 88.25rem;
     margin-left: auto;
     margin-right: auto;
 }
 
 .project-stats-box {
-    background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
-    border-radius: var(--radius-lg);
+    background-color: var(--bg-gray-light);
+    border-radius: 0;
     padding: 12px 16px;
     margin-bottom: 16px;
     border-left: 4px solid var(--ncar-blue);
@@ -513,7 +773,7 @@ body {
 
 .stat-label {
     color: var(--ncar-gray);
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
 }
 
 .stat-value {
@@ -568,7 +828,7 @@ body {
 
 .collapse-toggle::after {
     content: '\f078';
-    font-family: 'Font Awesome 5 Free';
+    font-family: 'Font Awesome 6 Free';
     font-weight: 900;
     float: right;
     transition: transform var(--transition-base);
@@ -579,7 +839,7 @@ body {
 }
 
 .collapse-toggle:hover {
-    color: var(--ncar-blue);
+    color: var(--ncar-sky);
 }
 
 /* ============================================================================
@@ -675,9 +935,6 @@ body {
 }
 
 @media (max-width: 576px) {
-    .main-content {
-        padding: 20px 0;
-    }
 
     .page-header {
         margin-bottom: 20px;
@@ -698,4 +955,53 @@ body {
     margin: 0 auto;
     max-width: 100%;
     height: auto;
+}
+
+/* ============================================================================
+   MUTED BADGE PALETTE — saturated Bootstrap defaults (bg-primary/info/success/
+   warning/danger) read as aggressive next to the flat Unity surfaces, especially
+   when a dozen+ badges stack on a single line (group memberships, permissions,
+   etc.). Override the .badge .bg-X compound so badges adopt the subtle/tinted
+   palette Bootstrap 5.3 already ships (--bs-X-bg-subtle / -text-emphasis /
+   -border-subtle). Scoped to .badge so non-badge .bg-X usages (progress bar
+   fills, alert backgrounds, status indicators) keep their existing styling.
+   The !important is required to beat Bootstrap's own .bg-X !important.
+   ========================================================================= */
+.badge.bg-primary,
+.badge.bg-info,
+.badge.bg-success,
+.badge.bg-warning,
+.badge.bg-danger {
+    font-weight: var(--font-weight-semi-bold);
+    border: 1px solid;
+}
+
+.badge.bg-primary {
+    background-color: var(--bs-primary-bg-subtle) !important;
+    color: var(--bs-primary-text-emphasis) !important;
+    border-color: var(--bs-primary-border-subtle);
+}
+
+.badge.bg-info {
+    background-color: var(--bs-info-bg-subtle) !important;
+    color: var(--bs-info-text-emphasis) !important;
+    border-color: var(--bs-info-border-subtle);
+}
+
+.badge.bg-success {
+    background-color: var(--bs-success-bg-subtle) !important;
+    color: var(--bs-success-text-emphasis) !important;
+    border-color: var(--bs-success-border-subtle);
+}
+
+.badge.bg-warning {
+    background-color: var(--bs-warning-bg-subtle) !important;
+    color: var(--bs-warning-text-emphasis) !important;
+    border-color: var(--bs-warning-border-subtle);
+}
+
+.badge.bg-danger {
+    background-color: var(--bs-danger-bg-subtle) !important;
+    color: var(--bs-danger-text-emphasis) !important;
+    border-color: var(--bs-danger-border-subtle);
 }
