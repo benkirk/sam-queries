@@ -104,6 +104,37 @@ UNITY_NCAR_GRAY_LIGHT = '#bbbcbc'
 UNITY_NCAR_GRAY       = '#97999b'
 
 
+# Stacked-area categorical palette. The first 10 entries are saturated NCAR
+# brand anchors hue-cycled to maximize adjacency distinction (cool→warm→cool…);
+# entries 11-20 are Unity's own -33 / -66 lighter variants (from upstream
+# _variables.scss). Sorted loudest → quietest so the natural ordering (top-N
+# rank) maps onto visual prominence — high-rank bands get the strongest brand
+# colors, long tail gets desaturated variants.
+UNITY_STACK_20 = (
+    '#0057c2',   # 1.  ncar-blue
+    '#faa119',   # 2.  orange
+    '#00818F',   # 3.  teal
+    '#ff1f1f',   # 4.  vermilion
+    '#fdd509',   # 5.  gold
+    '#00357a',   # 6.  navy
+    '#42c0ff',   # 7.  sky
+    '#fabe72',   # 8.  orange-33  (paler warm)
+    '#34e1f4',   # 9.  ucar-light (bright cyan)
+    '#5a77a6',   # 10. blue-33    (muted dark blue)
+    '#fbe174',   # 11. yellow-33  (paler gold)
+    '#a8b7ce',   # 12. blue-66    (very pale steel)
+    '#00a2b4',   # 13. ucar-base-33 (mid teal)
+    '#f8dbb5',   # 14. orange-66  (peach)
+    '#86d3fc',   # 15. ncar-light-33 (paler sky)
+    '#86e8f5',   # 16. ucar-light-33 (paler cyan)
+    '#556379',   # 17. space-blue-33 (slate)
+    '#a5adb7',   # 18. space-blue-66 (light slate)
+    '#adc2e6',   # 19. ncar-base-66 (very pale blue)
+    '#f8ebb7',   # 20. yellow-66  (pale gold)
+)
+UNITY_STACK_10 = UNITY_STACK_20[:10]
+
+
 def _autopct_color_for(bg_hex: str) -> str:
     """Pick a readable text color for percent labels on a colored pie wedge.
 
@@ -241,15 +272,14 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None) -> str:
     ]
     # Others (always first per get_disk_usage_timeseries_by_user) gets a
     # neutral grey so it doesn't compete with the named-user palette.
-    # Named users use matplotlib's default tab10 cycle.
-    cmap = matplotlib.colormaps.get_cmap('tab10')
+    # Named users use the Unity 10-color stacked palette.
     colors = []
     cycle_idx = 0
     for s in series:
         if s['username'] == 'Others':
             colors.append(UNITY_NCAR_GRAY_LIGHT)  # NCAR ncar-gray-light
         else:
-            colors.append(cmap(cycle_idx % 10))
+            colors.append(UNITY_STACK_10[cycle_idx % 10])
             cycle_idx += 1
     ax.stackplot(dates, *scaled_series, colors=colors, alpha=0.85)
     ax.set_ylabel(f'Disk usage ({unit_label})')
@@ -343,16 +373,15 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
 
     fig, ax = plt.subplots(figsize=(18, 5))
     values_matrix = [s['values'] for s in series]
-    # tab20 (20 distinct colours) so Top-15+Others has no colour reuse;
-    # disk_usage uses tab10 because its default top_n is 10.
-    cmap = matplotlib.colormaps.get_cmap('tab20')
+    # UNITY_STACK_20 (20 distinct colours) so Top-15+Others has no colour
+    # reuse; disk_usage uses UNITY_STACK_10 because its default top_n is 10.
     colors = []
     cycle_idx = 0
     for s in series:
         if s['label'] == 'Others':
             colors.append(UNITY_NCAR_GRAY_LIGHT)  # NCAR ncar-gray-light
         else:
-            colors.append(cmap(cycle_idx % 20))
+            colors.append(UNITY_STACK_20[cycle_idx % 20])
             cycle_idx += 1
     ax.stackplot(dates, *values_matrix, colors=colors, alpha=0.85)
     ax.set_ylabel(metric_label)
@@ -835,7 +864,7 @@ def generate_pace_chart_matplotlib(
     top_projs = [pc for pc, _ in sorted(
         rank_metric.items(), key=lambda kv: kv[1], reverse=True
     )[:top_n]]
-    palette = plt.cm.tab10.colors if len(top_projs) <= 10 else plt.cm.tab20.colors
+    palette = UNITY_STACK_10 if len(top_projs) <= 10 else UNITY_STACK_20
     color_map = {pc: palette[i] for i, pc in enumerate(top_projs)}
 
     n_other_projs = len(rank_metric) - len(top_projs)
