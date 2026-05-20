@@ -247,7 +247,7 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None) -> str:
     cycle_idx = 0
     for s in series:
         if s['username'] == 'Others':
-            colors.append('#9ca3af')   # tailwind-style neutral grey
+            colors.append(UNITY_NCAR_GRAY_LIGHT)  # NCAR ncar-gray-light
         else:
             colors.append(cmap(cycle_idx % 10))
             cycle_idx += 1
@@ -350,7 +350,7 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
     cycle_idx = 0
     for s in series:
         if s['label'] == 'Others':
-            colors.append('#9ca3af')   # neutral grey
+            colors.append(UNITY_NCAR_GRAY_LIGHT)  # NCAR ncar-gray-light
         else:
             colors.append(cmap(cycle_idx % 20))
             cycle_idx += 1
@@ -670,8 +670,8 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
 # share a muted "Other" color.
 # ---------------------------------------------------------------------------
 
-_PACE_OTHER_COLOR = (0.78, 0.78, 0.78, 0.85)
-_PACE_TODAY_LINE_COLOR = (0.2, 0.2, 0.2, 0.7)
+_PACE_OTHER_COLOR = matplotlib.colors.to_rgba(UNITY_NCAR_GRAY_LIGHT, 0.85)
+_PACE_TODAY_LINE_COLOR = matplotlib.colors.to_rgba(UNITY_NCAR_NAVY, 0.7)
 _PACE_RATE_SCALE = 365  # internal per-day rates → per-year axis
 
 
