@@ -956,3 +956,52 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     max-width: 100%;
     height: auto;
 }
+
+/* ============================================================================
+   MUTED BADGE PALETTE — saturated Bootstrap defaults (bg-primary/info/success/
+   warning/danger) read as aggressive next to the flat Unity surfaces, especially
+   when a dozen+ badges stack on a single line (group memberships, permissions,
+   etc.). Override the .badge .bg-X compound so badges adopt the subtle/tinted
+   palette Bootstrap 5.3 already ships (--bs-X-bg-subtle / -text-emphasis /
+   -border-subtle). Scoped to .badge so non-badge .bg-X usages (progress bar
+   fills, alert backgrounds, status indicators) keep their existing styling.
+   The !important is required to beat Bootstrap's own .bg-X !important.
+   ========================================================================= */
+.badge.bg-primary,
+.badge.bg-info,
+.badge.bg-success,
+.badge.bg-warning,
+.badge.bg-danger {
+    font-weight: var(--font-weight-semi-bold);
+    border: 1px solid;
+}
+
+.badge.bg-primary {
+    background-color: var(--bs-primary-bg-subtle) !important;
+    color: var(--bs-primary-text-emphasis) !important;
+    border-color: var(--bs-primary-border-subtle);
+}
+
+.badge.bg-info {
+    background-color: var(--bs-info-bg-subtle) !important;
+    color: var(--bs-info-text-emphasis) !important;
+    border-color: var(--bs-info-border-subtle);
+}
+
+.badge.bg-success {
+    background-color: var(--bs-success-bg-subtle) !important;
+    color: var(--bs-success-text-emphasis) !important;
+    border-color: var(--bs-success-border-subtle);
+}
+
+.badge.bg-warning {
+    background-color: var(--bs-warning-bg-subtle) !important;
+    color: var(--bs-warning-text-emphasis) !important;
+    border-color: var(--bs-warning-border-subtle);
+}
+
+.badge.bg-danger {
+    background-color: var(--bs-danger-bg-subtle) !important;
+    color: var(--bs-danger-text-emphasis) !important;
+    border-color: var(--bs-danger-border-subtle);
+}
