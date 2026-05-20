@@ -105,40 +105,42 @@ UNITY_NCAR_GRAY       = '#97999b'
 
 
 # Stacked-area categorical palette. Family-grouped: each color family's
-# shades sit adjacent (blue+blue-33+blue-66+…), then we move to the next
-# family. Within a family, ordered saturated → pale. This makes the
-# stack visually smoother — adjacent bands share a hue, transitions
-# between bands feel like gradations rather than harsh hue jumps.
+# shades sit adjacent (gold→yellow-33→yellow-66, orange→orange-33→…),
+# then we move to the next family. Within a family, ordered saturated →
+# pale. Ordered warm → cool so the highest-rank bands (which stackplot
+# puts at the bottom, visually most prominent) get the loudest warm
+# anchors (gold, orange, vermilion), then transition through teal /
+# sky / blue / navy as rank decreases.
 UNITY_STACK_20 = (
-    # Blue family (deep)
-    '#0057c2',   # 1.  ncar-blue
-    '#5a77a6',   # 2.  blue-33
-    '#a8b7ce',   # 3.  blue-66
-    '#adc2e6',   # 4.  ncar-base-66
+    # Gold family — bright warm anchor, highest visual prominence
+    '#fdd509',   # 1.  gold
+    '#fbe174',   # 2.  yellow-33
+    '#f8ebb7',   # 3.  yellow-66
 
-    # Sky / cyan family (bright cool)
-    '#42c0ff',   # 5.  sky
-    '#86d3fc',   # 6.  ncar-light-33
-    '#34e1f4',   # 7.  ucar-light (cyan)
-    '#86e8f5',   # 8.  ucar-light-33
-
-    # Teal family
-    '#00818F',   # 9.  teal
-    '#00a2b4',   # 10. ucar-base-33
-    '#71c0cb',   # 11. ucar-base-66
-
-    # Orange family (warm)
-    '#faa119',   # 12. orange
-    '#fabe72',   # 13. orange-33
-    '#f8dbb5',   # 14. orange-66
-
-    # Gold family
-    '#fdd509',   # 15. gold
-    '#fbe174',   # 16. yellow-33
-    '#f8ebb7',   # 17. yellow-66
+    # Orange family
+    '#faa119',   # 4.  orange
+    '#fabe72',   # 5.  orange-33
+    '#f8dbb5',   # 6.  orange-66
 
     # Vermilion (single; no lighter variant in Unity's secondary ladder)
-    '#ff1f1f',   # 18. vermilion
+    '#ff1f1f',   # 7.  vermilion
+
+    # Teal family — warm-cool transition
+    '#00818F',   # 8.  teal
+    '#00a2b4',   # 9.  ucar-base-33
+    '#71c0cb',   # 10. ucar-base-66
+
+    # Sky / cyan family
+    '#42c0ff',   # 11. sky
+    '#86d3fc',   # 12. ncar-light-33
+    '#34e1f4',   # 13. ucar-light (cyan)
+    '#86e8f5',   # 14. ucar-light-33
+
+    # Blue family (deep cool)
+    '#0057c2',   # 15. ncar-blue
+    '#5a77a6',   # 16. blue-33
+    '#a8b7ce',   # 17. blue-66
+    '#adc2e6',   # 18. ncar-base-66
 
     # Navy / slate family
     '#00357a',   # 19. navy
@@ -146,19 +148,21 @@ UNITY_STACK_20 = (
 )
 
 # 10-color variant: distinct tuple (NOT UNITY_STACK_20[:10], which would be
-# 4 blues + 4 skies + 2 teals — all-cool). Picks 2 shades from each of the
-# main hue families plus vermilion, so a 10-user stack still spans the brand.
+# 3 golds + 3 oranges + vermilion + 3 teals — too warm-loaded). Picks 2
+# shades from each main hue family plus vermilion, in the same warm-to-cool
+# order as _20 so the same chart looks like a subsetted version, not a
+# different palette.
 UNITY_STACK_10 = (
-    '#0057c2',   # 1.  ncar-blue
-    '#5a77a6',   # 2.  blue-33
-    '#42c0ff',   # 3.  sky
-    '#86d3fc',   # 4.  ncar-light-33
-    '#00818F',   # 5.  teal
-    '#00a2b4',   # 6.  ucar-base-33
-    '#faa119',   # 7.  orange
-    '#fabe72',   # 8.  orange-33
-    '#fdd509',   # 9.  gold
-    '#ff1f1f',   # 10. vermilion
+    '#fdd509',   # 1.  gold
+    '#fbe174',   # 2.  yellow-33
+    '#faa119',   # 3.  orange
+    '#fabe72',   # 4.  orange-33
+    '#ff1f1f',   # 5.  vermilion
+    '#00818F',   # 6.  teal
+    '#00a2b4',   # 7.  ucar-base-33
+    '#42c0ff',   # 8.  sky
+    '#0057c2',   # 9.  ncar-blue
+    '#5a77a6',   # 10. blue-33
 )
 
 
@@ -815,7 +819,7 @@ def generate_pace_chart_matplotlib(
     allocations: List[Dict],
     active_at: datetime,
     window_days: int = 180,
-    top_n: int = 15,
+    top_n: int = 20,
     resource_name: str = '',
     sort_by: str = 'size',
 ) -> str:
@@ -829,7 +833,7 @@ def generate_pace_chart_matplotlib(
             ``total_amount``, ``total_used``.
         active_at: chart centerline ("today").
         window_days: half-window on each side of ``active_at`` (default 180).
-        top_n: projects with their own color + legend entry (default 15).
+        top_n: projects with their own color + legend entry (default 20).
         resource_name: used only for cache key disambiguation.
         sort_by: ranking metric for the top-N selection. One of:
             - ``'size'``  — total allocated amount (default; legacy behaviour).
