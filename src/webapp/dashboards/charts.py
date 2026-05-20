@@ -452,8 +452,9 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
         loc='center left',
         bbox_to_anchor=(1.01, 0.5),
         frameon=False,
-        fontsize=11,
+        fontsize=13,
         title_fontsize=12,
+        labelspacing=0.7,
     )
 
     if link_kind in ('user', 'project'):
