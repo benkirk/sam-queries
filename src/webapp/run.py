@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import re
+import socket
 import uuid
 import time
 from datetime import datetime
@@ -111,20 +112,26 @@ def create_app(*, config_overrides: dict | None = None):
         'pool_pre_ping': True,
         'pool_recycle':  int(os.getenv('STATUS_DB_POOL_RECYCLE', 600)),
     }
-    # Driver-correct SSL handling (postgres uses sslmode, MySQL uses an
-    # ssl dict). Matches system_status.session.create_status_engine().
+    # Driver-correct connect_args:
+    #   - postgres: sslmode (if required) + application_name so pg_stat_activity
+    #     can attribute connections to a specific pod / engine for diagnosis.
+    #   - MySQL: ssl dict (if required). MySQL has no postgres-style
+    #     application_name; pymysql connection attributes use a different
+    #     mechanism we don't wire up here.
     # Always set connect_args explicitly so the system_status engine does
     # NOT inherit the MySQL-style ssl dict from the main SAM engine when
     # SAM_DB_REQUIRE_SSL=true (which would be wrong for the postgres driver).
     status_require_ssl = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
     status_driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
-    if status_require_ssl:
-        if status_driver in ('postgresql', 'postgres'):
-            status_pool['connect_args'] = {'sslmode': 'require'}
-        else:
-            status_pool['connect_args'] = {'ssl': {'ssl_disabled': False}}
-    else:
-        status_pool['connect_args'] = {}
+    pod_id = os.environ.get('HOSTNAME') or socket.gethostname()
+    status_connect_args: dict = {}
+    if status_driver in ('postgresql', 'postgres'):
+        status_connect_args['application_name'] = f'sam-webapp:{pod_id}:system_status'
+        if status_require_ssl:
+            status_connect_args['sslmode'] = 'require'
+    elif status_require_ssl:
+        status_connect_args['ssl'] = {'ssl_disabled': False}
+    status_pool['connect_args'] = status_connect_args
 
     app.config['SQLALCHEMY_BINDS'] = {
         # Dict form lets us override engine options per bind (Flask-SQLAlchemy
