@@ -15,7 +15,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-family-default);
 }
 
 /* ===================================================================
@@ -69,7 +69,7 @@ body {
 .login-header p {
     color: var(--ncar-gray);
     font-size: 15px;
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
 }
 
 /* ===================================================================
@@ -99,7 +99,7 @@ body {
 .form-check-label {
     color: var(--ncar-gray);
     font-size: 14px;
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
 }
 
 /* ===================================================================
@@ -142,7 +142,7 @@ body {
     border-radius: 8px;
     margin-bottom: 25px;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
 }
 
 /* ===================================================================
@@ -174,7 +174,7 @@ body {
     background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
     color: var(--ncar-navy);
     font-size: 14px;
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
     border-radius: 8px;
     transition: all 0.3s ease;
 }
@@ -231,7 +231,7 @@ body {
 .help-link {
     color: var(--ncar-gray);
     font-size: 13px;
-    font-weight: 500;
+    font-weight: var(--font-weight-semi-bold);
     text-decoration: none;
     transition: color 0.2s ease;
 }
