@@ -591,34 +591,64 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    ALERTS
    ========================================================================= */
 
+/* Unity flat-fill treatment (source/scss/components/_alerts.scss): solid
+   color fill, no border, no left accent, 0 radius. Color carries the
+   semantic; text auto-picks for legibility. Info kept as NCAR blue rather
+   than Unity's literal yellow — most users expect info=blue, yellow reads
+   as warning. */
 .alert {
-    border-radius: var(--radius-lg);
-    border: none;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: var(--ncar-space-blue);
+    padding: 0.875rem 1rem;
+}
+
+.alert a,
+.alert button {
+    color: var(--ncar-space-blue);
+    text-decoration: underline;
+    font-weight: var(--font-weight-semi-bold);
+}
+
+.alert a:hover,
+.alert button:hover {
+    color: var(--ncar-navy);
 }
 
 .alert-info {
-    background-color: rgba(var(--ncar-teal-rgb), 0.1);
-    color: var(--ncar-navy);
-    border-left: 4px solid var(--ncar-blue);
+    background-color: var(--ncar-blue);
+    color: #fff;
 }
 
-.alert-danger {
-    background-color: rgba(220, 38, 38, 0.1);
-    color: #991b1b;
-    border-left: 4px solid var(--danger-color);
+.alert-info a,
+.alert-info button {
+    color: #fff;
 }
 
 .alert-warning {
-    background-color: rgba(245, 158, 11, 0.1);
-    color: #92400e;
-    border-left: 4px solid var(--warning-color);
+    background-color: var(--ncar-orange);
+    color: var(--ncar-space-blue);
+}
+
+.alert-danger {
+    background-color: var(--ncar-vermilion);
+    color: #fff;
+}
+
+.alert-danger a,
+.alert-danger button {
+    color: #fff;
 }
 
 .alert-success {
-    background-color: rgba(16, 185, 129, 0.1);
-    color: #065f46;
-    border-left: 4px solid var(--success-color);
+    background-color: #10b981;
+    color: #fff;
+}
+
+.alert-success a,
+.alert-success button {
+    color: #fff;
 }
 
 /* ============================================================================
