@@ -37,12 +37,15 @@ REDIS_NAME="samuel-redis"
 REDIS_PORT=6379
 INGRESS_HOST="samuel.k8s.ucar.edu"
 TLS_SECRET="incommon-cert-samuel"
+# ExternalSecret resource names carry the '-esos' suffix per
+# helm/templates/external_secret.yaml; the produced Secret (consumed
+# via env secretKeyRef in the Deployment) drops the suffix.
 EXTERNAL_SECRETS=(
-    "samuel-db-credentials"
-    "samuel-sam-db-credentials"
-    "samuel-jh-db-credentials"
-    "samuel-jh-credentials"
-    "samuel-oidc-credentials"
+    "samuel-db-credentials-esos"
+    "samuel-sam-db-credentials-esos"
+    "samuel-jh-db-credentials-esos"
+    "samuel-jh-credentials-esos"
+    "samuel-oidc-credentials-esos"
 )
 HEALTH_PATH="/api/v1/health/ready"
 
