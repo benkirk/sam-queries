@@ -40,6 +40,7 @@
     --ncar-gray-light: #bbbcbc;   /* Unity grays.light — nav item dividers */
     --ncar-navy:       #00357a;   /* NSF NCAR brand navy */
     --ncar-blue:       #0057c2;   /* NSF NCAR brand blue */
+    --ncar-blue-rgb:   0, 87, 194; /* for rgba(var(--ncar-blue-rgb), <a>) callsites */
     --ncar-light-blue: #00A2B4;   /* NSF NCAR teal light */
     --ncar-cyan:       #34e1f4;   /* NSF NCAR sky blue */
     --ncar-teal:       #00818F;   /* NSF NCAR teal dark */
