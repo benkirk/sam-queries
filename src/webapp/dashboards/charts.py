@@ -448,7 +448,8 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
     ax1.set_ylabel('Number of Nodes', fontsize=11)
     ax1.set_ylim([0, None])
     ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax1.legend(loc=2, fontsize=10)
+    ax1.legend(loc=2, fontsize=10,
+               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
     ax1.grid(True, alpha=0.3, color='grey')
 
     if any(u is not None for u in utilization):
@@ -465,7 +466,8 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
     ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=11)
     ax2.set_ylim(0, 100)
     ax2.yaxis.set_major_formatter(fmt.mpl_pct_formatter())
-    ax2.legend(loc='best', fontsize=10)
+    ax2.legend(loc='best', fontsize=10,
+               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
     ax2.grid(True, alpha=0.3)
 
     fig.autofmt_xdate()
@@ -517,7 +519,8 @@ def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
     ax1.set_ylim([0, None])
     ax1.set_ylabel('Count', fontsize=11)
     ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax1.legend(loc=2, fontsize=10)
+    ax1.legend(loc=2, fontsize=10,
+               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
     ax1.grid(True, alpha=0.3)
 
     if has_gpus:
@@ -531,7 +534,8 @@ def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
     ax2.set_ylabel('Resources', fontsize=11)
     ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=11)
     ax2.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax2.legend(loc=2, fontsize=10)
+    ax2.legend(loc=2, fontsize=10,
+               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
     ax2.grid(True, alpha=0.3)
 
     fig.autofmt_xdate()
