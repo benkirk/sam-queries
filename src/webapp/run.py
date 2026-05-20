@@ -79,14 +79,11 @@ def create_app(*, config_overrides: dict | None = None):
 
     # Flask-SQLAlchemy configuration (connection strings come from session modules)
     app.config['SQLALCHEMY_DATABASE_URI'] = sam.session.connection_string
-    app.config['SQLALCHEMY_BINDS'] = {
-        'system_status': system_status.session.connection_string,
-    }
 
     # Check if SSL is required (read from config class, which already parsed the env var)
     require_ssl = cfg.SAM_DB_REQUIRE_SSL
 
-    # Production-ready connection pool configuration
+    # Production-ready connection pool configuration for the main SAM engine.
     engine_options = {
         'pool_size': 10,           # Number of connections to maintain
         'max_overflow': 20,        # Additional connections when pool is exhausted
@@ -95,11 +92,48 @@ def create_app(*, config_overrides: dict | None = None):
         'echo': False,             # Set to True for SQL debugging
     }
 
-    # Add SSL configuration if required
+    # Add SSL configuration if required (MySQL/pymysql syntax — the SAM engine
+    # is MySQL; the system_status engine handles its own SSL below since it
+    # uses a different driver).
     if require_ssl:
         engine_options['connect_args'] = {'ssl': {'ssl_disabled': False}}
 
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
+
+    # system_status bind — separate, much smaller pool. This is a low-traffic
+    # status database queried only by the status dashboards and collectors;
+    # leaving it on the same fat default as the main SAM engine produces
+    # hundreds of idle connections cluster-wide (gunicorn workers × pods).
+    # Env-driven so we can tune in helm without a code change.
+    status_pool = {
+        'pool_size':     int(os.getenv('STATUS_DB_POOL_SIZE', 2)),
+        'max_overflow':  int(os.getenv('STATUS_DB_POOL_MAX_OVERFLOW', 4)),
+        'pool_pre_ping': True,
+        'pool_recycle':  int(os.getenv('STATUS_DB_POOL_RECYCLE', 600)),
+    }
+    # Driver-correct SSL handling (postgres uses sslmode, MySQL uses an
+    # ssl dict). Matches system_status.session.create_status_engine().
+    # Always set connect_args explicitly so the system_status engine does
+    # NOT inherit the MySQL-style ssl dict from the main SAM engine when
+    # SAM_DB_REQUIRE_SSL=true (which would be wrong for the postgres driver).
+    status_require_ssl = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
+    status_driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
+    if status_require_ssl:
+        if status_driver in ('postgresql', 'postgres'):
+            status_pool['connect_args'] = {'sslmode': 'require'}
+        else:
+            status_pool['connect_args'] = {'ssl': {'ssl_disabled': False}}
+    else:
+        status_pool['connect_args'] = {}
+
+    app.config['SQLALCHEMY_BINDS'] = {
+        # Dict form lets us override engine options per bind (Flask-SQLAlchemy
+        # 3.x). Keys other than ``url`` are passed to ``create_engine()``.
+        'system_status': {
+            'url': system_status.session.connection_string,
+            **status_pool,
+        },
+    }
 
     # Apply caller-supplied overrides AFTER defaults, BEFORE extensions bind.
     # The test suite uses this to point Flask-SQLAlchemy at the mysql-test
