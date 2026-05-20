@@ -33,6 +33,13 @@
 - **`sam/queries/dashboard.py` two-path strategy** — `_build_project_resources_data` vs `_build_user_projects_resources_batched`, with an equivalence test locking them in step. Exemplary. (Phase 4)
 - **`HtmxFormSchema._strip_empty_strings`** centralizes the §9 pre-process (drop empty strings, inject False for unchecked checkboxes) so routes don't have to. (Phase 4)
 - **Builder pattern in CLI** (`user/builders.py`, `project/builders.py`) cleanly separates ORM-to-dict extraction from rendering — same dict feeds Rich and JSON. (Phase 4)
+- **`TZ=UTC` enforcement in `collectors/run_collectors.sh:14`** with a 25-line README section explaining the naive-UTC convention that ties into Phase 3's storage. Strong defensive choice. (Phase 5)
+- **Custom typed exception hierarchy** in `collectors/lib/exceptions.py` (`CollectorError` → `PBSError`, `APIError`, `SSHError`, `ConfigError`) used consistently. (Phase 5)
+- **Retry with exponential backoff in `api_client.post_status`** correctly skips retry on 400 (validation) and 401/403 (auth) — distinguishes retriable from non-retriable. (Phase 5)
+- **Parallel SSH via ThreadPoolExecutor** for login nodes — ~10× speedup (20s → 2-3s for 8 nodes). (Phase 5)
+- **`flock -xn`** in cron prevents overlapping runs. (Phase 5)
+- **The collector test file uses an importlib trick** to avoid sys.path collision between `sam.config` and `collectors/lib/config.py` — sharp observation by the author. (Phase 5)
+- **README is honest about deferred work** — explicit "Next Steps (Deferred)" listing 5 items most projects would hide. Strength of documentation if not execution. (Phase 5)
 
 ## Action register
 
@@ -48,6 +55,9 @@
 
 - **P0-5** [Phase 4 / B1] **`ProjectListSchema.get_admin_username` has no body — returns `None` for every project in every list response.** Silently shipping in production today. Fix: add `return obj.admin.username if obj.admin else None`. Effort: **Tiny**. → `sam/schemas/project.py:67-70`. Depends on Q14 (regression vs old).
 - **P0-6** [Phase 4 / B2] **`ProjectSchema.get_panel` raises 500 on orphan projects** (missing None guard on `obj.allocation_type`). `GET /api/v1/projects/<orphan>` 500s. Effort: **Tiny**. → `sam/schemas/project.py:122`.
+
+- **P0-7** [Phase 5 / O1] **Zero-substitution on collection failure** — every concrete collector's `_collect_node_data` exception handler substitutes all-zeros for node counts. A transient SSH/PBS hiccup turns "we don't know" into "system fully down" on the dashboard. Fix: skip the API POST entirely on `_collect_node_data` failure, OR add `degraded: True` flag so dashboards can distinguish. Effort: **Small**. Depends on Q31. → `derecho/collector.py:37-55`, `casper/collector.py:78-103`, `jupyterhub/collector.py:243-264`
+- **P0-8** [Phase 5 / O2] **No alerting on persistent collector failure.** Six hours of consecutive failures look identical to one hour. Fix: integrate with NCAR's monitoring (Slack webhook, healthchecks.io heartbeat). Effort: **Small** (depends on NCAR ops infra). Depends on Q33.
 
 - **P0-1** [Phase 2 / H1] **`DISABLE_AUTH=1` is honoured in production builds.**
   Fix: hard-fail `auto_login_middleware` registration if `ProductionConfig` is active; log on startup when enabled.
@@ -133,6 +143,16 @@
 - **P1-33** [Phase 4 / T1] **Documented query functions untested** — `get_projects_by_allocation_end_date` / `get_projects_with_expired_allocations` have zero direct coverage despite being featured in CLAUDE.md with explicit return-shape tuples. Effort: **Tiny** (~4 tests).
 - **P1-34** [Phase 4 / T2] **CLI tests cover exit codes 0 and 1 only.** Should assert at least one error path produces `2`. Pairs with P1-27 (KeyboardInterrupt → 130). Effort: **Tiny**.
 
+#### Collector subsystem (Phase 5)
+
+- **P1-35** [Phase 5 / S1] **Shell injection by config in `pbs_client.py:40` and `ssh_utils.py:113-116`.** Args come from `config.yaml` (trusted today) but f-string interpolation under `shell=True` is the classic CWE-78 pattern. Fix: `subprocess.run([...args])` without `shell=True`, or `shlex.quote()` every value. Effort: **Small**.
+- **P1-36** [Phase 5 / O3] **`run_collectors.sh:91` swallows collector stdout/stderr.** Python logger's stdout output is discarded; only `--log-file=` path survives. If file logger creation fails, no fallback. Effort: **Tiny** (redirect to fallback stderr file).
+- **P1-37** [Phase 5 / O4] **Cron paths reference `/glade/work/benkirk/repos/sam-queries/`.** If `benkirk` leaves NCAR or quota gets cleared, collectors break silently. Move to shared/system location. Effort: **Small**. Depends on Q32.
+- **P1-38** [Phase 5 / T1] **One test file for ~2,600 LOC of collector code.** `api_client` retry logic, `base_collector` exception handling, `ssh_utils` parallel collection, `pbs_client`, the JupyterHub statistics calculator, all 7 parsers — none have dedicated tests. **The reliability of the entire status tier depends on this code.** Effort: **Medium-Large** (broad coverage gap).
+- **P1-39** [Phase 5 / S2] **`verify=False` on JupyterHub API** (`jupyterhub/collector.py:289`) with `urllib3.disable_warnings(...)` at module level. Auth token still sent in `Authorization` header. Fix: either trust NCAR's CA (`verify='/path/to/ca.crt'`) or document the historical reason. Effort: **Small** depending on cert situation. Depends on Q30.
+- **P1-40** [Phase 5 / S3] **Default `STATUS_API_URL=http://localhost:5050` over HTTP.** API key sent in cleartext if anyone leaves the default in prod. Fix: startup warning if HTTP and host isn't localhost. Effort: **Tiny**. Depends on Q35.
+- **P1-41** [Phase 5 / S4] **No `BatchMode=yes` on SSH** — falls back to interactive prompts under cron. Fix: add `-o BatchMode=yes -o StrictHostKeyChecking=accept-new` to every SSH invocation. Effort: **Tiny** (3 sites).
+
 ### P2 — Worth fixing; act eventually
 
 #### Auth / authz polish
@@ -208,6 +228,19 @@
 - **P2-64** [Phase 4 / T10] **`test_redis_cache.py:75` uses `time.sleep(1.1)`** — one occurrence, documented case, but lists as a smell per CLAUDE.md. Effort: **Tiny**.
 - **P2-65** [Phase 4 / T11] **`_session_for_setup()` opens a Session without explicit transaction.** Defensive: use `engine.connect()` + `text()` for read-only intent. Effort: **Tiny**.
 
+#### Collector polish (Phase 5)
+
+- **P2-66** [Phase 5 / A1] **`try/except ImportError` import-path dance** in 4 collector modules. Pick: `pip install -e collectors/` + relative imports, or drop the pyproject entry points. Effort: **Small**.
+- **P2-67** [Phase 5 / A2] **Two parallel deployment models** (container vs cron-from-host) with unclear winner. Document canonical; remove or label the other. Depends on Q29. Effort: **Tiny** (doc) to Medium (consolidate).
+- **P2-68** [Phase 5 / A3] **JupyterHub collector overrides `collect()`** to skip 3 BaseCollector steps. Tidier: skip-flags pattern (no-op when config list is empty). Effort: **Small**.
+- **P2-69** [Phase 5 / O5] **Cron log redirection writes to relative paths.** Use absolute paths so ops can find logs without insider knowledge. Effort: **Tiny**.
+- **P2-70** [Phase 5 / O6] **Dockerfile unpinned + suboptimal** — `FROM python:3` (no version pin), dead `apt-get update` step, no `--no-cache-dir`, no `USER` directive (runs as root), embedded debugging script. Effort: **Small** if container is canonical; **Tiny** (delete) if not.
+- **P2-71** [Phase 5 / O7] **No idempotency key on status ingest.** Re-run at same minute = duplicate row. Probably fine for append-only audit tables. Pairs with Phase 3 Q17. Effort: **Tiny** (document) or **Small** (add unique constraint).
+- **P2-72** [Phase 5 / L1] **`api_password` named "password" but is API key** in code + README §Configuration line 159. `.env.example` got it right. Rename param + fix README. Effort: **Tiny**.
+- **P2-73** [Phase 5 / L3] **Bare `except:` in `api_client.py:77`** swallows JSON parse failure. Narrow to `except json.JSONDecodeError`. Effort: **Tiny**.
+- **P2-74** [Phase 5 / Doc] **README §Configuration contradicts `.env.example`** on `STATUS_API_KEY` meaning. One-line fix. Effort: **Tiny**.
+- **P2-75** [Phase 5 / Doc] **`collectors/docs/PBS_COLLECTORS_PLAN.md` and `…_ADD_RESERVATIONS_PLAN.md`** are plan docs likely stale post-implementation. Disposition: archive / delete / keep. Pairs with Phase 1 docs hygiene. Depends on Q34.
+
 #### Status tier polish (Phase 3)
 
 - **P2-34** [Phase 3 / S3] **`schemas/status.py:24` uses `from system_status import *`** which pulls `main` (the CLI entry point) into schema namespace. Replace with explicit imports. Effort: **Tiny**. → `system_status/schemas/status.py:24`
@@ -235,10 +268,10 @@
 > Rolled up from `[XC: …]` tags across phases — composed at end of audit.
 
 ### `[XC: prod-config-hardening]`
-*Synthesis pending.* Currently: **5 env-misconfig footguns** gating on optional flags (DISABLE_AUTH, AUTH_PROVIDER=stub, RATELIMIT_STORAGE_URI, `system_status/base.py` Flask-fallback, `sam/base.py` Flask-fallback). Same theme each time: when the "expected" env doesn't hold, code falls back silently instead of refusing. **This is the strongest cross-cutting theme of the audit.** Deserves a single principled stance: fail-closed unless explicitly enabled.
+*Synthesis pending.* **Now 9 footguns following the same fall-back-instead-of-refuse pattern.** Original 5 (DISABLE_AUTH, AUTH_PROVIDER=stub, RATELIMIT_STORAGE_URI, `system_status/base.py` Flask-fallback, `sam/base.py` Flask-fallback), plus 4 collector additions (`verify=False` on JupyterHub API, default `STATUS_API_URL=http://`, no SSH `BatchMode=yes`, `FROM python:3` unpinned). **This is firmly the strongest cross-cutting theme of the audit.** Deserves a single principled stance: fail-closed unless explicitly enabled.
 
 ### `[XC: convention-drift]`
-*Synthesis pending.* Currently: hand-rolled authz in ~9 routes; inline coercion in ~10 mutation routes; ~10 `is_active` violations inside the very models that define the canonical hybrid; 4 pure-wrapper functions in `queries/lookups.py`; bare integer exit codes in `cli/accounting/`; inline date coercion in 3 CLI sites; stray `print()` at status-package import. Pattern is right and well-documented; coverage is incomplete.
+*Synthesis pending.* Currently: hand-rolled authz in ~9 routes; inline coercion in ~10 mutation routes; ~10 `is_active` violations inside the very models that define the canonical hybrid; 4 pure-wrapper functions in `queries/lookups.py`; bare integer exit codes in `cli/accounting/`; inline date coercion in 3 CLI sites; stray `print()` at status-package import; shell-string SSH commands with f-string interpolation under `shell=True` in collectors; `try/except ImportError` import-path dance in 4 collector modules. Pattern is right and well-documented; coverage is incomplete.
 
 ### `[XC: docs-drift]`
 *Synthesis pending.* Currently: stale stats in `CONTRIBUTING.md` + `README.md`, stale API section in `src/webapp/README.md`, AI-collab residue in `src/webapp/{DESIGN,IMPLEMENTATION_SUMMARY,REFACTORING_PLAN}.md`, overlap clusters in `docs/` setup + k8s docs.
@@ -247,10 +280,10 @@
 *Synthesis pending.* Currently: systemic table + HTMX-swap + landmark gaps; forms/modals okay. Quick-win bundle (P1-12, P1-13, P1-14) gets the most ROI.
 
 ### `[XC: ops]`
-*Synthesis pending.* Currently: audit log file-local with no off-host shipping; global cache invalidation on every commit; remediation logs checked into repo; HA limiter/caching story not fully worked out; `cleanup_status_data.py` not visibly scheduled in-repo.
+*Synthesis pending.* **Biggest concentration of operational risk in the audit.** Audit log file-local with no off-host shipping; global cache invalidation on every commit; remediation logs checked into repo; HA limiter/caching story not fully worked out; `cleanup_status_data.py` not visibly scheduled in-repo; **collector zero-substitution failure mode misrepresents downtime; no alerting on persistent collector failure; cron paths reference `benkirk`'s personal Glade dir; collector stdout/stderr swallowed by wrapper; Dockerfile vs cron deployment ambiguity.** Phase 5's findings here outweigh all prior phases combined.
 
 ### `[XC: testing]`
-*Synthesis pending.* Test infrastructure is generally strong (~1,500+ tests, two-tier strategy is genuinely clean, schema-drift tests partially assertive, isolation via SAVEPOINT works well in parallel). **But:** 2 schema-drift tests are informational-only despite CLAUDE.md claiming they catch drift; 2 documented query functions have zero coverage; CLI tests don't exercise exit codes 2 or 130; CRUD tests still construct ORM models directly where `create()` classmethods exist. Pattern is right; documentation overstates strictness.
+*Synthesis pending.* Test infrastructure for `src/sam/` and `src/webapp/` is strong (~1,500+ tests, two-tier strategy is genuinely clean, schema-drift tests partially assertive). **But:** 2 schema-drift tests are informational-only despite CLAUDE.md claiming they catch drift; 2 documented query functions have zero coverage; CLI tests don't exercise exit codes 2 or 130; CRUD tests still construct ORM models directly where `create()` classmethods exist; **and collector subsystem (~2,600 LOC) has exactly one test file.** The reliability of the entire status tier depends on collector code that is largely untested. The README is honest about the gap; that doesn't close it.
 
 ### `[XC: perf]`
 *Synthesis pending.* Currently: `AllocationWithUsageSchema` N×20 fanout (4-8× recomputation per allocation in `many=True`); `ProjectListSchema` N+1 on `lead`/`admin`; `usage_cache` lacks invalidation hooks on writes; 3 unbounded `.all()` queries in `sam/queries/`. None require architectural change — all are localized.
@@ -304,6 +337,15 @@
 26. **`--validate` / `--reconcile` CLI placeholders (P2-49)** — awaiting real logic, or hide from `--help` until ready?
 27. **Edit-form checkbox semantics (P2-53)** — is "unchecked = deactivate" the intended contract for the 7 Edit forms that don't use `partial=True`?
 28. **Informational-only schema-drift tests (P1-32)** — intentional human diagnostic, or should they fail? CLAUDE.md overstates strictness today.
+
+### From Phase 5 (collector)
+29. **Canonical production deployment** — the container in `containers/collectors/` or the cron-from-`benkirk`'s-Glade setup? Decides which has stale ops surface.
+30. **`verify=False` on JupyterHub API (P1-39)** — self-signed cert / NCAR CA / quick patch from a historical issue?
+31. **Zero-substitution failure mode (P0-7)** — is "show all zeros on the dashboard when collection fails" the intended UX, or should the dashboard surface "stale" / "collection failed"? Fix differs based on intent.
+32. **`/glade/work/benkirk/repos/...` in cron (P1-37)** — is this prod, dev, or transitional?
+33. **Alerting on persistent failure (P0-8)** — what does NCAR ops use for "service has been failing 30 min"? Healthchecks.io heartbeat? Slack webhook? Pagerduty?
+34. **`collectors/docs/PBS_COLLECTORS_*PLAN.md` (P2-75)** — implementation-plan docs from build phase. Archive, delete, or keep as historical?
+35. **`STATUS_API_URL` HTTPS in prod (P1-40)** — does production set HTTPS, or is the cleartext HTTP path live? Worth a startup warning either way.
 
 ## Reviewer notes
 
