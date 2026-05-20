@@ -16,12 +16,14 @@ sync workers (each worker is a forked process) and gthread workers.
 """
 
 from io import StringIO
+from pathlib import Path
 from typing import List, Dict
 from datetime import date, datetime, timedelta
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.dates as mdates
+import matplotlib.font_manager
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -30,6 +32,87 @@ from flask import url_for
 from sam import fmt
 from webapp.caching import caching
 from webapp.caching.chart import content_hash as _content_hash  # legacy alias used by _pace_cache_key
+
+
+# ---------------------------------------------------------------------------
+# Unity NCAR chart styling — runs once at module import.
+#
+# Two pieces:
+#   1. Register Poppins TTFs with matplotlib's font manager. Skipped silently
+#      if the directory is empty / missing, so the import still works in
+#      environments where the static assets haven't been deployed yet.
+#   2. Apply rcParams that mirror the editorial flat look on the HTML side:
+#      Poppins text, space-blue chrome, hairline gray grid, no top/right
+#      spines, transparent figure/axes (we already savefig with
+#      transparent=True so legend/grid colors carry against any backdrop).
+# ---------------------------------------------------------------------------
+
+_FONT_DIR = Path(__file__).resolve().parent.parent / 'static' / 'fonts' / 'poppins'
+if _FONT_DIR.exists():
+    for _ttf in _FONT_DIR.glob('*.ttf'):
+        matplotlib.font_manager.fontManager.addfont(str(_ttf))
+
+plt.rcParams.update({
+    'font.family':        ['Poppins', 'DejaVu Sans'],   # fallback if Poppins missing
+    'font.size':          11,
+    'axes.titleweight':   600,
+    'axes.titlecolor':    '#011837',   # ncar-space-blue
+    'axes.labelcolor':    '#011837',
+    'axes.labelweight':   600,
+    'axes.edgecolor':     '#011837',
+    'axes.spines.top':    False,
+    'axes.spines.right':  False,
+    'xtick.color':        '#011837',
+    'ytick.color':        '#011837',
+    'grid.color':         '#bbbcbc',   # ncar-gray-light
+    'grid.alpha':         0.4,
+    'grid.linewidth':     0.5,
+    'legend.fontsize':    11,
+    'legend.frameon':     False,
+    'figure.facecolor':   'none',
+    'axes.facecolor':     'none',
+})
+
+
+# Unity NCAR palette ordered for chart use. Indices 0-2 are the brand spine
+# (blue → navy → vermilion); 3-4 the warm accents (gold, orange); 5-7 the
+# teal family (teal, sky, light-blue); 8-9 are tertiary fillers. Sequential
+# visual distinction at small sizes (pie wedges).
+UNITY_PALETTE_10 = (
+    '#0057c2',  # ncar-blue
+    '#00357a',  # ncar-navy
+    '#ff1f1f',  # ncar-vermilion
+    '#fdd509',  # ncar-gold
+    '#faa119',  # ncar-orange
+    '#00818F',  # ncar-teal
+    '#42C0FF',  # ncar-sky
+    '#00A2B4',  # ncar-light-blue
+    '#011837',  # ncar-space-blue
+    '#97999b',  # ncar-gray
+)
+
+UNITY_NCAR_BLUE       = '#0057c2'
+UNITY_NCAR_NAVY       = '#00357a'
+UNITY_NCAR_VERMILION  = '#ff1f1f'
+UNITY_NCAR_ORANGE     = '#faa119'
+UNITY_NCAR_GOLD       = '#fdd509'
+UNITY_NCAR_TEAL       = '#00818F'
+UNITY_NCAR_SKY        = '#42C0FF'
+UNITY_NCAR_LIGHT_BLUE = '#00A2B4'
+UNITY_NCAR_SPACE_BLUE = '#011837'
+UNITY_NCAR_GRAY_LIGHT = '#bbbcbc'
+UNITY_NCAR_GRAY       = '#97999b'
+
+
+def _autopct_color_for(bg_hex: str) -> str:
+    """Pick a readable text color for percent labels on a colored pie wedge.
+
+    Returns space-blue on light wedges (gold, sky) and white on dark wedges
+    (blue, navy, vermilion). Luminance threshold ~0.6 — empirically tuned
+    against UNITY_PALETTE_10."""
+    r, g, b = (int(bg_hex[i:i+2], 16) / 255 for i in (1, 3, 5))
+    lum = 0.299 * r + 0.587 * g + 0.114 * b
+    return UNITY_NCAR_SPACE_BLUE if lum > 0.6 else '#fff'
 
 
 def _project_modal_url(projcode: str) -> str:
