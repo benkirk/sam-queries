@@ -211,7 +211,10 @@ body {
 
 .main-content {
     padding: 0.5rem 0;
-    min-height: calc(100vh - 200px);
+    /* Reserve viewport space for header (136px) + footer margin (50px) + footer
+       (~99px) = 285px. Previously 200px, which left ~85px of always-on overflow
+       and a noisy scrollbar on otherwise-fitting pages like /admin/. */
+    min-height: calc(100vh - 285px);
 }
 
 @media (min-width: 64rem) {
@@ -586,9 +589,14 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .nav-tabs {
     border-bottom: 0;
-    /* Never wrap to a second row — horizontal scroll if necessary. */
+    /* Never wrap to a second row — horizontal scroll if necessary. Explicitly
+       clamp overflow-y to hidden: setting only overflow-x:auto causes the
+       browser to also force overflow-y:auto (CSS spec quirk — the orthogonal
+       axis can't stay `visible` when one axis is scrollable), which produces
+       a stray 1px vertical scrollbar from sub-pixel layout rounding. */
     flex-wrap: nowrap;
     overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .nav-tabs .nav-item {
@@ -608,6 +616,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     background-color: #fff;
     border: none;
     border-radius: 0;
+    padding: 0.375rem 1rem;
     transition: background-color var(--transition-base), color var(--transition-base);
 }
 
@@ -632,7 +641,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    Unity's seamless tab→panel transition. No borders — content just flows. */
 .tab-content {
     background-color: #fff;
-    padding: 1.875rem;
+    padding: 1.25rem;
 }
 
 /* ============================================================================
