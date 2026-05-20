@@ -9,13 +9,17 @@
 
 .clickable-row {
     cursor: pointer;
+}
+
+/* Target the cells (> *), not the tr — Bootstrap 5.3 paints each <td> with a
+   solid --bs-table-bg that covers any tr-level background color. This mirrors
+   Bootstrap's own .table-hover > tbody > tr:hover > * pattern. The pale-teal
+   tint matches the .table-hover and .resource-row treatments elsewhere. */
+.clickable-row > * {
     transition: background-color var(--transition-fast);
 }
 
-/* Pale-teal tint matches the .resource-row treatment in dashboard.css —
-   --bg-gray-light (#f8f9fa) on the previous rule was invisible against
-   white table cells. !important beats Bootstrap's .table bg. */
-.clickable-row:hover {
+.clickable-row:hover > * {
     background-color: rgba(var(--ncar-teal-rgb), 0.08) !important;
 }
 
