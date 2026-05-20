@@ -959,7 +959,7 @@ Jinja2 filters are registered in `create_app()` — use them in every template.
 **Do NOT** use raw `'{:,.0f}'.format(x)`, `'%.1f'|format(x)%`, or `.strftime(…)` in
 templates or CLI display code — route through `sam.fmt` instead.
 
-The migration plan is documented in `docs/plans/FORMAT_DISPLAY.md`.
+The migration plan was documented in `docs/plans/FORMAT_DISPLAY.md`.
 
 ---
 
@@ -1032,4 +1032,3 @@ sam-search --format json accounting --last 7d
 ✅ **DO** add `SessionMixin` to any ORM model that needs an `update()` method (provides `self.session`)
 ✅ **DO** use `@require_project_access` or `@require_project_member_access(Permission.X)` on all project-scoped GET routes — function receives `project`, not `projcode`
 ✅ **DO** use `FormSchema().load(data)` for POST mutations, `FormSchema().load(data, partial=True)` for PUT — gate the `updates` dict on keys present in the original `data` dict, not the form output
-
