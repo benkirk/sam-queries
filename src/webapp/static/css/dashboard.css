@@ -332,6 +332,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-btn-border-width: 3px;
     --bs-btn-border-radius: 0;
     --bs-btn-box-shadow: none;
+    text-transform: uppercase;
+    letter-spacing: 0.05rem;
 }
 
 .btn-primary {
