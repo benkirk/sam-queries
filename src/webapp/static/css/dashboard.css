@@ -381,6 +381,45 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    positive actions and btn-outline-primary for destructive/informational
    actions instead. */
 
+/* Toggle button groups (.btn-group with .btn-secondary / .btn-outline-secondary
+   pair, used by time_range_picker, date_range_picker, system_user_proj_chart_card,
+   and other quick-select preset rows). Match the Unity .nav-tabs invert pattern:
+   inactive = solid NCAR-blue, active = white with blue text. Scoped to .btn-group
+   so non-group .btn-secondary uses (modal Cancel, queue_history Back) keep their
+   existing treatments. */
+.btn-group .btn-outline-secondary {
+    --bs-btn-bg: var(--ncar-blue);
+    --bs-btn-border-color: var(--ncar-blue);
+    --bs-btn-color: #fff;
+    --bs-btn-hover-bg: var(--ncar-navy);
+    --bs-btn-hover-border-color: var(--ncar-navy);
+    --bs-btn-hover-color: #fff;
+}
+
+.btn-group .btn-secondary,
+.btn-group .btn-secondary.active,
+.btn-group .btn-secondary:active {
+    --bs-btn-bg: #fff;
+    --bs-btn-border-color: var(--ncar-blue);
+    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-hover-bg: rgba(var(--ncar-teal-rgb), 0.08);
+    --bs-btn-hover-border-color: var(--ncar-blue);
+    --bs-btn-hover-color: var(--ncar-blue);
+    --bs-btn-active-bg: #fff;
+    --bs-btn-active-border-color: var(--ncar-blue);
+    --bs-btn-active-color: var(--ncar-blue);
+}
+
+/* Unity-style focus ring on interactive button-like elements — upstream
+   uses box-shadow 0 0 0 .2rem rgba(ncar-blue, .2) across .btn and .nav-link.
+   Replaces Bootstrap's default outline so the ring matches palette. */
+.btn:focus,
+.btn:focus-visible,
+.nav-tabs .nav-link:focus-visible {
+    box-shadow: 0 0 0 0.2rem rgba(0, 87, 194, 0.2);
+    outline: none;
+}
+
 /* ============================================================================
    FOOTER
    ========================================================================= */
