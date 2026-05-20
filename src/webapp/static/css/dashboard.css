@@ -583,6 +583,88 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 /* ============================================================================
+   MODALS — Unity NCAR style. The HTMX modal system (modal_scaffold +
+   htmx_form macros) predates the Unity restyle, so templates still emit
+   Bootstrap utility classes (bg-success/warning/danger/primary/secondary on
+   .modal-header, .btn-secondary on Cancel). The rules below repaint those
+   to NCAR palette tokens, flatten the surface, and scope a Cancel-button
+   restyle to .modal-footer so toggle groups using .btn-secondary elsewhere
+   stay untouched. CSS-only — no template edits needed.
+   ========================================================================= */
+
+.modal-content {
+    border-radius: 0;
+    border: 1px solid var(--ncar-gray-light);
+    box-shadow: var(--shadow-md);
+}
+
+/* Create variant + hand-coded bg-primary (e.g. user/allocation_modals.html). */
+.modal-header.bg-success,
+.modal-header.bg-primary {
+    background-color: var(--ncar-blue) !important;
+    color: #fff;
+    border-bottom: none;
+}
+
+/* Edit variant — darker palette blue, subtle UX cue for modifying existing data. */
+.modal-header.bg-warning {
+    background-color: var(--ncar-navy) !important;
+    color: #fff;
+    border-bottom: none;
+}
+
+/* Destructive confirmation (samConfirmModal, outage delete). */
+.modal-header.bg-danger {
+    background-color: var(--ncar-vermilion) !important;
+    color: #fff;
+    border-bottom: none;
+}
+
+/* Neutral variant (one outage_modals case). */
+.modal-header.bg-secondary {
+    background-color: var(--ncar-gray) !important;
+    color: #fff;
+    border-bottom: none;
+}
+
+/* bg-success/danger/primary already get .btn-close-white from the template;
+   bg-warning + bg-secondary headers don't, so invert the close button on those
+   two so it's legible against the dark fill. */
+.modal-header.bg-warning .btn-close,
+.modal-header.bg-secondary .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.modal-title {
+    font-size: 1.125rem;
+    font-weight: var(--font-weight-semi-bold);
+    letter-spacing: 0.02em;
+}
+
+.modal-header {
+    padding: 0.875rem 1.25rem;
+}
+
+.modal-footer {
+    border-top: 1px solid var(--ncar-gray-light);
+    padding: 0.875rem 1.25rem;
+}
+
+/* Cancel button — scoped to .modal-footer so .btn-secondary used as a toggle
+   active-state in time-range / date-range pickers stays Bootstrap-stock. */
+.modal-footer .btn-secondary {
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: var(--ncar-gray-light);
+    --bs-btn-color: var(--ncar-navy);
+    --bs-btn-hover-bg: var(--ncar-navy);
+    --bs-btn-hover-border-color: var(--ncar-navy);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: var(--ncar-navy);
+    --bs-btn-active-border-color: var(--ncar-navy);
+    --bs-btn-active-color: #fff;
+}
+
+/* ============================================================================
    TABS — Unity NCAR style: inactive = solid blue, active = white with blue text
    Mirrors Unity's cascade: base color set first, :not(.active) overrides inactive.
    ========================================================================= */
