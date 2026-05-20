@@ -503,29 +503,10 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     letter-spacing: 0.3px;
 }
 
-.badge-success {
-    background-color: var(--success-color);
-}
-
-.badge-primary {
-    background-color: var(--ncar-blue);
-}
-
-.badge-warning {
-    background-color: var(--warning-color);
-}
-
-.badge-danger {
-    background-color: var(--danger-color);
-}
-
-.badge-secondary {
-    background-color: #6c757d;
-}
-
-.badge-info {
-    background-color: var(--info-color);
-}
+/* Note: the hyphenated `.badge-success` / `.badge-primary` / etc. variants
+   were intentionally removed — no template uses them (every callsite uses
+   the Bootstrap `.badge.bg-X` utility form). The live badge palette is the
+   subtle Bootstrap 5.3 .bg-X-bg-subtle override applied lower in this file. */
 
 /* ============================================================================
    LOADING SPINNER
