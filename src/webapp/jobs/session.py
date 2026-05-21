@@ -24,10 +24,13 @@ and let the rest of the webapp boot — same posture as ``sam-admin``.
 from __future__ import annotations
 
 import logging
+import os
+import socket
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
 
 from flask import Flask, current_app
+from sqlalchemy import event
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +82,26 @@ def init_job_history(app: Flask) -> None:
 
     state['module'] = mod
 
+    # `application_name` tags each connection with pod + engine so postgres
+    # `pg_stat_activity` can attribute load without IP archaeology.
+    # We can't inject this via `pool_kwargs` because the plugin's
+    # ``get_engine`` (peer repo: hpc-usage-queries) sets ``connect_args``
+    # itself when calling ``create_engine``, so passing our own
+    # ``connect_args`` through ``pool_kwargs`` would collide. Instead we
+    # attach a ``connect`` event listener after engine creation that issues
+    # ``SET application_name`` once per fresh DBAPI connection. libpq
+    # truncates to 63 chars; the format below (~54 chars on typical k8s
+    # pod names) stays comfortably under the limit.
+    pod_id = os.environ.get('HOSTNAME') or socket.gethostname()
+
     # Eagerly create one Engine per machine. A failure here is logged
     # per-machine; other machines can still come up.
     for machine in machines:
         try:
             engine = mod.get_engine(machine, pool_kwargs=pool_kwargs)
             state['engines'][machine] = engine
+            if engine.url.drivername.startswith('postgresql'):
+                _attach_application_name(engine, f'sam-webapp:{pod_id}:job_history:{machine}')
             logger.info(
                 'hpc-usage-queries engine ready: machine=%s url=%s',
                 machine,
@@ -97,6 +114,34 @@ def init_job_history(app: Flask) -> None:
             )
 
     state['enabled'] = bool(state['engines'])
+
+
+def _attach_application_name(engine, app_name: str) -> None:
+    """Run ``SET application_name`` on every new DBAPI connection for this engine.
+
+    The ``connect`` event fires once per fresh postgres connection (not on
+    pool checkout), so this is the cheap, correct hook to tag connections
+    when the engine's ``connect_args`` are owned by the plugin and can't
+    be amended in-place.
+
+    Toggles autocommit around the ``SET`` because postgres documents
+    that ``application_name`` changes made via ``SET`` "will not appear
+    in pg_stat_activity until after a commit or rollback" — and
+    psycopg2's default is ``autocommit=False``, so a bare ``SET``
+    inside the implicit transaction would never become visible.
+    """
+    @event.listens_for(engine, 'connect')
+    def _set_app_name(dbapi_conn, _conn_record):
+        saved = dbapi_conn.autocommit
+        dbapi_conn.autocommit = True
+        try:
+            cur = dbapi_conn.cursor()
+            try:
+                cur.execute("SET application_name = %s", (app_name,))
+            finally:
+                cur.close()
+        finally:
+            dbapi_conn.autocommit = saved
 
 
 def is_enabled(app: Optional[Flask] = None) -> bool:

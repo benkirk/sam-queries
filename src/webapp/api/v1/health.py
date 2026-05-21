@@ -8,7 +8,7 @@ Intended consumers:
 """
 from datetime import datetime
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -16,7 +16,7 @@ from webapp.extensions import db
 from webapp.api.helpers import register_error_handlers
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils.rbac import require_permission, Permission
-from webapp.utils.config_inspect import pool_stats
+from webapp.utils.config_inspect import classify_connection_error, pool_stats
 
 bp = Blueprint('api_health', __name__)
 register_error_handlers(bp)
@@ -112,14 +112,35 @@ def db_pool():
     """Connection pool statistics for all configured DB engines.
 
     Returns pool size, utilisation, overflow, and a health assessment
-    for each configured engine bind. Requires SYSTEM_ADMIN permission.
+    for each configured engine bind. Includes the hpc-usage-queries
+    plugin engines (``job_history:<machine>``) when the plugin is loaded.
+    Each entry includes an ``error_detail`` classifier when the engine
+    cannot be pinged, distinguishing server-side slot exhaustion (which
+    pool tuning will *not* fix) from local pool exhaustion.
+    Requires SYSTEM_ADMIN permission.
     """
     engines = {'sam': db.engine}
     ss_engine = db.engines.get('system_status')
     if ss_engine:
         engines['system_status'] = ss_engine
 
+    # hpc-usage-queries plugin engines (registered on app.extensions
+    # by webapp.jobs.init_job_history at startup; empty when disabled).
+    jh_state = current_app.extensions.get('hpc_usage_queries') or {}
+    for machine, engine in (jh_state.get('engines') or {}).items():
+        engines[f'job_history:{machine}'] = engine
+
+    pools = {}
+    for name, engine in engines.items():
+        entry = pool_stats(engine.pool)
+        ok, latency_ms, err = _ping_engine(engine)
+        entry['reachable'] = ok
+        entry['latency_ms'] = latency_ms
+        entry['error'] = err
+        entry['error_detail'] = classify_connection_error(err)
+        pools[name] = entry
+
     return jsonify({
-        'pools':     {name: pool_stats(engine.pool) for name, engine in engines.items()},
+        'pools':     pools,
         'timestamp': datetime.now().isoformat(),
     }), 200

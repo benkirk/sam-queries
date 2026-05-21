@@ -142,6 +142,9 @@
                         {% endif %}
                         {% if db_info.error %}
                             {{ stat('Error', db_info.error, 'text-danger') }}
+                            {% if db_info.error_detail and db_info.error_detail.hint %}
+                                {{ stat('Diagnosis', db_info.error_detail.hint, 'text-warning') }}
+                            {% endif %}
                         {% endif %}
                     </dl>
                     {% endfor %}
