@@ -76,21 +76,28 @@ class SAMWebappConfig(SAMConfig):
 
     # hpc-usage-queries plugin (per-job rows on resource-usage detail pages).
     # The plugin owns its own database — typically a per-machine PostgreSQL
-    # database (derecho_jobs, casper_jobs) on the shared `csg-postgres` cluster
-    # (cap: 100 connections cluster-wide). Defaults are sized for that
-    # constraint: each pod runs ~33 gunicorn workers and the cluster has
-    # multiple consumers, so a 5+10 per-worker pool with a 1h recycle window
-    # accumulates idle connections faster than the cluster can absorb. Keep
-    # the per-worker ceiling low and recycle aggressively — bursty per-job
-    # query traffic does not need a fat warm pool. All knobs remain env-
-    # overridable for deployments backed by a larger/dedicated postgres.
+    # database (derecho_jobs, casper_jobs) on the shared `csg-postgres` cluster.
+    #
+    # Sizing rationale: per-job query traffic is bursty — a single
+    # resource-detail page load fans out into ~5 queries against one
+    # machine's database. Server-side `idle_session_timeout` on
+    # `csg-postgres` (configured in the peer repo's helm chart) reaps
+    # truly-idle connections at 10 minutes, so pool_size is sized for the
+    # *warm working set under typical burst* rather than as a safety cap.
+    # 5 base + 10 burst keeps a page's worth of queries from paying the
+    # TLS handshake cost mid-render, while the server's reaper prevents
+    # the per-worker pool from accumulating idle across the gunicorn
+    # worker pool. `pool_recycle=600` is belt-and-suspenders: same window
+    # as the server-side timeout, gives client-side cleanup symmetry.
+    # All knobs remain env-overridable for deployments backed by a
+    # different postgres or without server-side idle eviction.
     JOB_HISTORY_MACHINES = [
         m.strip() for m in os.getenv('JOB_HISTORY_MACHINES', 'derecho,casper').split(',')
         if m.strip()
     ]
     JOB_HISTORY_POOL_KWARGS = {
-        'pool_size':      int(os.getenv('JOB_HISTORY_POOL_SIZE',     1)),
-        'max_overflow':   int(os.getenv('JOB_HISTORY_POOL_MAX_OVERFLOW', 4)),
+        'pool_size':      int(os.getenv('JOB_HISTORY_POOL_SIZE',     5)),
+        'max_overflow':   int(os.getenv('JOB_HISTORY_POOL_MAX_OVERFLOW', 10)),
         'pool_pre_ping':  True,
         'pool_recycle':   int(os.getenv('JOB_HISTORY_POOL_RECYCLE',  600)),
     }

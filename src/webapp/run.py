@@ -101,14 +101,19 @@ def create_app(*, config_overrides: dict | None = None):
 
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
 
-    # system_status bind — separate, much smaller pool. This is a low-traffic
-    # status database queried only by the status dashboards and collectors;
-    # leaving it on the same fat default as the main SAM engine produces
-    # hundreds of idle connections cluster-wide (gunicorn workers × pods).
-    # Env-driven so we can tune in helm without a code change.
+    # system_status bind — uses its own pool config because it talks to a
+    # different backend (postgres on the shared `csg-postgres` cluster, not
+    # the main SAM MySQL). We do NOT override pool_size / max_overflow from
+    # the main engine — server-side `idle_session_timeout` on `csg-postgres`
+    # (configured in the hpc-usage-queries peer repo's helm chart) reaps
+    # truly-idle connections, so a generous per-worker pool no longer
+    # accumulates. The per-bind dict is kept primarily so we can attach
+    # postgres-specific `application_name` + driver-correct SSL handling
+    # below. `pool_recycle=600` provides client-side symmetry with the
+    # server-side reap window. Env-overridable for non-postgres backends.
     status_pool = {
-        'pool_size':     int(os.getenv('STATUS_DB_POOL_SIZE', 2)),
-        'max_overflow':  int(os.getenv('STATUS_DB_POOL_MAX_OVERFLOW', 4)),
+        'pool_size':     int(os.getenv('STATUS_DB_POOL_SIZE', 10)),
+        'max_overflow':  int(os.getenv('STATUS_DB_POOL_MAX_OVERFLOW', 20)),
         'pool_pre_ping': True,
         'pool_recycle':  int(os.getenv('STATUS_DB_POOL_RECYCLE', 600)),
     }
