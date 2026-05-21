@@ -40,6 +40,21 @@
 - **`flock -xn`** in cron prevents overlapping runs. (Phase 5)
 - **The collector test file uses an importlib trick** to avoid sys.path collision between `sam.config` and `collectors/lib/config.py` — sharp observation by the author. (Phase 5)
 - **README is honest about deferred work** — explicit "Next Steps (Deferred)" listing 5 items most projects would hide. Strength of documentation if not execution. (Phase 5)
+- **Three-tier secret injection is well-thought-out and tested** — `external_secret.yaml` cleanly maps OpenBao paths to k8s Secrets; `helm/tests/test-oidc-render.sh` asserts the prod/local rendering contract including a `dev-only-insecure-key` guard. (Phase 6)
+- **`docs/README-k8s.md` is unusually good operator documentation** — local-vs-prod matrix + per-environment auth/OIDC matrix. The kind of runbook on-call needs. (Phase 6)
+- **Three environments share one Dockerfile target** — Compose + ECS + k8s all run `containers/webapp/Dockerfile` stage `production`. True single-source-of-truth at build layer. (Phase 6)
+- **Gunicorn worker sizing is cgroup-aware** — computes `workers = 2·cpu_limit + 1` from chart value rather than letting `multiprocessing.cpu_count()` see the node's 64 cores. Explicit defense against a documented OOM. (Phase 6)
+- **CI concurrency groups everywhere** — every workflow has `cancel-in-progress: true` for PRs, `cancel-in-progress: false` for deploys. No wasted runs, no cancelled deploys. (Phase 6)
+- **Skip-CI semantics are explicit `if:` checks (not GitHub native)** and asymmetric — CI workflows honor `[skip ci]`, deploy workflows don't because TruffleHog must run. Documented in CLAUDE.md. (Phase 6)
+- **Test-install smoke workflow** exercises the user-facing `curl|bash` against fresh + update branches and asserts on `/api/v1/health/ready`. Catches drift the unit tests can't. (Phase 6)
+- **Build provenance wired correctly** — `GIT_SHA` + `BUILD_DATE` injected as build args, Dockerfile places them after `pip install` so layer caching survives. (Phase 6)
+- **Three-secret-store discipline for prod** — AWS SSM (Fargate), OpenBao (k8s), Compose env (local). No cross-pollination; no committed secrets in the scan. (Phase 6)
+- **Defense-in-depth secret scanning** — TruffleHog (CI + deploy), GitGuardian (pre-push), `detect-private-key` (pre-commit). Three independent layers (modulo the `@main` pin). (Phase 6)
+- **OIDC rotation procedure is best-in-class** (`docs/AUTHENTICATION.md:322-360`) — the kind of runbook every secret should have. (Phase 6)
+- **`gen_api_key.py` cryptography is sound** — `secrets.token_urlsafe(32)` CSPRNG, bcrypt rounds=12 default, allows `--rounds 14` for prod hardening. (Phase 6)
+- **LFS for the dev DB dump** — 133-byte pointer committed; obfuscation pipeline documented; `.gitignore` correctly excludes real-data local snapshots. (Phase 6)
+- **`install.sh` in-place detection** is genuinely thoughtful — checks `compose.yaml`, `.env.example`, and `git rev-parse --is-inside-work-tree`. (Phase 6)
+- **Health endpoint design is correct** — `/api/v1/health/{live,ready,db}` cleanly separates liveness (no DB call) from readiness (DB ping). Code is right; just unused by Helm. (Phase 6)
 
 ## Action register
 
@@ -55,6 +70,14 @@
 
 - **P0-5** [Phase 4 / B1] **`ProjectListSchema.get_admin_username` has no body — returns `None` for every project in every list response.** Silently shipping in production today. Fix: add `return obj.admin.username if obj.admin else None`. Effort: **Tiny**. → `sam/schemas/project.py:67-70`. Depends on Q14 (regression vs old).
 - **P0-6** [Phase 4 / B2] **`ProjectSchema.get_panel` raises 500 on orphan projects** (missing None guard on `obj.allocation_type`). `GET /api/v1/projects/<orphan>` 500s. Effort: **Tiny**. → `sam/schemas/project.py:122`.
+
+- **P0-9** [Phase 6 / D1] **Helm webapp Deployment has zero probes** despite the webapp exposing well-designed `/api/v1/health/{live,ready,db}` endpoints. On CIRRUS k8s, an unhealthy pod is never restarted; rolling updates serve traffic before gunicorn workers are ready. Fix: wire `livenessProbe`/`readinessProbe` to the endpoints (Compose + ECS already do). Effort: **Tiny**. Depends on Q36. → `helm/templates/deployment.yaml:103`
+- **P0-10** [Phase 6 / CI1] **`trufflesecurity/trufflehog@main` is the only secrets gate on the deploy path.** Branch-pin = a TruffleHog repo compromise executes attacker code with `AWS_ACCESS_KEY_ID` on the next push to `staging`. Fix: pin to release tag or SHA. Effort: **Tiny**. → `deploy-staging.yaml:38`, `ci-staging.yaml:34`
+- **P0-11** [Phase 6 / CI2] **`deploy-staging` uses long-lived AWS keys with no approval gate.** Every push to `staging` → build → ECS deploy in <15 min, no human in loop. Fix: OIDC + IAM role-to-assume + protected `environment: staging` with reviewers. Effort: **Small** (1-2 hours). Depends on Q37. → `deploy-staging.yaml:56-57`
+- **P0-12** [Phase 6 / CI3] **`update-helm` force-pushes prod deploy branch** without server-side protection visible. Any contributor PAT compromise lands prod-image refs on `cirrus`. Fix: protect `cirrus` server-side; require signed commits or `environment:` approval. Effort: **Small**. Depends on Q38. → `build-images-cirrus-deploy.yaml:294-301`
+- **P0-13** [Phase 6 / D2] **Staging RDS is `publicly_accessible=true`** with `skip_final_snapshot=true`. Mitigated only by UCAR CIDR. Defense-in-depth regression vs ECS tasks (private subnets). Fix: move to private subnet (~5-line change), flip `skip_final_snapshot`. Effort: **Small**. Depends on Q40. → `infrastructure/staging/rds.tf:26,29`
+- **P0-14** [Phase 6 / O1] **No error ingestion path for unhandled exceptions.** No `@app.errorhandler(500)`, no Sentry/Rollbar. A 500 in production lands in CloudWatch (staging) or pod logs (prod) and stops there. `DESIGN.md:422` lists this as a TODO. Effort: **Small** (Sentry SDK + DSN env var). Depends on Q44.
+- **P0-15** [Phase 6 / O2] **Audit log written to ephemeral container path with no shipping.** ECS Fargate writes to container writable layer → destroyed on redeploy. Phase 2's audit log is non-durable in practice. Fix: switch to stdout (logger.StreamHandler) and let the awslogs/cloudwatch driver handle it, OR mount EFS / ship to S3. Effort: **Small**. **Pairs with Phase 2 Q11.** → `src/webapp/audit/logger.py:64-69`
 
 - **P0-7** [Phase 5 / O1] **Zero-substitution on collection failure** — every concrete collector's `_collect_node_data` exception handler substitutes all-zeros for node counts. A transient SSH/PBS hiccup turns "we don't know" into "system fully down" on the dashboard. Fix: skip the API POST entirely on `_collect_node_data` failure, OR add `degraded: True` flag so dashboards can distinguish. Effort: **Small**. Depends on Q31. → `derecho/collector.py:37-55`, `casper/collector.py:78-103`, `jupyterhub/collector.py:243-264`
 - **P0-8** [Phase 5 / O2] **No alerting on persistent collector failure.** Six hours of consecutive failures look identical to one hour. Fix: integrate with NCAR's monitoring (Slack webhook, healthchecks.io heartbeat). Effort: **Small** (depends on NCAR ops infra). Depends on Q33.
@@ -153,6 +176,23 @@
 - **P1-40** [Phase 5 / S3] **Default `STATUS_API_URL=http://localhost:5050` over HTTP.** API key sent in cleartext if anyone leaves the default in prod. Fix: startup warning if HTTP and host isn't localhost. Effort: **Tiny**. Depends on Q35.
 - **P1-41** [Phase 5 / S4] **No `BatchMode=yes` on SSH** — falls back to interactive prompts under cron. Fix: add `-o BatchMode=yes -o StrictHostKeyChecking=accept-new` to every SSH invocation. Effort: **Tiny** (3 sites).
 
+#### Platform / CI / deploy (Phase 6)
+
+- **P1-42** [Phase 6 / D6] **Webapp container runs as root** in all 3 environments — no `USER` directive in `containers/webapp/Dockerfile`, no `securityContext: runAsNonRoot` in `deployment.yaml`. Same pattern as Phase 5's collector Dockerfile. Effort: **Small** (add USER + fix file ownership in image). → `containers/webapp/Dockerfile`, `helm/templates/deployment.yaml`
+- **P1-43** [Phase 6 / SS1] **No documented rotation procedure for `STATUS_API_KEY` or `JUPYTERHUB_API_TOKEN`.** OIDC rotation is best-in-class (`AUTHENTICATION.md:322-360`); other secrets are operator-tribal-knowledge. Effort: **Small** (doc). Depends on Q47.
+- **P1-44** [Phase 6 / SS2] **Python deps loose-pinned, no lockfile anywhere.** 24 unpinned deps in `pyproject.toml`; no `poetry.lock`/`conda-lock.yml`/`requirements.lock`. CI image and last week's CI image can diverge silently. Effort: **Small** (introduce `pip-compile` or `uv lock`). Depends on Q46.
+- **P1-45** [Phase 6 / CI4] **No third-party CI action SHA-pinned.** TruffleHog, `peter-evans/create-pull-request`, `stefanzweifel/git-auto-commit-action`, `oxsecurity/megalinter`, `conda-incubator/setup-miniconda` all tag-pinned. Fix: SHA-pin third-party + Dependabot for actions. Effort: **Small**. Pairs with P0-10.
+- **P1-46** [Phase 6 / CI5] **`BENKIRK_GITHUB_TOKEN` is a personal PAT in 3 maintenance workflows.** Bus factor 1: when Ben rotates / leaves, log cleanup + GHCR pruning silently stop. Fix: switch to `GITHUB_TOKEN` with appropriate `permissions:` block (the fallback already exists in `clean-ghcr.yaml:29`). Effort: **Tiny**. Depends on Q39.
+- **P1-47** [Phase 6 / CI6] **No `permissions:` block on 5 workflows.** Jobs inherit org default `GITHUB_TOKEN` perms. Fix: `permissions: contents: read` at workflow top, elevate per-job. Effort: **Tiny**. → `deploy-staging.yaml`, `sam-ci-docker.yaml`, `sam-ci-conda_make.yaml`, `ci-staging.yaml`, `test-install.yaml`
+- **P1-48** [Phase 6 / CI8] **Mega-linter is non-blocking + KICS HIGH+ only.** Combined with `.trivy.yaml` HIGH/CRITICAL gate, project is blind to MEDIUM-severity IaC + dep findings by configuration. Fix: at minimum surface MEDIUM as warnings; ideally fail on MEDIUM with a documented `.trivyignore` for known-acceptable. Effort: **Small**.
+- **P1-49** [Phase 6 / O3 + O4] **No structured logging + `request_id` doesn't propagate.** Human format only; `g.request_id` embedded in one line, no downstream code reads it. CloudWatch Insights / Loki structured queries impossible. Fix: JSON logger + `LoggerAdapter` that injects `rid` everywhere. Effort: **Small**.
+- **P1-50** [Phase 6 / O5] **No metrics endpoint or backend.** No `prometheus_client`, no `/metrics`, no histograms. The only "metric" is `run.py:180-184`'s hardcoded `elapsed_ms > 5000` warning. Fix: add `prometheus_client`, expose `/metrics`, hook into k8s/ECS scraping. Effort: **Medium**.
+- **P1-51** [Phase 6 / I1] **DB switch scripts silently no-op against the canonical `.env`.** `switch_to_local_db.sh:30-33` patches the legacy raw-value format; `.env.example` uses variable-indirection. Developer ends up with `.env` having no `SAM_DB_*` set. Fix: regex-match both formats, or assert the patch happened. Effort: **Tiny**. Depends on Q49.
+- **P1-52** [Phase 6 / I5] **`setup_local_db.sh:90` destroys MySQL volume unconditionally** on non-healthy container. No confirmation prompt. Local data lost silently. Fix: prompt unless `--force`. Effort: **Tiny**.
+- **P1-53** [Phase 6 / D9 + Phase 5 P2-67] **Collector deployment not in Helm chart** — container image built and pushed but no `CronJob`/`Deployment` in `helm/templates/`. Confirms two-parallel-models finding. Either ship the CronJob or delete the image build. Effort: **Small** (write CronJob) or **Tiny** (delete + document Glade cron is canonical). Depends on Q42.
+- **P1-54** [Phase 6 / D11] **`helm/tests/test-oidc-render.sh` not invoked by CI** — the `dev-only-insecure-key` guard exists but isn't enforced. Fix: add to `build-images-cirrus-deploy.yaml`. Effort: **Tiny**.
+- **P1-55** [Phase 6 / O6] **Healthcheck failures invisible.** A failing `/health` appears as a normal `INFO 503` line. No CloudWatch alarms in `ecs.tf`. DB outage produces nothing humans see. Fix: explicit logger.error path for health failures + CloudWatch alarm on 5xx rate. Effort: **Small**.
+
 ### P2 — Worth fixing; act eventually
 
 #### Auth / authz polish
@@ -228,6 +268,26 @@
 - **P2-64** [Phase 4 / T10] **`test_redis_cache.py:75` uses `time.sleep(1.1)`** — one occurrence, documented case, but lists as a smell per CLAUDE.md. Effort: **Tiny**.
 - **P2-65** [Phase 4 / T11] **`_session_for_setup()` opens a Session without explicit transaction.** Defensive: use `engine.connect()` + `text()` for read-only intent. Effort: **Tiny**.
 
+#### Platform polish (Phase 6)
+
+- **P2-76** [Phase 6 / CI7] **`mega-linter.yaml` dormant apply-fixes/auto-commit blocks.** `APPLY_FIXES: none` means they don't fire. Dormant code = misconfig surface. Delete until needed. Effort: **Tiny**.
+- **P2-77** [Phase 6 / CI9] **`paths-ignore: ['docs/**', '**.md']`** on secret-scan workflow. A doc-only PR could carry a leaked credential. Drop from `ci-staging.yaml`. Effort: **Tiny**.
+- **P2-78** [Phase 6 / D3] **Image tag `:main` + `imagePullPolicy: IfNotPresent` non-updating combo** (`values.yaml:31`). CI rewrites to `:sha-<short>` on `cirrus` branch. Two sources of truth. Effort: **Tiny** (doc) or **Small** (consolidate). Depends on Q41.
+- **P2-79** [Phase 6 / D4] **ECS task pinned to `:latest`** while workflow pushes both `:<sha>` and `:latest`. `lifecycle.ignore_changes` masks but `terraform apply` will drift back. Fix: parameterize image tag via TF var. Effort: **Small**.
+- **P2-80** [Phase 6 / D5] **No HPA, no PDB, no `topologySpreadConstraints`** on webapp Deployment. Voluntary disruption on 2 replicas can take both down. Effort: **Small**.
+- **P2-81** [Phase 6 / D7] **Bcrypt-hashed API key committed in `values.yaml`.** Defensible (hash, not key) but inconsistent with OIDC pattern. Rotating requires chart commit + redeploy. Effort: **Small** (move to ExternalSecret).
+- **P2-82** [Phase 6 / D8] **`local-secrets.sh` inconsistent default handling** — some vars use `${VAR:-default}`, `SAM_DB_USERNAME/PASSWORD` don't (`unbound variable` errors under `set -u`). Effort: **Tiny**.
+- **P2-83** [Phase 6 / D10] **`Chart.yaml` version stuck at `0.0.1`** — never bumped, loses chart-level diffing. Effort: **Tiny**.
+- **P2-84** [Phase 6 / SS3] **`.env.example` incomplete vs code** — ~30 env vars consumed by code not enumerated. None secrets, but the "what knobs exist" gap is real. Effort: **Small**.
+- **P2-85** [Phase 6 / SS4] **`helm/local-secrets.sh` silently defaults to `root/root`** for DB creds. No `kubectl context` guard. Effort: **Tiny**.
+- **P2-86** [Phase 6 / SS5] **`.trivyignore` entries have no expiry/review.** `AVD-DS-0002` (non-root USER) globally ignored — pairs with P1-42 (root container) and should be revisited together. Effort: **Tiny**.
+- **P2-87** [Phase 6 / SS6] **`conda-env.yaml` is fully unpinned** except `postgresql=18.*`. Effort: **Tiny** (add version pins).
+- **P2-88** [Phase 6 / I2] **`install_local.sh` is a thin wrapper that diverges from `make conda-env`** with incoherent Apple Silicon advice and a pointer to the broken `switch_to_production_db.sh`. Either consolidate or clearly delineate. Effort: **Small**.
+- **P2-89** [Phase 6 / I3] **`install.sh` does not pin/verify what it pulls.** Defaults to `REPO_BRANCH=main`; no SHA pin, no signed-commit verification, no checksum, no `chmod 600` on copied `.env`. Effort: **Small**.
+- **P2-90** [Phase 6 / I4] **`etc/config_env.sh` runs `make` unconditionally on every source.** No strict-mode pragma; `exit 1` paths kill the user's terminal session. Effort: **Tiny**.
+- **P2-91** [Phase 6 / I6] **Setup-doc cluster overlap** (matches Phase 1 finding P2-32). 8 install-related docs. Combined with I1's drift, docs and code haven't been cross-checked. Effort: **Small**.
+- **P2-92** [Phase 6 / I7] **`Makefile fixperms` uses NCAR-specific group ACLs** that won't exist on a fresh laptop. `make help` doesn't warn server-only. Effort: **Tiny**.
+
 #### Collector polish (Phase 5)
 
 - **P2-66** [Phase 5 / A1] **`try/except ImportError` import-path dance** in 4 collector modules. Pick: `pip install -e collectors/` + relative imports, or drop the pyproject entry points. Effort: **Small**.
@@ -268,7 +328,7 @@
 > Rolled up from `[XC: …]` tags across phases — composed at end of audit.
 
 ### `[XC: prod-config-hardening]`
-*Synthesis pending.* **Now 9 footguns following the same fall-back-instead-of-refuse pattern.** Original 5 (DISABLE_AUTH, AUTH_PROVIDER=stub, RATELIMIT_STORAGE_URI, `system_status/base.py` Flask-fallback, `sam/base.py` Flask-fallback), plus 4 collector additions (`verify=False` on JupyterHub API, default `STATUS_API_URL=http://`, no SSH `BatchMode=yes`, `FROM python:3` unpinned). **This is firmly the strongest cross-cutting theme of the audit.** Deserves a single principled stance: fail-closed unless explicitly enabled.
+*Synthesis pending.* **Now 14 footguns following the same fall-back / fail-open / accept-the-easier-path pattern.** Phase 2: 5 (DISABLE_AUTH, AUTH_PROVIDER=stub, RATELIMIT_STORAGE_URI, 2× silent Flask-fallback in `Base` resolution). Phase 5: 4 (`verify=False` on JH API, default HTTP URL, no `BatchMode=yes`, `FROM python:3` unpinned). Phase 6: 5 (no Helm probes despite endpoints, root container in all 3 environments, TruffleHog branch-pin on deploy path, long-lived AWS keys with no approval, public RDS). **This is firmly the strongest cross-cutting theme of the audit and the single most actionable finding for the synthesis.** Deserves a principled stance: fail-closed unless explicitly enabled.
 
 ### `[XC: convention-drift]`
 *Synthesis pending.* Currently: hand-rolled authz in ~9 routes; inline coercion in ~10 mutation routes; ~10 `is_active` violations inside the very models that define the canonical hybrid; 4 pure-wrapper functions in `queries/lookups.py`; bare integer exit codes in `cli/accounting/`; inline date coercion in 3 CLI sites; stray `print()` at status-package import; shell-string SSH commands with f-string interpolation under `shell=True` in collectors; `try/except ImportError` import-path dance in 4 collector modules. Pattern is right and well-documented; coverage is incomplete.
@@ -280,7 +340,9 @@
 *Synthesis pending.* Currently: systemic table + HTMX-swap + landmark gaps; forms/modals okay. Quick-win bundle (P1-12, P1-13, P1-14) gets the most ROI.
 
 ### `[XC: ops]`
-*Synthesis pending.* **Biggest concentration of operational risk in the audit.** Audit log file-local with no off-host shipping; global cache invalidation on every commit; remediation logs checked into repo; HA limiter/caching story not fully worked out; `cleanup_status_data.py` not visibly scheduled in-repo; **collector zero-substitution failure mode misrepresents downtime; no alerting on persistent collector failure; cron paths reference `benkirk`'s personal Glade dir; collector stdout/stderr swallowed by wrapper; Dockerfile vs cron deployment ambiguity.** Phase 5's findings here outweigh all prior phases combined.
+*Synthesis pending.* **The defining theme of Phases 5 and 6: the system is built defensively where it counts (RBAC, audit log mechanics, retry, span coalescing, OIDC rotation) but configured to fail-open at the boundaries where ops would notice.** Operationally, the system is observable only via log-grep, and the log destination is partly ephemeral.
+
+Specifics: audit log written to ephemeral container path with no off-host shipping; global cache invalidation on every commit; remediation logs checked into repo; HA limiter/caching story partially worked out; `cleanup_status_data.py` not visibly scheduled; collector zero-substitution misrepresents downtime; no alerting on persistent collector failure; collector cron paths reference `benkirk`'s personal Glade dir; collector stdout/stderr swallowed; container vs cron deployment ambiguity; **Helm webapp Deployment has no probes despite well-designed health endpoints; no error ingestion (no Sentry); no metrics endpoint; no structured logging; `request_id` doesn't propagate; healthcheck failures invisible (no CloudWatch alarms).**
 
 ### `[XC: testing]`
 *Synthesis pending.* Test infrastructure for `src/sam/` and `src/webapp/` is strong (~1,500+ tests, two-tier strategy is genuinely clean, schema-drift tests partially assertive). **But:** 2 schema-drift tests are informational-only despite CLAUDE.md claiming they catch drift; 2 documented query functions have zero coverage; CLI tests don't exercise exit codes 2 or 130; CRUD tests still construct ORM models directly where `create()` classmethods exist; **and collector subsystem (~2,600 LOC) has exactly one test file.** The reliability of the entire status tier depends on collector code that is largely untested. The README is honest about the gap; that doesn't close it.
@@ -290,6 +352,9 @@
 
 ### `[XC: secrets]`
 *Pending Phase 6.*
+
+### `[XC: bus-factor]`
+*New theme — Phase 6.* Three independent single-points-of-failure on `benkirk`: cron paths reference `/glade/work/benkirk/repos/...` (Phase 5 P1-37); `BENKIRK_GITHUB_TOKEN` is a personal PAT in 3 maintenance workflows (Phase 6 P1-46); `helm/values.yaml` image is `ghcr.io/benkirk/sam-queries/webapp:main`. Combined with the absence of a documented STATUS_API_KEY rotation runbook, this concentrates a meaningful chunk of prod-recoverability on one person. Worth a roll-up.
 
 ### `[XC: deploy]`
 *Pending Phase 6.*
@@ -346,6 +411,22 @@
 33. **Alerting on persistent failure (P0-8)** — what does NCAR ops use for "service has been failing 30 min"? Healthchecks.io heartbeat? Slack webhook? Pagerduty?
 34. **`collectors/docs/PBS_COLLECTORS_*PLAN.md` (P2-75)** — implementation-plan docs from build phase. Archive, delete, or keep as historical?
 35. **`STATUS_API_URL` HTTPS in prod (P1-40)** — does production set HTTPS, or is the cleartext HTTP path live? Worth a startup warning either way.
+
+### From Phase 6 (platform / cross-cutting)
+36. **CIRRUS k8s probes (P0-9)** — was the missing `livenessProbe`/`readinessProbe` intentional (ingress does its own?) or just an oversight? The endpoints exist and are well-designed.
+37. **Long-lived AWS keys (P0-11)** — why not OIDC + IAM role-to-assume? Migration is ~1 hour. Any CISL-side constraint (AWS account doesn't trust GitHub's OIDC issuer)?
+38. **`cirrus` branch protection (P0-12)** — is it protected server-side? The force-push works either because protection is off or `github-actions[bot]` bypasses it.
+39. **`BENKIRK_GITHUB_TOKEN` ownership (P1-46)** — if you're hit by a bus, does anyone else have PAT scopes to keep GHCR/log cleanup running?
+40. **Staging RDS `publicly_accessible=true` (P0-13)** — intentional (for VPN-based queries via `query-staging-db.sh`)? If so, worth a comment; if not, moving to private subnets is a 5-line change.
+41. **Image tag in CIRRUS today (P2-78)** — `:main` (per `values.yaml`) or the CI-rewritten `:sha-<short>` on `cirrus`? Determines whether this is a doc fix or a real issue.
+42. **Collector deployment plan (P1-53)** — container CronJob via Helm, or stay on Glade cron? The container is built and published but never used in Helm.
+43. **TruffleHog `@main` (P0-10)** — any objection to SHA-pinning with Renovate/Dependabot to keep it current?
+44. **Staging error ingestion (P0-14)** — CloudWatch catches gunicorn stderr; is anyone alerting on `ERROR`-level lines, or is it diagnostic-on-demand?
+45. **Audit log durability (P0-15)** — is the ephemeral `/var/log/sam/model_audit.log` accepted (stdout-via-CloudWatch covers most needs), or worth fixing? Pairs with Phase 2 Q11.
+46. **Lockfile policy (P1-44)** — deliberate reason no `conda-lock.yml` or `pip-compile` artifact in-repo?
+47. **`STATUS_API_KEY` rotation runbook (P1-43)** — would you welcome an issue spec'd up to mirror the AUTHENTICATION.md OIDC pattern for the collector key pair + JH token?
+48. **MEDIUM-severity dep/IaC scanning (P1-48)** — Mega-linter + Trivy configured to ignore MEDIUM. Intentional noise reduction, or worth re-enabling with a documented `.trivyignore`?
+49. **`switch_to_local_db.sh` sed mismatch (P1-51)** — is the canonical `.env` in current developer use actually based on `.env.example`, or do you maintain a different template internally that uses raw `SAM_DB_USERNAME=root` lines?
 
 ## Reviewer notes
 
