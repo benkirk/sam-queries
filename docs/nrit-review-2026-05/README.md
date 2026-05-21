@@ -80,7 +80,12 @@ Each subsystem phase considers, where applicable:
 | 7 | Docs hygiene | [`07_docs.md`](07_docs.md) | ✅ Done |
 | 8 | Synthesis & punch list | [`08_synthesis.md`](08_synthesis.md) | ✅ Done |
 
-**Audit complete.** Start at [`08_synthesis.md`](08_synthesis.md) — executive summary, action register (15 P0 / 55 P1 / 112 P2 items), 5 sequenced PRs, 49 questions for Ben.
+**Audit complete.** Read in this order:
+
+1. **[`08_synthesis.md`](08_synthesis.md)** (~250 lines, ~15 min) — executive summary, headline themes, 5 sequenced PRs, 49 questions for Ben. The single read.
+2. **[`08_action_register.md`](08_action_register.md)** (appendix) — full 182-item punch list (15 P0 / 55 P1 / 112 P2). Browse by area; look up specific findings by ID.
+3. **[`08_strengths.md`](08_strengths.md)** (appendix) — full "what's working well" list (54 entries). For when the audit needs to feel balanced.
+4. **Per-phase docs** (`01_orientation.md` … `07_docs.md`) — `file:line` context for any specific finding.
 
 ## How to read these reports
 
