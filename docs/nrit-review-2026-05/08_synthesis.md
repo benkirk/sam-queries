@@ -6,7 +6,17 @@
 
 ## Executive summary
 
-*Composed in Phase 8. Will be ~10 sentences: scope, headline take, top 3 priorities, what's solid, what's not in scope.*
+A friendly external review of `sam-queries` at Ben's request: ~3 days of directional reading across `src/webapp/`, `src/system_status/`, `src/sam/`, `src/cli/`, `collectors/`, the platform layer (CI/CD, deploy, secrets, supply chain, observability), and the documentation tree. The MySQL schema itself was out of scope; the ORM follows it by design. Findings are calibrated to "what's most worth knowing," not "everything I noticed."
+
+**The architecture is competent and the conventions are excellent.** `CLAUDE.md` is genuine project memory rather than aspirational documentation — every spot-check held up. The ORM layer (universal `is_active` hybrid, write-op co-location, two-tier test strategy) and the `system_status/` subsystem (lookup-resolver `before_flush`, span coalescer with outage guard, exemplary Alembic runbooks) are the strongest engineered surfaces I encountered. The Web team's authz primitives (`access_control.py` decorator family, three-tier RBAC), schema family (`HtmxFormSchema`, `AllocationWithUsageSchema`), and CI/CD posture (TruffleHog gating, concurrency groups, asymmetric skip-CI) all reflect a team that's been bitten by problems and wrote down the lessons. 54 distinct strengths called out across the audit.
+
+**Where things drift, two patterns dominate.** First and most consequential: **the project is configured to fail open at the boundaries where ops would notice.** Fourteen separate footguns gate on optional env vars or fall back silently when an expected condition isn't met — `DISABLE_AUTH=1` honored in production, `AUTH_PROVIDER='stub'` allowed in `ProductionConfig`, Helm Deployment with no probes despite well-designed health endpoints, collector exception handler that substitutes all-zeros for node counts, staging RDS `publicly_accessible=true`, `verify=False` on the JupyterHub API, `FROM python:3` unpinned, …. Same shape every time. **This is the single most actionable observation of the audit and worth a principled "fail-closed unless explicitly enabled" stance.** Second: convention drift inside the very modules that define the conventions — 10+ raw `Model.active == True` comparisons inside `Project` and `User` themselves, hand-rolled access checks in ~9 routes where canonical decorators exist, inline date coercion in ~10 mutation routes despite the form-schema pattern being documented.
+
+**Two concrete production bugs surfaced** that warrant immediate attention regardless of everything else: `ProjectListSchema.get_admin_username` has an empty function body and silently returns `null` for every project in every list response, and `ProjectSchema.get_panel` raises 500 on orphan projects (the documented `allocation_type=None` case). Both Tiny fixes; both possibly already shipping.
+
+**The operational posture is the biggest gap.** No error ingestion (no Sentry); audit log written to ephemeral container path with no off-host shipping; no metrics endpoint or backend; healthcheck failures invisible; collector failures invisible. The system is observable only via log-grep against a partly-ephemeral destination. Combined with three independent single-points-of-failure on `benkirk` (Glade cron path, personal PAT in 3 maintenance workflows, `ghcr.io/benkirk/sam-queries` image), recovery from a real incident would be much harder than it should be given the quality of the underlying code.
+
+**182 register items (15 P0 / 55 P1 / 112 P2) resolve to roughly one week of focused work**, best organized as 5 bundled PRs (sequencing below). The audit found nothing structurally wrong; the findings are mostly composable, well-scoped fixes that don't require architectural change. The headline take is upbeat with one significant operational reservation.
 
 ## What's working well
 
@@ -355,41 +365,211 @@
 
 > Rolled up from `[XC: …]` tags across phases — composed at end of audit.
 
-### `[XC: prod-config-hardening]`
-*Synthesis pending.* **Now 14 footguns following the same fall-back / fail-open / accept-the-easier-path pattern.** Phase 2: 5 (DISABLE_AUTH, AUTH_PROVIDER=stub, RATELIMIT_STORAGE_URI, 2× silent Flask-fallback in `Base` resolution). Phase 5: 4 (`verify=False` on JH API, default HTTP URL, no `BatchMode=yes`, `FROM python:3` unpinned). Phase 6: 5 (no Helm probes despite endpoints, root container in all 3 environments, TruffleHog branch-pin on deploy path, long-lived AWS keys with no approval, public RDS). **This is firmly the strongest cross-cutting theme of the audit and the single most actionable finding for the synthesis.** Deserves a principled stance: fail-closed unless explicitly enabled.
+### `[XC: prod-config-hardening]` — THE strongest theme
+
+Fourteen separate findings across phases 2, 3, 5, and 6 follow the same shape: **when an expected condition doesn't hold, the code falls back to a working-but-permissive default instead of refusing to start.**
+
+The full census:
+- **Phase 2 (5):** `DISABLE_AUTH=1` honored in any `FLASK_CONFIG`; `AUTH_PROVIDER='stub'` not blocked by `ProductionConfig.validate()`; `RATELIMIT_STORAGE_URI` fallback to `memory://` per-pod under HA; `Base` dual-mode silent fallback in `sam/` and `system_status/` when Flask import fails despite `FLASK_ACTIVE=1`.
+- **Phase 5 (4):** `verify=False` on the JupyterHub API call ("Matches existing behavior"); default `STATUS_API_URL=http://localhost:5050` with no warning when used against non-localhost; no SSH `BatchMode=yes` (cron falls back to interactive prompts on first-connect); collector Dockerfile `FROM python:3` unpinned.
+- **Phase 6 (5):** Helm webapp Deployment has zero probes despite well-designed `/api/v1/health/{live,ready,db}` endpoints; webapp gunicorn runs as root in all 3 environments; TruffleHog pinned to `@main` on the deploy path; `deploy-staging` uses long-lived AWS keys with no approval gate; staging RDS `publicly_accessible=true`.
+
+Each individual finding is defensible in isolation — "convenience for development," "the secret manager always works," "the cert was already trusted somewhere." Together they describe a default operating philosophy: **make the code keep running rather than refuse insecurely.** That philosophy is reasonable for a dev environment and dangerous in production. The cumulative effect is a system that quietly degrades into a less safe configuration when any component upstream of it fails or is misconfigured.
+
+**Recommendation:** rather than fixing 14 things individually, adopt a single principled stance — *fail-closed in `ProductionConfig`; permissive defaults only in `DevelopmentConfig`* — and audit each footgun against it. This is one focused PR (a few hours of work) plus its corresponding config-class refactor. Resolution is binary: a startup error in production beats a silent compromise.
 
 ### `[XC: convention-drift]`
-*Synthesis pending.* Currently: hand-rolled authz in ~9 routes; inline coercion in ~10 mutation routes; ~10 `is_active` violations inside the very models that define the canonical hybrid; 4 pure-wrapper functions in `queries/lookups.py`; bare integer exit codes in `cli/accounting/`; inline date coercion in 3 CLI sites; stray `print()` at status-package import; shell-string SSH commands with f-string interpolation under `shell=True` in collectors; `try/except ImportError` import-path dance in 4 collector modules. Pattern is right and well-documented; coverage is incomplete.
+
+The conventions in `CLAUDE.md` are excellent and largely followed — but the divergences cluster in revealing places.
+
+The **clearest pattern**: `is_active` discipline. `CLAUDE.md` §5 documents the universal `Model.is_active` hybrid and forbids raw column comparisons. The mixin is implemented correctly on every model that needs it. Yet *inside `Project` itself* (the class that defines the hybrid for projects) there are 4 sites using `cls.active == True` or `Allocation.deleted == False`; inside `User` itself there are 6. Plus one extra in `queries/statistics.py:89` that looks like an inadvertent extension of the documented exception. The pattern was migrated successfully but the migration didn't include the defining files.
+
+Same shape elsewhere:
+- **Form validation §9** — pattern documented; ~75 of 105 mutation routes use it; ~10 routes (wallclock-exemption, status-outage) hand-roll `datetime.strptime` + `float()` + `int()` coercion ladders. Two clusters likely pre-date the convention.
+- **RBAC decorators §8** — `access_control.py` is well-designed; ~9 routes hand-roll `can_change_admin` / `can_manage_project_members` inline. Same anti-pattern across `project_members.py` (5 routes), `api/v1/projects.py` (1 route), `dashboards/user/blueprint.py` threshold routes (3 routes, one with NO access check at all).
+- **CLI exit codes** — `EXIT_*` constants documented; `cli/accounting/commands.py` uses bare integer literals at 50+ sites; `EXIT_KEYBOARD_INTERRUPT` defined but never used.
+- **Collectors** — `try/except ImportError` import-path dance in 4 modules suggests the `pyproject.toml` entry points are aspirational rather than installed.
+
+**Recommendation:** one focused convention-cleanup PR per cluster (is_active, form-validation, RBAC, CLI exit codes). All Tiny-or-Small effort individually. These would also be excellent first-PRs for any new contributor.
 
 ### `[XC: docs-drift]`
 *Synthesis pending.* Phase 7 inventoried the whole tree. Drift concentrates in 5 places: stale stats (`CONTRIBUTING.md`, `README.md`, `CLAUDE.md`), AI-collab residue in 3 locations (`src/webapp/{DESIGN,IMPLEMENTATION_SUMMARY,REFACTORING_PLAN}.md` + `docs/prompts/*` + `collectors/docs/PBS_COLLECTORS_*PLAN.md`), `INDEX.md` doesn't mention 5 subdirs, the 8-doc setup cluster, ops records (`docs/remediation/CESM0002_*`) checked into the repo. **Cheap to fix** — Phase 7 enumerates ~20 dispositions, almost all Tiny or Small, executable as one bundled docs-consolidation PR (~½ day).
 
 ### `[XC: a11y]`
-*Synthesis pending.* Currently: systemic table + HTMX-swap + landmark gaps; forms/modals okay. Quick-win bundle (P1-12, P1-13, P1-14) gets the most ROI.
 
-### `[XC: ops]`
-*Synthesis pending.* **The defining theme of Phases 5 and 6: the system is built defensively where it counts (RBAC, audit log mechanics, retry, span coalescing, OIDC rotation) but configured to fail-open at the boundaries where ops would notice.** Operationally, the system is observable only via log-grep, and the log destination is partly ephemeral.
+Phase 2's template audit graded the 167-template tree by area. Base layout (C), forms (B−), tables (D), modals (B+), HTMX swaps (D), icons (C), color-only signaling (C). Bootstrap 5 + HTMX 2 give forms and modals most of what they need for free; the gaps are concentrated in the surfaces Bootstrap doesn't help with.
 
-Specifics: audit log written to ephemeral container path with no off-host shipping; global cache invalidation on every commit; remediation logs checked into repo; HA limiter/caching story partially worked out; `cleanup_status_data.py` not visibly scheduled; collector zero-substitution misrepresents downtime; no alerting on persistent collector failure; collector cron paths reference `benkirk`'s personal Glade dir; collector stdout/stderr swallowed; container vs cron deployment ambiguity; **Helm webapp Deployment has no probes despite well-designed health endpoints; no error ingestion (no Sentry); no metrics endpoint; no structured logging; `request_id` doesn't propagate; healthcheck failures invisible (no CloudWatch alarms).**
+The three highest-ROI fixes total maybe a half-day:
+1. **Skip-link + `<main>` landmark in `base.html`** (3-line change, biggest single keyboard-user win).
+2. **`aria-live="polite"` + `aria-busy` toggling in `htmx-config.js`** — one event handler covers every HTMX swap site.
+3. **Mechanical `scope="col"` pass** on the 10-15 `*_table.html` partials — sed-able, no visual change, real assistive-tech improvement.
+
+Whether this matters depends on **Q13: is SAM web subject to Section 508 / WCAG 2.1 AA?** Internal NCAR tools historically aren't audited, but if university PIs (UNIV facility members) consume the dashboards, this likely should be. The "doesn't matter today" answer is just as actionable as the "we need to comply by Q3" answer.
+
+### `[XC: ops]` — the second-strongest theme
+
+**The system is built defensively where it counts and operationally unobservable where it matters.** The contrast is striking: RBAC machinery, audit-log `before_flush` listener, retry-with-backoff in the API client, span coalescer with outage guard, OIDC rotation runbook — all thoughtful, all defensive. But the moment any of these *fails*, the operator has essentially no way to know.
+
+Concrete gaps:
+- **No error ingestion** anywhere. No Sentry/Rollbar. A 500 in production lands in CloudWatch (staging) or pod stdout (k8s) and stops there. `DESIGN.md:422` lists this as a TODO; the TODO is still open.
+- **Audit log non-durable in practice.** Written to `/var/log/sam/model_audit.log` inside the container; in ECS Fargate this is the container's writable layer, destroyed on redeploy. The audit log Phase 2 admired is operationally ephemeral.
+- **No metrics endpoint or backend.** No `prometheus_client`, no `/metrics` route. Only "metric" is a hardcoded `elapsed_ms > 5000` warning.
+- **No structured logging; `request_id` doesn't propagate.** Human format only; `g.request_id` embedded in exactly one log line. CloudWatch Insights / Loki structured queries impossible.
+- **Helm Deployment has zero probes** despite well-designed `/api/v1/health/{live,ready,db}` endpoints. Compose probes them. ECS probes them. k8s does not.
+- **Healthcheck failures invisible** — failing `/health` returns a regular `INFO 503` line, no CloudWatch alarms in `ecs.tf`.
+- **Collector failures invisible** — zero-substitution exception handler makes "transient SSH hiccup" look identical to "system fully down" on the dashboard; no alerting on persistent failure; `run_collectors.sh:91` swallows collector stdout/stderr.
+
+**Plus operational fragility:** audit log file-local with no off-host shipping; global `cache.clear()` on every commit (defeats LDAP-feed caches); `cleanup_status_data.py` not visibly scheduled in-repo; collector cron paths reference `benkirk`'s personal Glade directory; remediation logs checked into the code repo; HA limiter/caching not fully worked out.
+
+**Recommendation: one focused "observability bring-up" PR.** Sentry SDK + DSN env var (P0); structured JSON logger + `LoggerAdapter` for `request_id` propagation (P1); wire Helm probes to the existing health endpoints (P0); promote slow-request warning to a Prometheus histogram (P1). The system was built ready for this — it just isn't connected yet.
 
 ### `[XC: testing]`
-*Synthesis pending.* Test infrastructure for `src/sam/` and `src/webapp/` is strong (~1,500+ tests, two-tier strategy is genuinely clean, schema-drift tests partially assertive). **But:** 2 schema-drift tests are informational-only despite CLAUDE.md claiming they catch drift; 2 documented query functions have zero coverage; CLI tests don't exercise exit codes 2 or 130; CRUD tests still construct ORM models directly where `create()` classmethods exist; **and collector subsystem (~2,600 LOC) has exactly one test file.** The reliability of the entire status tier depends on collector code that is largely untested. The README is honest about the gap; that doesn't close it.
+
+Test infrastructure for `src/sam/` and `src/webapp/` is **genuinely strong** — ~1,500+ tests, two-tier strategy (Layer 1 representative fixtures + Layer 2 factory builders) is cleanly applied, schema-drift tests promoted to assertive for FK existence + UNIQUE constraints, SQLite-per-worker isolation for the status tier is the right shape. This is one of the better-tested codebases I've audited.
+
+But the layer is uneven where it matters most:
+- **Collector subsystem has exactly one test file** for ~2,600 LOC. The reliability of the entire status tier depends on this code: `api_client` retry logic, `base_collector` exception handling, `ssh_utils` parallel collection, the JupyterHub statistics calculator, all 7 parsers — none have dedicated tests. The README's "Next Steps (Deferred)" is honest about it.
+- **Two `test_column_types_match` / `test_database_columns_in_orm` schema-drift tests are informational-only** despite CLAUDE.md claiming they catch drift. The documented Boolean → BIT(1) historical bug would NOT be caught with current Boolean type-mapping.
+- **Two documented query functions have zero direct coverage** (`get_projects_by_allocation_end_date`, `get_projects_with_expired_allocations`) despite being featured in CLAUDE.md with explicit return-shape tuples.
+- **CLI tests cover exit codes 0 and 1 only** — never 2 (error) or 130 (KeyboardInterrupt). The KeyboardInterrupt handler doesn't exist yet (P1-27), so this pairs naturally.
+- **CRUD tests construct ORM models directly** even where `create()` classmethods exist; the validation paths in `Allocation.create()` (`amount > 0`, etc.) are only exercised implicitly via the factory.
+
+**Recommendation:** the testing gap that actually matters is the collector subsystem. That alone is ~Medium effort but eliminates the largest test-coverage risk in the audit. The other gaps are individually Tiny.
 
 ### `[XC: perf]`
-*Synthesis pending.* Currently: `AllocationWithUsageSchema` N×20 fanout (4-8× recomputation per allocation in `many=True`); `ProjectListSchema` N+1 on `lead`/`admin`; `usage_cache` lacks invalidation hooks on writes; 3 unbounded `.all()` queries in `sam/queries/`. None require architectural change — all are localized.
+
+No architectural performance problem; four localized issues, all fixable in well-scoped PRs.
+
+The biggest is `AllocationWithUsageSchema` calling `_calculate_tree_usage` and `_calculate_usage` 4-8× per allocation dump (`get_used`, `get_remaining`, `get_percent_used`, `get_root_projcode`, `get_charges_by_type`, `get_adjustments`, `get_self_used`, `get_self_percent_used` each independently). That's 16-24 DB queries per allocation; on `GET /api/v1/projects/<projcode>/allocations` with `many=True`, ~N×20 round trips. A memoization pass keyed by `allocation_id` on the schema instance should be 5-10× speedup.
+
+The others: `ProjectListSchema` triggers N queries for `lead`/`admin` on list dumps (N+1); `usage_cache` lacks invalidation hooks on writes (1-hour stale window after admin renew/extend/update); 3 unbounded `.all()` queries in `sam/queries/projects.py` and `users.py` (limit defaults missing).
+
+**Recommendation:** the memoization PR alone is the single highest-leverage perf change. Worth doing before P0-1/2 (the silent-shipping schema bugs) if confidence in shipping touches the same file.
 
 ### `[XC: secrets]`
-*Pending Phase 6.*
 
-### `[XC: bus-factor]`
-*New theme — Phase 6.* Three independent single-points-of-failure on `benkirk`: cron paths reference `/glade/work/benkirk/repos/...` (Phase 5 P1-37); `BENKIRK_GITHUB_TOKEN` is a personal PAT in 3 maintenance workflows (Phase 6 P1-46); `helm/values.yaml` image is `ghcr.io/benkirk/sam-queries/webapp:main`. Combined with the absence of a documented STATUS_API_KEY rotation runbook, this concentrates a meaningful chunk of prod-recoverability on one person. Worth a roll-up.
+Phase 6's secret audit found **zero committed secrets in the scan** (clean), and the three-store discipline for prod (AWS SSM / OpenBao / Compose env) holds cleanly. Defense-in-depth scanning runs at 3 layers: TruffleHog (CI + deploy), GitGuardian (pre-push), `detect-private-key` (pre-commit). The OIDC rotation procedure (`docs/AUTHENTICATION.md:322-360`) is best-in-class — the kind of runbook every secret should have. `gen_api_key.py` uses `secrets.token_urlsafe(32)` (CSPRNG) and bcrypt rounds=12 default with a `--rounds 14` option for prod.
+
+The gaps are documentation, not implementation:
+- **No documented rotation procedure for `STATUS_API_KEY` or `JUPYTERHUB_API_TOKEN`.** Both are operator-tribal-knowledge.
+- **TruffleHog pinned to `@main`** on the deploy path — covered under `[XC: prod-config-hardening]` but worth noting here too.
+- **`.trivyignore`** has rationale comments but no expiry dates.
+- **One bcrypt hash committed in `helm/values.yaml:61`** (the collector API key). Defensible (it's a hash, not a key) but inconsistent with the OIDC pattern of ExternalSecret-only.
+
+**Recommendation:** model the STATUS_API_KEY + JH-token rotation runbooks on the OIDC procedure. ~1 hour of doc work each.
+
+### `[XC: bus-factor]` — new theme, Phase 6
+
+A meaningful chunk of prod-recoverability concentrates on one person. Three independent single-points-of-failure:
+- Cron paths reference `/glade/work/benkirk/repos/sam-queries/collectors/cron_scripts` — if `benkirk` rotates / departs / their Glade quota gets cleared, collectors break silently (Phase 5 P1-37).
+- `BENKIRK_GITHUB_TOKEN` is a personal PAT in 3 maintenance workflows (`clean-ghcr.yaml`, `cron-clean-action-log.yaml`, `manually-clean-action-log.yaml`). When the PAT rotates or `benkirk` leaves, log cleanup + GHCR pruning silently stop. The fallback to `GITHUB_TOKEN` exists in `clean-ghcr.yaml:29` but isn't the default (Phase 6 P1-46).
+- `helm/values.yaml:31` image is `ghcr.io/benkirk/sam-queries/webapp:main` — namespaced under a personal GHCR account rather than an org/team namespace.
+
+Combined with the missing STATUS_API_KEY rotation runbook (`[XC: secrets]`), the system is recoverable-by-`benkirk` more than recoverable-by-team. None of these are urgent; all worth a roll-up to org-namespace + team-shared credentials.
 
 ### `[XC: deploy]`
-*Pending Phase 6.*
+
+The three-environment topology (Compose / ECS / k8s) is the most architecturally interesting part of the deploy story, and it's largely well-executed: one shared `containers/webapp/Dockerfile` stage `production` is the artifact in all three environments; secret injection is correctly factored (env / SSM / OpenBao); cgroup-aware gunicorn worker sizing avoids the documented OOM. The Helm chart is clean; ExternalSecret integration is real and tested; `docs/README-k8s.md` is unusually good operator documentation.
+
+The drift is at the edges:
+- **Image tag `:main` + `imagePullPolicy: IfNotPresent`** is a non-updating combo in `values.yaml`. CI rewrites to `:sha-<short>` on the `cirrus` branch — so prod is mutable-tagged on `main`, immutable-tagged on `cirrus`. Two sources of truth.
+- **ECS task pinned to `:latest`** while workflow pushes both `:<sha>` and `:latest`. `lifecycle.ignore_changes = [task_definition]` masks but `terraform apply` will drift back.
+- **`Chart.yaml` version stuck at `0.0.1`** — never bumped.
+- **Collector deployment not in Helm chart** despite the container image being built and pushed. Phase 5's "two parallel deployment models" surfaces here as concrete absence.
+- **`helm/tests/test-oidc-render.sh` not invoked by CI** — the `dev-only-insecure-key` guard exists but isn't enforced.
+
+**Recommendation:** decide collector deployment direction (CronJob via Helm, or stay on Glade and remove the unused image build) — Q42. The rest are individually Tiny and naturally cluster into a "deploy hygiene" PR alongside the prod-config-hardening work.
 
 ## Recommendations (sequencing)
 
-*Composed at end. A suggested order of attack so Ben isn't staring at a flat punch list. Likely shape: (a) the P0 batch as one focused PR — they're all small, security-critical, low risk; (b) a convention-drift PR rolling up the hand-rolled-authz + inline-coercion findings; (c) the a11y quick-win bundle; (d) docs-hygiene pass; (e) the more architectural items (OIDC linking, cache-invalidation strategy, audit shipping).*
+154 register items is a flat punch list. Here's an opinionated order of attack — five bundled PRs, sequenced by leverage and risk.
+
+### PR 1 — "Production-mode hardening" (highest leverage)
+
+The single most impactful work. Picks up the **`[XC: prod-config-hardening]` theme** plus the two silent-shipping schema bugs. Defensible as one PR because every change tightens `ProductionConfig` or its boundaries; review surface is small and locally testable.
+
+- **P0-1, P0-2** Fail-closed in `ProductionConfig.validate()`: reject `AUTH_PROVIDER='stub'`, reject `DISABLE_AUTH=1`. (Phase 2 H1, H2.)
+- **P0-5, P0-6** Fix `ProjectListSchema.get_admin_username` empty body + `ProjectSchema.get_panel` orphan guard. (Phase 4 B1, B2.) These ship today silently null / 500-on-orphan; no reason to defer.
+- **P0-9** Wire Helm `livenessProbe`/`readinessProbe` to the existing `/api/v1/health/*` endpoints. (Phase 6 D1.)
+- **P0-13** Move staging RDS to private subnet, flip `skip_final_snapshot`. (Phase 6 D2.)
+- **P1-21, P1-16** Make the silent `Base` Flask-fallback in `sam/base.py` and `system_status/base.py` log loudly or raise. (Phase 3 S2, Phase 4 A1.)
+- **P1-15** Remove the stray `print(username@server/database)` at status-package import. (Phase 3 S1.)
+
+**Effort: ~1 day.** Safety-net: every change has localized blast radius; rollback is one revert per finding.
+
+### PR 2 — "Observability bring-up" (high leverage, gates incident response)
+
+Picks up the **`[XC: ops]` theme.** Without it, the rest of the audit's work is invisible if something goes wrong. With it, every subsequent change has a feedback loop.
+
+- **P0-14** Add `@app.errorhandler(Exception)` → Sentry SDK (or equivalent). Add `SENTRY_DSN` env var; off by default in dev. (Phase 6 O1.)
+- **P0-15** Switch audit log handler from `RotatingFileHandler` to `StreamHandler(sys.stdout)` so the awslogs/cloudwatch driver picks it up. Or mount EFS / ship to S3. (Phase 6 O2.) Pairs with Phase 2 Q11.
+- **P1-49** Structured JSON logger + `LoggerAdapter` that injects `request_id` everywhere. (Phase 6 O3/O4.)
+- **P1-50** `prometheus_client` + `/metrics` route. Promote slow-request warning to a histogram. (Phase 6 O5.)
+- **P1-55** Explicit `logger.error` path for healthcheck failures + CloudWatch alarm on 5xx rate in `ecs.tf`. (Phase 6 O6.)
+- **P0-8, P1-36** Wire collector failures to alerting (healthchecks.io heartbeat is the easy path); fix `run_collectors.sh:91` stdout/stderr swallowing. (Phase 5 O2/O3.) Depends on Q33.
+- **P0-7** Decide collector failure-mode UX (Q31) and fix the zero-substitution code accordingly. (Phase 5 O1.)
+
+**Effort: ~2 days** depending on Sentry/metrics-backend procurement at NCAR. Two of these are P0; others move from P1 once the foundation lands.
+
+### PR 3 — "Convention cleanup" (good first issue territory)
+
+Picks up the **`[XC: convention-drift]` theme.** Mechanical work; minimal review burden; high pedagogical value as a reference PR for new contributors.
+
+- **P1-25** 10+ `is_active` violations inside `Project` and `User`. Mechanical replace. (Phase 4 D1/D2/D3.)
+- **P1-8** Wallclock-exemption routes — add `sam/schemas/forms/exemptions.py`, refactor 3 handlers. (Phase 2 F1.)
+- **P1-9** Status-outage routes — add `sam/schemas/forms/outages.py`, refactor across HTMX + API. (Phase 2 F2/F3.)
+- **P1-5, P1-6** Hand-rolled authz in `dashboards/project_members.py` (5 routes) + threshold routes (3 routes incl. one with NO access check). Add thin decorators. (Phase 2 M5/M6.)
+- **P1-27** Add top-level `try/except KeyboardInterrupt` in `cmds/search.py` + `cmds/admin.py` (exit 130). (Phase 4 C3.)
+- **P1-29** `Project.deactivate()` method, replace inline `project.active = False; session.commit()` in `ProjectExpirationCommand`. (Phase 4 C6.)
+- **P1-31** `cli/accounting/commands.py` bare integers → `EXIT_*` constants. Pure sed. (Phase 4 C2.)
+- **P1-28** Validation errors to `ctx.stderr_console` (corrupts JSON pipelines otherwise). (Phase 4 C5.)
+
+**Effort: ~1 day.** None of these are urgent individually; bundled they make a single coherent "tighten the conventions" pass.
+
+### PR 4 — "Docs consolidation" (cheap big wins)
+
+Picks up the **`[XC: docs-drift]` theme** and the Phase 1/Phase 7 dispositions. ~10 docs deleted/merged; ~5 stub-redirects; new `docs/archive/`. Almost all `mv` and one-paragraph edits.
+
+- **P2-93..P2-112** (20 items). All Tiny-or-Small. Sequence:
+  1. Create `docs/archive/` with index README.
+  2. Update `docs/INDEX.md` to reflect target IA.
+  3. Move `src/webapp/IMPLEMENTATION_SUMMARY.md` to delete; `DESIGN.md` to `docs/archive/webapp-design.md`; `QUICK_START_RBAC.md` to `docs/TESTING_RBAC.md`.
+  4. Reconcile `src/webapp/REFACTORING_PLAN.md` against current code (P2-104, depends on Q3); surviving items → `docs/plans/WEBAPP_REFACTORING_BACKLOG.md`.
+  5. `docs/prompts/` → `docs/archive/build-prompts/`; `collectors/docs/PBS_COLLECTORS_*PLAN.md` → `docs/archive/build-plans/collectors/`.
+  6. Merge `k8s.md` into `README-k8s.md`; move `CIRRUS-k8s-cmds.sh` to `scripts/`.
+  7. Reduce setup cluster: `LOCAL_SETUP.md` canonical; `SETUP_SUMMARY.md`/`WEBAPP_SETUP.md`/`CREDENTIALS.md` become stubs; `SCRIPTS.md` + `SCRIPT_ORGANIZATION.md` merge into `scripts/README.md`.
+  8. Refresh test counts in `CONTRIBUTING.md` + `CLAUDE.md`; trim `README.md`.
+  9. Rename `docs/remediation/` to date-first; long-term: ship to Confluence (Q2).
+
+**Effort: ~½ day.** Best done after PR 1-3 so any code-flagged docs (e.g. REFACTORING_PLAN items completed during PR 3) are reflected.
+
+### PR 5 — "Architectural cleanup" (when time permits)
+
+Picks up the items that don't fit the above PRs but are worth doing.
+
+- **P1-42** Webapp container `USER` non-root + `securityContext: runAsNonRoot: true`. Pairs with P2-86 (drop `AVD-DS-0002` ignore). (Phase 6 D6.)
+- **P1-22** `AllocationWithUsageSchema` memoization keyed by `allocation_id`. 5-10× speedup on `many=True`. (Phase 4 P1.) Depends on Q21.
+- **P1-23** `usage_cache` invalidation hooks on write paths in `manage/allocations.py`, `manage/renew.py`, `manage/extend.py`. (Phase 4 P3.) Depends on Q22.
+- **P1-38** Collector test coverage — `api_client` retry logic, `base_collector` exception handling, JupyterHub statistics calculator, parsers. Largest test-coverage risk in the audit. (Phase 5 T1.)
+- **P1-43** STATUS_API_KEY + JH-token rotation runbooks modeled on AUTHENTICATION.md OIDC procedure. (Phase 6 SS1.) Depends on Q47.
+- **P1-44** Python lockfile — `pip-compile` or `uv lock`. (Phase 6 SS2.) Depends on Q46.
+- **P0-10, P0-11, P0-12** CI/CD deploy hardening: SHA-pin TruffleHog, switch to OIDC + IAM role for AWS, protect `cirrus` branch. (Phase 6 CI1/CI2/CI3.) These are P0 but typically require some org-side coordination — moving them to PR 5 reflects that practical reality.
+- **A11y quick-win bundle** (P1-12, P1-13, P1-14) — depending on Q13 (compliance posture).
+
+**Effort: ~3 days** total but parallelizable. None are blockers.
+
+---
+
+**Out-of-band:** the 14 cross-cutting questions for Ben (numbered in the next section) gate ~15 of the above items. Worth a 30-minute call once Ben has time to read this synthesis — most are yes/no / one-line decisions.
+
+### What I would NOT do
+
+A directional audit should also be clear about what doesn't need attention:
+
+- **No architectural refactor** — the structure is sound. Avoid the temptation to split `Project` god-class or rework the schema tiers unless Ben specifically wants it (P2-39, P2-54 are P2 for a reason).
+- **No "rewrite the collectors" instinct** — the architecture is correct; the operational posture is the issue. PR 2 fixes the visibility; PR 5 fills the test gap.
+- **No CLAUDE.md overhaul** — refresh counts on next pass, but the doc is genuine project memory. Don't touch the structure.
+- **No premature decommission of dual deploy paths** — until Q29/Q42 confirm canonical-vs-stale, both paths stay.
 
 ## Open questions for Ben
 
@@ -458,4 +638,52 @@ Specifics: audit log written to ephemeral container path with no off-host shippi
 
 ## Reviewer notes
 
-*Composed at end. Caveats about scope (1-2 day directional), depth (no exhaustive testing, no formal threat model, no perf profiling), what we didn't get to (e.g. notebooks, full Flask-Admin model-view audit beyond the headline finding).*
+### What this audit is, and isn't
+
+**This is a directional review** — high-confidence callouts and a punch list, not a file-by-file audit. Roughly 3 days of focused reading across ~30,000 LOC of Python + Helm + Terraform + YAML, supplemented by parallel agent-based deep-dives along independent verticals (CI/CD vs auth vs RBAC vs schemas, etc.). Each agent received a focused prompt with explicit scope boundaries to avoid duplicated work. Every finding cites `file:line` so Ben can verify rather than trust.
+
+**It is NOT:**
+- A formal threat model. No STRIDE / attack-tree analysis; no penetration testing.
+- A code-quality enforcement pass. Style nits, micro-optimizations, refactoring opportunities are deliberately omitted.
+- An exhaustive test of all 154 findings against current `main`. Several depend on quick fixes Ben may have already merged since the base commit (`b166d9b`).
+- A performance profile. The four `[XC: perf]` findings are pattern-detected; only the `AllocationWithUsageSchema` fanout was measured (queries-per-allocation count). No load test was run.
+
+### What I didn't get to
+
+- **Notebooks under `src/notebooks/`** — referenced in the system map; not audited.
+- **The full Flask-Admin model-view surface.** Phase 2 flagged the headline `is_accessible()` issue (any authenticated user reads everything); the per-model-view configs weren't enumerated.
+- **The `etc/` directory beyond `config_env.sh`.**
+- **The `utils/` top-level directory.** Some scripts surfaced through other phases (`sample_collector_commands.sh`, etc.) but not a directed pass.
+- **The audit log's `events.py` filter logic** beyond confirming the documented exclusions are correct.
+- **Charge-summary upsert paths in `sam/manage/summaries.py`** — surfaced as a strength in Phase 4 but not deeply audited.
+- **`docs/presentations/`** — explicitly out of scope per Phase 7 (self-contained subtree).
+
+### Depth caveats by phase
+
+| Phase | Depth | What that means |
+|---|---|---|
+| 1 Orientation | High | Every CLAUDE.md spot-check verified. |
+| 2 Web | Medium-high | 5 parallel deep-dives; sampled but did not enumerate all 167 templates or all 105 mutation routes. |
+| 3 Status | High | Small subsystem; direct end-to-end reading. |
+| 4 ORM/CLI | Medium-high | 5 parallel deep-dives; ORM models sampled per domain, not every class read. |
+| 5 Collector | High | Small subsystem; direct end-to-end reading. |
+| 6 Platform | Medium-high | 4 parallel deep-dives; Helm chart + Terraform read; CI workflows mostly read. |
+| 7 Docs | High | Whole tree enumerated; no code re-reading. |
+
+### What I'd recommend doing if budget reopens
+
+If the team wants a follow-up:
+1. **Threat model the `/api/v1/*` surface.** Pair with Phase 2's RBAC findings as the starting point. Half-day exercise.
+2. **Load test the dashboard `many=True` endpoints** before and after the `AllocationWithUsageSchema` memoization (PR 5).
+3. **Run a `sam-search`/`sam-admin` UX session with a non-CISL operator** to surface CLI ergonomics gaps. The placeholder `--validate` / `--reconcile` commands (Phase 4 C7) would likely surface immediately.
+
+### Disposition
+
+This branch (`audit/dvance-2026-05`) is for review notes only. It should not merge. Findings are best landed as the 5 bundled PRs described above; any direct cherry-pick from the audit branch should go through `main` PRs with their own review.
+
+The synthesis (this file) is the deliverable. The per-phase docs are appendix for "show me the file:line" — Ben should be able to read this section + the executive summary + the action register + sequencing in about 20 minutes, drilling down only when a specific finding catches his eye.
+
+---
+
+*— dv, 2026-05-21*
+

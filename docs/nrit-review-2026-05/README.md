@@ -72,15 +72,15 @@ Each subsystem phase considers, where applicable:
 |---|---|---|---|
 | 0 | Workspace setup | *(this file)* | ✅ Done |
 | 1 | Orientation & doc-drift | [`01_orientation.md`](01_orientation.md) | ✅ Done |
-| 2 | Web (`src/webapp/`) | [`02_web.md`](02_web.md) | ⏳ Pending |
-| 3 | Status (`src/system_status/`) | [`03_status.md`](03_status.md) | ⏳ Pending |
-| 4 | ORM/CLI (`src/sam/`, `src/cli/`) | [`04_orm_cli.md`](04_orm_cli.md) | ⏳ Pending |
-| 5 | Collector (`collectors/`) | [`05_collector.md`](05_collector.md) | ⏳ Pending |
-| 6 | Platform / cross-cutting | [`06_platform.md`](06_platform.md) | ⏳ Pending |
-| 7 | Docs hygiene | [`07_docs.md`](07_docs.md) | ⏳ Pending |
-| 8 | Synthesis & punch list | [`08_synthesis.md`](08_synthesis.md) | ⏳ Pending |
+| 2 | Web (`src/webapp/`) | [`02_web.md`](02_web.md) | ✅ Done |
+| 3 | Status (`src/system_status/`) | [`03_status.md`](03_status.md) | ✅ Done |
+| 4 | ORM/CLI (`src/sam/`, `src/cli/`) | [`04_orm_cli.md`](04_orm_cli.md) | ✅ Done |
+| 5 | Collector (`collectors/`) | [`05_collector.md`](05_collector.md) | ✅ Done |
+| 6 | Platform / cross-cutting | [`06_platform.md`](06_platform.md) | ✅ Done |
+| 7 | Docs hygiene | [`07_docs.md`](07_docs.md) | ✅ Done |
+| 8 | Synthesis & punch list | [`08_synthesis.md`](08_synthesis.md) | ✅ Done |
 
-After each phase, the reviewer pauses for a quick check-in before continuing.
+**Audit complete.** Start at [`08_synthesis.md`](08_synthesis.md) — executive summary, action register (15 P0 / 55 P1 / 112 P2 items), 5 sequenced PRs, 49 questions for Ben.
 
 ## How to read these reports
 
