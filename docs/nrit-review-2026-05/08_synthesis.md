@@ -55,6 +55,9 @@
 - **LFS for the dev DB dump** — 133-byte pointer committed; obfuscation pipeline documented; `.gitignore` correctly excludes real-data local snapshots. (Phase 6)
 - **`install.sh` in-place detection** is genuinely thoughtful — checks `compose.yaml`, `.env.example`, and `git rev-parse --is-inside-work-tree`. (Phase 6)
 - **Health endpoint design is correct** — `/api/v1/health/{live,ready,db}` cleanly separates liveness (no DB call) from readiness (DB ping). Code is right; just unused by Helm. (Phase 6)
+- **`docs/plans/implemented/` is exemplary archive practice** — 29 plan docs from completed work moved aside in a dedicated subdirectory. Model this for other doc archives. (Phase 7)
+- **`docs/presentations/` has its own scoped `CLAUDE.md`** that auto-loads when Claude is working in that subtree. Nice subtree-scoped context pattern worth borrowing. (Phase 7)
+- **`migrations/system_status/` runbooks** (`PROD_BOOTSTRAP.md`, `0002_NORMALIZATION_RUNBOOK.md`, `0003_USER_PROJ_QUEUE_RUNBOOK.md`) are operationally exemplary — backup-first, dry-run, expected-table verification. (Phase 3 strength, re-noted in Phase 7.) (Phase 7)
 
 ## Action register
 
@@ -309,7 +312,32 @@
 - **P2-37** [Phase 3 / O2] **Cleanup script doesn't reap lookup tables** (`UserDef`, `ProjectCodeDef`, etc.). In practice these are bounded by the user/project/queue catalog and won't blow up, but a one-off bad ingest leaves orphans forever. Effort: **Small**.
 - **P2-38** [Phase 3 / O3] **Document the monotonic-`T_new` assumption in the span coalescer.** Out-of-order or backfill ingests aren't currently a concern (collectors push monotonically every 5 minutes), but the assumption is implicit. Effort: **Tiny** (comment-only).
 
-#### Docs hygiene (deferred to Phase 7 for final dispositions)
+#### Docs hygiene — final dispositions (Phase 7)
+
+> Most are Tiny effort. Best executed as **one bundled "docs-consolidation" PR.** Total effort: ~½ day; total surface: ~10 docs deleted/merged, ~5 stub-redirects, `docs/archive/` created.
+
+- **P2-93** [Phase 7] **Create `docs/archive/` as the durable home for stale-but-useful artifacts.** Mirrors the `docs/plans/implemented/` pattern. Effort: **Tiny** (just `mkdir` + README).
+- **P2-94** [Phase 7] **Update `docs/INDEX.md`** — currently doesn't mention `plans/`, `apis/`, `presentations/` subdirs; AUTHENTICATION.md is only in the FAQ. Effort: **Small**.
+- **P2-95** [Phase 7] **`README.md` (941 lines) — trim and update.** Drop inline setup steps that duplicate LOCAL_SETUP.md; refresh test counts to actual (~1,750); add 7 missing API endpoint modules. Effort: **Small**.
+- **P2-96** [Phase 7] **Refresh `CLAUDE.md` stats on next pass** — model count "91+" → ~106; test count "~1,400" → ~1,750. Effort: **Tiny**.
+- **P2-97** [Phase 7] **Merge `k8s.md` into `README-k8s.md`** (Phase 1 + Phase 6 D11). Effort: **Small**.
+- **P2-98** [Phase 7] **Move `docs/CIRRUS-k8s-cmds.sh` to `scripts/`.** A `.sh` inside `docs/` is non-discoverable. Effort: **Tiny**.
+- **P2-99** [Phase 7] **Reduce setup-doc cluster** — `LOCAL_SETUP.md` becomes canonical; `SETUP_SUMMARY.md` / `WEBAPP_SETUP.md` / `CREDENTIALS.md` become stub-redirects; `SCRIPTS.md` + `SCRIPT_ORGANIZATION.md` merge into `scripts/README.md`. Effort: **Small** (sequence of mv + edit + redirect).
+- **P2-100** [Phase 7] **Rename `docs/GETTING_STARTED.md` to `STACK_PRIMER.md`** to clarify it's a tech-stack primer, not a setup doc. Effort: **Tiny**.
+- **P2-101** [Phase 7] **`src/webapp/IMPLEMENTATION_SUMMARY.md` → delete** (Phase 1 disposition finalized). Effort: **Tiny**.
+- **P2-102** [Phase 7] **`src/webapp/DESIGN.md` → `docs/archive/webapp-design.md`** (Phase 1 disposition finalized). Effort: **Tiny**.
+- **P2-103** [Phase 7] **`src/webapp/QUICK_START_RBAC.md` → `docs/TESTING_RBAC.md`** (promote per Phase 1 + Phase 2 strength). Effort: **Tiny**.
+- **P2-104** [Phase 7] **`src/webapp/REFACTORING_PLAN.md` → verify + move to `docs/plans/WEBAPP_REFACTORING_BACKLOG.md`** — Priority 1.1 and 2.1 are partly/fully done per Phase 2/4. Retire completed items. Effort: **Small**. Depends on Q3.
+- **P2-105** [Phase 7] **`src/webapp/README.md` — trim.** API section omits ~7 endpoint modules; references "future Marshmallow" (now done). Cross-reference `docs/apis/*`. Effort: **Small**.
+- **P2-106** [Phase 7] **`docs/prompts/` → `docs/archive/build-prompts/`** with an explanatory README. Effort: **Tiny**. Depends on Q5 (Phase 1).
+- **P2-107** [Phase 7] **`docs/remediation/` — short-term: rename to date-first directory** (`2026-05-02-CESM0002/`) with an index README. **Long-term: ship to Confluence per Q2.** Effort: **Tiny** (rename) / **Small** (Confluence migration).
+- **P2-108** [Phase 7] **`docs/plans/` reconciliation** — verify `DISK_CHARGE_SUMMARY-only.md`, `SCHEMA_VISUALIZATION.md` status (move to `implemented/` if shipped); move `RATE_LIMITING.md` to `implemented/` (verified done in Phase 2); refresh `PRODUCTION_IMPROVEMENTS.md` against Phases 2/6 findings. Effort: **Small**.
+- **P2-109** [Phase 7] **`collectors/docs/PBS_COLLECTORS_*PLAN.md` → `docs/archive/build-plans/collectors/`** (Phase 5 P2-75). Effort: **Tiny**. Depends on Q34.
+- **P2-110** [Phase 7] **`collectors/README.md`** — fix line saying `STATUS_API_KEY=your_password` (it's an API key, not password). Effort: **Tiny**.
+- **P2-111** [Phase 7] **`src/cli/README.md`** — fix `sam_search_cli_original.py` reference (file no longer exists). Phase 4 C10. Effort: **Tiny**.
+- **P2-112** [Phase 7] **`docs/integration/NEXT_GID.md`** — promote to `docs/` root or group with `apis/`. Single-file subdirectory. Effort: **Tiny**.
+
+#### Docs hygiene (Phase 1, retained for completeness)
 
 - **P2-23** [Phase 1] **CONTRIBUTING.md test stats stale** (380+ claimed, 1,750 actual). Re-run `pytest --cov`, refresh. (Depends on Q1.) Effort: **Tiny**.
 - **P2-24** [Phase 1] **`README.md` test count internally inconsistent** (claims both ~1,400 and 380+ in different sections). Effort: **Tiny**.
@@ -334,7 +362,7 @@
 *Synthesis pending.* Currently: hand-rolled authz in ~9 routes; inline coercion in ~10 mutation routes; ~10 `is_active` violations inside the very models that define the canonical hybrid; 4 pure-wrapper functions in `queries/lookups.py`; bare integer exit codes in `cli/accounting/`; inline date coercion in 3 CLI sites; stray `print()` at status-package import; shell-string SSH commands with f-string interpolation under `shell=True` in collectors; `try/except ImportError` import-path dance in 4 collector modules. Pattern is right and well-documented; coverage is incomplete.
 
 ### `[XC: docs-drift]`
-*Synthesis pending.* Currently: stale stats in `CONTRIBUTING.md` + `README.md`, stale API section in `src/webapp/README.md`, AI-collab residue in `src/webapp/{DESIGN,IMPLEMENTATION_SUMMARY,REFACTORING_PLAN}.md`, overlap clusters in `docs/` setup + k8s docs.
+*Synthesis pending.* Phase 7 inventoried the whole tree. Drift concentrates in 5 places: stale stats (`CONTRIBUTING.md`, `README.md`, `CLAUDE.md`), AI-collab residue in 3 locations (`src/webapp/{DESIGN,IMPLEMENTATION_SUMMARY,REFACTORING_PLAN}.md` + `docs/prompts/*` + `collectors/docs/PBS_COLLECTORS_*PLAN.md`), `INDEX.md` doesn't mention 5 subdirs, the 8-doc setup cluster, ops records (`docs/remediation/CESM0002_*`) checked into the repo. **Cheap to fix** — Phase 7 enumerates ~20 dispositions, almost all Tiny or Small, executable as one bundled docs-consolidation PR (~½ day).
 
 ### `[XC: a11y]`
 *Synthesis pending.* Currently: systemic table + HTMX-swap + landmark gaps; forms/modals okay. Quick-win bundle (P1-12, P1-13, P1-14) gets the most ROI.
