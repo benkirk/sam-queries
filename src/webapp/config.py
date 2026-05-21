@@ -76,10 +76,21 @@ class SAMWebappConfig(SAMConfig):
 
     # hpc-usage-queries plugin (per-job rows on resource-usage detail pages).
     # The plugin owns its own database — typically a per-machine PostgreSQL
-    # database (derecho_jobs, casper_jobs) configured via JOB_HISTORY_PG_*
-    # env vars consumed by the plugin itself. The values below are the
-    # SAM-side tuning knobs only; the plugin's own env-driven config is
-    # read at engine-creation time inside job_history.database.session.
+    # database (derecho_jobs, casper_jobs) on the shared `csg-postgres` cluster.
+    #
+    # Sizing rationale: per-job query traffic is bursty — a single
+    # resource-detail page load fans out into ~5 queries against one
+    # machine's database. Server-side `idle_session_timeout` on
+    # `csg-postgres` (configured in the peer repo's helm chart) reaps
+    # truly-idle connections at 10 minutes, so pool_size is sized for the
+    # *warm working set under typical burst* rather than as a safety cap.
+    # 5 base + 10 burst keeps a page's worth of queries from paying the
+    # TLS handshake cost mid-render, while the server's reaper prevents
+    # the per-worker pool from accumulating idle across the gunicorn
+    # worker pool. `pool_recycle=600` is belt-and-suspenders: same window
+    # as the server-side timeout, gives client-side cleanup symmetry.
+    # All knobs remain env-overridable for deployments backed by a
+    # different postgres or without server-side idle eviction.
     JOB_HISTORY_MACHINES = [
         m.strip() for m in os.getenv('JOB_HISTORY_MACHINES', 'derecho,casper').split(',')
         if m.strip()
@@ -88,7 +99,7 @@ class SAMWebappConfig(SAMConfig):
         'pool_size':      int(os.getenv('JOB_HISTORY_POOL_SIZE',     5)),
         'max_overflow':   int(os.getenv('JOB_HISTORY_POOL_MAX_OVERFLOW', 10)),
         'pool_pre_ping':  True,
-        'pool_recycle':   int(os.getenv('JOB_HISTORY_POOL_RECYCLE',  3600)),
+        'pool_recycle':   int(os.getenv('JOB_HISTORY_POOL_RECYCLE',  600)),
     }
 
     # Session cookies (common defaults; subclasses tighten for prod)

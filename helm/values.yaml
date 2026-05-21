@@ -49,6 +49,10 @@ webapp:
     SAM_DB_REQUIRE_SSL: "true"
     STATUS_DB_DRIVER: "postgresql"
     STATUS_DB_SERVER: "csg-postgres.k8s.ucar.edu"
+    # STATUS_DB_POOL_* defaults (size=2, overflow=4, recycle=600) live in
+    # webapp/run.py and are already sized for csg-postgres' 100-slot cap.
+    # Override here only if a future deployment uses a different backing
+    # database (e.g. dedicated postgres with more headroom).
     GOOGLE_CALENDAR_EMBED_URL: "https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver"
     # OIDC SSO via Microsoft Entra. Client ID/secret/issuer and FLASK_SECRET_KEY
     # are injected via secretKeyRef from the oidcCredentials ExternalSecret below.
@@ -68,11 +72,26 @@ webapp:
     JOB_HISTORY_PG_PORT: "5432"
     JOB_HISTORY_MACHINES: "derecho,casper"
 
+  # system_status DB credentials (injected as STATUS_DB_USERNAME / STATUS_DB_PASSWORD).
+  # MUST be a non-superuser role — connecting as the postgres SUPERUSER causes
+  # SAM's idle pool to consume the cluster's superuser_reserved_connections
+  # quota, which then locks out other pguser-class consumers with FATAL
+  # "remaining connection slots are reserved for roles with the SUPERUSER
+  # attribute". Reuses csg/pg-appuser (the same pguser role used by the
+  # hpc-usage-queries plugin). Required grants on system_status DB:
+  #   GRANT CONNECT ON DATABASE system_status TO pguser;
+  #   GRANT USAGE ON SCHEMA public TO pguser;
+  #   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO pguser;
+  #   GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO pguser;
+  #   ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  #     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pguser;
+  #   ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  #     GRANT USAGE, SELECT ON SEQUENCES TO pguser;
   dbCredentials:
     enabled: true                         # Enable syncing credentials from OpenBao
     useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
     secretStoreRefName: csg-ro            # Name of the SecretStore to use
-    secretPath: csg/pg-superuser          # Path in OpenBao where credentials are stored
+    secretPath: csg/pg-appuser            # pguser role (NOT csg/pg-superuser — see comment above)
     usernameKey: username                 # Key in OpenBao for username
     passwordKey: password                 # Key in OpenBao for password
 

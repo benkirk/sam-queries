@@ -98,6 +98,56 @@ def pool_stats(pool) -> Dict[str, Any]:
     }
 
 
+def classify_connection_error(error: Optional[str]) -> Optional[Dict[str, str]]:
+    """Classify a connection-failure error string into a cause class.
+
+    Distinguishes the two failure modes that look identical on the Admin
+    health card but require opposite responses:
+
+    - ``server-exhaustion``: the database server is out of connection
+      slots. Raising the local pool would reserve *more* slots per pod
+      and make this worse. Diagnose at the server (``pg_stat_activity``).
+    - ``client-exhaustion``: the local SQLAlchemy pool is full and
+      ``pool_timeout`` elapsed waiting for a slot. Raising the pool is
+      the right response.
+    - ``connection-refused``: the host is unreachable (DNS failure,
+      port closed, server down). Neither pool tuning helps.
+
+    Returns ``None`` when ``error`` is falsy. Returns ``{'class': 'unknown',
+    'hint': None}`` when the string doesn't match a known pattern.
+    """
+    if not error:
+        return None
+    e = error.lower()
+    if ('remaining connection slots are reserved' in e
+            or 'too many connections' in e
+            or 'sorry, too many clients already' in e):
+        return {
+            'class': 'server-exhaustion',
+            'hint':  ('Database server is out of connection slots. '
+                      'Diagnose with pg_stat_activity on the server — '
+                      'raising the local pool would make this worse.'),
+        }
+    if ('queuepool limit' in e
+            or 'timed out waiting for connection' in e
+            or 'connection pool is full' in e):
+        return {
+            'class': 'client-exhaustion',
+            'hint':  ('Local SQLAlchemy pool is full. Raise the '
+                      'pool_size / max_overflow env vars for this engine.'),
+        }
+    if ('connection refused' in e
+            or 'could not connect to server' in e
+            or 'could not translate host name' in e
+            or 'name or service not known' in e):
+        return {
+            'class': 'connection-refused',
+            'hint':  ('Database host is unreachable (DNS, port, or '
+                      'server down). Not a pool issue.'),
+        }
+    return {'class': 'unknown', 'hint': None}
+
+
 def tail_audit_log(path: Optional[str], n: int = 25) -> Optional[List[str]]:
     """Return the last ``n`` lines of the audit log file at ``path``.
 
@@ -337,12 +387,13 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         except Exception:
             stats = None
         databases.append({
-            'name':       name,
-            'url':        format_db_url_safe(engine),
-            'status':     'healthy' if ok else 'unhealthy',
-            'latency_ms': latency_ms,
-            'error':      err,
-            'pool':       stats,
+            'name':         name,
+            'url':          format_db_url_safe(engine),
+            'status':       'healthy' if ok else 'unhealthy',
+            'latency_ms':   latency_ms,
+            'error':        err,
+            'error_detail': classify_connection_error(err),
+            'pool':         stats,
         })
 
     # hpc-usage-queries plugin (one engine per configured machine).
@@ -357,12 +408,13 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         except Exception:
             stats = None
         databases.append({
-            'name':       f'job_history ({machine})',
-            'url':        format_db_url_safe(engine),
-            'status':     'healthy' if ok else 'unhealthy',
-            'latency_ms': latency_ms,
-            'error':      err,
-            'pool':       stats,
+            'name':         f'job_history ({machine})',
+            'url':          format_db_url_safe(engine),
+            'status':       'healthy' if ok else 'unhealthy',
+            'latency_ms':   latency_ms,
+            'error':        err,
+            'error_detail': classify_connection_error(err),
+            'pool':         stats,
         })
 
     # --- Authentication

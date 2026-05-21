@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import re
+import socket
 import uuid
 import time
 from datetime import datetime
@@ -79,14 +80,11 @@ def create_app(*, config_overrides: dict | None = None):
 
     # Flask-SQLAlchemy configuration (connection strings come from session modules)
     app.config['SQLALCHEMY_DATABASE_URI'] = sam.session.connection_string
-    app.config['SQLALCHEMY_BINDS'] = {
-        'system_status': system_status.session.connection_string,
-    }
 
     # Check if SSL is required (read from config class, which already parsed the env var)
     require_ssl = cfg.SAM_DB_REQUIRE_SSL
 
-    # Production-ready connection pool configuration
+    # Production-ready connection pool configuration for the main SAM engine.
     engine_options = {
         'pool_size': 10,           # Number of connections to maintain
         'max_overflow': 20,        # Additional connections when pool is exhausted
@@ -95,11 +93,59 @@ def create_app(*, config_overrides: dict | None = None):
         'echo': False,             # Set to True for SQL debugging
     }
 
-    # Add SSL configuration if required
+    # Add SSL configuration if required (MySQL/pymysql syntax — the SAM engine
+    # is MySQL; the system_status engine handles its own SSL below since it
+    # uses a different driver).
     if require_ssl:
         engine_options['connect_args'] = {'ssl': {'ssl_disabled': False}}
 
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
+
+    # system_status bind — uses its own pool config because it talks to a
+    # different backend (postgres on the shared `csg-postgres` cluster, not
+    # the main SAM MySQL). We do NOT override pool_size / max_overflow from
+    # the main engine — server-side `idle_session_timeout` on `csg-postgres`
+    # (configured in the hpc-usage-queries peer repo's helm chart) reaps
+    # truly-idle connections, so a generous per-worker pool no longer
+    # accumulates. The per-bind dict is kept primarily so we can attach
+    # postgres-specific `application_name` + driver-correct SSL handling
+    # below. `pool_recycle=600` provides client-side symmetry with the
+    # server-side reap window. Env-overridable for non-postgres backends.
+    status_pool = {
+        'pool_size':     int(os.getenv('STATUS_DB_POOL_SIZE', 10)),
+        'max_overflow':  int(os.getenv('STATUS_DB_POOL_MAX_OVERFLOW', 20)),
+        'pool_pre_ping': True,
+        'pool_recycle':  int(os.getenv('STATUS_DB_POOL_RECYCLE', 600)),
+    }
+    # Driver-correct connect_args:
+    #   - postgres: sslmode (if required) + application_name so pg_stat_activity
+    #     can attribute connections to a specific pod / engine for diagnosis.
+    #   - MySQL: ssl dict (if required). MySQL has no postgres-style
+    #     application_name; pymysql connection attributes use a different
+    #     mechanism we don't wire up here.
+    # Always set connect_args explicitly so the system_status engine does
+    # NOT inherit the MySQL-style ssl dict from the main SAM engine when
+    # SAM_DB_REQUIRE_SSL=true (which would be wrong for the postgres driver).
+    status_require_ssl = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
+    status_driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
+    pod_id = os.environ.get('HOSTNAME') or socket.gethostname()
+    status_connect_args: dict = {}
+    if status_driver in ('postgresql', 'postgres'):
+        status_connect_args['application_name'] = f'sam-webapp:{pod_id}:system_status'
+        if status_require_ssl:
+            status_connect_args['sslmode'] = 'require'
+    elif status_require_ssl:
+        status_connect_args['ssl'] = {'ssl_disabled': False}
+    status_pool['connect_args'] = status_connect_args
+
+    app.config['SQLALCHEMY_BINDS'] = {
+        # Dict form lets us override engine options per bind (Flask-SQLAlchemy
+        # 3.x). Keys other than ``url`` are passed to ``create_engine()``.
+        'system_status': {
+            'url': system_status.session.connection_string,
+            **status_pool,
+        },
+    }
 
     # Apply caller-supplied overrides AFTER defaults, BEFORE extensions bind.
     # The test suite uses this to point Flask-SQLAlchemy at the mysql-test
