@@ -510,8 +510,19 @@ def resource_details():
 
         tree_data = _build_node(tree_root)
 
-    # Generate charts server-side
-    usage_chart = generate_usage_timeseries_matplotlib(detail_data['daily_charges'])
+    # Note: the Usage Trend chart is now loaded via HTMX
+    # (resource_details_usage_chart route below) so the metric pill
+    # selector — Charges / Job Count / Core-Hours — can swap the SVG
+    # in place. The parent template just renders a loader div.
+
+    # Which metric pills are available depends on resource type.
+    # Disk/Archive summaries don't carry num_jobs / core_hours, so
+    # those metric variants are suppressed for non-compute resources.
+    usage_chart_metrics = ['charges']
+    if detail_data.get('daily_jobs') is not None:
+        usage_chart_metrics.append('jobs')
+    if detail_data.get('daily_core_hours') is not None:
+        usage_chart_metrics.append('core_hours')
 
     # Extract allocation start date for the "Epoch" date picker preset
     alloc_start = detail_data['resource_summary'].get('start_date')
@@ -583,7 +594,7 @@ def resource_details():
         daily_breakdown=daily_breakdown,
         monthly_user_counts=monthly_user_counts,
         date_span_days=(end_date - start_date).days,
-        usage_chart=usage_chart,
+        usage_chart_metrics=usage_chart_metrics,
         rolling_30=rolling_30,
         rolling_90=rolling_90,
         rolling_is_inheriting=rolling_is_inheriting,
@@ -719,6 +730,92 @@ def resource_details_day_subtree(project):
         did=request.args.get('did', 'd'),
         projcode=project.projcode,
         jobs_machine=_resolve_jobs_machine(resource_name),
+    )
+
+
+_VALID_USAGE_CHART_METRIC = {'charges', 'jobs', 'core_hours'}
+_USAGE_CHART_DATA_KEY = {
+    'charges':    'daily_charges',
+    'jobs':       'daily_jobs',
+    'core_hours': 'daily_core_hours',
+}
+
+
+@bp.route('/resource-details/usage-chart/<projcode>')
+@login_required
+@require_project_access(include_ancestors=True)
+def resource_details_usage_chart(project):
+    """HTMX fragment: Usage Trend chart for the selected metric.
+
+    Loaded by the resource-details page on initial render and re-fetched
+    when the analyst toggles a metric pill (Charges / Job Count /
+    Core-Hours). Each metric variant has its own ``chart_cached`` entry
+    keyed on the daily series hash + metric tag.
+    """
+    resource_name = (request.args.get('resource') or '').strip()
+    if not resource_name:
+        abort(400, 'resource is required')
+
+    metric = request.args.get('metric', 'charges')
+    if metric not in _VALID_USAGE_CHART_METRIC:
+        metric = 'charges'
+
+    try:
+        if request.args.get('start_date'):
+            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d')
+        else:
+            start_date = datetime.now() - timedelta(days=90)
+        if request.args.get('end_date'):
+            end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d')
+        else:
+            end_date = datetime.now()
+    except ValueError:
+        abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
+
+    scope = (request.args.get('scope') or '').strip() or project.projcode
+    # Validate scope belongs to this project's tree; fall back to root if not
+    if scope != project.projcode:
+        scope_project = Project.get_by_projcode(db.session, scope)
+        if not scope_project or scope_project.tree_root != project.tree_root:
+            scope = project.projcode
+
+    detail_data = get_resource_detail_data(
+        db.session,
+        project.projcode,
+        resource_name,
+        start_date,
+        end_date,
+        scope_projcode=scope,
+    )
+
+    # Available metrics depend on resource type — disk/archive lack jobs / core_hours.
+    available = ['charges']
+    if detail_data and detail_data.get('daily_jobs') is not None:
+        available.append('jobs')
+    if detail_data and detail_data.get('daily_core_hours') is not None:
+        available.append('core_hours')
+    if metric not in available:
+        metric = 'charges'
+
+    series = (detail_data or {}).get(_USAGE_CHART_DATA_KEY[metric])
+    svg = generate_usage_timeseries_matplotlib(
+        series or {'dates': [], 'values': []},
+        link_to_day_rows=True,
+        metric=metric,
+    )
+    has_data = bool(series and series.get('values'))
+
+    return render_template(
+        'dashboards/user/partials/usage_chart.html',
+        chart_svg=svg,
+        metric=metric,
+        available_metrics=available,
+        projcode=project.projcode,
+        resource_name=resource_name,
+        scope=scope,
+        start_date=start_date.strftime('%Y-%m-%d'),
+        end_date=end_date.strftime('%Y-%m-%d'),
+        has_data=has_data,
     )
 
 
