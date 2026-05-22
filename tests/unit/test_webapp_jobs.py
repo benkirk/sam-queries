@@ -688,14 +688,15 @@ def test_jobs_fragment_qos_factor_drawer_after_status(
     )
     body = resp.get_data(as_text=True)
     # Plugin's COLUMNS dict labels: status="Status", qos_factor="Factor".
-    # Both <dt> labels appear in the drawer; status comes first by the
-    # _VERBOSE_EXTRAS order.
-    assert 'Status' in body
-    assert 'Factor' in body
-    status_idx = body.find('>Status<')
-    factor_idx = body.find('>Factor<')
-    assert status_idx >= 0 and factor_idx > status_idx, \
-        f"expected Status (<dt>) before Factor (<dt>); got {status_idx=} {factor_idx=}"
+    # The <dt> wraps the label with whitespace, so match the bare text;
+    # neither label appears elsewhere in the jobs fragment, so the first
+    # occurrence is the drawer header.
+    status_idx = body.find('Status')
+    factor_idx = body.find('Factor')
+    assert status_idx >= 0, 'Status label missing from drawer'
+    assert factor_idx >= 0, 'Factor label (qos_factor) missing from drawer'
+    assert factor_idx > status_idx, \
+        f'expected Status before Factor (qos_factor); got {status_idx=} {factor_idx=}'
 
 
 def test_jobs_fragment_qos_options_populated_from_plugin(
