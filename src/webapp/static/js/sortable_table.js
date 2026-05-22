@@ -1,6 +1,6 @@
 /* Client-side table sorting.
  *
- * Markup contract:
+ * Single-tbody mode (default):
  *   <table>
  *     <thead>
  *       <th class="sortable-header" data-sort="text|numeric|date">Label</th>
@@ -16,6 +16,14 @@
  *     </tbody>
  *   </table>
  *
+ * Multi-tbody mode (opt-in via ``tbody.sortable-group``):
+ *   The unit of reordering is each ``<tbody class="sortable-group">``,
+ *   not its child rows. Sort key is extracted from each group's FIRST
+ *   ``<tr>`` (using the same cell-level data-sort-value rules above).
+ *   Lets a table keep a non-sortable Total tbody up top, then drag
+ *   each user's row + adjacent lazy-subtree placeholder around as a
+ *   single block.
+ *
  * Initial display order comes from the server. Adding `sort-desc` /
  * `sort-asc` to a header just renders the arrow indicator; nothing is
  * re-sorted until a user clicks. Click toggles asc/desc; data-sort-attr
@@ -23,6 +31,29 @@
  */
 (function () {
     'use strict';
+
+    /** Extract the sort key from a row at colIndex / sortAttr. */
+    function extractKey(row, colIndex, sortAttr) {
+        if (!row) return '';
+        if (sortAttr) {
+            var cell = row.querySelector('[data-' + sortAttr + ']');
+            return cell ? (cell.getAttribute('data-' + sortAttr) || '') : '';
+        }
+        var cellAt = row.children[colIndex];
+        return cellAt ? (cellAt.dataset.sortValue || '') : '';
+    }
+
+    /** Compare two raw sort-key strings under sortType + direction. */
+    function compareKeys(aVal, bVal, sortType, isAsc) {
+        if (sortType === 'numeric') {
+            aVal = parseFloat(aVal) || 0;
+            bVal = parseFloat(bVal) || 0;
+            return isAsc ? aVal - bVal : bVal - aVal;
+        }
+        aVal = String(aVal || '').toLowerCase();
+        bVal = String(bVal || '').toLowerCase();
+        return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    }
 
     function bindTable(table) {
         if (table.dataset.sortableBound === '1') return;
@@ -39,27 +70,38 @@
                 });
                 th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
 
+                var groups = Array.from(
+                    table.querySelectorAll('tbody.sortable-group')
+                );
+                if (groups.length) {
+                    // Multi-tbody mode: reorder the tbody nodes
+                    // themselves. Sort key comes from each group's
+                    // first <tr>. parent.appendChild moves the node
+                    // (it doesn't clone) so unmarked tbodies — the
+                    // Total row, the empty-state row — stay in place
+                    // as long as they were rendered before the
+                    // sortable group block.
+                    var parent = groups[0].parentNode;
+                    groups.sort(function (a, b) {
+                        return compareKeys(
+                            extractKey(a.querySelector('tr'), colIndex, sortAttr),
+                            extractKey(b.querySelector('tr'), colIndex, sortAttr),
+                            sortType, isAsc
+                        );
+                    });
+                    groups.forEach(function (g) { parent.appendChild(g); });
+                    return;
+                }
+
+                // Single-tbody mode (existing behavior).
                 var tbody = table.querySelector('tbody');
                 var rows = Array.from(tbody.querySelectorAll('tr'));
                 rows.sort(function (a, b) {
-                    var aVal, bVal;
-                    if (sortAttr) {
-                        var aCell = a.querySelector('[data-' + sortAttr + ']');
-                        var bCell = b.querySelector('[data-' + sortAttr + ']');
-                        aVal = aCell ? (aCell.getAttribute('data-' + sortAttr) || '') : '';
-                        bVal = bCell ? (bCell.getAttribute('data-' + sortAttr) || '') : '';
-                    } else {
-                        aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
-                        bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
-                    }
-                    if (sortType === 'numeric') {
-                        aVal = parseFloat(aVal) || 0;
-                        bVal = parseFloat(bVal) || 0;
-                        return isAsc ? aVal - bVal : bVal - aVal;
-                    }
-                    aVal = String(aVal || '').toLowerCase();
-                    bVal = String(bVal || '').toLowerCase();
-                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                    return compareKeys(
+                        extractKey(a, colIndex, sortAttr),
+                        extractKey(b, colIndex, sortAttr),
+                        sortType, isAsc
+                    );
                 });
                 rows.forEach(function (r) { tbody.appendChild(r); });
             });

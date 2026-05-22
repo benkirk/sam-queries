@@ -954,6 +954,46 @@ def test_resource_details_includes_jobs_fragment_url(
             assert 'machine=derecho' in body
 
 
+def test_resource_details_user_table_is_sortable(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Usage-by-User table emits the sortable_table.js markup contract:
+
+      - sortable-header class on column <th>s with data-sort=text/numeric
+      - sort-desc on the Charges header (default-sort indicator)
+      - per-user tbody opt-in via class="sortable-group"
+      - data-sort-value="<raw>" on the numeric cells so the JS sees
+        the un-formatted value, not '68.6M'
+
+    The presence of these attributes is the contract; their behavior
+    is verified end-to-end via Playwright. Skip the assertion when
+    the page redirects (no matching resource in the snapshot)."""
+    resp = auth_client.get(
+        f'/dashboards/user/resource-details'
+        f'?projcode={active_project.projcode}&resource=Derecho'
+    )
+    if resp.status_code != 200:
+        return  # snapshot doesn't have this resource — nothing to check
+    body = resp.get_data(as_text=True)
+
+    # The four column headers all opt in to sorting.
+    assert 'sortable-header' in body, 'sortable-header class missing from page'
+    assert 'data-sort="text"' in body, 'Username column missing data-sort=text'
+    assert 'data-sort="numeric"' in body, 'numeric columns missing data-sort=numeric'
+    # Charges is the default desc sort (visual indicator only — no resort
+    # happens until the user clicks).
+    assert 'sort-desc' in body, 'Charges header missing default sort-desc'
+
+    # Per-user tbodies opt into multi-tbody sortable mode so each user's
+    # row drags its lazy-subtree placeholder along on re-sort. Only
+    # present when the project has data; gate the assertion to avoid
+    # failing on a snapshot project with zero comp_charge_summary rows
+    # for Derecho.
+    if 'sortable-group' in body:
+        assert 'data-sort-value=' in body, \
+            'sortable-group tbody present but cells missing data-sort-value'
+
+
 # ---------------------------------------------------------------------------
 # Admin → Configuration DB card surfaces job_history engines
 # ---------------------------------------------------------------------------
