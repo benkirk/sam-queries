@@ -17,7 +17,7 @@ Functions:
 from datetime import datetime
 from typing import Any, List, Optional, Dict, Union
 
-from sqlalchemy import func
+from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session
 
 from sam.core.users import User
@@ -519,7 +519,7 @@ def get_charges_by_projcode(
     return result
 
 
-def get_user_queue_breakdown_for_project(
+def get_user_summary_for_project(
     session: Session,
     projcode: Union[str, List[str]],
     resource: str,
@@ -527,11 +527,77 @@ def get_user_queue_breakdown_for_project(
     end_date: datetime,
 ) -> List[Dict]:
     """
+    Get one row per user with totals + distinct queue / date counts.
+
+    Used by the resource-details page to render only top-tier user rows on
+    initial load; the per-user queue/date subtree is fetched lazily via
+    :func:`get_user_queue_breakdown_for_project` when the analyst expands a
+    row. The two count fields let the template branch:
+
+    - ``queue_count == 1 AND date_count == 1`` → render inline (no expand).
+    - otherwise → render expandable row with htmx ``hx-get`` placeholder.
+
+    The aggregation runs in SQL (``COUNT(DISTINCT queue)`` /
+    ``COUNT(DISTINCT activity_date)``) so a project with thousands of
+    (user, queue, date) leaves still produces one result row per user.
+
+    Returns:
+        List of dicts sorted by charges desc:
+            {username, jobs, core_hours, charges, queue_count, date_count}
+    """
+    query = session.query(
+        CompChargeSummary.username,
+        func.sum(CompChargeSummary.num_jobs).label('jobs'),
+        func.sum(CompChargeSummary.core_hours).label('core_hours'),
+        func.sum(CompChargeSummary.charges).label('charges'),
+        func.count(distinct(CompChargeSummary.queue)).label('queue_count'),
+        func.count(distinct(CompChargeSummary.activity_date)).label('date_count'),
+    ).filter(
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date,
+        CompChargeSummary.resource == resource,
+    )
+    if isinstance(projcode, list):
+        query = query.filter(CompChargeSummary.projcode.in_(projcode))
+    else:
+        query = query.filter(CompChargeSummary.projcode == projcode)
+
+    query = query.group_by(CompChargeSummary.username).having(
+        func.sum(CompChargeSummary.charges) > 0
+    ).order_by(
+        func.sum(CompChargeSummary.charges).desc()
+    )
+
+    return [
+        {
+            'username':    row.username,
+            'jobs':        int(row.jobs or 0),
+            'core_hours':  float(row.core_hours or 0.0),
+            'charges':     float(row.charges or 0.0),
+            'queue_count': int(row.queue_count or 0),
+            'date_count':  int(row.date_count or 0),
+        }
+        for row in query.all()
+    ]
+
+
+def get_user_queue_breakdown_for_project(
+    session: Session,
+    projcode: Union[str, List[str]],
+    resource: str,
+    start_date: datetime,
+    end_date: datetime,
+    username: Optional[str] = None,
+) -> List[Dict]:
+    """
     Get per-user usage breakdown with per-queue and per-date sub-rows for a project on a
     specific resource.
 
     Wraps query_comp_charge_summaries(per_day=True), grouping results by username, then
     queue, then date — suitable for 3-level collapsible table display.
+
+    Optionally scopes to a single ``username`` so the lazy user-subtree route can
+    render one user's breakdown without paying for the full N-user roll-up.
 
     Returns:
         List of dicts sorted by charges desc:
@@ -541,7 +607,10 @@ def get_user_queue_breakdown_for_project(
              (sorted by charges desc)}
     """
     rows = query_comp_charge_summaries(
-        session, start_date, end_date, projcode=projcode, resource=resource, per_day=True
+        session, start_date, end_date,
+        projcode=projcode, resource=resource,
+        username=username,
+        per_day=True,
     )
 
     user_map: Dict[str, Dict] = {}
@@ -588,6 +657,64 @@ def get_user_queue_breakdown_for_project(
         entry['queues'] = sorted(entry['queues'].values(), key=lambda q: q['charges'], reverse=True)
 
     return sorted(user_map.values(), key=lambda u: u['charges'], reverse=True)
+
+
+def get_daily_summary_for_project(
+    session: Session,
+    projcode: Union[str, List[str]],
+    resource: str,
+    start_date: datetime,
+    end_date: datetime,
+) -> List[Dict]:
+    """
+    Get one row per day with totals + distinct user count.
+
+    Counterpart to :func:`get_user_summary_for_project` for the daily-
+    breakdown table on the resource-details page. The user/queue sub-rows
+    for any given day are fetched lazily via
+    :func:`get_daily_breakdown_for_project` when the analyst expands the
+    day row. ``user_count`` is rendered in the day header (matches the
+    column the existing template already shows).
+
+    Returns:
+        List of dicts sorted by date desc:
+            {date (str YYYY-MM-DD), month (YYYY-MM), jobs, core_hours,
+             charges, user_count}
+    """
+    query = session.query(
+        CompChargeSummary.activity_date,
+        func.sum(CompChargeSummary.num_jobs).label('jobs'),
+        func.sum(CompChargeSummary.core_hours).label('core_hours'),
+        func.sum(CompChargeSummary.charges).label('charges'),
+        func.count(distinct(CompChargeSummary.username)).label('user_count'),
+    ).filter(
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date,
+        CompChargeSummary.resource == resource,
+    )
+    if isinstance(projcode, list):
+        query = query.filter(CompChargeSummary.projcode.in_(projcode))
+    else:
+        query = query.filter(CompChargeSummary.projcode == projcode)
+
+    query = query.group_by(CompChargeSummary.activity_date).having(
+        func.sum(CompChargeSummary.charges) > 0
+    ).order_by(
+        CompChargeSummary.activity_date.desc()
+    )
+
+    out: List[Dict] = []
+    for row in query.all():
+        date_str = row.activity_date.strftime('%Y-%m-%d')
+        out.append({
+            'date':       date_str,
+            'month':      date_str[:7],   # YYYY-MM — used by template groupby
+            'jobs':       int(row.jobs or 0),
+            'core_hours': float(row.core_hours or 0.0),
+            'charges':    float(row.charges or 0.0),
+            'user_count': int(row.user_count or 0),
+        })
+    return out
 
 
 def get_daily_breakdown_for_project(
