@@ -127,8 +127,12 @@ def test_init_job_history_engine_failure_skips_machine(monkeypatch):
 # service.search_jobs — projcode pinning + filter forwarding
 # ---------------------------------------------------------------------------
 
+_DEFAULT_QOS_NAMES = ['economy', 'premium', 'regular', 'special', 'uncharged']
+
+
 def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
-                        jobs_count_return=None, machines=('derecho',)):
+                        jobs_count_return=None, qos_names=None,
+                        machines=('derecho',)):
     """Wire a mock job_history module onto app.extensions and return the
     captured JobQueries kwargs so tests can assert on the call.
 
@@ -140,6 +144,8 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
         'last_jobs_search_kwargs': None,
         'last_jobs_count_kwargs':  None,
     }
+    qos_list = (list(qos_names) if qos_names is not None
+                else list(_DEFAULT_QOS_NAMES))
 
     class FakeJobQueries:
         def __init__(self, session, machine='derecho'):
@@ -152,6 +158,8 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
             captured['last_jobs_count_kwargs'] = kwargs
             return jobs_count_return if jobs_count_return is not None \
                 else len(jobs_search_return or [])
+        def list_qos_names(self, **kwargs):
+            return list(qos_list)
 
     fake_session = MagicMock(name='jh_session')
     fake_mod = types.SimpleNamespace(
@@ -598,6 +606,116 @@ def test_jobs_fragment_renders_verbose_drawer(
     assert 'CPU type' in body
     # Drawer renders the values.
     assert 'milan' in body
+
+
+def test_jobs_fragment_qos_column_in_table_and_sortable(
+    app, auth_client, active_project, monkeypatch,
+):
+    """`qos` is in _DEFAULT_COLS now ⇒ rendered as a sortable header in the
+    main table (header label "QoS" from the plugin's COLUMNS dict) and the
+    cell value comes from the row dict."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[_make_row(qos='premium')],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # QoS column header is sortable (wrapped in an hx-get link).
+    assert 'sort_by=qos' in body
+    # The QoS value renders in the table.
+    assert 'premium' in body
+
+
+def test_jobs_fragment_qos_filter_forwarded_to_service(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?qos=economy ⇒ service.search_jobs receives qos='economy' and the
+    request bypasses the SAM-summary fast path on the count side."""
+    captured = _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[_make_row(qos='economy')],
+        jobs_count_return=7,
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=economy'
+    )
+    assert resp.status_code == 200
+    # qos forwarded through to the plugin search call.
+    assert captured['last_jobs_search_kwargs']['qos'] == 'economy'
+    # Count goes through the plugin fallback (qos is not in CompChargeSummary).
+    assert captured['last_jobs_count_kwargs'] is not None
+    assert captured['last_jobs_count_kwargs']['qos'] == 'economy'
+
+
+def test_jobs_fragment_qos_dropdown_pre_selects_active_filter(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When ?qos=premium is set, the dropdown renders that option as
+    `selected` so the UI state matches the filter applied server-side."""
+    _install_mock_plugin(app, monkeypatch,
+                        jobs_search_return=[_make_row(qos='premium')])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=premium'
+    )
+    body = resp.get_data(as_text=True)
+    # The `name="qos"` <select> contains all canonical options and pre-
+    # selects the active filter (whitespace between attrs is template-
+    # dependent — match the substring).
+    import re
+    assert 'name="qos"' in body
+    assert re.search(r'value="premium"\s+selected', body), \
+        'QoS dropdown should pre-select the active ?qos= value'
+
+
+def test_jobs_fragment_qos_factor_drawer_after_status(
+    app, auth_client, active_project, monkeypatch,
+):
+    """`qos_factor` is rendered in the drawer immediately after `status`
+    (the re-ordered _VERBOSE_EXTRAS) so the multiplier sits next to the
+    QoS column above the fold of the drawer."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[_make_row(qos='premium', qos_factor=1.5,
+                                      status='F')],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # Plugin's COLUMNS dict labels: status="Status", qos_factor="Factor".
+    # Both <dt> labels appear in the drawer; status comes first by the
+    # _VERBOSE_EXTRAS order.
+    assert 'Status' in body
+    assert 'Factor' in body
+    status_idx = body.find('>Status<')
+    factor_idx = body.find('>Factor<')
+    assert status_idx >= 0 and factor_idx > status_idx, \
+        f"expected Status (<dt>) before Factor (<dt>); got {status_idx=} {factor_idx=}"
+
+
+def test_jobs_fragment_qos_options_populated_from_plugin(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The QoS dropdown is populated from the plugin's list_qos_names()
+    call — a new value added on the peer flows through without a SAM-side
+    change."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[_make_row()],
+        qos_names=['custom-tier', 'premium', 'regular'],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'custom-tier' in body
+    # And the "All QoS" reset entry is always present.
+    assert 'All QoS' in body
 
 
 def test_resource_details_includes_jobs_fragment_url(

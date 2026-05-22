@@ -7,12 +7,15 @@ Query params (all optional unless noted):
   start, end           — YYYY-MM-DD; filters on Job.end
   user                 — limit to a single PBS username
   queue                — limit to a single queue
+  qos                  — limit to a single QoS / priority class
+                         (e.g. 'premium', 'regular', 'economy',
+                         'uncharged', 'special')
   status               — limit to a single PBS exit status (e.g. 'F')
   page                 — int ≥ 1; default 1
   per_page             — int in [10, 200]; default 50
-  sort_by              — one of {'start', 'elapsed', 'cpu_charges',
-                         'gpu_charges'}; default None (plugin orders
-                         by ``Job.end DESC``)
+  sort_by              — one of {'start', 'elapsed', 'qos',
+                         'cpu_charges', 'gpu_charges'}; default None
+                         (plugin orders by ``Job.end DESC``)
   sort_dir             — 'asc' | 'desc'; default 'desc'
 
 Access control mirrors the rest of the project-scoped UI: the
@@ -45,7 +48,7 @@ _VALID_MACHINES = {'derecho', 'casper'}
 # Default columns shown when drilled into a user+queue row. user/queue/
 # account are dropped because the row context already pins them.
 _DEFAULT_COLS = (
-    'job_id', 'name', 'start', 'elapsed',
+    'job_id', 'name', 'qos', 'start', 'elapsed',
     'numnodes', 'numcpus', 'numgpus',
     'cpu_charges', 'gpu_charges',
 )
@@ -58,15 +61,18 @@ _DEFAULT_COLS = (
 _SORT_WHITELIST = set(_DEFAULT_COLS)
 
 # Extra columns revealed in the per-row "expand" drawer. Order is the
-# render order in the drawer.
+# render order in the drawer. `qos_factor` is paired with the `qos` name
+# column (now in the main table) so the multiplier sits next to status
+# at the top of the drawer rather than buried beside memory_charges.
 _VERBOSE_EXTRAS = (
-    'status', 'queue', 'user',
+    'status', 'qos_factor',
+    'queue', 'user',
     'submit', 'end', 'walltime',
     'mpiprocs', 'ompthreads',
     'reqmem', 'memory', 'vmemory',
     'cputype', 'gputype', 'resources',
     'cpu_hours', 'gpu_hours', 'memory_hours',
-    'qos_factor', 'memory_charges',
+    'memory_charges',
 )
 
 # Numeric columns subject to all-zero auto-suppression in the table.
@@ -162,6 +168,7 @@ def jobs_fragment(project):
         'end':    _parse_date(request.args.get('end')),
         'user':   (request.args.get('user') or '').strip() or None,
         'queue':  (request.args.get('queue') or '').strip() or None,
+        'qos':    (request.args.get('qos') or '').strip() or None,
         'status': (request.args.get('status') or '').strip() or None,
     }
     page = _parse_pagination()
@@ -213,6 +220,19 @@ def jobs_fragment(project):
     column_specs = _load_column_specs()
     fragment_url = url_for('jobs.jobs_fragment', projcode=project.projcode)
 
+    # QoS options for the filter dropdown — sourced from the plugin's
+    # job_qos lookup table so a future seed addition flows through
+    # without a SAM-side change. Degrades to [] if the plugin call
+    # fails or the table is empty (template hides the dropdown).
+    try:
+        qos_options = service.list_qos_names(machine)
+    except Exception:
+        from flask import current_app
+        current_app.logger.exception(
+            'jobs_fragment: list_qos_names failed for machine=%s', machine,
+        )
+        qos_options = []
+
     # The caller passes the id of the container that owns this fragment so
     # sort / pagination clicks can swap that same container's innerHTML.
     # Falls back to a generic id when called without one (legacy paths).
@@ -232,6 +252,7 @@ def jobs_fragment(project):
         verbose_extras=list(_VERBOSE_EXTRAS),
         column_specs=column_specs,
         sortable_columns=sorted(_SORT_WHITELIST),
+        qos_options=qos_options,
         fragment_url=fragment_url,
         target_id=target_id,
         enabled=True,

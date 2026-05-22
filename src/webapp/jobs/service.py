@@ -47,6 +47,7 @@ def search_jobs(
     end: Optional[date] = None,
     user: Optional[str] = None,
     queue: Optional[str] = None,
+    qos: Optional[str] = None,
     status: Optional[str] = None,
     has_gpus: Optional[bool] = None,
     columns: Optional[Sequence[str]] = None,
@@ -70,7 +71,9 @@ def search_jobs(
         project: SAM Project — supplies the default ``account`` filter
             via ``project.projcode``.
         start, end: Date range filter on ``Job.end``.
-        user, queue, status: Optional plain-text filters.
+        user, queue, qos, status: Optional plain-text filters.
+            ``qos`` matches the canonical name in the plugin's
+            ``job_qos`` lookup (e.g. ``'premium'``, ``'regular'``).
         has_gpus: ``None`` ignore; ``True`` → GPU jobs only; ``False`` →
             CPU-only jobs.
         columns: Optional column projection. Default is the plugin's
@@ -104,6 +107,7 @@ def search_jobs(
         'user':    user,
         # TODO(legacy-queue-names): see _normalize_queue_for_plugin.
         'queue':   _normalize_queue_for_plugin(queue),
+        'qos':     qos,
         'status':  status,
         'columns': columns,
         'limit':   limit,
@@ -126,6 +130,7 @@ def count_jobs(
     end: Optional[date] = None,
     user: Optional[str] = None,
     queue: Optional[str] = None,
+    qos: Optional[str] = None,
     status: Optional[str] = None,
     has_gpus: Optional[bool] = None,
     account_projcodes: Optional[Sequence[str]] = None,
@@ -158,7 +163,9 @@ def count_jobs(
 
     # Fast path: SAM's daily summary covers every filter the drill-down
     # uses. Avoids a 1-second-plus COUNT(*) over the plugin's job table.
-    if status is None and has_gpus is None:
+    # `qos` is NOT in CompChargeSummary's key set today, so a QoS filter
+    # falls back to the plugin path alongside status / has_gpus.
+    if status is None and has_gpus is None and qos is None:
         return _count_via_sam_summary(
             machine,
             projcodes=projcodes,
@@ -178,6 +185,7 @@ def count_jobs(
             user=user,
             # TODO(legacy-queue-names): see _normalize_queue_for_plugin.
             queue=_normalize_queue_for_plugin(queue),
+            qos=qos,
             status=status,
             has_gpus=has_gpus,
         )
@@ -222,3 +230,21 @@ def _count_via_sam_summary(
     if queue:
         q = q.filter(CompChargeSummary.queue == queue)
     return int(q.scalar() or 0)
+
+
+def list_qos_names(machine: str) -> List[str]:
+    """Return active QoS names from the plugin's ``job_qos`` lookup table.
+
+    Lets the route populate a QoS filter dropdown without hardcoding
+    the canonical seed list (premium / regular / economy / uncharged /
+    special) — if a new QoS row is seeded later it shows up here
+    automatically. Per-machine because each compute system has its own
+    plugin DB and the seed set could diverge.
+
+    Returns an empty list if the plugin isn't loaded for this machine
+    or the lookup table has no active rows.
+    """
+    mod = get_module()
+    JobQueries = mod.JobQueries
+    with job_history_session(machine) as session:
+        return JobQueries(session, machine=machine).list_qos_names()
