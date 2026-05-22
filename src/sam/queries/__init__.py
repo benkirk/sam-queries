@@ -59,7 +59,10 @@ from .charges import (
     get_recent_charge_adjustments,
     get_user_breakdown_for_project,
     get_user_queue_breakdown_for_project,
+    get_user_summary_for_project,
     get_daily_breakdown_for_project,
+    get_daily_summary_for_project,
+    get_monthly_user_counts_for_project,
 )
 
 # Projects
@@ -184,7 +187,10 @@ __all__ = [
     'get_recent_charge_adjustments',
     'get_user_breakdown_for_project',
     'get_user_queue_breakdown_for_project',
+    'get_user_summary_for_project',
     'get_daily_breakdown_for_project',
+    'get_daily_summary_for_project',
+    'get_monthly_user_counts_for_project',
     # Projects
     'search_projects_by_code_or_title',
     'search_projects_by_title',

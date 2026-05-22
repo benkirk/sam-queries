@@ -127,8 +127,12 @@ def test_init_job_history_engine_failure_skips_machine(monkeypatch):
 # service.search_jobs — projcode pinning + filter forwarding
 # ---------------------------------------------------------------------------
 
+_DEFAULT_QOS_NAMES = ['economy', 'premium', 'regular', 'special', 'uncharged']
+
+
 def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
-                        jobs_count_return=None, machines=('derecho',)):
+                        jobs_count_return=None, qos_names=None,
+                        machines=('derecho',)):
     """Wire a mock job_history module onto app.extensions and return the
     captured JobQueries kwargs so tests can assert on the call.
 
@@ -140,6 +144,8 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
         'last_jobs_search_kwargs': None,
         'last_jobs_count_kwargs':  None,
     }
+    qos_list = (list(qos_names) if qos_names is not None
+                else list(_DEFAULT_QOS_NAMES))
 
     class FakeJobQueries:
         def __init__(self, session, machine='derecho'):
@@ -152,6 +158,8 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
             captured['last_jobs_count_kwargs'] = kwargs
             return jobs_count_return if jobs_count_return is not None \
                 else len(jobs_search_return or [])
+        def list_qos_names(self, **kwargs):
+            return list(qos_list)
 
     fake_session = MagicMock(name='jh_session')
     fake_mod = types.SimpleNamespace(
@@ -292,6 +300,129 @@ def test_count_jobs_plugin_fallback_normalizes_legacy_queue_name(
     ckw = captured['last_jobs_count_kwargs']
     assert ckw is not None
     assert ckw['queue'] == 'cpu'
+
+
+def test_search_jobs_promotes_legacy_queue_suffix_to_qos(
+    app, active_project, monkeypatch,
+):
+    """When the caller passes a legacy queue like 'cpu-special' AND a
+    valid_qos_names list that contains 'special', the resolver promotes
+    the suffix to a QoS filter — turning a CPU-wide search into a
+    CPU+special-QoS search. Surfaces precision the old normalizer
+    discarded."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs(
+            'derecho', project=active_project,
+            queue='cpu-special',
+            valid_qos_names=['premium', 'regular', 'special'],
+        )
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['queue'] == 'cpu'
+    assert kw['qos']   == 'special'
+
+
+def test_search_jobs_explicit_qos_wins_over_inferred(
+    app, active_project, monkeypatch,
+):
+    """A caller-supplied qos always takes precedence over a suffix the
+    resolver might otherwise infer from the legacy queue name."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs(
+            'derecho', project=active_project,
+            queue='cpu-special',
+            qos='regular',  # explicit
+            valid_qos_names=['premium', 'regular', 'special'],
+        )
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['queue'] == 'cpu'
+    assert kw['qos']   == 'regular'  # explicit wins
+
+
+def test_search_jobs_unknown_suffix_falls_back_to_strip_only(
+    app, active_project, monkeypatch,
+):
+    """When the suffix isn't in valid_qos_names (or the list is empty),
+    the resolver keeps the legacy strip-only behavior: queue is split,
+    qos stays None."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs(
+            'derecho', project=active_project,
+            queue='cpu-bogus',
+            valid_qos_names=['premium', 'regular', 'special'],
+        )
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['queue'] == 'cpu'
+    assert kw['qos']   is None
+
+
+def test_count_jobs_sam_summary_ignores_inferred_qos(
+    app, active_project, monkeypatch,
+):
+    """The fast path is gated on the *explicit* qos argument. An
+    inferred-only qos must NOT push count_jobs onto the slower plugin
+    path — the SAM summary stores 'cpu-special' as a composite key and
+    already counts it correctly without a separate qos filter."""
+    from webapp.jobs import service
+
+    captured_queue = {}
+
+    def _fake_count_via_sam_summary(machine, *, projcodes, start, end, user, queue):
+        captured_queue['queue'] = queue
+        return 11
+
+    monkeypatch.setattr(service, '_count_via_sam_summary', _fake_count_via_sam_summary)
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        total = service.count_jobs(
+            'derecho', project=active_project,
+            queue='cpu-special',
+            valid_qos_names=['premium', 'regular', 'special'],
+        )
+
+    assert total == 11
+    # Fast path used — raw composite queue, no plugin call.
+    assert captured_queue['queue'] == 'cpu-special'
+    assert captured['last_jobs_count_kwargs'] is None
+
+
+def test_count_jobs_plugin_fallback_promotes_legacy_queue_suffix_to_qos(
+    app, active_project, monkeypatch,
+):
+    """When count_jobs takes the plugin path (e.g. because status is
+    set), it also runs the queue/qos resolver so 'cpu-special' →
+    queue='cpu', qos='special' on the plugin call."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=3)
+
+    with app.app_context():
+        service.count_jobs(
+            'derecho', project=active_project,
+            queue='cpu-special',
+            status='F',  # forces plugin path
+            valid_qos_names=['premium', 'regular', 'special'],
+        )
+
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert ckw['queue'] == 'cpu'
+    assert ckw['qos']   == 'special'
 
 
 # ---------------------------------------------------------------------------
@@ -600,6 +731,204 @@ def test_jobs_fragment_renders_verbose_drawer(
     assert 'milan' in body
 
 
+def test_jobs_fragment_qos_column_in_table_and_sortable(
+    app, auth_client, active_project, monkeypatch,
+):
+    """`qos` is in _DEFAULT_COLS and renders as a sortable header when the
+    rows contain at least two distinct QoS values (column suppression
+    rule covered separately)."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium'),
+            _make_row(job_id='2.x', qos='regular'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # QoS column header is sortable (wrapped in an hx-get link).
+    assert 'sort_by=qos' in body
+    # The QoS values render in the table.
+    assert 'premium' in body
+    assert 'regular' in body
+
+
+def test_jobs_fragment_qos_filter_forwarded_to_service(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?qos=economy ⇒ service.search_jobs receives qos='economy' and the
+    request bypasses the SAM-summary fast path on the count side."""
+    captured = _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[_make_row(qos='economy')],
+        jobs_count_return=7,
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=economy'
+    )
+    assert resp.status_code == 200
+    # qos forwarded through to the plugin search call.
+    assert captured['last_jobs_search_kwargs']['qos'] == 'economy'
+    # Count goes through the plugin fallback (qos is not in CompChargeSummary).
+    assert captured['last_jobs_count_kwargs'] is not None
+    assert captured['last_jobs_count_kwargs']['qos'] == 'economy'
+
+
+def test_jobs_fragment_qos_dropdown_pre_selects_active_filter(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When ?qos=premium is set, the dropdown stays visible (so the user
+    can change/reset) and pre-selects the active option — even though
+    the filter naturally yields one distinct QoS in the rows."""
+    _install_mock_plugin(app, monkeypatch,
+                        jobs_search_return=[_make_row(qos='premium')])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=premium'
+    )
+    body = resp.get_data(as_text=True)
+    # Explicit filter ⇒ dropdown visible; pre-selects 'premium'.
+    import re
+    assert 'name="qos"' in body
+    assert re.search(r'value="premium"\s+selected', body), \
+        'QoS dropdown should pre-select the active ?qos= value'
+
+
+def test_jobs_fragment_qos_factor_drawer_after_status(
+    app, auth_client, active_project, monkeypatch,
+):
+    """`qos_factor` is rendered in the drawer immediately after `status`
+    (the re-ordered _VERBOSE_EXTRAS) so the multiplier sits next to the
+    QoS column above the fold of the drawer."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[_make_row(qos='premium', qos_factor=1.5,
+                                      status='F')],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # Plugin's COLUMNS dict labels: status="Status", qos_factor="Factor".
+    # The <dt> wraps the label with whitespace, so match the bare text;
+    # neither label appears elsewhere in the jobs fragment, so the first
+    # occurrence is the drawer header.
+    status_idx = body.find('Status')
+    factor_idx = body.find('Factor')
+    assert status_idx >= 0, 'Status label missing from drawer'
+    assert factor_idx >= 0, 'Factor label (qos_factor) missing from drawer'
+    assert factor_idx > status_idx, \
+        f'expected Status before Factor (qos_factor); got {status_idx=} {factor_idx=}'
+
+
+def test_jobs_fragment_qos_options_populated_from_plugin(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The QoS dropdown is populated from the plugin's list_qos_names()
+    call — a new value added on the peer flows through without a SAM-side
+    change. Needs ≥2 distinct QoS values in rows for the dropdown to
+    appear at all."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='custom-tier'),
+            _make_row(job_id='2.x', qos='regular'),
+        ],
+        qos_names=['custom-tier', 'premium', 'regular'],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # The non-canonical seed name surfaces in the dropdown options.
+    assert 'custom-tier' in body
+    # And the "All QoS" reset entry is always present.
+    assert 'All QoS' in body
+
+
+def test_jobs_fragment_hides_qos_column_and_dropdown_when_single_value(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When all visible rows share a single QoS (or none have one), the
+    QoS column drops out of the table AND the filter dropdown is hidden.
+    Both UI elements key off the same "distinct QoS in rows" signal so
+    they compose: the legacy queue-suffix inference path (`cpu-special`
+    → all rows special) naturally yields the same single-value collapse
+    without the URL ever carrying ?qos=."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='special'),
+            _make_row(job_id='2.x', qos='special'),
+            _make_row(job_id='3.x', qos='special'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # The sortable header link for the qos column is gone.
+    assert 'sort_by=qos' not in body
+    # The dropdown control is gone (no ?qos= in URL, no variation in rows).
+    assert 'All QoS' not in body
+    # And with no queue badge / no dropdown / no column header, the
+    # repeated 'special' value is correctly absent from the fragment
+    # entirely — that's the whole point of the suppression. (Parent
+    # context — the row the user drilled into — surfaces it.)
+    assert 'special' not in body
+
+
+def test_jobs_fragment_shows_qos_column_when_rows_have_variation(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Mixed-QoS rows ⇒ both column AND dropdown render (no explicit
+    filter required to surface them)."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium'),
+            _make_row(job_id='2.x', qos='regular'),
+            _make_row(job_id='3.x', qos='economy'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # Column header is present and sortable.
+    assert 'sort_by=qos' in body
+    # Dropdown is present with the reset entry.
+    assert 'All QoS' in body
+
+
+def test_jobs_fragment_keeps_dropdown_when_user_filtered_explicitly(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Explicit ?qos= naturally collapses rows to one distinct value, but
+    the dropdown stays so the user can change or reset the filter. The
+    column itself still goes away (all rows match)."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium'),
+            _make_row(job_id='2.x', qos='premium'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=premium'
+    )
+    body = resp.get_data(as_text=True)
+    # Column header dropped (all rows the same QoS).
+    assert 'sort_by=qos' not in body
+    # Dropdown stays (explicit filter ⇒ user needs a way to reset).
+    assert 'All QoS' in body
+
+
 def test_resource_details_includes_jobs_fragment_url(
     app, auth_client, active_project, monkeypatch,
 ):
@@ -623,6 +952,46 @@ def test_resource_details_includes_jobs_fragment_url(
         if 'fa-list-ul' in body:
             assert f'/dashboards/user/jobs/{active_project.projcode}' in body
             assert 'machine=derecho' in body
+
+
+def test_resource_details_user_table_is_sortable(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Usage-by-User table emits the sortable_table.js markup contract:
+
+      - sortable-header class on column <th>s with data-sort=text/numeric
+      - sort-desc on the Charges header (default-sort indicator)
+      - per-user tbody opt-in via class="sortable-group"
+      - data-sort-value="<raw>" on the numeric cells so the JS sees
+        the un-formatted value, not '68.6M'
+
+    The presence of these attributes is the contract; their behavior
+    is verified end-to-end via Playwright. Skip the assertion when
+    the page redirects (no matching resource in the snapshot)."""
+    resp = auth_client.get(
+        f'/dashboards/user/resource-details'
+        f'?projcode={active_project.projcode}&resource=Derecho'
+    )
+    if resp.status_code != 200:
+        return  # snapshot doesn't have this resource — nothing to check
+    body = resp.get_data(as_text=True)
+
+    # The four column headers all opt in to sorting.
+    assert 'sortable-header' in body, 'sortable-header class missing from page'
+    assert 'data-sort="text"' in body, 'Username column missing data-sort=text'
+    assert 'data-sort="numeric"' in body, 'numeric columns missing data-sort=numeric'
+    # Charges is the default desc sort (visual indicator only — no resort
+    # happens until the user clicks).
+    assert 'sort-desc' in body, 'Charges header missing default sort-desc'
+
+    # Per-user tbodies opt into multi-tbody sortable mode so each user's
+    # row drags its lazy-subtree placeholder along on re-sort. Only
+    # present when the project has data; gate the assertion to avoid
+    # failing on a snapshot project with zero comp_charge_summary rows
+    # for Derecho.
+    if 'sortable-group' in body:
+        assert 'data-sort-value=' in body, \
+            'sortable-group tbody present but cells missing data-sort-value'
 
 
 # ---------------------------------------------------------------------------

@@ -7,12 +7,15 @@ Query params (all optional unless noted):
   start, end           — YYYY-MM-DD; filters on Job.end
   user                 — limit to a single PBS username
   queue                — limit to a single queue
+  qos                  — limit to a single QoS / priority class
+                         (e.g. 'premium', 'regular', 'economy',
+                         'uncharged', 'special')
   status               — limit to a single PBS exit status (e.g. 'F')
   page                 — int ≥ 1; default 1
   per_page             — int in [10, 200]; default 50
-  sort_by              — one of {'start', 'elapsed', 'cpu_charges',
-                         'gpu_charges'}; default None (plugin orders
-                         by ``Job.end DESC``)
+  sort_by              — one of {'start', 'elapsed', 'qos',
+                         'cpu_charges', 'gpu_charges'}; default None
+                         (plugin orders by ``Job.end DESC``)
   sort_dir             — 'asc' | 'desc'; default 'desc'
 
 Access control mirrors the rest of the project-scoped UI: the
@@ -45,7 +48,7 @@ _VALID_MACHINES = {'derecho', 'casper'}
 # Default columns shown when drilled into a user+queue row. user/queue/
 # account are dropped because the row context already pins them.
 _DEFAULT_COLS = (
-    'job_id', 'name', 'start', 'elapsed',
+    'job_id', 'name', 'qos', 'start', 'elapsed',
     'numnodes', 'numcpus', 'numgpus',
     'cpu_charges', 'gpu_charges',
 )
@@ -58,15 +61,18 @@ _DEFAULT_COLS = (
 _SORT_WHITELIST = set(_DEFAULT_COLS)
 
 # Extra columns revealed in the per-row "expand" drawer. Order is the
-# render order in the drawer.
+# render order in the drawer. `qos_factor` is paired with the `qos` name
+# column (now in the main table) so the multiplier sits next to status
+# at the top of the drawer rather than buried beside memory_charges.
 _VERBOSE_EXTRAS = (
-    'status', 'queue', 'user',
+    'status', 'qos_factor',
+    'queue', 'user',
     'submit', 'end', 'walltime',
     'mpiprocs', 'ompthreads',
     'reqmem', 'memory', 'vmemory',
     'cputype', 'gputype', 'resources',
     'cpu_hours', 'gpu_hours', 'memory_hours',
-    'qos_factor', 'memory_charges',
+    'memory_charges',
 )
 
 # Numeric columns subject to all-zero auto-suppression in the table.
@@ -162,6 +168,7 @@ def jobs_fragment(project):
         'end':    _parse_date(request.args.get('end')),
         'user':   (request.args.get('user') or '').strip() or None,
         'queue':  (request.args.get('queue') or '').strip() or None,
+        'qos':    (request.args.get('qos') or '').strip() or None,
         'status': (request.args.get('status') or '').strip() or None,
     }
     page = _parse_pagination()
@@ -181,6 +188,23 @@ def jobs_fragment(project):
         p.projcode for p in project.get_descendants(include_self=True)
     ]
 
+    # QoS options for the filter dropdown — sourced from the plugin's
+    # job_qos lookup table so a future seed addition flows through
+    # without a SAM-side change. Fetched BEFORE search/count so the
+    # same list can also be threaded into service.search_jobs /
+    # count_jobs as ``valid_qos_names``: this lets the legacy queue
+    # normalizer promote a 'cpu-special' drill-down's suffix to a real
+    # QoS filter (was previously discarded). Degrades to [] if the
+    # plugin call fails or the table is empty.
+    try:
+        qos_options = service.list_qos_names(machine)
+    except Exception:
+        from flask import current_app
+        current_app.logger.exception(
+            'jobs_fragment: list_qos_names failed for machine=%s', machine,
+        )
+        qos_options = []
+
     error = None
     rows = []
     total: Optional[int] = None
@@ -191,11 +215,13 @@ def jobs_fragment(project):
             sort_by=sort['sort_by'], sort_dir=sort['sort_dir'],
             columns=requested_cols,
             account_projcodes=account_projcodes,
+            valid_qos_names=qos_options,
             **filters,
         )
         total = service.count_jobs(
             machine, project=project,
             account_projcodes=account_projcodes,
+            valid_qos_names=qos_options,
             **filters,
         )
     except Exception as exc:
@@ -210,6 +236,24 @@ def jobs_fragment(project):
         error = str(exc)
 
     visible_cols = _visible_cols(_DEFAULT_COLS, rows)
+
+    # Suppress the QoS column when every visible row has the same QoS
+    # value — a single-valued column is just noise. None counts as a
+    # distinct value so a mix of (premium / legacy-NULL) still renders
+    # the column. The dropdown follows the same rule, with one
+    # exception: when the user explicitly picked a QoS via ``?qos=``
+    # the dropdown stays visible so they can change or reset their
+    # selection (the column still goes away because all rows match).
+    qos_in_rows = {r.get('qos') for r in rows}
+    qos_has_variation = len(qos_in_rows) >= 2
+    if not qos_has_variation and 'qos' in visible_cols:
+        visible_cols = [c for c in visible_cols if c != 'qos']
+    template_qos_options = (
+        qos_options
+        if (qos_has_variation or filters.get('qos'))
+        else []
+    )
+
     column_specs = _load_column_specs()
     fragment_url = url_for('jobs.jobs_fragment', projcode=project.projcode)
 
@@ -232,6 +276,7 @@ def jobs_fragment(project):
         verbose_extras=list(_VERBOSE_EXTRAS),
         column_specs=column_specs,
         sortable_columns=sorted(_SORT_WHITELIST),
+        qos_options=template_qos_options,
         fragment_url=fragment_url,
         target_id=target_id,
         enabled=True,

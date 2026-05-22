@@ -28,9 +28,14 @@ FILE_LLD
 
 WORKDIR /code
 COPY . .
+
+# Branch / tag / SHA of hpc-usage-queries to install. Override at build time
+# to test against an in-flight peer branch:
+#   HPC_USAGE_QUERIES_REF=my-branch docker compose build webdev
+ARG HPC_USAGE_QUERIES_REF=main
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e ".[test]" && \
-    pip install --no-cache-dir 'hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git'
+    pip install --no-cache-dir "hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git@${HPC_USAGE_QUERIES_REF}"
 
 # Optional build provenance - set by CI via --build-arg; empty locally.
 # Placed AFTER pip install so a changing SHA does not invalidate the install layer.
