@@ -8,18 +8,23 @@
    ``breakdown`` is the output of get_user_summary_for_project — one row
    per user with totals + queue_count + date_count + any_queue/any_date.
    single_triple users render inline (same UX as before the refactor);
-   multi-tier users get a tbody placeholder that hx-get's the queue/date
-   subtree from /resource-details/user-subtree/<projcode> on first
-   expand. #}
+   multi-tier users get an empty <tr class="collapse"> placeholder that
+   hx-get's the queue/date subtree from /resource-details/user-subtree/
+   <projcode> on first expand.
+
+   Sortable: each user lives in ONE <tbody class="sortable-group"> with
+   data-sort-value attrs on its cells, so sortable_table.js can reorder
+   the tbodies (which carry the lazy placeholder along) without
+   touching the non-sortable Total / empty-state tbodies. #}
 {% macro user_breakdown_table(breakdown, table_id) %}
 <div class="table-responsive">
     <table class="table table-sm table-hover" id="{{ table_id }}">
         <thead class="thead-dark">
             <tr>
-                <th>Username</th>
-                <th class="text-end">Jobs</th>
-                <th class="text-end">Core-Hours</th>
-                <th class="text-end">Charges</th>
+                <th class="sortable-header" data-sort="text">Username</th>
+                <th class="sortable-header text-end" data-sort="numeric">Jobs</th>
+                <th class="sortable-header text-end" data-sort="numeric">Core-Hours</th>
+                <th class="sortable-header text-end sort-desc" data-sort="numeric">Charges</th>
             </tr>
         </thead>
         {% if breakdown %}
@@ -34,9 +39,9 @@
         {% for user in breakdown %}
         {% set uid = table_id ~ '-u' ~ loop.index %}
         {% set single_triple = (user.queue_count == 1 and user.date_count == 1) %}
-        <tbody>
+        <tbody class="sortable-group">
             <tr {% if not single_triple %}class="cursor-pointer" data-bs-toggle="collapse" data-bs-target="#user-tree-{{ uid }}" aria-expanded="false"{% endif %}>
-                <td>
+                <td data-sort-value="{{ user.username }}">
                     <code>{{ user.username }}</code>
                     {% if not single_triple %}
                     <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
@@ -45,9 +50,9 @@
                         {{ jobs_button(uid ~ '-jobs') }}
                     {% endif %}
                 </td>
-                <td class="text-end">{{ user.jobs | fmt_number }}</td>
-                <td class="text-end">{{ user.core_hours | fmt_number }}</td>
-                <td class="text-end">{{ user.charges | fmt_number }}</td>
+                <td class="text-end" data-sort-value="{{ user.jobs }}">{{ user.jobs | fmt_number }}</td>
+                <td class="text-end" data-sort-value="{{ user.core_hours }}">{{ user.core_hours | fmt_number }}</td>
+                <td class="text-end" data-sort-value="{{ user.charges }}">{{ user.charges | fmt_number }}</td>
             </tr>
             {% if jobs_machine and single_triple %}
                 {{ jobs_collapse_row(uid ~ '-jobs', projcode, jobs_machine,
@@ -55,30 +60,31 @@
                                      start=user.any_date, end=user.any_date,
                                      colspan=4) }}
             {% endif %}
-        </tbody>
-        {% if not single_triple %}
-        {# Empty placeholder; the queue/date subtree is fetched from the
-           user-subtree route the first time the user expands this row.
-           data-no-persist tells nav-view-persistence not to auto-reopen
-           on reload (the fetch is non-trivial and should be explicit). #}
-        <tbody class="collapse" id="user-tree-{{ uid }}" data-no-persist
-               hx-get="{{ url_for('user_dashboard.resource_details_user_subtree',
-                                  projcode=projcode,
-                                  resource=resource_name,
-                                  username=user.username,
-                                  uid=uid,
-                                  start_date=start_date,
-                                  end_date=end_date,
-                                  scope=scope) }}"
-               hx-trigger="shown.bs.collapse once"
-               hx-swap="innerHTML">
-            <tr>
+            {% if not single_triple %}
+            {# Lazy subtree placeholder lives INSIDE the user's tbody so
+               re-sorting carries it along with the user row. <tr>
+               (not <tbody>) is required for tbody-as-unit sortability;
+               the user-subtree fragment returns one <td colspan="4">
+               wrapping a nested table (matches the day-subtree pattern).
+               data-no-persist keeps nav-view-persistence from auto-
+               reopening on reload — fetches should be explicit. #}
+            <tr class="collapse" id="user-tree-{{ uid }}" data-no-persist
+                hx-get="{{ url_for('user_dashboard.resource_details_user_subtree',
+                                   projcode=projcode,
+                                   resource=resource_name,
+                                   username=user.username,
+                                   uid=uid,
+                                   start_date=start_date,
+                                   end_date=end_date,
+                                   scope=scope) }}"
+                hx-trigger="shown.bs.collapse once"
+                hx-swap="innerHTML">
                 <td colspan="4" class="text-muted small ps-4">
                     <i class="fas fa-spinner fa-spin me-1"></i> Loading breakdown…
                 </td>
             </tr>
+            {% endif %}
         </tbody>
-        {% endif %}
         {% endfor %}
         {% else %}
         <tbody>
