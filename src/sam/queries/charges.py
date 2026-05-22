@@ -17,7 +17,7 @@ Functions:
 from datetime import datetime
 from typing import Any, List, Optional, Dict, Union
 
-from sqlalchemy import distinct, func
+from sqlalchemy import String, distinct, func
 from sqlalchemy.orm import Session
 
 from sam.core.users import User
@@ -541,9 +541,15 @@ def get_user_summary_for_project(
     ``COUNT(DISTINCT activity_date)``) so a project with thousands of
     (user, queue, date) leaves still produces one result row per user.
 
+    The ``any_queue`` / ``any_date`` fields let single-triple users
+    (``queue_count == 1 AND date_count == 1``) render inline with the
+    jobs drawer URL fully resolved, matching the pre-refactor UX. For
+    multi-tier users they're ignored.
+
     Returns:
         List of dicts sorted by charges desc:
-            {username, jobs, core_hours, charges, queue_count, date_count}
+            {username, jobs, core_hours, charges, queue_count, date_count,
+             any_queue, any_date (str YYYY-MM-DD)}
     """
     query = session.query(
         CompChargeSummary.username,
@@ -552,6 +558,8 @@ def get_user_summary_for_project(
         func.sum(CompChargeSummary.charges).label('charges'),
         func.count(distinct(CompChargeSummary.queue)).label('queue_count'),
         func.count(distinct(CompChargeSummary.activity_date)).label('date_count'),
+        func.min(CompChargeSummary.queue).label('any_queue'),
+        func.min(CompChargeSummary.activity_date).label('any_date'),
     ).filter(
         CompChargeSummary.activity_date >= start_date,
         CompChargeSummary.activity_date <= end_date,
@@ -576,6 +584,8 @@ def get_user_summary_for_project(
             'charges':     float(row.charges or 0.0),
             'queue_count': int(row.queue_count or 0),
             'date_count':  int(row.date_count or 0),
+            'any_queue':   row.any_queue,
+            'any_date':    row.any_date.strftime('%Y-%m-%d') if row.any_date else None,
         }
         for row in query.all()
     ]
@@ -715,6 +725,51 @@ def get_daily_summary_for_project(
             'user_count': int(row.user_count or 0),
         })
     return out
+
+
+def get_monthly_user_counts_for_project(
+    session: Session,
+    projcode: Union[str, List[str]],
+    resource: str,
+    start_date: datetime,
+    end_date: datetime,
+) -> Dict[str, int]:
+    """
+    Get distinct user counts per YYYY-MM month for the daily-breakdown
+    table's 3-level mode (``span_days > 45``).
+
+    Pre-refactor the template computed this by walking every day's
+    user/queue sub-rows; with the daily summary now returning only one
+    row per day, we need a separate aggregation for the month header.
+    The query is cheap (one row per month) and only runs for windows
+    wider than ~45 days, where it's actually rendered.
+
+    Returns:
+        Dict keyed by YYYY-MM string with distinct username count for
+        each month in the date range. Months with no activity are
+        omitted; the template should default missing keys to 0.
+    """
+    # Database-portable monthly key: use SQLAlchemy's func.substr to
+    # extract YYYY-MM from the date column (works on MySQL, Postgres,
+    # SQLite without dialect-specific date_format).
+    month_expr = func.substr(func.cast(CompChargeSummary.activity_date, String), 1, 7)
+    query = session.query(
+        month_expr.label('month'),
+        func.count(distinct(CompChargeSummary.username)).label('users'),
+    ).filter(
+        CompChargeSummary.activity_date >= start_date,
+        CompChargeSummary.activity_date <= end_date,
+        CompChargeSummary.resource == resource,
+    )
+    if isinstance(projcode, list):
+        query = query.filter(CompChargeSummary.projcode.in_(projcode))
+    else:
+        query = query.filter(CompChargeSummary.projcode == projcode)
+
+    query = query.group_by(month_expr).having(
+        func.sum(CompChargeSummary.charges) > 0
+    )
+    return {row.month: int(row.users or 0) for row in query.all()}
 
 
 def get_daily_breakdown_for_project(
