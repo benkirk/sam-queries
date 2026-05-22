@@ -200,53 +200,65 @@ def _to_display_tz(naive_utc_ts: datetime) -> datetime:
 # 1. Usage timeseries (user dashboard)
 # ---------------------------------------------------------------------------
 
-def _usage_timeseries_cache_key(daily_charges, link_to_day_rows=False):
-    return _content_hash([_content_hash(daily_charges), bool(link_to_day_rows)])
+_USAGE_METRIC_YLABELS = {
+    'charges':    'Charges',
+    'jobs':       'Job Count',
+    'core_hours': 'Core-Hours',
+}
 
 
-# One entry per (user, time-range) combination active in the current snapshot window.
+def _usage_timeseries_cache_key(daily_data, link_to_day_rows=False, metric='charges'):
+    return _content_hash([_content_hash(daily_data), bool(link_to_day_rows), metric])
+
+
+# One entry per (resource, time-range, metric) combination active in the current snapshot window.
 @caching.chart_cached(name='usage_timeseries', maxsize=128,
                       key_fn=_usage_timeseries_cache_key)
-def generate_usage_timeseries_matplotlib(daily_charges, link_to_day_rows=False) -> str:
+def generate_usage_timeseries_matplotlib(daily_data, link_to_day_rows=False,
+                                         metric='charges') -> str:
     """
     Generate time-series bar chart using Matplotlib.
 
     Args:
-        daily_charges: Dict with 'dates' and 'values' keys
+        daily_data: Dict with 'dates' and 'values' keys. Values can be
+            per-day charges, job counts, or core-hours depending on
+            ``metric``; the renderer is metric-agnostic.
         link_to_day_rows: When True, each bar is wrapped in an
             ``<a xlink:href="#day-bar-YYYY-MM-DD">`` anchor via
             ``Rectangle.set_url()``. ``svg-chart-links.js`` intercepts
             those clicks and expands the matching day row in the
-            Historical Usage card below. Zero-charge days are skipped
-            (no `<rect>` is drawn anyway in those positions, but defensive).
+            Historical Usage card below. Zero-value days are skipped.
+        metric: One of ``'charges'`` / ``'jobs'`` / ``'core_hours'``.
+            Controls the y-axis label and the cache key so the three
+            variants are stored independently.
 
     Returns:
         SVG string ready for template rendering
     """
-    if not daily_charges:
+    if not daily_data:
         return '<div class="text-center text-muted">No usage data recorded for this period</div>'
 
-    dates = list(daily_charges.get('dates', []))
-    comp = list(daily_charges.get('values', []))
+    dates = list(daily_data.get('dates') or [])
+    vals  = list(daily_data.get('values') or [])
 
-    combined = sorted(zip(dates, comp))
+    combined = sorted(zip(dates, vals))
     if not combined:
         return '<div class="text-center text-muted">No usage data recorded for this period</div>'
 
-    dates, comp = zip(*combined)
+    dates, vals = zip(*combined)
     dates = list(dates)
-    comp = list(comp)
+    vals = list(vals)
 
     fig, ax = plt.subplots(figsize=(18, 5))
-    bars = ax.bar(dates, comp, width=1, lw=2,
+    bars = ax.bar(dates, vals, width=1, lw=2,
                   color=UNITY_NCAR_BLUE, edgecolor=UNITY_NCAR_NAVY)
     if link_to_day_rows:
-        for d, value, rect in zip(dates, comp, bars.patches):
+        for d, value, rect in zip(dates, vals, bars.patches):
             if not value:
                 continue
             iso = d.isoformat() if hasattr(d, 'isoformat') else str(d)
             rect.set_url(f'#day-bar-{iso}')
-    ax.set_ylabel('Charges')
+    ax.set_ylabel(_USAGE_METRIC_YLABELS.get(metric, 'Charges'))
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, alpha=0.3)
     fig.autofmt_xdate()

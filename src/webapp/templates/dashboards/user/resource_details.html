@@ -433,15 +433,28 @@
     </div>
     <div id="collapseUsage" class="collapse show">
         <div class="card-body">
-            <div class="chart-container">
-                {{ usage_chart | safe }}
+            {# Chart loads via HTMX so the metric pill selector (Charges
+               / Job Count / Core-Hours) can swap the SVG in place.
+               nav-view-persistence.js round-trips the `metric` URL
+               param through localStorage via the data-chart-persist-*
+               attributes, so the analyst's choice survives page
+               reloads. #}
+            <div id="usage-chart-wrapper"
+                 hx-get="{{ url_for('user_dashboard.resource_details_usage_chart',
+                                    projcode=projcode,
+                                    resource=resource_name,
+                                    scope=scope,
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                    metric='charges') }}"
+                 hx-trigger="load"
+                 hx-swap="innerHTML"
+                 data-chart-persist-id="usage-chart-{{ projcode }}-{{ resource_name }}"
+                 data-chart-persist-keys="metric">
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                </div>
             </div>
-            {% if daily_breakdown %}
-            <div class="text-muted small text-center mt-2">
-                <i class="fas fa-hand-pointer me-1"></i>
-                Click a bar to expand that day in <em>Historical Usage</em> below. Reload the page to reset all selections.
-            </div>
-            {% endif %}
         </div>
     </div>
 </div>
