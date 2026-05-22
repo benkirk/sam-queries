@@ -1,48 +1,55 @@
 {# Lazy fragment: user/queue subtree for a single day, swapped into
-   the empty <tbody> placeholder under that day's row by the
-   /resource-details/day-subtree/<projcode> route.
+   the empty placeholder <tr class="collapse" id="day-detail-{did}"> by
+   the /resource-details/day-subtree/<projcode> route.
 
    Context:
      day            — dict from get_daily_breakdown_for_project()
                       filtered to one date; may be None if the day has
                       no rows in this scope (rare — the page would not
                       have emitted a placeholder).
-     did            — stable id prefix (matches the placeholder tbody id
-                      'day-detail-{did}').
+     did            — stable id prefix (matches the placeholder <tr> id
+                      'day-detail-{did}'); used for collapse ids on the
+                      nested jobs drawers.
      projcode       — for the jobs drawer URL.
      jobs_machine   — for the jobs drawer URL; None disables the drill.
 
-   Output: only the <tr> rows that go INSIDE the placeholder tbody —
-   no wrapping <tbody>. The parent tbody is itself the
-   day-tier collapse container, so per-drawer rows inherit its show/hide
-   without needing outer_tr_collapse_id wrapping. #}
+   Output: ONE <td colspan="5"> element that becomes the placeholder
+   <tr>'s only child after htmx swap. <tr> can't contain <tbody>, so
+   the user/queue rows live inside a nested <table> wrapped in that
+   single <td> — keeps the column structure of the parent table
+   visually consistent while letting the day-detail expand right after
+   its day header row. #}
 {% from 'dashboards/user/partials/_resource_details_macros.html' import jobs_button, jobs_collapse_row with context %}
 
-{% if not day or not day.rows %}
-  <tr>
-    <td colspan="5" class="text-center text-muted">
-      <small>No activity for this day in the selected scope.</small>
-    </td>
-  </tr>
-{% else %}
-  {% for sub in day.rows %}
-    {% set jid = did ~ '-jobs' ~ loop.index %}
-    <tr class="table-light">
-      <td class="ps-4 text-muted">
-        <i class="fas fa-angle-right me-1"></i>
-        <code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em>
-        {% if jobs_machine %}{{ jobs_button(jid) }}{% endif %}
-      </td>
-      <td></td>
-      <td class="text-end"><small>{{ sub.total_jobs | fmt_number }}</small></td>
-      <td class="text-end"><small>{{ sub.total_core_hours | fmt_number }}</small></td>
-      <td class="text-end"><small>{{ sub.total_charges | fmt_number }}</small></td>
-    </tr>
-    {% if jobs_machine %}
-      {{ jobs_collapse_row(jid, projcode, jobs_machine,
-                           user=sub.username, queue=sub.queue,
-                           start=day.date, end=day.date,
-                           colspan=5) }}
-    {% endif %}
-  {% endfor %}
-{% endif %}
+<td colspan="5" class="p-0">
+  {% if not day or not day.rows %}
+    <div class="ps-4 py-2 text-muted small">
+      No activity for this day in the selected scope.
+    </div>
+  {% else %}
+    <table class="table table-sm table-borderless mb-0">
+      <tbody>
+        {% for sub in day.rows %}
+          {% set jid = did ~ '-jobs' ~ loop.index %}
+          <tr class="table-light">
+            <td class="ps-4 text-muted">
+              <i class="fas fa-angle-right me-1"></i>
+              <code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em>
+              {% if jobs_machine %}{{ jobs_button(jid) }}{% endif %}
+            </td>
+            <td></td>
+            <td class="text-end"><small>{{ sub.total_jobs | fmt_number }}</small></td>
+            <td class="text-end"><small>{{ sub.total_core_hours | fmt_number }}</small></td>
+            <td class="text-end"><small>{{ sub.total_charges | fmt_number }}</small></td>
+          </tr>
+          {% if jobs_machine %}
+            {{ jobs_collapse_row(jid, projcode, jobs_machine,
+                                 user=sub.username, queue=sub.queue,
+                                 start=day.date, end=day.date,
+                                 colspan=5) }}
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</td>

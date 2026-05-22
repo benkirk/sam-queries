@@ -144,31 +144,28 @@
                 <td class="text-end">{{ day.core_hours | fmt_number }}</td>
                 <td class="text-end">{{ day.charges | fmt_number }}</td>
             </tr>
-            {% endfor %}
-        </tbody>
-        {# Day-detail tbodies for THIS month's days live at the <table>
-           level as siblings to the month-days tbody — tbody can't nest
-           inside tbody. Visual quirk: a day-detail expanded inside a
-           later-collapsed month stays visible until the user closes it
-           explicitly. Acceptable for a deep-drill flow. #}
-        {% for day in month_days %}
-        {% set did = mid ~ '-d' ~ loop.index %}
-        <tbody class="collapse" id="day-detail-{{ did }}" data-no-persist
-               hx-get="{{ url_for('user_dashboard.resource_details_day_subtree',
-                                  projcode=projcode,
-                                  resource=resource_name,
-                                  date=day.date,
-                                  did=did,
-                                  scope=scope) }}"
-               hx-trigger="shown.bs.collapse once"
-               hx-swap="innerHTML">
-            <tr>
+            {# Day-detail placeholder sits immediately after its day
+               header — inside the same month-days <tbody> — so the
+               injected user/queue rows appear in the natural visual
+               position. Uses a <tr> placeholder (not <tbody>) because
+               <tbody> can't nest in <tbody>; the day-subtree fragment
+               returns a single <td colspan="5"> containing a nested
+               table for column alignment. #}
+            <tr class="collapse" id="day-detail-{{ did }}" data-no-persist
+                hx-get="{{ url_for('user_dashboard.resource_details_day_subtree',
+                                   projcode=projcode,
+                                   resource=resource_name,
+                                   date=day.date,
+                                   did=did,
+                                   scope=scope) }}"
+                hx-trigger="shown.bs.collapse once"
+                hx-swap="innerHTML">
                 <td colspan="5" class="text-muted small ps-5">
                     <i class="fas fa-spinner fa-spin me-1"></i> Loading day breakdown…
                 </td>
             </tr>
+            {% endfor %}
         </tbody>
-        {% endfor %}
         {% endfor %}
         {% else %}
         {# ── 2-level: Day → User/Queue (≤45 days) ── #}
@@ -185,17 +182,15 @@
                 <td class="text-end">{{ day.core_hours | fmt_number }}</td>
                 <td class="text-end">{{ day.charges | fmt_number }}</td>
             </tr>
-        </tbody>
-        <tbody class="collapse" id="day-detail-{{ did }}" data-no-persist
-               hx-get="{{ url_for('user_dashboard.resource_details_day_subtree',
-                                  projcode=projcode,
-                                  resource=resource_name,
-                                  date=day.date,
-                                  did=did,
-                                  scope=scope) }}"
-               hx-trigger="shown.bs.collapse once"
-               hx-swap="innerHTML">
-            <tr>
+            <tr class="collapse" id="day-detail-{{ did }}" data-no-persist
+                hx-get="{{ url_for('user_dashboard.resource_details_day_subtree',
+                                   projcode=projcode,
+                                   resource=resource_name,
+                                   date=day.date,
+                                   did=did,
+                                   scope=scope) }}"
+                hx-trigger="shown.bs.collapse once"
+                hx-swap="innerHTML">
                 <td colspan="5" class="text-muted small ps-4">
                     <i class="fas fa-spinner fa-spin me-1"></i> Loading day breakdown…
                 </td>
