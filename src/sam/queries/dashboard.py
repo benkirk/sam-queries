@@ -941,9 +941,14 @@ def get_resource_detail_data(
         # daily charges across this project and all descendants.
         results = None
         if ResourceTypeName.is_compute(resource_type):
+            # Pull num_jobs + core_hours alongside charges so the Usage
+            # Trend pill selector can switch metrics without an extra
+            # query. Disk/Archive summaries don't carry these columns.
             results = session.query(
                 CompChargeSummary.activity_date,
-                func.sum(CompChargeSummary.charges).label('charges')
+                func.sum(CompChargeSummary.charges).label('charges'),
+                func.sum(CompChargeSummary.num_jobs).label('num_jobs'),
+                func.sum(CompChargeSummary.core_hours).label('core_hours'),
             ).join(Account, CompChargeSummary.account_id == Account.account_id)\
              .join(Project, Account.project_id == Project.project_id)\
              .filter(
@@ -989,10 +994,16 @@ def get_resource_detail_data(
             ).group_by(ArchiveChargeSummary.activity_date).all()
 
         daily_map = {}
+        daily_jobs_map: dict = {}
+        daily_core_hours_map: dict = {}
         if results:
+            comp = ResourceTypeName.is_compute(resource_type)
             for row in results:
                 d = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
                 daily_map[d] = daily_map.get(d, 0.0) + float(row.charges or 0.0)
+                if comp:
+                    daily_jobs_map[d] = daily_jobs_map.get(d, 0) + int(row.num_jobs or 0)
+                    daily_core_hours_map[d] = daily_core_hours_map.get(d, 0.0) + float(row.core_hours or 0.0)
 
         if include_adjustments:
             # Collect all subtree account IDs for adjustment lookup
@@ -1028,7 +1039,9 @@ def get_resource_detail_data(
                 'project': project,
                 'resource_obj': resource,
                 'resource_summary': resource_summary,
-                'daily_charges': { 'dates': None, 'values': None }
+                'daily_charges': { 'dates': None, 'values': None },
+                'daily_jobs': None,
+                'daily_core_hours': None,
             }
 
         results = None
@@ -1036,7 +1049,9 @@ def get_resource_detail_data(
         if ResourceTypeName.is_compute(resource_type):
             results = session.query(
                 CompChargeSummary.activity_date,
-                func.sum(CompChargeSummary.charges).label('charges')
+                func.sum(CompChargeSummary.charges).label('charges'),
+                func.sum(CompChargeSummary.num_jobs).label('num_jobs'),
+                func.sum(CompChargeSummary.core_hours).label('core_hours'),
             ).filter(
                 CompChargeSummary.account_id == account.account_id,
                 CompChargeSummary.activity_date >= start_date,
@@ -1064,10 +1079,16 @@ def get_resource_detail_data(
             ).group_by(ArchiveChargeSummary.activity_date).all()
 
         daily_map = {}
+        daily_jobs_map = {}
+        daily_core_hours_map = {}
         if results:
+            comp = ResourceTypeName.is_compute(resource_type)
             for row in results:
                 d = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
                 daily_map[d] = daily_map.get(d, 0.0) + float(row.charges or 0.0)
+                if comp:
+                    daily_jobs_map[d] = daily_jobs_map.get(d, 0) + int(row.num_jobs or 0)
+                    daily_core_hours_map[d] = daily_core_hours_map.get(d, 0.0) + float(row.core_hours or 0.0)
 
         if include_adjustments:
             for d, amount in get_adjustment_totals_by_date(
@@ -1077,10 +1098,25 @@ def get_resource_detail_data(
 
     sorted_dates = sorted(daily_map.keys())
     daily_charges = { 'dates': sorted_dates, 'values': [daily_map[d] for d in sorted_dates] }
+    # Jobs / core-hours series populate only for compute resources.
+    # Disk/Archive summaries don't expose these columns; their series stay None
+    # and the Usage Trend pill selector renders only the Charges pill.
+    if daily_jobs_map:
+        jobs_dates = sorted(daily_jobs_map.keys())
+        daily_jobs = {'dates': jobs_dates, 'values': [daily_jobs_map[d] for d in jobs_dates]}
+    else:
+        daily_jobs = None
+    if daily_core_hours_map:
+        ch_dates = sorted(daily_core_hours_map.keys())
+        daily_core_hours = {'dates': ch_dates, 'values': [daily_core_hours_map[d] for d in ch_dates]}
+    else:
+        daily_core_hours = None
 
     return {
         'project': project,
         'resource_obj': resource,
         'resource_summary': resource_summary,
         'daily_charges': daily_charges,
+        'daily_jobs': daily_jobs,
+        'daily_core_hours': daily_core_hours,
     }

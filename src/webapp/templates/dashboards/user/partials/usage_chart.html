@@ -1,0 +1,48 @@
+{# Usage Trend chart fragment — loaded by the resource-details page
+   and re-rendered when a metric pill (Charges / Job Count / Core-Hours)
+   is clicked. The pill group's hx-get points back at the same route
+   with a different `metric=` so the server re-renders pills + chart +
+   caption as one unit (active pill class follows the new metric).
+
+   The bar chart's `set_url('#day-bar-YYYY-MM-DD')` anchors are wired
+   regardless of metric; svg-chart-links.js handles the click and
+   expands the matching day row in Historical Usage. #}
+
+{% set _LABELS = {
+    'charges':    'Charges',
+    'jobs':       'Job Count',
+    'core_hours': 'Core-Hours',
+} %}
+
+{% if available_metrics | length > 1 %}
+<div class="d-flex justify-content-center mb-2">
+    <div class="btn-group btn-group-sm" role="group" aria-label="Metric">
+        {% for opt in available_metrics %}
+        <button type="button"
+                class="btn btn-{% if metric == opt %}primary{% else %}outline-primary{% endif %}"
+                hx-get="{{ url_for('user_dashboard.resource_details_usage_chart',
+                                   projcode=projcode,
+                                   resource=resource_name,
+                                   scope=scope,
+                                   start_date=start_date,
+                                   end_date=end_date,
+                                   metric=opt) }}"
+                hx-target="#usage-chart-wrapper"
+                hx-swap="innerHTML">
+            {{ _LABELS[opt] }}
+        </button>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="chart-container">
+    {{ chart_svg | safe }}
+</div>
+
+{% if has_data %}
+<div class="text-muted small text-center mt-2">
+    <i class="fas fa-hand-pointer me-1"></i>
+    Click a bar to expand that day in <em>Historical Usage</em> below. Reload the page to reset all selections.
+</div>
+{% endif %}
