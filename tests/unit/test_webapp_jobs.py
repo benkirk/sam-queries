@@ -734,12 +734,15 @@ def test_jobs_fragment_renders_verbose_drawer(
 def test_jobs_fragment_qos_column_in_table_and_sortable(
     app, auth_client, active_project, monkeypatch,
 ):
-    """`qos` is in _DEFAULT_COLS now ⇒ rendered as a sortable header in the
-    main table (header label "QoS" from the plugin's COLUMNS dict) and the
-    cell value comes from the row dict."""
+    """`qos` is in _DEFAULT_COLS and renders as a sortable header when the
+    rows contain at least two distinct QoS values (column suppression
+    rule covered separately)."""
     _install_mock_plugin(
         app, monkeypatch,
-        jobs_search_return=[_make_row(qos='premium')],
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium'),
+            _make_row(job_id='2.x', qos='regular'),
+        ],
     )
     resp = auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
@@ -748,8 +751,9 @@ def test_jobs_fragment_qos_column_in_table_and_sortable(
     body = resp.get_data(as_text=True)
     # QoS column header is sortable (wrapped in an hx-get link).
     assert 'sort_by=qos' in body
-    # The QoS value renders in the table.
+    # The QoS values render in the table.
     assert 'premium' in body
+    assert 'regular' in body
 
 
 def test_jobs_fragment_qos_filter_forwarded_to_service(
@@ -777,8 +781,9 @@ def test_jobs_fragment_qos_filter_forwarded_to_service(
 def test_jobs_fragment_qos_dropdown_pre_selects_active_filter(
     app, auth_client, active_project, monkeypatch,
 ):
-    """When ?qos=premium is set, the dropdown renders that option as
-    `selected` so the UI state matches the filter applied server-side."""
+    """When ?qos=premium is set, the dropdown stays visible (so the user
+    can change/reset) and pre-selects the active option — even though
+    the filter naturally yields one distinct QoS in the rows."""
     _install_mock_plugin(app, monkeypatch,
                         jobs_search_return=[_make_row(qos='premium')])
     resp = auth_client.get(
@@ -786,9 +791,7 @@ def test_jobs_fragment_qos_dropdown_pre_selects_active_filter(
         '?machine=derecho&qos=premium'
     )
     body = resp.get_data(as_text=True)
-    # The `name="qos"` <select> contains all canonical options and pre-
-    # selects the active filter (whitespace between attrs is template-
-    # dependent — match the substring).
+    # Explicit filter ⇒ dropdown visible; pre-selects 'premium'.
     import re
     assert 'name="qos"' in body
     assert re.search(r'value="premium"\s+selected', body), \
@@ -827,18 +830,102 @@ def test_jobs_fragment_qos_options_populated_from_plugin(
 ):
     """The QoS dropdown is populated from the plugin's list_qos_names()
     call — a new value added on the peer flows through without a SAM-side
-    change."""
+    change. Needs ≥2 distinct QoS values in rows for the dropdown to
+    appear at all."""
     _install_mock_plugin(
         app, monkeypatch,
-        jobs_search_return=[_make_row()],
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='custom-tier'),
+            _make_row(job_id='2.x', qos='regular'),
+        ],
         qos_names=['custom-tier', 'premium', 'regular'],
     )
     resp = auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
     )
     body = resp.get_data(as_text=True)
+    # The non-canonical seed name surfaces in the dropdown options.
     assert 'custom-tier' in body
     # And the "All QoS" reset entry is always present.
+    assert 'All QoS' in body
+
+
+def test_jobs_fragment_hides_qos_column_and_dropdown_when_single_value(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When all visible rows share a single QoS (or none have one), the
+    QoS column drops out of the table AND the filter dropdown is hidden.
+    Both UI elements key off the same "distinct QoS in rows" signal so
+    they compose: the legacy queue-suffix inference path (`cpu-special`
+    → all rows special) naturally yields the same single-value collapse
+    without the URL ever carrying ?qos=."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='special'),
+            _make_row(job_id='2.x', qos='special'),
+            _make_row(job_id='3.x', qos='special'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # The sortable header link for the qos column is gone.
+    assert 'sort_by=qos' not in body
+    # The dropdown control is gone (no ?qos= in URL, no variation in rows).
+    assert 'All QoS' not in body
+    # And with no queue badge / no dropdown / no column header, the
+    # repeated 'special' value is correctly absent from the fragment
+    # entirely — that's the whole point of the suppression. (Parent
+    # context — the row the user drilled into — surfaces it.)
+    assert 'special' not in body
+
+
+def test_jobs_fragment_shows_qos_column_when_rows_have_variation(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Mixed-QoS rows ⇒ both column AND dropdown render (no explicit
+    filter required to surface them)."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium'),
+            _make_row(job_id='2.x', qos='regular'),
+            _make_row(job_id='3.x', qos='economy'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # Column header is present and sortable.
+    assert 'sort_by=qos' in body
+    # Dropdown is present with the reset entry.
+    assert 'All QoS' in body
+
+
+def test_jobs_fragment_keeps_dropdown_when_user_filtered_explicitly(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Explicit ?qos= naturally collapses rows to one distinct value, but
+    the dropdown stays so the user can change or reset the filter. The
+    column itself still goes away (all rows match)."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium'),
+            _make_row(job_id='2.x', qos='premium'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=premium'
+    )
+    body = resp.get_data(as_text=True)
+    # Column header dropped (all rows the same QoS).
+    assert 'sort_by=qos' not in body
+    # Dropdown stays (explicit filter ⇒ user needs a way to reset).
     assert 'All QoS' in body
 
 

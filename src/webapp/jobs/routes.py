@@ -236,6 +236,24 @@ def jobs_fragment(project):
         error = str(exc)
 
     visible_cols = _visible_cols(_DEFAULT_COLS, rows)
+
+    # Suppress the QoS column when every visible row has the same QoS
+    # value — a single-valued column is just noise. None counts as a
+    # distinct value so a mix of (premium / legacy-NULL) still renders
+    # the column. The dropdown follows the same rule, with one
+    # exception: when the user explicitly picked a QoS via ``?qos=``
+    # the dropdown stays visible so they can change or reset their
+    # selection (the column still goes away because all rows match).
+    qos_in_rows = {r.get('qos') for r in rows}
+    qos_has_variation = len(qos_in_rows) >= 2
+    if not qos_has_variation and 'qos' in visible_cols:
+        visible_cols = [c for c in visible_cols if c != 'qos']
+    template_qos_options = (
+        qos_options
+        if (qos_has_variation or filters.get('qos'))
+        else []
+    )
+
     column_specs = _load_column_specs()
     fragment_url = url_for('jobs.jobs_fragment', projcode=project.projcode)
 
@@ -258,7 +276,7 @@ def jobs_fragment(project):
         verbose_extras=list(_VERBOSE_EXTRAS),
         column_specs=column_specs,
         sortable_columns=sorted(_SORT_WHITELIST),
-        qos_options=qos_options,
+        qos_options=template_qos_options,
         fragment_url=fragment_url,
         target_id=target_id,
         enabled=True,
