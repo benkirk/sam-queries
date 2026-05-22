@@ -302,6 +302,129 @@ def test_count_jobs_plugin_fallback_normalizes_legacy_queue_name(
     assert ckw['queue'] == 'cpu'
 
 
+def test_search_jobs_promotes_legacy_queue_suffix_to_qos(
+    app, active_project, monkeypatch,
+):
+    """When the caller passes a legacy queue like 'cpu-special' AND a
+    valid_qos_names list that contains 'special', the resolver promotes
+    the suffix to a QoS filter — turning a CPU-wide search into a
+    CPU+special-QoS search. Surfaces precision the old normalizer
+    discarded."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs(
+            'derecho', project=active_project,
+            queue='cpu-special',
+            valid_qos_names=['premium', 'regular', 'special'],
+        )
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['queue'] == 'cpu'
+    assert kw['qos']   == 'special'
+
+
+def test_search_jobs_explicit_qos_wins_over_inferred(
+    app, active_project, monkeypatch,
+):
+    """A caller-supplied qos always takes precedence over a suffix the
+    resolver might otherwise infer from the legacy queue name."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs(
+            'derecho', project=active_project,
+            queue='cpu-special',
+            qos='regular',  # explicit
+            valid_qos_names=['premium', 'regular', 'special'],
+        )
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['queue'] == 'cpu'
+    assert kw['qos']   == 'regular'  # explicit wins
+
+
+def test_search_jobs_unknown_suffix_falls_back_to_strip_only(
+    app, active_project, monkeypatch,
+):
+    """When the suffix isn't in valid_qos_names (or the list is empty),
+    the resolver keeps the legacy strip-only behavior: queue is split,
+    qos stays None."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs(
+            'derecho', project=active_project,
+            queue='cpu-bogus',
+            valid_qos_names=['premium', 'regular', 'special'],
+        )
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['queue'] == 'cpu'
+    assert kw['qos']   is None
+
+
+def test_count_jobs_sam_summary_ignores_inferred_qos(
+    app, active_project, monkeypatch,
+):
+    """The fast path is gated on the *explicit* qos argument. An
+    inferred-only qos must NOT push count_jobs onto the slower plugin
+    path — the SAM summary stores 'cpu-special' as a composite key and
+    already counts it correctly without a separate qos filter."""
+    from webapp.jobs import service
+
+    captured_queue = {}
+
+    def _fake_count_via_sam_summary(machine, *, projcodes, start, end, user, queue):
+        captured_queue['queue'] = queue
+        return 11
+
+    monkeypatch.setattr(service, '_count_via_sam_summary', _fake_count_via_sam_summary)
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        total = service.count_jobs(
+            'derecho', project=active_project,
+            queue='cpu-special',
+            valid_qos_names=['premium', 'regular', 'special'],
+        )
+
+    assert total == 11
+    # Fast path used — raw composite queue, no plugin call.
+    assert captured_queue['queue'] == 'cpu-special'
+    assert captured['last_jobs_count_kwargs'] is None
+
+
+def test_count_jobs_plugin_fallback_promotes_legacy_queue_suffix_to_qos(
+    app, active_project, monkeypatch,
+):
+    """When count_jobs takes the plugin path (e.g. because status is
+    set), it also runs the queue/qos resolver so 'cpu-special' →
+    queue='cpu', qos='special' on the plugin call."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=3)
+
+    with app.app_context():
+        service.count_jobs(
+            'derecho', project=active_project,
+            queue='cpu-special',
+            status='F',  # forces plugin path
+            valid_qos_names=['premium', 'regular', 'special'],
+        )
+
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert ckw['queue'] == 'cpu'
+    assert ckw['qos']   == 'special'
+
+
 # ---------------------------------------------------------------------------
 # routes.jobs_fragment — HTMX endpoint surface
 # ---------------------------------------------------------------------------

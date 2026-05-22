@@ -188,6 +188,23 @@ def jobs_fragment(project):
         p.projcode for p in project.get_descendants(include_self=True)
     ]
 
+    # QoS options for the filter dropdown — sourced from the plugin's
+    # job_qos lookup table so a future seed addition flows through
+    # without a SAM-side change. Fetched BEFORE search/count so the
+    # same list can also be threaded into service.search_jobs /
+    # count_jobs as ``valid_qos_names``: this lets the legacy queue
+    # normalizer promote a 'cpu-special' drill-down's suffix to a real
+    # QoS filter (was previously discarded). Degrades to [] if the
+    # plugin call fails or the table is empty.
+    try:
+        qos_options = service.list_qos_names(machine)
+    except Exception:
+        from flask import current_app
+        current_app.logger.exception(
+            'jobs_fragment: list_qos_names failed for machine=%s', machine,
+        )
+        qos_options = []
+
     error = None
     rows = []
     total: Optional[int] = None
@@ -198,11 +215,13 @@ def jobs_fragment(project):
             sort_by=sort['sort_by'], sort_dir=sort['sort_dir'],
             columns=requested_cols,
             account_projcodes=account_projcodes,
+            valid_qos_names=qos_options,
             **filters,
         )
         total = service.count_jobs(
             machine, project=project,
             account_projcodes=account_projcodes,
+            valid_qos_names=qos_options,
             **filters,
         )
     except Exception as exc:
@@ -219,19 +238,6 @@ def jobs_fragment(project):
     visible_cols = _visible_cols(_DEFAULT_COLS, rows)
     column_specs = _load_column_specs()
     fragment_url = url_for('jobs.jobs_fragment', projcode=project.projcode)
-
-    # QoS options for the filter dropdown — sourced from the plugin's
-    # job_qos lookup table so a future seed addition flows through
-    # without a SAM-side change. Degrades to [] if the plugin call
-    # fails or the table is empty (template hides the dropdown).
-    try:
-        qos_options = service.list_qos_names(machine)
-    except Exception:
-        from flask import current_app
-        current_app.logger.exception(
-            'jobs_fragment: list_qos_names failed for machine=%s', machine,
-        )
-        qos_options = []
 
     # The caller passes the id of the container that owns this fragment so
     # sort / pagination clicks can swap that same container's innerHTML.
