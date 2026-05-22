@@ -7,7 +7,7 @@ Refactored to use server-side rendering with direct ORM queries instead of
 JavaScript API calls for improved performance and simplicity.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify, make_response
+from flask import Blueprint, abort, render_template, request, flash, redirect, url_for, session, jsonify, make_response
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
 from marshmallow import ValidationError
@@ -24,7 +24,14 @@ from sam.queries.disk_usage import (
     get_subtree_directory_usage_at,
 )
 from sam.queries.rolling_usage import get_project_rolling_usage
-from sam.queries.charges import get_user_queue_breakdown_for_project, get_daily_breakdown_for_project, get_charges_by_projcode
+from sam.queries.charges import (
+    get_user_queue_breakdown_for_project,
+    get_daily_breakdown_for_project,
+    get_user_summary_for_project,
+    get_daily_summary_for_project,
+    get_monthly_user_counts_for_project,
+    get_charges_by_projcode,
+)
 from sam.queries.lookups import find_project_by_code, get_user_group_access, get_group_members
 from sam.queries.shells import get_allowable_shell_names, get_user_current_shell
 from sam.accounting.accounts import Account
@@ -450,12 +457,25 @@ def resource_details():
         flash(f'Project {projcode} or resource {resource_name} not found', 'error')
         return redirect(url_for('user_dashboard.index'))
 
-    # Fetch enriched breakdown data for the current scope
-    user_breakdown = get_user_queue_breakdown_for_project(
+    # Fetch top-tier summary rows only — one row per user / one row per
+    # day. The deeper queue/date breakdowns are loaded lazily via the
+    # /resource-details/{user,day}-subtree/<projcode> partial routes
+    # when an analyst expands a row. Avoids producing tens of thousands
+    # of leaf rows in the initial HTML for busy projects.
+    user_breakdown = get_user_summary_for_project(
         db.session, all_projcodes, resource_name, start_date, end_date
     )
-    daily_breakdown = get_daily_breakdown_for_project(
+    daily_breakdown = get_daily_summary_for_project(
         db.session, all_projcodes, resource_name, start_date, end_date
+    )
+    # Monthly user-count header only matters in 3-level daily mode
+    # (span > 45 days); skip the second query when we won't render it.
+    monthly_user_counts = (
+        get_monthly_user_counts_for_project(
+            db.session, all_projcodes, resource_name, start_date, end_date,
+        )
+        if (end_date - start_date).days > 45
+        else {}
     )
 
     # Build annotated project tree (only needed when project has children)
@@ -561,6 +581,7 @@ def resource_details():
         detail_data=detail_data,
         user_breakdown=user_breakdown,
         daily_breakdown=daily_breakdown,
+        monthly_user_counts=monthly_user_counts,
         date_span_days=(end_date - start_date).days,
         usage_chart=usage_chart,
         rolling_30=rolling_30,
@@ -575,6 +596,129 @@ def resource_details():
         account_adjustments=account_adjustments,
         adjustments_master_projcode=adjustments_master_projcode,
         allocation_transactions=allocation_transactions,
+    )
+
+
+def _resolve_scope_projcodes(project, scope_projcode):
+    """Expand a tree-scope projcode into the list of projcodes to query.
+
+    Mirrors the logic in :func:`resource_details` so the subtree partial
+    routes pull the same row set the main page does. An invalid scope
+    silently falls back to the page's root projcode.
+    """
+    if scope_projcode == project.projcode:
+        scope_project = project
+    else:
+        scope_project = Project.get_by_projcode(db.session, scope_projcode)
+        if not scope_project or scope_project.tree_root != project.tree_root:
+            scope_project = project
+
+    if scope_project.has_children:
+        return [p.projcode for p in scope_project.get_descendants(include_self=True)]
+    return [scope_project.projcode]
+
+
+def _parse_subtree_dates(start_raw, end_raw):
+    """Parse YYYY-MM-DD start / end query params; defaults to last 90 days."""
+    try:
+        start_date = (datetime.strptime(start_raw, '%Y-%m-%d')
+                      if start_raw else datetime.now() - timedelta(days=90))
+        end_date = (datetime.strptime(end_raw, '%Y-%m-%d')
+                    if end_raw else datetime.now())
+    except ValueError:
+        return None, None, 'Invalid date format. Please use YYYY-MM-DD.'
+    return start_date, end_date, None
+
+
+def _resolve_jobs_machine(resource_name):
+    """Map a SAM resource name → hpc-usage-queries machine key. None disables drill."""
+    rn = (resource_name or '').lower()
+    if 'derecho' in rn:
+        return 'derecho'
+    if 'casper' in rn:
+        return 'casper'
+    return None
+
+
+@bp.route('/resource-details/user-subtree/<projcode>')
+@login_required
+@require_project_access(include_ancestors=True)
+def resource_details_user_subtree(project):
+    """HTMX fragment: queue/date breakdown for a single user.
+
+    Lazy-loaded by the resource-details page when an analyst expands a
+    user row. Returns just the queue + date sub-rows for ``username``
+    on ``resource`` in the date window; the page's table macro swaps
+    the fragment into the empty ``<tbody>`` placeholder under the
+    expanded user row.
+    """
+    resource_name = (request.args.get('resource') or '').strip()
+    username      = (request.args.get('username') or '').strip()
+    if not resource_name or not username:
+        abort(400, 'resource and username are required')
+
+    start_date, end_date, err = _parse_subtree_dates(
+        request.args.get('start_date'), request.args.get('end_date'),
+    )
+    if err:
+        abort(400, err)
+
+    scope = (request.args.get('scope') or '').strip() or project.projcode
+    all_projcodes = _resolve_scope_projcodes(project, scope)
+
+    # One user's full queue/date breakdown — same shape the main page
+    # used to fetch in bulk, but now scoped to one user.
+    user_breakdown = get_user_queue_breakdown_for_project(
+        db.session, all_projcodes, resource_name, start_date, end_date,
+        username=username,
+    )
+    user_data = user_breakdown[0] if user_breakdown else None
+
+    return render_template(
+        'dashboards/user/partials/user_subtree.html',
+        user=user_data,
+        uid=request.args.get('uid', 'u'),
+        projcode=project.projcode,
+        jobs_machine=_resolve_jobs_machine(resource_name),
+    )
+
+
+@bp.route('/resource-details/day-subtree/<projcode>')
+@login_required
+@require_project_access(include_ancestors=True)
+def resource_details_day_subtree(project):
+    """HTMX fragment: user/queue breakdown for a single day.
+
+    Lazy-loaded by the resource-details daily-breakdown table when an
+    analyst expands a day (or day-within-month) row. Returns the
+    user/queue sub-rows for ``date`` on ``resource``.
+    """
+    resource_name = (request.args.get('resource') or '').strip()
+    date_str      = (request.args.get('date') or '').strip()
+    if not resource_name or not date_str:
+        abort(400, 'resource and date are required')
+
+    try:
+        day = datetime.strptime(date_str, '%Y-%m-%d')
+    except ValueError:
+        abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
+
+    scope = (request.args.get('scope') or '').strip() or project.projcode
+    all_projcodes = _resolve_scope_projcodes(project, scope)
+
+    # Single day; passing start=end=day scopes the breakdown to that
+    # date without a new query function.
+    daily_breakdown = get_daily_breakdown_for_project(
+        db.session, all_projcodes, resource_name, day, day,
+    )
+    day_data = daily_breakdown[0] if daily_breakdown else None
+
+    return render_template(
+        'dashboards/user/partials/day_subtree.html',
+        day=day_data,
+        did=request.args.get('did', 'd'),
+        projcode=project.projcode,
+        jobs_machine=_resolve_jobs_machine(resource_name),
     )
 
 

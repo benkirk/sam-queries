@@ -189,8 +189,15 @@ class TestingConfig(SAMWebappConfig):
     ALLOCATION_USAGE_CACHE_SIZE = 0
 
     # Rate limiting off in tests — xdist parallelism would otherwise trip
-    # global limits across worker processes.
-    RATELIMIT_ENABLED = False
+    # global limits across worker processes. The one test module that
+    # *does* exercise rate limiting (tests/integration/test_rate_limit_flow.py)
+    # flips the singleton facade on per-test and clears storage between
+    # tests; pinning to memory:// here keeps that clear behaving as a
+    # per-worker dict wipe instead of trying to wipe a shared CI Redis
+    # (compose.yaml sets RATELIMIT_STORAGE_URI=redis://cache:6379/1 on
+    # the webapp container, which pytest inherits in CI runs).
+    RATELIMIT_ENABLED     = False
+    RATELIMIT_STORAGE_URI = 'memory://'
 
     # The hpc-usage-queries plugin talks to a separate (per-machine
     # PostgreSQL) database that the test container does not provide.
