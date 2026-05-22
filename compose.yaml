@@ -10,6 +10,10 @@ services:
       context: .
       dockerfile: containers/webapp/Dockerfile
       target: production
+      args:
+        # Override at build time to pin/test against a peer branch:
+        #   HPC_USAGE_QUERIES_REF=my-branch docker compose build webapp
+        HPC_USAGE_QUERIES_REF: ${HPC_USAGE_QUERIES_REF:-main}
     depends_on:
       mysql:
         condition: service_healthy
@@ -90,6 +94,10 @@ services:
       context: .
       dockerfile: containers/webapp/Dockerfile
       target: development
+      args:
+        # Override at build time to pin/test against a peer branch:
+        #   HPC_USAGE_QUERIES_REF=my-branch docker compose build webdev
+        HPC_USAGE_QUERIES_REF: ${HPC_USAGE_QUERIES_REF:-main}
     depends_on:
       mysql:
         condition: service_healthy

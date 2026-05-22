@@ -106,6 +106,11 @@
     {% if filters.end %}<input type="hidden" name="end" value="{{ filters.end }}">{% endif %}
     {% if filters.user %}<input type="hidden" name="user" value="{{ filters.user }}">{% endif %}
     {% if filters.queue %}<input type="hidden" name="queue" value="{{ filters.queue }}">{% endif %}
+    {# NB: qos is NOT in the hidden form — the visible <select> below is
+       bound to this form via HTML5 form="…" so its current value is
+       serialized into every hx-include without risking a duplicate
+       `qos=` query param. #}
+    {% if filters.qos and not qos_options %}<input type="hidden" name="qos" value="{{ filters.qos }}">{% endif %}
     {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
   </form>
 
@@ -122,6 +127,25 @@
     {% endif %}
     {% if filters.queue %}
       <span class="badge bg-light text-dark me-1">queue: {{ filters.queue }}</span>
+    {% endif %}
+    {% if qos_options %}
+      {# QoS filter — bound to the hidden filter form via form="…" so
+         sort/pagination hx-includes serialize the current selection
+         too. `change` triggers an immediate refresh; "All QoS" clears
+         the filter (empty value drops out of the route's filters dict). #}
+      <select name="qos" form="jobs-filters-{{ target_id }}"
+              class="form-select form-select-sm w-auto me-2"
+              aria-label="Filter by QoS"
+              hx-get="{{ fragment_url }}"
+              hx-target="#{{ target_id }}"
+              hx-include="#jobs-filters-{{ target_id }}"
+              hx-swap="innerHTML">
+        <option value="">All QoS</option>
+        {% for q in qos_options %}
+          <option value="{{ q }}"
+                  {% if filters.qos == q %}selected{% endif %}>{{ q }}</option>
+        {% endfor %}
+      </select>
     {% endif %}
     <span class="ms-auto text-muted small">
       {{ total | fmt_number }} job{{ '' if total == 1 else 's' }}
