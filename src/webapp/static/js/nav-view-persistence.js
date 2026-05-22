@@ -80,23 +80,31 @@
 
     var COLLAPSE_PREFIX = 'collapse:';
 
+    // Collapses with `data-no-persist` opt out of restore-on-reload — for
+    // drawers whose contents are expensive to fetch (e.g. the jobs plugin
+    // drill-down), where re-firing the underlying hx-trigger on every
+    // page load is the wrong default. Honored by all three handlers so
+    // existing localStorage entries stay dormant and no new ones are
+    // written.
+
     /** Save expanded state when a collapse opens. */
     function saveCollapse(event) {
-        var id = event.target.id;
-        if (!id) return;
-        try { localStorage.setItem(COLLAPSE_PREFIX + id, '1'); } catch (_) {}
+        var el = event.target;
+        if (!el.id || el.hasAttribute('data-no-persist')) return;
+        try { localStorage.setItem(COLLAPSE_PREFIX + el.id, '1'); } catch (_) {}
     }
 
     /** Clear saved state when a collapse closes. */
     function clearCollapse(event) {
-        var id = event.target.id;
-        if (!id) return;
-        try { localStorage.removeItem(COLLAPSE_PREFIX + id); } catch (_) {}
+        var el = event.target;
+        if (!el.id || el.hasAttribute('data-no-persist')) return;
+        try { localStorage.removeItem(COLLAPSE_PREFIX + el.id); } catch (_) {}
     }
 
     /** Restore saved collapse state within a root element. */
     function restoreCollapses(root) {
         root.querySelectorAll('.collapse[id]').forEach(function (el) {
+            if (el.hasAttribute('data-no-persist')) return;
             var saved = null;
             try { saved = localStorage.getItem(COLLAPSE_PREFIX + el.id); } catch (_) {}
             if (!saved) return;

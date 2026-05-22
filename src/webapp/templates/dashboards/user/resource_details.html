@@ -23,9 +23,11 @@
 </button>
 {% endmacro %}
 
-{# hx-trigger fires on `shown.bs.collapse` so a programmatic .show()
-   from nav-view-persistence's restore-on-reload also kicks off the
-   fetch — not just a real button click. #}
+{# hx-trigger fires on `shown.bs.collapse once`. The data-no-persist
+   attribute tells nav-view-persistence not to re-open this drawer on
+   reload — jobs queries are expensive enough that we want them to
+   fire only when the user explicitly expands the row, not as a side
+   effect of restoring visual state from localStorage. #}
 {% macro jobs_collapse_row(jid, projcode, jobs_machine,
                            user=None, queue=None,
                            start=None, end=None,
@@ -36,7 +38,7 @@
            handlers inside the fragment know which container's innerHTML
            to swap — without it they'd target a stale id from the route's
            generic fallback. #}
-        <div class="collapse" id="{{ jid }}"
+        <div class="collapse" id="{{ jid }}" data-no-persist
              hx-get="{{ url_for('jobs.jobs_fragment',
                                 projcode=projcode,
                                 machine=jobs_machine,
