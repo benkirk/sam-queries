@@ -1,0 +1,56 @@
+{# Shared macros for the resource-details page and its lazy subtree
+   partials (user_subtree.html, day_subtree.html). Extracted from
+   resource_details.html so the partials can {% import %} them. #}
+
+{# Per-job drill-down — used by every leaf (user, queue, date) row.
+   The button toggles the collapse keyed by *jid*; the row carries
+   the htmx fetch wired to the jobs fragment. Filter kwargs default
+   to None so each caller passes only what its row level pins
+   (user, user+queue, or user+queue+date). #}
+{% macro jobs_button(jid) %}
+<button type="button"
+        class="btn btn-sm btn-link p-0 ms-2 text-decoration-none"
+        data-bs-toggle="collapse"
+        data-bs-target="#{{ jid }}"
+        aria-expanded="false" aria-controls="{{ jid }}"
+        title="Show individual jobs">
+    <i class="fas fa-list-ul small"></i>
+    <span class="small">jobs</span>
+    <i class="fas fa-chevron-right ms-1 small collapse-icon"></i>
+</button>
+{% endmacro %}
+
+{# hx-trigger fires on `shown.bs.collapse once`. The data-no-persist
+   attribute tells nav-view-persistence not to re-open this drawer on
+   reload — jobs queries are expensive enough that we want them to
+   fire only when the user explicitly expands the row, not as a side
+   effect of restoring visual state from localStorage. #}
+{% macro jobs_collapse_row(jid, projcode, jobs_machine,
+                           user=None, queue=None,
+                           start=None, end=None,
+                           colspan=5, outer_tr_collapse_id=None) %}
+<tr {% if outer_tr_collapse_id %}class="collapse" id="{{ outer_tr_collapse_id }}"{% endif %}>
+    <td colspan="{{ colspan }}" class="p-0">
+        {# target_id round-trips to the route so sort / pagination click
+           handlers inside the fragment know which container's innerHTML
+           to swap — without it they'd target a stale id from the route's
+           generic fallback. #}
+        <div class="collapse" id="{{ jid }}" data-no-persist
+             hx-get="{{ url_for('jobs.jobs_fragment',
+                                projcode=projcode,
+                                machine=jobs_machine,
+                                user=user, queue=queue,
+                                start=start, end=end,
+                                target_id=jid ~ '-content') }}"
+             hx-target="#{{ jid }}-content"
+             hx-trigger="shown.bs.collapse once"
+             hx-swap="innerHTML">
+            <div class="p-2 bg-white border-start border-3" id="{{ jid }}-content">
+                <span class="text-muted small">
+                    <i class="fas fa-spinner fa-spin me-1"></i> Loading jobs…
+                </span>
+            </div>
+        </div>
+    </td>
+</tr>
+{% endmacro %}
