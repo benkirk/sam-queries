@@ -179,7 +179,7 @@ def _autopct_color_for(bg_hex: str) -> str:
 
 def _project_modal_url(projcode: str) -> str:
     """Resolve the project-details modal route, with blueprint prefix.
-    Used to mark legend entries with set_url() — svg-legend-links.js
+    Used to mark legend entries with set_url() — svg-chart-links.js
     intercepts clicks on these anchors and dispatches the modal."""
     return url_for('user_dashboard.project_details_modal', projcode=projcode)
 
@@ -200,14 +200,25 @@ def _to_display_tz(naive_utc_ts: datetime) -> datetime:
 # 1. Usage timeseries (user dashboard)
 # ---------------------------------------------------------------------------
 
+def _usage_timeseries_cache_key(daily_charges, link_to_day_rows=False):
+    return _content_hash([_content_hash(daily_charges), bool(link_to_day_rows)])
+
+
 # One entry per (user, time-range) combination active in the current snapshot window.
-@caching.chart_cached(name='usage_timeseries', maxsize=128)
-def generate_usage_timeseries_matplotlib(daily_charges) -> str:
+@caching.chart_cached(name='usage_timeseries', maxsize=128,
+                      key_fn=_usage_timeseries_cache_key)
+def generate_usage_timeseries_matplotlib(daily_charges, link_to_day_rows=False) -> str:
     """
     Generate time-series bar chart using Matplotlib.
 
     Args:
         daily_charges: Dict with 'dates' and 'values' keys
+        link_to_day_rows: When True, each bar is wrapped in an
+            ``<a xlink:href="#day-bar-YYYY-MM-DD">`` anchor via
+            ``Rectangle.set_url()``. ``svg-chart-links.js`` intercepts
+            those clicks and expands the matching day row in the
+            Historical Usage card below. Zero-charge days are skipped
+            (no `<rect>` is drawn anyway in those positions, but defensive).
 
     Returns:
         SVG string ready for template rendering
@@ -227,8 +238,14 @@ def generate_usage_timeseries_matplotlib(daily_charges) -> str:
     comp = list(comp)
 
     fig, ax = plt.subplots(figsize=(18, 5))
-    ax.bar(dates, comp, width=1, lw=2,
-           color=UNITY_NCAR_BLUE, edgecolor=UNITY_NCAR_NAVY)
+    bars = ax.bar(dates, comp, width=1, lw=2,
+                  color=UNITY_NCAR_BLUE, edgecolor=UNITY_NCAR_NAVY)
+    if link_to_day_rows:
+        for d, value, rect in zip(dates, comp, bars.patches):
+            if not value:
+                continue
+            iso = d.isoformat() if hasattr(d, 'isoformat') else str(d)
+            rect.set_url(f'#day-bar-{iso}')
     ax.set_ylabel('Charges')
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, alpha=0.3)
@@ -269,7 +286,7 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None) -> str:
         link_kind: ``'user'`` to make legend usernames clickable to
             ``/admin/user/<username>`` (user-details modal), or ``None``
             for no links. The 'Others' bucket is never linked.
-            ``svg-legend-links.js`` intercepts the click and shows the
+            ``svg-chart-links.js`` intercepts the click and shows the
             modal — ``set_url()`` only emits the ``<a>`` wrapper.
 
     Y-axis is auto-scaled to TiB or PiB based on the peak stacked total
@@ -379,7 +396,7 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
             to make legend projcodes clickable to
             ``/project-details-modal/<projcode>`` (project-details
             modal), or None for no links. The 'Others' bucket is never
-            linked. svg-legend-links.js intercepts the click and shows
+            linked. svg-chart-links.js intercepts the click and shows
             the modal — set_url() only emits the ``<a>`` wrapper.
         rank_by: which value to quote in parens after each legend
             entry. Mirrors the route's `rank_by` selector so the legend
@@ -1017,7 +1034,7 @@ def generate_pace_chart_matplotlib(
 
     # Tag each top-N legend entry with the project-modal URL. matplotlib's
     # SVG backend wraps the patch swatch and label text in <a xlink:href>.
-    # svg-legend-links.js intercepts the click and dispatches the existing
+    # svg-chart-links.js intercepts the click and dispatches the existing
     # HTMX modal trigger. The trailing "Other" patch (if present) gets no
     # URL since it's not a single project.
     for pc, patch, text in zip(top_projs, leg.get_patches(), leg.get_texts()):

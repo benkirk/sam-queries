@@ -511,7 +511,9 @@ def resource_details():
         tree_data = _build_node(tree_root)
 
     # Generate charts server-side
-    usage_chart = generate_usage_timeseries_matplotlib(detail_data['daily_charges'])
+    usage_chart = generate_usage_timeseries_matplotlib(
+        detail_data['daily_charges'], link_to_day_rows=True,
+    )
 
     # Extract allocation start date for the "Epoch" date picker preset
     alloc_start = detail_data['resource_summary'].get('start_date')

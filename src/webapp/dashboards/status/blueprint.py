@@ -383,7 +383,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         )
 
     # group_by=user → username legend → user modal; group_by=project →
-    # projcode legend → project modal. svg-legend-links.js dispatches.
+    # projcode legend → project modal. svg-chart-links.js dispatches.
     # Only operators (VIEW_SYSTEM_STATUS_USER_INFO) get clickable legend
     # entries — the user/project detail modal endpoints have their own
     # RBAC and would 403 a non-operator's click. Plain-text labels for
