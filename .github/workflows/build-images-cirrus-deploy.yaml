@@ -270,16 +270,33 @@ jobs:
     if: needs.setup.outputs.webapp_built == 'true'
     runs-on: ubuntu-latest
 
+    # Serialize cirrus force-pushes so two concurrent deploys can't race the
+    # branch (it is reset + force-pushed on every run).
+    concurrency:
+      group: cirrus-branch-push
+      cancel-in-progress: false
+
     permissions:
-      contents: write   # required to push the cirrus branch
+      contents: read   # push to cirrus uses the App token below, not GITHUB_TOKEN
 
     steps:
+      # The cirrus branch is locked by a repository ruleset whose only bypass
+      # actor is this GitHub App, so the push below MUST authenticate as the App.
+      - name: Mint GitHub App token (cirrus deploy identity)
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CIRRUS_DEPLOY_APP_ID }}
+          private-key: ${{ secrets.CIRRUS_DEPLOY_APP_PRIVATE_KEY }}
+
       - name: Checkout triggering ref
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
           fetch-depth: 1
-          # persist-credentials: true (default) wires GITHUB_TOKEN into git remote
+          # persist-credentials (default true) wires this App token into the git
+          # remote so the force-push step below pushes as the App.
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Patch helm/values.yaml with SHA image tag
         run: |
@@ -293,8 +310,8 @@ jobs:
 
       - name: Commit and force-push cirrus branch
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "${{ steps.app-token.outputs.app-slug }}[bot]"
+          git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
           git checkout -B cirrus
           git add helm/values.yaml
           git commit -m "ci: pin webapp image to sha-${GITHUB_SHA:0:7} ($(date -u '+%Y-%m-%d %H:%M UTC')) [skip ci]"
