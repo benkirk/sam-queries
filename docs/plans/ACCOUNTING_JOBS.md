@@ -1,9 +1,13 @@
 # Plan: `sam-search accounting --jobs` (individual job listing via the job_history plugin)
 
-**Status:** SAM-side implemented (this branch). `--job-id` is wired but
-deferred behind a clear error pending a small hpc-usage-queries peer-repo
-change; `--largest` ships now (client-side union) and can later be optimized
-by the same peer change. See §6.
+**Status:** Implemented end-to-end (this branch).
+`--job-id` now forwards directly to the plugin's `job_id` filter
+(hpc-usage-queries PR #71 landed it as a single text-column,
+boundary-anchored `LIKE` that catches scalar + array parent + every
+array element of one job without bleeding into longer numeric prefixes).
+`--largest` continues to ship as a client-side union of two upstream
+sort keys; that can later collapse to one query if a combined-charge
+sort key is added upstream.
 
 ## Context
 
@@ -32,8 +36,15 @@ convention. It fully supports both `rich` and `json` output.
   rules.
 - **Selection**: default `--recent M` (most-recent M jobs); also `--largest N`
   (top N by charges). Mutually exclusive; default `--recent 50`.
-- **Job-ID search**: `--job-id` is the only deferred piece. Wired up but raises
-  a clear "not yet available" error until the peer-repo filter lands.
+- **Job-ID search**: `--job-id` forwards the user's input verbatim to the
+  plugin's `job_id` filter (hpc-usage-queries PR #71). The plugin owns
+  the shape classifier: bare digits (`6049117`) match the scalar form
+  plus every array element via two boundary-anchored `LIKE` clauses; a
+  partial array form (`6049117[28]`, `6049117[]`) prefix-matches across
+  hosts; a full id with host (`6049117[28].desched1`) is an exact match.
+  SAM-side, `--job-id` is its own selector — mutually exclusive with
+  `--recent`/`--largest`, runs one no-sort/no-limit query per machine,
+  and labels the envelope `mode='job_id'`.
 - **Memory**: excluded from *both* rich and JSON (we track but don't bill it).
 - **`--largest` ships now, client-side** (no peer dependency): see §3.
 
@@ -107,32 +118,38 @@ count, rows:[…]}` where each row is the plugin dict plus derived
 `machine`/`resource`/`comp_hours`/`charges`; memory keys are never requested
 or emitted. Built whenever `output_format=='json'`.
 
-### 6. Peer-repo PR — hpc-usage-queries (future, NOT a blocker)
+### 6. Peer-repo work — hpc-usage-queries
 
-1. **`job_id` filter** on `JobQueries.jobs_search` / `jobs_count` → unblocks
-   `--job-id`.
-2. *(optional)* **combined-charge sort key** (`cpu_charges + gpu_charges`) so
-   `--largest` collapses from two union queries to one exact query.
-3. *(verify)* **`account` optional** so `--user`-only queries (no `--project`)
-   work; the webapp always passes an account so this path may be untested
-   upstream.
+1. **`job_id` filter** on `JobQueries.jobs_search` / `jobs_count` → **landed
+   in hpc-usage-queries PR #71** (single text column, two boundary-anchored
+   `LIKE` prefixes, no `short_id` dependency — chosen after live-DB probe
+   showed `short_id` is `NULL` on every array-job row). Closes the
+   `--job-id` deferral.
+2. *(optional, still future)* **combined-charge sort key** (`cpu_charges +
+   gpu_charges`) so `--largest` collapses from two union queries to one
+   exact query.
+3. *(verified live)* **`account` optional** path works — `--user`-only
+   queries don't break on the upstream `account=None` code path.
 
 ## Files
 
 - `src/cli/cmds/search.py`, `src/cli/accounting/commands.py`,
   `src/cli/accounting/display.py`
 - `tests/unit/test_sam_search_jobs_cli.py`
-- (peer repo, later) hpc-usage-queries
+- hpc-usage-queries (peer repo, PR #71): `jobs_search` / `jobs_count`
+  `job_id` kwarg + `jobhist search --job-id` CLI option
 
 ## Verification
 
 `tests/unit/test_sam_search_jobs_cli.py` (CliRunner + fake plugin) covers the
-recent/largest/multi-machine/suppression/error paths and a classifier-parity
-guard. Manual smoke (full env, plugin + DB):
+recent/largest/job_id/multi-machine/suppression/error paths and a
+classifier-parity guard. Manual smoke (full env, plugin + DB):
 
 ```
 sam-search accounting --jobs --last 7d --user benkirk
 sam-search accounting --jobs --largest 20 --last 30d --project SCSG0001
 sam-search accounting --jobs --last 7d --machine derecho --verbose
 sam-search --format json accounting --jobs --recent 5 | jq '.rows[0]'
+sam-search accounting --jobs --last 365d --job-id 6049117
+sam-search accounting --jobs --last 365d --job-id 6049117[28].desched1
 ```

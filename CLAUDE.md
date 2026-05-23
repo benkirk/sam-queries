@@ -992,6 +992,8 @@ sam-search allocations --resource Derecho         # Allocation queries
 sam-search accounting --last 7d --user benkirk    # Daily charge rollups (no plugin)
 sam-search accounting --jobs --last 7d --user benkirk          # Individual jobs (job_history plugin)
 sam-search accounting --jobs --largest 20 --last 30d --project SCSG0001
+sam-search accounting --jobs --last 365d --job-id 6049117       # All scalar+array variants of one job
+sam-search accounting --jobs --last 365d --job-id 6049117[28].desched1  # Exact single-row lookup
 
 # CLI - Admin
 sam-admin user benkirk --validate                 # Validate user data

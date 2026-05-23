@@ -1824,32 +1824,32 @@ class AccountingJobsCommand(BaseCommand):
     ) -> int:
         json_mode = self.ctx.output_format == 'json'
 
-        # --- Deferred feature: job-id search (pending peer-repo support) ---
-        if job_id is not None:
-            msg = (
-                "Searching by job id is not yet available: it requires a "
-                "hpc-usage-queries plugin update to expose a job_id filter. "
-                "Use --user / --project / date filters for now."
-            )
-            if json_mode:
-                output_json({'kind': 'comp_jobs', 'error': 'unsupported',
-                             'detail': msg})
-            else:
-                self.console.print(f"[bold red]{msg}[/bold red]")
-            return 2
-
         # --- Selection mode + limit ---
-        if recent is not None and largest is not None:
-            msg = "--recent and --largest are mutually exclusive."
-            self.console.print(f"[bold red]{msg}[/bold red]")
-            return 2
-        if largest is not None:
-            mode, limit = 'largest', largest
+        # `--job-id` is its own single-result selector — combining it with
+        # `--recent N` or `--largest N` makes no sense (you either know the
+        # job or you're listing). When `--job-id` is given we skip the
+        # list-mode validation entirely and run one no-sort/no-limit query
+        # per machine.
+        if job_id is not None:
+            if recent is not None or largest is not None:
+                self.console.print(
+                    "[bold red]--job-id cannot be combined with --recent or "
+                    "--largest (job-id is itself the selector).[/bold red]"
+                )
+                return 2
+            mode, limit = 'job_id', None
         else:
-            mode, limit = 'recent', (recent if recent is not None else DEFAULT_RECENT_JOBS)
-        if limit < 1:
-            self.console.print("[bold red]Job count must be >= 1.[/bold red]")
-            return 2
+            if recent is not None and largest is not None:
+                msg = "--recent and --largest are mutually exclusive."
+                self.console.print(f"[bold red]{msg}[/bold red]")
+                return 2
+            if largest is not None:
+                mode, limit = 'largest', largest
+            else:
+                mode, limit = 'recent', (recent if recent is not None else DEFAULT_RECENT_JOBS)
+            if limit < 1:
+                self.console.print("[bold red]Job count must be >= 1.[/bold red]")
+                return 2
 
         # --- Resolve machines to query ---
         if machine:
@@ -1898,7 +1898,16 @@ class AccountingJobsCommand(BaseCommand):
                 return 2
             try:
                 jq = JobQueries(jh_session, machine=mach)
-                if mode == 'largest':
+                if mode == 'job_id':
+                    # Single-job lookup: one query per machine, plugin-side
+                    # input-shape classifier (exact vs prefix LIKE) handles
+                    # scalar / array / array-element forms uniformly. No
+                    # sort/limit — expected result is typically 1 row, at
+                    # most a small handful (parent + elements).
+                    rows = list(jq.jobs_search(
+                        **base_filters, job_id=job_id,
+                    ))
+                elif mode == 'largest':
                     # No combined-charge sort key upstream yet: union the top-N
                     # by cpu_charges and by gpu_charges, then re-rank by the
                     # classified charge below.
@@ -1949,8 +1958,13 @@ class AccountingJobsCommand(BaseCommand):
         if mode == 'largest':
             rows.sort(key=lambda r: r.get('charges') or 0.0, reverse=True)
         else:
+            # Both 'recent' and 'job_id' modes show newest-first (job_id
+            # typically returns one row, but the parent + array elements
+            # case can return many — newest-end at the top is the sensible
+            # default).
             rows.sort(key=_end_sort_key, reverse=True)
-        rows = rows[:limit]
+        if limit is not None:
+            rows = rows[:limit]
 
         if not rows:
             if json_mode:

@@ -208,6 +208,121 @@ class TestLargestMode:
 
 
 # ----------------------------------------------------------------------
+# --job-id (single-job lookup via plugin's job_id filter)
+# ----------------------------------------------------------------------
+
+class TestJobIdMode:
+    """Verifies SAM forwards `--job-id` to the plugin's job_id filter.
+
+    The plugin (hpc-usage-queries) owns the shape classifier (digits vs
+    `[N]` vs full-id). SAM's job is purely: forward the user's input
+    unchanged, run one no-sort/no-limit query per machine, classify the
+    returned rows like every other --jobs mode, label the envelope with
+    `mode='job_id'`.
+    """
+
+    def test_job_id_forwards_to_plugin(self, runner, mock_search_session, monkeypatch):
+        # Verify exact kwargs make it through: job_id=<input>, no sort_by,
+        # no limit. The user's string is passed verbatim — boundary-anchor
+        # logic is the plugin's responsibility.
+        captured = _install_fake_plugin(
+            monkeypatch,
+            rows=[_job(job_id='6049117[28].desched1')],
+        )
+        result = runner.invoke(search_cli, [
+            '--format', 'json', 'accounting', '--jobs',
+            '--job-id', '6049117[28]', '--last', '365d',
+            '--machine', 'derecho',
+        ])
+        assert result.exit_code == 0, result.output
+        # One call per machine (one machine here → one call total).
+        assert len(captured['calls']) == 1
+        call = captured['calls'][0]
+        assert call['job_id'] == '6049117[28]'
+        # No sort/limit on the single-job path.
+        assert 'sort_by' not in call
+        assert 'limit' not in call
+
+    def test_job_id_renders_single_row_rich(self, runner, mock_search_session, monkeypatch):
+        _install_fake_plugin(
+            monkeypatch,
+            rows=[_job(job_id='6049117[28].desched1')],
+        )
+        result = runner.invoke(search_cli, [
+            'accounting', '--jobs', '--job-id', '6049117[28].desched1',
+            '--last', '365d', '--machine', 'derecho',
+        ])
+        assert result.exit_code == 0
+        assert '6049117[28].desched1' in result.output
+        # Mode label appears in the rich table title.
+        assert 'job_id' in result.output
+
+    def test_job_id_envelope_mode_label(self, runner, mock_search_session, monkeypatch):
+        _install_fake_plugin(
+            monkeypatch,
+            rows=[_job(job_id='6049117[28].desched1')],
+        )
+        result = runner.invoke(search_cli, [
+            '--format', 'json', 'accounting', '--jobs',
+            '--job-id', '6049117', '--last', '365d', '--machine', 'derecho',
+        ])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data['kind'] == 'comp_jobs'
+        assert data['mode'] == 'job_id'
+        assert data['count'] == 1
+        assert data['rows'][0]['job_id'] == '6049117[28].desched1'
+        # The shared classifier still runs on the returned row.
+        assert 'resource' in data['rows'][0]
+        assert 'charges' in data['rows'][0]
+
+    def test_job_id_returns_multiple_rows_for_array(self, runner, mock_search_session, monkeypatch):
+        # The plugin returns N rows for digit-only input matching an array
+        # job (parent + elements). SAM must NOT truncate — limit is None.
+        rows = [
+            _job(job_id=f'6049117[{i}].desched1') for i in range(31)
+        ]
+        _install_fake_plugin(monkeypatch, rows=rows)
+        result = runner.invoke(search_cli, [
+            '--format', 'json', 'accounting', '--jobs',
+            '--job-id', '6049117', '--last', '365d', '--machine', 'derecho',
+        ])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data['count'] == 31
+
+    def test_job_id_rejects_recent_combo(self, runner, mock_search_session, monkeypatch):
+        _install_fake_plugin(monkeypatch, rows=[_job()])
+        result = runner.invoke(search_cli, [
+            'accounting', '--jobs', '--job-id', '6049117',
+            '--recent', '5', '--last', '7d', '--machine', 'derecho',
+        ])
+        assert result.exit_code == 2
+        assert '--job-id' in result.output
+
+    def test_job_id_rejects_largest_combo(self, runner, mock_search_session, monkeypatch):
+        _install_fake_plugin(monkeypatch, rows=[_job()])
+        result = runner.invoke(search_cli, [
+            'accounting', '--jobs', '--job-id', '6049117',
+            '--largest', '5', '--last', '7d', '--machine', 'derecho',
+        ])
+        assert result.exit_code == 2
+
+    def test_job_id_no_match_exits_1(self, runner, mock_search_session, monkeypatch):
+        # Plugin returns empty for a nonexistent id; SAM emits the
+        # "no rows" envelope and exits 1 (not 2 — there was no error).
+        _install_fake_plugin(monkeypatch, rows=[])
+        result = runner.invoke(search_cli, [
+            '--format', 'json', 'accounting', '--jobs',
+            '--job-id', '99999999', '--last', '365d', '--machine', 'derecho',
+        ])
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert data['mode'] == 'job_id'
+        assert data['count'] == 0
+
+
+# ----------------------------------------------------------------------
 # Multi-machine merge + truncate
 # ----------------------------------------------------------------------
 
@@ -276,15 +391,6 @@ class TestErrorPaths:
         data = json.loads(result.output)
         assert data['kind'] == 'comp_jobs'
         assert data['count'] == 0
-
-    def test_job_id_not_yet_supported(self, runner, mock_search_session, monkeypatch):
-        _install_fake_plugin(monkeypatch, rows=[_job()])
-        result = runner.invoke(search_cli, [
-            'accounting', '--jobs', '--job-id', '999', '--last', '7d',
-            '--machine', 'derecho',
-        ])
-        assert result.exit_code == 2
-        assert 'job id' in result.output.lower()
 
     def test_invalid_machine_exits_2(self, runner, mock_search_session, monkeypatch):
         _install_fake_plugin(monkeypatch, rows=[_job()])

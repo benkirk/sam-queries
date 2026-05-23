@@ -275,7 +275,7 @@ def allocations(ctx: Context, resource, facility, allocation_type, project,
 @click.option('--jobs', is_flag=True, help='List individual jobs via the hpc-usage-queries plugin')
 @click.option('--recent',  type=int, default=None, metavar='M', help='With --jobs: most recent M jobs (default 50)')
 @click.option('--largest', type=int, default=None, metavar='N', help='With --jobs: top N jobs by charges')
-@click.option('--job-id', 'job_id', type=str, default=None, metavar='ID', help='With --jobs: filter to one accounting job id (not yet available)')
+@click.option('--job-id', 'job_id', type=str, default=None, metavar='ID', help='With --jobs: filter by job id. Digits (6049117) match scalar + every array element; partial array form (6049117[28], 6049117[]) prefix-matches across hosts; full id with host (6049117[28].desched1) is exact.')
 @click.option('--qos', type=str, default=None, metavar='NAME', help='With --jobs: filter by QoS name')
 @click.option('-d', '--date', 'date_str',  type=str, default=None, metavar='YYYY-MM-DD', help='Single date')
 @click.option('--today', 'today_flag', is_flag=True, help='Use today as the date')
@@ -296,8 +296,9 @@ def accounting(ctx: Context, user, project, resource, queue, machine,
 
     With --jobs it lists individual jobs from the hpc-usage-queries plugin,
     classifying each job's billed charge with the same CPU/GPU rules as the
-    daily poster. Select either the most recent M jobs (--recent, default 50)
-    or the top N by charges (--largest); use --verbose for extra columns.
+    daily poster. Select either the most recent M jobs (--recent, default 50),
+    the top N by charges (--largest), or a specific id (--job-id); use
+    --verbose for extra columns.
 
     \b
     Date Selection (one required):
@@ -314,6 +315,7 @@ def accounting(ctx: Context, user, project, resource, queue, machine,
       sam-search accounting --jobs --last 7d --user benkirk
       sam-search accounting --jobs --largest 20 --last 30d --project SCSG0001
       sam-search accounting --jobs --last 7d --machine derecho --verbose
+      sam-search accounting --jobs --last 365d --job-id 6049117[28]
     """
     _validate_accounting_dates(date_str, start, end, today_flag, last)
     start_date, end_date = _resolve_accounting_dates(date_str, start, end, today_flag, last)
