@@ -51,6 +51,17 @@ Complete index of all documentation in the SAM Queries project.
   - Development mode
   - Troubleshooting
 
+## 🚢 Deployment
+
+- **[CIRRUS_PUBLISHING.md](CIRRUS_PUBLISHING.md)** - CIRRUS publishing & deployment
+  - How `main` → image → `cirrus` branch → k8s rollout flows
+  - GitHub App + ruleset that lock the `cirrus` branch
+  - Operating the workflow (manual dispatch, audit, negative test)
+  - Failure modes and rollback
+
+- **[STAGING.md](STAGING.md)** - AWS ECS staging environment
+  - Separate from CIRRUS — runs on ECS/RDS for VPN-gated test access
+
 ## 💻 Development
 
 - **[CONTRIBUTING.md](../CONTRIBUTING.md)** - Development guide
