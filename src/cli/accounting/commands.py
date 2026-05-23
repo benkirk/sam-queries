@@ -18,6 +18,7 @@ from cli.accounting.display import (
     display_disk_dry_run_table,
     display_import_summary,
     display_charge_summary_table,
+    display_jobs_table,
     display_quota_reconcile_plan,
     display_quota_reconcile_summary,
 )
@@ -131,15 +132,84 @@ def normalize_queue_name(queue_name: str) -> str:
     return queue_name
 
 
+def classify_comp_resource(
+    machine: str,
+    queue: Optional[str],
+    cpu_hours,
+    gpu_hours,
+    cpu_charges,
+    gpu_charges,
+) -> tuple:
+    """
+    Classify a single comp record into SAM resource + billed-charge fields.
+
+    This is the single place where machine-specific billing rules live, shared
+    by the daily-summary poster (``adapt_jobstats_row``) and the per-job
+    listing (``AccountingJobsCommand``) so both agree on resource name, the
+    billed charge, and the billing-metric hours.
+
+    Rules:
+      - The ``vis`` queue consumes GPUs but we don't charge for that, so its
+        GPU hours/charges are zeroed (keeps it accessible to projects without
+        a GPU allocation).
+      - A record bills as GPU only when GPU hours are a meaningful fraction
+        (``GPU_FRACTION_THRESHOLD``) of total compute hours; otherwise it bills
+        as CPU.  This avoids misclassifying a CPU job that briefly touched a
+        GPU queue.
+
+    Unlike ``adapt_jobstats_row`` this never skips: callers decide what to do
+    with a zero-hours result (the poster skips it; the listing may still show
+    it).
+
+    Returns:
+        (resource_name, machine_name, comp_hours, charges) where comp_hours is
+        the billing metric (GPU hours for a GPU charge, CPU core-hours for a
+        CPU charge) and machine_name is always explicit so resources with
+        multiple SAM machines (e.g. Casper) don't trigger auto-detection.
+
+    Raises:
+        ValueError: For an unknown machine name.
+    """
+    cpu_h = cpu_hours or 0.0
+    gpu_h = gpu_hours or 0.0
+    cpu_c = cpu_charges or 0.0
+    gpu_c = gpu_charges or 0.0
+
+    # special rules for special queues
+    if queue == "vis":      # vis queue consumes GPUs, but we don't charge for that
+        gpu_h = gpu_c = 0.0 # (so accessible to projects without GPU allocations)
+
+    total = cpu_h + gpu_h
+    gpu_fraction = (gpu_h / total) if total > 0.0 else 0.0
+    is_gpu = gpu_h > 0 and gpu_fraction >= GPU_FRACTION_THRESHOLD
+
+    if machine == "derecho":
+        if is_gpu:
+            # Meaningful GPU usage → Derecho GPU resource
+            # comp_hours = GPU hours (the Derecho GPU billing metric)
+            return "Derecho GPU", "derecho-gpu", gpu_h, gpu_c
+        # Pure CPU job (or anomalous GPU ratio → treat as CPU)
+        # comp_hours = CPU core-hours (numnodes * 128 * wall_hours)
+        return "Derecho", "derecho", cpu_h, cpu_c
+
+    elif machine == "casper":
+        if is_gpu:
+            # Casper GPU resource
+            # TODO: confirm Casper GPU resource name and charges formula
+            return "Casper GPU", "Casper-gpu", gpu_h, gpu_c
+        # Casper CPU resource
+        return "Casper", "Casper", cpu_h, cpu_c
+
+    else:
+        raise ValueError(f"Unknown machine: {machine!r}. Add a case to classify_comp_resource().")
+
+
 def adapt_jobstats_row(row: dict, machine: str) -> Optional[tuple]:
     """
     Classify an hpc-usage-queries daily summary row into SAM resource and charge fields.
 
-    This function is the single place where machine-specific billing rules live.
-    It handles:
-      - Which SAM resource name to use (e.g. "Derecho" vs "Derecho GPU")
-      - What core_hours and charges to post
-      - Sanity checks for anomalous data (e.g. 1M CPU-h + 10 GPU-h → CPU, not GPU)
+    Thin wrapper over ``classify_comp_resource`` that applies the poster-only
+    rule of skipping zero-compute rows.
 
     Args:
         row: Dict from JobQueries.daily_summary_report() with keys:
@@ -150,48 +220,22 @@ def adapt_jobstats_row(row: dict, machine: str) -> Optional[tuple]:
     Returns:
         (resource_name, machine_name, core_hours, charges) to pass to
         upsert_comp_charge_summary(), or None to silently skip the row (e.g.
-        zero-charge row).  machine_name is always explicit so that resources
-        with multiple SAM machines (e.g. Casper) don't trigger auto-detection.
+        zero-charge row).
 
     Raises:
         ValueError: For rows with an unknown machine name.
     """
-    queue = row.get("queue", "Unknown")
-    cpu_h = row["cpu_hours"] or 0.0
-    gpu_h = row["gpu_hours"] or 0.0
-    cpu_c = row["cpu_charges"] or 0.0
-    gpu_c = row["gpu_charges"] or 0.0
-
-    # special rules for special queues
-    if queue == "vis":      # vis queue consumes GPUs, but we don't charge for that
-        gpu_h = gpu_c = 0.0 # (so accessible to projects without GPU allocations)
-
-    total = cpu_h + gpu_h
-
-    if total <= 0.0:
+    resource_name, machine_name, comp_hours, charges = classify_comp_resource(
+        machine,
+        row.get("queue", "Unknown"),
+        row["cpu_hours"],
+        row["gpu_hours"],
+        row["cpu_charges"],
+        row["gpu_charges"],
+    )
+    if comp_hours <= 0.0:
         return None  # Skip zero-charge rows
-
-    gpu_fraction = gpu_h / total
-
-    if machine == "derecho":
-        if gpu_h > 0 and gpu_fraction >= GPU_FRACTION_THRESHOLD:
-            # Meaningful GPU usage → Derecho GPU resource
-            # core_hours = GPU hours (the Derecho GPU billing metric)
-            return "Derecho GPU", "derecho-gpu", gpu_h, gpu_c
-        # Pure CPU job (or anomalous GPU ratio → treat as CPU)
-        # core_hours = CPU core-hours (numnodes * 128 * wall_hours)
-        return "Derecho", "derecho", cpu_h, cpu_c
-
-    elif machine == "casper":
-        if gpu_h > 0 and gpu_fraction >= GPU_FRACTION_THRESHOLD:
-            # Casper GPU resource
-            # TODO: confirm Casper GPU resource name and charges formula
-            return "Casper GPU", "Casper-gpu", gpu_h, gpu_c
-        # Casper CPU resource
-        return "Casper", "Casper", cpu_h, cpu_c
-
-    else:
-        raise ValueError(f"Unknown machine: {machine!r}. Add a case to adapt_jobstats_row().")
+    return resource_name, machine_name, comp_hours, charges
 
 
 class AccountingAdminCommand(BaseCommand):
@@ -1717,4 +1761,226 @@ class AccountingSearchCommand(BaseCommand):
             return 0
 
         display_charge_summary_table(self.ctx, rows, start_date, end_date)
+        return 0
+
+
+# Machines whose hpc-usage-queries databases the CLI may open. Keep in
+# lockstep with webapp's _VALID_MACHINES (src/webapp/jobs/routes.py) and the
+# plugin's job_history.database.session.VALID_MACHINES.
+VALID_JOB_MACHINES = {'derecho', 'casper'}
+
+# Default number of jobs for --recent when no selector is given.
+DEFAULT_RECENT_JOBS = 50
+
+# Columns requested from the plugin's jobs_search(). Identity/display fields
+# plus the four the GPU/CPU classifier needs (cpu/gpu hours + charges). We
+# deliberately never request memory columns — we track but don't bill memory.
+JOB_COLUMNS = (
+    'job_id', 'account', 'user', 'queue', 'qos', 'qos_factor', 'status',
+    'submit', 'start', 'end', 'elapsed', 'walltime',
+    'numnodes', 'numcpus', 'numgpus', 'cputype', 'gputype',
+    'cpu_hours', 'gpu_hours', 'cpu_charges', 'gpu_charges',
+)
+
+
+def _configured_job_machines() -> list:
+    """Machines to query when --machine is not given.
+
+    Sourced from $JOB_HISTORY_MACHINES (comma-separated), defaulting to
+    derecho,casper — the same source webapp/config.py uses.
+    """
+    raw = os.environ.get('JOB_HISTORY_MACHINES', 'derecho,casper')
+    return [m.strip().lower() for m in raw.split(',') if m.strip()]
+
+
+def _end_sort_key(row: dict):
+    """Chronological sort key for a job row's end time (None sorts first/oldest).
+
+    Coerces datetimes to ISO strings so mixed datetime/str/None values never
+    raise during comparison.
+    """
+    e = row.get('end')
+    if e is None:
+        return ''
+    return e.isoformat() if hasattr(e, 'isoformat') else str(e)
+
+
+class AccountingJobsCommand(BaseCommand):
+    """List individual jobs from hpc-usage-queries (sam-search accounting --jobs)."""
+
+    def execute(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        username: Optional[str] = None,
+        projcode: Optional[str] = None,
+        queue: Optional[str] = None,
+        qos: Optional[str] = None,
+        machine: Optional[str] = None,
+        recent: Optional[int] = None,
+        largest: Optional[int] = None,
+        job_id: Optional[str] = None,
+    ) -> int:
+        json_mode = self.ctx.output_format == 'json'
+
+        # --- Deferred feature: job-id search (pending peer-repo support) ---
+        if job_id is not None:
+            msg = (
+                "Searching by job id is not yet available: it requires a "
+                "hpc-usage-queries plugin update to expose a job_id filter. "
+                "Use --user / --project / date filters for now."
+            )
+            if json_mode:
+                output_json({'kind': 'comp_jobs', 'error': 'unsupported',
+                             'detail': msg})
+            else:
+                self.console.print(f"[bold red]{msg}[/bold red]")
+            return 2
+
+        # --- Selection mode + limit ---
+        if recent is not None and largest is not None:
+            msg = "--recent and --largest are mutually exclusive."
+            self.console.print(f"[bold red]{msg}[/bold red]")
+            return 2
+        if largest is not None:
+            mode, limit = 'largest', largest
+        else:
+            mode, limit = 'recent', (recent if recent is not None else DEFAULT_RECENT_JOBS)
+        if limit < 1:
+            self.console.print("[bold red]Job count must be >= 1.[/bold red]")
+            return 2
+
+        # --- Resolve machines to query ---
+        if machine:
+            m = machine.strip().lower()
+            if m not in VALID_JOB_MACHINES:
+                valid = ', '.join(sorted(VALID_JOB_MACHINES))
+                self.console.print(
+                    f"[bold red]Unknown machine {machine!r}. Valid: {valid}.[/bold red]"
+                )
+                return 2
+            machines = [m]
+        else:
+            machines = _configured_job_machines()
+
+        # --- Load plugin ---
+        mod = self.require_plugin(HPC_USAGE_QUERIES)
+        if mod is None:
+            return 2
+        JobQueries = mod.JobQueries
+        jh_get_session = mod.get_session
+
+        # --- Account filter (comma-separated → list of exact codes) ---
+        if projcode and ',' in projcode:
+            account = [p.strip() for p in projcode.split(',') if p.strip()]
+        else:
+            account = projcode or None
+
+        base_filters = dict(
+            account=account,
+            user=username,
+            queue=queue,
+            qos=qos,
+            start=start_date,
+            end=end_date,
+            columns=list(JOB_COLUMNS),
+        )
+
+        merged: list = []
+        for mach in machines:
+            try:
+                jh_session = jh_get_session(mach)
+            except Exception as exc:
+                self.console.print(
+                    f"[bold red]Error opening job_history session for {mach!r}: {exc}[/bold red]"
+                )
+                return 2
+            try:
+                jq = JobQueries(jh_session, machine=mach)
+                if mode == 'largest':
+                    # No combined-charge sort key upstream yet: union the top-N
+                    # by cpu_charges and by gpu_charges, then re-rank by the
+                    # classified charge below.
+                    rows = list(jq.jobs_search(
+                        **base_filters, sort_by='cpu_charges', sort_dir='desc', limit=limit,
+                    ))
+                    rows += list(jq.jobs_search(
+                        **base_filters, sort_by='gpu_charges', sort_dir='desc', limit=limit,
+                    ))
+                else:
+                    rows = list(jq.jobs_search(
+                        **base_filters, sort_by='end', sort_dir='desc', limit=limit,
+                    ))
+            except Exception as exc:
+                self.console.print(
+                    f"[bold red]Error fetching jobs for {mach!r}: {exc}[/bold red]"
+                )
+                return 2
+            finally:
+                jh_session.close()
+
+            for row in rows:
+                row['machine'] = mach
+            merged.extend(rows)
+
+        # --- Dedup (largest unions two queries) + classify + derive fields ---
+        seen = set()
+        rows: list = []
+        for row in merged:
+            key = (row.get('machine'), row.get('job_id'))
+            if key in seen:
+                continue
+            seen.add(key)
+            resource, _machine_name, comp_hours, charges = classify_comp_resource(
+                row.get('machine'),
+                row.get('queue'),
+                row.get('cpu_hours'),
+                row.get('gpu_hours'),
+                row.get('cpu_charges'),
+                row.get('gpu_charges'),
+            )
+            row['resource'] = resource
+            row['comp_hours'] = comp_hours
+            row['charges'] = charges
+            rows.append(row)
+
+        # --- Global re-rank + truncate ---
+        if mode == 'largest':
+            rows.sort(key=lambda r: r.get('charges') or 0.0, reverse=True)
+        else:
+            rows.sort(key=_end_sort_key, reverse=True)
+        rows = rows[:limit]
+
+        if not rows:
+            if json_mode:
+                output_json({
+                    'kind': 'comp_jobs',
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'mode': mode,
+                    'machines': machines,
+                    'count': 0,
+                    'rows': [],
+                })
+                return 1
+            self.console.print("[yellow]No jobs found for the given filters.[/yellow]")
+            return 1
+
+        if json_mode:
+            output_json({
+                'kind': 'comp_jobs',
+                'start_date': start_date,
+                'end_date': end_date,
+                'mode': mode,
+                'machines': machines,
+                'count': len(rows),
+                'rows': rows,
+            })
+            return 0
+
+        display_jobs_table(
+            self.ctx, rows, start_date, end_date,
+            mode=mode, multi_machine=len(machines) > 1,
+        )
         return 0

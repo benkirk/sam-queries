@@ -228,6 +228,90 @@ def display_charge_summary_table(ctx: Context, rows: list, start_date, end_date)
     ctx.console.print(table)
 
 
+def _fmt_factor(x) -> str:
+    """Format a QoS charge multiplier compactly (1.0 → '1', 1.5 → '1.5')."""
+    if x is None:
+        return '—'
+    return f"{x:g}"
+
+
+def display_jobs_table(ctx: Context, rows: list, start_date, end_date, *,
+                       mode: str = 'recent', multi_machine: bool = False) -> None:
+    """
+    Print a Rich table of individual jobs (sam-search accounting --jobs).
+
+    Default columns are kept comfortably within 80 chars: Job ID, Project,
+    User, [Machine when >1 queried], Nodes, Cores, [GPUs when any nonzero],
+    Wall-h, Charges. The GPUs column is suppressed when every row has zero
+    GPUs. --verbose adds Comp-h (the billing-metric hours), Resource, QoS,
+    Factor, Queue, and Status. Memory is intentionally never shown.
+
+    Args:
+        ctx: CLI context (console + verbose flag)
+        rows: List of per-job dicts (already classified: resource/comp_hours/charges)
+        start_date / end_date: Queried date range
+        mode: 'recent' or 'largest' (shown in the title)
+        multi_machine: Whether >1 machine was queried (adds a Machine column)
+    """
+    show_gpus = any((r.get('numgpus') or 0) > 0 for r in rows)
+    verbose = ctx.verbose
+
+    # Column spec: (header, justify, style, cell_fn)
+    cols = [
+        ("Job ID",  "left",  "cyan",  lambda r: str(r.get('job_id') or '')),
+        ("Project", "left",  "green", lambda r: r.get('account') or ''),
+        ("User",    "left",  "white", lambda r: r.get('user') or ''),
+    ]
+    if multi_machine:
+        cols.append(("Machine", "left", "dim", lambda r: r.get('machine') or ''))
+    cols += [
+        ("Nodes", "right", None, lambda r: fmt.number(r.get('numnodes'))),
+        ("Cores", "right", None, lambda r: fmt.number(r.get('numcpus'))),
+    ]
+    if show_gpus:
+        cols.append(("GPUs", "right", None, lambda r: fmt.number(r.get('numgpus'))))
+    cols.append(("Wall-h", "right", "dim", lambda r: fmt.hours(r.get('elapsed'))))
+    if verbose:
+        cols.append(("Comp-h", "right", "dim", lambda r: fmt.number(r.get('comp_hours'))))
+    cols.append(("Charges", "right", "bold", lambda r: fmt.number(r.get('charges'))))
+    if verbose:
+        cols += [
+            ("Resource", "left",  "white", lambda r: r.get('resource') or ''),
+            ("QoS",      "left",  "white", lambda r: r.get('qos') or ''),
+            ("Factor",   "right", "dim",   lambda r: _fmt_factor(r.get('qos_factor'))),
+            ("Queue",    "left",  "white", lambda r: r.get('queue') or ''),
+            ("Status",   "left",  "dim",   lambda r: str(r.get('status') or '')),
+        ]
+
+    table = Table(
+        title=f"jobs ({mode})  {start_date} → {end_date}",
+        box=box.SIMPLE_HEAD,
+        show_lines=False,
+    )
+    for header, justify, style, _fn in cols:
+        kwargs = {'justify': justify}
+        if style:
+            kwargs['style'] = style
+        if header == "Job ID":
+            kwargs['no_wrap'] = True
+        table.add_column(header, **kwargs)
+
+    total_charges = 0.0
+    for r in rows:
+        total_charges += r.get('charges') or 0.0
+        table.add_row(*[fn(r) for _h, _j, _s, fn in cols])
+
+    # Totals footer: job count (first col) + summed charges (Charges col)
+    charges_idx = next(i for i, (h, _j, _s, _f) in enumerate(cols) if h == "Charges")
+    footer = [''] * len(cols)
+    footer[0] = f"[dim]{len(rows)} jobs[/dim]"
+    footer[charges_idx] = f"[bold]{fmt.number(total_charges)}[/bold]"
+    table.add_section()
+    table.add_row(*footer)
+
+    ctx.console.print(table)
+
+
 def _expected_delta_pct(sam_tib: float, expected_bytes: int) -> float:
     expected_tib = expected_bytes / (1024 ** 4)
     if expected_tib == 0:
