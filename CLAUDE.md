@@ -989,6 +989,11 @@ source etc/config_env.sh && pytest --cov=src       # With coverage report
 sam-search user benkirk --list-projects           # User lookup
 sam-search project SCSG0001 --list-users          # Project lookup
 sam-search allocations --resource Derecho         # Allocation queries
+sam-search accounting --last 7d --user benkirk    # Daily charge rollups (no plugin)
+sam-search accounting --jobs --last 7d --user benkirk          # Individual jobs (job_history plugin)
+sam-search accounting --jobs --largest 20 --last 30d --project SCSG0001
+sam-search accounting --jobs --last 365d --job-id 6049117       # All scalar+array variants of one job
+sam-search accounting --jobs --last 365d --job-id 6049117[28].desched1  # Exact single-row lookup
 
 # CLI - Admin
 sam-admin user benkirk --validate                 # Validate user data
@@ -1000,6 +1005,7 @@ sam-search --format json user benkirk | jq        # User envelope (kind=user)
 sam-search --format json project SCSG0001 | jq    # Project envelope w/ allocations, tree, users
 sam-search --format json allocations --total-resources --total-facilities --total-types
 sam-search --format json accounting --last 7d
+sam-search --format json accounting --jobs --recent 5 | jq '.rows[0]'   # Per-job (kind=comp_jobs)
 ```
 
 ---
