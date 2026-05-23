@@ -1,0 +1,53 @@
+name: Sync staging to main
+
+# When a PR from `staging` into `main` is merged, `main` advances (merge
+# commit / squash / rebase) and its history diverges from `staging`. This
+# workflow force-resets `staging` back to the post-merge tip of `main` so the
+# two branches are byte-for-byte in sync again, ready for the next round of
+# staging work.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-staging-to-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Reset staging to main
+    # Only act on a *merged* PR whose head was `staging` and base was `main`.
+    # (workflow_dispatch carries no pull_request payload, so allow it through.)
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event.pull_request.merged == true
+          && github.event.pull_request.head.ref == 'staging'
+          && github.event.pull_request.base.ref == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main (post-merge tip)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Force-reset staging to main
+        run: |
+          set -euo pipefail
+          MAIN_SHA="$(git rev-parse HEAD)"
+          echo "Resetting staging -> ${MAIN_SHA}"
+          git push --force origin "HEAD:refs/heads/staging"
+
+          {
+            echo "## Staging synced to main"
+            echo ""
+            echo "- **staging** now points at \`${MAIN_SHA}\` (current tip of \`main\`)"
+            echo "- Triggered by: \`${{ github.event_name }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
