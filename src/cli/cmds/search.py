@@ -24,7 +24,7 @@ from cli.project.commands import (
     ProjectExpirationCommand
 )
 from cli.allocations.commands import AllocationSearchCommand
-from cli.accounting.commands import AccountingSearchCommand
+from cli.accounting.commands import AccountingSearchCommand, AccountingJobsCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
 
 
@@ -271,22 +271,34 @@ def allocations(ctx: Context, resource, facility, allocation_type, project,
 @click.option('--project',  metavar='CODE',     default=None, help='Filter by project code (% wildcard ok)')
 @click.option('--resource', metavar='NAME',     default=None, help='Filter by resource name (% wildcard ok)')
 @click.option('--queue',    metavar='NAME',     default=None, help='Filter by queue name (exact)')
-@click.option('--machine',  metavar='NAME',     default=None, help='Filter by machine name (% wildcard ok, e.g. derecho)')
+@click.option('--machine',  metavar='NAME',     default=None, help='Filter by machine name (summary: % wildcard ok; --jobs: derecho|casper)')
+@click.option('--jobs', is_flag=True, help='List individual jobs via the hpc-usage-queries plugin')
+@click.option('--recent',  type=int, default=None, metavar='M', help='With --jobs: most recent M jobs (default 50)')
+@click.option('--largest', type=int, default=None, metavar='N', help='With --jobs: top N jobs by charges')
+@click.option('--job-id', 'job_id', type=str, default=None, metavar='ID', help='With --jobs: filter by job id. Digits (6049117) match scalar + every array element; partial array form (6049117[28], 6049117[]) prefix-matches across hosts; full id with host (6049117[28].desched1) is exact.')
+@click.option('--qos', type=str, default=None, metavar='NAME', help='With --jobs: filter by QoS name')
 @click.option('-d', '--date', 'date_str',  type=str, default=None, metavar='YYYY-MM-DD', help='Single date')
 @click.option('--today', 'today_flag', is_flag=True, help='Use today as the date')
 @click.option('--last',  type=str, default=None, metavar='N[d]', help='Last N days including today (e.g. --last 14d)')
 @click.option('--start', type=str, default=None, metavar='YYYY-MM-DD', help='Start date')
 @click.option('--end',   type=str, default=None, metavar='YYYY-MM-DD', help='End date')
-@click.option('--verbose', '-v', is_flag=True, help='Show per-day row breakdown')
+@click.option('--verbose', '-v', is_flag=True, help='Summary: per-day breakdown. --jobs: extra detail columns')
 @pass_context
 def accounting(ctx: Context, user, project, resource, queue, machine,
+               jobs, recent, largest, job_id, qos,
                date_str, today_flag, last, start, end, verbose):
     """
-    Query comp charge summaries from SAM summary tables.
+    Query computational charges from SAM.
 
-    Reads directly from comp_charge_summary (no HPC job-history plugin required).
-    Results are aggregated by user/project/resource/machine/queue over the date range.
-    Use --verbose for a per-day breakdown.
+    Default mode reads SAM's pre-aggregated comp_charge_summary table (no
+    plugin required), grouped by user/project/resource/machine/queue; use
+    --verbose for a per-day breakdown.
+
+    With --jobs it lists individual jobs from the hpc-usage-queries plugin,
+    classifying each job's billed charge with the same CPU/GPU rules as the
+    daily poster. Select either the most recent M jobs (--recent, default 50),
+    the top N by charges (--largest), or a specific id (--job-id); use
+    --verbose for extra columns.
 
     \b
     Date Selection (one required):
@@ -300,12 +312,42 @@ def accounting(ctx: Context, user, project, resource, queue, machine,
       sam-search accounting --last 14d --resource Derecho
       sam-search accounting --last 7d --user benkirk
       sam-search accounting --start 2025-01-01 --end 2025-03-01 --project SCSG%
-      sam-search accounting --last 7d --resource Derecho --verbose
+      sam-search accounting --jobs --last 7d --user benkirk
+      sam-search accounting --jobs --largest 20 --last 30d --project SCSG0001
+      sam-search accounting --jobs --last 7d --machine derecho --verbose
+      sam-search accounting --jobs --last 365d --job-id 6049117[28]
     """
     _validate_accounting_dates(date_str, start, end, today_flag, last)
     start_date, end_date = _resolve_accounting_dates(date_str, start, end, today_flag, last)
     if verbose:
         ctx.verbose = True
+
+    if jobs:
+        if resource:
+            raise click.UsageError(
+                "--resource is not supported with --jobs (resource is derived "
+                "per machine); use --machine derecho|casper instead."
+            )
+        command = AccountingJobsCommand(ctx)
+        sys.exit(command.execute(
+            start_date=start_date,
+            end_date=end_date,
+            username=user,
+            projcode=project,
+            queue=queue,
+            qos=qos,
+            machine=machine,
+            recent=recent,
+            largest=largest,
+            job_id=job_id,
+        ))
+
+    # Summary mode: reject --jobs-only flags
+    for val, name in ((recent, '--recent'), (largest, '--largest'),
+                      (job_id, '--job-id'), (qos, '--qos')):
+        if val is not None:
+            raise click.UsageError(f"{name} requires --jobs.")
+
     command = AccountingSearchCommand(ctx)
     sys.exit(command.execute(
         start_date=start_date,
