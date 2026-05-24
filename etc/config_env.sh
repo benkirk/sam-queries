@@ -32,7 +32,9 @@ if [ -z "$CONDA_SHLVL" ]; then
     fi
 fi
 
-make --silent -C ${ROOT_DIR} ${ENV_NAME}
+# Pass HPC_USAGE_QUERIES_REF (default: main) through to make so it's
+# included in the env hash. Mirrors the container build convention.
+make --silent -C ${ROOT_DIR} HPC_USAGE_QUERIES_REF="${HPC_USAGE_QUERIES_REF:-main}" ${ENV_NAME}
 
 conda activate ${ENV_DIR}
 
