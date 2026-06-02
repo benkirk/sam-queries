@@ -12,9 +12,9 @@
 <!-- Page Header -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1><i class="fas fa-server"></i> System Status Dashboard</h1>
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center flex-column gap-2">
         {% if has_permission(Permission.EDIT_SYSTEM_STATUS) %}
-        <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#createOutageModal">
+        <button class="btn  btn-outline-danger" data-bs-toggle="modal" data-bs-target="#createOutageModal">
             <i class="fas fa-exclamation-circle"></i> Report Outage
         </button>
         {% endif %}
@@ -46,7 +46,7 @@
                     <span class="text-muted small">{{ outage.start_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}</span>
                     {% if has_permission(Permission.EDIT_SYSTEM_STATUS) %}
                     <div class="btn-group btn-group-sm ms-2">
-                        <button class="btn btn-outline-secondary btn-sm"
+                        <button class="btn btn-outline-secondary "
                                 title="Edit outage"
                                 {# estimated_resolution is naive-UTC; mark with 'Z' so JS can
                                    parse it as a real instant and convert to operator-local
@@ -60,7 +60,7 @@
                                 data-outage-title="{{ outage.title }}">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="btn btn-outline-success btn-sm"
+                        <button class="btn btn-primary "
                                 title="Mark resolved"
                                 hx-post="{{ url_for('status_dashboard.htmx_resolve_outage', outage_id=outage.outage_id) }}"
                                 hx-confirm="Mark this outage as resolved?"
@@ -69,7 +69,7 @@
                                 data-confirm-label="Mark resolved">
                             <i class="fas fa-check"></i>
                         </button>
-                        <button class="btn btn-outline-danger btn-sm"
+                        <button class="btn btn-outline-danger "
                                 title="Delete outage"
                                 hx-delete="{{ url_for('status_dashboard.htmx_delete_outage', outage_id=outage.outage_id) }}"
                                 hx-confirm="Delete outage: {{ outage.title }}?"

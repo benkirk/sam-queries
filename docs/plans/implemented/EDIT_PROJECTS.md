@@ -404,7 +404,7 @@ Add (immediately after the `render_project_card` macro call):
 {% if has_permission(Permission.EDIT_PROJECTS) %}
 <div class="d-flex justify-content-end mt-1 mb-3">
   <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project_data.project.projcode) }}"
-     class="btn btn-sm btn-outline-warning">
+     class="btn  btn-outline-warning">
     <i class="fas fa-edit"></i> Edit Project
   </a>
 </div>

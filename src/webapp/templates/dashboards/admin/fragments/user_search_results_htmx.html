@@ -31,7 +31,7 @@
           data-confirm-variant="warning" data-confirm-label="Impersonate">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="username" value="{{ user.username }}">
-        <button type="submit" class="btn btn-sm btn-outline-warning" title="Impersonate {{ user.username }}">
+        <button type="submit" class="btn  btn-outline-warning" title="Impersonate {{ user.username }}">
             <i class="fas fa-user-secret"></i>
         </button>
     </form>

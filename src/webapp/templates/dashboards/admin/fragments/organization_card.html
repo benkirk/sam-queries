@@ -6,7 +6,7 @@
 #}
 <div class="card-body p-0">
     <!-- Tab navigation -->
-    <ul class="nav nav-tabs px-3 pt-3" id="organizationsTabs" role="tablist">
+    <ul class="nav nav-tabs" id="organizationsTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="orgs-tab" data-bs-toggle="tab"
                     data-bs-target="#orgs-pane" type="button" role="tab"
@@ -109,7 +109,7 @@
                     Showing {{ organizations|length }} organization{{ 's' if organizations|length != 1 else '' }}
                 </span>
                 {% if has_permission(Permission.CREATE_ORG_METADATA) %}
-                <button class="btn btn-sm btn-outline-success"
+                <button class="btn  btn-primary"
                         data-bs-toggle="modal"
                         data-bs-target="#createOrganizationModal"
                         hx-get="{{ url_for('admin_dashboard.htmx_organization_create_form') }}"
@@ -217,7 +217,7 @@
                 </span>
                 {% if has_permission(Permission.CREATE_ORG_METADATA) %}
                 <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn  btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createAoiGroupModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_aoi_group_create_form') }}"
@@ -225,7 +225,7 @@
                             hx-trigger="click">
                         <i class="fas fa-plus"></i> Create Group
                     </button>
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn  btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createAoiModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_aoi_create_form') }}"
@@ -338,7 +338,7 @@
                 </span>
                 {% if has_permission(Permission.CREATE_ORG_METADATA) %}
                 <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn  btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createContractSourceModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_contract_source_create_form') }}"
@@ -346,7 +346,7 @@
                             hx-trigger="click">
                         <i class="fas fa-plus"></i> Create Source
                     </button>
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn  btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createContractModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_contract_create_form') }}"
@@ -401,7 +401,7 @@
                     Showing {{ nsf_programs|length }} program{{ 's' if nsf_programs|length != 1 else '' }}
                 </span>
                 {% if has_permission(Permission.CREATE_ORG_METADATA) %}
-                <button class="btn btn-sm btn-outline-success"
+                <button class="btn  btn-primary"
                         data-bs-toggle="modal"
                         data-bs-target="#createNsfProgramModal"
                         hx-get="{{ url_for('admin_dashboard.htmx_nsf_program_create_form') }}"

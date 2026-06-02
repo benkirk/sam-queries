@@ -114,6 +114,14 @@
         loadExpirationsView(activeExpirationsView());
     });
 
+    /* Clear filters — reset the form, then reload the active tab so the
+     * expirations view reflects the cleared (default) filters. */
+    registerAction('expirations-clear', function () {
+        var form = document.getElementById('expirations-filters-form');
+        if (form) { form.reset(); }
+        loadExpirationsView(activeExpirationsView());
+    });
+
     /* Export CSV of the active tab, carrying the filter form */
     registerAction('expirations-export-csv', function () {
         var params = new URLSearchParams(

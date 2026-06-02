@@ -3,7 +3,7 @@
 {% if projects_data %}
     {% if view_type == 'expired' and has_permission_any_facility(Permission.EDIT_PROJECTS) %}
     <div class="mb-3 text-end">
-        <button type="button" class="btn btn-sm btn-outline-danger"
+        <button type="button" class="btn  btn-outline-danger"
                 hx-post="{{ url_for('admin_dashboard.deactivate_expired') }}"
                 hx-include="#expirations-filters-form"
                 hx-target="#expired-container"

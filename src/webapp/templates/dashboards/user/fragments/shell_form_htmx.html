@@ -17,10 +17,10 @@
             <option value="{{ sh }}" {% if sh == current_shell %}selected{% endif %}>{{ sh }}</option>
             {% endfor %}
         </select>
-        <button type="submit" class="btn btn-xs btn-success py-0" title="Save">
+        <button type="submit" class="btn btn-sm btn-primary py-0" title="Save">
             <i class="fas fa-check"></i>
         </button>
-        <button type="button" class="btn btn-xs btn-secondary py-0" title="Cancel"
+        <button type="button" class="btn btn-sm btn-secondary py-0" title="Cancel"
                 hx-get="{{ url_for('user_dashboard.htmx_shell_display', username=sam_user.username) }}"
                 hx-target="#shell-row-{{ sam_user.username }}"
                 hx-swap="innerHTML">

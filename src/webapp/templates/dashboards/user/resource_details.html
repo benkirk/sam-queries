@@ -229,11 +229,11 @@
 {% set _from_admin = request.args.get('from') == 'admin' %}
 <div class="back-link mb-3">
     {% if _from_admin %}
-    <a href="{{ url_for('admin_dashboard.index', projcode=projcode) }}" class="btn btn-sm btn-outline-secondary">
+    <a href="{{ url_for('admin_dashboard.index', projcode=projcode) }}" class="btn  btn-outline-secondary">
         <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Admin</span>
     </a>
     {% else %}
-    <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-sm btn-outline-secondary">
+    <a href="{{ url_for('user_dashboard.index') }}" class="btn  btn-outline-secondary">
         <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Dashboard</span>
     </a>
     {% endif %}
@@ -297,7 +297,7 @@
                         {% if has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) %}
                         <td class="text-center">
                             {% if summary.allocation_id and not summary.is_inheriting %}
-                            <button class="btn btn-xs btn-outline-primary"
+                            <button class="btn btn-sm btn-outline-primary"
                                     title="Edit allocation"
                                     data-bs-toggle="modal" data-bs-target="#editAllocationModal"
                                     hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=summary.allocation_id) }}?projcode={{ projcode }}"

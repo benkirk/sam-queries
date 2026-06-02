@@ -376,7 +376,7 @@ Add universal roll-up warning inside the "Break inheritance" collapse:
 </div>
 
 <div class="mb-3">
-  <button type="button" class="btn btn-sm btn-outline-danger"
+  <button type="button" class="btn  btn-outline-danger"
           data-bs-toggle="collapse" data-bs-target="#breakInheritanceSection">
     <i class="fas fa-unlink me-1"></i> Break inheritance...
   </button>
@@ -414,7 +414,7 @@ Add universal roll-up warning inside the "Break inheritance" collapse:
         </label>
       </div>
       <div class="mt-2">
-        <button type="button" class="btn btn-sm btn-danger"
+        <button type="button" class="btn  btn-danger"
                 hx-post="{{ url_for('admin_dashboard.htmx_detach_allocation', alloc_id=allocation.allocation_id) }}"
                 hx-target="#editAllocationFormContainer"
                 hx-confirm="Permanently detach allocation #{{ allocation.allocation_id }}?">
@@ -478,7 +478,7 @@ Split into two clearly separate sections:
   active sub-project{{ 's' if unlinked_descendants_count != 1 else '' }}
   {{ 'do' if unlinked_descendants_count != 1 else 'does' }} not yet have
   an allocation for this resource.
-  <button type="button" class="btn btn-sm btn-outline-secondary ms-2"
+  <button type="button" class="btn  btn-outline-secondary ms-2"
           hx-post="{{ url_for('admin_dashboard.htmx_propagate_to_remaining', alloc_id=allocation.allocation_id) }}"
           hx-target="#editAllocationFormContainer"
           hx-confirm="Create linked child allocations for {{ unlinked_descendants_count }} remaining sub-project(s)?">

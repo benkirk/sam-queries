@@ -120,7 +120,7 @@
 .load-stack {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: 8px;
     min-width: 80px;
 }
 

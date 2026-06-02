@@ -25,13 +25,13 @@
 <div id="{{ chart_dom_id }}"
      data-chart-persist-id="{{ chart_dom_id }}"
      data-chart-persist-keys="group_by state metric rank_by">
-    <div class="d-flex flex-wrap gap-3 mb-3 align-items-center">
+    <div class="d-flex flex-wrap flex-lg-nowrap gap-2 mb-3 align-items-end">
         <div>
             <label class="form-label small text-muted mb-1 me-2">Group by</label>
             <div class="btn-group btn-group-sm" role="group" aria-label="Group by">
                 {% for opt_val, opt_lbl in [('user', 'User'), ('project', 'Project code')] %}
                 <button type="button"
-                        class="btn btn-{% if group_by == opt_val %}primary{% else %}outline-primary{% endif %}"
+                        class="btn {% if group_by == opt_val %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
                         hx-get="{{ url_for(endpoint_name,
                                            **dict(endpoint_kwargs, **dict(_selector_kwargs, group_by=opt_val))) }}"
                         hx-target="#{{ chart_dom_id }}"
@@ -50,7 +50,7 @@
                    valid combo in one click. #}
                 {% set _state_metric = 'cores' if (metric == 'nodes' and opt_val != 'running') else metric %}
                 <button type="button"
-                        class="btn btn-{% if state == opt_val %}primary{% else %}outline-primary{% endif %}"
+                        class="btn {% if state == opt_val %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
                         hx-get="{{ url_for(endpoint_name,
                                            **dict(endpoint_kwargs, **dict(_selector_kwargs, state=opt_val, metric=_state_metric))) }}"
                         hx-target="#{{ chart_dom_id }}"
@@ -72,7 +72,7 @@
                 {% for opt_val, opt_lbl in _metric_options %}
                 {% set is_invalid = (opt_val == 'nodes' and state != 'running') %}
                 <button type="button"
-                        class="btn btn-{% if metric == opt_val %}primary{% else %}outline-primary{% endif %}"
+                        class="btn {% if metric == opt_val %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
                         {% if is_invalid %}
                           disabled
                           title="Nodes only available for state=Running"
@@ -94,7 +94,7 @@
                    Current: top_n by value at the latest tick (who is hot right now). #}
                 {% for opt_val, opt_lbl in [('current', 'Current'), ('peak', 'Peak')] %}
                 <button type="button"
-                        class="btn btn-{% if rank_by == opt_val %}primary{% else %}outline-primary{% endif %}"
+                        class="btn {% if rank_by == opt_val %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
                         hx-get="{{ url_for(endpoint_name,
                                            **dict(endpoint_kwargs, **dict(_selector_kwargs, rank_by=opt_val))) }}"
                         hx-target="#{{ chart_dom_id }}"

@@ -165,23 +165,23 @@
                     {% set branches = user_groups.keys() | list | sort %}
                     {% if branches %}
                     {% set tab_id = 'groupsTabs-' ~ sam_user.username %}
-                    <ul class="nav nav-pills nav-sm mb-2" id="{{ tab_id }}" role="tablist">
+                    <div class="btn-group btn-group-sm mb-2" role="tablist" id="{{ tab_id }}">
                         {% for branch in branches %}
                         {% set pane_id = 'groupsPane-' ~ sam_user.username ~ '-' ~ loop.index %}
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link py-1 px-2 {% if loop.first %}active{% endif %}"
-                                    id="{{ pane_id }}-tab"
-                                    data-bs-toggle="pill"
-                                    data-bs-target="#{{ pane_id }}"
-                                    type="button" role="tab"
-                                    aria-controls="{{ pane_id }}"
-                                    aria-selected="{{ 'true' if loop.first else 'false' }}">
-                                {{ branch }}
-                                <span class="badge bg-secondary ms-1">{{ user_groups[branch] | length }}</span>
-                            </button>
-                        </li>
+                        <input type="radio" class="btn-check" name="{{ tab_id }}-options" id="{{ pane_id }}-tab"
+                               autocomplete="off" {% if loop.first %}checked{% endif %}>
+                        <label class="btn btn-outline-primary"
+                               for="{{ pane_id }}-tab"
+                               data-bs-toggle="pill"
+                               data-bs-target="#{{ pane_id }}"
+                               role="tab"
+                               aria-controls="{{ pane_id }}"
+                               aria-selected="{{ 'true' if loop.first else 'false' }}">
+                            {{ branch }}
+                            <span class="badge bg-primary ms-1">{{ user_groups[branch] | length }}</span>
+                        </label>
                         {% endfor %}
-                    </ul>
+                    </div>
                     <div class="tab-content">
                         {% for branch in branches %}
                         {% set pane_id = 'groupsPane-' ~ sam_user.username ~ '-' ~ loop.index %}
@@ -235,7 +235,7 @@
         <div class="d-flex justify-content-between align-items-center mb-2">
             <strong><i class="fas fa-clock"></i> Wallclock Exemptions</strong>
             {% if is_admin and has_permission(Permission.EDIT_USERS) %}
-            <button class="btn btn-sm btn-outline-success"
+            <button class="btn  btn-primary"
                     data-bs-toggle="modal" data-bs-target="#addExemptionModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_add_exemption_form', username=sam_user.username) }}"
                     hx-target="#addExemptionFormContainer"
@@ -274,7 +274,7 @@
                         <td>{{ ex.comment or '' }}</td>
                         {% if is_admin and has_permission(Permission.EDIT_USERS) %}
                         <td>
-                            <button class="btn btn-sm btn-outline-warning py-0"
+                            <button class="btn  btn-outline-warning py-0"
                                     data-bs-toggle="modal" data-bs-target="#editExemptionModal"
                                     hx-get="{{ url_for('admin_dashboard.htmx_edit_exemption_form', exemption_id=ex.wallclock_exemption_id) }}"
                                     hx-target="#editExemptionFormContainer"
@@ -303,7 +303,7 @@
               data-confirm-variant="warning" data-confirm-label="Impersonate">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="username" value="{{ sam_user.username }}">
-            <button type="submit" class="btn btn-sm btn-primary">
+            <button type="submit" class="btn  btn-primary">
                 <i class="fas fa-user-secret"></i> Impersonate {{ sam_user.username }}
             </button>
         </form>

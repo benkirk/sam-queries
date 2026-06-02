@@ -143,7 +143,7 @@
         <div class="container d-flex justify-content-center align-items-center">
             <i class="fas fa-user-secret me-2"></i>
             <strong>You are currently impersonating {{ current_user.display_name }} ({{ current_user.username }}).</strong>
-            <a href="{{ url_for('admin_dashboard.stop_impersonating') }}" class="btn btn-sm btn-outline-dark ms-3">
+            <a href="{{ url_for('admin_dashboard.stop_impersonating') }}" class="btn  btn-outline-dark ms-3">
                 <i class="fas fa-times"></i> Stop Impersonating
             </a>
         </div>
