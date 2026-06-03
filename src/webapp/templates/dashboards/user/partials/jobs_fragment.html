@@ -147,6 +147,14 @@
         {% endfor %}
       </select>
     {% endif %}
+    {% if qos_badge %}
+      {# Single shared QoS across all rows: the per-row column is suppressed,
+         so surface the value (and charging multiplier) here instead of
+         leaving it silent. #}
+      <span class="badge bg-light text-dark me-1">
+        QoS: {{ qos_badge.name }}{% if qos_badge.factor is not none %} (×{{ qos_badge.factor }}){% endif %}
+      </span>
+    {% endif %}
     <span class="ms-auto text-muted small">
       {{ total | fmt_number }} job{{ '' if total == 1 else 's' }}
     </span>

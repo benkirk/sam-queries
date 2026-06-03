@@ -875,11 +875,10 @@ def test_jobs_fragment_hides_qos_column_and_dropdown_when_single_value(
     assert 'sort_by=qos' not in body
     # The dropdown control is gone (no ?qos= in URL, no variation in rows).
     assert 'All QoS' not in body
-    # And with no queue badge / no dropdown / no column header, the
-    # repeated 'special' value is correctly absent from the fragment
-    # entirely — that's the whole point of the suppression. (Parent
-    # context — the row the user drilled into — surfaces it.)
-    assert 'special' not in body
+    # The redundant per-row column/dropdown are suppressed, but the single
+    # shared value is NOT silent — it collapses into a header badge so the
+    # QoS (and its charging factor) stays visible at a glance.
+    assert 'QoS: special' in body
 
 
 def test_jobs_fragment_shows_qos_column_when_rows_have_variation(
@@ -927,6 +926,110 @@ def test_jobs_fragment_keeps_dropdown_when_user_filtered_explicitly(
     assert 'sort_by=qos' not in body
     # Dropdown stays (explicit filter ⇒ user needs a way to reset).
     assert 'All QoS' in body
+
+
+def test_jobs_fragment_single_qos_badge_shows_name_and_factor(
+    app, auth_client, active_project, monkeypatch,
+):
+    """All rows in economy ⇒ the suppressed column collapses into a header
+    badge that surfaces both the QoS name and its charging multiplier — the
+    exact case (uniform economy, charges = 0.7× usage) the bare suppression
+    rule made invisible."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='economy', qos_factor=0.7),
+            _make_row(job_id='2.x', qos='economy', qos_factor=0.7),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'QoS: economy' in body
+    assert '×0.7' in body
+
+
+def test_jobs_fragment_no_qos_badge_when_rows_have_variation(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Mixed-QoS rows render the column/dropdown, NOT the single-value
+    badge."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium', qos_factor=1.5),
+            _make_row(job_id='2.x', qos='economy', qos_factor=0.7),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'QoS: ' not in body
+
+
+def test_jobs_fragment_no_qos_badge_when_all_null(
+    app, auth_client, active_project, monkeypatch,
+):
+    """All-NULL (uncharacterized) QoS ⇒ no badge — nothing actionable to
+    show."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos=None, qos_factor=None),
+            _make_row(job_id='2.x', qos=None, qos_factor=None),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'QoS: ' not in body
+
+
+def test_jobs_fragment_qos_badge_with_explicit_filter_shows_both(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Explicit ?qos= ⇒ the dropdown stays (to reset) AND the badge renders
+    too — a single consistent rule, mild redundancy is fine."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='economy', qos_factor=0.7),
+            _make_row(job_id='2.x', qos='economy', qos_factor=0.7),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=economy'
+    )
+    body = resp.get_data(as_text=True)
+    # Dropdown stays so the user can reset.
+    assert 'All QoS' in body
+    # Badge renders alongside it.
+    assert 'QoS: economy' in body
+
+
+def test_jobs_fragment_qos_badge_name_only_when_factor_varies(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Same QoS name but inconsistent qos_factor across rows ⇒ the badge
+    shows the name but omits the multiplier (no single factor to trust)."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='economy', qos_factor=0.7),
+            _make_row(job_id='2.x', qos='economy', qos_factor=0.5),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'QoS: economy' in body
+    # No "(×…)" multiplier when the factor isn't consistent.
+    assert '(×' not in body
 
 
 def test_resource_details_includes_jobs_fragment_url(
