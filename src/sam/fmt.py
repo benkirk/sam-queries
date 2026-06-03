@@ -286,6 +286,38 @@ def hours(
     return f"{seconds / 3600:,.{decimals}f}"
 
 
+def factor(
+    x:        Optional[Union[int, float]],
+    *,
+    decimals: int  = 2,
+    null:     str  = '—',
+) -> str:
+    """Format a charging multiplier (a QoS / queue factor) as ``×N.NN``.
+
+    Charging factors are small fractional ratios — economy ``0.7``,
+    premium ``1.5``, regular ``1.0`` — so they must NOT go through
+    :func:`number`, which rounds to whole numbers and would render
+    ``0.7`` as ``1`` (indistinguishable from regular).  The leading
+    multiplication sign signals "multiplier" rather than "count".
+
+    Args:
+        x:        Multiplier value.  None → null.
+        decimals: Fractional digits to keep.  Default 2 (matches the
+                  hpc-usage-queries plugin's ``qos_factor`` ``.2f`` spec).
+        null:     Placeholder returned for None values.
+
+    Examples:
+        factor(0.7)   → '×0.70'
+        factor(1.5)   → '×1.50'
+        factor(1.0)   → '×1.00'
+        factor(0.0)   → '×0.00'
+        factor(None)  → '—'
+    """
+    if x is None:
+        return null
+    return f"×{x:.{decimals}f}"
+
+
 def pct(
     x:        Optional[Union[int, float]],
     *,
@@ -396,12 +428,15 @@ def register_jinja_filters(app) -> None:
         fmt_date    — {{ value | fmt_date }}
                       {{ value | fmt_date(fmt='%b %Y') }}
         fmt_size    — {{ value | fmt_size }}
+        fmt_hours   — {{ seconds | fmt_hours }}
+        fmt_factor  — {{ multiplier | fmt_factor }}   → '×0.70'
     """
     app.jinja_env.filters['fmt_number']   = number
     app.jinja_env.filters['fmt_pct']      = pct
     app.jinja_env.filters['fmt_date']     = date_str
     app.jinja_env.filters['fmt_size']     = size
     app.jinja_env.filters['fmt_hours']    = hours
+    app.jinja_env.filters['fmt_factor']   = factor
     app.jinja_env.filters['to_local_dt']  = to_local_dt
     # Global (not a filter) so templates can render "{{ local_tz_label() }}"
     # alongside naive-local timestamps that don't go through to_local_dt.

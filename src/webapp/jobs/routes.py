@@ -254,6 +254,22 @@ def jobs_fragment(project):
         else []
     )
 
+    # When the column is suppressed because all rows share one QoS value,
+    # surface that value (and its charging factor) as a header badge so the
+    # single-value case isn't silent — this is exactly the case (uniform
+    # economy / premium) where the multiplier matters most. None
+    # (uncharacterized) gets no badge.
+    qos_badge = None
+    if rows and not qos_has_variation:
+        (shared_qos,) = qos_in_rows         # exactly one element when rows non-empty
+        if shared_qos is not None:
+            factors = {r.get('qos_factor') for r in rows
+                       if r.get('qos_factor') is not None}
+            qos_badge = {
+                'name': shared_qos,
+                'factor': next(iter(factors)) if len(factors) == 1 else None,
+            }
+
     column_specs = _load_column_specs()
     fragment_url = url_for('jobs.jobs_fragment', projcode=project.projcode)
 
@@ -277,6 +293,7 @@ def jobs_fragment(project):
         column_specs=column_specs,
         sortable_columns=sorted(_SORT_WHITELIST),
         qos_options=template_qos_options,
+        qos_badge=qos_badge,
         fragment_url=fragment_url,
         target_id=target_id,
         enabled=True,
