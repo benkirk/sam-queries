@@ -13,6 +13,7 @@ from sam.fmt import (
     COMPACT_THRESHOLD,
     configure,
     date_str,
+    factor,
     naive_local_to_utc,
     number,
     pct,
@@ -109,6 +110,40 @@ class TestNumber:
     def test_per_call_overrides_global(self):
         configure(raw=True)
         assert number(68_567_808, raw=False) == '68.6M'
+
+
+# ============================================================================
+# factor()
+# ============================================================================
+
+
+class TestFactor:
+
+    def test_economy_does_not_round_to_one(self):
+        # The whole point: 0.7 must NOT collapse to "1" the way number() would.
+        assert factor(0.7) == '×0.70'
+        assert number(0.7) == '1'  # contrast — the bug this guards against
+
+    def test_premium(self):
+        assert factor(1.5) == '×1.50'
+
+    def test_regular_and_zero(self):
+        assert factor(1.0) == '×1.00'
+        assert factor(0.0) == '×0.00'
+
+    def test_decimals_override(self):
+        assert factor(0.7, decimals=1) == '×0.7'
+        assert factor(0.75, decimals=3) == '×0.750'
+
+    def test_none_returns_null(self):
+        assert factor(None) == '—'
+        assert factor(None, null='N/A') == 'N/A'
+
+    def test_unaffected_by_raw_config(self):
+        # Charging factors are always fractional — raw mode (which makes
+        # number() emit bare integers) must not strip their decimals.
+        configure(raw=True)
+        assert factor(0.7) == '×0.70'
 
 
 # ============================================================================

@@ -947,7 +947,31 @@ def test_jobs_fragment_single_qos_badge_shows_name_and_factor(
     )
     body = resp.get_data(as_text=True)
     assert 'QoS: economy' in body
-    assert '×0.7' in body
+    assert '×0.70' in body
+
+
+def test_jobs_fragment_drawer_renders_fractional_qos_factor(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The per-row drawer's "Factor" is a fractional charging multiplier
+    and must render with decimals (×0.70 / ×1.50), NOT be rounded to a
+    whole number — the old fmt_number path turned economy's 0.7 into a
+    misleading "1". Two distinct QoS values keep the single-value badge
+    OFF, so the rendered factors must be coming from the drawers."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='economy', qos_factor=0.7),
+            _make_row(job_id='2.x', qos='premium', qos_factor=1.5),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'QoS: ' not in body          # mixed QoS ⇒ no badge
+    assert '×0.70' in body              # economy factor, with decimals
+    assert '×1.50' in body              # premium factor, with decimals
 
 
 def test_jobs_fragment_no_qos_badge_when_rows_have_variation(
