@@ -1,5 +1,31 @@
 replicaCount: 2                           # Number of identical pods to run
 
+# Rollout safety: never drop below replicaCount Ready pods during an update.
+# maxUnavailable:0 + maxSurge:1 means "bring up one new pod, wait for it to
+# pass the readiness probe, THEN retire an old one." Without the readiness
+# probe (webapp.probes) this gating is meaningless — a pod is "Ready" the
+# instant its process starts, so a broken build would still complete the
+# rollout while serving errors.
+rollout:
+  maxUnavailable: 0
+  maxSurge: 1
+
+# PodDisruptionBudget — keep >=minAvailable webapp pods serving during
+# VOLUNTARY disruptions (node drains, cluster maintenance). Without this, a
+# single node drain can evict both replicas at once and take the app down.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Spread replicas across nodes so one node failure can't take out all of them.
+# whenUnsatisfiable: ScheduleAnyway keeps scheduling best-effort on a lopsided
+# cluster rather than leaving a pod Pending (which is what wedged us at 1/2).
+topologySpread:
+  enabled: true
+  maxSkew: 1
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: ScheduleAnyway
+
 # Centralized Redis backend used by:
 #   - Flask-Caching chart cache (CACHE_REDIS_URL → DB 0)
 #   - Flask-Limiter rate-limit counters (RATELIMIT_STORAGE_URI → DB 1)
@@ -27,6 +53,27 @@ webapp:
     secretName: incommon-cert-samuel      # Unique TLS secret name for your FQDN
   ingress:
     visibility: internal                  # internal or external
+  # Kubernetes probes. Endpoints from src/webapp/api/v1/health.py:
+  #   /live  -> process up, no DB call          (liveness + startup)
+  #   /ready -> DB-gated, 200 healthy / 503 not  (readiness: gates rollout
+  #             completion AND Service membership)
+  # Liveness uses /live (no DB) so a transient DB blip can't trigger a
+  # restart storm; readiness uses /ready so a DB outage pulls the pod from
+  # the Service without killing it.
+  probes:
+    enabled: true
+    path: /api/v1/health                 # base; /live and /ready appended
+    startup:
+      periodSeconds: 5
+      failureThreshold: 30               # ~150s budget for gunicorn (33 workers) to boot
+    liveness:
+      periodSeconds: 15
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      periodSeconds: 10
+      timeoutSeconds: 5                  # readiness pings the DBs
+      failureThreshold: 3
   container:                              # full image path
     image: ghcr.io/benkirk/sam-queries/webapp:main
     port: 5050                            # Port your container listens on

@@ -235,8 +235,54 @@ else
     UPDATED=$(echo "$DEPLOY_JSON" | jq -r '.status.updatedReplicas // 0')
     AVAIL=$(echo "$DEPLOY_JSON"   | jq -r '.status.availableReplicas // 0')
 
+    # Diagnose not-Ready pods up front so the verdict can tell a genuinely
+    # STUCK rollout (a pod wedged in ImagePullBackOff/CrashLoop for many
+    # minutes) apart from one that is healthily mid-roll. We print the *why*
+    # (waiting reason + message + node), not just the ready count.
+    STUCK_AFTER_MIN=10
+    PODS_JSON=$("${KCTL_NS[@]}" get pods -l "app=$WEBAPP_NAME" -o json 2>/dev/null)
+    notready_diag=""     # human-readable lines, one block per not-Ready pod
+    stuck_pods=0         # not-Ready pods in a back-off/error state past threshold
+    # Fields are joined with US (0x1f), NOT tab: tab is an IFS-whitespace char,
+    # so empty optional fields (message, terminated.*) would collapse and shift
+    # every column. US is non-whitespace, so empty fields are preserved. The
+    # message is also stripped of CR/LF/TAB so it can't break line/field parsing.
+    while IFS=$'\x1f' read -r pname pready pphase wreason wmsg treason texit pnode pstart; do
+        [[ -z "$pname" ]] && continue
+        [[ "$pready" == "true" ]] && continue
+        detail="${wreason:-phase=$pphase}"
+        [[ -n "$treason" ]] && detail="$detail (last exit: ${treason}/${texit})"
+        sec=$(seconds_since "$pstart" 2>/dev/null || echo "")
+        if [[ -n "$sec" ]]; then
+            age_min=$(awk -v s="$sec" 'BEGIN{printf "%.0f", s/60}')
+            age_str="${age_min}m"
+        else
+            age_min=0; age_str="?"
+        fi
+        notready_diag+="pod $pname: not Ready — $detail on ${pnode:-<unscheduled>} (age ${age_str})"$'\n'
+        [[ -n "$wmsg" ]] && notready_diag+="    ↳ ${wmsg}"$'\n'
+        # A back-off/error waiting reason that has persisted is stuck, not in-flight.
+        case "$wreason" in
+            ImagePullBackOff|ErrImagePull|CrashLoopBackOff|CreateContainerConfigError|InvalidImageName|ErrImageNeverPull)
+                [[ "${age_min:-0}" -ge "$STUCK_AFTER_MIN" ]] && stuck_pods=$((stuck_pods+1))
+                ;;
+        esac
+    done < <(echo "$PODS_JSON" | jq -r '.items[] | [
+        .metadata.name,
+        ((.status.containerStatuses[0].ready // false) | tostring),
+        (.status.phase // ""),
+        (.status.containerStatuses[0].state.waiting.reason // ""),
+        (.status.containerStatuses[0].state.waiting.message // "" | gsub("[\\n\\r\\t]"; " ")),
+        (.status.containerStatuses[0].lastState.terminated.reason // ""),
+        ((.status.containerStatuses[0].lastState.terminated.exitCode // "") | tostring),
+        (.spec.nodeName // ""),
+        (.metadata.creationTimestamp // "")
+    ] | join("")' 2>/dev/null)
+
     if [[ "$READY" == "$DESIRED" && "$AVAIL" == "$DESIRED" && "$UPDATED" == "$DESIRED" ]]; then
         pass "Deployment $WEBAPP_NAME: $READY/$DESIRED ready, all updated and available"
+    elif [[ "$stuck_pods" -gt 0 ]]; then
+        fail "Deployment $WEBAPP_NAME: $READY/$DESIRED ready — $stuck_pods pod(s) STUCK >${STUCK_AFTER_MIN}m (see diagnosis below), not a healthy rollout"
     elif [[ "$UPDATED" != "$DESIRED" ]]; then
         warn "Deployment $WEBAPP_NAME: rollout in progress ($UPDATED/$DESIRED pods updated)"
     else
@@ -247,6 +293,13 @@ else
     echo
     run "${KCTL_NS[@]}" get pods -l "app=$WEBAPP_NAME" \
         -o 'custom-columns=NAME:.metadata.name,READY:.status.containerStatuses[0].ready,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount,AGE:.metadata.creationTimestamp,NODE:.spec.nodeName'
+
+    # Per-pod "why not Ready" — the detail that previously required `kubectl describe`
+    if [[ -n "$notready_diag" ]]; then
+        echo
+        echo "  Not-Ready pod diagnosis:"
+        printf '%s' "$notready_diag" | sed 's/^/    /'
+    fi
 
     # Recent-restart scan
     restarts=$("${KCTL_NS[@]}" get pods -l "app=$WEBAPP_NAME" \
@@ -293,7 +346,106 @@ else
 fi
 
 # ============================================================================
-section "3. Redis cache Deployment & pod"
+section "3. Rollout safety (probes, strategy, PDB, spread)"
+# ============================================================================
+
+explain "These guard the *next* rollout, not the current moment: a readiness
+  probe gates traffic + rollout promotion, a PDB survives node drains, topology
+  spread avoids single-node concentration. Gaps here are advisory (WARN)."
+
+if ! "${KCTL_NS[@]}" get deploy "$WEBAPP_NAME" >/dev/null 2>&1; then
+    info "Deployment '$WEBAPP_NAME' not found — skipping rollout-safety checks"
+else
+    SAFE_JSON=$("${KCTL_NS[@]}" get deploy "$WEBAPP_NAME" -o json)
+    REPLICAS=$(echo "$SAFE_JSON" | jq -r '.spec.replicas // 1')
+    CTR=$(echo "$SAFE_JSON" | jq -c --arg n "$WEBAPP_NAME" \
+            '.spec.template.spec.containers[] | select(.name==$n)')
+
+    # --- Probes: readiness/liveness gate rollouts; startup gives slow boots air ---
+    rprobe=0; lprobe=0
+    for probe in readinessProbe livenessProbe startupProbe; do
+        if echo "$CTR" | jq -e --arg p "$probe" '.[$p] != null' >/dev/null 2>&1; then
+            ppath=$(echo "$CTR" | jq -r --arg p "$probe" \
+                      '.[$p].httpGet.path // .[$p].tcpSocket.port // "set"')
+            info "$probe → ${ppath}"
+            [[ "$probe" == "readinessProbe" ]] && rprobe=1
+            [[ "$probe" == "livenessProbe"  ]] && lprobe=1
+        else
+            case "$probe" in
+                readinessProbe) warn "no readinessProbe — rollouts can't gate on real health; a broken build promotes anyway" ;;
+                livenessProbe)  warn "no livenessProbe — a wedged process won't be auto-restarted" ;;
+                startupProbe)   info "no startupProbe (optional; a slow boot can trip liveness)" ;;
+            esac
+        fi
+    done
+    [[ "$rprobe" -eq 1 && "$lprobe" -eq 1 ]] && pass "webapp has readiness + liveness probes"
+
+    # --- Rollout strategy: can it drop below 1 Ready? (maxUnavailable rounds DOWN) ---
+    echo
+    STYPE=$(echo "$SAFE_JSON" | jq -r '.spec.strategy.type // "RollingUpdate"')
+    MU=$(echo "$SAFE_JSON"    | jq -r '.spec.strategy.rollingUpdate.maxUnavailable // "25%"')
+    MS=$(echo "$SAFE_JSON"    | jq -r '.spec.strategy.rollingUpdate.maxSurge // "25%"')
+    echo "  strategy: $STYPE (maxUnavailable=$MU, maxSurge=$MS, replicas=$REPLICAS)"
+    case "$MU" in
+        *%) mu_n=$(awk -v p="${MU%\%}" -v t="$REPLICAS" 'BEGIN{printf "%d", int(p*t/100)}') ;;
+        *)  mu_n="$MU" ;;
+    esac
+    min_avail=$(( REPLICAS - mu_n ))
+    if [[ "$min_avail" -lt 1 ]]; then
+        warn "strategy allows 0 Ready mid-rollout (maxUnavailable=$MU → $mu_n of $REPLICAS)"
+    else
+        pass "strategy keeps ≥${min_avail} Ready mid-rollout"
+    fi
+
+    # --- PodDisruptionBudget: survives node drains? ---
+    echo
+    PDB_JSON=$("${KCTL_NS[@]}" get pdb -o json 2>/dev/null || echo '{"items":[]}')
+    pdb_name=$(echo "$PDB_JSON" | jq -r --arg n "$WEBAPP_NAME" \
+                 '.items[] | select(.spec.selector.matchLabels.app==$n) | .metadata.name' | head -1)
+    if [[ -z "$pdb_name" ]]; then
+        warn "no PodDisruptionBudget selects app=$WEBAPP_NAME — a node drain can evict all replicas at once"
+    else
+        pdb_min=$(echo "$PDB_JSON" | jq -r --arg p "$pdb_name" \
+                    '.items[] | select(.metadata.name==$p) | (.spec.minAvailable // .spec.maxUnavailable // "—")')
+        pdb_allowed=$(echo "$PDB_JSON" | jq -r --arg p "$pdb_name" \
+                    '.items[] | select(.metadata.name==$p) | .status.disruptionsAllowed // 0')
+        echo "  PDB $pdb_name: minAvailable=$pdb_min, allowedDisruptions=$pdb_allowed"
+        if [[ "$REPLICAS" -gt 1 && "${pdb_allowed:-0}" -eq 0 ]]; then
+            warn "PDB allows 0 disruptions — at the floor (or below minAvailable); a drain will block"
+        else
+            pass "PDB present ($pdb_name), allowedDisruptions=$pdb_allowed"
+        fi
+    fi
+
+    # --- Spread: config (topologySpread/anti-affinity) + runtime (distinct nodes) ---
+    echo
+    has_tsc=$(echo "$SAFE_JSON" | jq -e '(.spec.template.spec.topologySpreadConstraints // []) | length > 0' >/dev/null 2>&1 && echo 1 || echo 0)
+    has_paa=$(echo "$SAFE_JSON" | jq -e '.spec.template.spec.affinity.podAntiAffinity != null' >/dev/null 2>&1 && echo 1 || echo 0)
+    if [[ "$has_tsc" -eq 1 || "$has_paa" -eq 1 ]]; then
+        info "spread configured (topologySpreadConstraints=$has_tsc, podAntiAffinity=$has_paa)"
+    elif [[ "$REPLICAS" -gt 1 ]]; then
+        warn "no topologySpreadConstraints/podAntiAffinity — replicas may co-locate on one node"
+    fi
+    nodes_ready=$(echo "$PODS_JSON" | jq -r \
+        '[.items[] | select(.status.containerStatuses[0].ready==true) | .spec.nodeName] | unique | length' 2>/dev/null)
+    nodes_ready=${nodes_ready:-0}
+    echo "  Ready webapp pods span ${nodes_ready} distinct node(s)"
+    if [[ "$REPLICAS" -gt 1 && "$nodes_ready" -le 1 ]]; then
+        warn "all Ready webapp pods are on a single node — one node failure takes the app down"
+    elif [[ "$nodes_ready" -ge 2 ]]; then
+        pass "Ready pods spread across ${nodes_ready} nodes"
+    fi
+
+    # --- imagePullSecrets: anonymous ghcr pulls are rate-limit-prone (today's failure class) ---
+    has_ips=$(echo "$SAFE_JSON" | jq -r '(.spec.template.spec.imagePullSecrets // []) | length')
+    img=$(echo "$SAFE_JSON" | jq -r '.spec.template.spec.containers[0].image // ""')
+    if [[ "${has_ips:-0}" -eq 0 && "$img" == ghcr.io/* ]]; then
+        hint "webapp pulls $img anonymously (no imagePullSecrets) — anonymous ghcr.io pulls are rate-limited per node IP and can wedge a pod in ImagePullBackOff; consider an authenticated pull secret"
+    fi
+fi
+
+# ============================================================================
+section "4. Redis cache Deployment & pod"
 # ============================================================================
 
 if ! "${KCTL_NS[@]}" get deploy "$REDIS_NAME" >/dev/null 2>&1; then
@@ -348,7 +500,7 @@ else
 fi
 
 # ============================================================================
-section "4. Resource usage vs limits"
+section "5. Resource usage vs limits"
 # ============================================================================
 
 if ! "${KCTL_NS[@]}" top pods --no-headers >/dev/null 2>&1; then
@@ -411,7 +563,7 @@ else
 fi
 
 # ============================================================================
-section "5. Service, Ingress, TLS"
+section "6. Service, Ingress, TLS"
 # ============================================================================
 
 run "${KCTL_NS[@]}" get svc "$WEBAPP_NAME" "$REDIS_NAME" 2>/dev/null
@@ -466,7 +618,7 @@ else
 fi
 
 # ============================================================================
-section "6. ExternalSecrets (OpenBao sync)"
+section "7. ExternalSecrets (OpenBao sync)"
 # ============================================================================
 
 if ! "${KCTL_NS[@]}" get externalsecret >/dev/null 2>&1; then
@@ -506,7 +658,7 @@ else
 fi
 
 # ============================================================================
-section "7. In-pod HTTP health probe"
+section "8. In-pod HTTP health probe"
 # ============================================================================
 
 WEBAPP_POD=$("${KCTL_NS[@]}" get pod -l "app=$WEBAPP_NAME" \
@@ -579,7 +731,7 @@ except Exception as e:
 fi
 
 # ============================================================================
-section "8. Recent logs"
+section "9. Recent logs"
 # ============================================================================
 
 echo "  webapp (last 500 lines, scanning for ERROR/CRITICAL/Exception/Traceback):"
@@ -614,7 +766,7 @@ else
 fi
 
 # ============================================================================
-section "9. Recent namespace events"
+section "10. Recent namespace events"
 # ============================================================================
 
 EV=$("${KCTL_NS[@]}" get events --sort-by=.lastTimestamp 2>/dev/null | tail -20 || echo "")

@@ -1,0 +1,20 @@
+{{- if and .Values.podDisruptionBudget .Values.podDisruptionBudget.enabled }}
+# Keeps >=minAvailable webapp pods serving during VOLUNTARY disruptions
+# (node drains, maintenance, autoscaler scale-down). Does not protect against
+# involuntary loss (node crash) — that's what topologySpread + replicaCount
+# are for. With replicaCount:2 and minAvailable:1 a drain evicts one pod at a
+# time, waiting for its replacement to pass the readiness probe in between.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Values.webapp.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.webapp.name }}
+    group: {{ .Values.webapp.group }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ .Values.webapp.name }}
+{{- end }}

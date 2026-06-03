@@ -8,6 +8,13 @@ metadata:
     group: {{ .Values.webapp.group }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- if .Values.rollout }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ .Values.rollout.maxUnavailable }}
+      maxSurge: {{ .Values.rollout.maxSurge }}
+  {{- end }}
   selector:
     matchLabels:
       app: {{ .Values.webapp.name }}
@@ -16,6 +23,15 @@ spec:
       labels:
         app: {{ .Values.webapp.name }}
     spec:
+      {{- if and .Values.topologySpread .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.topologySpread.maxSkew }}
+          topologyKey: {{ .Values.topologySpread.topologyKey }}
+          whenUnsatisfiable: {{ .Values.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              app: {{ .Values.webapp.name }}
+      {{- end }}
       containers:
       - name: {{ .Values.webapp.name }}
         image: {{ .Values.webapp.container.image }}
@@ -114,3 +130,30 @@ spec:
             cpu: {{ .Values.webapp.container.limits.cpu }}
         ports:
         - containerPort: {{ .Values.webapp.container.port }}
+        {{- if and .Values.webapp.probes .Values.webapp.probes.enabled }}
+        # Startup gate: give a slow gunicorn boot time before liveness kicks
+        # in. Until this passes, liveness/readiness are not evaluated.
+        startupProbe:
+          httpGet:
+            path: {{ .Values.webapp.probes.path }}/live
+            port: {{ .Values.webapp.container.port }}
+          periodSeconds: {{ .Values.webapp.probes.startup.periodSeconds }}
+          failureThreshold: {{ .Values.webapp.probes.startup.failureThreshold }}
+        # Liveness: /live makes no DB call, so only a wedged process restarts.
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.webapp.probes.path }}/live
+            port: {{ .Values.webapp.container.port }}
+          periodSeconds: {{ .Values.webapp.probes.liveness.periodSeconds }}
+          timeoutSeconds: {{ .Values.webapp.probes.liveness.timeoutSeconds }}
+          failureThreshold: {{ .Values.webapp.probes.liveness.failureThreshold }}
+        # Readiness: /ready pings the DBs; a 503 pulls the pod from the
+        # Service and stalls a rollout instead of promoting a broken build.
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.webapp.probes.path }}/ready
+            port: {{ .Values.webapp.container.port }}
+          periodSeconds: {{ .Values.webapp.probes.readiness.periodSeconds }}
+          timeoutSeconds: {{ .Values.webapp.probes.readiness.timeoutSeconds }}
+          failureThreshold: {{ .Values.webapp.probes.readiness.failureThreshold }}
+        {{- end }}
