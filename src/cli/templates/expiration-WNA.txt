@@ -24,7 +24,7 @@ is associated with other, active projects your user data will remain
 unaffected.
 
 For additional details on data access and retention policies
-see https://arc.ucar.edu/docs/glade.
+see https://ncar-hpc-docs.readthedocs.io/en/latest/storage-systems/glade.
 
 Project Extensions:
 {% if recipient_role == 'lead' -%}
