@@ -2,6 +2,7 @@
 __pycache__/
 .ipynb_checkpoints/
 conda-env/
+conda-env-*/
 containers/sam-sql-dev/dump/
 collectors/logs/
 logs/

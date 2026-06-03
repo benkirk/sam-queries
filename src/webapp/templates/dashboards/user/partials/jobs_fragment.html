@@ -46,6 +46,11 @@
     <span title="{{ val }}">{{ val }}</span>
   {%- elif col in _seconds_to_hours -%}
     {{ val | fmt_hours }}
+  {%- elif col == 'qos_factor' -%}
+    {# A fractional charging multiplier (economy 0.7 / premium 1.5) — must
+       NOT go through fmt_number, which rounds to whole numbers and would
+       render 0.7 as "1" (indistinguishable from regular). #}
+    {{ val | fmt_factor }}
   {%- elif col in _byte_cols -%}
     {{ val | fmt_size }}
   {%- elif col in _numeric_cols -%}
@@ -146,6 +151,14 @@
                   {% if filters.qos == q %}selected{% endif %}>{{ q }}</option>
         {% endfor %}
       </select>
+    {% endif %}
+    {% if qos_badge %}
+      {# Single shared QoS across all rows: the per-row column is suppressed,
+         so surface the value (and charging multiplier) here instead of
+         leaving it silent. #}
+      <span class="badge bg-light text-dark me-1">
+        QoS: {{ qos_badge.name }}{% if qos_badge.factor is not none %} ({{ qos_badge.factor | fmt_factor }}){% endif %}
+      </span>
     {% endif %}
     <span class="ms-auto text-muted small">
       {{ total | fmt_number }} job{{ '' if total == 1 else 's' }}

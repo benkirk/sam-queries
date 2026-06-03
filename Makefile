@@ -6,7 +6,27 @@ CONDA_ROOT := $(shell conda info --base)
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
 .PHONY: help clean clobber distclean fixperms check perf check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
+        conda-env prune-old-envs print-env-hash migrate-legacy-env \
         migrate-status-current migrate-status-up migrate-status-down migrate-status-history migrate-status-revision migrate-status-stamp-head
+
+# -------------------------------------------------------------------
+# Conda env: content-addressed hashed dir + ./conda-env symlink swap.
+# See etc/config_env.sh — the user-facing entry point sources this rule.
+#
+# HPC_USAGE_QUERIES_REF is the branch / tag / sha of hpc-usage-queries
+# to pip install (mirrors compose.yaml + containers/webapp/Dockerfile).
+# It is part of the hash, so changing it triggers a rebuild into a new
+# ./conda-env-<sha>/ and an atomic symlink swap.
+# -------------------------------------------------------------------
+HPC_USAGE_QUERIES_REF ?= main
+
+# 12-char content hash of: env spec + python deps + hpc ref.
+# Drives both the build dir name and the cache-hit decision.
+ENV_HASH := $(shell { cat conda-env.yaml pyproject.toml; \
+                      echo "HPC_USAGE_QUERIES_REF=$(HPC_USAGE_QUERIES_REF)"; \
+                    } | shasum -a 256 | cut -c1-12)
+ENV_PREFIX := conda-env-$(ENV_HASH)
+ENV_STAMP  := $(ENV_PREFIX)/.sam-env-ready
 
 # -------------------------------------------------------------------
 # Alembic — system_status database
@@ -26,23 +46,24 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[32m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
-	@echo -e "\033[1mPattern rules:\033[0m"
-	@echo -e "  \033[32mmake <name>\033[0m              Create conda environment from <name>.yaml"
+	@echo -e "\033[1mConda env:\033[0m"
+	@echo -e "  \033[32mmake conda-env\033[0m           Build (if needed) ./conda-env-<hash>, symlink ./conda-env"
 	@echo -e "  \033[32mmake solve-<name>\033[0m        Dry-run solve for <name>.yaml (no install)"
+	@echo -e "  \033[32mmake print-env-hash\033[0m      Show the hash that drives env caching (debug)"
 	@echo ""
-	@echo -e "\033[1mExample:\033[0m"
-	@echo -e "  \033[33mmake conda-env\033[0m           Create conda environment from conda-env.yaml"
+	@echo -e "\033[1mExample (override hpc-usage-queries ref, triggers rebuild):\033[0m"
+	@echo -e "  \033[33mHPC_USAGE_QUERIES_REF=my-branch source etc/config_env.sh\033[0m"
 	@echo ""
 
 clean: ## Remove temporary files (*~)
 	rm *~
 
-clobber: ## Git clean except .env and conda-env/
-	git clean -xdf --exclude ".env" --exclude "conda-env/"
+clobber: ## Git clean except .env and conda-env* (symlink + hashed dirs)
+	git clean -xdf --exclude ".env" --exclude "conda-env" --exclude "conda-env-*"
 
-distclean: ## Clean everything including conda-env/
+distclean: ## Clean everything including the conda-env symlink and all hashed envs
 	$(MAKE) clobber
-	rm -rf conda-env/
+	rm -rf conda-env conda-env-*
 
 %.py : %.ipynb Makefile ## Convert Jupyter notebook to Python script
 	jupyter nbconvert --clear-output $<
@@ -50,14 +71,61 @@ distclean: ## Clean everything including conda-env/
 	chmod +x $@
 	git add $@ $<
 
-%: %.yaml pyproject.toml ## Create conda environment from YAML file
-	[ -d $@ ] && mv $@ $@.old && rm -rf $@.old & \
+conda-env: migrate-legacy-env $(ENV_STAMP) ## Build (if needed) and symlink ./conda-env -> ./conda-env-<hash>
+	@# Swap + prune inlined here. We deliberately do NOT recursively
+	@# invoke make for the prune, because any recipe line referencing the
+	@# special MAKE variable is force-executed even under dry-run, which
+	@# would clobber the symlink during `make -n`.
+	@current=$$(readlink conda-env 2>/dev/null || true); \
+	if [ "$$current" != "$(ENV_PREFIX)" ]; then \
+	    ln -snfv $(ENV_PREFIX) conda-env; \
+	    ( ls -1dt conda-env-* 2>/dev/null \
+	        | grep -v "^$(ENV_PREFIX)$$" \
+	        | tail -n +2 \
+	        | xargs -r rm -rf ) & \
+	fi
+
+# Pre-refactor checkouts have ./conda-env as a real directory rather than a
+# symlink. Rename it aside (one-shot) so the symlink-based flow can take
+# over. We use a `.legacy.<ts>` suffix (NOT matching conda-env-*) so
+# prune-old-envs never touches it — the user can rm it manually once happy.
+migrate-legacy-env:
+	@if [ -d conda-env ] && [ ! -L conda-env ]; then \
+	    legacy="conda-env.legacy.$$(date +%Y%m%d%H%M%S)"; \
+	    echo ">>> Migrating pre-refactor real dir ./conda-env -> ./$$legacy"; \
+	    echo ">>> (safe to 'rm -rf ./$$legacy' once the new env is verified)"; \
+	    mv conda-env "$$legacy"; \
+	fi
+
+# The stamp file is content-addressed (its path encodes the hash), so it
+# has NO mtime-based prereqs. A `touch conda-env.yaml` doesn't change the
+# hash → stamp still present → no rebuild. A real edit (new dep, ref
+# change) produces a different hash → new ENV_PREFIX → stamp absent →
+# rebuild. The `rm -rf` guards against a half-built dir from a prior
+# interrupted run that shares this hash.
+$(ENV_STAMP):
+	@echo ">>> Building $(ENV_PREFIX) (hpc-usage-queries ref: $(HPC_USAGE_QUERIES_REF))"
+	@rm -rf $(ENV_PREFIX)
 	$(config_env) && \
-	conda env create --file $< --prefix $@ && \
-	conda activate ./$@ && \
-	pip install -e ".[test]" && \
-	pip install 'hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git' && \
-	pipdeptree --all 2>/dev/null || true
+	    conda env create --file conda-env.yaml --prefix $(ENV_PREFIX) && \
+	    conda activate ./$(ENV_PREFIX) && \
+	    pip install -e ".[test]" && \
+	    pip install "hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git@$(HPC_USAGE_QUERIES_REF)" && \
+	    (pipdeptree --all 2>/dev/null || true)
+	@touch $(ENV_STAMP)
+
+prune-old-envs: ## Keep current + most-recent-previous conda-env-*; remove older
+	@current=$$(readlink conda-env 2>/dev/null); \
+	ls -1dt conda-env-* 2>/dev/null \
+	    | grep -v "^$$current$$" \
+	    | tail -n +2 \
+	    | xargs -r rm -rf
+
+print-env-hash: ## Print the computed ENV_HASH / ENV_PREFIX (debug)
+	@echo "HPC_USAGE_QUERIES_REF=$(HPC_USAGE_QUERIES_REF)"
+	@echo "ENV_HASH=$(ENV_HASH)"
+	@echo "ENV_PREFIX=$(ENV_PREFIX)"
+	@echo "ENV_STAMP=$(ENV_STAMP)"
 
 solve-%: %.yaml ## Dry-run solve for conda environment
 	$(config_env) && conda env create --file $< --prefix $@ --dry-run
