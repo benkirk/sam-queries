@@ -156,7 +156,7 @@ body {
 
 /* Nav row border */
 .navbar-wrapper.border-top {
-    border-top-color: var(--ncar-gray-light) !important;
+    border-top-color: #dee2e6 !important;
 }
 
 .navbar .navbar-collapse {
@@ -321,6 +321,11 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: var(--ncar-space-blue);
     font-weight: var(--font-weight-semi-bold);
     margin: 0;
+}
+
+.dashboard-inner-card {
+    border: 1px solid var(--bs-border-color);
+    box-shadow: none !important;
 }
 
 /* ============================================================================
@@ -1130,10 +1135,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .collapse-toggle.collapsed::after {
     transform: rotate(-90deg);
-}
-
-.collapse-toggle:hover {
-    color: var(--ncar-sky);
 }
 
 /* ============================================================================
