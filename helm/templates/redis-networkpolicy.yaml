@@ -1,0 +1,29 @@
+{{- if .Values.cache.enabled }}
+# Default-deny ingress to Redis except from webapp pods. Redis DB 0 caches
+# rendered HTML fragments (user_aware_cache_key views), so arbitrary write
+# access ≈ stored XSS injected into logged-in dashboards; DB 1 holds the
+# login rate-limit counters. Portable networking.k8s.io/v1 NetworkPolicy —
+# enforced by the cluster CNI (Cilium on nwc1).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Values.cache.name }}-allow-webapp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.cache.name }}
+    group: {{ .Values.webapp.group }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Values.cache.name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: {{ .Values.webapp.name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.cache.port }}
+{{- end }}

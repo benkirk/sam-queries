@@ -23,6 +23,15 @@ spec:
       labels:
         app: {{ .Values.webapp.name }}
     spec:
+      # The app never talks to the k8s API; don't hand a code-exec foothold
+      # the default ServiceAccount token.
+      automountServiceAccountToken: false
+      {{- with .Values.webapp.securityContext }}
+      {{- with .pod }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
       {{- if and .Values.topologySpread .Values.topologySpread.enabled }}
       topologySpreadConstraints:
         - maxSkew: {{ .Values.topologySpread.maxSkew }}
@@ -36,6 +45,12 @@ spec:
       - name: {{ .Values.webapp.name }}
         image: {{ .Values.webapp.container.image }}
         imagePullPolicy: IfNotPresent
+        {{- with .Values.webapp.securityContext }}
+        {{- with .container }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- end }}
         {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled (or .Values.webapp.oidcCredentials.enabled .Values.webapp.jhDbCredentials.enabled)))) }}
         env:
           {{- range $key, $value := .Values.webapp.env }}
