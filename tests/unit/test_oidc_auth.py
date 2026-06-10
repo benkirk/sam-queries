@@ -147,6 +147,20 @@ class TestOIDCAuthProvider:
         assert result is not None
         assert result.username == 'benkirk'
 
+    def test_handle_callback_stores_id_token(self, app, session):
+        """The raw id_token is stashed in the session for logout's id_token_hint."""
+        mock_client = MagicMock()
+        mock_client.authorize_access_token.return_value = {
+            'id_token': 'fake.jwt.value',
+            'userinfo': {'preferred_username': 'benkirk'},
+        }
+        provider = OIDCAuthProvider(db_session=session, oauth_client=mock_client)
+        with app.test_request_context():
+            from flask import session as flask_session
+            result = provider.handle_callback()
+            assert flask_session.get('oidc_id_token') == 'fake.jwt.value'
+        assert result is not None and result.username == 'benkirk'
+
 
 # ---------------------------------------------------------------------------
 # Provider factory tests
@@ -409,6 +423,64 @@ class TestLogout:
                 assert resp.status_code == 302
                 location = resp.headers.get('Location', '')
                 assert 'login.microsoftonline.com/logout' in location
+        finally:
+            app.config['AUTH_PROVIDER'] = 'stub'
+            app.extensions.pop('oauth', None)
+
+    def test_oidc_logout_passes_id_token_hint(self, app, session):
+        """Logout forwards the stored id_token as id_token_hint [PR295 P1-3]."""
+        mock_oauth = MagicMock()
+        mock_oauth.entra.load_server_metadata.return_value = {
+            'end_session_endpoint': 'https://login.microsoftonline.com/logout'
+        }
+
+        app.extensions['oauth'] = mock_oauth
+        app.config['AUTH_PROVIDER'] = 'oidc'
+        try:
+            with app.test_client() as c:
+                from sam.core.users import User
+                user = User.get_by_username(session, 'benkirk')
+                with c.session_transaction() as sess:
+                    sess['_user_id'] = str(user.user_id)
+                    sess['_fresh'] = True
+                    sess['oidc_id_token'] = 'fake.jwt.value'
+
+                resp = c.get('/auth/logout')
+                assert resp.status_code == 302
+                location = resp.headers.get('Location', '')
+                assert 'id_token_hint=fake.jwt.value' in location
+                # post_logout_redirect_uri is now properly URL-encoded
+                assert 'post_logout_redirect_uri=http%3A%2F%2F' in location
+
+                # The token must not survive logout in the session.
+                with c.session_transaction() as sess:
+                    assert 'oidc_id_token' not in sess
+        finally:
+            app.config['AUTH_PROVIDER'] = 'stub'
+            app.extensions.pop('oauth', None)
+
+    def test_oidc_logout_without_stored_token_omits_hint(self, app, session):
+        """No stored id_token (e.g. session predates this feature) → no hint param."""
+        mock_oauth = MagicMock()
+        mock_oauth.entra.load_server_metadata.return_value = {
+            'end_session_endpoint': 'https://login.microsoftonline.com/logout'
+        }
+
+        app.extensions['oauth'] = mock_oauth
+        app.config['AUTH_PROVIDER'] = 'oidc'
+        try:
+            with app.test_client() as c:
+                from sam.core.users import User
+                user = User.get_by_username(session, 'benkirk')
+                with c.session_transaction() as sess:
+                    sess['_user_id'] = str(user.user_id)
+                    sess['_fresh'] = True
+
+                resp = c.get('/auth/logout')
+                assert resp.status_code == 302
+                location = resp.headers.get('Location', '')
+                assert 'login.microsoftonline.com/logout' in location
+                assert 'id_token_hint' not in location
         finally:
             app.config['AUTH_PROVIDER'] = 'stub'
             app.extensions.pop('oauth', None)

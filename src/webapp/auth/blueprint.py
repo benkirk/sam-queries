@@ -1,7 +1,7 @@
 """Authentication blueprint for login/logout functionality."""
 
 import logging
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
@@ -141,7 +141,9 @@ def oidc_login():
 
 @bp.route('/oidc/callback')
 @_rate_limit.limiter.limit(
-    lambda: current_app.config['RATELIMIT_ANON'],
+    # Auth-attempt tier, same as the password login POST [PR295 P2-4] —
+    # the callback performs the actual code-for-token exchange.
+    lambda: current_app.config['RATELIMIT_AUTH_LOGIN'],
     key_func=_ip_key,
 )
 def oidc_callback():
@@ -187,6 +189,9 @@ def logout():
     """Logout: clear Flask session; for OIDC, also redirect to IdP end-session."""
     username = current_user.username
     auth_provider = current_app.config.get('AUTH_PROVIDER', 'stub')
+    # Pop before logout_user(): Flask-Login only clears its own keys, but
+    # popping early makes the token's lifetime unambiguous.
+    id_token = session.pop('oidc_id_token', None)
     logout_user()
     flash(f'Logged out {username}.', 'info')
     logger.info("Logout: user=%s provider=%s", username, auth_provider)
@@ -198,8 +203,15 @@ def logout():
                 metadata = oauth.entra.load_server_metadata()
                 end_session_url = metadata.get('end_session_endpoint')
                 if end_session_url:
-                    post_logout_uri = url_for('status_dashboard.index', _external=True)
-                    return redirect(f"{end_session_url}?post_logout_redirect_uri={post_logout_uri}")
+                    # id_token_hint lets the IdP end the right session without
+                    # an account-picker prompt [PR295 P1-3].
+                    params = {
+                        'post_logout_redirect_uri':
+                            url_for('status_dashboard.index', _external=True),
+                    }
+                    if id_token:
+                        params['id_token_hint'] = id_token
+                    return redirect(f"{end_session_url}?{urlencode(params)}")
             except Exception:
                 logger.exception("Failed to get OIDC end_session_endpoint")
 
