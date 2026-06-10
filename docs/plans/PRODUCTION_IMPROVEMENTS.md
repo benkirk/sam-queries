@@ -2,8 +2,10 @@
 
 ## STATUS (updated 2026-06-10)
 
-**Phase A (items 1–3) is COMPLETE** — implemented as 8 commits on `hardening`,
-PR #296 vs `staging`, upstream CI fully green, local suite 2250 passed.
+**Phase A (items 1–3) is COMPLETE AND VERIFIED IN PRODUCTION** — implemented as
+8 commits on `hardening`, PR #296 vs `staging`, upstream CI fully green, local
+suite 2250 passed; deployed to CIRRUS (`sha-77f82a3`) and verified live
+2026-06-10 (see *Production verification* below and the PR #296 comment).
 **Items 4 & 5 (Phase B) are OUTSTANDING** — see the Phase B section at the
 bottom for the restart point.
 
@@ -18,12 +20,34 @@ bottom for the restart point.
 | 6 | `69cc6d3` | Route authz: allocations GET [P0-4], users/search [P1-7], charges → `require_project_member_access` [P1-4], rolling/threshold [P1-6], `members_fragment` gated, thin decorators (`require_member_management` / `require_admin_change` / `require_threshold_edit`) replace hand-rolled checks [P1-5]; HTMX-aware 403 handler |
 | 7 | `97bd282` | OIDC polish: callback on `RATELIMIT_AUTH_LOGIN` [P2-4]; `id_token_hint` on logout (token stashed in session at callback) [P1-3] |
 
-Remaining Phase A verification (interactive, by Ben): webdev:5050 smoke
-(stub click-login, HTMX member add/remove under CSRF, fonts/icons/charts under
-SRI), webapp:7050 `curl -sI` headers, negative boot
-(`docker compose run -e FLASK_CONFIG=production webapp` must refuse). Note:
-`flask-wtf` is a new dependency — fresh checkouts rebuild the env via
-`source etc/config_env.sh`.
+**Local interactive verification — DONE 2026-06-10** (Playwright + curl against
+rebuilt containers): webdev:5050 stub click-login, HTMX member add/remove round-trip
+under CSRF, fonts/icons/charts under SRI; webapp:7050 gunicorn headers + CSRF
+round-trip; negative boots refused with the expected `EnvironmentError`s;
+`/database` still served locally. Note: `flask-wtf` is a new dependency — fresh
+checkouts rebuild the env via `source etc/config_env.sh`.
+
+**Production verification — DONE 2026-06-10** (CIRRUS deploy `sha-77f82a3`,
+evidence in the PR #296 comment):
+- `cirrus_healthcheck.sh` 20 PASS / 2 WARN / 0 FAIL (both WARNs pre-existing:
+  `baotoken` ES housekeeping + rollout-transient events); re-run post-smoke, same.
+- Deployment env canary: `FLASK_CONFIG=production`, `AUTH_PROVIDER=oidc`,
+  `DISABLE_AUTH=0`, `FLASK_ADMIN_ENABLED=0`; pods Ready ⇒ fail-closed
+  `validate()` accepted the real OIDC env.
+- HSTS live (`max-age=31536000; includeSubDomains`) + nosniff/XFO/Referrer-Policy;
+  `/database/` → 404; login page OIDC-only with SRI attrs; anon API → 302.
+- CSRF: tokenless POST → 400 both anon and authenticated; with-token POST passes
+  the gate (no-write bogus-username probe).
+- Real Entra/Duo login: zero SRI digest errors; session cookie post-login
+  **1,920 bytes** (`Secure; HttpOnly; SameSite=Lax`) — under the ~4 KB ceiling
+  with the id_token stored.
+- Logout redirect captured: end-session URL carries `id_token_hint` + encoded
+  `post_logout_redirect_uri`; SAM session dead afterward.
+- **Follow-up (config, not code)**: Entra parks on its "Sign out" page instead of
+  following `post_logout_redirect_uri` — register
+  `https://samuel.k8s.ucar.edu/status/` as a post-logout redirect URI in the
+  Entra app registration.
+- ZAP passive-scan rerun: deferred (separate session).
 
 ## Context
 
