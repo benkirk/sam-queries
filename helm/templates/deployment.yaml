@@ -23,6 +23,9 @@ spec:
       labels:
         app: {{ .Values.webapp.name }}
     spec:
+      # The app never talks to the k8s API; don't hand a code-exec foothold
+      # the default ServiceAccount token.
+      automountServiceAccountToken: false
       {{- with .Values.webapp.securityContext }}
       {{- with .pod }}
       securityContext:
