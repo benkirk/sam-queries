@@ -43,6 +43,21 @@ cache:
   limits:
     memory: 96Mi
     cpu: 500m
+  # Pod/container security hardening. redis:7-alpine ships uid=999(redis)
+  # gid=1000(redis) (verified: `docker run --rm redis:7-alpine id redis`);
+  # its entrypoint execs redis-server directly when started non-root, and
+  # `--save ""` means no /data writes.
+  securityContext:
+    pod:
+      runAsNonRoot: true
+      runAsUser: 999
+      runAsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    container:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
 
 webapp:
   name: samuel                            # Name for k8s objects
@@ -74,6 +89,23 @@ webapp:
       periodSeconds: 10
       timeoutSeconds: 5                  # readiness pings the DBs
       failureThreshold: 3
+  # Pod/container security hardening. runAsUser MUST match the UID created in
+  # containers/webapp/Dockerfile's production stage (USER 1000); runAsNonRoot
+  # makes the kubelet enforce non-root even if a future image rebuild loses
+  # the USER directive. readOnlyRootFilesystem deliberately deferred —
+  # matplotlib's /tmp/mpl cache, gunicorn temp files, and the /var/log/sam
+  # audit log all write the container layer.
+  securityContext:
+    pod:
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    container:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
   container:                              # full image path
     image: ghcr.io/benkirk/sam-queries/webapp:main
     port: 5050                            # Port your container listens on
@@ -85,6 +117,7 @@ webapp:
       cpu: 16                             # Maximum CPU allowed
   env:
     DISABLE_AUTH: "0"                     # Explicitly disabled — must remain 0 in production
+    FLASK_ADMIN_ENABLED: "0"              # Flask-Admin /database browser stays unmounted on the public deploy
     FLASK_DEBUG: "0"
     FLASK_CONFIG: "production"            # Selects ProductionConfig (DEBUG=False, SESSION_COOKIE_SECURE=True)
     AUDIT_ENABLED: "1"

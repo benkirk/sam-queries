@@ -1,9 +1,6 @@
 # AVD-DS-0001 (MEDIUM): Specify a tag in the 'FROM' statement
 AVD-DS-0001
 
-# AVD-DS-0002 (HIGH): Specify at least 1 USER command in Dockerfile with non-root user as argument
-AVD-DS-0002
-
 # AVD-DS-0013 (MEDIUM): RUN should not be used to change directory
 AVD-DS-0013
 

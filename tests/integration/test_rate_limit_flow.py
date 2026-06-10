@@ -75,6 +75,18 @@ def test_login_post_429s_after_five_attempts(client, app, enabled_limiter):
     assert resp.status_code == 429
 
 
+def test_oidc_callback_uses_auth_login_tier(client, app, enabled_limiter):
+    """/auth/oidc/callback throttles at RATELIMIT_AUTH_LOGIN (5/min), the
+    auth-attempt tier, not the looser anon tier [PR295 P2-4]."""
+    for _ in range(5):
+        # No oauth extension under TestingConfig → flash + 302 to login;
+        # the limiter still counts the hit.
+        resp = client.get('/auth/oidc/callback')
+        assert resp.status_code != 429
+    resp = client.get('/auth/oidc/callback')
+    assert resp.status_code == 429
+
+
 # ── AUTHED default applies globally ────────────────────────────────────
 
 

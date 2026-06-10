@@ -23,7 +23,20 @@ def auto_login_middleware(app, db):
     Usage:
         from webapp.utils.dev_auth import auto_login_middleware
         auto_login_middleware(app, db)
+
+    The before_request hook is only registered when the loaded config class
+    permits it (DEV_AUTO_LOGIN_ALLOWED, True only in DevelopmentConfig) — so
+    DISABLE_AUTH=1 can never bypass auth under Production/Testing configs,
+    even for app builds that skip ProductionConfig.validate().
     """
+    if not app.config.get('DEV_AUTO_LOGIN_ALLOWED', False):
+        if os.environ.get('DISABLE_AUTH') == '1':
+            app.logger.warning(
+                "DISABLE_AUTH=1 is set but dev auto-login is not permitted "
+                "under FLASK_CONFIG=%s; ignoring.",
+                os.getenv('FLASK_CONFIG', 'development'),
+            )
+        return
 
     @app.before_request
     def before_request():

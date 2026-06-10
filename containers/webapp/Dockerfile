@@ -58,6 +58,21 @@ FROM base AS production
 # Explicitly clear dev-auth vars — these must never be set in the production image
 ENV DISABLE_AUTH=0
 ENV DEV_AUTO_LOGIN_USER=
+
+# Run as a fixed non-root UID (pairs with helm runAsNonRoot/runAsUser).
+# - /var/log/sam: audit-log dir — chown so RotatingFileHandler writes there in
+#   k8s (locally a bind mount overrides it; see compose.yaml).
+# - /code (non-recursive): CI runs pytest inside this container and writes
+#   /code/.coverage + /code/htmlcov — the dir inode must be owned by the app UID.
+RUN useradd --uid 1000 --user-group --create-home --shell /usr/sbin/nologin sam && \
+    mkdir -p /var/log/sam && \
+    chown sam:sam /var/log/sam /code
+
+# Matplotlib builds a font cache at import; point it at world-writable /tmp.
+ENV MPLCONFIGDIR=/tmp/mpl
+
+# Numeric (not "USER sam") so the kubelet's runAsNonRoot check can verify the UID.
+USER 1000
 CMD ["gunicorn", "-c", "containers/webapp/gunicorn_config.py", "webapp.run:create_app()"]
 
 #-------------------------------------------------------------------------------

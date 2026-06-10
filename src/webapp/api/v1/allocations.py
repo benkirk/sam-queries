@@ -31,7 +31,8 @@ register_error_handlers(bp)
 
 @bp.route('/<int:allocation_id>', methods=['GET'])
 @login_required
-def get_allocation(allocation_id):
+@require_allocation_permission(Permission.VIEW_ALLOCATIONS)
+def get_allocation(allocation):
     """
     GET /api/v1/allocations/<allocation_id> - Get allocation details with usage data.
 
@@ -39,13 +40,10 @@ def get_allocation(allocation_id):
         JSON with allocation details including usage, charges, and balances
 
     Requires:
-        User must be authenticated
-        Note: Permission checks could be enhanced to verify project membership
+        VIEW_ALLOCATIONS permission, OR lead/admin of the allocation's
+        project (or any ancestor). Previously any authenticated user could
+        enumerate every allocation balance [PR295 P0-4].
     """
-    allocation = db.session.get(Allocation, allocation_id)
-    if not allocation:
-        return jsonify({'error': f'Allocation {allocation_id} not found'}), 404
-
     # Get account for schema context
     account = allocation.account
 

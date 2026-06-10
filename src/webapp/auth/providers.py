@@ -120,6 +120,13 @@ class OIDCAuthProvider(AuthProvider):
     def handle_callback(self) -> Optional[User]:
         """Exchange the authorization code for tokens, validate, and resolve SAM user."""
         token = self.oauth_client.authorize_access_token()
+        # Stash the raw id_token for logout's id_token_hint. Entra id_tokens
+        # run ~1.5-2.5 KB against the ~4 KB cookie-session ceiling; current
+        # session contents are small, so it fits — if the session ever
+        # grows, drop this and accept the IdP account-picker on logout.
+        if token.get('id_token'):
+            from flask import session
+            session['oidc_id_token'] = token['id_token']
         userinfo = token.get('userinfo', {})
         if not userinfo:
             logger.warning("OIDC callback: no userinfo in token response")

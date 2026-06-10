@@ -15,7 +15,7 @@ from flask_login import LoginManager, current_user
 import sam.session
 import system_status.session
 
-from webapp.extensions import db
+from webapp.extensions import db, csrf
 from webapp.admin import admin_bp, init_admin
 from webapp.auth import bp as auth_bp
 from webapp.dashboards.user import bp as user_dashboard_bp
@@ -156,6 +156,35 @@ def create_app(*, config_overrides: dict | None = None):
     # Initialize db with app
     db.init_app(app)
 
+    # CSRF protection (Flask-WTF). HTMX requests carry the token via the
+    # hx-headers attribute on <body> in dashboards/base.html; plain forms
+    # embed a hidden csrf_token input. Basic-auth M2M routes are exempted
+    # at the view with @csrf.exempt.
+    csrf.init_app(app)
+
+    from flask_wtf.csrf import CSRFError
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(e):
+        from flask import jsonify
+        app.logger.warning('CSRF failure: %s %s (%s)',
+                           request.method, request.path, e.description)
+        if request.path.startswith('/api/'):
+            return jsonify({'error': f'CSRF validation failed: {e.description}'}), 400
+        if request.headers.get('HX-Request'):
+            return ('<div class="alert alert-danger">Your session expired. '
+                    'Please reload the page and try again.</div>', 400)
+        return f'CSRF validation failed: {e.description}', 400
+
+    # HTMX-aware 403: access-control decorators abort(403); HTMX swaps need
+    # a fragment, not the default HTML error page. API blueprints register
+    # their own JSON 403 handlers (webapp.api.helpers), which take precedence.
+    @app.errorhandler(403)
+    def handle_403(e):
+        if request.headers.get('HX-Request'):
+            return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
+        return e
+
     # Initialize caching. Backend selection priority:
     #   testing             → NullCache (no shared state across tests)
     #   CACHE_REDIS_URL set → RedisCache (shared across all gunicorn workers + pods)
@@ -210,8 +239,12 @@ def create_app(*, config_overrides: dict | None = None):
     @app.after_request
     def _log_request(response):
         from flask import g, request
-        elapsed_ms = round((time.monotonic() - g.request_start) * 1000, 1)
-        response.headers['X-Request-ID'] = g.request_id
+        # An earlier before_request hook (e.g. CSRF rejection) can abort the
+        # request before _set_request_id runs — fall back gracefully.
+        start = g.get('request_start')
+        elapsed_ms = round((time.monotonic() - start) * 1000, 1) if start else 0.0
+        request_id = g.get('request_id', request.headers.get('X-Request-ID', '-'))
+        response.headers['X-Request-ID'] = request_id
         # Healthcheck probes fire every 10s — log only when they fail.
         is_health_probe = (
             _HEALTH_PATH_RE.match(request.path)
@@ -221,7 +254,7 @@ def create_app(*, config_overrides: dict | None = None):
             app.logger.info(
                 '%s %s → %s  (%.1f ms)  rid=%s',
                 request.method, request.path, response.status_code,
-                elapsed_ms, g.request_id,
+                elapsed_ms, request_id,
             )
         if elapsed_ms > 5000:
             app.logger.warning(
@@ -230,6 +263,10 @@ def create_app(*, config_overrides: dict | None = None):
             )
         return response
     # =========================================================================
+
+    # Baseline security response headers (HSTS prod-gated, nosniff, XFO, ...)
+    from webapp.utils.security_headers import init_security_headers
+    init_security_headers(app)
 
     # Initialize OIDC (Authlib) when configured
     if app.config.get('AUTH_PROVIDER') == 'oidc':
@@ -272,6 +309,10 @@ def create_app(*, config_overrides: dict | None = None):
 
     # Register context processor for RBAC in templates
     app.context_processor(rbac_context_processor)
+
+    # Central CDN-asset registry (pinned versions + SRI) for templates
+    from webapp.vendor_assets import vendor_assets_context_processor
+    app.context_processor(vendor_assets_context_processor)
 
     # Expose optional build provenance (set by CI via Docker build args) to all templates
     @app.context_processor
@@ -333,8 +374,10 @@ def create_app(*, config_overrides: dict | None = None):
     if app.config.get('DEBUG'):
         app.jinja_env.cache = None
 
-    # Initialize Flask-Admin
-    init_admin(app)
+    # Initialize Flask-Admin (kill-switch: OFF by default in production —
+    # the /database browser is never mounted on the public deploy)
+    if app.config.get('FLASK_ADMIN_ENABLED', False):
+        init_admin(app)
 
     # Auto-login middleware for development (enabled via DISABLE_AUTH=1)
     from webapp.utils.dev_auth import auto_login_middleware

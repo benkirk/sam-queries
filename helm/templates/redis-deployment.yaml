@@ -17,10 +17,24 @@ spec:
       labels:
         app: {{ .Values.cache.name }}
     spec:
+      # Redis never talks to the k8s API; don't auto-mount the SA token.
+      automountServiceAccountToken: false
+      {{- with .Values.cache.securityContext }}
+      {{- with .pod }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
       containers:
       - name: redis
         image: {{ .Values.cache.image }}
         imagePullPolicy: IfNotPresent
+        {{- with .Values.cache.securityContext }}
+        {{- with .container }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- end }}
         args:
           - "redis-server"
           - "--save"

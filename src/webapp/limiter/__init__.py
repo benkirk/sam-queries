@@ -93,6 +93,15 @@ class Limiting:
                 self._redis_client = None
                 self._resolved_storage_uri = 'memory://'
         else:
+            if not uri:
+                logger.warning(
+                    "Limiter: RATELIMIT_STORAGE_URI is not set; rate limits "
+                    "fall back to per-worker memory:// and are NOT shared "
+                    "across gunicorn workers/pods.")
+            elif uri != 'memory://':   # explicit memory:// is intentional
+                logger.warning(
+                    "Limiter: RATELIMIT_STORAGE_URI=%r is not a redis:// URI; "
+                    "falling back to per-worker memory://.", uri)
             self._redis_client = None
             self._resolved_storage_uri = 'memory://'
 

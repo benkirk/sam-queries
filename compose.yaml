@@ -24,6 +24,10 @@ services:
     networks:
       - sam-network
     volumes:
+      # Bind-mounted audit-log dir. The production image runs as non-root
+      # UID 1000; if this host dir isn't writable by that UID the audit
+      # logger falls back to /tmp inside the container. One-time fix:
+      #   chmod ugo+rwX ./logs/prod
       - ./logs/prod:/var/log/sam
     # Pass the host's `.env` through as a Docker env_file. Every key the
     # user maintains there (MAIL_*, SAM_LEGACY_*, STATUS_API_*, etc.)
