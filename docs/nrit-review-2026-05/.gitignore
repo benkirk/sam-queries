@@ -1,0 +1,5 @@
+.zap-session/
+zap-root-ca.pem
+zap-manual-report.html
+zap-auth-report.html
+run-zap-authenticated.sh
