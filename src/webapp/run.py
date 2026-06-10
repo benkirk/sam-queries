@@ -231,6 +231,10 @@ def create_app(*, config_overrides: dict | None = None):
         return response
     # =========================================================================
 
+    # Baseline security response headers (HSTS prod-gated, nosniff, XFO, ...)
+    from webapp.utils.security_headers import init_security_headers
+    init_security_headers(app)
+
     # Initialize OIDC (Authlib) when configured
     if app.config.get('AUTH_PROVIDER') == 'oidc':
         from authlib.integrations.flask_client import OAuth
