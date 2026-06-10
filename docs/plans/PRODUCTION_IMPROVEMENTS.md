@@ -1,452 +1,211 @@
-# Production Readiness — SAM Web Application
-## Status & Roadmap
-
-*Last updated: 2026-02-23 — webprod branch*
-
----
-
-## Executive Summary
-
-**8 of 12 original items complete.** All four *Critical* items are done. All
-*High* items that are fully self-contained in application code are done. The
-remaining work falls into three buckets:
-
-1. **One open item from the original plan** that needs to be done before launch
-   (security response headers, #4).
-2. **Several new items** identified for a public-facing deployment that were not
-   in the original assessment (ProxyFix, least-privilege DB account, CSRF audit,
-   container hardening, custom error pages, dependency scanning).
-3. **Post-launch items** that are valuable but not blocking (CSP, rate limiting,
-   security test suite, metrics/alerting).
-
-**Critical security baseline: complete.** The app can be deployed without fear
-of catastrophic auth bypass, session hijacking, or secret leakage. The remaining
-open items reduce the attack surface further and improve operational visibility.
-
----
-
-## Status at a Glance
-
-### Original 12-Item Plan
-
-| # | Item | Priority | Status |
-|---|------|----------|--------|
-| 1 | Hardcoded `SECRET_KEY` | Critical | ✅ Done |
-| 2 | Dev auth enabled by default | Critical | ✅ Done |
-| 3 | Session cookie security flags | Critical | ✅ Done |
-| 4 | HTTP security headers | High | 🔴 Open — next |
-| 5 | Gunicorn production config | High | ✅ Done |
-| 6 | Health check + DB pool endpoints | High | ✅ Done |
-| 7 | Config / env-var validation | High | ✅ Done |
-| 8 | Structured logging | High | ✅ Done |
-| 9 | Request ID tracking | High | ✅ Done |
-| 10 | Security testing suite | Medium | 🔴 Open |
-| 11 | Deployment checklist / env template | Medium | 🔴 Open |
-| 12 | Metrics & alerting | Future | 🔴 Open |
-
-### New Items for Public-Facing Deployment
-
-| # | Item | Priority | Status |
-|---|------|----------|--------|
-| A | Rate limiting | High | 🔴 Open |
-| B | CSRF protection audit | High | 🔴 Open |
-| C | Content Security Policy | High | 🔴 Open (needs audit first) |
-| D | Container: non-root user | Medium | 🔴 Open |
-| E | Database least-privilege account | High | 🔴 Open |
-| F | Custom error pages | Low | 🔴 Open |
-| G | Dependency vulnerability scanning | Medium | 🔴 Open |
-| H | ProxyFix + reverse-proxy documentation | Low | 🔴 Open (deferred — topology TBD) |
-| I | Session fixation / invalidation audit | Low | 🔴 Open |
-| J | Secrets management path | Low | 🔴 Open |
-
----
-
-## Completed Work
-
-### 1 — Hardcoded `SECRET_KEY`
-`FLASK_SECRET_KEY` env var required; `ValueError` raised at startup if unset or
-too short (<32 chars). Added to `.env.example` and `containers/webapp/Dockerfile`.
-**Commit**: `101e383` · **Files**: `src/webapp/run.py`, `.env.example`
-
-### 2 — Dev Auth Safeguards
-`compose.yaml`: `DISABLE_AUTH=1` / `DEV_AUTO_LOGIN_USER=benkirk` in the `webdev`
-service carry `# WARNING: dev-only — NEVER set in production` comments. The
-`production` Dockerfile stage now explicitly sets `ENV DISABLE_AUTH=0` and
-`ENV DEV_AUTO_LOGIN_USER=` so the production image clears these vars at build time.
-**Commit**: `1a53690` · **Files**: `compose.yaml`, `containers/webapp/Dockerfile`
-
-### 3 — Session Cookie Security Flags
-`SESSION_COOKIE_SECURE=True`, `SESSION_COOKIE_HTTPONLY=True`,
-`SESSION_COOKIE_SAMESITE='Lax'`, `PERMANENT_SESSION_LIFETIME=12 h` wired into
-`ProductionConfig`; `DevelopmentConfig` sets `SECURE=False` (no HTTPS in dev).
-**Commit**: `101e383` · **File**: `src/webapp/config.py`
-
-### 5 — Gunicorn Production Config
-`containers/webapp/gunicorn_config.py`: workers = `(2 × CPU) + 1`,
-`preload_app=True`, `max_requests=1000`, logs to stdout/stderr for container log
-aggregation. Production Dockerfile CMD updated.
-**Commit**: `eb7fa8f` · **File**: `containers/webapp/gunicorn_config.py`
-
-### 6 — Health Check + DB Pool Monitoring
-`src/webapp/api/v1/health.py` blueprint at `/api/v1/health/`:
-- `GET /` and `GET /ready` — ping both DB binds, 200 / 503
-- `GET /live` — immediate alive, no DB call (k8s liveness probe)
-- `GET /db-pool` — pool stats for all engines (admin login required)
-
-22 tests in `tests/api/test_health_endpoints.py`.
-**Commits**: `f6840ae`, `a5991aa`, `ddd052a`
-
-### 7 — Config / Environment-Variable Validation
-`src/config.py`: `BaseConfig` centralises all env-var reading; `BaseConfig.validate()`
-fails fast at startup with a clear list of missing variables.
-`src/webapp/config.py`: `DevelopmentConfig` / `ProductionConfig` / `TestingConfig`
-hierarchy with `ProductionConfig.validate()` checking `FLASK_SECRET_KEY` length.
-CLI entry points call `BaseConfig.validate()` before any DB connection attempt.
-**Commit**: `a1358ed` · **Files**: `src/config.py`, `src/webapp/config.py`
-
-### 8 & 9 — Structured Logging + Request ID Tracking
-`src/webapp/logging_config.py`: `configure_logging(app)` — fixed-format handler
-wired into `app.logger`; console always on; optional `RotatingFileHandler` via
-`LOG_FILE`; level from `LOG_LEVEL` (default `INFO`); noisy third-party loggers
-silenced to `WARNING`.
-
-`src/webapp/run.py`: `_set_request_id()` before-request hook stores `g.request_id`
-(from `X-Request-ID` header or new UUID4) and `g.request_start`;
-`_log_request()` after-request hook logs `METHOD path → status  elapsed  rid=…`
-and echoes `X-Request-ID` in the response. Slow-request warning at >5 000 ms.
-
-`src/sam/session/__init__.py`: replaced bare `print()` with `logging.debug()`.
-**Commit**: `1a53690` · **Files**: `src/webapp/logging_config.py`, `src/webapp/run.py`,
-`src/webapp/config.py` (`LOG_LEVEL`, `LOG_FILE` attrs), `src/sam/session/__init__.py`
-
----
-
-## Open Items — Original Plan
-
----
-
-### #4 — HTTP Security Headers *(High, ~30 min — do next)*
-
-**Background**: flask-talisman was attempted (`f6840ae`) and immediately reverted
-(`a5991aa`) because `force_https=True` caused an infinite redirect loop in the
-containerised deployment (HTTP-only container behind a TLS-terminating proxy).
-
-**Recommended approach** — manual `after_request` hook in `src/webapp/run.py`:
-
-```python
-@app.after_request
-def _add_security_headers(response):
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options']        = 'SAMEORIGIN'
-    response.headers['Referrer-Policy']        = 'strict-origin-when-cross-origin'
-    if not app.debug:
-        response.headers['Strict-Transport-Security'] = (
-            'max-age=31536000; includeSubDomains'
-        )
-    return response
-```
-
-**CSP deferred**: a Content-Security-Policy header is the highest-value header
-but requires auditing which CDN origins and inline scripts the templates use
-(Bootstrap CDN, jQuery CDN, Font Awesome CDN, chart.js, inline `<script>` blocks
-in several templates). See item **C** below.
-
-**Files**: `src/webapp/run.py`
-
----
-
-### #10 — Security Testing Suite *(Medium, ~3 h)*
-
-Current coverage (~77%) is strong on happy paths but thin on security boundaries.
-Create `tests/security/`:
-
-- **`test_auth_boundaries.py`**: unauthenticated access → redirect, cross-user
-  data access → 403, admin-only endpoints → 403 for regular users
-- **`test_input_validation.py`**: SQLi in search params returns 200/400 (not 500),
-  no data leakage in error responses
-- **`test_csrf.py`**: state-changing POST endpoints reject requests without a
-  valid CSRF token when `WTF_CSRF_ENABLED=True`
-
-Start with auth-boundary tests (highest impact, least effort).
-
----
-
-### #11 — Deployment Checklist + `.env.production.example` *(Medium, ~30 min)*
-
-**`docs/DEPLOYMENT.md`** — pre-flight checklist:
-- `FLASK_SECRET_KEY` set (≥32 chars), `FLASK_CONFIG=production`
-- `DISABLE_AUTH` not set / `DEV_AUTO_LOGIN_USER` not set
-- DB credentials use a least-privilege account (see item **E**)
-- SSL/TLS cert valid, HSTS confirmed
-- Health endpoint responding (`GET /api/v1/health/`)
-- Log paths exist and are writable
-- Rollback procedure documented
-
-**`.env.production.example`** — annotated template for:
-`FLASK_SECRET_KEY`, `FLASK_CONFIG`, `SAM_DB_*`, `STATUS_DB_*`,
-`LOG_LEVEL`, `LOG_FILE`, `AUDIT_ENABLED`, `AUDIT_LOG_PATH`
-
----
-
-### #12 — Metrics & Alerting *(Future)*
-
-Not blocking. Revisit once the application is running in production and baseline
-traffic patterns are known.
-
-Options: `prometheus-flask-exporter` + Grafana, or Sentry for error tracking.
-Key metrics to capture when the time comes: request latency p95, error rate (5xx),
-DB pool utilisation (already available via `/api/v1/health/db-pool`).
-
----
-
-## New Items for Public-Facing Deployment
-
----
-
-### H — ProxyFix Middleware *(Low, ~15 min — deferred, topology TBD)*
-
-**Status**: deferred. The production deployment topology is not yet defined in
-the repo (no nginx service, no reverse-proxy config). ProxyFix is only needed if
-gunicorn sits behind a TLS-terminating proxy (nginx, load balancer, etc.) that
-forwards `X-Forwarded-Proto`. Without it in that scenario, Flask generates
-`http://` URLs and HSTS is ineffective.
-
-**When needed**, one line in `create_app()` in `src/webapp/run.py`:
-
-```python
-from werkzeug.middleware.proxy_fix import ProxyFix
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-```
-
-Revisit when the production network topology is finalised.
-
----
-
-### E — Database Least-Privilege Account *(High, ~20 min)*
-
-**Problem**: `compose.yaml`, `.env`, and the Dockerfile default `.env` all connect
-as `root`. In production a compromised app could drop tables or exfiltrate the
-entire database.
-
-**Fix**: create a dedicated MySQL account with only the permissions the app needs:
-
-```sql
-CREATE USER 'sam_webapp'@'%' IDENTIFIED BY '<strong-password>';
-GRANT SELECT, INSERT, UPDATE, DELETE ON sam.* TO 'sam_webapp'@'%';
--- No DROP, CREATE, GRANT, ALTER
-FLUSH PRIVILEGES;
-```
-
-Update `SAM_DB_USERNAME` / `SAM_DB_PASSWORD` in `.env.production.example` to
-reference this account. The test suite uses its own database and is unaffected.
-
----
-
-### B — CSRF Protection Audit *(High, ~20 min)*
-
-**Problem**: `TestingConfig` sets `WTF_CSRF_ENABLED = False` but
-`ProductionConfig` and `DevelopmentConfig` have no explicit setting. CSRF
-protection is only active if Flask-WTF's `CSRFProtect(app)` is initialised in
-`create_app()`. This needs to be confirmed and, if absent, added.
-
-**Fix**:
-1. Check whether `CSRFProtect` is already initialised (grep `run.py`, `extensions.py`).
-2. If not, add `from flask_wtf.csrf import CSRFProtect; csrf = CSRFProtect(app)`.
-3. Ensure all state-changing forms include `{{ form.hidden_tag() }}` or the
-   AJAX endpoints send `X-CSRFToken`.
-4. Add a test to `tests/security/test_csrf.py`.
-
----
-
-### A — Rate Limiting *(High, ~30 min)*
-
-**Problem**: The login endpoint and admin API search are open to brute-force and
-scraping without any rate limiting.
-
-**Options**:
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| nginx `limit_req` | Zero app code, works across all services | Requires nginx config access |
-| `flask-limiter` | Per-endpoint granularity, dev-friendly | Adds dependency; needs Redis for multi-worker |
-
-**Recommendation**: use nginx `limit_req_zone` for the `/auth/login` endpoint
-at the proxy layer (no code change), and add `flask-limiter` decorators to the
-admin search and user-enumeration API endpoints.
-
-**Flask-Limiter minimal setup**:
-```python
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-limiter = Limiter(get_remote_address, app=app, default_limits=["200/day", "50/hour"])
-
-# On the login route:
-@auth_bp.route('/login', methods=['POST'])
-@limiter.limit("10/minute")
-def login(): ...
-```
-
----
-
-### C — Content Security Policy *(High, needs audit first)*
-
-**Problem**: CSP is the most effective browser-side XSS mitigation but requires
-knowing every external origin and every inline script the templates use.
-
-**Known CDN origins** (from templates):
-- `https://cdn.jsdelivr.net` (Bootstrap, Popper)
-- `https://code.jquery.com`
-- `https://cdnjs.cloudflare.com` (Font Awesome)
-
-**Inline scripts**: several templates use `<script>` blocks and `onclick=`
-attributes (member-management, jobs-table, admin dashboard). These require either:
-- `'unsafe-inline'` (weakens CSP significantly), or
-- Refactoring inline scripts to external `.js` files + nonce-based CSP
-
-**Recommended path**:
-1. Audit all templates for inline scripts and CDN domains.
-2. Start with a report-only CSP header (`Content-Security-Policy-Report-Only`)
-   to discover violations without breaking anything.
-3. Move inline scripts to the existing JS files in `src/webapp/static/js/`.
-4. Enable enforcing CSP once violations are resolved.
-
----
-
-### D — Container: Non-Root User *(Medium, ~15 min)*
-
-**Problem**: The production Docker image runs as `root`. If the app is
-compromised, the attacker has root access to the container.
-
-**Fix**: add to `containers/webapp/Dockerfile` production stage:
-
-```dockerfile
-RUN addgroup --system sam && adduser --system --ingroup sam sam
-# Ensure log directory is writable by sam user
-RUN mkdir -p /var/log/sam && chown sam:sam /var/log/sam
-USER sam
-```
-
-Verify that `AUDIT_LOG_PATH` and `LOG_FILE` directories are created before the
-`USER sam` switch (or mounted with correct permissions via compose volumes).
-
----
-
-### F — Custom Error Pages *(Low, ~20 min)*
-
-**Problem**: Flask's default `404` / `500` pages expose the framework name and
-(in debug mode) the full stack trace. Production error pages should be styled
-consistently and reveal nothing about internals.
-
-**Fix**: create `src/webapp/templates/errors/{404,403,500}.html` and register
-handlers in `src/webapp/run.py`:
-
-```python
-@app.errorhandler(404)
-def not_found(e):
-    return render_template('errors/404.html'), 404
-
-@app.errorhandler(403)
-def forbidden(e):
-    return render_template('errors/403.html'), 403
-
-@app.errorhandler(500)
-def server_error(e):
-    app.logger.exception('Unhandled server error')
-    return render_template('errors/500.html'), 500
-```
-
-The 500 handler also adds `app.logger.exception()` coverage for unhandled errors
-that currently produce no log output.
-
----
-
-### G — Dependency Vulnerability Scanning *(Medium, ~15 min setup)*
-
-**Problem**: No automated scanning for known CVEs in installed Python packages.
-
-**Fix**: add `pip-audit` to the development dependency set and to CI:
-
-```bash
-pip install pip-audit
-pip-audit  # scans current environment
-```
-
-No application code changes required. Can also be wired into GitHub Actions or
-a pre-commit hook.
-
----
-
-### I — Session Fixation & Invalidation Audit *(Low, audit only)*
-
-Flask-Login 0.5+ regenerates the session cookie on `login_user()` and invalidates
-it on `logout_user()` by default. Verify this is behaving correctly with a test:
-
-```python
-def test_login_regenerates_session(client):
-    pre_cookie = client.get_cookie('session')
-    client.post('/auth/login', data={...})
-    post_cookie = client.get_cookie('session')
-    assert pre_cookie != post_cookie  # cookie was regenerated
-```
-
-No code changes expected; this is a confirmation test.
-
----
-
-### J — Secrets Management Path *(Low, process documentation)*
-
-The current approach (`.env` file, Docker env vars) is acceptable for initial
-deployment. Document a path to stronger secret management when the deployment
-matures:
-
-- **Short term**: Docker Compose secrets (`secrets:` key) mounts files at
-  `/run/secrets/` rather than env vars
-- **Medium term**: HashiCorp Vault with the Vault Agent Injector or
-  `hvac` Python client
-- **Long term**: Cloud-native secret stores (AWS Secrets Manager,
-  Azure Key Vault, GCP Secret Manager) if the deployment moves to cloud
-
----
-
-## Recommended Implementation Order
-
-```
-Before launch — critical path:
-  1. #4      — Security headers                       (~15 min)
-  2. E       — Database least-privilege account       (~20 min)
-  3. B       — CSRF audit / CSRFProtect confirm       (~20 min)
-  4. #11     — DEPLOYMENT.md + .env.production.ex    (~30 min)
-
-Before launch — recommended:
-  5. D       — Container non-root user                (~15 min)
-  6. F       — Custom error pages (+ 500 logging)    (~20 min)
-  7. G       — pip-audit added to CI                  (~15 min)
-
-Post-launch:
-  8. C       — Content Security Policy               (~2 h audit + 30 min impl)
-  9. A       — Rate limiting                          (~30 min)
-  10. #10    — Security testing suite                (~3 h)
-  11. I      — Session fixation confirmation test    (~30 min)
-  12. #12    — Metrics & alerting                    (future)
-  13. H      — ProxyFix (if reverse proxy is added)  (~15 min, topology TBD)
-  14. J      — Secrets management upgrade            (future)
-```
-
----
-
-## Reference: Key Files
-
-| File | Role |
-|------|------|
-| `src/webapp/run.py` | Security headers, ProxyFix, request hooks |
-| `src/webapp/config.py` | Config hierarchy, env-var defaults |
-| `src/webapp/logging_config.py` | App logging setup |
-| `src/webapp/api/v1/health.py` | Health + DB pool endpoints |
-| `containers/webapp/Dockerfile` | Non-root user, dev-auth ENV overrides |
-| `containers/webapp/gunicorn_config.py` | Production WSGI server config |
-| `compose.yaml` | Service definitions, dev vs. prod separation |
-| `src/config.py` | `BaseConfig` with `validate()` |
-
----
-
-*Branch: webprod · Test status: 494 passed, 19 skipped, 2 xpassed*
+# SAMuel Internet-Exposure Hardening — Merged Assessment (this review + PR #295)
+
+## Context
+
+SAMuel runs VPN-only at https://samuel.k8s.ucar.edu/ (CIRRUS/nwc1, ns `sam-queries`); goal is
+public internet exposure. OIDC + rate limiting already in place and verified working. Two
+independent investigations now exist:
+
+- **This review (2026-06-10)**: probed the live cluster (`cirrus_healthcheck.sh`: 20 PASS /
+  2 WARN / 0 FAIL) + `src/`, `helm/`, `containers/`, with claims verified directly in code.
+- **PR #295 (dvance, NRIT audit, May 2026)**: 182-item register (15 P0 / 55 P1 / 112 P2),
+  ZAP scans, synthesis in `docs/nrit-review-2026-05/08_synthesis.md`.
+
+The two agree on the headline theme and complement each other on specifics. One of David's
+P0s is already fixed: **P0-9 "Helm Deployment has zero probes" is stale** — live cluster has
+readiness/liveness/startup probes wired to `/api/v1/health/*` (verified 2026-06-10).
+
+**Already solid (verified, both reviews concur):** OIDC w/ PKCE, bcrypt timing-safe API
+tokens, Redis-backed rate limiting with smart key segregation, ProxyFix, hardened session
+cookies, ExternalSecrets/OpenBao for all creds, immutable `sha-*` image pins on the deploy
+branch, probes/PDB/topology-spread, ORM-parameterized queries, TruffleHog+GitGuardian+
+pre-commit secret scanning (zero committed secrets found).
+
+## The 5 Considerations (merged, prioritized)
+
+### 1. Auth config fails OPEN — make production fail CLOSED  (HIGH)
+*Found independently by both reviews; David's strongest cross-cutting theme (14 fail-open footguns).*
+- `AUTH_PROVIDER` defaults to `'stub'` (`src/webapp/config.py:31`); `StubAuthProvider` accepts
+  **any non-empty password** (`src/webapp/auth/providers.py:51-72`) [PR295 P0-2]
+- `DISABLE_AUTH=1` auto-login honored under any config (`src/webapp/utils/dev_auth.py:31`) [P0-1]
+- `FLASK_CONFIG` defaults to `'development'` (`src/webapp/config.py:217`)
+- `ProductionConfig.validate()` (`config.py:166-172`) never rejects stub or DISABLE_AUTH
+
+Helm sets all three correctly today (`helm/values.yaml:87,89,106`) — but one dropped env var
+in a future chart edit silently turns the public site into "any password works."
+
+**Fix**: `ProductionConfig.validate()` raises if `AUTH_PROVIDER != 'oidc'` or
+`DISABLE_AUTH == '1'`; refuse `auto_login_middleware` registration under ProductionConfig.
+Scoping is clean: `containers/webapp/Dockerfile` does NOT set `FLASK_CONFIG` (only helm
+does), so the local compose `webapp` service (7050, production image target) stays on
+DevelopmentConfig and its stub click-login keeps working — only CIRRUS enforces.
+Per David's recommendation, adopt the *principle* (fail-closed in prod, permissive only in
+dev) and sweep his census: silent `declarative_base` fallbacks (`sam/base.py:19-40`,
+`system_status/base.py:44-51`), `RATELIMIT_STORAGE_URI` memory fallback warning. Unit tests
+for each rejection path.
+
+### 2. Post-login authorization gaps — "authenticated" ≠ "authorized"  (HIGH)
+*From PR #295; verified intent question Q3/Q8/Q10 pending. Internet exposure makes "any
+authenticated user" a much larger, phishable population, so these graduate from polish to
+launch-gating.*
+- **Flask-Admin `SAMModelView` grants blanket read of all 90+ tables to any authenticated
+  user** — including `ApiCredentials` (bcrypt hashes), `Role`, all charge data
+  (`admin/default_model_views.py:64-78`) [P0-3, Medium effort]
+- `GET /api/v1/allocations/<id>` gated only by `@login_required` — any user enumerates every
+  allocation balance (`api/v1/allocations.py:32-60`) [P0-4]
+- `htmx_rolling_section` has **no access check at all**; sibling threshold routes hand-roll
+  authz (`dashboards/user/blueprint.py:1067-1176`) [P1-6]
+- `GET /api/v1/users/search` returns username+email for any pattern, no permission gate —
+  PII/user-enumeration (`api/v1/users.py:161-210`) [P1-7]
+- Charges routes use system gate where siblings use project-scoped decorator
+  (`api/v1/charges.py:43-46,158-161`) [P1-4]; ~9 routes hand-roll `can_manage_*` checks
+  instead of decorators [P1-5]
+
+**Fix** (per Ben's decision 2026-06-10): add a **`FLASK_ADMIN_ENABLED` config flag** —
+when off, `init_admin()` is skipped entirely (no /admin blueprint registered). Default ON
+in DevelopmentConfig, OFF in ProductionConfig; helm values set it explicitly. Full-CRUD
+admin stays available locally (and could be VPN-gated later); the public deploy simply
+doesn't mount it. This replaces the heavier per-model permission map. Separately, add
+`@require_project_member_access`/`require_permission` decorators to the ungated
+API/HTMX routes and thin decorators to replace hand-rolled checks (those routes stay
+mounted publicly, so they need real gates).
+
+### 3. Browser-side defenses: CSRF + security headers  (HIGH)
+*From this review — not in PR #295's register; ZAP passive scan didn't grade it high.*
+- `CSRFProtect` is never initialized; the only flask-wtf reference in the codebase is
+  `WTF_CSRF_ENABLED = False` in TestingConfig (`src/webapp/config.py:179`). No template
+  renders a csrf_token. `SameSite=Lax` is the only layer protecting ~90 state-changing
+  HTMX/API routes.
+- Zero security headers: no HSTS, `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, CSP. Talisman was reverted (redirect loop, f6840ae/a5991aa) but
+  ProxyFix is now wired, so a plain `after_request` hook is safe.
+
+**Fix**: init `CSRFProtect(app)` in `run.py`; `<meta name="csrf-token">` + htmx
+`hx-headers` snippet in `templates/dashboards/base.html` covers all HTMX calls; exempt
+token-auth API blueprints (Basic auth, no cookies — safe). ~10-line `after_request` for
+HSTS (prod-gated) + nosniff + XFO + Referrer-Policy. Tests: POST without token → 400;
+headers asserted on responses. Related polish while in there: OIDC callback should use
+the `RATELIMIT_AUTH_LOGIN` tier, not `RATELIMIT_ANON` [PR295 P2-4]; pass `id_token_hint`
+on logout [P1-3].
+
+**Vendor-asset registry** (per Ben 2026-06-10 — confirmed relevant): all CDN deps live
+in exactly 2 templates, duplicated, with pinned versions but **zero SRI hashes** —
+`dashboards/base.html:7-11,206-208` and `auth/login.html:7-11,128-129`. Five origins:
+Bootstrap 5.3.3 (cdn.jsdelivr.net), Font Awesome 6.5.2 (cdnjs.cloudflare.com), jQuery
+3.6.0 (code.jquery.com), htmx 2.0.4 (unpkg.com), Poppins (fonts.googleapis.com/gstatic).
+Lift into a central registry (`src/webapp/vendor_assets.py`: name → url + integrity +
+crossorigin, sensible defaults, exposed via context processor; templates render via a
+shared macro). Immediate win: add SRI `integrity=` hashes in one place. Deferred CSP
+then becomes *generated from the registry's origins* so header and templates can't
+drift. CSP itself still post-launch (inline-script audit remains), but the registry is
+its prerequisite and lands now.
+
+### 4. Shrink the blast radius: non-root, securityContext, Redis auth, NetworkPolicy  (MEDIUM)
+*Root/securityContext found by both [PR295 P1-42]; Redis/NetworkPolicy/SA from this review.*
+- No `USER` in `containers/webapp/Dockerfile` — gunicorn runs as UID 0; `.trivyignore`
+  globally suppresses the non-root rule (AVD-DS-0002) [P2-86]
+- No `securityContext` in `helm/templates/deployment.yaml` or `redis-deployment.yaml`
+- Default ServiceAccount with k8s API token auto-mounted into the pod
+- Redis: no `--requirepass`, no NetworkPolicy — any pod on the shared nwc1 cluster can
+  reach it and zero out the Flask-Limiter counters (DB 1), neutering login brute-force
+  protection
+
+**Fix**: non-root user in Dockerfile prod stage (chown `/var/log/sam`, set `MPLCONFIGDIR`);
+note both compose services bind-mount host dirs at `/var/log/sam` (`./logs/{prod,dev}`),
+so the non-root UID must be able to write those — fix host-dir ownership expectations in
+compose docs and add `fsGroup` in the k8s podSecurityContext for the audit-log path;
+pod+container securityContext (runAsNonRoot, drop ALL caps, seccomp RuntimeDefault,
+allowPrivilegeEscalation: false) for both deployments; dedicated ServiceAccount with
+`automountServiceAccountToken: false`; NetworkPolicy allowing only `app=samuel` →
+redis:6379 (+ default-deny on redis); `--requirepass` via secret if OpenBao plumbing is
+cheap, else NetworkPolicy alone gets ~90%. Drop the AVD-DS-0002 trivyignore.
+
+### 5. Detection & response: you will be probed — be able to see it  (MEDIUM)
+*PR #295's second-strongest theme ([XC: ops]); becomes launch-relevant once public.*
+- **No error ingestion**: no Sentry/equivalent, no `@app.errorhandler(500)` reporting —
+  a production 500 lands in pod stdout and stops there [P0-14]
+- **Audit log non-durable**: written to `/var/log/sam/model_audit.log` in the container
+  writable layer — lost on every redeploy; k8s has no shipping for it [P0-15]
+- **Auth events not audited**: login success/failure/logout only hit `app.logger`, not the
+  audit stream — exactly the events you want when internet-exposed [P1-10]
+- Healthcheck failures log as routine INFO 503; no alerting [P1-55]
+
+**Fix**: audit logger → `StreamHandler(stdout)` so the cluster log pipeline captures it
+(cheapest durable option); emit audit events for login/logout/login-failure; add Sentry
+SDK behind `SENTRY_DSN` env (off by default) or at minimum a loud `logger.error` path +
+log-based alert for 5xx. Scope to the webapp; collector alerting (P0-7/8) can follow.
+
+## Worth noting, not in the top 5
+- **Two silent prod bugs from PR295, fix regardless**: `ProjectListSchema.get_admin_username`
+  has an empty body (returns null always) [P0-5]; `ProjectSchema.get_panel` 500s on orphan
+  projects [P0-6] — both Tiny
+- **Supply chain** [P0-10/12, P1-45/46/47]: SHA-pin `trufflehog@main` and other actions;
+  server-side protect `cirrus` branch; migrate `BENKIRK_GITHUB_TOKEN` PATs; `permissions:`
+  blocks on workflows — deploy-path integrity, do this quarter
+- **DB least-privilege**: verify `csg/sam-readuser` MySQL grants are actually read-only
+- **Ingress flip** (`visibility: internal → external`): add `ssl-protocols: TLSv1.2 TLSv1.3`,
+  `proxy-body-size`, consider edge rate-limit annotations as defense in depth
+- **OIDC account linking** is username-prefix-based [P1-2] — collision risk grows with a
+  broader user population; store Entra `oid`/`sub` on User (needs schema decision, Q9)
+- pip-audit / lockfile / MEDIUM-severity Trivy gates [P1-44/48, PROD_IMPROVEMENTS item G]
+- `baotoken` ExternalSecret SecretSyncedError on cluster (user-token store, housekeeping)
+- `PRODUCTION_IMPROVEMENTS.md` is stale (items 1-9 done); after this work, fold remainder +
+  this assessment into one refreshed doc and archive PR295 register cross-refs
+
+## Implementation plan — Phase A: items 1–3, this branch, ONE PR vs staging
+
+*Per Ben 2026-06-10: PR #295 is merged to staging and `hardening` is reset from it
+(David's audit assets now live at `docs/nrit-review-2026-05/`). Items 1–3 land as a
+series of commits on `hardening` → single PR → `staging`, deployable as a logical
+break. Items 4 & 5 are explicitly DEFERRED to a follow-up phase.*
+
+Everything in Phase A is pure Python/templates/config — fully developable and testable
+locally (pytest + webdev:5050 + webapp:7050). The `helm/values.yaml` flag edit rides in
+the PR but only takes effect at the later main→cirrus promotion.
+
+Commit sequence on `hardening`:
+
+| Commit | Scope | Files | Local verification |
+|---|---|---|---|
+| 1 | Fail-closed prod auth | `src/webapp/config.py` (ProductionConfig.validate rejects `AUTH_PROVIDER != 'oidc'` and `DISABLE_AUTH=1`), `src/webapp/utils/dev_auth.py` (refuse registration under prod config); loud-warn sweep: `sam/base.py`, `system_status/base.py` silent fallbacks | unit tests for each rejection path; `docker compose run -e FLASK_CONFIG=production webapp` (OIDC vars unset) → refuses to boot; webdev stub click-login still works |
+| 2 | Security headers | `src/webapp/run.py` `after_request` (HSTS prod-gated, nosniff, XFO SAMEORIGIN, Referrer-Policy) | unit test asserting headers; `curl -sI http://127.0.0.1:7050/` |
+| 3 | Vendor-asset registry + SRI | new `src/webapp/vendor_assets.py` (name → url/integrity/crossorigin, context processor), shared macro; rewire `templates/dashboards/base.html:7-11,206-208`, `auth/login.html:7-11,128-129` | browser loads all assets (SRI mismatch = hard failure, so a working page IS the test); webdev visual smoke incl. charts/icons/fonts |
+| 4 | CSRF protection | `CSRFProtect(app)` in `run.py`; `<meta name="csrf-token">` + htmx `hx-headers` in base layout + login.html; exempt token-auth API blueprints | tests: HTMX/form POST w/o token → 400, with → 200; M2M status POST w/ Basic auth unaffected; full pytest; interactive member-add/remove on webdev |
+| 5 | Flask-Admin kill-switch | `src/webapp/config.py` (`FLASK_ADMIN_ENABLED`: True dev / False prod), `run.py` (conditional `init_admin`), `helm/values.yaml` (`FLASK_ADMIN_ENABLED: "0"`) | flag off → /admin 404s (test via prod-config app fixture); webdev still serves /admin |
+| 6 | Ungated-route authz | `api/v1/allocations.py:32-60`, `api/v1/users.py:161-210` (search), `api/v1/charges.py:43-46,158-161`, `dashboards/user/blueprint.py:1067-1176` (rolling/threshold), thin decorators replacing hand-rolled checks in `dashboards/project_members.py` + `api/v1/projects.py:502-523` | RBAC tests: non-member/non-privileged user → 403 on each formerly-open route; member access preserved |
+| 7 | OIDC polish (small, same theme) | `auth/blueprint.py`: callback uses `RATELIMIT_AUTH_LOGIN` tier [PR295 P2-4]; logout passes `id_token_hint` [P1-3] | existing auth tests + rate-limit flow test |
+
+Then: ONE PR `hardening` → `staging` referencing this assessment + PR295 IDs
+(P0-1/2/3/4, P1-4/5/6/7, P2-4, P1-3). User runs full pytest by hand before the PR.
+
+## Phase B (deferred — separate effort after Phase A deploys)
+- Item 4: blast radius — non-root Dockerfile USER (+ `./logs/{prod,dev}` bind-mount
+  ownership + k8s fsGroup), pod/container securityContext both deployments,
+  ServiceAccount automount off, Redis NetworkPolicy (+ requirepass), drop AVD-DS-0002
+  from `.trivyignore`
+- Item 5: detection — audit log → stdout StreamHandler, auth events into audit stream,
+  Sentry-or-loud-error path for 5xx
+
+## Verification
+
+Local environments (compose.yaml): **webdev** at http://127.0.0.1:5050 (dev target, Flask
+dev server, stub click-login — primary interactive testing) and **webapp** at
+http://127.0.0.1:7050 (production image target, gunicorn, audit log bind-mounted at
+`./logs/prod`) — the closest local proxy for CIRRUS behavior. Playwright available for
+interactive checks against both.
+
+All Phase A verification is local (no cluster needed):
+- `pytest` full suite (user runs by hand per project convention)
+- `docker compose up webdev --watch` (5050): stub login flow, HTMX mutation (member
+  add/remove), charts/icons/fonts — confirms CSRF + headers + SRI don't break anything
+- `webapp` (7050, gunicorn/prod image target): same smoke under multi-worker gunicorn;
+  headers via `curl -sI http://127.0.0.1:7050/`
+- Negative boot tests: `docker compose run -e FLASK_CONFIG=production webapp` (OIDC vars
+  unset) → must refuse to start; `FLASK_CONFIG=production` + OIDC vars set but
+  `DISABLE_AUTH=1` → must refuse
+- Playwright available for interactive exploration of both local stacks if needed
+
+Post-deploy (after PR merges and promotes): `curl -sI https://samuel.k8s.ucar.edu/ |
+grep -iE 'strict-transport|x-frame|x-content'`; `scripts/cirrus_healthcheck.sh`; re-run
+David's authenticated ZAP script (`docs/nrit-review-2026-05/run-zap-manual-explore.sh`)
+to confirm header/CSRF deltas
