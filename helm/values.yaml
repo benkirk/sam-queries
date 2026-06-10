@@ -85,6 +85,7 @@ webapp:
       cpu: 16                             # Maximum CPU allowed
   env:
     DISABLE_AUTH: "0"                     # Explicitly disabled — must remain 0 in production
+    FLASK_ADMIN_ENABLED: "0"              # Flask-Admin /database browser stays unmounted on the public deploy
     FLASK_DEBUG: "0"
     FLASK_CONFIG: "production"            # Selects ProductionConfig (DEBUG=False, SESSION_COOKIE_SECURE=True)
     AUDIT_ENABLED: "1"

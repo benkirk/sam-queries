@@ -365,8 +365,10 @@ def create_app(*, config_overrides: dict | None = None):
     if app.config.get('DEBUG'):
         app.jinja_env.cache = None
 
-    # Initialize Flask-Admin
-    init_admin(app)
+    # Initialize Flask-Admin (kill-switch: OFF by default in production —
+    # the /database browser is never mounted on the public deploy)
+    if app.config.get('FLASK_ADMIN_ENABLED', False):
+        init_admin(app)
 
     # Auto-login middleware for development (enabled via DISABLE_AUTH=1)
     from webapp.utils.dev_auth import auto_login_middleware

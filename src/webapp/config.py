@@ -35,6 +35,12 @@ class SAMWebappConfig(SAMConfig):
     # still requires the DISABLE_AUTH=1 env var (see webapp.utils.dev_auth).
     DEV_AUTO_LOGIN_ALLOWED = False
 
+    # Flask-Admin DB browser (/database). When off, init_admin() never runs
+    # and the blueprint is not mounted. ProductionConfig flips the default
+    # OFF so the public deploy never serves it [PR295 P0-3]; helm sets the
+    # env var explicitly either way.
+    FLASK_ADMIN_ENABLED = os.getenv('FLASK_ADMIN_ENABLED', '1').lower() in ('1', 'true', 'yes')
+
     # OIDC configuration (active when AUTH_PROVIDER='oidc')
     OIDC_CLIENT_ID = os.getenv('OIDC_CLIENT_ID', '')
     OIDC_CLIENT_SECRET = os.getenv('OIDC_CLIENT_SECRET', '')
@@ -155,6 +161,10 @@ class DevelopmentConfig(SAMWebappConfig):
 class ProductionConfig(SAMWebappConfig):
     DEBUG = False
     SESSION_COOKIE_SECURE = True    # HTTPS only
+
+    # Default OFF in production — the public deploy doesn't mount /database;
+    # full-CRUD admin stays available locally (webdev/webapp compose).
+    FLASK_ADMIN_ENABLED = os.getenv('FLASK_ADMIN_ENABLED', '0').lower() in ('1', 'true', 'yes')
 
     @classmethod
     def validate(cls):
