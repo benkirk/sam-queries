@@ -24,6 +24,7 @@ from sam.schemas import (
 )
 from webapp.api.helpers import register_error_handlers, get_project_or_404, parse_date_range
 from webapp.api.access_control import (
+    require_admin_change,
     require_project_access,
     require_project_member_access,
     require_project_permission,
@@ -501,7 +502,8 @@ def remove_member(project, username):
 
 @bp.route('/<projcode>/admin', methods=['PUT'])
 @login_required
-def update_admin(projcode):
+@require_admin_change
+def update_admin(project):
     """
     PUT /api/v1/projects/<projcode>/admin - Change the project admin.
 
@@ -513,14 +515,6 @@ def update_admin(projcode):
     """
     from sam.manage import change_project_admin, management_transaction
     from sam.core.users import User
-    from webapp.utils.project_permissions import can_change_admin
-
-    project, error = get_project_or_404(db.session, projcode)
-    if error:
-        return error
-
-    if not can_change_admin(current_user, project):
-        return jsonify({'error': 'Unauthorized - only project lead can change admin'}), 403
 
     data = request.get_json() or request.form
     admin_username = data.get('admin_username', '').strip() if data.get('admin_username') else ''

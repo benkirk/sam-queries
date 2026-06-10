@@ -176,6 +176,15 @@ def create_app(*, config_overrides: dict | None = None):
                     'Please reload the page and try again.</div>', 400)
         return f'CSRF validation failed: {e.description}', 400
 
+    # HTMX-aware 403: access-control decorators abort(403); HTMX swaps need
+    # a fragment, not the default HTML error page. API blueprints register
+    # their own JSON 403 handlers (webapp.api.helpers), which take precedence.
+    @app.errorhandler(403)
+    def handle_403(e):
+        if request.headers.get('HX-Request'):
+            return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
+        return e
+
     # Initialize caching. Backend selection priority:
     #   testing             → NullCache (no shared state across tests)
     #   CACHE_REDIS_URL set → RedisCache (shared across all gunicorn workers + pods)

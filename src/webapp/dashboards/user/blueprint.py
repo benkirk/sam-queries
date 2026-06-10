@@ -43,7 +43,11 @@ from sam.summaries.disk_summaries import DiskChargeSummary
 from sqlalchemy import func
 from webapp.utils.project_permissions import can_edit_consumption_threshold
 from webapp.utils.rbac import require_permission, Permission, has_permission
-from webapp.api.access_control import require_allocation_permission, require_project_access
+from webapp.api.access_control import (
+    require_allocation_permission,
+    require_project_access,
+    require_threshold_edit,
+)
 from ..charts import generate_usage_timeseries_matplotlib, generate_disk_usage_stacked_area
 
 
@@ -1293,20 +1297,12 @@ def htmx_edit_allocation(allocation):
 # Rolling consumption rate threshold editing (htmx)
 # ---------------------------------------------------------------------------
 
-def _get_project_and_account(projcode, resource_name):
-    """Return (project, account) for a given project code and resource name.
-
-    Returns (None, None) if the project is not found.
-    Returns (project, None) if no matching account exists.
-    """
+def _get_account(project, resource_name):
+    """Return the project's active account for a resource name, or None."""
     from sam import Account
     from sam.resources.resources import Resource
 
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return None, None
-
-    account = (
+    return (
         db.session.query(Account)
         .join(Account.resource)
         .filter(Account.project_id == project.project_id)
@@ -1314,22 +1310,21 @@ def _get_project_and_account(projcode, resource_name):
         .filter(Account.deleted == False)
         .first()
     )
-    return project, account
 
 
 @bp.route('/htmx/rolling-section/<projcode>/<resource_name>')
 @login_required
-def htmx_rolling_section(projcode, resource_name):
+@require_project_access
+def htmx_rolling_section(project, resource_name):
     """
     Return the re-rendered Rolling Consumption Rate section fragment.
 
     Used by the threshold form's cancel button and after a successful save
     to restore / refresh the rolling section without a full page reload.
+    Membership (or VIEW_PROJECTS) required — previously unauthenticated
+    access-check-free [PR295 P1-6].
     """
-    project, _ = _get_project_and_account(projcode, resource_name)
-    if not project:
-        return '<div class="alert alert-danger">Project not found</div>', 404
-
+    projcode = project.projcode
     rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
     rolling_resource = rolling_usage.get(resource_name, {})
     windows = rolling_resource.get('windows', {})
@@ -1348,22 +1343,23 @@ def htmx_rolling_section(projcode, resource_name):
 
 @bp.route('/htmx/threshold-form/<projcode>/<resource_name>/<int:window>')
 @login_required
-def htmx_threshold_form(projcode, resource_name, window):
+@require_threshold_edit
+def htmx_threshold_form(project, resource_name, window):
     """
     Return an inline threshold edit form for a specific rolling window.
 
     The form replaces the Add/Edit button via hx-target="this" hx-swap="outerHTML".
     window must be 30 or 90.
     """
-    project, account = _get_project_and_account(projcode, resource_name)
-    if not project or not can_edit_consumption_threshold(current_user, project):
-        return '<span class="text-danger small">Unauthorized</span>', 403
+    account = _get_account(project, resource_name)
+    if not account:
+        return '<div class="alert alert-danger">Account not found for this resource</div>', 404
 
     current = account.first_threshold if window == 30 else account.second_threshold
 
     return render_template(
         'dashboards/user/fragments/threshold_form_htmx.html',
-        projcode=projcode,
+        projcode=project.projcode,
         resource_name=resource_name,
         window=window,
         current_threshold=current,
@@ -1373,7 +1369,8 @@ def htmx_threshold_form(projcode, resource_name, window):
 
 @bp.route('/htmx/threshold/<projcode>/<resource_name>/<int:window>', methods=['POST'])
 @login_required
-def htmx_save_threshold(projcode, resource_name, window):
+@require_threshold_edit
+def htmx_save_threshold(project, resource_name, window):
     """
     Save a rolling consumption rate threshold for one window (30 or 90 days).
 
@@ -1383,9 +1380,8 @@ def htmx_save_threshold(projcode, resource_name, window):
     """
     from sam.manage import management_transaction
 
-    project, account = _get_project_and_account(projcode, resource_name)
-    if not project or not can_edit_consumption_threshold(current_user, project):
-        return '<div class="alert alert-danger">Unauthorized</div>', 403
+    projcode = project.projcode
+    account = _get_account(project, resource_name)
     if not account:
         return '<div class="alert alert-danger">Account not found for this resource</div>', 404
 
