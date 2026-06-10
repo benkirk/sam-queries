@@ -1,5 +1,30 @@
 # SAMuel Internet-Exposure Hardening — Merged Assessment (this review + PR #295)
 
+## STATUS (updated 2026-06-10)
+
+**Phase A (items 1–3) is COMPLETE** — implemented as 8 commits on `hardening`,
+PR #296 vs `staging`, upstream CI fully green, local suite 2250 passed.
+**Items 4 & 5 (Phase B) are OUTSTANDING** — see the Phase B section at the
+bottom for the restart point.
+
+| # | Commit | Scope |
+|---|---|---|
+| 1 | `7e70dd0` | Fail-closed prod auth: `ProductionConfig.validate()` rejects `AUTH_PROVIDER != oidc` + `DISABLE_AUTH=1`; `DEV_AUTO_LOGIN_ALLOWED` config flag gates auto-login registration; loud warnings on silent `declarative_base` / limiter `memory://` fallbacks [P0-1, P0-2] |
+| 2 | `5a34fb9` | Security headers via `webapp/utils/security_headers.py`: HSTS (gated on `SESSION_COOKIE_SECURE`), nosniff, XFO SAMEORIGIN, Referrer-Policy `strict-origin-when-cross-origin` |
+| 3 | `52496a6` | Vendor-asset registry + SRI: `src/webapp/vendor_assets.py` + `templates/fragments/vendor_assets.html` macros; base.html + login.html rewired; Google Fonts exempt (per-UA, no SRI possible) |
+| — | `adb8419` | Suite hygiene: jobs-drawer test tracked plugin header rename ("MPI" → "Ranks per Node", hpc-usage-queries `7f4fd7b`); quiet limiter warning on *explicit* `memory://` |
+| 4 | `820cc1d` | CSRF app-wide (new `flask-wtf` dep): `<body hx-headers>` token inheritance, hidden inputs on 4 plain forms, `@csrf.exempt` only on 7 non-cookie-credential routes, HTMX/API-aware CSRFError handler |
+| 5 | `cf88470` | `FLASK_ADMIN_ENABLED` kill-switch: off by default in ProductionConfig + `helm/values.yaml`; `/database` never mounted publicly [P0-3] |
+| 6 | `69cc6d3` | Route authz: allocations GET [P0-4], users/search [P1-7], charges → `require_project_member_access` [P1-4], rolling/threshold [P1-6], `members_fragment` gated, thin decorators (`require_member_management` / `require_admin_change` / `require_threshold_edit`) replace hand-rolled checks [P1-5]; HTMX-aware 403 handler |
+| 7 | `97bd282` | OIDC polish: callback on `RATELIMIT_AUTH_LOGIN` [P2-4]; `id_token_hint` on logout (token stashed in session at callback) [P1-3] |
+
+Remaining Phase A verification (interactive, by Ben): webdev:5050 smoke
+(stub click-login, HTMX member add/remove under CSRF, fonts/icons/charts under
+SRI), webapp:7050 `curl -sI` headers, negative boot
+(`docker compose run -e FLASK_CONFIG=production webapp` must refuse). Note:
+`flask-wtf` is a new dependency — fresh checkouts rebuild the env via
+`source etc/config_env.sh`.
+
 ## Context
 
 SAMuel runs VPN-only at https://samuel.k8s.ucar.edu/ (CIRRUS/nwc1, ns `sam-queries`); goal is
@@ -23,7 +48,7 @@ pre-commit secret scanning (zero committed secrets found).
 
 ## The 5 Considerations (merged, prioritized)
 
-### 1. Auth config fails OPEN — make production fail CLOSED  (HIGH)
+### 1. Auth config fails OPEN — make production fail CLOSED  (HIGH) ✅ DONE (`7e70dd0`)
 *Found independently by both reviews; David's strongest cross-cutting theme (14 fail-open footguns).*
 - `AUTH_PROVIDER` defaults to `'stub'` (`src/webapp/config.py:31`); `StubAuthProvider` accepts
   **any non-empty password** (`src/webapp/auth/providers.py:51-72`) [PR295 P0-2]
@@ -44,7 +69,7 @@ dev) and sweep his census: silent `declarative_base` fallbacks (`sam/base.py:19-
 `system_status/base.py:44-51`), `RATELIMIT_STORAGE_URI` memory fallback warning. Unit tests
 for each rejection path.
 
-### 2. Post-login authorization gaps — "authenticated" ≠ "authorized"  (HIGH)
+### 2. Post-login authorization gaps — "authenticated" ≠ "authorized"  (HIGH) ✅ DONE (`cf88470`, `69cc6d3`)
 *From PR #295; verified intent question Q3/Q8/Q10 pending. Internet exposure makes "any
 authenticated user" a much larger, phishable population, so these graduate from polish to
 launch-gating.*
@@ -70,7 +95,7 @@ doesn't mount it. This replaces the heavier per-model permission map. Separately
 API/HTMX routes and thin decorators to replace hand-rolled checks (those routes stay
 mounted publicly, so they need real gates).
 
-### 3. Browser-side defenses: CSRF + security headers  (HIGH)
+### 3. Browser-side defenses: CSRF + security headers  (HIGH) ✅ DONE (`5a34fb9`, `52496a6`, `820cc1d`, `97bd282`)
 *From this review — not in PR #295's register; ZAP passive scan didn't grade it high.*
 - `CSRFProtect` is never initialized; the only flask-wtf reference in the codebase is
   `WTF_CSRF_ENABLED = False` in TestingConfig (`src/webapp/config.py:179`). No template
@@ -100,7 +125,7 @@ then becomes *generated from the registry's origins* so header and templates can
 drift. CSP itself still post-launch (inline-script audit remains), but the registry is
 its prerequisite and lands now.
 
-### 4. Shrink the blast radius: non-root, securityContext, Redis auth, NetworkPolicy  (MEDIUM)
+### 4. Shrink the blast radius: non-root, securityContext, Redis auth, NetworkPolicy  (MEDIUM) ⏳ OUTSTANDING (Phase B)
 *Root/securityContext found by both [PR295 P1-42]; Redis/NetworkPolicy/SA from this review.*
 - No `USER` in `containers/webapp/Dockerfile` — gunicorn runs as UID 0; `.trivyignore`
   globally suppresses the non-root rule (AVD-DS-0002) [P2-86]
@@ -120,7 +145,7 @@ allowPrivilegeEscalation: false) for both deployments; dedicated ServiceAccount 
 redis:6379 (+ default-deny on redis); `--requirepass` via secret if OpenBao plumbing is
 cheap, else NetworkPolicy alone gets ~90%. Drop the AVD-DS-0002 trivyignore.
 
-### 5. Detection & response: you will be probed — be able to see it  (MEDIUM)
+### 5. Detection & response: you will be probed — be able to see it  (MEDIUM) ⏳ OUTSTANDING (Phase B)
 *PR #295's second-strongest theme ([XC: ops]); becomes launch-relevant once public.*
 - **No error ingestion**: no Sentry/equivalent, no `@app.errorhandler(500)` reporting —
   a production 500 lands in pod stdout and stops there [P0-14]
@@ -152,7 +177,13 @@ log-based alert for 5xx. Scope to the webapp; collector alerting (P0-7/8) can fo
 - `PRODUCTION_IMPROVEMENTS.md` is stale (items 1-9 done); after this work, fold remainder +
   this assessment into one refreshed doc and archive PR295 register cross-refs
 
-## Implementation plan — Phase A: items 1–3, this branch, ONE PR vs staging
+## Implementation plan — Phase A: items 1–3, this branch, ONE PR vs staging ✅ COMPLETE
+
+*Executed 2026-06-10 as commits `7e70dd0`..`97bd282` on `hardening` (PR #296).
+Commit-by-commit summary in the STATUS section above; the original plan table
+below is kept for reference. One deviation: an extra hygiene commit (`adb8419`)
+fixed a stale test assertion against a renamed hpc-usage-queries column header —
+pre-existing CI red, unrelated to the hardening changes.*
 
 *Per Ben 2026-06-10: PR #295 is merged to staging and `hardening` is reset from it
 (David's audit assets now live at `docs/nrit-review-2026-05/`). Items 1–3 land as a
@@ -178,13 +209,31 @@ Commit sequence on `hardening`:
 Then: ONE PR `hardening` → `staging` referencing this assessment + PR295 IDs
 (P0-1/2/3/4, P1-4/5/6/7, P2-4, P1-3). User runs full pytest by hand before the PR.
 
-## Phase B (deferred — separate effort after Phase A deploys)
+## Phase B — OUTSTANDING WORK (restart here in a fresh session)
+
+*Separate effort after Phase A deploys. Full rationale and evidence in
+considerations 4 & 5 above; PR295 IDs noted there.*
+
 - Item 4: blast radius — non-root Dockerfile USER (+ `./logs/{prod,dev}` bind-mount
   ownership + k8s fsGroup), pod/container securityContext both deployments,
   ServiceAccount automount off, Redis NetworkPolicy (+ requirepass), drop AVD-DS-0002
   from `.trivyignore`
 - Item 5: detection — audit log → stdout StreamHandler, auth events into audit stream,
   Sentry-or-loud-error path for 5xx
+
+Also still open (from "Worth noting" above):
+- Two tiny silent prod bugs: `ProjectListSchema.get_admin_username` empty body [P0-5];
+  `ProjectSchema.get_panel` 500s on orphan projects [P0-6]
+- Supply chain: SHA-pin actions, server-side protect `cirrus`, migrate PATs,
+  workflow `permissions:` blocks [P0-10/12, P1-45/46/47]
+- DB least-privilege grant check; ingress flip annotations (TLS protocols,
+  proxy-body-size, edge rate-limit); OIDC account linking via Entra `oid`/`sub` [P1-2];
+  pip-audit/lockfile/Trivy gates [P1-44/48]; `baotoken` ExternalSecret housekeeping
+- CSP: now generatable from `webapp/vendor_assets.py` origins (Phase A landed the
+  prerequisite); inline-script audit still required first
+- Phase A post-deploy checks (after staging→main→cirrus promotion): header curl on
+  samuel.k8s.ucar.edu, `scripts/cirrus_healthcheck.sh`, re-run David's authenticated
+  ZAP script, verify OIDC Set-Cookie size (~4 KB ceiling with id_token stored)
 
 ## Verification
 
