@@ -30,6 +30,7 @@ from sam.schemas.charges import (
     ArchiveChargeSummaryInputSchema,
 )
 from webapp.api.helpers import register_error_handlers, get_project_or_404, parse_date_range
+from webapp.api.access_control import require_project_member_access
 from datetime import datetime, timedelta
 from sam.summaries.archive_summaries import *
 from sam.integration.xras_views import *
@@ -42,8 +43,8 @@ register_error_handlers(bp)
 
 @bp.route('/projects/<projcode>/charges', methods=['GET'])
 @login_required
-@require_permission(Permission.VIEW_ALLOCATIONS)
-def get_project_charges(projcode):
+@require_project_member_access(Permission.VIEW_ALLOCATIONS)
+def get_project_charges(project):
     """
     GET /api/v1/projects/<projcode>/charges - Get detailed charge summaries by date range.
 
@@ -62,10 +63,6 @@ def get_project_charges(projcode):
     from sam.summaries.dav_summaries import DavChargeSummary
     from sam.summaries.disk_summaries import DiskChargeSummary
     from sam.summaries.archive_summaries import ArchiveChargeSummary
-
-    project, error = get_project_or_404(db.session, projcode)
-    if error:
-        return error
 
     # Parse date parameters
     start_date, end_date, error = parse_date_range(days_back=90)
@@ -97,7 +94,7 @@ def get_project_charges(projcode):
 
     if not account_ids:
         return jsonify({
-            'projcode': projcode,
+            'projcode': project.projcode,
             'start_date': start_date.isoformat(),
             'end_date': end_date.isoformat(),
             'charges': {
@@ -125,7 +122,7 @@ def get_project_charges(projcode):
         ], key=lambda x: x['date'])
 
         return jsonify({
-            'projcode': projcode,
+            'projcode': project.projcode,
             'resource_name': resource_name,
             'resource_type': resource_type,
             'start_date': start_date.isoformat(),
@@ -143,7 +140,7 @@ def get_project_charges(projcode):
     )
 
     return jsonify({
-        'projcode': projcode,
+        'projcode': project.projcode,
         'start_date': start_date.isoformat(),
         'end_date': end_date.isoformat(),
         'charges': {
@@ -157,8 +154,8 @@ def get_project_charges(projcode):
 
 @bp.route('/projects/<projcode>/charges/summary', methods=['GET'])
 @login_required
-@require_permission(Permission.VIEW_ALLOCATIONS)
-def get_project_charges_summary(projcode):
+@require_project_member_access(Permission.VIEW_ALLOCATIONS)
+def get_project_charges_summary(project):
     """
     GET /api/v1/projects/<projcode>/charges/summary - Get aggregated charge totals by resource type.
 
@@ -174,10 +171,6 @@ def get_project_charges_summary(projcode):
     from sam.summaries.dav_summaries import DavChargeSummary
     from sam.summaries.disk_summaries import DiskChargeSummary
     from sam.summaries.archive_summaries import ArchiveChargeSummary
-
-    project, error = get_project_or_404(db.session, projcode)
-    if error:
-        return error
 
     # Get all accounts
     accounts = db.session.query(Account).filter(
@@ -227,7 +220,7 @@ def get_project_charges_summary(projcode):
         }
 
     return jsonify({
-        'projcode': projcode,
+        'projcode': project.projcode,
         'resources': summary_by_resource,
         'total_resources': len(summary_by_resource)
     })

@@ -15,7 +15,7 @@ Example usage:
 from flask import Blueprint, jsonify, abort
 from webapp.utils.rbac import Permission
 from webapp.utils.api_auth import login_or_token_required
-from webapp.extensions import db, cache
+from webapp.extensions import db, cache, csrf
 from webapp.api.helpers import register_error_handlers
 from sam.queries.directory_access import (
     group_populator,
@@ -80,6 +80,9 @@ def get_directory_access_branch(access_branch_name: str):
 
 
 @bp.route('/refresh', methods=['POST'])
+@csrf.exempt          # token path is Basic-auth (no cookies); the session
+                      # path losing CSRF on an idempotent cache refresh is
+                      # an accepted trade-off
 @login_or_token_required(Permission.VIEW_USERS)
 def refresh_cache():
     """

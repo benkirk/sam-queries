@@ -19,15 +19,20 @@ from flask import Blueprint, render_template, request
 from flask_login import login_required, current_user
 from marshmallow import ValidationError
 
-from sam.projects.projects import Project
 from sam.queries.users import get_users_on_project
 from sam.schemas.forms.user import AddMemberForm
 from webapp.extensions import db
 from webapp.utils.htmx import htmx_success
+from webapp.api.access_control import (
+    require_admin_change,
+    require_member_management,
+    require_project_member_access,
+)
 from webapp.utils.project_permissions import (
     can_change_admin,
     can_manage_project_members,
 )
+from webapp.utils.rbac import Permission
 
 
 bp = Blueprint('project_members', __name__, url_prefix='/project-members')
@@ -35,19 +40,18 @@ bp = Blueprint('project_members', __name__, url_prefix='/project-members')
 
 @bp.route('/<projcode>')
 @login_required
-def members_fragment(projcode):
+@require_project_member_access(Permission.VIEW_PROJECT_MEMBERS)
+def members_fragment(project):
     """
     Lazy-loaded HTML fragment showing project members.
+
+    Membership (or VIEW_PROJECT_MEMBERS) required — the member list is a
+    PII-enumeration surface, same class as /api/v1/users/search.
 
     Returns:
         HTML table of project members with management controls (if authorized)
     """
-    project = Project.get_by_projcode(db.session, projcode)
-
-    if not project:
-        return '<p class="text-danger mb-0">Project not found</p>'
-
-    members = get_users_on_project(db.session, projcode)
+    members = get_users_on_project(db.session, project.projcode)
 
     if not members:
         return '<p class="text-muted mb-0">No members found or project not accessible</p>'
@@ -55,7 +59,7 @@ def members_fragment(projcode):
     return render_template(
         'project_members/fragments/members_table.html',
         members=sorted(members, key=lambda member: member["display_name"]),
-        projcode=projcode,
+        projcode=project.projcode,
         project=project,
         can_manage=can_manage_project_members(current_user, project),
         can_change_admin=can_change_admin(current_user, project)
@@ -64,23 +68,17 @@ def members_fragment(projcode):
 
 @bp.route('/<projcode>/add-form')
 @login_required
-def htmx_add_member_form(projcode):
+@require_member_management
+def htmx_add_member_form(project):
     """
     Return the add member form as an HTML fragment.
 
     Called when the htmx Add Member button is clicked. Returns a fresh form
     pre-populated with today's start date, ready to be inserted into the modal.
     """
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger m-3">Project not found</div>', 404
-
-    if not can_manage_project_members(current_user, project):
-        return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
-
     return render_template(
         'project_members/fragments/add_member_form_htmx.html',
-        projcode=projcode,
+        projcode=project.projcode,
         start_date=date.today().strftime('%Y-%m-%d'),
         errors=[]
     )
@@ -88,7 +86,8 @@ def htmx_add_member_form(projcode):
 
 @bp.route('/<projcode>/add', methods=['POST'])
 @login_required
-def htmx_add_member(projcode):
+@require_member_management
+def htmx_add_member(project):
     """
     Handle add member form submission (htmx).
 
@@ -101,13 +100,7 @@ def htmx_add_member(projcode):
     from sam.manage import add_user_to_project, management_transaction
     from sam.core.users import User
 
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger m-3">Project not found</div>', 404
-
-    if not can_manage_project_members(current_user, project):
-        return '<div class="alert alert-danger m-3">Unauthorized</div>', 403
-
+    projcode = project.projcode
     try:
         form_data = AddMemberForm().load(request.form)
     except ValidationError as e:
@@ -164,7 +157,8 @@ def htmx_add_member(projcode):
 
 @bp.route('/<projcode>/<username>', methods=['DELETE'])
 @login_required
-def htmx_remove_member(projcode, username):
+@require_member_management
+def htmx_remove_member(project, username):
     """
     Remove a member from a project (htmx).
 
@@ -173,13 +167,7 @@ def htmx_remove_member(projcode, username):
     from sam.manage import remove_user_from_project, management_transaction
     from sam.core.users import User
 
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger">Project not found</div>', 404
-
-    if not can_manage_project_members(current_user, project):
-        return '<div class="alert alert-danger">Unauthorized</div>', 403
-
+    projcode = project.projcode
     user = db.session.query(User).filter_by(username=username).first()
     if not user:
         return f'<div class="alert alert-danger">User "{username}" not found</div>', 404
@@ -195,7 +183,8 @@ def htmx_remove_member(projcode, username):
 
 @bp.route('/<projcode>/admin', methods=['PUT'])
 @login_required
-def htmx_change_admin(projcode):
+@require_admin_change
+def htmx_change_admin(project):
     """
     Change or remove the project admin (htmx).
 
@@ -205,13 +194,7 @@ def htmx_change_admin(projcode):
     from sam.manage import change_project_admin, management_transaction
     from sam.core.users import User
 
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        return '<div class="alert alert-danger">Project not found</div>', 404
-
-    if not can_change_admin(current_user, project):
-        return '<div class="alert alert-danger">Unauthorized — only project lead can change admin</div>', 403
-
+    projcode = project.projcode
     admin_username = request.form.get('admin_username', '').strip()
 
     try:

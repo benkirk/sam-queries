@@ -36,7 +36,7 @@ Response format (all-branches):
 from flask import Blueprint, jsonify, abort
 from webapp.utils.rbac import Permission
 from webapp.utils.api_auth import login_or_token_required
-from webapp.extensions import db, cache
+from webapp.extensions import db, cache, csrf
 from webapp.api.helpers import register_error_handlers
 from sam.queries.project_access import get_project_group_status, ACCESS_GRACE_PERIOD
 
@@ -87,6 +87,9 @@ def get_project_access_branch(access_branch_name: str):
 
 
 @bp.route('/refresh', methods=['POST'])
+@csrf.exempt          # token path is Basic-auth (no cookies); the session
+                      # path losing CSRF on an idempotent cache refresh is
+                      # an accepted trade-off
 @login_or_token_required(Permission.VIEW_PROJECTS)
 def refresh_cache():
     """

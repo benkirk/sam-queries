@@ -725,7 +725,8 @@ def test_jobs_fragment_renders_verbose_drawer(
     assert 'jobs-detail-row' in body
     # Verbose-column header labels from plugin COLUMNS.
     assert 'Walltime' in body
-    assert 'MPI' in body
+    # hpc-usage-queries 7f4fd7b renamed the mpiprocs header "MPI" → "Ranks per Node"
+    assert 'Ranks per Node' in body
     assert 'CPU type' in body
     # Drawer renders the values.
     assert 'milan' in body

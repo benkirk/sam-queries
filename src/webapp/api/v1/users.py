@@ -160,9 +160,16 @@ def get_current_user_projects():
 
 @bp.route('/search', methods=['GET'])
 @login_required
+@require_permission(Permission.VIEW_USERS)
 def search_users():
     """
     GET /api/v1/users/search - Search users for autocomplete functionality.
+
+    Requires VIEW_USERS — returns username+email for arbitrary patterns,
+    a PII/user-enumeration surface [PR295 P1-7]. The UI pickers used by
+    project leads call admin_dashboard.htmx_search_users instead, which
+    stays login-only in this pass (gating it would break lead-driven
+    member-add; it returns scoped HTML fragments, not raw identity data).
 
     Query parameters:
         q (str): Search query (minimum 2 characters, required)

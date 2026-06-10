@@ -23,7 +23,12 @@ from typing import Callable, Any
 
 from webapp.extensions import db
 from webapp.utils.rbac import has_permission, has_permission_for_facility, Permission
-from webapp.utils.project_permissions import _is_project_steward
+from webapp.utils.project_permissions import (
+    _is_project_steward,
+    can_change_admin,
+    can_edit_consumption_threshold,
+    can_manage_project_members,
+)
 from webapp.api.helpers import get_project_or_404
 
 
@@ -240,6 +245,42 @@ def require_project_permission(
 
         return decorated_function
     return decorator
+
+
+def _require_project_check(check_fn: Callable) -> Callable:
+    """Decorator factory wrapping a ``can_*(user, project)`` helper.
+
+    Resolves ``<projcode>`` from the URL, runs ``check_fn(current_user,
+    project)``, aborts 403 on failure, and passes the ``project`` object to
+    the view in place of projcode (same contract as require_project_access).
+    Replaces hand-rolled lookup + can_* + manual-403 blocks in route bodies.
+    """
+    def decorator(f: Callable) -> Callable:
+        @wraps(f)
+        def decorated_function(projcode: str, *args, **kwargs):
+            project, error = get_project_or_404(db.session, projcode)
+            if error:
+                return error
+            if not check_fn(current_user, project):
+                abort(403)
+            return f(project, *args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def require_member_management(f: Callable) -> Callable:
+    """Gate on can_manage_project_members (EDIT_PROJECT_MEMBERS or steward)."""
+    return _require_project_check(can_manage_project_members)(f)
+
+
+def require_admin_change(f: Callable) -> Callable:
+    """Gate on can_change_admin (EDIT_PROJECT_MEMBERS or project lead)."""
+    return _require_project_check(can_change_admin)(f)
+
+
+def require_threshold_edit(f: Callable) -> Callable:
+    """Gate on can_edit_consumption_threshold (EDIT_PROJECT_MEMBERS or steward)."""
+    return _require_project_check(can_edit_consumption_threshold)(f)
 
 
 def require_allocation_permission(permission: Permission) -> Callable:

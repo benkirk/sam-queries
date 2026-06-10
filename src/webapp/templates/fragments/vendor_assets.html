@@ -1,0 +1,24 @@
+{# Render third-party CDN assets from the central registry
+   (webapp/vendor_assets.py — pinned versions + SRI hashes).
+
+   Usage (import `with context` so the vendor_assets context-processor
+   variable is visible inside the macros):
+
+       {% from 'fragments/vendor_assets.html' import vendor_css, vendor_js with context %}
+       {{ vendor_css(['poppins', 'bootstrap-css', 'fontawesome-css']) }}
+       {{ vendor_js(['jquery', 'bootstrap-js', 'htmx']) }}
+
+   Entries with integrity=None (Google Fonts: per-UA response) render
+   without the integrity/crossorigin attributes. #}
+
+{% macro vendor_css(names) -%}
+{%- for name in names %}{% set a = vendor_assets[name] %}
+    <link rel="stylesheet" href="{{ a.url }}"{% if a.integrity %} integrity="{{ a.integrity }}" crossorigin="{{ a.crossorigin }}"{% endif %}>
+{%- endfor %}
+{%- endmacro %}
+
+{% macro vendor_js(names) -%}
+{%- for name in names %}{% set a = vendor_assets[name] %}
+    <script src="{{ a.url }}"{% if a.integrity %} integrity="{{ a.integrity }}" crossorigin="{{ a.crossorigin }}"{% endif %}></script>
+{%- endfor %}
+{%- endmacro %}
