@@ -6,10 +6,16 @@ Extensions are initialized here but configured in the application factory.
 """
 
 from flask_sqlalchemy import SQLAlchemy
+from flask_wtf import CSRFProtect
 
 from webapp.caching import caching
 
 db = SQLAlchemy()
+
+# CSRF protection for all cookie-session state-changing routes. Initialized
+# in create_app; routes that authenticate with non-cookie credentials
+# (Basic-auth M2M collectors) opt out via @csrf.exempt at the view.
+csrf = CSRFProtect()
 
 # DEPRECATED: prefer `from webapp.caching import caching` and use
 # `caching.flask.cached(...)` / `caching.flask.memoize(...)`. This alias is

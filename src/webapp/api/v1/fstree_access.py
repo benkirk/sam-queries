@@ -63,7 +63,7 @@ Response format (partial):
 from flask import Blueprint, jsonify, abort, request
 from webapp.utils.rbac import Permission
 from webapp.utils.api_auth import login_or_token_required
-from webapp.extensions import db, cache
+from webapp.extensions import db, cache, csrf
 from webapp.api.helpers import register_error_handlers
 from sam.queries.fstree_access import get_fstree_data, get_project_fsdata, get_user_fsdata
 
@@ -223,6 +223,9 @@ def get_user_fstree_item(username: str):
 
 
 @bp.route('/refresh', methods=['POST'])
+@csrf.exempt          # token path is Basic-auth (no cookies); the session
+                      # path losing CSRF on an idempotent cache refresh is
+                      # an accepted trade-off
 @login_or_token_required(Permission.VIEW_PROJECTS)
 def refresh_cache():
     """

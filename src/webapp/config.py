@@ -112,6 +112,12 @@ class SAMWebappConfig(SAMConfig):
     SESSION_COOKIE_SAMESITE    = 'Lax'
     PERMANENT_SESSION_LIFETIME = timedelta(hours=12)
 
+    # CSRF (Flask-WTF / CSRFProtect, initialized in create_app).
+    # TIME_LIMIT=None ties token validity to the session lifetime — the
+    # 1-hour flask-wtf default would 400 long-lived dashboard tabs.
+    WTF_CSRF_ENABLED    = True
+    WTF_CSRF_TIME_LIMIT = None
+
 
 class DevelopmentConfig(SAMWebappConfig):
     DEBUG = True

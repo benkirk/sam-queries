@@ -22,7 +22,7 @@ from flask_login import login_required
 from webapp.utils.rbac import require_permission, Permission
 from webapp.utils.api_auth import api_key_required
 from webapp.api.helpers import register_error_handlers
-from webapp.extensions import db
+from webapp.extensions import db, csrf
 from datetime import datetime
 import sys
 from pathlib import Path
@@ -212,6 +212,7 @@ def _ingest_system_status(system_name, StatusSchema, id_mappers):
 # ============================================================================
 
 @bp.route('/derecho', methods=['POST'])
+@csrf.exempt          # Basic-auth M2M collector — no cookies, CSRF n/a
 @api_key_required
 def ingest_derecho():
     """
@@ -245,6 +246,7 @@ def ingest_derecho():
 
 
 @bp.route('/casper', methods=['POST'])
+@csrf.exempt          # Basic-auth M2M collector — no cookies, CSRF n/a
 @api_key_required
 def ingest_casper():
     """
@@ -279,6 +281,7 @@ def ingest_casper():
 
 
 @bp.route('/jupyterhub', methods=['POST'])
+@csrf.exempt          # Basic-auth M2M collector — no cookies, CSRF n/a
 @api_key_required
 def ingest_jupyterhub():
     """
@@ -322,6 +325,7 @@ def ingest_jupyterhub():
 
 
 @bp.route('/outage', methods=['POST'])
+@csrf.exempt          # Basic-auth M2M collector — no cookies, CSRF n/a
 @api_key_required
 def report_outage():
     """

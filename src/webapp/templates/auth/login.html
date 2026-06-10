@@ -60,6 +60,7 @@
         </div>
 
         <form method="POST" action="{{ url_for('auth.login') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="mb-3">
                 <label for="username">Username</label>
                 <input type="text"
@@ -103,6 +104,7 @@
             <h5>Quick Login (Test Users)</h5>
             {% for username, label in test_users %}
             <form method="POST" action="{{ url_for('auth.login') }}" class="login-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="username" value="{{ username }}">
                 <input type="hidden" name="password" value="test">
                 <button type="submit" class="btn user-btn">

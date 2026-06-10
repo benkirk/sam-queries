@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}SAM User Dashboard{% endblock %}</title>
     {% from 'fragments/vendor_assets.html' import vendor_css, vendor_js with context %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,7 +14,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+{# htmx inherits hx-headers to every descendant hx-post/put/delete, so every
+   HTMX mutation carries the CSRF token without per-form wiring. #}
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
     <!-- Navigation -->
     <header>
     <nav class="navbar navbar-expand-md navbar-light align-items-start py-0">
