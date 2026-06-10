@@ -443,15 +443,16 @@ class TestProductionConfigOIDCValidation:
             finally:
                 ProductionConfig.AUTH_PROVIDER = original
 
-    def test_stub_mode_no_oidc_validation(self):
-        """ProductionConfig.validate() skips OIDC check when AUTH_PROVIDER=stub."""
+    def test_stub_mode_now_rejected(self):
+        """ProductionConfig.validate() fails CLOSED when AUTH_PROVIDER=stub [PR295 P0-2]."""
         from webapp.config import ProductionConfig
 
         with patch.dict(os.environ, {'FLASK_SECRET_KEY': 'a' * 64, 'AUTH_PROVIDER': 'stub'}):
             original = ProductionConfig.AUTH_PROVIDER
             ProductionConfig.AUTH_PROVIDER = 'stub'
             try:
-                ProductionConfig.validate()
+                with pytest.raises(EnvironmentError, match="requires AUTH_PROVIDER=oidc"):
+                    ProductionConfig.validate()
             finally:
                 ProductionConfig.AUTH_PROVIDER = original
 

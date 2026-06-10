@@ -30,6 +30,11 @@ class SAMWebappConfig(SAMConfig):
     # Auth provider ('stub' | 'ldap' | 'oidc')
     AUTH_PROVIDER = os.getenv('AUTH_PROVIDER', 'stub')
 
+    # Whether the DISABLE_AUTH=1 dev auto-login bypass may register at all.
+    # Fail-closed default; only DevelopmentConfig opts in. Runtime activation
+    # still requires the DISABLE_AUTH=1 env var (see webapp.utils.dev_auth).
+    DEV_AUTO_LOGIN_ALLOWED = False
+
     # OIDC configuration (active when AUTH_PROVIDER='oidc')
     OIDC_CLIENT_ID = os.getenv('OIDC_CLIENT_ID', '')
     OIDC_CLIENT_SECRET = os.getenv('OIDC_CLIENT_SECRET', '')
@@ -111,6 +116,7 @@ class SAMWebappConfig(SAMConfig):
 class DevelopmentConfig(SAMWebappConfig):
     DEBUG = True
     SESSION_COOKIE_SECURE = False   # no HTTPS required in dev
+    DEV_AUTO_LOGIN_ALLOWED = True   # DISABLE_AUTH=1 auto-login permitted in dev only
 
     # Development API keys — rotate with: python scripts/gen_api_key.py
     # Actual key goes in collectors/.env as STATUS_API_KEY
@@ -163,13 +169,27 @@ class ProductionConfig(SAMWebappConfig):
                 "Generate keys with: python scripts/gen_api_key.py",
                 stacklevel=2,
             )
-        if cls.AUTH_PROVIDER == 'oidc':
-            missing = [v for v in ('OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_ISSUER')
-                       if not os.getenv(v)]
-            if missing:
-                raise EnvironmentError(
-                    f"AUTH_PROVIDER=oidc but missing required env vars: {', '.join(missing)}"
-                )
+        # Fail CLOSED: production must run OIDC, never stub/ldap [PR295 P0-2].
+        # StubAuthProvider accepts any non-empty password, so a single dropped
+        # env var must never silently downgrade a public deployment to it.
+        if cls.AUTH_PROVIDER != 'oidc':
+            raise EnvironmentError(
+                f"ProductionConfig requires AUTH_PROVIDER=oidc "
+                f"(got {cls.AUTH_PROVIDER!r}). StubAuthProvider accepts any "
+                "password and must never serve a production deployment."
+            )
+        # Dev auto-login bypass must never be active in production [PR295 P0-1]
+        if os.getenv('DISABLE_AUTH', '0') == '1':
+            raise EnvironmentError(
+                "DISABLE_AUTH=1 (dev auto-login bypass) must not be set when "
+                "FLASK_CONFIG=production."
+            )
+        missing = [v for v in ('OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_ISSUER')
+                   if not os.getenv(v)]
+        if missing:
+            raise EnvironmentError(
+                f"AUTH_PROVIDER=oidc but missing required env vars: {', '.join(missing)}"
+            )
 
 
 class TestingConfig(SAMWebappConfig):

@@ -45,8 +45,15 @@ def _get_status_base_class():
         try:
             from webapp.extensions import db
             return db.Model
-        except ImportError:
-            # Fallback if webapp not available
+        except ImportError as exc:
+            # Fallback if webapp not available — almost certainly a broken
+            # environment rather than an intended CLI run: Flask-SQLAlchemy
+            # will NOT see models bound to this standalone base.
+            import logging
+            logging.getLogger(__name__).warning(
+                "FLASK_ACTIVE=1 but webapp.extensions is not importable (%s); "
+                "system_status models are binding to a standalone "
+                "declarative_base.", exc)
             metadata = MetaData(naming_convention=STATUS_NAMING_CONVENTION)
             return declarative_base(metadata=metadata)
     else:
