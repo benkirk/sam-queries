@@ -303,10 +303,31 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin-bottom: 1.5rem;
 }
 
-.card > .card-header {
-    padding-bottom: 2rem;
+.inner-card {
+    padding: 1.875rem;
+}
+
+.inner-card > .card-header {
+    padding: 0 !important;
     font-weight: var(--font-weight-semi-bold);
     color: var(--ncar-space-blue);
+}
+
+.inner-card > .card-header h5 {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1;
+    text-transform: uppercase;
+    color: var(--ncar-navy);
+}
+
+.inner-card > .card-body {
+    padding: 0;
+}
+
+.inner-card p {
+    font-size: 1.125rem;
+    line-height: 1.875rem;
 }
 
 /* Opt-in modifier: a card with a visible 1px hairline border. Use when a
@@ -323,8 +344,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin: 0;
 }
 
-.dashboard-inner-card {
-    border: 1px solid var(--bs-border-color);
+.inner-card {
+    border: 1px solid var(--ncar-blue);
     box-shadow: none !important;
 }
 

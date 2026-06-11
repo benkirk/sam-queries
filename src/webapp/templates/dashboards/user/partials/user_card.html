@@ -25,10 +25,11 @@
     <div class="card-body">
         <div class="row g-3">
         <div class="col-lg-6">
-        <div class="project-stats-box mb-0"
+        <div class="card inner-card h-100"
              style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
-            <h6><i class="fas fa-id-card"></i> User Information</h6>
-
+            <div class="card-header mb-4">
+                <h5><i class="fas fa-id-card"></i> User Information</h5>
+            </div>
             <div class="stat-item">
                 <span class="stat-label">Username:</span>
                 <span class="stat-value">{{ sam_user.username }}</span>
@@ -119,9 +120,11 @@
         </div>
         </div>
         <div class="col-lg-6">
-        <div class="project-stats-box mb-0"
+        <div class="card inner-card h-100"
              style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
-            <h6><i class="fas fa-sitemap"></i> Projects &amp; Groups</h6>
+            <div class="card-header mb-4">
+                <h5><i class="fas fa-sitemap"></i> Projects &amp; Groups</h5>
+            </div>
 
             <!-- Active projects -->
             <div class="stat-item stat-item-block mt-2">
