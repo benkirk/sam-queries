@@ -696,6 +696,25 @@ class AccountingAdminCommand(BaseCommand):
         if dry_run:
             return 0
 
+        # ---- 7·. Register the snapshot date BEFORE any tier-3 insert.
+        # disk_charge_summary.activity_date FKs disk_charge_summary_status;
+        # the parent status row must exist before the per-(user, project)
+        # summary rows are inserted (InnoDB checks FKs at statement time).
+        # Previously this was only marked AFTER the inserts, which relied on
+        # a prior same-date import having seeded the row — true for the
+        # co-dated GPFS feeds, but NOT for an off-cadence date introduced by
+        # another feed (e.g. Destor's first Monday tick on a Saturday-cadence
+        # status table). Creating it up-front makes the importer
+        # self-sufficient for any brand-new date.
+        try:
+            with management_transaction(self.session):
+                mark_disk_snapshot_current(self.session, snap_date)
+        except Exception as exc:  # noqa: BLE001
+            self.console.print(
+                f"[bold red]Failed to register snapshot {snap_date}: {exc}[/bold red]"
+            )
+            return 2
+
         # ---- 7a. Tier-1 / Tier-2: populate disk_activity + disk_charge.
         # Per-fileset granularity that disk_charge_summary can't carry.
         # Iterates raw entries (pre-_group_disk_entries) so multi-fileset
@@ -885,16 +904,6 @@ class AccountingAdminCommand(BaseCommand):
                         f"[bold red]Chunk {chunk_idx} aborted: {exc}[/bold red]"
                     )
                     return 2
-
-            # ---- 9. Mark this snapshot as current --------------------
-            try:
-                with management_transaction(self.session):
-                    mark_disk_snapshot_current(self.session, snap_date)
-            except Exception as exc:  # noqa: BLE001
-                self.console.print(
-                    f"[bold red]Failed to mark snapshot current: {exc}[/bold red]"
-                )
-                # Don't fail the whole import for this — data is in.
 
         display_import_summary(self.ctx, n_created, n_updated, n_errors, n_skipped)
         return 0 if n_errors == 0 else 2

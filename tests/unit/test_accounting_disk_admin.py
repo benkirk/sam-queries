@@ -520,3 +520,47 @@ class TestDiskAdminCli:
         ).count()
         assert n_summary == 2
 
+    def test_import_creates_missing_snapshot_status_row(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """A brand-new snapshot date (no pre-existing
+        ``disk_charge_summary_status`` row) must import cleanly — the
+        importer registers the FK parent row up-front, before inserting the
+        ``disk_charge_summary`` children.
+
+        Regression for the off-cadence Destor 05-11 failure: that date fell
+        outside the GPFS Saturday cadence, so no prior import had seeded the
+        status row, and the old import order (register AFTER insert) tripped
+        ``fk_disk_charge_summary_date``.
+        """
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = date(2026, 5, 11)   # off-cadence; no status row in the dump
+
+        # Precondition: guarantee no parent status row exists for this date.
+        session.query(DiskChargeSummary).filter(
+            DiskChargeSummary.activity_date == snap,
+        ).delete(synchronize_session=False)
+        session.query(DiskChargeSummaryStatus).filter(
+            DiskChargeSummaryStatus.activity_date == snap,
+        ).delete(synchronize_session=False)
+        session.flush()
+        assert session.get(DiskChargeSummaryStatus, snap) is None
+
+        f = _write_acct(tmp_path, snap, project.projcode, lead.username,
+                        kib=1024 * 1024)
+
+        result = runner.invoke(cli, [
+            'accounting', '--disk',
+            '--resource', resource.resource_name,
+            '--user-usage', str(f),
+            '--date', snap.isoformat(),
+        ])
+        assert result.exit_code == 0, result.output
+
+        # Parent status row created up-front; child summary row inserted.
+        assert session.get(DiskChargeSummaryStatus, snap) is not None
+        assert session.query(DiskChargeSummary).filter(
+            DiskChargeSummary.activity_date == snap,
+            DiskChargeSummary.user_id == lead.user_id,
+        ).count() == 1
+
