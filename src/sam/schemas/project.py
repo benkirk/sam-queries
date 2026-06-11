@@ -66,6 +66,8 @@ class ProjectListSchema(BaseSchema):
 
     def get_admin_username(self, obj):
         """Get admin username."""
+        return obj.admin.username if obj.admin else None
+
 
 class ProjectSchema(BaseSchema):
     """
@@ -119,7 +121,7 @@ class ProjectSchema(BaseSchema):
 
     def get_panel(self,obj):
         """Get associated panel"""
-        return obj.allocation_type.panel.panel_name if obj.allocation_type.panel else None
+        return obj.allocation_type.panel.panel_name if obj.allocation_type and obj.allocation_type.panel else None
 
     def get_contracts(self,obj):
         """Get associated contracts"""
