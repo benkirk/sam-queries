@@ -4,9 +4,13 @@ from .base import DiskUsageEntry, DiskUsageReader
 from .glade_csv import GladeCsvReader
 
 
+# All three feeds share the acct.<host>.YYYY-MM-DD CSV format; the
+# Lustre/Destor feed simply omits the trailing two (vestigial) columns,
+# which GladeCsvReader treats as optional.
 _READERS = {
     'Campaign_Store': GladeCsvReader,
     'Quasar': GladeCsvReader,
+    'Destor': GladeCsvReader,
 }
 
 

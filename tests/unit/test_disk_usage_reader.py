@@ -101,3 +101,41 @@ def test_registry_dispatch():
 def test_registry_unknown_resource_raises():
     with pytest.raises(NotImplementedError):
         get_disk_usage_reader("FrobOS", "/tmp/whatever")
+
+
+# --- Destor / Lustre: 6-column rows (trailing interval+cos columns absent) -
+
+
+def test_six_column_row_defaults_interval_and_cos(tmp_path):
+    # Destor's acct.desc1.* ships only the first 6 columns; username='total'
+    # is the per-project rollup sentinel. col6 = 100 KiB.
+    csv = '"2026-06-06","/lustre/desc1/p/nral0032","nral0032","total","123843","100"\n'
+    f = _write(tmp_path, "acct.desc1.2026-06-06", csv)
+    entries = GladeCsvReader(str(f)).read()
+    assert len(entries) == 1
+    e = entries[0]
+    assert e.activity_date == date(2026, 6, 6)
+    assert e.projcode == "NRAL0032"               # uppercased
+    assert e.username == "total"                  # rollup sentinel passes filters
+    assert e.number_of_files == 123843
+    assert e.bytes == 100 * 1024                  # KiB → bytes
+    assert e.directory_path == "/lustre/desc1/p/nral0032"
+    assert e.reporting_interval == 7              # defaulted when column absent
+    assert e.cos == 0                             # defaulted when column absent
+
+
+def test_eight_and_six_column_rows_mix(tmp_path):
+    # A reader must tolerate both widths in one pass.
+    csv = (
+        '"2026-06-06","/gpfs/csfs1/cesm","cesm","gdicker","4986","100","7","0"\n'
+        '"2026-06-06","/lustre/desc1/p/nral0032","nral0032","total","123843","200"\n'
+    )
+    f = _write(tmp_path, "acct.mixed.2026-06-06", csv)
+    entries = GladeCsvReader(str(f)).read()
+    assert [e.username for e in entries] == ["gdicker", "total"]
+    assert [e.bytes for e in entries] == [100 * 1024, 200 * 1024]
+
+
+def test_destor_registry_dispatch():
+    r = get_disk_usage_reader("Destor", "/tmp/whatever")
+    assert isinstance(r, GladeCsvReader)
