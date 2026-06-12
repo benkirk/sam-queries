@@ -1,10 +1,13 @@
 """
-Security response header tests (PRODUCTION_IMPROVEMENTS item 3).
+Security response header tests (PRODUCTION_IMPROVEMENTS item 3 + CSP).
 
 Baseline headers ride every response via webapp.utils.security_headers;
-HSTS only when SESSION_COOKIE_SECURE is set (ProductionConfig).
+HSTS only when SESSION_COOKIE_SECURE is set (ProductionConfig); the CSP
+header (generated from the vendor registry — see test_csp.py for policy
+content) follows CSP_MODE.
 """
 
+import pytest
 from flask import Flask
 
 from webapp.utils.security_headers import init_security_headers
@@ -27,6 +30,67 @@ class TestHeadersOnApp:
         """TestingConfig has SESSION_COOKIE_SECURE=False → no HSTS."""
         resp = client.get('/auth/login')
         assert 'Strict-Transport-Security' not in resp.headers
+
+    def test_csp_rides_responses(self, client):
+        """TestingConfig follows the code default (report-only during the
+        extraction work, enforce after); either way the policy is present."""
+        resp = client.get('/auth/login')
+        present = [h for h in ('Content-Security-Policy',
+                               'Content-Security-Policy-Report-Only')
+                   if h in resp.headers]
+        assert len(present) == 1
+        assert "script-src 'self'" in resp.headers[present[0]]
+
+
+class TestCSPModes:
+    """CSP_MODE gating, isolated on a bare Flask app."""
+
+    def _app(self, mode):
+        app = Flask(__name__)
+        app.config['CSP_MODE'] = mode
+
+        @app.route('/ping')
+        def ping():
+            return 'pong'
+
+        @app.route('/database/table/foo')
+        def admin_table():
+            return 'flask-admin stand-in'
+
+        init_security_headers(app)
+        return app
+
+    def test_off(self):
+        resp = self._app('off').test_client().get('/ping')
+        assert 'Content-Security-Policy' not in resp.headers
+        assert 'Content-Security-Policy-Report-Only' not in resp.headers
+        assert resp.headers['X-Frame-Options'] == 'SAMEORIGIN'
+
+    def test_report_only(self):
+        resp = self._app('report-only').test_client().get('/ping')
+        assert 'Content-Security-Policy' not in resp.headers
+        policy = resp.headers['Content-Security-Policy-Report-Only']
+        assert "default-src 'self'" in policy
+        # frame-ancestors is ignored in Report-Only → XFO must survive
+        assert resp.headers['X-Frame-Options'] == 'SAMEORIGIN'
+
+    def test_enforce(self):
+        resp = self._app('enforce').test_client().get('/ping')
+        policy = resp.headers['Content-Security-Policy']
+        assert "frame-ancestors 'self'" in policy
+        assert 'Content-Security-Policy-Report-Only' not in resp.headers
+        # frame-ancestors supersedes XFO under enforcement
+        assert 'X-Frame-Options' not in resp.headers
+
+    @pytest.mark.parametrize('mode', ['report-only', 'enforce'])
+    def test_flask_admin_path_carveout(self, mode):
+        resp = self._app(mode).test_client().get('/database/table/foo')
+        assert 'Content-Security-Policy' not in resp.headers
+        assert 'Content-Security-Policy-Report-Only' not in resp.headers
+
+    def test_unknown_mode_fails_loud(self):
+        with pytest.raises(ValueError, match='CSP_MODE'):
+            self._app('enforcing-ish')
 
 
 class TestHSTSGate:
