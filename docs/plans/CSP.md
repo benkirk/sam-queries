@@ -68,7 +68,30 @@ per decision). The calendar iframe is at
 `templates/dashboards/status/fragments/reservations.html:32` /
 `config.py:61 GOOGLE_CALENDAR_EMBED_URL`.
 
-## Implementation steps (single branch → PR to `staging`)
+## Delivery model
+
+A series of commits on the current `hardening` branch, each locally testable via
+`docker compose up webdev --watch` (and `webapp` for the prod-like image), then **one
+PR to `staging`**. During the branch work the CSP header ships in **report-only**
+mode so webdev stays usable and the browser console acts as a live violation
+worklist; the enforce flip is the last commit. Before opening the PR: a dedicated
+**Playwright smoke session** (user restarts Claude with Playwright available)
+exercising the full checklist against webdev with enforce active.
+
+Commit sequence (≈ one commit per numbered step below; each leaves the branch green):
+1. Vendor assets + registry rework + TTF cleanup + linter excludes  (step 0)
+2. CSP builder + config flags (default `report-only`) + header hook + header/builder
+   tests + template lint guard seeded with current-debt allowlist  (steps 1, 2, 6)
+3. Delegation core (`actions.js`) + pickers extraction as the exemplar  (step 3 + pickers)
+4. Allocations + admin dashboards (the cached pages)  — ratchet lint allowlist
+5. Admin cards + modals  — ratchet
+6. Form fragments + `hx-on::` migrations + remaining `on*=` sweep + `<style>` blocks  — ratchet to zero
+7. Enforce flip: default `CSP_MODE=enforce`, XFO retirement, htmx hardening meta tag,
+   docs moves  (steps 5, 7)
+8. *(separate session, Playwright available)* Smoke-test the full checklist against
+   webdev with enforce; fix findings; then PR to `staging`.
+
+## Implementation steps (detail per area)
 
 ### 0. Vendor all CDN assets locally — `static/vendor/`, committed to the repo
 - **Storage decision: commit to repo** (user, 2026-06-12). Precedent exists
@@ -109,9 +132,10 @@ per decision). The calendar iframe is at
 
 ### 2. Header hook — `src/webapp/utils/security_headers.py`
 - `CSP_MODE` config: `'enforce' | 'report-only' | 'off'` (env-overridable). Code
-  default **enforce** for all config classes; `report-only`/`off` exist purely as the
-  no-rebuild rollback knob (helm values change). Note: in report-only fallback mode,
-  `frame-ancestors` is ignored by browsers — that's acceptable for a diagnostic mode.
+  default **`report-only`** while extraction commits land (commit 2), flipped to
+  **`enforce`** in the final commit; thereafter `report-only`/`off` remain as the
+  no-rebuild rollback knob (helm values change). Note: in report-only mode,
+  `frame-ancestors` is ignored by browsers — acceptable for a diagnostic mode.
 - Compute policy once at init; `h.setdefault()` per response (preserves route override).
 - Retire `X-Frame-Options` only when mode == enforce (`frame-ancestors` replaces it);
   keep XFO in report-only/off modes.
@@ -172,8 +196,10 @@ kills swapped-in `<script>` execution; that's the point, and it must come last).
 - New `tests/unit/test_template_csp_lint.py` — CI drift guard, regex over
   `src/webapp/templates/**/*.html`: forbid `<script>` without `src=` and without
   `type="application/json"`; forbid explicit `on(click|change|submit|input|...)=` attr
-  list; forbid `hx-on:`; forbid `<style>`. Allowlist empty from day one (straight to
-  enforce = extraction completes in the same push).
+  list; forbid `hx-on:`; forbid `<style>`. Lands in commit 2 with an
+  `ALLOWED_VIOLATIONS = {path: count}` dict seeded from the current inventory
+  (documents the debt, blocks NEW debt immediately); each extraction commit ratchets
+  it down; commit 6 empties it and it stays empty forever.
 
 ### 7. Docs + deploy notes
 - Move `docs/plans/DEFERRED-CSP-discussion.md` → `docs/plans/implemented/` with outcome
@@ -184,10 +210,13 @@ kills swapped-in `<script>` execution; that's the point, and it must come last).
 
 ## Verification
 
-- User runs pytest themselves (`source etc/config_env.sh && pytest`) — full suite +
-  the new header/builder/lint tests.
-- Manual smoke via `docker compose up webdev --watch` with **enforce active in dev**
-  (violations = loud console errors + broken behavior, immediately visible). Checklist
+- Per-commit: user runs pytest themselves (`source etc/config_env.sh && pytest`) —
+  full suite + the new header/builder/lint tests; quick eyeball in webdev with the
+  report-only console worklist (violation count must only decrease).
+- Final smoke (separate session with Playwright; user restarts Claude): drive webdev
+  with **enforce active**, walking the checklist below; console must show zero CSP
+  violations on every page. Also run once against the prod-like `webapp` compose
+  service. Checklist
   of dusty corners: date/time range pickers (preset + custom + epoch), allocations
   dashboard tabs/CSV export **on cache hit and miss**, org/institution cards
   (expand/sort/filter, then re-expand to exercise swap re-init), exchange-allocation +
