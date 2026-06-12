@@ -169,6 +169,11 @@ class TestProjectSchemas:
         assert 'lead_username' in result
         assert isinstance(result['lead_username'], (str, type(None)))
         assert 'admin_username' in result
+        assert isinstance(result['admin_username'], (str, type(None)))
+        # Value, not just presence: admin_username must reflect the actual
+        # admin (a None-only result is what hid PR295 P0-5).
+        expected_admin = real_project.admin.username if real_project.admin else None
+        assert result['admin_username'] == expected_admin
 
         # Should NOT have full nested user objects
         assert 'lead' not in result or not isinstance(result.get('lead'), dict)
@@ -291,6 +296,38 @@ class TestSchemaEdgeCases:
             result = ProjectSchema().dump(project)
             # admin should be None
             assert result.get('admin') is None
+
+    def test_admin_username_reflects_admin(self, session):
+        """ProjectListSchema.admin_username returns the admin's username [PR295 P0-5].
+
+        Regression: get_admin_username had an empty body, so admin_username
+        silently serialized to null for every project, even with an admin set.
+        """
+        from factories import make_project, make_user
+
+        project = make_project(session)
+        admin = make_user(session)
+        project.admin = admin
+        session.flush()
+
+        result = ProjectListSchema().dump(project)
+        assert result['admin_username'] == admin.username
+
+    def test_panel_none_on_orphan_project(self, session):
+        """ProjectSchema.panel is None (not a 500) for an orphan project [PR295 P0-6].
+
+        Regression: get_panel dereferenced obj.allocation_type without a None
+        guard, so a project with no allocation_type raised AttributeError → 500
+        on the /api/v1/projects/<projcode> detail endpoint. make_project() builds
+        exactly such an orphan (no allocation_type assigned).
+        """
+        from factories import make_project
+
+        orphan = make_project(session)
+        assert orphan.allocation_type is None  # precondition: it's an orphan
+
+        result = ProjectSchema().dump(orphan)
+        assert result['panel'] is None
 
     def test_empty_list_serialization(self, session):
         """Test that empty lists serialize correctly."""
