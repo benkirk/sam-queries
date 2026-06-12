@@ -70,7 +70,12 @@ per decision). The calendar iframe is at
 
 ## Implementation steps (single branch → PR to `staging`)
 
-### 0. Vendor all CDN assets locally — `static/vendor/`
+### 0. Vendor all CDN assets locally — `static/vendor/`, committed to the repo
+- **Storage decision: commit to repo** (user, 2026-06-12). Precedent exists
+  (`static/fonts/poppins/` already commits ~6 MB of TTFs, dormant since ~PR #271);
+  committed assets ride the existing packaging/serving/bind-mount/CI paths with zero
+  new machinery. Hygiene: mega-linter `FILTER_REGEX_EXCLUDE` for `static/vendor/`,
+  `.gitattributes` `linguist-vendored` marks.
 - Download the 6 registry assets, **verifying each against its existing SRI hash**
   (the pinned hashes become download checksums — supply-chain pinning survives):
   - `bootstrap-5.3.3.min.css` + `bootstrap-5.3.3.bundle.min.js` (jsdelivr)
@@ -81,7 +86,9 @@ per decision). The calendar iframe is at
     `static/vendor/fontawesome-6.5.2/{css,webfonts}/`
   - Poppins: woff2 files for weights 300–700 + a hand-written local
     `poppins.css` with `@font-face` rules (Google serves per-UA CSS; we fetch the
-    woff2 variants directly — no SRI existed here, so this *closes* a gap)
+    woff2 variants directly — no SRI existed here, so this *closes* a gap).
+    **Delete the dormant `static/fonts/poppins/` TTF set** (~6 MB, 18 variants,
+    unreferenced) — net repo shrink despite the new vendor files.
 - Rework `src/webapp/vendor_assets.py`: entries get a local `path` (rendered via
   `url_for('static', ...)` in the macros); `integrity`/`crossorigin` dropped for
   local assets; version stays in filename + registry comment for upgrade tracking.
