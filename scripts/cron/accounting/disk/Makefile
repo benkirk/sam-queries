@@ -4,7 +4,7 @@ SHELL       := /bin/bash
 USAGE_DIR   := /glade/u/hdig/project_user_usage
 CS_QUOTA    := /glade/u/hdig/gladequota/cs_usage.json
 
-STAMPS := .quasar.stamp .glade.stamp
+STAMPS := .quasar.stamp .glade.stamp .desc1.stamp
 
 .PHONY: all clean
 all: $(STAMPS)
