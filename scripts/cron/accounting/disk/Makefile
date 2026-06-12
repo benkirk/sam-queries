@@ -29,6 +29,7 @@ endef
 
 $(eval $(call ACCT_RULE,quasar,quasar,Quasar))
 $(eval $(call ACCT_RULE,glade,glade,Campaign_Store))
+$(eval $(call ACCT_RULE,desc1,desc1,Destor))
 
 clean:
 	rm -f $(STAMPS)
