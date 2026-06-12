@@ -72,8 +72,6 @@ ALLOWED_VIOLATIONS = {
     'dashboards/allocations/partials/transactions_table.html': {'event_handlers': 1},
     'dashboards/fragments/action_buttons.html': {'event_handlers': 2},
     'dashboards/fragments/audit_filters.html': {'event_handlers': 1},
-    'dashboards/fragments/date_range_picker.html': {'inline_scripts': 1, 'event_handlers': 3},
-    'dashboards/fragments/time_range_picker.html': {'inline_scripts': 1, 'event_handlers': 1},
     'dashboards/shared/project_tree.html': {'event_handlers': 2},
     'dashboards/status/dashboard.html': {'event_handlers': 1},
     'dashboards/status/fragments/outage_modals.html': {'inline_scripts': 1},
