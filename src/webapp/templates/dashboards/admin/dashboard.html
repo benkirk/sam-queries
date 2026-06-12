@@ -202,12 +202,12 @@
                                     <label class="form-label small mb-1 invisible">Actions</label>
                                     <button type="button" class="btn btn-sm btn-primary"
                                             style="width: 160px;"
-                                            onclick="reloadActiveExpirationsTab()">
+                                            data-action="expirations-reload">
                                         <i class="fas fa-search"></i> Apply Filters
                                     </button>
                                     <button type="button" class="btn btn-sm btn-outline-primary"
                                             style="width: 160px;"
-                                            onclick="exportExpirationsCsv()">
+                                            data-action="expirations-export-csv">
                                         <i class="fas fa-download"></i> Export CSV
                                     </button>
                                 </div>
@@ -518,84 +518,6 @@
 
 {% endblock %}
 
-{% block extra_js %}
-<script>
-/* Expirations: load a tab's content via htmx */
-function loadExpirationsView(view) {
-    var container = document.getElementById(view + '-container');
-    if (!container) return;
-    var params = new URLSearchParams(new FormData(document.getElementById('expirations-filters-form')));
-    params.set('view', view);
-    htmx.ajax('GET', '/admin/expirations?' + params.toString(), {target: container, swap: 'innerHTML'});
-}
-
-/* Load upcoming on first expand of the expirations section */
-document.getElementById('expirations-section').addEventListener('shown.bs.collapse', function() {
-    if (!this.dataset.loaded) {
-        loadExpirationsView('upcoming');
-        this.dataset.loaded = 'true';
-    }
-});
-
-/* Load tab content on tab switch */
-$('#expirations-tabs a[data-bs-toggle="pill"]').on('shown.bs.tab', function() {
-    var view = this.dataset.view;
-    var container = document.getElementById(view + '-container');
-    if (container && !container.dataset.loaded) {
-        loadExpirationsView(view);
-        container.dataset.loaded = 'true';
-    }
-});
-
-/* Apply Filters — reload the active tab */
-function reloadActiveExpirationsTab() {
-    var activeTab = document.querySelector('#expirations-tabs .nav-link.active');
-    var view = activeTab ? activeTab.dataset.view : 'upcoming';
-    loadExpirationsView(view);
-}
-
-/* Export CSV */
-function exportExpirationsCsv() {
-    var activeTab = document.querySelector('#expirations-tabs .nav-link.active');
-    var view = activeTab ? activeTab.dataset.view : 'upcoming';
-    var params = new URLSearchParams(new FormData(document.getElementById('expirations-filters-form')));
-    params.set('export_type', view);
-    window.open('/admin/expirations/export?' + params.toString(), '_blank');
-}
-
-/* Switch to Projects tab whenever a project card is loaded from any context (e.g. user card badges) */
-document.body.addEventListener('htmx:afterSwap', function(e) {
-    if (e.detail.target && e.detail.target.id === 'projectCardContainer') {
-        var projectsTabBtn = document.getElementById('projects-tab');
-        if (projectsTabBtn && !projectsTabBtn.classList.contains('active')) {
-            bootstrap.Tab.getOrCreateInstance(projectsTabBtn).show();
-        }
-        e.detail.target.scrollIntoView({behavior: 'smooth', block: 'start'});
-    }
-});
-
-/* Delegated handlers for dynamically loaded expiration content */
-document.addEventListener('click', function(e) {
-    var btn = e.target.closest('.impersonate-user-btn');
-    if (btn && btn.dataset.username) {
-        var username = btn.dataset.username;
-        samConfirm({
-            title: 'Impersonate user',
-            message: 'Impersonate user ' + username + '?',
-            variant: 'warning',
-            label: 'Impersonate',
-            onConfirm: function() {
-                document.getElementById('selectedUsernameImpersonate').value = username;
-                document.getElementById('impersonateUserForm').submit();
-            }
-        });
-    }
-
-    var link = e.target.closest('.project-code-link');
-    if (link && link.dataset.projcode) {
-        e.preventDefault();
-        htmx.ajax('GET', '/admin/project/' + link.dataset.projcode, {target: '#projectCardContainer', swap: 'innerHTML'});
-    }
-});
-</script>
-{% endblock %}
+{# Page behavior (expirations tab loading/export, impersonate +
+   project-code delegated handlers, projects-tab auto-switch) lives in
+   static/js/dashboard-init.js (CSP: no inline scripts). #}

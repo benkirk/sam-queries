@@ -42,4 +42,32 @@
     document.addEventListener('change', dispatch('data-action-change'));
     document.addEventListener('input',  dispatch('data-action-input'));
     document.addEventListener('submit', dispatch('data-action-submit'));
+
+    /* data-stop-propagation: element-level stopPropagation() (replaces
+     * inline onclick="event.stopPropagation()"). Must be a real element
+     * listener — the row clicks it guards against are htmx element-level
+     * bindings, which a document-level guard could never intercept.
+     * Re-bound per swapped subtree via htmx.onLoad. */
+    function bindStopPropagation(scope) {
+        var els = Array.prototype.slice.call(
+            scope.querySelectorAll('[data-stop-propagation]'));
+        if (scope.matches && scope.matches('[data-stop-propagation]')) {
+            els.unshift(scope);
+        }
+        els.forEach(function (el) {
+            if (el.samStopBound) { return; }
+            el.samStopBound = true;
+            el.addEventListener('click', function (evt) {
+                evt.stopPropagation();
+            });
+        });
+    }
+
+    if (window.htmx) {
+        htmx.onLoad(bindStopPropagation);
+    } else {
+        document.addEventListener('DOMContentLoaded', function () {
+            bindStopPropagation(document.body);
+        });
+    }
 })();

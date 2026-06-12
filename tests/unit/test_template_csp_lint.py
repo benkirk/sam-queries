@@ -45,7 +45,6 @@ CHECKS = {
 # Ratchet: exact remaining debt, seeded 2026-06-12 at CSP-work start.
 # Shrink with every extraction commit; never grow.
 ALLOWED_VIOLATIONS = {
-    'dashboards/admin/dashboard.html': {'inline_scripts': 1, 'event_handlers': 2},
     'dashboards/admin/edit_project.html': {'inline_scripts': 1, 'style_blocks': 1},
     'dashboards/admin/fragments/configuration_card.html': {'style_blocks': 1},
     'dashboards/admin/fragments/create_allocation_type_form_htmx.html': {'inline_scripts': 1},
@@ -65,11 +64,6 @@ ALLOWED_VIOLATIONS = {
     'dashboards/admin/fragments/project_search_results_htmx.html': {'hx_on': 1},
     'dashboards/admin/fragments/resources_card.html': {'inline_scripts': 1, 'event_handlers': 1},
     'dashboards/admin/fragments/user_search_results_htmx.html': {'event_handlers': 1, 'hx_on': 1},
-    'dashboards/allocations/dashboard.html': {'inline_scripts': 1, 'event_handlers': 2},
-    'dashboards/allocations/fragments/create_adjustment_form_htmx.html': {'event_handlers': 1},
-    'dashboards/allocations/partials/adjustments_table.html': {'event_handlers': 1},
-    'dashboards/allocations/partials/project_table.html': {'event_handlers': 1},
-    'dashboards/allocations/partials/transactions_table.html': {'event_handlers': 1},
     'dashboards/fragments/action_buttons.html': {'event_handlers': 2},
     'dashboards/fragments/audit_filters.html': {'event_handlers': 1},
     'dashboards/shared/project_tree.html': {'event_handlers': 2},
