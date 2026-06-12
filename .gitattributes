@@ -1,0 +1,7 @@
+# Vendored third-party assets (see src/webapp/vendor_assets.py):
+# upstream dist files committed verbatim — hide from diffs/language stats.
+src/webapp/static/vendor/** linguist-vendored
+src/webapp/static/vendor/**/*.min.js -diff
+src/webapp/static/vendor/**/*.min.css -diff
+src/webapp/static/vendor/**/*.woff2 binary
+src/webapp/static/vendor/**/*.ttf binary
