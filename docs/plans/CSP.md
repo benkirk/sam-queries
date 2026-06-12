@@ -13,7 +13,13 @@ that turns "template-escaping slip + phishing email = session compromise" into
 **User decisions (2026-06-12):** straight to enforce in one push (no report-only soak),
 no self-hosted report endpoint (console-only violations), accept
 `style-src 'unsafe-inline'` permanently (245 inline `style=` attrs stay; inline styles
-can't execute script).
+can't execute script), and **vendor all 6 CDN assets locally**. Rationale for
+vendoring: `script-src https://cdn.jsdelivr.net https://unpkg.com` allowlists every
+npm package ever published (an injected `<script src>` tag bypasses CSP entirely —
+Google CSP Evaluator flags these origins for exactly this), browser cache
+partitioning (~2020) killed the shared-CDN performance benefit, and self-hosting
+Poppins closes the one asset that can't carry SRI. Result: zero third-party origins
+in the policy.
 
 ## Honest cost/benefit
 
@@ -45,9 +51,9 @@ header), so the design is **nonce-free**: zero inline executable scripts;
 
 ```
 default-src 'self';
-script-src 'self' https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com;
-style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;
-font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com;
+script-src 'self';
+style-src 'self' 'unsafe-inline';
+font-src 'self';
 img-src 'self' data:;
 connect-src 'self';
 frame-src 'self' [+ origin of GOOGLE_CALENDAR_EMBED_URL when configured];
@@ -55,9 +61,8 @@ frame-ancestors 'self';
 object-src 'none'; base-uri 'self'; form-action 'self'
 ```
 
-Notes: css-kind registry origins feed both `style-src` and `font-src` (Font Awesome
-webfonts load from cdnjs); `fonts.gstatic.com` added via a `csp_extra` registry key on
-the `poppins` entry; `data:` in `img-src` for Bootstrap/dashboard.css SVG data URIs;
+Notes: with all assets vendored, no third-party origins remain except the optional
+calendar iframe; `data:` in `img-src` for Bootstrap/dashboard.css SVG data URIs;
 OIDC (Entra) is pure 302 — no IdP directives needed; **no `report-uri`** (console-only
 per decision). The calendar iframe is at
 `templates/dashboards/status/fragments/reservations.html:32` /
@@ -65,13 +70,35 @@ per decision). The calendar iframe is at
 
 ## Implementation steps (single branch → PR to `staging`)
 
+### 0. Vendor all CDN assets locally — `static/vendor/`
+- Download the 6 registry assets, **verifying each against its existing SRI hash**
+  (the pinned hashes become download checksums — supply-chain pinning survives):
+  - `bootstrap-5.3.3.min.css` + `bootstrap-5.3.3.bundle.min.js` (jsdelivr)
+  - `jquery-3.6.0.min.js` (code.jquery.com)
+  - `htmx-2.0.4.min.js` (unpkg 302 target `dist/htmx.min.js`)
+  - Font Awesome 6.5.2: `all.min.css` + the `webfonts/` directory it references via
+    relative `../webfonts/` paths — preserve that layout under
+    `static/vendor/fontawesome-6.5.2/{css,webfonts}/`
+  - Poppins: woff2 files for weights 300–700 + a hand-written local
+    `poppins.css` with `@font-face` rules (Google serves per-UA CSS; we fetch the
+    woff2 variants directly — no SRI existed here, so this *closes* a gap)
+- Rework `src/webapp/vendor_assets.py`: entries get a local `path` (rendered via
+  `url_for('static', ...)` in the macros); `integrity`/`crossorigin` dropped for
+  local assets; version stays in filename + registry comment for upgrade tracking.
+  Keep the registry + `vendor_css()`/`vendor_js()` macros as the single source of
+  truth — templates don't change beyond what the macros emit.
+- Docstring: document that any *future* genuinely-external asset must carry a full
+  URL + SRI + (if it fetches at runtime) a `csp_extra: {directive: source}` key, and
+  the CSP builder will pick its origin up automatically.
+
 ### 1. Policy builder — new `src/webapp/utils/csp.py`
 - `build_csp_directives(vendor_assets, config)` derives directives from
-  `VENDOR_ASSETS` origins (urlsplit → scheme+host), `kind` → directive mapping,
-  optional per-asset `csp_extra: {directive: source}` key, `GOOGLE_CALENDAR_EMBED_URL`
-  → `frame-src`. `render_csp(directives)` joins to header string. Pure, unit-testable.
-- Add `csp_extra={'font-src': 'https://fonts.gstatic.com'}` to the `poppins` entry in
-  `vendor_assets.py`; document that runtime-fetching libs need `csp_extra` entries.
+  `VENDOR_ASSETS` (urlsplit → scheme+host for any remaining/future external URLs;
+  local-path entries contribute nothing beyond `'self'`), `kind` → directive mapping,
+  optional per-asset `csp_extra` key, `GOOGLE_CALENDAR_EMBED_URL` → `frame-src`.
+  `render_csp(directives)` joins to header string. Pure, unit-testable. With
+  everything vendored the output is the all-`'self'` policy above, but the
+  registry-derivation machinery is what prevents drift if a CDN asset ever returns.
 
 ### 2. Header hook — `src/webapp/utils/security_headers.py`
 - `CSP_MODE` config: `'enforce' | 'report-only' | 'off'` (env-overridable). Code
@@ -127,10 +154,12 @@ per decision). The calendar iframe is at
 kills swapped-in `<script>` execution; that's the point, and it must come last).
 
 ### 6. Tests
-- Extend `tests/unit/test_security_headers.py`: builder unit tests (origin extraction;
-  script-src has exactly self+3 js origins, no `unsafe-inline`/nonce; style-src has
-  `unsafe-inline`; font-src includes gstatic+cdnjs; frame-src picks up calendar URL iff
-  configured; fake registry entry flows through — the anti-drift guarantee). Mode tests:
+- Extend `tests/unit/test_security_headers.py`: builder unit tests (script-src is
+  exactly `'self'` — no CDN origins, no `unsafe-inline`, no nonce; style-src has
+  `unsafe-inline`; frame-src picks up calendar URL iff configured; a fake external
+  registry entry with URL/`csp_extra` flows into the right directives — the
+  anti-drift guarantee). Vendored-asset sanity test: every registry `path` exists
+  under `static/`. Mode tests:
   enforce → `Content-Security-Policy` present + XFO absent; report-only →
   `...-Report-Only` + XFO present; off → no CSP; `/database/*` → no CSP any mode.
 - New `tests/unit/test_template_csp_lint.py` — CI drift guard, regex over
@@ -158,11 +187,15 @@ kills swapped-in `<script>` execution; that's the point, and it must come last).
   create-project + mnemonic forms, outage modals, impersonate confirm-modal flow,
   fk-picker, login page, status dashboard incl. calendar iframe.
 - Confirm headers with `curl -sI` : CSP present, XFO absent, HSTS per env.
+- Browser devtools network tab: zero requests to third-party origins (fonts render
+  as Poppins, Font Awesome icons present, htmx/Bootstrap behaviors work — proves
+  vendored assets actually serve).
 - `/database` admin in dev: loads without CSP (carve-out works).
 
 ## Effort estimate (honest)
 
-~5-7 dev-days: builder+hook+tests (1), delegation core + pickers exemplar (1),
+~5.5-7.5 dev-days: vendoring assets + registry rework (0.5), builder+hook+tests (1),
+delegation core + pickers exemplar (1),
 allocations/admin dashboards incl. cached pages (1-1.5), admin cards + modals (1-1.5),
 form fragments + hx-on + on* sweep + style blocks (1-1.5), hardening flip + lint
 ratchet to zero + smoke pass (0.5-1). Uncertainty: the 92-line exchange-allocation and
