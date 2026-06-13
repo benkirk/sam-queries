@@ -29,7 +29,7 @@
       {% if can_edit_governance %}
       <button class="btn btn-sm btn-outline-success"
               type="button"
-              onclick="leToggleAddForm('addOrgForm')">
+              data-action="le-toggle" data-target-id="addOrgForm">
         <i class="fas fa-plus"></i> Add
       </button>
       {% endif %}
@@ -55,7 +55,7 @@
               <i class="fas fa-check"></i> Link
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary"
-                    onclick="leToggleAddForm('addOrgForm')">
+                    data-action="le-toggle" data-target-id="addOrgForm">
               Cancel
             </button>
           </div>
@@ -118,7 +118,7 @@
       {% if can_edit_governance %}
       <button class="btn btn-sm btn-outline-success"
               type="button"
-              onclick="leToggleAddForm('addContractForm')">
+              data-action="le-toggle" data-target-id="addContractForm">
         <i class="fas fa-plus"></i> Add
       </button>
       {% endif %}
@@ -144,7 +144,7 @@
               <i class="fas fa-check"></i> Link
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary"
-                    onclick="leToggleAddForm('addContractForm')">
+                    data-action="le-toggle" data-target-id="addContractForm">
               Cancel
             </button>
           </div>
@@ -204,7 +204,7 @@
       {% if can_edit_governance %}
       <button class="btn btn-sm btn-outline-success"
               type="button"
-              onclick="leToggleAddForm('addDirForm')">
+              data-action="le-toggle" data-target-id="addDirForm">
         <i class="fas fa-plus"></i> Add
       </button>
       {% endif %}
@@ -240,7 +240,7 @@
               <i class="fas fa-check"></i> Add
             </button>
             <button type="button" class="btn btn-outline-secondary"
-                    onclick="leToggleAddForm('addDirForm')">
+                    data-action="le-toggle" data-target-id="addDirForm">
               Cancel
             </button>
           </div>
@@ -314,11 +314,5 @@
 
 </div>{# /d-flex flex-column #}
 
-<script>
-// Toggle helper for the Add-form collapse panels. FK pickers are wired up
-// globally by /static/js/fk-picker.js.
-function leToggleAddForm(id) {
-  const el = document.getElementById(id);
-  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
-}
-</script>
+{# Add-form panel toggles use the le-toggle action (static/js/form-helpers.js);
+   FK pickers are wired up globally by static/js/fk-picker.js. #}

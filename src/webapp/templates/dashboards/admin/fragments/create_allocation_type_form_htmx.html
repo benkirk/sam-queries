@@ -76,14 +76,4 @@
         </div>
 {% endcall %}
 
-<script>
-(function () {
-    // Auto-select panel if only one option after htmx swap
-    document.getElementById('createAllocTypePanel').addEventListener('htmx:afterSwap', function () {
-        const opts = Array.from(this.options).filter(function (o) { return o.value !== ''; });
-        if (opts.length === 1) {
-            this.value = opts[0].value;
-        }
-    });
-})();
-</script>
+{# Single-option auto-select lives in static/js/form-helpers.js. #}

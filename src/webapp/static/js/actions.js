@@ -43,10 +43,39 @@
     document.addEventListener('input',  dispatch('data-action-input'));
     document.addEventListener('submit', dispatch('data-action-submit'));
 
-    /* Generic built-in: clickable rows/elements that just navigate
+    /* ── Generic built-ins ── */
+
+    /* Clickable rows/elements that just navigate
      * (replaces onclick="window.location='...'"). */
     window.registerAction('navigate', function (el) {
         window.location = el.dataset.href;
+    });
+
+    /* Uppercase-as-you-type inputs (projcode, mnemonic). */
+    window.registerAction('uppercase', function (el) {
+        el.value = el.value.toUpperCase();
+    });
+
+    /* Filter-bar "Reset" buttons: reset the form, then re-submit it so
+     * the htmx fragment reloads with defaults. */
+    window.registerAction('form-reset-submit', function (el) {
+        var form = document.getElementById(el.dataset.formId);
+        form.reset();
+        htmx.trigger(form, 'submit');
+    });
+
+    /* Confirm-gated plain-form submit (samConfirm is an async Bootstrap
+     * modal — always preventDefault, re-submit from onConfirm). Used via
+     * <form data-action-submit="confirm-submit" data-confirm-message=...>. */
+    window.registerAction('confirm-submit', function (form, evt) {
+        evt.preventDefault();
+        samConfirm({
+            title:   form.dataset.confirmTitle   || 'Confirm action',
+            message: form.dataset.confirmMessage || 'Are you sure?',
+            variant: form.dataset.confirmVariant || 'warning',
+            label:   form.dataset.confirmLabel   || 'Confirm',
+            onConfirm: function () { form.submit(); }
+        });
     });
 
     /* data-stop-propagation: element-level stopPropagation() (replaces
@@ -65,6 +94,11 @@
             el.samStopBound = true;
             el.addEventListener('click', function (evt) {
                 evt.stopPropagation();
+                /* The document-level dispatcher will never see this click,
+                 * so honor a data-action on the same element here. */
+                var fn = el.hasAttribute('data-action') &&
+                         actions[el.getAttribute('data-action')];
+                if (fn) { fn(el, evt); }
             });
         });
     }

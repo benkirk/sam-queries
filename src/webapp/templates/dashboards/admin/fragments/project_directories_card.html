@@ -130,7 +130,7 @@
                                 hx-swap="innerHTML"
                                 data-bs-toggle="modal"
                                 data-bs-target="#projectDetailsModal"
-                                onclick="event.stopPropagation()">
+                                data-stop-propagation>
                             <strong>{{ pd.project.projcode }}</strong>
                         </button>
                         {% if _orphan %}
@@ -157,7 +157,7 @@
                                 data-confirm-title="Deactivate directory"
                                 data-confirm-variant="warning"
                                 data-confirm-label="Deactivate"
-                                onclick="event.stopPropagation()">
+                                data-stop-propagation>
                             <i class="fas fa-trash-alt"></i>
                         </button>
                         {% endif %}
@@ -182,10 +182,4 @@
     </div>
 </div>
 
-<script>
-(function() {
-    if (window.SamCollapseChevron) {
-        SamCollapseChevron.attach('#projectDirectoriesSection', '.pd-res-collapse-icon');
-    }
-})();
-</script>
+{# Collapse chevrons wired in static/js/form-helpers.js (htmx.onLoad). #}

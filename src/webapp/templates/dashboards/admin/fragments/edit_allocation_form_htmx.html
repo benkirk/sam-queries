@@ -80,14 +80,7 @@
         <div class="form-check mb-2">
           <input class="form-check-input border-danger" type="checkbox"
                  id="confirmBreakInheritance"
-                 onchange="
-                   var unlock = this.checked;
-                   document.getElementById('break_inheritance').value = unlock ? 'true' : 'false';
-                   ['editAllocAmount','editAllocStart','editAllocEnd'].forEach(function(id){
-                     var el = document.getElementById(id);
-                     if (el) el.disabled = !unlock;
-                   });
-                 ">
+                 data-action-change="alloc-break-inheritance">
           <label class="form-check-label text-danger" for="confirmBreakInheritance">
             I understand — permanently break inheritance and allow editing these fields
           </label>

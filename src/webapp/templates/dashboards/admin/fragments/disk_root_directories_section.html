@@ -95,7 +95,7 @@
                             data-confirm-title="{% if dr.is_active %}Deactivate{% else %}Activate{% endif %} root directory"
                             data-confirm-variant="{% if dr.is_active %}warning{% else %}primary{% endif %}"
                             data-confirm-label="{% if dr.is_active %}Deactivate{% else %}Activate{% endif %}"
-                            onclick="event.stopPropagation()">
+                            data-stop-propagation>
                         {% if dr.is_active %}
                         <i class="fas fa-toggle-on"></i>
                         {% else %}

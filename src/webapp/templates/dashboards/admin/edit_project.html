@@ -5,10 +5,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
-<style>
-  .tree-list { list-style: none; padding-left: 1.25rem; }
-  .tree-list > li { border-left: 2px solid #dee2e6; padding: 0.25rem 0.5rem; margin-bottom: 0.1rem; }
-</style>
+{# styles extracted to static/css/components.css (CSP) #}
 {% endblock %}
 
 {% block content %}
@@ -131,7 +128,8 @@
       </button>
     </div>
     {% endif %}
-    <div id="allocationTreeContainer">
+    <div id="allocationTreeContainer"
+         data-tree-url="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}">
       <div class="text-center text-muted py-4">
         <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
         <p class="mt-2">Loading allocations…</p>
@@ -256,29 +254,8 @@
 {% include 'dashboards/admin/fragments/project_directory_modals.html' %}
 
 <!-- ═══════════════════════════════════════════════ HTMX event handlers -->
-<script>
-  // After a successful project details save, the success fragment is shown
-  // in #editDetailsContainer. Reload the page so the form, header title, and
-  // "Inactive" badge reflect the new values. Brief delay so the user sees
-  // the green checkmark first.
-  document.body.addEventListener('reloadEditProjectDetails', function () {
-    setTimeout(function () { window.location.reload(); }, 800);
-  });
-
-  // Reload Allocation Tree after add/edit allocation success.
-  // Preserve the current "Active at" date so a historical view is not reset to today.
-  document.body.addEventListener('reloadAllocationTree', function (evt) {
-    var activeAtInput = document.getElementById('alloc-active-at');
-    var url = '{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}';
-    if (activeAtInput && activeAtInput.value) {
-      url += '?active_at=' + encodeURIComponent(activeAtInput.value);
-    }
-    htmx.ajax('GET', url, {
-      target: '#allocationTreeContainer',
-      swap: 'innerHTML',
-      indicator: '#allocTreeSpinner, #allocationTreeContainer'
-    });
-  });
-</script>
+{# reloadEditProjectDetails / reloadAllocationTree HX-Trigger hooks live in
+   static/js/form-helpers.js; the tree fragment URL rides data-tree-url on
+   #allocationTreeContainer. #}
 
 {% endblock %}

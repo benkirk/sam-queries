@@ -15,19 +15,7 @@
   grid sized for full-page width and squashes values inside half-width
   cards.
 #}
-<style>
-    .config-stats {
-        display: grid;
-        grid-template-columns: max-content 1fr;
-        column-gap: 1.25rem;
-        row-gap: 0;
-    }
-    .config-stats dt, .config-stats dd {
-        margin: 0;
-        padding: 2px 0;
-        word-break: break-word;
-    }
-</style>
+{# styles extracted to static/css/components.css (CSP) #}
 
 {% macro stat(label, value, value_class='') %}
     <dt class="fw-normal text-muted">{{ label }}</dt>

@@ -42,35 +42,10 @@ CHECKS = {
     'style_blocks': re.compile(r'<style\b', re.I),
 }
 
-# Ratchet: exact remaining debt, seeded 2026-06-12 at CSP-work start.
-# Shrink with every extraction commit; never grow.
-ALLOWED_VIOLATIONS = {
-    'dashboards/admin/edit_project.html': {'inline_scripts': 1, 'style_blocks': 1},
-    'dashboards/admin/fragments/configuration_card.html': {'style_blocks': 1},
-    'dashboards/admin/fragments/create_allocation_type_form_htmx.html': {'inline_scripts': 1},
-    'dashboards/admin/fragments/create_mnemonic_code_form_htmx.html': {'inline_scripts': 1, 'event_handlers': 3},
-    'dashboards/admin/fragments/create_project_form_htmx.html': {'inline_scripts': 1, 'event_handlers': 1},
-    'dashboards/admin/fragments/disk_root_directories_section.html': {'event_handlers': 1},
-    'dashboards/admin/fragments/edit_allocation_form_htmx.html': {'event_handlers': 1},
-    'dashboards/admin/fragments/exchange_allocation_form_htmx.html': {'inline_scripts': 1},
-    'dashboards/admin/fragments/facility_card.html': {'inline_scripts': 1},
-    'dashboards/admin/fragments/group_search_results_htmx.html': {'hx_on': 1},
-    'dashboards/admin/fragments/institution_filters.html': {'event_handlers': 1},
-    'dashboards/admin/fragments/project_allocation_tree_htmx.html': {'style_blocks': 1},
-    'dashboards/admin/fragments/project_directories_card.html': {'inline_scripts': 1, 'event_handlers': 2},
-    'dashboards/admin/fragments/project_linked_elements_htmx.html': {'inline_scripts': 1, 'event_handlers': 6},
-    'dashboards/admin/fragments/project_search_results_htmx.html': {'hx_on': 1},
-    'dashboards/admin/fragments/user_search_results_htmx.html': {'event_handlers': 1, 'hx_on': 1},
-    'dashboards/fragments/action_buttons.html': {'event_handlers': 2},
-    'dashboards/fragments/audit_filters.html': {'event_handlers': 1},
-    'dashboards/shared/project_tree.html': {'event_handlers': 2},
-    'dashboards/user/fragments/user_search_results_htmx.html': {'event_handlers': 1},
-    'dashboards/user/partials/project_card.html': {'inline_scripts': 1, 'event_handlers': 3},
-    'dashboards/user/partials/user_card.html': {'event_handlers': 1},
-    'dashboards/user/resource_details.html': {'style_blocks': 1},
-    'dashboards/user/resource_details_disk.html': {'event_handlers': 1},
-    'project_members/fragments/add_member_form_htmx.html': {'inline_scripts': 1, 'event_handlers': 1},
-}
+# Ratchet: seeded 2026-06-12 with 41 files of debt; emptied by the
+# extraction commits in the same CSP push. It stays empty — extract to
+# static JS/CSS (docstring above) instead of repopulating this.
+ALLOWED_VIOLATIONS = {}
 
 
 def scan_templates():
