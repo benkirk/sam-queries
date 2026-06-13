@@ -62,11 +62,11 @@
 {% set _from_admin = request.args.get('from') == 'admin' %}
 <div class="back-link mb-3">
     {% if _from_admin %}
-    <a href="{{ url_for('admin_dashboard.index', projcode=projcode) }}" class="btn btn-sm btn-outline-secondary">
+    <a href="{{ url_for('admin_dashboard.index', projcode=projcode) }}" class="btn  btn-outline-secondary">
         <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Admin</span>
     </a>
     {% else %}
-    <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-sm btn-outline-secondary">
+    <a href="{{ url_for('user_dashboard.index') }}" class="btn  btn-outline-secondary">
         <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Dashboard</span>
     </a>
     {% endif %}
@@ -206,7 +206,7 @@
                                                   scope=scope, fileset=d.name,
                                                   start_date=start_date, end_date=end_date) %}
                         <tr style="cursor: pointer;{% if is_active %} background: #fff3cd;{% endif %}"
-                            onclick="window.location='{{ row_url }}'">
+                            data-action="navigate" data-href="{{ row_url }}">
                             {% if _multi_proj %}
                             <td><strong>{{ d.projcode }}</strong></td>
                             {% endif %}

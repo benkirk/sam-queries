@@ -105,12 +105,14 @@
             <div class="btn-group btn-group-sm mb-2 w-100" role="group" aria-label="Project code mode">
                 <input type="radio" class="btn-check" name="projcode_mode"
                        id="projcodeModeAuto" value="auto" autocomplete="off"
+                       data-action-change="projcode-mode"
                        {% if not form or form.get('projcode_mode', 'auto') == 'auto' %}checked{% endif %}>
                 <label class="btn btn-outline-secondary" for="projcodeModeAuto">
                     <i class="fas fa-magic me-1"></i> Auto-generate
                 </label>
                 <input type="radio" class="btn-check" name="projcode_mode"
                        id="projcodeModeManual" value="manual" autocomplete="off"
+                       data-action-change="projcode-mode"
                        {% if form and form.get('projcode_mode') == 'manual' %}checked{% endif %}>
                 <label class="btn btn-outline-secondary" for="projcodeModeManual">
                     <i class="fas fa-keyboard me-1"></i> Manual
@@ -154,7 +156,7 @@
                        id="projcodeManualInput"
                        placeholder="e.g. UCSD0042"
                        maxlength="30"
-                       oninput="this.value = this.value.toUpperCase()"
+                       data-action-input="projcode-manual-sync"
                        value="{{ form.get('projcode', '') if form and form.get('projcode_mode') == 'manual' else '' }}">
             </div>
 
@@ -251,77 +253,6 @@
         </div>
 {% endcall %}
 
-<script>
-(function () {
-    // ── Facility → Panel → AllocationType cascade ────────────────────────
-    // After panels load: auto-select if only one option, then cascade
-    const panelSelect = document.getElementById('createProjectPanel');
-    const allocSelect = document.getElementById('createProjectAllocType');
-
-    panelSelect.addEventListener('htmx:afterSwap', function () {
-        const opts = Array.from(this.options).filter(function (o) { return o.value !== ''; });
-        if (opts.length === 1) {
-            this.value = opts[0].value;
-            htmx.trigger(this, 'change');  // cascade → alloc types
-        }
-    });
-
-    allocSelect.addEventListener('htmx:afterSwap', function () {
-        const opts = Array.from(this.options).filter(function (o) { return o.value !== ''; });
-        if (opts.length === 1) {
-            this.value = opts[0].value;
-        }
-    });
-
-    // ── Projcode mode toggle ──────────────────────────────────────────────
-    const autoSection   = document.getElementById('projcodeAutoSection');
-    const manualSection = document.getElementById('projcodeManualSection');
-    const manualInput   = document.getElementById('projcodeManualInput');
-    const hiddenCode    = document.getElementById('projcodeHidden');
-    const previewEl     = document.getElementById('projcodePreview');
-
-    function applyProjcodeMode(mode) {
-        if (mode === 'manual') {
-            autoSection.style.display  = 'none';
-            manualSection.style.display = '';
-            hiddenCode.value = manualInput.value.toUpperCase();
-        } else {
-            autoSection.style.display  = '';
-            manualSection.style.display = 'none';
-            hiddenCode.value = previewEl.textContent.trim() !== '—' ? previewEl.textContent.trim() : '';
-        }
-    }
-
-    document.querySelectorAll('[name="projcode_mode"]').forEach(function (radio) {
-        radio.addEventListener('change', function () { applyProjcodeMode(this.value); });
-    });
-
-    // Keep hidden field in sync when manual input changes
-    manualInput.addEventListener('input', function () {
-        hiddenCode.value = this.value.toUpperCase();
-    });
-
-    // Keep hidden field in sync when projcode preview updates (htmx swap)
-    document.getElementById('projcodePreview').addEventListener('htmx:afterSwap', function () {
-        const mode = document.querySelector('[name="projcode_mode"]:checked');
-        if (mode && mode.value === 'auto') {
-            hiddenCode.value = this.textContent.trim() !== '—' ? this.textContent.trim() : '';
-        }
-    });
-
-    // Apply on load (handles form re-render with errors)
-    const currentMode = document.querySelector('[name="projcode_mode"]:checked');
-    if (currentMode) applyProjcodeMode(currentMode.value);
-
-    // ── htmx: update hidden projcode after auto-preview response ────────
-    document.getElementById('projcodeAutoSection').addEventListener('htmx:afterSwap', function (e) {
-        if (e.target.id === 'projcodePreview') {
-            const val = e.target.textContent.trim();
-            hiddenCode.value = (val && val !== '—') ? val : '';
-        }
-    });
-
-    // FK pickers (lead, admin, contract, org, parent) are wired up by
-    // /static/js/fk-picker.js — no per-field JS needed.
-})();
-</script>
+{# Cascade auto-select, projcode mode toggle + manual sync live in
+   static/js/form-helpers.js. FK pickers (lead, admin, contract, org,
+   parent) are wired up by static/js/fk-picker.js. #}

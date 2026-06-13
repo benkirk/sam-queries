@@ -8,7 +8,7 @@
             hx-get="{{ url_for('admin_dashboard.user_card', username=user.username) }}"
             hx-target="#userCardContainer"
             hx-swap="innerHTML"
-            hx-on::after-request="document.getElementById('userSearchResults').innerHTML = ''; document.getElementById('userSearchInput').value = '';">
+            data-clear-results="userSearchResults" data-clear-input="userSearchInput">
         <div>
             <strong>{{ user.display_name }}</strong>
             <small class="ms-1 {% if not user.active %}text-muted{% endif %}">({{ user.username }})</small>
@@ -25,10 +25,13 @@
     <!-- Right: impersonate icon (only for IMPERSONATE_USERS) -->
     {% if has_permission(Permission.IMPERSONATE_USERS) %}
     <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}" class="ms-2"
-          onsubmit="event.preventDefault(); var f=this; samConfirm({title:'Impersonate user', message:'Impersonate {{ user.display_name|e }} ({{ user.username }})?', variant:'warning', label:'Impersonate', onConfirm:function(){f.submit();}}); return false;">
+          data-action-submit="confirm-submit"
+          data-confirm-title="Impersonate user"
+          data-confirm-message="Impersonate {{ user.display_name }} ({{ user.username }})?"
+          data-confirm-variant="warning" data-confirm-label="Impersonate">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="username" value="{{ user.username }}">
-        <button type="submit" class="btn btn-sm btn-outline-warning" title="Impersonate {{ user.username }}">
+        <button type="submit" class="btn  btn-outline-warning" title="Impersonate {{ user.username }}">
             <i class="fas fa-user-secret"></i>
         </button>
     </form>

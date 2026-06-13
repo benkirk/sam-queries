@@ -10,7 +10,7 @@
 {% block content %}
 <!-- Page Header -->
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="fas fa-chart-pie"></i> Allocations Dashboard</h2>
+    <h1><i class="fas fa-chart-pie"></i> Allocations Dashboard</h1>
 </div>
 
 <!-- Top-level tab navigation -->
@@ -143,80 +143,52 @@
 </div>
 {% endif %}
 
-<!-- Filter Panel: collapsed-by-default summary bar; placed below the chart
-     since changes are infrequent. Expanded form lives in the .collapse body.
-     The .collapse[id] is auto-persisted by nav-view-persistence.js so a
-     user who expands it once keeps it expanded across reloads. -->
-{% set _resource_summary -%}
-    {%- if selected_resources|length == all_resources|length -%}All resources
-    {%- elif selected_resources|length > 3 -%}{{ selected_resources|length }} resources
-    {%- else -%}{{ selected_resources|join(', ') }}
-    {%- endif %}
-{%- endset %}
-{% set _facility_summary -%}
-    {%- if selected_facilities|length == allowed_facility_names|length -%}All facilities
-    {%- elif selected_facilities|length > 3 -%}{{ selected_facilities|length }} facilities
-    {%- else -%}{{ selected_facilities|join(', ') }}
-    {%- endif %}
-{%- endset %}
-<div class="card mb-3">
-    <div class="card-header py-2 collapse-toggle collapsed"
-         data-bs-toggle="collapse" data-bs-target="#allocationsFilterPanel"
-         role="button" aria-expanded="false" aria-controls="allocationsFilterPanel"
-         style="cursor: pointer;">
-        <span class="text-muted small">
-            <i class="fas fa-filter me-1"></i>
-            <strong class="text-dark me-2">Filters</strong>
-            Facilities: <strong class="text-dark">{{ _facility_summary }}</strong>
-            <span class="mx-2">·</span>
-            Resources: <strong class="text-dark">{{ _resource_summary }}</strong>
-            <span class="mx-2">·</span>
-            Active at: <strong class="text-dark">{{ active_at }}</strong>
-        </span>
+<!-- Filter Panel: Unity NCAR navy panel, always visible, sits above content.
+     Reuses .filter-sidebar (same design tokens as the original sidebar-style
+     filter); form fields arranged horizontally for top-of-page placement. -->
+<div class="filter-sidebar mb-3">
+    <div class="filter-sidebar-header">
+        <h2 class="filter-sidebar-title">Filters</h2>
+        <a href="{{ url_for('allocations_dashboard.index') }}"
+           class="filter-sidebar-clear">Clear filters</a>
     </div>
-    <div class="collapse" id="allocationsFilterPanel">
-        <div class="card-body py-3">
-            <form method="GET" class="d-flex flex-wrap align-items-start gap-4 mb-0"
-                  id="allocations-facility-filter-form">
-                <div>
-                    <label for="facilities" class="form-label small mb-1"><strong>Facilities</strong></label>
-                    <select class="form-control form-control-sm" id="facilities" name="facilities"
-                            multiple size="{{ [allowed_facility_names|length, 4]|min if allowed_facility_names|length else 4 }}"
-                            style="width: 200px;">
-                        {% for facility_name in allowed_facility_names %}
-                        <option value="{{ facility_name }}"
-                            {% if facility_name in selected_facilities %}selected{% endif %}>
-                            {{ facility_name }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
-                </div>
-                <div>
-                    <label for="resources" class="form-label small mb-1"><strong>Resources</strong></label>
-                    <select class="form-control form-control-sm" id="resources" name="resources"
-                            multiple size="4" style="width: 240px;">
-                        {% for res in all_resources %}
-                        <option value="{{ res }}" {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
-                        {% endfor %}
-                    </select>
-                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
-                </div>
 
-                <div class="d-flex flex-column gap-2">
-                    <div>
-                        <label for="active_at" class="form-label small mb-1"><strong>Active at</strong></label>
-                        <input type="date" class="form-control form-control-sm" id="active_at"
-                               name="active_at" value="{{ active_at }}" style="width: 160px;">
-                    </div>
-
-                    <button type="submit" class="btn btn-sm btn-primary" style="width: 160px;">
-                        <i class="fas fa-search"></i> Update
-                    </button>
-                </div>
-            </form>
+    <form method="GET" class="d-flex flex-wrap align-items-start gap-3 mb-0"
+          id="allocations-facility-filter-form">
+        <div>
+            <label for="active_at" class="form-label"><strong>Active at</strong></label>
+            <input type="date" class="form-control" id="active_at"
+                   name="active_at" value="{{ active_at }}" style="width: 160px;">
         </div>
-    </div>
+        <div>
+            <label for="facilities" class="form-label"><strong>Facilities</strong></label>
+            <select class="form-control" id="facilities" name="facilities"
+                    multiple size="{{ [allowed_facility_names|length, 4]|min if allowed_facility_names|length else 4 }}"
+                    style="width: 200px;">
+                {% for facility_name in allowed_facility_names %}
+                <option value="{{ facility_name }}"
+                    {% if facility_name in selected_facilities %}selected{% endif %}>
+                    {{ facility_name }}
+                </option>
+                {% endfor %}
+            </select>
+            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
+        </div>
+
+        <div>
+            <label for="resources" class="form-label"><strong>Resources</strong></label>
+            <select class="form-control" id="resources" name="resources"
+                    multiple size="4" style="width: 240px;">
+                {% for res in all_resources %}
+                <option value="{{ res }}"
+                    {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
+                {% endfor %}
+            </select>
+            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
+        </div>
+
+        <button type="submit" class="btn btn-outline-white align-self-end">Update</button>
+    </form>
 </div>
 
 <!-- Resource Tabs -->
@@ -266,8 +238,9 @@
                     {% set types = grouped_data[resource_name].get(facility_name, []) %}
 
                     <!-- Facility Row (collapsible, default collapsed) -->
+                    {# data-fac (not data-fac-id) — data-fac-id marks the child rows this toggles #}
                     <tr class="expandable-row facility-row"
-                        onclick="toggleFacility(this, '{{ fac_id }}')">
+                        data-action="alloc-toggle-facility" data-fac="{{ fac_id }}">
                         <td>
                             <i class="fas fa-chevron-right expand-icon"></i>
                         </td>
@@ -290,7 +263,7 @@
                     {% set details_id = 'details-' ~ resource_name|replace(' ', '_') ~ '-' ~ facility_name|replace(' ', '_') ~ '-' ~ type_data.allocation_type|replace(' ', '_') %}
                     <tr class="expandable-row alloc-type-row"
                         data-fac-id="{{ fac_id }}"
-                        onclick="toggleDetails(this, '{{ details_id }}')">
+                        data-action="alloc-toggle-details" data-details-id="{{ details_id }}">
                         <td>
                             <i class="fas fa-chevron-right expand-icon"></i>
                         </td>
@@ -465,12 +438,14 @@
 
 <!-- Tab 2: Transactions — sortable/paginated audit log, lazy-loaded -->
 <div class="tab-pane fade" id="tab-alloc-transactions" role="tabpanel" aria-labelledby="alloc-transactions-tab">
-    {{ audit_filters(
-        form_id='tx-filters',
-        fragment_url=url_for('allocations_dashboard.transactions_fragment'),
-        target_id='alloc-transactions-fragment',
-        start_date=audit_start_date, end_date=audit_end_date,
-        all_resources=all_resources, selected_resources=[]) }}
+    <div class="filter-sidebar mb-3">
+        {{ audit_filters(
+            form_id='tx-filters',
+            fragment_url=url_for('allocations_dashboard.transactions_fragment'),
+            target_id='alloc-transactions-fragment',
+            start_date=audit_start_date, end_date=audit_end_date,
+            all_resources=all_resources, selected_resources=[]) }}
+    </div>
 
     <div id="alloc-transactions-fragment"
          hx-get="{{ url_for('allocations_dashboard.transactions_fragment') }}"
@@ -489,24 +464,28 @@
 <div class="tab-pane fade" id="tab-alloc-adjustments" role="tabpanel" aria-labelledby="alloc-adjustments-tab">
     {% if has_permission(Permission.EDIT_ALLOCATIONS) %}
     <div class="d-flex justify-content-end mb-2">
-        <button type="button" class="btn btn-sm btn-success"
+        <button type="button" class="btn btn-primary"
                 data-bs-toggle="modal" data-bs-target="#createAdjustmentModal"
                 hx-get="{{ url_for('allocations_dashboard.htmx_create_adjustment_form') }}"
                 hx-target="#createAdjustmentFormContainer"
                 hx-swap="innerHTML">
-            <i class="fas fa-plus"></i> Create Adjustment
+            Create Adjustment
         </button>
     </div>
     {% endif %}
 
-    {{ audit_filters(
-        form_id='adj-filters',
-        fragment_url=url_for('allocations_dashboard.adjustments_fragment'),
-        target_id='alloc-adjustments-fragment',
-        start_date=audit_start_date, end_date=audit_end_date,
-        all_resources=all_resources, selected_resources=[]) }}
+    <div class="filter-sidebar mb-3">
+        {{ audit_filters(
+            form_id='adj-filters',
+            fragment_url=url_for('allocations_dashboard.adjustments_fragment'),
+            target_id='alloc-adjustments-fragment',
+            start_date=audit_start_date, end_date=audit_end_date,
+            all_resources=all_resources, selected_resources=[]) }}
+    </div>
 
+    {# data-refresh-url: read by dashboard-init.js on refreshAdjustmentsTab #}
     <div id="alloc-adjustments-fragment"
+         data-refresh-url="{{ url_for('allocations_dashboard.adjustments_fragment') }}"
          hx-get="{{ url_for('allocations_dashboard.adjustments_fragment') }}"
          hx-trigger="shown.bs.tab from:#alloc-adjustments-tab once"
          hx-include="#adj-filters, #allocations-facility-filter-form"
@@ -589,89 +568,8 @@
 
 {% endblock %}
 
-{% block extra_js %}
-<script>
-/* Toggle facility rows — shows/hides interleaved type rows in the flat table */
-function toggleFacility(clickedRow, facId) {
-    var icon = clickedRow.querySelector('.expand-icon');
-    var isExpanding = !icon.classList.contains('expanded');
-    icon.classList.toggle('expanded');
-    document.querySelectorAll('[data-fac-id="' + facId + '"]').forEach(function(row) {
-        if (row.classList.contains('project-details-row')) {
-            /* Always collapse project detail rows when facility toggles */
-            row.classList.remove('show');
-        } else {
-            row.classList.toggle('show', isExpanding);
-            /* Ensure type row chevrons appear collapsed when facility expands */
-            if (isExpanding && row.classList.contains('alloc-type-row')) {
-                var typeIcon = row.querySelector('.expand-icon');
-                if (typeIcon) typeIcon.classList.remove('expanded');
-            }
-        }
-    });
-}
-
-/* Toggle expandable detail rows and lazy-load on first expand */
-function toggleDetails(clickedRow, detailsId) {
-    var icon = clickedRow.querySelector('.expand-icon');
-    var detailsRow = document.getElementById(detailsId);
-    icon.classList.toggle('expanded');
-    if (detailsRow.classList.contains('show')) {
-        detailsRow.classList.remove('show');
-    } else {
-        /* Trigger htmx load on first expand */
-        var td = detailsRow.querySelector('td[hx-get]');
-        if (td && !detailsRow.dataset.loaded) {
-            htmx.trigger(td, 'load-details');
-            detailsRow.dataset.loaded = 'true';
-        }
-        detailsRow.classList.add('show');
-    }
-}
-
-/* Client-side table sorting is wired by static/js/sortable_table.js
-   (loaded in dashboards/base.html). Default-sorted column is marked
-   declaratively with `class="sortable-header sort-desc"` in the
-   table partial. */
-
-/* After a successful "Create Adjustment" POST, reload the adjustments
-   table fragment, carrying the current filter form so the view stays
-   consistent with what the user was looking at. */
-document.body.addEventListener('refreshAdjustmentsTab', function() {
-    var target = document.getElementById('alloc-adjustments-fragment');
-    if (!target) return;
-    /* 300ms matches Bootstrap's modal close animation so the reload lands
-       after the modal has fully animated out of view. */
-    setTimeout(function() {
-        htmx.ajax('GET', "{{ url_for('allocations_dashboard.adjustments_fragment') }}",
-                  {target: '#alloc-adjustments-fragment', swap: 'innerHTML',
-                   source: '#adj-filters'});
-    }, 300);
-});
-
-/* Swap facility pie chart above the tabs when the active resource tab changes */
-(function () {
-    function showPieForResource(resourceId) {
-        document.querySelectorAll('.facility-pie-panel').forEach(function (p) {
-            p.style.display = p.dataset.resource === resourceId ? '' : 'none';
-        });
-        document.querySelectorAll('.facility-usage-pie-panel').forEach(function (p) {
-            p.style.display = p.dataset.resource === resourceId ? '' : 'none';
-        });
-        document.querySelectorAll('.facility-pace-panel').forEach(function (p) {
-            p.style.display = p.dataset.resource === resourceId ? '' : 'none';
-        });
-    }
-    /* Show pie for the initially active tab */
-    var activeTab = document.querySelector('#resourceTabs .nav-link.active');
-    if (activeTab) showPieForResource(activeTab.getAttribute('href').slice(1));
-
-    /* Swap on subsequent tab clicks */
-    document.querySelectorAll('#resourceTabs .nav-link').forEach(function (tab) {
-        tab.addEventListener('shown.bs.tab', function (e) {
-            showPieForResource(e.target.getAttribute('href').slice(1));
-        });
-    });
-}());
-</script>
-{% endblock %}
+{# Page behavior (row toggles, adjustments refresh, pie/tab sync) lives in
+   static/js/dashboard-init.js — this page is cached per-user in Redis, so
+   no inline script may carry per-request state. Client-side table sorting
+   is wired by static/js/sortable_table.js; the default-sorted column is
+   marked declaratively with `class="sortable-header sort-desc"`. #}

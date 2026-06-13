@@ -5,10 +5,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
-<style>
-  .tree-list { list-style: none; padding-left: 1.25rem; }
-  .tree-list > li { border-left: 2px solid #dee2e6; padding: 0.25rem 0.5rem; margin-bottom: 0.1rem; }
-</style>
+{# styles extracted to static/css/components.css (CSP) #}
 {% endblock %}
 
 {% block content %}
@@ -26,11 +23,11 @@
   {% if can_access_admin %}
   {# Pass projcode so the admin index re-renders this project's card on
      return — otherwise the user lands on a blank search page. #}
-  <a href="{{ url_for('admin_dashboard.index', projcode=project.projcode) }}" class="btn btn-outline-secondary btn-sm ms-auto">
+  <a href="{{ url_for('admin_dashboard.index', projcode=project.projcode) }}" class="btn btn-outline-secondary  ms-auto">
     <i class="fas fa-arrow-left"></i> Back to Admin
   </a>
   {% else %}
-  <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-outline-secondary btn-sm ms-auto">
+  <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-outline-secondary  ms-auto">
     <i class="fas fa-arrow-left"></i> Back to Dashboard
   </a>
   {% endif %}
@@ -103,7 +100,7 @@
   <div class="tab-pane fade" id="tab-allocations" role="tabpanel">
     {% if can_modify_allocations %}
     <div class="d-flex justify-content-end gap-2 mb-3">
-      <button class="btn btn-sm btn-primary"
+      <button class="btn  btn-primary"
               hx-get="{{ url_for('admin_dashboard.htmx_extend_allocations_form', projcode=project.projcode) }}"
               hx-target="#extendAllocationsFormContainer"
               hx-include="#alloc-active-at"
@@ -112,7 +109,7 @@
               data-bs-target="#extendAllocationsModal">
         <i class="fas fa-calendar-plus"></i> Extend
       </button>
-      <button class="btn btn-sm btn-primary"
+      <button class="btn  btn-primary"
               hx-get="{{ url_for('admin_dashboard.htmx_renew_allocations_form', projcode=project.projcode) }}"
               hx-target="#renewAllocationsFormContainer"
               hx-include="#alloc-active-at"
@@ -121,7 +118,7 @@
               data-bs-target="#renewAllocationsModal">
         <i class="fas fa-sync-alt"></i> Renew
       </button>
-      <button class="btn btn-sm btn-primary"
+      <button class="btn  btn-primary"
               hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=project.projcode) }}"
               hx-target="#addAllocationFormContainer"
               hx-trigger="click"
@@ -131,7 +128,8 @@
       </button>
     </div>
     {% endif %}
-    <div id="allocationTreeContainer">
+    <div id="allocationTreeContainer"
+         data-tree-url="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}">
       <div class="text-center text-muted py-4">
         <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
         <p class="mt-2">Loading allocations…</p>
@@ -256,29 +254,8 @@
 {% include 'dashboards/admin/fragments/project_directory_modals.html' %}
 
 <!-- ═══════════════════════════════════════════════ HTMX event handlers -->
-<script>
-  // After a successful project details save, the success fragment is shown
-  // in #editDetailsContainer. Reload the page so the form, header title, and
-  // "Inactive" badge reflect the new values. Brief delay so the user sees
-  // the green checkmark first.
-  document.body.addEventListener('reloadEditProjectDetails', function () {
-    setTimeout(function () { window.location.reload(); }, 800);
-  });
-
-  // Reload Allocation Tree after add/edit allocation success.
-  // Preserve the current "Active at" date so a historical view is not reset to today.
-  document.body.addEventListener('reloadAllocationTree', function (evt) {
-    var activeAtInput = document.getElementById('alloc-active-at');
-    var url = '{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}';
-    if (activeAtInput && activeAtInput.value) {
-      url += '?active_at=' + encodeURIComponent(activeAtInput.value);
-    }
-    htmx.ajax('GET', url, {
-      target: '#allocationTreeContainer',
-      swap: 'innerHTML',
-      indicator: '#allocTreeSpinner, #allocationTreeContainer'
-    });
-  });
-</script>
+{# reloadEditProjectDetails / reloadAllocationTree HX-Trigger hooks live in
+   static/js/form-helpers.js; the tree fragment URL rides data-tree-url on
+   #allocationTreeContainer. #}
 
 {% endblock %}

@@ -41,6 +41,14 @@ from webapp.caching.chart import content_hash as _content_hash  # legacy alias u
 #   1. Register Poppins TTFs with matplotlib's font manager. Skipped silently
 #      if the directory is empty / missing, so the import still works in
 #      environments where the static assets haven't been deployed yet.
+#
+#      NOTE: these .ttf files are a deliberate SERVER-SIDE copy for matplotlib
+#      and are NOT the same assets the browser uses. The browser loads the
+#      vendored .woff2 set under static/vendor/poppins/ (see vendor_assets.py);
+#      matplotlib's font_manager cannot read woff2 (only ttf/otf/afm), so it
+#      needs its own ttf set here. Do NOT delete static/fonts/poppins/*.ttf as
+#      "unreferenced" — they are referenced here, and a regression test
+#      (test_chart_fonts.py) asserts findfont('Poppins') still resolves.
 #   2. Apply rcParams that mirror the editorial flat look on the HTML side:
 #      Poppins text, space-blue chrome, hairline gray grid, no top/right
 #      spines, transparent figure/axes (we already savefig with

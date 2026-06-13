@@ -6,7 +6,7 @@
 #}
 <div class="card-body p-0">
     <!-- Tab navigation -->
-    <ul class="nav nav-tabs px-3 pt-3" id="resourcesTabs" role="tablist">
+    <ul class="nav nav-tabs" id="resourcesTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="resources-tab" data-bs-toggle="tab"
                     data-bs-target="#resources-pane" type="button" role="tab"
@@ -126,7 +126,7 @@
                 </span>
                 {% if has_permission(Permission.CREATE_RESOURCES) %}
                 <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createResourceTypeModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_resource_type_create_form') }}"
@@ -134,7 +134,7 @@
                             hx-trigger="click">
                         <i class="fas fa-plus"></i> Create Type
                     </button>
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createResourceModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_resource_create_form') }}"
@@ -213,7 +213,7 @@
                     Showing {{ machines|length }} machine{{ 's' if machines|length != 1 else '' }}
                 </span>
                 {% if has_permission(Permission.CREATE_RESOURCES) %}
-                <button class="btn btn-sm btn-outline-success"
+                <button class="btn  btn-primary"
                         data-bs-toggle="modal"
                         data-bs-target="#createMachineModal"
                         hx-get="{{ url_for('admin_dashboard.htmx_machine_create_form') }}"
@@ -315,7 +315,7 @@
                     </span>
                 </div>
                 {% if has_permission(Permission.EDIT_USERS) %}
-                <button type="button" class="btn btn-sm btn-success"
+                <button type="button" class="btn btn-primary"
                         data-bs-toggle="modal"
                         data-bs-target="#addExemptionModal"
                         hx-get="{{ url_for('admin_dashboard.htmx_admin_exemption_form') }}"
@@ -394,7 +394,7 @@
                                         data-confirm-title="Deactivate exemption"
                                         data-confirm-variant="warning"
                                         data-confirm-label="Deactivate"
-                                        onclick="event.stopPropagation()">
+                                        data-stop-propagation>
                                     <i class="fas fa-ban"></i>
                                 </button>
                                 {% endif %}
@@ -418,42 +418,5 @@
     </div>{# tab-content #}
 </div>{# card-body #}
 
-<script>
-(function() {
-    function attachSorting(table) {
-        table.querySelectorAll('th.sortable-header').forEach(function(th) {
-            th.addEventListener('click', function() {
-                var colIndex = Array.from(th.parentNode.children).indexOf(th);
-                var sortType = th.dataset.sort;
-                var isAsc = !th.classList.contains('sort-asc');
-                table.querySelectorAll('th').forEach(function(h) {
-                    h.classList.remove('sort-asc', 'sort-desc');
-                });
-                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
-                var tbody = table.querySelector('tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr'));
-                rows.sort(function(a, b) {
-                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
-                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
-                    if (sortType === 'numeric') {
-                        aVal = parseFloat(aVal) || 0;
-                        bVal = parseFloat(bVal) || 0;
-                        return isAsc ? aVal - bVal : bVal - aVal;
-                    }
-                    aVal = String(aVal || '').toLowerCase();
-                    bVal = String(bVal || '').toLowerCase();
-                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-                });
-                rows.forEach(function(r) { tbody.appendChild(r); });
-            });
-        });
-    }
-
-    document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
-
-    SamCollapseChevron.attach('#resources-pane', '.res-type-collapse-icon');
-    SamCollapseChevron.attach('#resources-pane', '.disk-root-collapse-icon');
-    SamCollapseChevron.attach('#queues-pane',    '.queue-res-collapse-icon');
-    SamCollapseChevron.attach('#queues-pane',    '.exemption-res-collapse-icon');
-})();
-</script>
+{# Behavior (table sorting, collapse chevrons) lives in
+   static/js/admin-cards.js, initialized per swap via htmx.onLoad. #}

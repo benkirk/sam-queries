@@ -140,7 +140,7 @@
           {# Col 5: edit pencil (or shared badge for inherited allocations) #}
           <td style="vertical-align:middle;">
             {% if can_modify_allocations and root_alloc and root_alloc.allocation_id and not root_alloc.is_inheriting %}
-            <button class="btn btn-xs btn-outline-warning py-0 px-1"
+            <button class="btn btn-sm btn-outline-warning py-0 px-1"
                     style="font-size:0.7rem;"
                     hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', allocation_id=root_alloc.allocation_id) }}"
                     hx-target="#editAllocationFormContainer"
@@ -245,27 +245,4 @@
 
 {% endif %}
 
-<style>
-  .btn-xs { padding: 0.1rem 0.35rem; font-size: 0.75rem; }
-  .alloc-resource-header:hover td { filter: brightness(0.96); }
-
-  /* Caret rotation driven by Bootstrap's aria-expanded update */
-  .alloc-resource-header .alloc-caret { transition: transform 0.15s ease; }
-  .alloc-resource-header[aria-expanded="true"] .alloc-caret { transform: rotate(90deg); }
-
-  /* Kill Bootstrap's height animation on <tbody> — looks jittery on table-row-groups.
-     Zero transition-duration makes Bootstrap's getTransitionDurationFromElement() return 0,
-     so .collapsing is removed immediately and the toggle snaps (same visual as d-none). */
-  tbody.alloc-tree-body.collapse,
-  tbody.alloc-tree-body.collapsing { transition: none !important; }
-
-  /* Dim the tree while a reload is in flight.
-     htmx adds .htmx-request to any element listed in hx-indicator for the
-     duration of the request — we use that to fade the existing tree so users
-     see the UI is "doing something" during slow (~14s) refreshes. */
-  #allocationTreeContainer { transition: opacity 150ms ease; }
-  #allocationTreeContainer.htmx-request {
-    opacity: 0.5;
-    pointer-events: none;
-  }
-</style>
+{# styles extracted to static/css/components.css (CSP) #}

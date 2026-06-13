@@ -6,7 +6,7 @@
 #}
 <div class="card-body p-0">
     <!-- Tab navigation -->
-    <ul class="nav nav-tabs px-3 pt-3" id="organizationsTabs" role="tablist">
+    <ul class="nav nav-tabs" id="organizationsTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="orgs-tab" data-bs-toggle="tab"
                     data-bs-target="#orgs-pane" type="button" role="tab"
@@ -69,7 +69,8 @@
                                 {% if has_children %}
                                 <i class="fas fa-chevron-right small text-muted me-1 org-tree-chevron"
                                    style="cursor:pointer; transition: transform 0.15s;"
-                                   onclick="toggleOrgChildren({{ org.organization_id }}, this, event)"></i>
+                                   data-action="org-toggle-children"
+                                   data-org-id="{{ org.organization_id }}"></i>
                                 {% else %}
                                 <i class="fas fa-circle small me-1" style="font-size:0.35em; color:#ccc; vertical-align:middle;"></i>
                                 {% endif %}
@@ -108,7 +109,7 @@
                     Showing {{ organizations|length }} organization{{ 's' if organizations|length != 1 else '' }}
                 </span>
                 {% if has_permission(Permission.CREATE_ORG_METADATA) %}
-                <button class="btn btn-sm btn-outline-success"
+                <button class="btn  btn-primary"
                         data-bs-toggle="modal"
                         data-bs-target="#createOrganizationModal"
                         hx-get="{{ url_for('admin_dashboard.htmx_organization_create_form') }}"
@@ -216,7 +217,7 @@
                 </span>
                 {% if has_permission(Permission.CREATE_ORG_METADATA) %}
                 <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn  btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createAoiGroupModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_aoi_group_create_form') }}"
@@ -224,7 +225,7 @@
                             hx-trigger="click">
                         <i class="fas fa-plus"></i> Create Group
                     </button>
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn  btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createAoiModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_aoi_create_form') }}"
@@ -337,7 +338,7 @@
                 </span>
                 {% if has_permission(Permission.CREATE_ORG_METADATA) %}
                 <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn  btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createContractSourceModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_contract_source_create_form') }}"
@@ -345,7 +346,7 @@
                             hx-trigger="click">
                         <i class="fas fa-plus"></i> Create Source
                     </button>
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn  btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createContractModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_contract_create_form') }}"
@@ -400,7 +401,7 @@
                     Showing {{ nsf_programs|length }} program{{ 's' if nsf_programs|length != 1 else '' }}
                 </span>
                 {% if has_permission(Permission.CREATE_ORG_METADATA) %}
-                <button class="btn btn-sm btn-outline-success"
+                <button class="btn  btn-primary"
                         data-bs-toggle="modal"
                         data-bs-target="#createNsfProgramModal"
                         hx-get="{{ url_for('admin_dashboard.htmx_nsf_program_create_form') }}"
@@ -415,72 +416,6 @@
     </div>{# tab-content #}
 </div>{# card-body #}
 
-<script>
-(function() {
-    // ── Organization tree expand/collapse ─────────────────────────────────
-
-    function collapseOrgDescendants(parentOrgId) {
-        document.querySelectorAll('#orgs-tbody tr[data-parent-id="' + parentOrgId + '"]').forEach(function(row) {
-            row.classList.add('org-tree-collapsed');
-            row.style.display = 'none';
-            var childId = row.dataset.orgId;
-            var chevron = row.querySelector('.org-tree-chevron');
-            if (chevron) chevron.style.transform = '';
-            collapseOrgDescendants(childId);
-        });
-    }
-
-    function toggleOrgChildren(orgId, iconEl, event) {
-        event.stopPropagation();
-        var isExpanding = iconEl.style.transform !== 'rotate(90deg)';
-        iconEl.style.transform = isExpanding ? 'rotate(90deg)' : '';
-        document.querySelectorAll('#orgs-tbody tr[data-parent-id="' + orgId + '"]').forEach(function(row) {
-            if (isExpanding) {
-                row.classList.remove('org-tree-collapsed');
-                row.style.display = '';
-            } else {
-                row.classList.add('org-tree-collapsed');
-                row.style.display = 'none';
-                collapseOrgDescendants(row.dataset.orgId);
-                var childChevron = row.querySelector('.org-tree-chevron');
-                if (childChevron) childChevron.style.transform = '';
-            }
-        });
-    }
-    window.toggleOrgChildren = toggleOrgChildren;
-
-    function attachSorting(table) {
-        table.querySelectorAll('th.sortable-header').forEach(function(th) {
-            th.addEventListener('click', function() {
-                var colIndex = Array.from(th.parentNode.children).indexOf(th);
-                var sortType = th.dataset.sort;
-                var isAsc = !th.classList.contains('sort-asc');
-                table.querySelectorAll('th').forEach(function(h) {
-                    h.classList.remove('sort-asc', 'sort-desc');
-                });
-                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
-                var tbody = table.querySelector('tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr'));
-                rows.sort(function(a, b) {
-                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
-                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
-                    if (sortType === 'numeric') {
-                        aVal = parseFloat(aVal) || 0;
-                        bVal = parseFloat(bVal) || 0;
-                        return isAsc ? aVal - bVal : bVal - aVal;
-                    }
-                    aVal = String(aVal || '').toLowerCase();
-                    bVal = String(bVal || '').toLowerCase();
-                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-                });
-                rows.forEach(function(r) { tbody.appendChild(r); });
-            });
-        });
-    }
-
-    document.querySelectorAll('#organizationsTabsContent table').forEach(attachSorting);
-
-    SamCollapseChevron.attach('#areas-pane',        '.collapse-icon');
-    SamCollapseChevron.attach('#contracts-pane',    '.contract-collapse-icon');
-})();
-</script>
+{# Behavior (org tree toggle, table sorting, collapse chevrons) lives in
+   static/js/admin-cards.js, initialized per swap via htmx.onLoad — this
+   fragment is cached per-user in Redis, so no inline script. #}

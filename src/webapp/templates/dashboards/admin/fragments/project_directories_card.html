@@ -39,7 +39,7 @@
                 </label>
             </div>
             {% if has_permission(Permission.EDIT_PROJECTS) %}
-            <button type="button" class="btn btn-sm btn-success"
+            <button type="button" class="btn  btn-primary"
                     data-bs-toggle="modal"
                     data-bs-target="#addProjectDirectoryModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directory_new_form') }}"
@@ -49,7 +49,7 @@
             </button>
             {% endif %}
             {% if has_permission(Permission.DELETE_PROJECTS) %}
-            <button type="button" class="btn btn-sm btn-outline-warning"
+            <button type="button" class="btn  btn-outline-warning"
                     data-bs-toggle="modal"
                     data-bs-target="#bulkDeactivateProjectDirectoriesModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directory_bulk_deactivate_form') }}"
@@ -130,7 +130,7 @@
                                 hx-swap="innerHTML"
                                 data-bs-toggle="modal"
                                 data-bs-target="#projectDetailsModal"
-                                onclick="event.stopPropagation()">
+                                data-stop-propagation>
                             <strong>{{ pd.project.projcode }}</strong>
                         </button>
                         {% if _orphan %}
@@ -157,7 +157,7 @@
                                 data-confirm-title="Deactivate directory"
                                 data-confirm-variant="warning"
                                 data-confirm-label="Deactivate"
-                                onclick="event.stopPropagation()">
+                                data-stop-propagation>
                             <i class="fas fa-trash-alt"></i>
                         </button>
                         {% endif %}
@@ -182,10 +182,4 @@
     </div>
 </div>
 
-<script>
-(function() {
-    if (window.SamCollapseChevron) {
-        SamCollapseChevron.attach('#projectDirectoriesSection', '.pd-res-collapse-icon');
-    }
-})();
-</script>
+{# Collapse chevrons wired in static/js/form-helpers.js (htmx.onLoad). #}

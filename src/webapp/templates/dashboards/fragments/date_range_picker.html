@@ -1,6 +1,4 @@
 {% macro date_range_picker(action, start_date, end_date, hidden_fields={}, epoch_date=None) %}
-{# Unique ID to allow multiple pickers on the same page without ID collisions #}
-{% set uid = range(100000) | random %}
 {#
   Compact date range picker with quick-select presets and optional custom inputs.
 
@@ -11,10 +9,18 @@
     hidden_fields - dict of extra hidden form fields (e.g. {'projcode': 'SCSG0001'})
     epoch_date    - optional YYYY-MM-DD string; when provided adds an "Epoch" button
                     that navigates to start=epoch_date, end=today (e.g. allocation start)
+
+  Behavior lives in static/js/pickers.js (CSP: no inline scripts); the
+  data attributes + .drp-hidden JSON block below are its contract.
+  Multiple pickers per page are scoped via closest('.drp').
 #}
-<div class="card mb-4">
+<div class="card mb-4 drp"
+     data-action-url="{{ action }}"
+     data-start="{{ start_date }}"
+     {%- if epoch_date %} data-epoch="{{ epoch_date }}"{% endif %}>
+    <script type="application/json" class="drp-hidden">{{ hidden_fields | tojson }}</script>
     <div class="card-body py-2">
-        <form method="GET" action="{{ action }}" id="drp_form_{{ uid }}">
+        <form method="GET" action="{{ action }}">
             {% for name, value in hidden_fields.items() %}
             <input type="hidden" name="{{ name }}" value="{{ value }}">
             {% endfor %}
@@ -25,36 +31,35 @@
                 <div class="btn-group btn-group-sm" role="group" aria-label="Date range presets">
                     {% if epoch_date %}
                     <button type="button"
-                            class="btn btn-outline-secondary drp-epoch-{{ uid }}"
-                            onclick="drpApplyEpoch_{{ uid }}()">Epoch</button>
+                            class="btn btn-outline-secondary"
+                            data-action="drp-epoch">Epoch</button>
                     {% endif %}
                     {% set presets = [('7d', 7), ('30d', 30), ('90d', 90), ('6mo', 180), ('1yr', 365)] %}
                     {% for label, days in presets %}
                     <button type="button"
-                            class="btn btn-outline-secondary drp-preset-{{ uid }}"
-                            data-days="{{ days }}"
-                            onclick="drpApplyDays_{{ uid }}({{ days }})">{{ label }}</button>
+                            class="btn btn-outline-secondary"
+                            data-action="drp-days"
+                            data-days="{{ days }}">{{ label }}</button>
                     {% endfor %}
                 </div>
 
                 <!-- Custom date range toggle -->
                 <button type="button"
-                        class="btn btn-sm btn-outline-primary"
-                        id="drp_custom_btn_{{ uid }}"
-                        onclick="drpToggleCustom_{{ uid }}()">
+                        class="btn btn-outline-primary"
+                        data-action="drp-toggle-custom">
                     <i class="fas fa-calendar-alt"></i> Custom
                 </button>
 
                 <!-- Custom date inputs (hidden until toggled) -->
-                <div id="drp_custom_{{ uid }}" class="d-none d-flex align-items-center gap-2">
-                    <input type="date" name="start_date" id="drp_start_{{ uid }}"
+                <div class="drp-custom d-none d-flex align-items-center gap-2">
+                    <input type="date" name="start_date"
                            value="{{ start_date }}"
                            class="form-control form-control-sm" style="width:140px">
                     <span class="text-muted">→</span>
-                    <input type="date" name="end_date" id="drp_end_{{ uid }}"
+                    <input type="date" name="end_date"
                            value="{{ end_date }}"
                            class="form-control form-control-sm" style="width:140px">
-                    <button type="submit" class="btn btn-sm btn-primary">
+                    <button type="submit" class="btn  btn-primary">
                         <i class="fas fa-check"></i> Apply
                     </button>
                 </div>
@@ -65,76 +70,4 @@
         </form>
     </div>
 </div>
-
-<script>
-(function () {
-    const uid      = '{{ uid }}';
-    const action   = {{ action | tojson }};
-    const hidden   = {{ hidden_fields | tojson }};
-    const PRESETS  = [7, 30, 90, 180, 365];
-    const curStart = '{{ start_date }}';
-    const epochDate = {{ epoch_date | tojson if epoch_date else 'null' }};
-
-    function fmtDate(d) {
-        return d.toISOString().slice(0, 10);
-    }
-
-    function navigateTo(start, end) {
-        const params = new URLSearchParams(hidden);
-        params.set('start_date', start);
-        params.set('end_date', end);
-        window.location.href = action + '?' + params.toString();
-    }
-
-    // Highlight the active preset (if current range matches today - N days)
-    (function markActive() {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Check N-day presets
-        PRESETS.forEach(function (days) {
-            const d = new Date(today);
-            d.setDate(d.getDate() - days);
-            if (fmtDate(d) === curStart) {
-                document.querySelectorAll('.drp-preset-' + uid + '[data-days="' + days + '"]')
-                    .forEach(function (btn) {
-                        btn.classList.remove('btn-outline-secondary');
-                        btn.classList.add('btn-secondary', 'active');
-                    });
-            }
-        });
-
-        // Check Epoch preset
-        if (epochDate && curStart === epochDate) {
-            document.querySelectorAll('.drp-epoch-' + uid)
-                .forEach(function (btn) {
-                    btn.classList.remove('btn-outline-secondary');
-                    btn.classList.add('btn-secondary', 'active');
-                });
-        }
-    })();
-
-    window['drpApplyDays_' + uid] = function (n) {
-        const end   = new Date();
-        const start = new Date();
-        start.setDate(start.getDate() - n);
-        navigateTo(fmtDate(start), fmtDate(end));
-    };
-
-    {% if epoch_date %}
-    window['drpApplyEpoch_' + uid] = function () {
-        navigateTo(epochDate, fmtDate(new Date()));
-    };
-    {% endif %}
-
-    window['drpToggleCustom_' + uid] = function () {
-        const panel = document.getElementById('drp_custom_' + uid);
-        const btn   = document.getElementById('drp_custom_btn_' + uid);
-        const hidden = panel.classList.toggle('d-none');
-        btn.classList.toggle('active', !hidden);
-        btn.classList.toggle('btn-outline-primary', hidden);
-        btn.classList.toggle('btn-primary', !hidden);
-    };
-})();
-</script>
 {% endmacro %}

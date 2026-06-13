@@ -19,7 +19,8 @@
 <form hx-post="{{ url_for('project_members.htmx_add_member', projcode=projcode) }}"
       hx-target="#addMemberFormContainer"
       hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
+      hx-disabled-elt="find button[type='submit']"
+      hx-disinherit="hx-disabled-elt">
 
     {# Hidden field populated by user selection #}
     <input type="hidden" name="username" id="htmxSelectedUsername" value="">
@@ -52,7 +53,7 @@
             <strong id="htmxSelectedUserName"></strong>
             <small id="htmxSelectedUserEmail" class="text-muted ms-2"></small>
             <button type="button" class="btn-close float-end"
-                    onclick="htmxClearUserSelection()" aria-label="Clear"></button>
+                    data-action="member-clear-user" aria-label="Clear"></button>
         </div>
 
         <div class="row">
@@ -91,20 +92,5 @@
   This is the ONE thing htmx can't fully replace: setting a hidden field
   from a click on a search result. W3 will replace this with a shared widget.
 #}
-<script>
-function htmxSelectUser(username, displayName, email) {
-    document.getElementById('htmxSelectedUsername').value = username;
-    document.getElementById('htmxSelectedUserName').textContent = displayName + ' (' + username + ')';
-    document.getElementById('htmxSelectedUserEmail').textContent = email;
-    document.getElementById('htmxSelectedUserDisplay').style.display = 'block';
-    document.getElementById('htmxUserSearchResults').innerHTML = '';
-    document.getElementById('htmxUserSearch').value = '';
-    document.getElementById('htmxAddMemberSubmitBtn').disabled = false;
-}
-function htmxClearUserSelection() {
-    document.getElementById('htmxSelectedUsername').value = '';
-    document.getElementById('htmxSelectedUserDisplay').style.display = 'none';
-    document.getElementById('htmxAddMemberSubmitBtn').disabled = true;
-    document.getElementById('htmxUserSearch').focus();
-}
-</script>
+{# User select/clear use the member-select-user / member-clear-user actions
+   (static/js/form-helpers.js). #}

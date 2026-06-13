@@ -56,7 +56,7 @@
   </div>
 
   <div class="mb-3">
-    <button type="button" class="btn btn-sm btn-outline-danger"
+    <button type="button" class="btn  btn-outline-danger"
             data-bs-toggle="collapse" data-bs-target="#breakInheritanceSection">
       <i class="fas fa-unlink me-1"></i> Break inheritance...
     </button>
@@ -80,20 +80,13 @@
         <div class="form-check mb-2">
           <input class="form-check-input border-danger" type="checkbox"
                  id="confirmBreakInheritance"
-                 onchange="
-                   var unlock = this.checked;
-                   document.getElementById('break_inheritance').value = unlock ? 'true' : 'false';
-                   ['editAllocAmount','editAllocStart','editAllocEnd'].forEach(function(id){
-                     var el = document.getElementById(id);
-                     if (el) el.disabled = !unlock;
-                   });
-                 ">
+                 data-action-change="alloc-break-inheritance">
           <label class="form-check-label text-danger" for="confirmBreakInheritance">
             I understand — permanently break inheritance and allow editing these fields
           </label>
         </div>
         <div class="mt-2">
-          <button type="button" class="btn btn-sm btn-outline-primary"
+          <button type="button" class="btn  btn-outline-primary"
                   hx-post="{{ url_for('admin_dashboard.htmx_detach_allocation', allocation_id=allocation.allocation_id) }}"
                   hx-target="#editAllocationFormContainer"
                   hx-confirm="Permanently detach allocation #{{ allocation.allocation_id }}? This breaks inheritance and cannot be undone from this view."
@@ -152,7 +145,7 @@
     active sub-project{{ 's' if unlinked_descendants_count != 1 else '' }}
     {{ 'do' if unlinked_descendants_count != 1 else 'does' }} not yet have
     an allocation for this resource.
-    <button type="button" class="btn btn-sm btn-outline-secondary ms-2"
+    <button type="button" class="btn  btn-outline-secondary ms-2"
             hx-post="{{ url_for('admin_dashboard.htmx_propagate_to_remaining', allocation_id=allocation.allocation_id) }}"
             hx-target="#editAllocationFormContainer"
             hx-confirm="Create linked child allocations for {{ unlinked_descendants_count }} remaining sub-project(s)?"
@@ -183,7 +176,7 @@
     Re-linking will overwrite this allocation's amount and dates to match the parent,
     making it functionally identical to an originally-linked child.
     <div class="mt-2">
-      <button type="button" class="btn btn-sm btn-primary"
+      <button type="button" class="btn  btn-primary"
               hx-post="{{ url_for('admin_dashboard.htmx_link_allocation_to_parent', allocation_id=allocation.allocation_id) }}"
               hx-vals='{"parent_allocation_id": {{ relink_candidate.allocation_id }}}'
               hx-target="#editAllocationFormContainer"

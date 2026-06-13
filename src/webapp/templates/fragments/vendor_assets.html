@@ -1,5 +1,7 @@
-{# Render third-party CDN assets from the central registry
-   (webapp/vendor_assets.py — pinned versions + SRI hashes).
+{# Render vendored third-party assets from the central registry
+   (webapp/vendor_assets.py — pinned versions + sha384 hashes; all assets
+   are self-hosted under static/vendor/, so no CDN origins appear in the
+   Content-Security-Policy).
 
    Usage (import `with context` so the vendor_assets context-processor
    variable is visible inside the macros):
@@ -8,17 +10,25 @@
        {{ vendor_css(['poppins', 'bootstrap-css', 'fontawesome-css']) }}
        {{ vendor_js(['jquery', 'bootstrap-js', 'htmx']) }}
 
-   Entries with integrity=None (Google Fonts: per-UA response) render
-   without the integrity/crossorigin attributes. #}
+   A future genuinely-external entry carries `url`/`integrity` instead of
+   `path` and renders with SRI attributes. #}
 
 {% macro vendor_css(names) -%}
 {%- for name in names %}{% set a = vendor_assets[name] %}
+{%- if a.path %}
+    <link rel="stylesheet" href="{{ url_for('static', filename=a.path) }}">
+{%- else %}
     <link rel="stylesheet" href="{{ a.url }}"{% if a.integrity %} integrity="{{ a.integrity }}" crossorigin="{{ a.crossorigin }}"{% endif %}>
+{%- endif %}
 {%- endfor %}
 {%- endmacro %}
 
 {% macro vendor_js(names) -%}
 {%- for name in names %}{% set a = vendor_assets[name] %}
+{%- if a.path %}
+    <script src="{{ url_for('static', filename=a.path) }}"></script>
+{%- else %}
     <script src="{{ a.url }}"{% if a.integrity %} integrity="{{ a.integrity }}" crossorigin="{{ a.crossorigin }}"{% endif %}></script>
+{%- endif %}
 {%- endfor %}
 {%- endmacro %}

@@ -151,7 +151,7 @@
                         {% set _detail_kwargs = {'projcode': project.projcode, 'resource': resource.resource_name} %}
                         {% if admin_origin %}{% set _ = _detail_kwargs.update({'from': 'admin'}) %}{% endif %}
                         <tr class="{% if show_clickable_rows %}resource-row cursor-pointer {% endif %}{{ row_class }}{% if is_expired %} expired-allocation{% endif %}"
-                            {% if show_clickable_rows %}onclick="location.href='{{ url_for('user_dashboard.resource_details', **_detail_kwargs) }}'"{% endif %}>
+                            {% if show_clickable_rows %}data-action="navigate" data-href="{{ url_for('user_dashboard.resource_details', **_detail_kwargs) }}"{% endif %}>
                             <td><strong>{{ resource.resource_name }}</strong></td>
                             <td>
                                 <div class="d-flex justify-content-between small mb-1">
@@ -201,15 +201,15 @@
                                 {% endif %}
                             </td>
                             {% if can_edit_allocations %}
-                            <td class="text-center" onclick="event.stopPropagation();">
+                            <td class="text-center" data-stop-propagation>
                                 {% if resource.allocation_id and not resource.is_inheriting %}
-                                <button class="btn btn-xs btn-outline-primary"
+                                <button class="btn btn-sm btn-outline-primary"
                                         title="Edit allocation"
                                         data-bs-toggle="modal" data-bs-target="#editAllocationModal"
                                         hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=resource.allocation_id) }}?projcode={{ project.projcode }}"
                                         hx-target="#editAllocationFormContainer"
                                         hx-swap="innerHTML"
-                                        onclick="event.stopPropagation()">
+                                        data-stop-propagation>
                                     <i class="fas fa-edit"></i>
                                 </button>
                                 {% elif resource.allocation_id and resource.is_inheriting %}
@@ -236,7 +236,7 @@
 <div class="mt-3">
     <h6 class="mb-2">
         <i class="fas fa-users"></i> Project Members
-        <button class="btn btn-sm btn-link" data-bs-toggle="collapse" data-bs-target="#members-{{ unique_id }}" aria-expanded="false">
+        <button class="btn  btn-link" data-bs-toggle="collapse" data-bs-target="#members-{{ unique_id }}" aria-expanded="false">
             <i class="fas fa-chevron-down"></i>
         </button>
     </h6>
@@ -364,11 +364,11 @@
                             <div class="form-check form-switch mb-0">
                                 <input class="form-check-input" type="checkbox"
                                        id="treeActiveOnly-{{ card_id }}" checked
-                                       onchange="samTreeToggleActiveOnly(this, '{{ card_id }}', '{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode) }}')">
+                                       data-action-change="tree-toggle-active-only" data-card-id="{{ card_id }}" data-base-url="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode) }}">
                                 <label class="form-check-label small text-muted fw-normal"
                                        for="treeActiveOnly-{{ card_id }}">Active only</label>
                             </div>
-                            <button class="btn btn-sm btn-link p-0" data-bs-toggle="collapse"
+                            <button class="btn  btn-link p-0" data-bs-toggle="collapse"
                                     data-bs-target="#tree-{{ card_id }}" aria-expanded="false">
                                 <i class="fas fa-chevron-down"></i>
                             </button>
@@ -385,19 +385,8 @@
                         </div>
                     </div>
                 </div>
-                <script>
-                if (!window.samTreeToggleActiveOnly) {
-                    window.samTreeToggleActiveOnly = function (checkbox, cardId, baseUrl) {
-                        var container = document.getElementById('tree-container-' + cardId);
-                        var url = checkbox.checked ? baseUrl + '?active_only=1' : baseUrl;
-                        if (container && container.dataset.loaded === 'true') {
-                            htmx.ajax('GET', url, { target: container, swap: 'innerHTML' });
-                        } else if (container) {
-                            container.dataset.loadUrl = url;  // update before lazy-load fires
-                        }
-                    };
-                }
-                </script>
+                {# Active-only tree toggle uses the tree-toggle-active-only
+                   action (static/js/form-helpers.js). #}
                 {% endif %}
 
                 {# Edit Project button — inside the card body, visible only when expanded.
@@ -406,7 +395,7 @@
                 {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
                 <div class="d-flex justify-content-end mt-3 pt-2 border-top">
                     <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
-                       class="btn btn-sm btn-primary">
+                       class="btn  btn-primary">
                         <i class="fas fa-edit"></i> Edit Project
                     </a>
                 </div>

@@ -33,7 +33,7 @@
             {% for queue in queues %}
             {% set _qh_kwargs = {'system': system, 'queue_name': queue.queue_name} %}
             {% if hours %}{% set _ = _qh_kwargs.update({'hours': hours}) %}{% endif %}
-            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.queue_history', **_qh_kwargs) }}';" title="Click to view history for {{ queue.queue_name }}">
+            <tr class="clickable-row" data-action="navigate" data-href="{{ url_for('status_dashboard.queue_history', **_qh_kwargs) }}" title="Click to view history for {{ queue.queue_name }}">
                 <td><strong>{{ queue.queue_name }}</strong></td>
                 <td>{{ queue.active_users | fmt_number }}</td>
                 <td>{{ queue.running_jobs | fmt_number }}</td>

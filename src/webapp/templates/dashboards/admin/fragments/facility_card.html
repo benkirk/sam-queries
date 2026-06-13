@@ -154,7 +154,7 @@
         </span>
         {% if has_permission(Permission.CREATE_FACILITIES) %}
         <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-outline-success"
+            <button class="btn btn-primary"
                     data-bs-toggle="modal"
                     data-bs-target="#createFacilityModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_facility_create_form') }}"
@@ -162,7 +162,7 @@
                     hx-trigger="click">
                 <i class="fas fa-plus"></i> Create Facility
             </button>
-            <button class="btn btn-sm btn-outline-success"
+            <button class="btn btn-primary"
                     data-bs-toggle="modal"
                     data-bs-target="#createPanelModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_panel_create_form') }}"
@@ -170,7 +170,7 @@
                     hx-trigger="click">
                 <i class="fas fa-plus"></i> Create Panel
             </button>
-            <button class="btn btn-sm btn-outline-success"
+            <button class="btn btn-primary"
                     data-bs-toggle="modal"
                     data-bs-target="#createAllocationTypeModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_allocation_type_create_form') }}"
@@ -183,6 +183,4 @@
     </div>
 </div>
 
-<script>
-    SamCollapseChevron.attach('#facilities-pane', '.facility-collapse-icon');
-</script>
+{# Collapse chevrons wired in static/js/form-helpers.js (htmx.onLoad). #}

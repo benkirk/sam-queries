@@ -10,7 +10,7 @@
         <h5 class="mb-3"><i class="fas fa-eye"></i> At a Glance</h5>
         <div class="row mb-4">
             <div class="col-md-3">
-                <div class="card border h-100">
+                <div class="card inner-card h-100">
                     <div class="card-body text-center d-flex flex-column justify-content-center">
                         <div class="mb-3">
                             {% if jupyterhub_status.available %}
@@ -25,7 +25,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card border h-100">
+                <div class="card inner-card h-100">
                     <div class="card-body text-center d-flex flex-column justify-content-center">
                         <div class="mb-3">
                             <i class="fas fa-users text-primary icon-jumbo"></i>
@@ -36,7 +36,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card border h-100">
+                <div class="card inner-card h-100">
                     <div class="card-body text-center d-flex flex-column justify-content-center">
                         <div class="mb-3">
                             <i class="fas fa-desktop text-info icon-jumbo"></i>
@@ -53,7 +53,7 @@
                 {% set used_slots = (cpus_used / 2)|int %}
                 {% set available_slots = total_slots - used_slots %}
                 {% set slot_percent = ((used_slots / total_slots * 100)|round)|int if total_slots > 0 else 0 %}
-                <div class="card border h-100">
+                <div class="card inner-card h-100">
                     <div class="card-body text-center d-flex flex-column justify-content-center">
                         <div style="height: 70px; display: flex; flex-direction: column; justify-content: center; margin-bottom: 1rem;">
                             <div class="d-flex justify-content-end mb-1">
@@ -80,7 +80,7 @@
         <h5 class="mb-3"><i class="fas fa-th"></i> Session Breakouts</h5>
         <div class="row mb-4">
             <div class="col-md-3">
-                <div class="card border border-status-success h-100">
+                <div class="card inner-card h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-3">
                             <h6 class="text-muted mb-0">Casper Login Jobs</h6>
@@ -91,7 +91,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card border border-status-info h-100">
+                <div class="card inner-card h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-3">
                             <h6 class="text-muted mb-0">Casper Batch Jobs</h6>
@@ -102,7 +102,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card border border-status-primary h-100">
+                <div class="card inner-card h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-3">
                             <h6 class="text-muted mb-0">Derecho Batch Jobs</h6>
@@ -113,7 +113,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card border border-status-warning h-100">
+                <div class="card inner-card h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-3">
                             <h6 class="text-muted mb-0">Broken Jobs</h6>
@@ -136,7 +136,7 @@
                 {% set cpus_total = jupyterhub_status.cpus_total or 0 %}
                 {% set cpus_used = jupyterhub_status.cpus_used or 0 %}
                 {% set cpu_percent = ((cpus_used / cpus_total * 100)|round(1))|default(0, true) if cpus_total > 0 else 0 %}
-                <div class="card border h-100">
+                <div class="card inner-card h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h6 class="mb-0">CPU Utilization</h6>
@@ -163,7 +163,7 @@
                 {% set mem_total = jupyterhub_status.memory_total_gb or 0 %}
                 {% set mem_used = jupyterhub_status.memory_used_gb or 0 %}
                 {% set mem_percent = ((mem_used / mem_total * 100)|round(1))|default(0, true) if mem_total > 0 else 0 %}
-                <div class="card border h-100">
+                <div class="card inner-card h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h6 class="mb-0">Memory Utilization</h6>
