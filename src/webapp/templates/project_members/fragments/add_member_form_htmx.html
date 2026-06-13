@@ -19,7 +19,8 @@
 <form hx-post="{{ url_for('project_members.htmx_add_member', projcode=projcode) }}"
       hx-target="#addMemberFormContainer"
       hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
+      hx-disabled-elt="find button[type='submit']"
+      hx-disinherit="hx-disabled-elt">
 
     {# Hidden field populated by user selection #}
     <input type="hidden" name="username" id="htmxSelectedUsername" value="">
