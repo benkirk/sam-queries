@@ -19,7 +19,6 @@ class TestHeadersOnApp:
     def test_baseline_headers_present(self, client):
         resp = client.get('/auth/login')
         assert resp.headers['X-Content-Type-Options'] == 'nosniff'
-        assert resp.headers['X-Frame-Options'] == 'SAMEORIGIN'
         assert resp.headers['Referrer-Policy'] == 'strict-origin-when-cross-origin'
 
     def test_headers_on_api_routes_too(self, client):
@@ -31,15 +30,15 @@ class TestHeadersOnApp:
         resp = client.get('/auth/login')
         assert 'Strict-Transport-Security' not in resp.headers
 
-    def test_csp_rides_responses(self, client):
-        """TestingConfig follows the code default (report-only during the
-        extraction work, enforce after); either way the policy is present."""
+    def test_csp_enforced_by_default(self, client):
+        """Code default is CSP_MODE=enforce: the enforcing header rides
+        every response and frame-ancestors supersedes X-Frame-Options."""
         resp = client.get('/auth/login')
-        present = [h for h in ('Content-Security-Policy',
-                               'Content-Security-Policy-Report-Only')
-                   if h in resp.headers]
-        assert len(present) == 1
-        assert "script-src 'self'" in resp.headers[present[0]]
+        policy = resp.headers['Content-Security-Policy']
+        assert "script-src 'self'" in policy
+        assert "frame-ancestors 'self'" in policy
+        assert 'Content-Security-Policy-Report-Only' not in resp.headers
+        assert 'X-Frame-Options' not in resp.headers
 
 
 class TestCSPModes:

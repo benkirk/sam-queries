@@ -2,8 +2,8 @@
   htmx prototype: User Search Results (returned as HTML fragment)
 
   Server renders the search results directly as clickable list items.
-  Each item has an inline onclick that calls htmxSelectUser() to populate
-  the hidden form field. No separate JS file needed.
+  Each item carries data-action="member-select-user" (static/js/
+  form-helpers.js) to populate the hidden form field.
 #}
 {% if users %}
 {% for user in users %}

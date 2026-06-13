@@ -13,7 +13,7 @@ CSP work and stays empty. The assertion is equality, not <=, so a fixed
 file must also be removed from the list — the allowlist can't go stale.
 
 What to do instead of an inline pattern (see static/js/actions.js once
-it lands, and docs/plans/DEFERRED-CSP-discussion.md):
+it lands, and docs/plans/implemented/CSP-discussion.md):
 - behavior      → static JS file, delegated listeners on document.body
 - per-swap init → htmx.onLoad(root => ...) in static JS
 - dynamic data  → data-* attributes, or a non-executable

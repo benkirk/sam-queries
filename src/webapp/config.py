@@ -62,12 +62,13 @@ class SAMWebappConfig(SAMConfig):
 
     # Content-Security-Policy mode: 'enforce' | 'report-only' | 'off'.
     # The policy itself is generated from webapp.vendor_assets (see
-    # webapp/utils/csp.py). 'report-only' sends Content-Security-Policy-
-    # Report-Only — violations show in the browser console, nothing is
-    # blocked. Default report-only while the inline-script extraction
-    # lands; flips to enforce at the end of the CSP work. Env var stays
-    # the no-rebuild rollback knob (helm values change, no image build).
-    CSP_MODE = os.getenv('CSP_MODE', 'report-only')
+    # webapp/utils/csp.py); with every asset vendored it is essentially
+    # all-'self'. 'report-only' sends Content-Security-Policy-Report-Only
+    # — violations show in the browser console, nothing is blocked — and
+    # is the no-rebuild rollback/diagnostic knob (helm values change, no
+    # image build). Templates are kept inline-script-free by
+    # tests/unit/test_template_csp_lint.py.
+    CSP_MODE = os.getenv('CSP_MODE', 'enforce')
 
     # Flask-Cache default TTL (seconds) — used by @cache.cached / @cache.memoize
     # when no explicit timeout= is given.  Applies to all API and dashboard routes.

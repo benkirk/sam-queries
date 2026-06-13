@@ -6,7 +6,7 @@ header and the templates cannot drift: with every asset vendored locally
 external asset is ever added to the registry (url= entry, optionally
 csp_extra=) its origin flows into the right directives automatically.
 
-Design constraints (see docs/plans/DEFERRED-CSP-discussion.md):
+Design constraints (see docs/plans/implemented/CSP-discussion.md):
 
 - Nonce-free by design. Four routes cache fully-rendered HTML in Redis
   per-user (orgs/institutions cards, allocations dashboard + fragment);

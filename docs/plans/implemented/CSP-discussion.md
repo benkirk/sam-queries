@@ -1,8 +1,33 @@
-# Content-Security-Policy — Deferred, Reconsider Post-Launch
+# Content-Security-Policy — IMPLEMENTED 2026-06-12
 
 *Captured 2026-06-10, during Phase A hardening wrap-up (PR #296). CSP was
 deliberately deferred in `PRODUCTION_IMPROVEMENTS.md` item 3; this note records
 the what/why/when for future reconsideration (likely Phase B or after).*
+
+> **Outcome (2026-06-12, `hardening/csp` branch):** Implemented straight to
+> enforcing — and stricter than sketched below. All six CDN assets were
+> vendored into `static/vendor/` (committed, verified against the pinned SRI
+> hashes; Poppins self-hosted closes the one un-pinnable asset), so the policy
+> is essentially all-`'self'` with zero third-party origins — avoiding the
+> mega-CDN allowlist weakness (jsdelivr/unpkg serve every npm package).
+> The design is **nonce-free**: per-request nonces are incompatible with the
+> four Redis-cached rendered-HTML routes, so every inline script/handler was
+> extracted to static JS (`actions.js` delegation core, `pickers.js`,
+> `dashboard-init.js`, `admin-cards.js`, `modals.js`, `form-helpers.js`);
+> dynamic data rides `data-*` attributes and non-executable
+> `<script type="application/json">` blocks. `style-src` keeps
+> `'unsafe-inline'` (245 inline `style=` attrs, accepted tradeoff).
+> The policy is generated from `webapp/vendor_assets.py` by
+> `webapp/utils/csp.py`; `CSP_MODE` (enforce | report-only | off) is the
+> no-rebuild rollback knob; `tests/unit/test_template_csp_lint.py` keeps the
+> templates inline-script-free; `X-Frame-Options` is retired under enforce
+> (`frame-ancestors 'self'` supersedes it). htmx hardened with
+> `allowEval:false` (`allowScriptTags` deliberately left true — false would
+> strip the JSON data blocks from swaps; CSP itself blocks injected inline
+> scripts). No report endpoint (console-only, per decision).
+> Deploy note: flush the Flask-Cache Redis DB at rollout — pre-extraction
+> cached HTML still references inline handlers (self-heals in
+> CACHE_DEFAULT_TIMEOUT=300s otherwise).
 
 ## What CSP is
 
