@@ -45,9 +45,9 @@
 
         {# ── Application (config-shaped facts only) ───────────────────── #}
         <div class="col-12 col-xl-6">
-            <div class="card h-100">
-                <div class="card-header py-2">
-                    <strong><i class="fas fa-cube me-1"></i> Application</strong>
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4">
+                    <h5><i class="fas fa-cube me-1"></i> Application</h5>
                 </div>
                 <div class="card-body">
                     <dl class="config-stats mb-0 small">
@@ -73,9 +73,9 @@
             is the *point*: it surfaces the per-worker reality (different PID,
             different RSS each time). #}
         <div class="col-12 col-xl-6">
-            <div class="card h-100">
-                <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                    <strong><i class="fas fa-server me-1"></i> Server Information</strong>
+            <div class="card inner-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-server me-1"></i> Server Information</h5>
                     <button type="button"
                             class="btn btn-sm btn-outline-secondary py-0 px-2"
                             hx-get="{{ url_for('admin_dashboard.htmx_server_card') }}"
@@ -99,9 +99,9 @@
 
         {# ── Database ─────────────────────────────────────────────────── #}
         <div class="col-12 col-xl-6">
-            <div class="card h-100">
-                <div class="card-header py-2">
-                    <strong><i class="fas fa-database me-1"></i> Database</strong>
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4">
+                    <h5><i class="fas fa-database me-1"></i> Database</h5>
                 </div>
                 <div class="card-body">
                     {% for db_info in state.databases %}
@@ -142,9 +142,9 @@
 
         {# ── Authentication ───────────────────────────────────────────── #}
         <div class="col-12 col-xl-6">
-            <div class="card h-100">
-                <div class="card-header py-2">
-                    <strong><i class="fas fa-lock me-1"></i> Authentication</strong>
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4">
+                    <h5><i class="fas fa-lock me-1"></i> Authentication</h5>
                 </div>
                 <div class="card-body">
                     <dl class="config-stats mb-0 small">
@@ -212,9 +212,9 @@
         {% endmacro %}
 
         <div class="col-12 col-xl-6">
-            <div class="card h-100">
-                <div class="card-header py-2">
-                    <strong><i class="fas fa-bolt me-1"></i> Caching</strong>
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4">
+                    <h5><i class="fas fa-bolt me-1"></i> Caching</h5>
                 </div>
                 <div class="card-body">
                     <dl class="config-stats mb-0 small">
@@ -294,9 +294,9 @@
 
         {# ── Rate limiting (Flask-Limiter facade; webapp.limiter) ──────── #}
         <div class="col-12 col-xl-6">
-            <div class="card h-100">
-                <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                    <strong><i class="fas fa-traffic-light me-1"></i> Rate limiting</strong>
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4 d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-traffic-light me-1"></i> Rate limiting</h5>
                     {# Link target lands in the dedicated admin page commit; left
                        as a relative path so this tile renders before that route
                        is registered. #}
@@ -344,9 +344,9 @@
 
         {# ── Audit & Logging (full width; recent entries inline) ──────── #}
         <div class="col-12">
-            <div class="card">
-                <div class="card-header py-2">
-                    <strong><i class="fas fa-clipboard-list me-1"></i> Audit &amp; Logging</strong>
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4">
+                    <h5><i class="fas fa-clipboard-list me-1"></i> Audit &amp; Logging</h5>
                 </div>
                 <div class="card-body">
                     <dl class="config-stats mb-3 small">
@@ -363,7 +363,7 @@
                         <small class="text-muted fw-normal ms-1">(last 25)</small>
                     </h6>
                     {% if state.audit_tail is none %}
-                        <p class="text-muted small mb-0">
+                        <p class="text-muted small mb-0 h-100">
                             <i class="fas fa-inbox"></i> Audit log not readable
                             ({% if state.audit_logging.audit_log_path %}
                                 missing or permission denied

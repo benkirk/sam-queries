@@ -23,11 +23,11 @@
   {% if can_access_admin %}
   {# Pass projcode so the admin index re-renders this project's card on
      return — otherwise the user lands on a blank search page. #}
-  <a href="{{ url_for('admin_dashboard.index', projcode=project.projcode) }}" class="btn btn-outline-secondary btn-sm ms-auto">
+  <a href="{{ url_for('admin_dashboard.index', projcode=project.projcode) }}" class="btn btn-outline-secondary  ms-auto">
     <i class="fas fa-arrow-left"></i> Back to Admin
   </a>
   {% else %}
-  <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-outline-secondary btn-sm ms-auto">
+  <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-outline-secondary  ms-auto">
     <i class="fas fa-arrow-left"></i> Back to Dashboard
   </a>
   {% endif %}
@@ -100,7 +100,7 @@
   <div class="tab-pane fade" id="tab-allocations" role="tabpanel">
     {% if can_modify_allocations %}
     <div class="d-flex justify-content-end gap-2 mb-3">
-      <button class="btn btn-sm btn-primary"
+      <button class="btn  btn-primary"
               hx-get="{{ url_for('admin_dashboard.htmx_extend_allocations_form', projcode=project.projcode) }}"
               hx-target="#extendAllocationsFormContainer"
               hx-include="#alloc-active-at"
@@ -109,7 +109,7 @@
               data-bs-target="#extendAllocationsModal">
         <i class="fas fa-calendar-plus"></i> Extend
       </button>
-      <button class="btn btn-sm btn-primary"
+      <button class="btn  btn-primary"
               hx-get="{{ url_for('admin_dashboard.htmx_renew_allocations_form', projcode=project.projcode) }}"
               hx-target="#renewAllocationsFormContainer"
               hx-include="#alloc-active-at"
@@ -118,7 +118,7 @@
               data-bs-target="#renewAllocationsModal">
         <i class="fas fa-sync-alt"></i> Renew
       </button>
-      <button class="btn btn-sm btn-primary"
+      <button class="btn  btn-primary"
               hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=project.projcode) }}"
               hx-target="#addAllocationFormContainer"
               hx-trigger="click"

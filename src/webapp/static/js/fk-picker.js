@@ -12,7 +12,7 @@
 //
 //       <div class="fk-picker-selected mb-1" style="display:none;">
 //           <span class="badge bg-info py-1 px-2 fk-picker-badge"></span>
-//           <button type="button" class="btn btn-xs btn-outline-secondary ms-1 fk-picker-clear">
+//           <button type="button" class="btn btn-sm btn-outline-secondary ms-1 fk-picker-clear">
 //               <i class="fas fa-times"></i>
 //           </button>
 //       </div>

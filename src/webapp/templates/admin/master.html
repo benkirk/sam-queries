@@ -4,7 +4,7 @@
 <div class="navbar-text">
     {% if current_user.is_authenticated %}
     <div class="btn-group">
-        <button type="button" class="btn btn-sm btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        <button type="button" class="btn  btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
             <i class="glyphicon glyphicon-user"></i>
             <strong>{{ current_user.username }}</strong>
             {% if current_user.roles %}

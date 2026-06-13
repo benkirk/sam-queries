@@ -126,6 +126,7 @@ body {
     list-style: none;
     justify-content: space-between;
     width: 100%;
+
 }
 
 /* Mobile toggler */
@@ -155,7 +156,7 @@ body {
 
 /* Nav row border */
 .navbar-wrapper.border-top {
-    border-top-color: var(--ncar-gray-light) !important;
+    border-top-color: #dee2e6 !important;
 }
 
 .navbar .navbar-collapse {
@@ -302,10 +303,31 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin-bottom: 1.5rem;
 }
 
-.card > .card-header {
-    border-bottom: 2px solid var(--ncar-blue);
+.inner-card {
+    padding: 1.875rem;
+}
+
+.inner-card > .card-header {
+    padding: 0 !important;
     font-weight: var(--font-weight-semi-bold);
     color: var(--ncar-space-blue);
+}
+
+.inner-card > .card-header h5 {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1;
+    text-transform: uppercase;
+    color: var(--ncar-navy);
+}
+
+.inner-card > .card-body {
+    padding: 0;
+}
+
+.inner-card p {
+    font-size: 1.125rem;
+    line-height: 1.875rem;
 }
 
 /* Opt-in modifier: a card with a visible 1px hairline border. Use when a
@@ -322,6 +344,11 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin: 0;
 }
 
+.inner-card {
+    border: 1px solid var(--ncar-blue);
+    box-shadow: none !important;
+}
+
 /* ============================================================================
    BUTTONS — Unity NCAR style: flat (0 radius), bold (700), 3px border,
    inverting hover (filled ↔ outlined). Uses Bootstrap btn CSS variables.
@@ -334,6 +361,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-btn-box-shadow: none;
     text-transform: uppercase;
     letter-spacing: 0.05rem;
+    line-height: 24px;
+    font-size: 1.25rem;
+    padding: .75rem 1.5rem;
 }
 
 .btn-primary {
@@ -367,6 +397,21 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-btn-hover-color: #fff;
 }
 
+/* Unity .btn-outline-white — for buttons on dark/navy backgrounds (e.g.
+   inside .filter-sidebar). White outline, transparent fill; hover dims to
+   a translucent white wash matching Unity's exact spec (not a full invert). */
+.btn-outline-white {
+    --bs-btn-color: #fff;
+    --bs-btn-border-color: #fff;
+    --bs-btn-bg: transparent;
+    --bs-btn-hover-bg: rgba(255, 255, 255, 0.1);
+    --bs-btn-hover-border-color: #fff;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: rgba(255, 255, 255, 0.1);
+    --bs-btn-active-border-color: #fff;
+    --bs-btn-active-color: #fff;
+}
+
 /* Unity-style :disabled — transparent fill, transparent 3px border (keeps
    the button's footprint so layout doesn't shift / nothing visually
    disappears), gray text. opacity:1 overrides Bootstrap's default .65 fade.
@@ -392,6 +437,24 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .btn-link:hover {
     text-decoration: underline;
+}
+
+.btn.btn-sm,
+.btn-group-sm > .btn {
+    line-height: 18px;
+    font-size: 0.95rem;
+    padding: 0.45rem 0.9rem;
+}
+
+.btn-group-sm > .btn {
+    --bs-btn-border-width: 2px;
+    line-height: 18px;
+    font-size: 0.95rem;
+    padding: 0.45rem 0.9rem;
+}
+
+.btn-group-sm > .btn:not(:first-child) {
+    margin-left: calc(-1 * var(--bs-btn-border-width));
 }
 
 /* Unity NCAR defines only .btn-primary and .btn-outline-primary. Other
@@ -764,6 +827,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .nav-tabs .nav-item {
     flex-shrink: 0;
+    font-size: 1rem !important;
+    font-weight: 600;
+    color: var(--ncar-blue);
 }
 
 /* When tabs are followed by tab-content, kill any mb-* utility margin so the
@@ -779,7 +845,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     background-color: #fff;
     border: none;
     border-radius: 0;
-    padding: 0.375rem 1rem;
+    padding: 1.125rem 1.875rem;
     transition: background-color var(--transition-base), color var(--transition-base);
 }
 
@@ -808,11 +874,82 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 /* ============================================================================
+   FILTER SIDEBAR — Unity NCAR navy panel for any filter form on the site.
+   Defined here (not allocations.css) so it's available on every page.
+   ========================================================================= */
+
+.filter-sidebar {
+    background-color: var(--ncar-navy);
+    color: #fff;
+    padding: 1.5rem;
+}
+
+.filter-sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    /* Negative horizontal margin cancels .filter-sidebar's 1.5rem padding so
+       the divider spans the full panel width; inner padding re-establishes
+       the text inset. */
+    margin: 0 -1.5rem 1.25rem;
+    padding: 0 1.5rem 0.75rem;
+    border-bottom: 1px solid var(--ncar-gray-light);
+}
+
+/* Selector needs to beat .main-content h2 (specificity 0,1,1) — chain the
+   parent class so we hit 0,2,1 and the gold color wins over navy-on-navy.
+   Fixed 1rem font keeps it from inheriting the giant h2 desktop scale. */
+.filter-sidebar .filter-sidebar-title {
+    color: var(--ncar-gold);
+    font-size: 1rem;
+    line-height: 1.5;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+}
+
+.filter-sidebar-clear {
+    color: #fff;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-decoration: none;
+    font-weight: var(--font-weight-semi-bold);
+}
+
+.filter-sidebar-clear:hover {
+    color: var(--ncar-sky);
+}
+
+.filter-sidebar .form-label,
+.filter-sidebar .form-check-label {
+    color: #fff;
+}
+
+.filter-sidebar .form-text {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.filter-sidebar select,
+.filter-sidebar input[type="date"],
+.filter-sidebar input[type="text"],
+.filter-sidebar input[type="search"],
+.filter-sidebar input[type="email"],
+.filter-sidebar input[type="number"] {
+    background-color: #fff;
+    color: var(--ncar-space-blue);
+}
+
+.filter-sidebar input::placeholder {
+    color: var(--ncar-gray);
+}
+
+/* ============================================================================
    PROJECT CARDS (User Dashboard Specific)
    ========================================================================= */
 
 .project-card {
-    margin-bottom: 24px;
+    margin-bottom: 0px !important;
 }
 
 /* Project-card headers follow the same invert pattern as .nav-tabs and
@@ -823,10 +960,10 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .project-card .card-header {
     cursor: pointer;
     user-select: none;
-    padding: 8px 16px;
-    background-color: var(--ncar-blue);
-    color: #fff;
-    border-bottom: 1px solid var(--ncar-blue);
+    padding: 16px;
+    background-color: var(--bg-light);
+    color: var(--ncar-blue);
+    border-bottom: 1px solid #dee2e6;
     transition: background-color var(--transition-base), color var(--transition-base);
 }
 
@@ -835,7 +972,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    the .text-primary utility class on the icon. */
 .project-card .card-header h5 i,
 .project-card .card-header .accordion-chevron {
-    color: #fff !important;
+    color: var(--ncar-space-blue) !important;
 }
 
 /* Match Unity's .accordion-button: fixed 1rem font, semi-bold, single weight
@@ -851,25 +988,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     font-weight: inherit;
 }
 
-.project-card .card-header:hover {
-    background-color: var(--ncar-navy);
-}
-
 /* Expanded (active) state: white surface with blue text — the "settled" look
    matching .nav-tabs.active and .btn-group .btn-secondary.active. */
 .project-card .card-header[aria-expanded="true"] {
-    background-color: #fff;
-    color: var(--ncar-blue);
+    background-color: var(--ncar-blue);
+    color: #fff;
     border-bottom-color: var(--ncar-gray-light);
 }
 
 .project-card .card-header[aria-expanded="true"] h5 i,
 .project-card .card-header[aria-expanded="true"] .accordion-chevron {
-    color: var(--ncar-blue) !important;
-}
-
-.project-card .card-header[aria-expanded="true"]:hover {
-    background-color: rgba(var(--ncar-teal-rgb), 0.08);
+    color: #fff !important;
 }
 
 /* Accordion chevron — reusable affordance for any collapsible header.
@@ -1014,6 +1143,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .collapse-toggle {
     cursor: pointer;
     user-select: none;
+    border-bottom: 1px solid var(--ncar-gray-light);
 }
 
 .collapse-toggle::after {
@@ -1026,10 +1156,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .collapse-toggle.collapsed::after {
     transform: rotate(-90deg);
-}
-
-.collapse-toggle:hover {
-    color: var(--ncar-sky);
 }
 
 /* ============================================================================

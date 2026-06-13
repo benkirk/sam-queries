@@ -21,7 +21,8 @@
 #}
 {% set ncols = 7 if show_users_projects else 5 %}
 
-<div class="p-3">
+
+<div class="filter-sidebar mb-3">
     {{ institution_filters('inst-filters',
                            url_for('admin_dashboard.htmx_institutions_fragment'),
                            'institutions-pane',
@@ -218,7 +219,7 @@
     </span>
     {% if has_permission(Permission.CREATE_ORG_METADATA) %}
     <div class="d-flex gap-2">
-        <button class="btn btn-sm btn-outline-success"
+        <button class="btn  btn-primary"
                 data-bs-toggle="modal"
                 data-bs-target="#createInstitutionTypeModal"
                 hx-get="{{ url_for('admin_dashboard.htmx_institution_type_create_form') }}"
@@ -226,7 +227,7 @@
                 hx-trigger="click">
             <i class="fas fa-plus"></i> Create Type
         </button>
-        <button class="btn btn-sm btn-outline-success"
+        <button class="btn  btn-primary"
                 data-bs-toggle="modal"
                 data-bs-target="#createInstitutionModal"
                 hx-get="{{ url_for('admin_dashboard.htmx_institution_create_form') }}"
@@ -234,7 +235,7 @@
                 hx-trigger="click">
             <i class="fas fa-plus"></i> Create Institution
         </button>
-        <button class="btn btn-sm btn-outline-success"
+        <button class="btn  btn-primary"
                 data-bs-toggle="modal"
                 data-bs-target="#createMnemonicCodeModal"
                 hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form') }}"

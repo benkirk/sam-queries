@@ -20,86 +20,67 @@
                        start_date='', end_date='',
                        projcode='', username='',
                        all_resources=[], selected_resources=[]) %}
+{# Unity NCAR navy panel — same .filter-sidebar tokens as the allocations
+   facility filter, so audit filters match the rest of the dashboard. #}
 <form id="{{ form_id }}"
-      class="card mb-3"
       hx-get="{{ fragment_url }}"
       hx-target="#{{ target_id }}"
       hx-swap="innerHTML"
       hx-trigger="submit">
-    <div class="card-body py-3">
-        <div class="d-flex flex-wrap align-items-start gap-3">
+    <div class="filter-sidebar-header">
+        <h2 class="filter-sidebar-title">Filters</h2>
+        {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the
+           form and re-triggers its htmx submit — no inline onclick. #}
+        <a class="filter-sidebar-clear" style="cursor: pointer;"
+           data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
+    </div>
 
-            {# Left column: four inputs stacked over the Search/Reset row. #}
-            <div class="d-flex flex-column gap-3">
+    <div class="d-flex flex-wrap align-items-start gap-3">
 
-                <div class="d-flex flex-wrap gap-3">
-                    <div>
-                        <label class="form-label small mb-1">
-                            <strong><i class="fas fa-calendar me-1 text-muted"></i>From</strong>
-                        </label>
-                        <input type="date" class="form-control form-control-sm"
-                               name="start_date" value="{{ start_date }}"
-                               style="width:150px;">
-                    </div>
-
-                    <div>
-                        <label class="form-label small mb-1"><strong>To</strong></label>
-                        <input type="date" class="form-control form-control-sm"
-                               name="end_date" value="{{ end_date }}"
-                               style="width:150px;">
-                    </div>
-
-                    <div>
-                        <label class="form-label small mb-1">
-                            <strong><i class="fas fa-folder-open me-1 text-muted"></i>Project</strong>
-                        </label>
-                        <input type="text" class="form-control form-control-sm"
-                               name="projcode" value="{{ projcode or '' }}"
-                               placeholder="e.g. SCSG0001" style="width:140px;">
-                    </div>
-
-                    <div>
-                        <label class="form-label small mb-1">
-                            <strong><i class="fas fa-user me-1 text-muted"></i>Responsible user</strong>
-                        </label>
-                        <input type="text" class="form-control form-control-sm"
-                               name="username" value="{{ username or '' }}"
-                               placeholder="username" style="width:160px;">
-                    </div>
-                </div>
-
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-sm btn-primary">
-                        <i class="fas fa-search"></i> Search
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary"
-                            data-action="form-reset-submit" data-form-id="{{ form_id }}"
-                            title="Reset to default filters">
-                        <i class="fas fa-rotate-left"></i> Reset
-                    </button>
-                </div>
-
-            </div>
-
-            {# Right column: the tall Resources picker sits alongside the left column. #}
-            {% if all_resources %}
-            <div>
-                <label class="form-label small mb-1">
-                    <strong><i class="fas fa-server me-1 text-muted"></i>Resources</strong>
-                </label>
-                <select class="form-control form-control-sm"
-                        name="resource_name" multiple size="4"
-                        style="width:220px;">
-                    {% for res in all_resources %}
-                    <option value="{{ res }}"
-                        {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
-                    {% endfor %}
-                </select>
-                <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple</small>
-            </div>
-            {% endif %}
-
+        <div>
+            <label class="form-label"><strong>From</strong></label>
+            <input type="date" class="form-control"
+                   name="start_date" value="{{ start_date }}"
+                   style="width:150px;">
         </div>
+
+        <div>
+            <label class="form-label"><strong>To</strong></label>
+            <input type="date" class="form-control"
+                   name="end_date" value="{{ end_date }}"
+                   style="width:150px;">
+        </div>
+
+        <div>
+            <label class="form-label"><strong>Project</strong></label>
+            <input type="text" class="form-control"
+                   name="projcode" value="{{ projcode or '' }}"
+                   placeholder="e.g. SCSG0001" style="width:140px;">
+        </div>
+
+        <div>
+            <label class="form-label"><strong>Responsible user</strong></label>
+            <input type="text" class="form-control"
+                   name="username" value="{{ username or '' }}"
+                   placeholder="username" style="width:160px;">
+        </div>
+
+        {% if all_resources %}
+        <div>
+            <label class="form-label"><strong>Resources</strong></label>
+            <select class="form-control"
+                    name="resource_name" multiple size="4"
+                    style="width:220px;">
+                {% for res in all_resources %}
+                <option value="{{ res }}"
+                    {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
+                {% endfor %}
+            </select>
+            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
     </div>
 </form>
 {% endmacro %}

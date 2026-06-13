@@ -245,7 +245,7 @@ POST /admin/htmx/project-create              → validate + create + htmx_succes
 - In the "Search Projects" card header, add:
   ```html
   {% if has_permission(Permission.CREATE_PROJECTS) %}
-  <button class="btn btn-sm btn-success" ... hx-get=".../project-create-form" ...>
+  <button class="btn  btn-success" ... hx-get=".../project-create-form" ...>
       <i class="fas fa-plus"></i> Create Project
   </button>
   {% endif %}

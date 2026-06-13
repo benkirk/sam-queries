@@ -18,7 +18,7 @@
         </span>
     </div>
     {% if has_permission(Permission.EDIT_RESOURCES) %}
-    <button type="button" class="btn btn-sm btn-success"
+    <button type="button" class="btn btn-primary"
             data-bs-toggle="modal"
             data-bs-target="#addDiskRootModal"
             hx-get="{{ url_for('admin_dashboard.htmx_admin_disk_root_new_form') }}"

@@ -6,7 +6,7 @@
 #}
 <div class="card-body p-0">
     <!-- Tab navigation -->
-    <ul class="nav nav-tabs px-3 pt-3" id="resourcesTabs" role="tablist">
+    <ul class="nav nav-tabs" id="resourcesTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="resources-tab" data-bs-toggle="tab"
                     data-bs-target="#resources-pane" type="button" role="tab"
@@ -126,7 +126,7 @@
                 </span>
                 {% if has_permission(Permission.CREATE_RESOURCES) %}
                 <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createResourceTypeModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_resource_type_create_form') }}"
@@ -134,7 +134,7 @@
                             hx-trigger="click">
                         <i class="fas fa-plus"></i> Create Type
                     </button>
-                    <button class="btn btn-sm btn-outline-success"
+                    <button class="btn btn-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#createResourceModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_resource_create_form') }}"
@@ -213,7 +213,7 @@
                     Showing {{ machines|length }} machine{{ 's' if machines|length != 1 else '' }}
                 </span>
                 {% if has_permission(Permission.CREATE_RESOURCES) %}
-                <button class="btn btn-sm btn-outline-success"
+                <button class="btn  btn-primary"
                         data-bs-toggle="modal"
                         data-bs-target="#createMachineModal"
                         hx-get="{{ url_for('admin_dashboard.htmx_machine_create_form') }}"
@@ -315,7 +315,7 @@
                     </span>
                 </div>
                 {% if has_permission(Permission.EDIT_USERS) %}
-                <button type="button" class="btn btn-sm btn-success"
+                <button type="button" class="btn btn-primary"
                         data-bs-toggle="modal"
                         data-bs-target="#addExemptionModal"
                         hx-get="{{ url_for('admin_dashboard.htmx_admin_exemption_form') }}"

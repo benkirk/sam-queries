@@ -34,7 +34,7 @@
                     ('future', 'Future Risk'),
                 ] %}
                 <button type="button"
-                        class="btn btn-{% if sort_by == opt_val %}primary{% else %}outline-primary{% endif %}"
+                        class="btn {% if sort_by == opt_val %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
                         hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
                                            resource_name=resource_name,
                                            **dict(selector_kwargs, sort_by=opt_val)) }}"
