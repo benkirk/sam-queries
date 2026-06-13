@@ -43,6 +43,12 @@
     document.addEventListener('input',  dispatch('data-action-input'));
     document.addEventListener('submit', dispatch('data-action-submit'));
 
+    /* Generic built-in: clickable rows/elements that just navigate
+     * (replaces onclick="window.location='...'"). */
+    window.registerAction('navigate', function (el) {
+        window.location = el.dataset.href;
+    });
+
     /* data-stop-propagation: element-level stopPropagation() (replaces
      * inline onclick="event.stopPropagation()"). Must be a real element
      * listener — the row clicks it guards against are htmx element-level

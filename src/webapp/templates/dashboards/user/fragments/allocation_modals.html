@@ -26,29 +26,4 @@
   The htmx_edit_allocation route sends HX-Trigger: allocationUpdated on success.
   For the admin inline project card, reload that container instead.
 #}
-<script>
-document.body.addEventListener('allocationUpdated', function() {
-    // If the project details modal is open, re-fetch its content
-    var modal = document.getElementById('projectDetailsModal');
-    if (modal && modal.classList.contains('show')) {
-        var body = document.getElementById('projectDetailsModalBody');
-        if (body.getAttribute('hx-get')) {
-            htmx.trigger(body, 'allocationUpdated');
-        } else {
-            window.location.reload();
-        }
-        return;
-    }
-    // If admin project card container has content, reload via htmx
-    var adminCard = document.getElementById('projectCardContainer');
-    if (adminCard && adminCard.innerHTML.trim()) {
-        var projEl = adminCard.querySelector('[data-projcode]');
-        if (projEl) {
-            htmx.ajax('GET', '/admin/project/' + projEl.dataset.projcode, {target: adminCard, swap: 'innerHTML'});
-        } else {
-            window.location.reload();
-        }
-        return;
-    }
-});
-</script>
+{# The allocationUpdated refresh hook lives in static/js/modals.js. #}
