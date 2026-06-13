@@ -157,51 +157,5 @@
   suffix; JS converts to the operator's local naive ISO (the format
   datetime-local inputs require).
 #}
-<script>
-(function () {
-    function pad(n) { return String(n).padStart(2, '0'); }
-
-    /* Format a Date as a naive local ISO suitable for <input type="datetime-local">. */
-    function toLocalNaiveISO(d) {
-        return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
-               'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-    }
-
-    function browserTzName() {
-        try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }
-        catch (e) { return ''; }
-    }
-
-    /* Pre-fill create start time + capture browser TZ. */
-    document.getElementById('createOutageModal').addEventListener('show.bs.modal', function() {
-        document.getElementById('createStartTime').value = toLocalNaiveISO(new Date());
-        document.getElementById('createTz').value = browserTzName();
-    });
-
-    /* Populate edit form from button click. */
-    window.openEditOutageModal = function (id, status, severity, description, estimatedResolutionUtcIso, title) {
-        document.getElementById('editOutageId').value = id;
-        document.getElementById('editTitle').value = title || '';
-        document.getElementById('editStatus').value = status || 'investigating';
-        document.getElementById('editSeverity').value = severity || 'minor';
-        document.getElementById('editDescription').value = description || '';
-        document.getElementById('editTz').value = browserTzName();
-
-        /* Server emits estimated_resolution as a UTC ISO with 'Z' suffix.
-           Parse that as a real instant, then format as operator-local naive. */
-        var resInput = document.getElementById('editEstimatedResolution');
-        if (estimatedResolutionUtcIso) {
-            var d = new Date(estimatedResolutionUtcIso);
-            resInput.value = isNaN(d.getTime()) ? '' : toLocalNaiveISO(d);
-        } else {
-            resInput.value = '';
-        }
-
-        /* Set the form's hx-post URL dynamically based on the outage ID. */
-        document.getElementById('editOutageForm').setAttribute('hx-post',
-            '/status/htmx/outage/' + id + '/edit');
-        htmx.process(document.getElementById('editOutageForm'));
-        bootstrap.Modal.getOrCreateInstance(document.getElementById('editOutageModal')).show();
-    };
-})();
-</script>
+{# Behavior (create-modal TZ/start prefill, edit-form population via the
+   outage-edit action) lives in static/js/modals.js. #}

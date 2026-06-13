@@ -65,10 +65,8 @@
       {%- if can_view -%}
       <button class="btn btn-link p-0"
               title="View project details"
-              onclick="event.stopPropagation();
-                       htmx.ajax('GET','{{ url_for('user_dashboard.project_details_modal', projcode=node.projcode) }}',
-                                 {target:'#projectDetailsModalBody',swap:'innerHTML'});
-                       bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();">
+              data-stop-propagation data-action="project-details-modal"
+              data-url="{{ url_for('user_dashboard.project_details_modal', projcode=node.projcode) }}">
         <strong>{{ node.projcode }}</strong>
       </button>
       {%- else -%}
@@ -199,10 +197,8 @@
     {%- if can_view -%}
     <button class="btn btn-link p-0"
             title="View project details"
-            onclick="event.stopPropagation();
-                     htmx.ajax('GET','{{ url_for('user_dashboard.project_details_modal', projcode=node.projcode) }}',
-                               {target:'#projectDetailsModalBody',swap:'innerHTML'});
-                     bootstrap.Modal.getOrCreateInstance(document.getElementById('projectDetailsModal')).show();">
+            data-stop-propagation data-action="project-details-modal"
+            data-url="{{ url_for('user_dashboard.project_details_modal', projcode=node.projcode) }}">
       <strong>{{ node.projcode }}</strong>
     </button>
     {%- else -%}

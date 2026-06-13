@@ -214,7 +214,7 @@ Mechanism analysis (the fork to resolve before implementing):
   [P0-10/12, P1-45/46/47].
 - CSP — now generatable from `src/webapp/vendor_assets.py` origins (Phase A landed
   the prerequisite); inline-script audit still required first. Full discussion in
-  `docs/plans/DEFERRED-CSP-discussion.md`.
+  `docs/plans/implemented/CSP-discussion.md`.
 - Ingress hardening annotations (TLS protocols, proxy-body-size, edge rate-limit);
   OIDC account-linking via Entra `oid`/`sub` [P1-2]; pip-audit/lockfile/Trivy gates.
 - Entra app-registration: register `https://samuel.k8s.ucar.edu/status/` as a

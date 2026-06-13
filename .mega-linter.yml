@@ -28,6 +28,10 @@ SHOW_ELAPSED_TIME: true
 # Uncomment if you want MegaLinter to detect errors but not block CI to pass
 DISABLE_ERRORS: true
 
+# Vendored third-party assets (minified upstream dist files, pinned by
+# sha384 in webapp/vendor_assets.py) — not ours to lint or spell-check.
+FILTER_REGEX_EXCLUDE: (src/webapp/static/vendor/)
+
 # linter-specific customizations
 BASH_FILTER_REGEX_EXCLUDE: "(Dockerfile)"
 BASH_SHFMT_ARGUMENTS: "--binary-next-line --case-indent --func-next-line --space-redirects --indent 4"

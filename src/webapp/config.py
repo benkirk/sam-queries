@@ -60,6 +60,16 @@ class SAMWebappConfig(SAMConfig):
     # Google Calendar embed URL (public calendar shown on reservations tab; empty = hidden)
     GOOGLE_CALENDAR_EMBED_URL = os.getenv('GOOGLE_CALENDAR_EMBED_URL', '')
 
+    # Content-Security-Policy mode: 'enforce' | 'report-only' | 'off'.
+    # The policy itself is generated from webapp.vendor_assets (see
+    # webapp/utils/csp.py); with every asset vendored it is essentially
+    # all-'self'. 'report-only' sends Content-Security-Policy-Report-Only
+    # — violations show in the browser console, nothing is blocked — and
+    # is the no-rebuild rollback/diagnostic knob (helm values change, no
+    # image build). Templates are kept inline-script-free by
+    # tests/unit/test_template_csp_lint.py.
+    CSP_MODE = os.getenv('CSP_MODE', 'enforce')
+
     # Flask-Cache default TTL (seconds) — used by @cache.cached / @cache.memoize
     # when no explicit timeout= is given.  Applies to all API and dashboard routes.
     # Distinct from the cachetools TTL below (which wraps a single query function).

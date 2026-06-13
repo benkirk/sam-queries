@@ -501,8 +501,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<style>
-.collapse-icon { transition: transform 0.2s ease; }
-[aria-expanded="true"] .collapse-icon { transform: rotate(90deg); }
-</style>
+{# styles extracted to static/css/components.css (CSP) #}
 {% endblock %}

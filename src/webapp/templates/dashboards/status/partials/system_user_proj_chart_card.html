@@ -15,7 +15,14 @@
    persistence (nav-view-persistence.js) keeps the viewer on this
    tab across reloads. The chart endpoint is HTMX-fetched on card
    load with the resolved `chart_hours` so initial render matches the
-   active picker preset. #}
+   active picker preset.
+
+   Gated on authentication: the chart fragment route is @login_required, so
+   for anonymous viewers the hx-trigger="load" fetch would 401 and the
+   unauthorized handler's HX-Redirect would bounce the whole (otherwise
+   public) status page to the login screen. Hiding the card for anonymous
+   users matches the "visible to any logged-in user" intent above. #}
+{% if current_user.is_authenticated %}
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h6 class="mb-0">
@@ -46,3 +53,4 @@
         </div>
     </div>
 </div>
+{% endif %}

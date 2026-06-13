@@ -18,7 +18,7 @@
             {% for nt in node_types %}
             {% set _nh_kwargs = {'system': system, 'node_type': nt.node_type} %}
             {% if hours %}{% set _ = _nh_kwargs.update({'hours': hours}) %}{% endif %}
-            <tr class="clickable-row" onclick="window.location='{{ url_for('status_dashboard.nodetype_history', **_nh_kwargs) }}';" title="Click to view history for {{ nt.node_type }}">
+            <tr class="clickable-row" data-action="navigate" data-href="{{ url_for('status_dashboard.nodetype_history', **_nh_kwargs) }}" title="Click to view history for {{ nt.node_type }}">
                 <td><strong>{{ nt.node_type }}</strong></td>
                 <td>
                     <small>

@@ -19,7 +19,7 @@
                    value="{{ (form.get('code') if form else '') | upper }}"
                    placeholder="ABC"
                    pattern="[A-Za-z]{3}"
-                   oninput="this.value = this.value.toUpperCase()"
+                   data-action-input="uppercase"
                    style="max-width: 8rem;">
         </div>
 
@@ -29,7 +29,7 @@
                 Fill description from Institution <span class="text-muted">(optional)</span>
             </label>
             <select class="form-select" id="createMcInstitution"
-                    onchange="mnemonicFillDescription('institution', this)">
+                    data-action-change="mc-fill-description" data-source="institution">
                 <option value="">— None —</option>
                 {% for inst in institutions %}
                 <option value="{{ inst.institution_id }}"
@@ -49,7 +49,7 @@
                 Fill description from NCAR Organization <span class="text-muted">(optional)</span>
             </label>
             <select class="form-select" id="createMcOrganization"
-                    onchange="mnemonicFillDescription('organization', this)">
+                    data-action-change="mc-fill-description" data-source="organization">
                 <option value="">— None —</option>
                 {% for org in organizations %}
                 <option value="{{ org.organization_id }}"
@@ -68,32 +68,7 @@
                       id='createMcDescription') }}
 {% endcall %}
 
-<script>
-(function() {
-    // Populate description from the selected dropdown option's data-description attribute.
-    // Resets the other dropdown so only one source is active at a time.
-    window.mnemonicFillDescription = function(source, selectEl) {
-        var opt = selectEl.options[selectEl.selectedIndex];
-        var desc = opt.dataset.description || '';
-        if (desc) {
-            document.getElementById('createMcDescription').value = desc;
-            var otherId = source === 'institution' ? 'createMcOrganization' : 'createMcInstitution';
-            document.getElementById(otherId).value = '';
-        }
-    };
-
-    // If a prefill description was passed (e.g. from clicking a missing-mnemonic badge),
-    // set it and try to pre-select the matching institution in the dropdown.
-    var prefill = {{ prefill_description | tojson }};
-    if (prefill) {
-        document.getElementById('createMcDescription').value = prefill;
-        var instSel = document.getElementById('createMcInstitution');
-        for (var i = 0; i < instSel.options.length; i++) {
-            if (instSel.options[i].dataset.description === prefill) {
-                instSel.selectedIndex = i;
-                break;
-            }
-        }
-    }
-})();
-</script>
+{# Description quick-fill + prefill behavior lives in static/js/form-helpers.js
+   (mc-fill-description action + initMnemonicPrefill); the prefill value rides
+   the non-executable JSON block below (exempt from script-src). #}
+<script type="application/json" id="createMcPrefill">{{ prefill_description | tojson }}</script>

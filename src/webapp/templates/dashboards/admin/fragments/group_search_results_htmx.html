@@ -7,7 +7,7 @@
             hx-get="{{ url_for('admin_dashboard.group_card', group_name=group.group_name) }}"
             hx-target="#groupCardContainer"
             hx-swap="innerHTML"
-            hx-on::after-request="document.getElementById('groupSearchResults').innerHTML = ''; document.getElementById('groupSearchInput').value = '';">
+            data-clear-results="groupSearchResults" data-clear-input="groupSearchInput">
         <div>
             <i class="fas fa-users text-muted me-1"></i>
             <strong>{{ group.group_name }}</strong>

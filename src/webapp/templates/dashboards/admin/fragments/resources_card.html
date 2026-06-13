@@ -394,7 +394,7 @@
                                         data-confirm-title="Deactivate exemption"
                                         data-confirm-variant="warning"
                                         data-confirm-label="Deactivate"
-                                        onclick="event.stopPropagation()">
+                                        data-stop-propagation>
                                     <i class="fas fa-ban"></i>
                                 </button>
                                 {% endif %}
@@ -418,42 +418,5 @@
     </div>{# tab-content #}
 </div>{# card-body #}
 
-<script>
-(function() {
-    function attachSorting(table) {
-        table.querySelectorAll('th.sortable-header').forEach(function(th) {
-            th.addEventListener('click', function() {
-                var colIndex = Array.from(th.parentNode.children).indexOf(th);
-                var sortType = th.dataset.sort;
-                var isAsc = !th.classList.contains('sort-asc');
-                table.querySelectorAll('th').forEach(function(h) {
-                    h.classList.remove('sort-asc', 'sort-desc');
-                });
-                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
-                var tbody = table.querySelector('tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr'));
-                rows.sort(function(a, b) {
-                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
-                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
-                    if (sortType === 'numeric') {
-                        aVal = parseFloat(aVal) || 0;
-                        bVal = parseFloat(bVal) || 0;
-                        return isAsc ? aVal - bVal : bVal - aVal;
-                    }
-                    aVal = String(aVal || '').toLowerCase();
-                    bVal = String(bVal || '').toLowerCase();
-                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-                });
-                rows.forEach(function(r) { tbody.appendChild(r); });
-            });
-        });
-    }
-
-    document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
-
-    SamCollapseChevron.attach('#resources-pane', '.res-type-collapse-icon');
-    SamCollapseChevron.attach('#resources-pane', '.disk-root-collapse-icon');
-    SamCollapseChevron.attach('#queues-pane',    '.queue-res-collapse-icon');
-    SamCollapseChevron.attach('#queues-pane',    '.exemption-res-collapse-icon');
-})();
-</script>
+{# Behavior (table sorting, collapse chevrons) lives in
+   static/js/admin-cards.js, initialized per swap via htmx.onLoad. #}

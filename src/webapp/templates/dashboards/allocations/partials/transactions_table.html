@@ -72,7 +72,7 @@
                             hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode) }}"
                             hx-target="#projectDetailsModalBody"
                             hx-swap="innerHTML"
-                            onclick="event.stopPropagation()">
+                            data-stop-propagation>
                         <strong>{{ r.projcode }}</strong>
                     </button>
                     {% endif %}

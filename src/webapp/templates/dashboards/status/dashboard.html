@@ -50,8 +50,14 @@
                                 title="Edit outage"
                                 {# estimated_resolution is naive-UTC; mark with 'Z' so JS can
                                    parse it as a real instant and convert to operator-local
-                                   for the datetime-local input. #}
-                                onclick='openEditOutageModal({{ outage.outage_id }}, {{ outage.status|tojson }}, {{ outage.severity|tojson }}, {{ outage.description|tojson }}, {{ (outage.estimated_resolution.isoformat() + "Z")|tojson if outage.estimated_resolution else "null" }}, {{ outage.title|tojson }})'>
+                                   for the datetime-local input (outage-edit action, modals.js). #}
+                                data-action="outage-edit"
+                                data-outage-id="{{ outage.outage_id }}"
+                                data-status="{{ outage.status }}"
+                                data-severity="{{ outage.severity }}"
+                                data-description="{{ outage.description }}"
+                                {% if outage.estimated_resolution %}data-estimated-resolution="{{ outage.estimated_resolution.isoformat() }}Z"{% endif %}
+                                data-outage-title="{{ outage.title }}">
                             <i class="fas fa-edit"></i>
                         </button>
                         <button class="btn btn-outline-success btn-sm"

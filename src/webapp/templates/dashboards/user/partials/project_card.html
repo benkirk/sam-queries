@@ -151,7 +151,7 @@
                         {% set _detail_kwargs = {'projcode': project.projcode, 'resource': resource.resource_name} %}
                         {% if admin_origin %}{% set _ = _detail_kwargs.update({'from': 'admin'}) %}{% endif %}
                         <tr class="{% if show_clickable_rows %}resource-row cursor-pointer {% endif %}{{ row_class }}{% if is_expired %} expired-allocation{% endif %}"
-                            {% if show_clickable_rows %}onclick="location.href='{{ url_for('user_dashboard.resource_details', **_detail_kwargs) }}'"{% endif %}>
+                            {% if show_clickable_rows %}data-action="navigate" data-href="{{ url_for('user_dashboard.resource_details', **_detail_kwargs) }}"{% endif %}>
                             <td><strong>{{ resource.resource_name }}</strong></td>
                             <td>
                                 <div class="d-flex justify-content-between small mb-1">
@@ -201,7 +201,7 @@
                                 {% endif %}
                             </td>
                             {% if can_edit_allocations %}
-                            <td class="text-center" onclick="event.stopPropagation();">
+                            <td class="text-center" data-stop-propagation>
                                 {% if resource.allocation_id and not resource.is_inheriting %}
                                 <button class="btn btn-xs btn-outline-primary"
                                         title="Edit allocation"
@@ -209,7 +209,7 @@
                                         hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=resource.allocation_id) }}?projcode={{ project.projcode }}"
                                         hx-target="#editAllocationFormContainer"
                                         hx-swap="innerHTML"
-                                        onclick="event.stopPropagation()">
+                                        data-stop-propagation>
                                     <i class="fas fa-edit"></i>
                                 </button>
                                 {% elif resource.allocation_id and resource.is_inheriting %}
@@ -364,7 +364,7 @@
                             <div class="form-check form-switch mb-0">
                                 <input class="form-check-input" type="checkbox"
                                        id="treeActiveOnly-{{ card_id }}" checked
-                                       onchange="samTreeToggleActiveOnly(this, '{{ card_id }}', '{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode) }}')">
+                                       data-action-change="tree-toggle-active-only" data-card-id="{{ card_id }}" data-base-url="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode) }}">
                                 <label class="form-check-label small text-muted fw-normal"
                                        for="treeActiveOnly-{{ card_id }}">Active only</label>
                             </div>
@@ -385,19 +385,8 @@
                         </div>
                     </div>
                 </div>
-                <script>
-                if (!window.samTreeToggleActiveOnly) {
-                    window.samTreeToggleActiveOnly = function (checkbox, cardId, baseUrl) {
-                        var container = document.getElementById('tree-container-' + cardId);
-                        var url = checkbox.checked ? baseUrl + '?active_only=1' : baseUrl;
-                        if (container && container.dataset.loaded === 'true') {
-                            htmx.ajax('GET', url, { target: container, swap: 'innerHTML' });
-                        } else if (container) {
-                            container.dataset.loadUrl = url;  // update before lazy-load fires
-                        }
-                    };
-                }
-                </script>
+                {# Active-only tree toggle uses the tree-toggle-active-only
+                   action (static/js/form-helpers.js). #}
                 {% endif %}
 
                 {# Edit Project button — inside the card body, visible only when expanded.

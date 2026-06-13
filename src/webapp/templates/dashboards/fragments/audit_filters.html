@@ -73,7 +73,7 @@
                         <i class="fas fa-search"></i> Search
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-secondary"
-                            onclick="document.getElementById('{{ form_id }}').reset(); htmx.trigger('#{{ form_id }}', 'submit');"
+                            data-action="form-reset-submit" data-form-id="{{ form_id }}"
                             title="Reset to default filters">
                         <i class="fas fa-rotate-left"></i> Reset
                     </button>

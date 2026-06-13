@@ -206,7 +206,7 @@
                                                   scope=scope, fileset=d.name,
                                                   start_date=start_date, end_date=end_date) %}
                         <tr style="cursor: pointer;{% if is_active %} background: #fff3cd;{% endif %}"
-                            onclick="window.location='{{ row_url }}'">
+                            data-action="navigate" data-href="{{ row_url }}">
                             {% if _multi_proj %}
                             <td><strong>{{ d.projcode }}</strong></td>
                             {% endif %}

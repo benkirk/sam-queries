@@ -4,10 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    {# htmx hardening: allowEval=false disables hx-on:* and eval-based
+       event filters (none are used — the lint test forbids hx-on);
+       selfRequestsOnly pins htmx requests to our origin (its default,
+       made explicit). allowScriptTags stays TRUE deliberately: false
+       would make htmx strip ALL <script> tags from swapped fragments,
+       including the non-executable application/json data blocks we use
+       (mnemonic prefill, picker params) — executable inline scripts in
+       swaps are already blocked by CSP script-src 'self'. #}
+    <meta name="htmx-config" content='{"allowEval": false, "selfRequestsOnly": true}'>
     <title>{% block title %}SAM User Dashboard{% endblock %}</title>
     {% from 'fragments/vendor_assets.html' import vendor_css, vendor_js with context %}
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     {{ vendor_css(['poppins', 'bootstrap-css', 'fontawesome-css']) }}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
@@ -206,6 +213,12 @@
 
     <!-- Scripts -->
     {{ vendor_js(['jquery', 'bootstrap-js', 'htmx']) }}
+    <script src="{{ url_for('static', filename='js/actions.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/pickers.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard-init.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/admin-cards.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modals.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/form-helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='js/lazy-loading.js') }}"></script>
     <script src="{{ url_for('static', filename='js/nav-view-persistence.js') }}"></script>
     <script src="{{ url_for('static', filename='js/number-preview.js') }}"></script>

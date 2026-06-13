@@ -30,7 +30,7 @@
                 Type <span class="text-danger">*</span>
             </label>
             <select class="form-select" id="adjustmentType" name="charge_adjustment_type_id" required
-                    onchange="var v=this.value; document.querySelectorAll('#createAdjustmentFormContainer .adj-intent').forEach(function(el){ el.style.display = (el.dataset.typeId === v) ? '' : 'none'; });">
+                    data-action-change="adj-intent-toggle">
                 <option value="">-- Select a type --</option>
                 {% for t in types %}
                 <option value="{{ t.charge_adjustment_type_id }}"
@@ -41,8 +41,8 @@
             </select>
 
             {# Intent boilerplate — one visible at a time, toggled by the
-               select's onchange handler. Wording grounded in legacy_sam/
-               doc/data_structures/charge_adjustments.md §5. #}
+               adj-intent-toggle action (dashboard-init.js). Wording grounded
+               in legacy_sam/doc/data_structures/charge_adjustments.md §5. #}
             {% set _selected_type_id = form.get('charge_adjustment_type_id')|string if form else '' %}
             {% for t in types %}
             {% set tid = t.charge_adjustment_type_id|string %}

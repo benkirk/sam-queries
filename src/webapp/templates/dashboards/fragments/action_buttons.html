@@ -59,7 +59,7 @@
         hx-target="#{{ target_id }}"
         hx-trigger="click"
         title="{{ title }}"
-        {%- if stop_propagation %} onclick="event.stopPropagation()"{% endif %}>
+        {%- if stop_propagation %} data-stop-propagation{% endif %}>
     <i class="fas fa-edit"></i>
 </button>
 {%- endif -%}
@@ -82,7 +82,7 @@
         hx-target="closest tr"
         hx-swap="outerHTML"
         hx-confirm="{{ confirm }}"
-        {%- if stop_propagation %} onclick="event.stopPropagation()"{% endif %}>
+        {%- if stop_propagation %} data-stop-propagation{% endif %}>
     <i class="fas fa-trash-alt"></i>
 </button>
 {%- endif -%}
