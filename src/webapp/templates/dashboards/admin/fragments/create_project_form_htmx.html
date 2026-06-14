@@ -14,7 +14,8 @@
     url_for('admin_dashboard.htmx_project_create'),
     '#createProjectFormContainer',
     'Create Project',
-    submit_icon='folder-plus'
+    submit_icon='folder-plus',
+    disabled=not feature_flags.create_projects_enabled
 ) %}
         <div class="row">
             <div class="col-md-6">
