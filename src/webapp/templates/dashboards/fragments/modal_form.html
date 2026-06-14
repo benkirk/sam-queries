@@ -24,9 +24,13 @@
     errors        - Optional list of validation-error strings; rendered as a
                     Bootstrap danger alert above the footer.  Omit / pass none
                     (the default) on forms that have no error surface.
+    disabled      - When truthy, the submit button is replaced with an inert
+                    "Disabled" indicator so the form cannot be submitted. Inputs
+                    stay visible/editable. Used to soft-disable a workflow via a
+                    feature flag.
 #}
 
-{% macro htmx_form(post_url, target, submit_text, submit_icon='save', is_edit=False, submit_class=None, errors=none) %}
+{% macro htmx_form(post_url, target, submit_text, submit_icon='save', is_edit=False, submit_class=None, errors=none, disabled=False) %}
 {% set _btn_class = submit_class if submit_class else 'btn-primary' %}
 <form hx-post="{{ post_url }}"
       hx-target="{{ target }}"
@@ -49,9 +53,15 @@
     <div class="modal-footer">
         <button type="button" class="btn btn-secondary"
                 data-bs-dismiss="modal">Cancel</button>
+        {% if disabled %}
+        <button type="button" class="btn btn-secondary" disabled>
+            <i class="fas fa-ban"></i> Disabled
+        </button>
+        {% else %}
         <button type="submit" class="btn {{ _btn_class }}">
             <i class="fas fa-{{ submit_icon }}"></i> {{ submit_text }}
         </button>
+        {% endif %}
     </div>
 </form>
 {% endmacro %}

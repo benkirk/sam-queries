@@ -12,7 +12,7 @@ from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from flask_login import login_required, current_user
 
 from webapp.extensions import db
-from flask import abort
+from flask import abort, current_app
 from webapp.utils.rbac import (
     require_permission, require_permission_any_facility,
     has_permission, has_permission_for_facility,
@@ -341,6 +341,11 @@ def htmx_project_next_projcode():
 @require_permission_any_facility(Permission.CREATE_PROJECTS)
 def htmx_project_create():
     """Validate form and create a new project."""
+    # Soft feature flag: when project creation is disabled the modal renders a
+    # disabled submit button, but refuse here too in case a request is forged.
+    if not current_app.config.get('CREATE_PROJECTS_ENABLED', True):
+        abort(403)
+
     from sam.projects.projects import Project
     from sam.projects.areas import AreaOfInterest
     from sam.projects.contracts import Contract, ProjectContract
