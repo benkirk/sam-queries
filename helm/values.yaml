@@ -151,6 +151,8 @@ webapp:
     JOB_HISTORY_PG_HOST: "csg-postgres.k8s.ucar.edu"
     JOB_HISTORY_PG_PORT: "5432"
     JOB_HISTORY_MACHINES: "derecho,casper"
+    # disable creating projects until ID system transition & GID pool
+    CREATE_PROJECTS_ENABLED: "0"
 
   # system_status DB credentials (injected as STATUS_DB_USERNAME / STATUS_DB_PASSWORD).
   # MUST be a non-superuser role — connecting as the postgres SUPERUSER causes

@@ -41,6 +41,11 @@ class SAMWebappConfig(SAMConfig):
     # env var explicitly either way.
     FLASK_ADMIN_ENABLED = os.getenv('FLASK_ADMIN_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
+    # Create Project workflow. When off, the modal still renders with all inputs
+    # editable but its submit button is replaced with a disabled indicator, and
+    # the create POST route 403s. Lets ops temporarily freeze project creation.
+    CREATE_PROJECTS_ENABLED = os.getenv('CREATE_PROJECTS_ENABLED', '1').lower() in ('1', 'true', 'yes')
+
     # OIDC configuration (active when AUTH_PROVIDER='oidc')
     OIDC_CLIENT_ID = os.getenv('OIDC_CLIENT_ID', '')
     OIDC_CLIENT_SECRET = os.getenv('OIDC_CLIENT_SECRET', '')
