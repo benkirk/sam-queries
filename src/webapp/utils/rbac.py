@@ -166,7 +166,7 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     },
 
     # hsg: read-only across the board,
-    # resources permissions, and edit system status (for outages etc...)
+    # resources permissions, and edit system status (for outages...)
     'ssg': ALL_VIEW | {
         Permission.ACCESS_ADMIN_DASHBOARD,
         Permission.EDIT_RESOURCES, Permission.CREATE_RESOURCES,
