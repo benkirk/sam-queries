@@ -64,8 +64,17 @@ def create_app(*, config_overrides: dict | None = None):
 
     app = Flask(__name__)
 
+    # Trust N proxy hops in X-Forwarded-* so request.remote_addr / url scheme
+    # reflect the real client behind the ingress (and any LB in front of it).
+    # Flask-Limiter and audit tooling key on request.remote_addr, so this is
+    # what makes per-IP limiting honest. The correct N is the EXACT number of
+    # trusted proxies that append to X-Forwarded-For — setting it too high lets
+    # a client spoof its IP (ProxyFix would trust an attacker-supplied entry),
+    # so it defaults to 1 (safe) and is tuned via PROXYFIX_X_FOR once the real
+    # chain is confirmed from the gunicorn access log (which now logs xff=…).
     from werkzeug.middleware.proxy_fix import ProxyFix
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+    _pf_for = int(os.environ.get('PROXYFIX_X_FOR', '1'))
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=_pf_for, x_proto=1, x_host=1, x_prefix=1)
 
     # Apply all UPPERCASE class attributes as Flask config
     app.config.from_object(cfg)

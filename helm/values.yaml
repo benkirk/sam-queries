@@ -68,6 +68,20 @@ webapp:
     secretName: incommon-cert-samuel      # Unique TLS secret name for your FQDN
   ingress:
     visibility: external                  # internal or external
+    # Edge rate limiting (nginx ingress controller). A coarse per-client-IP
+    # guardrail IN FRONT of the app-layer Flask-Limiter that sheds floods
+    # before they reach a gunicorn worker. Effectiveness depends on the
+    # controller seeing real client IPs (same X-Forwarded-For concern as
+    # proxyFixForwardedHops below). Set rps: 0 to disable all three annotations.
+    rateLimit:
+      rps: 20                             # requests/sec per client IP (limit-rps)
+      connections: 20                     # concurrent connections per IP (limit-connections)
+      burstMultiplier: 5                  # short-burst allowance = rps * this (limit-burst-multiplier)
+  # Trusted proxy hops for ProxyFix (X-Forwarded-For depth). Sets PROXYFIX_X_FOR.
+  # MUST equal the exact number of proxies that append to X-Forwarded-For, or a
+  # client can spoof its IP. Start at 1 (safe), then confirm the real depth from
+  # the gunicorn access-log xff="…" field and bump to match. See webapp/run.py.
+  proxyFixForwardedHops: 1
   # Kubernetes probes. Endpoints from src/webapp/api/v1/health.py:
   #   /live  -> process up, no DB call          (liveness + startup)
   #   /ready -> DB-gated, 200 healthy / 503 not  (readiness: gates rollout

@@ -33,14 +33,16 @@
 # ── Hardening recommendations (NOT enforced by this script) ──────────────────
 # This audit only surfaces signals; the layered defenses below are follow-ups
 # tracked in docs/plans (see the approved plan). Quick reference:
-#   R1  Edge rate limiting — the nginx-external ingress has NO limit-rps /
-#       limit-connections annotations; Flask-Limiter is the only gatekeeper.
-#       Adding them (helm/templates/ingress.yaml, via main→cirrus) sheds floods
-#       before they cost a worker.
-#   R2  Real client IP — if section 2 reports ≤2 distinct source IPs, gunicorn's
-#       %(h)s is the ingress pod IP, not the client. Confirm ProxyFix /
-#       X-Forwarded-For so per-IP limiting and these stats key on the real
-#       client.
+#   R1  Edge rate limiting — configurable via webapp.ingress.rateLimit in
+#       helm/values.yaml (limit-rps / limit-connections / limit-burst-multiplier
+#       on the ingress): a per-client-IP guardrail ahead of Flask-Limiter that
+#       sheds floods before they cost a worker. Tune to expected burst; rps: 0
+#       disables it.
+#   R2  Real client IP — the access log now carries xff="…" and the ProxyFix
+#       hop depth is set by PROXYFIX_X_FOR (helm webapp.proxyFixForwardedHops).
+#       Confirm the count against the logged X-Forwarded-For chain — too high
+#       lets clients spoof their IP. Section 2 warns if xff is missing or still
+#       collapses to ≤2 IPs.
 #   R3  Scheduling — run on a cron/CI runner with --no-color and alert on a
 #       non-zero exit (wire into scripts/cron/).
 #   R4  CSP reporting — add a report-uri so injection attempts become a
@@ -149,7 +151,12 @@ ACCESS_TSV=$(printf '%s\n' "$LOGS" | awk -F'"' '
         split($2, r, " "); method = r[1]; path = r[2];
         sub(/\?.*/, "", path);                 # drop query string for grouping
         if (path ~ /^\/api\/v[0-9]+\/health(\/|$)/) next;   # infra probe noise, not traffic
+        # Client IP: prefer the leftmost X-Forwarded-For entry (the real client)
+        # when the access log carries the xff="…" field; else the socket peer
+        # in %(h)s (which behind the ingress is the proxy, not the client).
         split($1, a, " "); ip = a[1];
+        xff = (NF >= 8) ? $8 : "";
+        if (xff != "" && xff != "-") { split(xff, xa, ","); ip = xa[1]; gsub(/[ \t]/, "", ip) }
         split($3, s, " "); status = s[1];
         ua = $6; if (ua == "") ua = "-";
         printf "%s\t%s\t%s\t%s\t%s\n", ip, status, method, path, ua
@@ -202,10 +209,13 @@ if [[ "$N_ACCESS" -eq 0 ]]; then
 else
     N_IPS=$(printf '%s\n' "$ACCESS_TSV" | cut -f1 | sort -u | grep -c . || true)
     echo "  Distinct source IPs: $N_IPS"
-    if [[ "$N_IPS" -le 2 && "$N_ACCESS" -ge 50 ]]; then
-        warn "only $N_IPS distinct source IP(s) across $N_ACCESS requests"
-        explain "Likely gunicorn %(h)s = the ingress pod IP, not the real client (see R2 in --help)."
-        explain "Per-IP rate limiting and these rankings are degraded until ProxyFix/X-Forwarded-For is confirmed."
+    XFF_SEEN=$(printf '%s\n' "$LOGS" | grep -cE 'xff="[0-9a-fA-F]' || true)
+    if [[ "$XFF_SEEN" -eq 0 ]]; then
+        warn "access log carries no X-Forwarded-For — IPs above are the in-cluster proxy, not real clients"
+        explain "Deploy the R2 gunicorn change (xff logging) so this attributes real clients; see R2 in --help."
+    elif [[ "$N_IPS" -le 2 && "$N_ACCESS" -ge 50 ]]; then
+        warn "only $N_IPS distinct client IP(s) across $N_ACCESS requests despite X-Forwarded-For"
+        explain "Either genuinely few clients, or PROXYFIX_X_FOR hop depth is still mis-set (see R2 in --help)."
     fi
 
     echo
@@ -241,7 +251,9 @@ section "3. Scanner / probe path signatures"
 if [[ "$N_ACCESS" -eq 0 ]]; then
     info "no access lines to scan for probes"
 else
-    PROBES=$(printf '%s\n' "$ACCESS_TSV" | awk -F'\t' -v re="$PROBE_PATH_RE" '$4 ~ re {print}')
+    # Exclude the app's own /static/ assets — /static/vendor/* legitimately
+    # matches the /vendor/ probe signature but is served, not a probe.
+    PROBES=$(printf '%s\n' "$ACCESS_TSV" | awk -F'\t' -v re="$PROBE_PATH_RE" '$4 !~ /^\/static\// && $4 ~ re {print}')
     N_PROBE=$(printf '%s' "$PROBES" | grep -c . || true)
     if [[ "$N_PROBE" -eq 0 ]]; then
         pass "no known vulnerability-probe paths requested"

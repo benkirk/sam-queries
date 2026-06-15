@@ -47,10 +47,22 @@ keepalive = 5
 preload_app = True   # Load app before forking → faster startup, shared memory
 daemon = False       # Stay in foreground (required for containers)
 
+# Trust X-Forwarded-* from the ingress. gunicorn is only reachable via the
+# in-cluster ingress (ClusterIP service, never published directly), so trusting
+# forwarded headers from any peer is the standard k8s setting and lets it honor
+# X-Forwarded-Proto for correct https scheme detection. Real client-IP recovery
+# for the app is handled by ProxyFix (see webapp/run.py); this is the gunicorn
+# side of the same story.
+forwarded_allow_ips = os.environ.get('FORWARDED_ALLOW_IPS', '*')
+
 # Logging — stdout/stderr by default (Docker captures them)
 accesslog = os.environ.get('GUNICORN_ACCESS_LOG', '-')
 errorlog  = os.environ.get('GUNICORN_ERROR_LOG',  '-')
 loglevel  = os.environ.get('GUNICORN_LOG_LEVEL',  'info')
-access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)sµs'
+# %(h)s is the raw socket peer (the in-cluster proxy), so it is NOT the client.
+# The trailing xff="…" logs the full X-Forwarded-For chain: its leftmost entry
+# is the real client, and counting the entries tells us the correct
+# PROXYFIX_X_FOR hop depth (see webapp/run.py).
+access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)sµs xff="%({x-forwarded-for}i)s"'
 
 proc_name = 'sam-webapp'

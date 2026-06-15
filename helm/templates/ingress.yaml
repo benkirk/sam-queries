@@ -7,6 +7,14 @@ metadata:
     group: {{ .Values.webapp.group }}
   annotations:
     cert-manager.io/cluster-issuer: "incommon"
+    {{- with .Values.webapp.ingress.rateLimit }}
+    {{- if gt (int .rps) 0 }}
+    # Edge rate limiting — per-client-IP guardrail ahead of Flask-Limiter.
+    nginx.ingress.kubernetes.io/limit-rps: {{ .rps | quote }}
+    nginx.ingress.kubernetes.io/limit-connections: {{ .connections | quote }}
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .burstMultiplier | quote }}
+    {{- end }}
+    {{- end }}
 spec:
   ingressClassName: nginx-{{ .Values.webapp.ingress.visibility }}
   tls:
