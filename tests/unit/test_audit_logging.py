@@ -15,6 +15,7 @@ own `before_flush` listener directly on the test session class instead
 of going through `init_audit_events`, which has process-global state
 that's not easily reset between tests.
 """
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -70,6 +71,32 @@ def test_audit_logger_singleton(audit_log_path):
     logger1 = get_audit_logger(audit_log_path)
     logger2 = get_audit_logger(audit_log_path)
     assert logger1 is logger2
+
+
+def test_audit_logger_stdout_handler_added_by_default(audit_log_path):
+    """By default a StreamHandler mirrors audit entries to STDOUT."""
+    logger = get_audit_logger(audit_log_path)
+    stream_handlers = [
+        h for h in logger.handlers
+        if isinstance(h, logging.StreamHandler)
+        and not isinstance(h, logging.FileHandler)
+    ]
+    assert len(stream_handlers) == 1
+
+
+def test_audit_logger_stdout_handler_can_be_disabled(audit_log_path):
+    """stdout=False suppresses the STDOUT handler but keeps the file handler."""
+    logger = get_audit_logger(audit_log_path, stdout=False)
+    stream_handlers = [
+        h for h in logger.handlers
+        if isinstance(h, logging.StreamHandler)
+        and not isinstance(h, logging.FileHandler)
+    ]
+    file_handlers = [
+        h for h in logger.handlers if isinstance(h, logging.FileHandler)
+    ]
+    assert stream_handlers == []
+    assert len(file_handlers) == 1
 
 
 def test_ensure_log_directory_falls_back_to_tempdir():

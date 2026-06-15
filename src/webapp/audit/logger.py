@@ -5,6 +5,7 @@ Provides rotating file logger for tracking database changes.
 """
 import logging
 import os
+import sys
 import tempfile
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -40,7 +41,7 @@ def ensure_log_directory(logfile_path):
         return fallback_path
 
 
-def get_audit_logger(logfile_path):
+def get_audit_logger(logfile_path, stdout=True):
     """
     Get or create audit logger with rotating file handler.
 
@@ -48,6 +49,9 @@ def get_audit_logger(logfile_path):
 
     Args:
         logfile_path: Path to audit log file
+        stdout: Also emit entries to STDOUT (default True). In CIRRUS/k8s the
+            file lives on ephemeral storage, but container STDOUT is captured
+            and retained for 45 days, making it the durable audit sink.
 
     Returns:
         logging.Logger: Configured audit logger
@@ -76,6 +80,17 @@ def get_audit_logger(logfile_path):
         handler.setFormatter(formatter)
 
         logger.addHandler(handler)
+
+        # STDOUT handler — the file already identifies the source, but on the
+        # mixed k8s STDOUT stream a "model_audit" token lets ops filter with
+        # `kubectl logs ... | grep model_audit`.
+        if stdout:
+            stream = logging.StreamHandler(sys.stdout)
+            stream.setFormatter(logging.Formatter(
+                "%(asctime)s [%(levelname)s] model_audit %(message)s",
+                datefmt='%Y-%m-%d %H:%M:%S'
+            ))
+            logger.addHandler(stream)
 
     return logger
 

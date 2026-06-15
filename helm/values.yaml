@@ -122,6 +122,9 @@ webapp:
     FLASK_CONFIG: "production"            # Selects ProductionConfig (DEBUG=False, SESSION_COOKIE_SECURE=True)
     AUDIT_ENABLED: "1"
     AUDIT_LOG_PATH: "/var/log/sam/model_audit.log"
+    # Mirror audit entries to STDOUT — the durable sink (CIRRUS retains
+    # container STDOUT for 45d; the log file is on ephemeral pod storage).
+    AUDIT_LOG_STDOUT: "1"
     JUPYTERHUB_API_URL: "https://jupyterhub.hpc.ucar.edu"
     JUPYTERHUB_INSTANCE: "stable"
     JUPYTERHUB_CACHE_TTL: "300"
