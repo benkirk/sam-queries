@@ -12,7 +12,7 @@ from .events import init_audit_events
 audit_bp = Blueprint("audit", __name__)
 
 
-def init_audit(app, db, logfile_path=None):
+def init_audit(app, db, logfile_path=None, stdout=None):
     """
     Attach audit logging to Flask application.
 
@@ -20,6 +20,9 @@ def init_audit(app, db, logfile_path=None):
         app: Flask application instance
         db: Flask-SQLAlchemy instance
         logfile_path: Path to audit log file (default: /var/log/sam/model_audit.log)
+        stdout: Also emit audit entries to STDOUT. When None, resolves from the
+            AUDIT_LOG_STDOUT config flag (default on). STDOUT is the durable
+            sink in CIRRUS/k8s where the log file is on ephemeral storage.
 
     Example:
         from webapp.audit import init_audit
@@ -35,8 +38,12 @@ def init_audit(app, db, logfile_path=None):
     if logfile_path is None:
         logfile_path = app.config.get('AUDIT_LOG_PATH', '/var/log/sam/model_audit.log')
 
+    # Resolve STDOUT mirroring from config when not explicitly set
+    if stdout is None:
+        stdout = app.config.get('AUDIT_LOG_STDOUT', True)
+
     # Initialize SQLAlchemy event handlers
-    init_audit_events(app, db, logfile_path)
+    init_audit_events(app, db, logfile_path, stdout=stdout)
 
     # Register blueprint
     app.register_blueprint(audit_bp)

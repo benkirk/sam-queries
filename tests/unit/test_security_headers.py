@@ -20,6 +20,15 @@ class TestHeadersOnApp:
         resp = client.get('/auth/login')
         assert resp.headers['X-Content-Type-Options'] == 'nosniff'
         assert resp.headers['Referrer-Policy'] == 'strict-origin-when-cross-origin'
+        assert resp.headers['Cross-Origin-Resource-Policy'] == 'same-origin'
+        assert 'Permissions-Policy' in resp.headers
+
+    def test_defense_in_depth_headers_on_api_routes_too(self, client):
+        """CORP + Permissions-Policy are unconditional — they ride API responses
+        too, independent of HTTPS/CSP mode."""
+        resp = client.get('/api/v1/health/live')
+        assert resp.headers['Cross-Origin-Resource-Policy'] == 'same-origin'
+        assert 'geolocation=()' in resp.headers['Permissions-Policy']
 
     def test_headers_on_api_routes_too(self, client):
         resp = client.get('/api/v1/health/live')

@@ -57,6 +57,10 @@ class SAMWebappConfig(SAMConfig):
     # Audit logging
     AUDIT_ENABLED  = os.getenv('AUDIT_ENABLED', '1').lower() in ('1', 'true', 'yes')
     AUDIT_LOG_PATH = os.getenv('AUDIT_LOG_PATH', '/var/log/sam/model_audit.log')
+    # Mirror audit entries to STDOUT (on by default). The in-pod log file lives
+    # on ephemeral storage and is lost on reboot/reschedule; CIRRUS/k8s captures
+    # and retains container STDOUT for 45 days, so this is the durable sink.
+    AUDIT_LOG_STDOUT = os.getenv('AUDIT_LOG_STDOUT', '1').lower() in ('1', 'true', 'yes')
 
     # Application logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
